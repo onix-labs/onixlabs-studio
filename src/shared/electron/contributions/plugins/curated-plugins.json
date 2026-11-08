@@ -1,5 +1,5 @@
 {
-  "revision": 62,
+  "revision": 63,
   "plugins": [
     {
       "id": "pyright",
@@ -48,10 +48,65 @@
             "id": "pyright",
             "displayName": "Pyright",
             "languages": ["python"],
-            "priority": 100,
+            "priority": 50,
             "command": {
               "kind": "node"
-            }
+            },
+            "settings": [
+              {
+                "section": "python.pythonPath",
+                "label": "Python Interpreter",
+                "description": "The interpreter whose installed packages Pyright resolves imports from. The default is the workspace's own .venv; when there is none, Pyright uses the Python on your PATH.",
+                "default": "${workspaceFolder}/.venv/bin/python"
+              },
+              {
+                "section": "python.analysis.typeCheckingMode",
+                "label": "Type Checking",
+                "description": "How strictly Pyright checks types: Off reports only syntax and import errors, Strict everything it can.",
+                "default": "standard",
+                "options": [
+                  {
+                    "value": "off",
+                    "label": "Off"
+                  },
+                  {
+                    "value": "basic",
+                    "label": "Basic"
+                  },
+                  {
+                    "value": "standard",
+                    "label": "Standard"
+                  },
+                  {
+                    "value": "strict",
+                    "label": "Strict"
+                  }
+                ]
+              },
+              {
+                "section": "python.analysis.diagnosticMode",
+                "label": "Errors and Warnings",
+                "description": "Which files Pyright checks for the Error List: the files you have open, or every file in the workspace, open or not.",
+                "default": "openFilesOnly",
+                "options": [
+                  {
+                    "value": "openFilesOnly",
+                    "label": "Open files"
+                  },
+                  {
+                    "value": "workspace",
+                    "label": "Whole workspace"
+                  }
+                ]
+              },
+              {
+                "section": "python.analysis.autoImportCompletions",
+                "label": "Auto-Import Suggestions",
+                "description": "Suggest names from modules the file does not import yet, adding the import when one is chosen.",
+                "default": true,
+                "advanced": true
+              }
+            ]
           }
         ]
       }
@@ -103,10 +158,56 @@
             "id": "ty",
             "displayName": "ty (Astral)",
             "languages": ["python"],
-            "priority": 50,
+            "priority": 100,
             "command": {
               "kind": "executable",
               "args": ["server"]
+            },
+            "settings": [
+              {
+                "section": "ty.diagnosticMode",
+                "label": "Errors and Warnings",
+                "description": "Which files ty checks for the Error List: the files you have open, or every file in the workspace, open or not. ty reads this only when it starts, so changing it restarts the server.",
+                "default": "openFilesOnly",
+                "options": [
+                  {
+                    "value": "openFilesOnly",
+                    "label": "Open files"
+                  },
+                  {
+                    "value": "workspace",
+                    "label": "Whole workspace"
+                  }
+                ],
+                "startupOnly": true
+              },
+              {
+                "section": "ty.inlayHints.variableTypes",
+                "label": "Variable Types",
+                "description": "Show the type ty infers for a variable that does not name one, after its name. ty reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true
+              },
+              {
+                "section": "ty.inlayHints.callArgumentNames",
+                "label": "Parameter Names",
+                "description": "Show the name of the parameter each argument is passed to, before the argument. ty reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true
+              },
+              {
+                "section": "ty.completions.autoImport",
+                "label": "Auto-Import Suggestions",
+                "description": "Suggest names from modules the file does not import yet, adding the import when one is chosen. ty reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true,
+                "advanced": true
+              }
+            ],
+            "settingsDelivery": {
+              "startup": {
+                "section": "ty"
+              }
             }
           }
         ]
@@ -531,8 +632,14 @@
                 "description": "The Cargo command run on save. Clippy needs the clippy component of the toolchain.",
                 "default": "check",
                 "options": [
-                  { "value": "check", "label": "Cargo Check" },
-                  { "value": "clippy", "label": "Clippy" }
+                  {
+                    "value": "check",
+                    "label": "Cargo Check"
+                  },
+                  {
+                    "value": "clippy",
+                    "label": "Clippy"
+                  }
                 ]
               },
               {
@@ -565,9 +672,18 @@
                 "description": "Show the lifetimes the compiler fills in on a function's signature.",
                 "default": "never",
                 "options": [
-                  { "value": "never", "label": "Off" },
-                  { "value": "skip_trivial", "label": "Except trivial cases" },
-                  { "value": "always", "label": "Always" }
+                  {
+                    "value": "never",
+                    "label": "Off"
+                  },
+                  {
+                    "value": "skip_trivial",
+                    "label": "Except trivial cases"
+                  },
+                  {
+                    "value": "always",
+                    "label": "Always"
+                  }
                 ]
               },
               {
@@ -576,9 +692,18 @@
                 "description": "Show the return type the compiler infers for a closure.",
                 "default": "never",
                 "options": [
-                  { "value": "never", "label": "Off" },
-                  { "value": "with_block", "label": "Closures with a block" },
-                  { "value": "always", "label": "Always" }
+                  {
+                    "value": "never",
+                    "label": "Off"
+                  },
+                  {
+                    "value": "with_block",
+                    "label": "Closures with a block"
+                  },
+                  {
+                    "value": "always",
+                    "label": "Always"
+                  }
                 ],
                 "advanced": true
               },
@@ -595,9 +720,18 @@
                 "description": "Show where the compiler reborrows a reference by itself.",
                 "default": "never",
                 "options": [
-                  { "value": "never", "label": "Off" },
-                  { "value": "mutable", "label": "Mutable references" },
-                  { "value": "always", "label": "Always" }
+                  {
+                    "value": "never",
+                    "label": "Off"
+                  },
+                  {
+                    "value": "mutable",
+                    "label": "Mutable references"
+                  },
+                  {
+                    "value": "always",
+                    "label": "Always"
+                  }
                 ],
                 "advanced": true
               },
@@ -614,9 +748,18 @@
                 "description": "Show the value of each enum variant.",
                 "default": "never",
                 "options": [
-                  { "value": "never", "label": "Off" },
-                  { "value": "fieldless", "label": "Enums without fields" },
-                  { "value": "always", "label": "Always" }
+                  {
+                    "value": "never",
+                    "label": "Off"
+                  },
+                  {
+                    "value": "fieldless",
+                    "label": "Enums without fields"
+                  },
+                  {
+                    "value": "always",
+                    "label": "Always"
+                  }
                 ],
                 "advanced": true
               },
@@ -668,7 +811,10 @@
                 "description": "What Go to Symbol in Workspace searches.",
                 "default": "workspace",
                 "options": [
-                  { "value": "workspace", "label": "The workspace" },
+                  {
+                    "value": "workspace",
+                    "label": "The workspace"
+                  },
                   {
                     "value": "workspace_and_dependencies",
                     "label": "The workspace and its dependencies"
@@ -688,9 +834,18 @@
                 "description": "What completing a function or method name adds after it.",
                 "default": "fill_arguments",
                 "options": [
-                  { "value": "fill_arguments", "label": "Parentheses and arguments" },
-                  { "value": "add_parentheses", "label": "Parentheses" },
-                  { "value": "none", "label": "Nothing" }
+                  {
+                    "value": "fill_arguments",
+                    "label": "Parentheses and arguments"
+                  },
+                  {
+                    "value": "add_parentheses",
+                    "label": "Parentheses"
+                  },
+                  {
+                    "value": "none",
+                    "label": "Nothing"
+                  }
                 ]
               },
               {
@@ -699,11 +854,26 @@
                 "description": "How imports added by a completion or a code action are merged into the use items already there.",
                 "default": "crate",
                 "options": [
-                  { "value": "crate", "label": "One use per crate" },
-                  { "value": "module", "label": "One use per module" },
-                  { "value": "item", "label": "One use per item" },
-                  { "value": "one", "label": "A single use" },
-                  { "value": "preserve", "label": "As they are" }
+                  {
+                    "value": "crate",
+                    "label": "One use per crate"
+                  },
+                  {
+                    "value": "module",
+                    "label": "One use per module"
+                  },
+                  {
+                    "value": "item",
+                    "label": "One use per item"
+                  },
+                  {
+                    "value": "one",
+                    "label": "A single use"
+                  },
+                  {
+                    "value": "preserve",
+                    "label": "As they are"
+                  }
                 ],
                 "advanced": true
               },
@@ -713,9 +883,18 @@
                 "description": "How the paths of imports added by a completion or a code action start.",
                 "default": "crate",
                 "options": [
-                  { "value": "crate", "label": "From the crate" },
-                  { "value": "self", "label": "From this module" },
-                  { "value": "plain", "label": "Shortest path" }
+                  {
+                    "value": "crate",
+                    "label": "From the crate"
+                  },
+                  {
+                    "value": "self",
+                    "label": "From this module"
+                  },
+                  {
+                    "value": "plain",
+                    "label": "Shortest path"
+                  }
                 ],
                 "advanced": true
               },
@@ -827,8 +1006,14 @@
                 "description": "Add the #include a completion needs when it is accepted. The server reads this only when it starts, so changing it restarts it.",
                 "default": "iwyu",
                 "options": [
-                  { "value": "iwyu", "label": "When a Completion Needs One" },
-                  { "value": "never", "label": "Never" }
+                  {
+                    "value": "iwyu",
+                    "label": "When a Completion Needs One"
+                  },
+                  {
+                    "value": "never",
+                    "label": "Never"
+                  }
                 ]
               },
               {
@@ -841,9 +1026,18 @@
             "settingsDelivery": {
               "pull": false,
               "arguments": [
-                { "section": "clangd.clangTidy", "flag": "--clang-tidy" },
-                { "section": "clangd.headerInsertion", "flag": "--header-insertion" },
-                { "section": "clangd.backgroundIndex", "flag": "--background-index" }
+                {
+                  "section": "clangd.clangTidy",
+                  "flag": "--clang-tidy"
+                },
+                {
+                  "section": "clangd.headerInsertion",
+                  "flag": "--header-insertion"
+                },
+                {
+                  "section": "clangd.backgroundIndex",
+                  "flag": "--background-index"
+                }
               ]
             }
           }
