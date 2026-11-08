@@ -87,9 +87,15 @@ interface DeclaredSetting {
   readonly choice: string;
 
   /**
-   * Gets the choices as dropdown options; empty for a switch.
+   * Gets the choices as dropdown options; empty for a switch or text.
    */
   readonly options: readonly DropdownOption[];
+
+  /**
+   * Gets whether the setting is text the user types, such as a path (#1212): a string default and no
+   * choices.
+   */
+  readonly text: boolean;
 }
 
 /**
@@ -269,6 +275,7 @@ export class LanguageServerSettings {
                 label: option.label,
               }),
             ),
+            text: typeof descriptor.default === 'string' && descriptor.options === undefined,
           };
         },
       );
@@ -289,10 +296,11 @@ export class LanguageServerSettings {
         : ((setting.descriptor.options ?? []).find(
             (option: LspServerSettingOption): boolean => String(option.value) === value,
           )?.value ?? value);
+    // Text cleared is the default again, rather than an empty value the server would read as one.
     void this.lspSettings.setServerSetting(
       this.activeServer(),
       setting.descriptor.section,
-      chosen === setting.descriptor.default ? null : chosen,
+      chosen === setting.descriptor.default || (setting.text && chosen === '') ? null : chosen,
     );
   }
 

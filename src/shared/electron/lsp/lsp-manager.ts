@@ -460,6 +460,7 @@ export class LspManager {
       }
       const pushed: Record<string, unknown> | undefined = this.registry.pushedSettingsOf(
         change.serverId,
+        session.rootPath,
       );
       // A bare announcement is `{ settings: null }`, which only a server that asks again can use: the
       // JSON server never asks, reads the settings it is sent, and throws on null (#1219).
@@ -739,7 +740,7 @@ export class LspManager {
       connection,
       parsed.rootPath,
       spec,
-      this.registry.pushedSettingsOf(parsed.serverId),
+      this.registry.pushedSettingsOf(parsed.serverId, parsed.rootPath),
       parsed.serverId,
     )
       .then((result: InitializeResult): LspStartResult => {
@@ -1206,7 +1207,7 @@ export class LspManager {
       'workspace/configuration',
       (params: { items?: readonly unknown[] }): unknown[] | Promise<unknown[]> => {
         const answers: unknown[] = answerConfiguration(
-          this.registry.configurationOf(session.request.serverId),
+          this.registry.configurationOf(session.request.serverId, session.rootPath),
           params.items,
         );
         const sections: LspIndentationSections | undefined = this.registry.indentationSectionsOf(

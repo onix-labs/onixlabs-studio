@@ -1,5 +1,5 @@
 {
-  "revision": 62,
+  "revision": 63,
   "plugins": [
     {
       "id": "pyright",
@@ -48,10 +48,65 @@
             "id": "pyright",
             "displayName": "Pyright",
             "languages": ["python"],
-            "priority": 100,
+            "priority": 50,
             "command": {
               "kind": "node"
-            }
+            },
+            "settings": [
+              {
+                "section": "python.pythonPath",
+                "label": "Python Interpreter",
+                "description": "The interpreter whose installed packages Pyright resolves imports from. The default is the workspace's own .venv; when there is none, Pyright uses the Python on your PATH.",
+                "default": "${workspaceFolder}/.venv/bin/python"
+              },
+              {
+                "section": "python.analysis.typeCheckingMode",
+                "label": "Type Checking",
+                "description": "How strictly Pyright checks types: Off reports only syntax and import errors, Strict everything it can.",
+                "default": "standard",
+                "options": [
+                  {
+                    "value": "off",
+                    "label": "Off"
+                  },
+                  {
+                    "value": "basic",
+                    "label": "Basic"
+                  },
+                  {
+                    "value": "standard",
+                    "label": "Standard"
+                  },
+                  {
+                    "value": "strict",
+                    "label": "Strict"
+                  }
+                ]
+              },
+              {
+                "section": "python.analysis.diagnosticMode",
+                "label": "Errors and Warnings",
+                "description": "Which files Pyright checks for the Error List: the files you have open, or every file in the workspace, open or not.",
+                "default": "openFilesOnly",
+                "options": [
+                  {
+                    "value": "openFilesOnly",
+                    "label": "Open files"
+                  },
+                  {
+                    "value": "workspace",
+                    "label": "Whole workspace"
+                  }
+                ]
+              },
+              {
+                "section": "python.analysis.autoImportCompletions",
+                "label": "Auto-Import Suggestions",
+                "description": "Suggest names from modules the file does not import yet, adding the import when one is chosen.",
+                "default": true,
+                "advanced": true
+              }
+            ]
           }
         ]
       }
@@ -103,10 +158,56 @@
             "id": "ty",
             "displayName": "ty (Astral)",
             "languages": ["python"],
-            "priority": 50,
+            "priority": 100,
             "command": {
               "kind": "executable",
               "args": ["server"]
+            },
+            "settings": [
+              {
+                "section": "ty.diagnosticMode",
+                "label": "Errors and Warnings",
+                "description": "Which files ty checks for the Error List: the files you have open, or every file in the workspace, open or not. ty reads this only when it starts, so changing it restarts the server.",
+                "default": "openFilesOnly",
+                "options": [
+                  {
+                    "value": "openFilesOnly",
+                    "label": "Open files"
+                  },
+                  {
+                    "value": "workspace",
+                    "label": "Whole workspace"
+                  }
+                ],
+                "startupOnly": true
+              },
+              {
+                "section": "ty.inlayHints.variableTypes",
+                "label": "Variable Types",
+                "description": "Show the type ty infers for a variable that does not name one, after its name. ty reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true
+              },
+              {
+                "section": "ty.inlayHints.callArgumentNames",
+                "label": "Parameter Names",
+                "description": "Show the name of the parameter each argument is passed to, before the argument. ty reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true
+              },
+              {
+                "section": "ty.completions.autoImport",
+                "label": "Auto-Import Suggestions",
+                "description": "Suggest names from modules the file does not import yet, adding the import when one is chosen. ty reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true,
+                "advanced": true
+              }
+            ],
+            "settingsDelivery": {
+              "startup": {
+                "section": "ty"
+              }
             }
           }
         ]
