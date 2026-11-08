@@ -486,6 +486,18 @@ const ROSLYN_RUN_TESTS: string = 'dotnet.test.run';
 const SOURCE_DEFINITION_COMMAND: string = '_typescript.goToSourceDefinition';
 
 /**
+ * typescript-language-server's command that hands a request to tsserver as it is, through which Go to
+ * Project Configuration asks which `tsconfig.json` a file belongs to (#1207).
+ */
+const TSSERVER_REQUEST_COMMAND: string = 'typescript.tsserverRequest';
+
+/**
+ * Where tsserver says an inferred project's configuration is: there is none, as no `tsconfig.json` or
+ * `jsconfig.json` is above the file.
+ */
+const INFERRED_PROJECT: string = '/dev/null/';
+
+/**
  * The Monaco command a Run Test lens runs (#1150): it hands the lens's argument to the session that
  * serves the lens's document, which runs the tests. Its arguments are the model's URI and the lens's
  * argument.
@@ -2967,6 +2979,50 @@ export class LspFeatures {
       textDocument: { uri: ref.uri },
     });
     return outcome.ok ? this.toPlaces(outcome.result) : null;
+  }
+
+  /**
+   * Determines whether the language server that serves a document answers Go to Project Configuration:
+   * it lists tsserver's pass-through command among those it runs (#1207).
+   * @param model The editor model.
+   * @returns Returns true when it does.
+   */
+  public servesProjectConfiguration(model: MonacoApi.editor.ITextModel): boolean {
+    return (this.resolve(model)?.commands ?? []).includes(TSSERVER_REQUEST_COMMAND);
+  }
+
+  /**
+   * Asks the language server that serves a document which `tsconfig.json` or `jsconfig.json` its
+   * project is configured by, for Go to Project Configuration (#1207), as tsserver's `projectInfo`
+   * says. A file with none above it is in an inferred project, which has no configuration to go to.
+   * @param model The editor model.
+   * @returns Returns the configuration's place, none for an inferred project, or null when the server
+   * does not answer this.
+   */
+  public async projectConfigurations(
+    model: MonacoApi.editor.ITextModel,
+  ): Promise<readonly LspDefinition[] | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || !this.servesProjectConfiguration(model)) {
+      return null;
+    }
+    const outcome: LspOutcome = await this.ask(ref, 'workspace/executeCommand', {
+      command: TSSERVER_REQUEST_COMMAND,
+      arguments: ['projectInfo', { file: ref.uri, needFileNameList: false }],
+    });
+    if (!outcome.ok) {
+      return null;
+    }
+    const config: unknown = (outcome.result as { body?: { configFileName?: unknown } } | null)?.body
+      ?.configFileName;
+    return typeof config === 'string' && config.length > 0 && !config.startsWith(INFERRED_PROJECT)
+      ? [
+          {
+            path: config,
+            range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 },
+          },
+        ]
+      : [];
   }
 
   /**

@@ -2056,6 +2056,61 @@ describe('LspFeatures', () => {
       });
     });
 
+    it('projectConfigurations_askTsserverWhichConfigurationTheFileIsIn (#1207)', async () => {
+      serverCommands = ['typescript.tsserverRequest'];
+      responses['workspace/executeCommand'] = {
+        type: 'response',
+        success: true,
+        body: {
+          configFileName: '/root/packages/app/tsconfig.json',
+          languageServiceDisabled: false,
+        },
+      };
+      const features: LspFeatures = await build();
+      const model: Parameters<LspFeatures['projectConfigurations']>[0] = owned as Parameters<
+        LspFeatures['projectConfigurations']
+      >[0];
+
+      expect(features.servesProjectConfiguration(model)).toBe(true);
+      expect(await features.projectConfigurations(model)).toEqual([
+        {
+          path: '/root/packages/app/tsconfig.json',
+          range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 },
+        },
+      ]);
+      expect(requests.at(-1)).toEqual({
+        sessionId: '/root::typescript',
+        method: 'workspace/executeCommand',
+        params: {
+          command: 'typescript.tsserverRequest',
+          arguments: ['projectInfo', { file: 'file:///root/app.ts', needFileNameList: false }],
+        },
+      });
+    });
+
+    it('projectConfigurations_ofAFileInAnInferredProject_areNone (#1207)', async () => {
+      serverCommands = ['typescript.tsserverRequest'];
+      responses['workspace/executeCommand'] = {
+        body: { configFileName: '/dev/null/inferredProject1*' },
+      };
+      const features: LspFeatures = await build();
+      const model: Parameters<LspFeatures['projectConfigurations']>[0] = owned as Parameters<
+        LspFeatures['projectConfigurations']
+      >[0];
+
+      expect(await features.projectConfigurations(model)).toEqual([]);
+    });
+
+    it('projectConfigurations_areNull_andNeverAsked_whereTheServerDoesNotRunTheCommand (#1207)', async () => {
+      const features: LspFeatures = await build();
+      const model: Parameters<LspFeatures['projectConfigurations']>[0] = owned as Parameters<
+        LspFeatures['projectConfigurations']
+      >[0];
+
+      expect(features.servesProjectConfiguration(model)).toBe(false);
+      expect(await features.projectConfigurations(model)).toBeNull();
+    });
+
     it('sourceDefinitions_areNull_andNeverAsked_whereTheServerDoesNotRunTheCommand (#1207)', async () => {
       const features: LspFeatures = await build();
       const model: Parameters<LspFeatures['sourceDefinitions']>[0] = owned as Parameters<

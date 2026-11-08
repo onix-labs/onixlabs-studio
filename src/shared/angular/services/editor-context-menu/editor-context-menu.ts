@@ -26,6 +26,7 @@ export type EditorContextMenuCommand =
   | 'sourceDefinition'
   | 'parentModule'
   | 'cargoManifest'
+  | 'projectConfiguration'
   | 'implementation'
   | 'references'
   | 'callHierarchy'
@@ -98,6 +99,7 @@ const SHORTCUTS: Readonly<Record<EditorContextMenuCommand, ShortcutHints>> = {
   sourceDefinition: { mac: '', windows: '' },
   parentModule: { mac: '', windows: '' },
   cargoManifest: { mac: '', windows: '' },
+  projectConfiguration: { mac: '', windows: '' },
   implementation: { mac: '⌘F12', windows: 'Ctrl+F12' },
   references: { mac: '⇧F12', windows: 'Shift+F12' },
   // Rider's call hierarchy chord; its type hierarchy chord (⌃H) is delete-left in a Mac editor (#1153).
@@ -325,6 +327,9 @@ export class EditorContextMenu {
     if (this.navigation.offersCargoManifest(editor)) {
       navigation.push(this.item('cargoManifest', 'Open Cargo.toml'));
     }
+    if (this.navigation.offersProjectConfiguration(editor)) {
+      navigation.push(this.item('projectConfiguration', 'Go to Project Configuration'));
+    }
     if (this.navigation.offersImplementations(editor)) {
       navigation.push(this.item('implementation', 'Go to Implementation'));
     }
@@ -408,6 +413,9 @@ export class EditorContextMenu {
         return;
       case 'cargoManifest':
         void this.navigation.openCargoManifest(editor);
+        return;
+      case 'projectConfiguration':
+        void this.navigation.openProjectConfiguration(editor);
         return;
       case 'implementation':
         void this.navigation.goToImplementation(editor);
