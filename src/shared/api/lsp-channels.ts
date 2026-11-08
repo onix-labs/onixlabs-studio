@@ -96,7 +96,49 @@ export enum LspChannel {
    * Answers a {@link ShowMessage} with the action the user chose, if any (renderer→main, send).
    */
   ShowMessageReply = 'lsp:show-message-reply',
+
+  /**
+   * Asks a session's server for a view of the code it alone can give — a macro's expansion, the
+   * compiler's intermediate form, the syntax tree — and has the main process write it where the editor
+   * opens it read-only (#1210, #1213). Answers {@link LspGeneratedViewResult} (invoke).
+   */
+  GeneratedView = 'lsp:generated-view',
 }
+
+/**
+ * Names a view of the code a language server gives that Studio shows as a read-only document (#1210,
+ * #1213): rust-analyzer's expansion of the macro at the caret, and its HIR and MIR of the function
+ * there; clangd's syntax tree at the caret, and how much memory it is using.
+ */
+export type LspGeneratedViewKind = 'expandMacro' | 'hir' | 'mir' | 'syntaxTree' | 'memoryUsage';
+
+/**
+ * Lists every {@link LspGeneratedViewKind}, for validating what the renderer asks for.
+ */
+export const LSP_GENERATED_VIEW_KINDS: readonly LspGeneratedViewKind[] = [
+  'expandMacro',
+  'hir',
+  'mir',
+  'syntaxTree',
+  'memoryUsage',
+];
+
+/**
+ * Says where a document a {@link LspGeneratedViewKind} asks for was written, or why there is none.
+ */
+export type LspGeneratedViewResult =
+  | {
+      /**
+       * Gets the absolute path of the read-only document.
+       */
+      readonly path: string;
+    }
+  | {
+      /**
+       * Gets why there is nothing to show: the server had nothing at the caret, or failed.
+       */
+      readonly error: string;
+    };
 
 /**
  * Identifies a language server known to the main-process registry (for example `typescript`). The

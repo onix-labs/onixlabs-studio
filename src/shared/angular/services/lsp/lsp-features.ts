@@ -16,6 +16,8 @@ import { type FoldingProvider, Settings } from '@shared/angular/services/setting
 import { BUILT_IN_FORMATTER_LANGUAGES } from '@shared/angular/services/settings/settings-registry';
 import {
   LspChannel,
+  LspGeneratedViewKind,
+  LspGeneratedViewResult,
   LspSemanticTokensLegend,
   SEMANTIC_TOKEN_MODIFIERS,
   SEMANTIC_TOKEN_TYPES,
@@ -334,6 +336,36 @@ export interface LspNavigationSupport {
    * undefined for a server with no such thing.
    */
   readonly cargoManifest?: boolean;
+
+  /**
+   * Gets whether it expands the macro at the caret (rust-analyzer's `rust-analyzer/expandMacro`,
+   * #1210); undefined for a server with no such thing.
+   */
+  readonly expandMacro?: boolean;
+
+  /**
+   * Gets whether it shows the HIR of the function at the caret (rust-analyzer's `rust-analyzer/viewHir`,
+   * #1210); undefined for a server with no such thing.
+   */
+  readonly hir?: boolean;
+
+  /**
+   * Gets whether it shows the MIR of the function at the caret (rust-analyzer's `rust-analyzer/viewMir`,
+   * #1210); undefined for a server with no such thing.
+   */
+  readonly mir?: boolean;
+
+  /**
+   * Gets whether it shows the syntax tree at the caret (clangd's `textDocument/ast`, #1213); undefined
+   * for a server with no such thing.
+   */
+  readonly syntaxTree?: boolean;
+
+  /**
+   * Gets whether it says how much memory it uses (clangd's `$/memoryUsage`, #1213); undefined for a
+   * server with no such thing.
+   */
+  readonly memoryUsage?: boolean;
 
   /**
    * Gets whether it shows a type's base and derived types (`textDocument/prepareTypeHierarchy`).
@@ -3054,6 +3086,44 @@ export class LspFeatures {
           },
         ]
       : [];
+  }
+
+  /**
+   * Asks the language server that serves a document for a view of the code at a place (#1210, #1213):
+   * the expansion of the macro there, the HIR or MIR of the function there, the syntax tree there, or
+   * the server's memory. The main process writes it where the editor opens it read-only.
+   * @param model The editor model.
+   * @param kind The view.
+   * @param selection The one-based range asked about: the caret, or what is selected.
+   * @returns Returns the view's path, or why there is none; null when the server gives no such view.
+   */
+  public async generatedView(
+    model: MonacoApi.editor.ITextModel,
+    kind: LspGeneratedViewKind,
+    selection: MonacoApi.IRange,
+  ): Promise<LspGeneratedViewResult | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || ref.navigation?.[kind] !== true || this.bridge === undefined) {
+      return null;
+    }
+    await ref.sync?.(model.getValue());
+    try {
+      return await this.bridge.invoke<LspGeneratedViewResult>(
+        LspChannel.GeneratedView,
+        ref.sessionId,
+        kind,
+        {
+          uri: ref.uri,
+          line: selection.startLineNumber - 1,
+          character: selection.startColumn - 1,
+          endLine: selection.endLineNumber - 1,
+          endCharacter: selection.endColumn - 1,
+        },
+      );
+    } catch (error: unknown) {
+      this.log.debug('LspFeatures', `The ${kind} view failed`, error);
+      return { error: serverMessage(error) };
+    }
   }
 
   /**

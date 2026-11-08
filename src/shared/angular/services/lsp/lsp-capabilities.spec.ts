@@ -67,7 +67,25 @@ describe('navigationSupportOf (#1142)', () => {
   it('readsRustAnalyzersOwnNavigations_fromWhatItCallsExperimental (#1210)', () => {
     expect(
       navigationSupportOf({ experimental: { parentModule: true, openCargoToml: true, ssr: true } }),
-    ).toEqual({ ...(NONE as object), parentModule: true, cargoManifest: true });
+    ).toEqual({
+      ...(NONE as object),
+      parentModule: true,
+      cargoManifest: true,
+      // Its views, which it advertises nowhere (#1210).
+      expandMacro: true,
+      hir: true,
+      mir: true,
+    });
+  });
+
+  it('readsClangdsViews_fromItsOwnCapabilities (#1213)', () => {
+    expect(
+      navigationSupportOf({
+        compilationDatabase: {},
+        astProvider: true,
+        memoryUsageProvider: true,
+      }),
+    ).toEqual({ ...(NONE as object), sourceHeader: true, syntaxTree: true, memoryUsage: true });
   });
 
   it('readsImplementationTypeDefinitionAndHierarchies_asBooleansOrOptions', () => {

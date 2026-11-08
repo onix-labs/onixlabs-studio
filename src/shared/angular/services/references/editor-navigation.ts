@@ -9,6 +9,7 @@ import {
 } from '@shared/angular/services/hierarchy/hierarchy';
 import { Log } from '@shared/angular/services/log/log';
 import { LspDefinition, LspFeatures } from '@shared/angular/services/lsp/lsp-features';
+import type { LspGeneratedViewKind, LspGeneratedViewResult } from '@shared/api/lsp-channels';
 import {
   hasDefinitionProvider,
   hasReferenceProvider,
@@ -444,6 +445,50 @@ export class EditorNavigation {
       async (model: MonacoApi.editor.ITextModel) =>
         (await this.injector.get(LspFeatures).projectConfigurations(model)) ?? [],
     );
+  }
+
+  /**
+   * Determines whether the language server serving a document gives a view of the code (#1210, #1213).
+   * @param editor The editor.
+   * @param kind The view.
+   * @returns Returns true when it does.
+   */
+  public offersGeneratedView(
+    editor: MonacoApi.editor.ICodeEditor,
+    kind: LspGeneratedViewKind,
+  ): boolean {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    return model !== null && this.injector.get(LspFeatures).servesNavigation(model, kind);
+  }
+
+  /**
+   * Opens a view of the code at the caret, or of what is selected, as a read-only document (#1210,
+   * #1213): the expansion of the macro there, the HIR or MIR of the function there, the syntax tree
+   * there, or the server's memory. Where the server has nothing to show, nothing opens, and the log
+   * says why.
+   * @param editor The editor.
+   * @param kind The view.
+   * @returns Returns a promise that resolves once the view is open, or found not to be.
+   */
+  public async showGeneratedView(
+    editor: MonacoApi.editor.ICodeEditor,
+    kind: LspGeneratedViewKind,
+  ): Promise<void> {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    const selection: MonacoApi.Selection | null = editor.getSelection();
+    if (model === null || selection === null) {
+      return;
+    }
+    const view: LspGeneratedViewResult | null = await this.injector
+      .get(LspFeatures)
+      .generatedView(model, kind, selection);
+    if (view === null || 'error' in view) {
+      this.log.info('navigation', `No ${kind} view`, view?.error ?? 'not offered');
+      return;
+    }
+    if (this.openFile === null || !(await this.openFile(view.path))) {
+      this.log.warn('navigation', `Could not open the ${kind} view`, view.path);
+    }
   }
 
   /**
