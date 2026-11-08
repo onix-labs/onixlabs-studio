@@ -1,0 +1,11 @@
+{
+  "name": "@onixlabs/pypi",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Python package-manager plugin for ONIXLabs Studio: PyPI, with pip, uv, Poetry and Pipenv.",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}
