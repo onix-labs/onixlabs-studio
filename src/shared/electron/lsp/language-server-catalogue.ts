@@ -355,8 +355,22 @@ const JAVA: LanguageServerDescriptor = {
     {
       section: 'java.referencesCodeLens.enabled',
       label: 'Reference Counts',
-      description: 'Show how many references a type or member has above it. Each costs a line.',
+      description:
+        'Show how many references a type or member has above it; clicking the count lists them. Each costs a line.',
       default: true,
+    },
+    {
+      section: 'java.implementationCodeLens',
+      label: 'Implementation Counts',
+      description:
+        'Show how many implementations a type or method has above it; clicking the count lists them. Each costs a line.',
+      default: 'none',
+      options: [
+        { value: 'none', label: 'Off' },
+        { value: 'types', label: 'Types' },
+        { value: 'methods', label: 'Methods' },
+        { value: 'all', label: 'Types and methods' },
+      ],
     },
     {
       section: 'java.inlayHints.parameterNames.enabled',

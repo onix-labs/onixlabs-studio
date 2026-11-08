@@ -462,6 +462,28 @@ const SHOW_REFERENCES_COMMAND: string = 'editor.action.showReferences';
 const RUST_SHOW_REFERENCES_COMMAND: string = 'rust-analyzer.showReferences';
 
 /**
+ * The client command jdtls gives a reference lens (#1208), with the same arguments as
+ * {@link SHOW_REFERENCES_COMMAND}. It is not among the commands jdtls runs itself.
+ */
+const JAVA_SHOW_REFERENCES_COMMAND: string = 'java.show.references';
+
+/**
+ * The client command jdtls gives an implementation lens (#1208), with the same arguments as
+ * {@link SHOW_REFERENCES_COMMAND}.
+ */
+const JAVA_SHOW_IMPLEMENTATIONS_COMMAND: string = 'java.show.implementations';
+
+/**
+ * The client commands that hand a lens the places it counted, for Studio to list itself.
+ */
+const LOCATIONS_LENS_COMMANDS: ReadonlySet<string> = new Set<string>([
+  SHOW_REFERENCES_COMMAND,
+  RUST_SHOW_REFERENCES_COMMAND,
+  JAVA_SHOW_REFERENCES_COMMAND,
+  JAVA_SHOW_IMPLEMENTATIONS_COMMAND,
+]);
+
+/**
  * The client command rust-analyzer gives a Run lens (#1210): its argument says what to run.
  */
 const RUST_RUN_SINGLE_COMMAND: string = 'rust-analyzer.runSingle';
@@ -1540,21 +1562,22 @@ export class LspFeatures {
             : { id: STUDIO_RUN_LENS_COMMAND, title: command.title, arguments: [configuration] },
       };
     }
-    if (
-      command.command === SHOW_REFERENCES_COMMAND ||
-      command.command === RUST_SHOW_REFERENCES_COMMAND
-    ) {
+    if (LOCATIONS_LENS_COMMANDS.has(command.command)) {
       const position: unknown =
         command.arguments?.[1] ?? (lens as { range?: LspRange } | null)?.range?.start;
       return {
         command: {
           id: STUDIO_LOCATIONS_LENS_COMMAND,
           title: command.title,
-          // Both kinds of lens send this one command: only the count's wording tells them apart.
+          // Most servers send both kinds of lens one command, so only the count's wording tells them
+          // apart; jdtls gives each its own.
           arguments: [
             model.uri.toString(),
             position,
-            /implementation/i.test(command.title) ? 'implementations' : 'references',
+            command.command === JAVA_SHOW_IMPLEMENTATIONS_COMMAND ||
+            /implementation/i.test(command.title)
+              ? 'implementations'
+              : 'references',
             this.lensPlaces(command.arguments?.[2]),
           ],
         },

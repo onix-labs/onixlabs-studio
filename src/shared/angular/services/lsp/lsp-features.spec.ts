@@ -1259,6 +1259,53 @@ describe('LspFeatures', () => {
       },
     );
 
+    it.each<[string, string, string]>([
+      ['java.show.references', '2 references', 'references'],
+      ['java.show.implementations', '1 implementation', 'implementations'],
+      // jdtls names the kind in its command, so a count it words differently is still listed right.
+      ['java.show.implementations', '0 subtypes', 'implementations'],
+    ])(
+      'aJdtlsLens_%s_%s_listsThePlacesItBrought_as %s (#1208)',
+      async (name: string, title: string, kind: string) => {
+        codeLensSupport = { resolve: true };
+        const place: unknown = {
+          uri: 'file:///root/App.java',
+          range: { start: { line: 9, character: 4 }, end: { line: 9, character: 10 } },
+        };
+        responses['textDocument/codeLens'] = [LENS];
+        responses['codeLens/resolve'] = {
+          ...(LENS as object),
+          command: {
+            title,
+            command: name,
+            arguments: ['file:///root/Shapes.java', { line: 5, character: 10 }, [place]],
+          },
+        };
+        const features: LspFeatures = await build();
+        features.enableCodeLens('java');
+        const provider: FakeCodeLensProvider | undefined = captured.codeLens?.get('java');
+        const list: { lenses: unknown[] } | undefined = await provider?.provideCodeLenses(owned);
+
+        const resolved: unknown = await provider?.resolveCodeLens(owned, list?.lenses[0]);
+
+        expect((resolved as { command: unknown }).command).toEqual({
+          id: 'studio.lsp.codeLensLocations',
+          title,
+          arguments: [
+            expect.any(String),
+            { line: 5, character: 10 },
+            kind,
+            [
+              {
+                path: '/root/App.java',
+                range: { startLineNumber: 10, startColumn: 5, endLineNumber: 10, endColumn: 11 },
+              },
+            ],
+          ],
+        });
+      },
+    );
+
     it('aRustAnalyzerRunLens_runsAsARunConfigurationDoes (#1210)', async () => {
       const runnable: unknown = {
         label: 'test-mod tests',
