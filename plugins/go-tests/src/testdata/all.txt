@@ -1,0 +1,40 @@
+=== RUN   TestTotal
+--- PASS: TestTotal (0.00s)
+=== RUN   TestTotalFails
+    cart_test.go:13: Total(1, 2) = 3, want 4
+--- FAIL: TestTotalFails (0.00s)
+=== RUN   TestSkipped
+    cart_test.go:18: not today
+--- SKIP: TestSkipped (0.00s)
+=== RUN   TestTable
+=== RUN   TestTable/empty
+=== RUN   TestTable/one
+=== RUN   TestTable/wrong
+    cart_test.go:34: got 1, want 2
+--- FAIL: TestTable (0.00s)
+    --- PASS: TestTable/empty (0.00s)
+    --- PASS: TestTable/one (0.00s)
+    --- FAIL: TestTable/wrong (0.00s)
+FAIL
+FAIL	example.com/shop/cart	0.600s
+=== RUN   TestDiscount
+--- PASS: TestDiscount (0.00s)
+=== RUN   TestDiscountPanics
+--- FAIL: TestDiscountPanics (0.00s)
+panic: runtime error: index out of range [3] with length 0 [recovered, repanicked]
+
+goroutine 19 [running]:
+testing.tRunner.func1.2({0x105164b8, 0x631c0fa4018})
+	/usr/local/Cellar/go/1.27.3/libexec/src/testing/testing.go:2125 +0x232
+testing.tRunner.func1()
+	/usr/local/Cellar/go/1.27.3/libexec/src/testing/testing.go:2128 +0x329
+panic({0x105164b8?, 0x631c0fa4018?})
+	/usr/local/Cellar/go/1.27.3/libexec/src/runtime/panic.go:859 +0x125
+example.com/shop/pricing_test.TestDiscountPanics(0x631c0fd2488?)
+	/repo/shop/pricing/pricing_test.go:17 +0x9
+testing.tRunner(0x631c0fd2488, 0x10521a10)
+	/usr/local/Cellar/go/1.27.3/libexec/src/testing/testing.go:2195 +0xea
+created by testing.(*T).Run in goroutine 1
+	/usr/local/Cellar/go/1.27.3/libexec/src/testing/testing.go:2260 +0x4d4
+FAIL	example.com/shop/pricing	0.301s
+FAIL

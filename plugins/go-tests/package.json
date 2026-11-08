@@ -1,0 +1,11 @@
+{
+  "name": "@onixlabs/go-tests",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Go test-adapter plugin for ONIXLabs Studio: go test.",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

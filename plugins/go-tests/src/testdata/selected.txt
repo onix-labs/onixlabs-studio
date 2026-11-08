@@ -1,0 +1,15 @@
+=== RUN   TestTotalFails
+    cart_test.go:13: Total(1, 2) = 3, want 4
+--- FAIL: TestTotalFails (0.00s)
+=== RUN   TestTable
+=== RUN   TestTable/empty
+=== RUN   TestTable/one
+=== RUN   TestTable/wrong
+    cart_test.go:34: got 1, want 2
+--- FAIL: TestTable (0.00s)
+    --- PASS: TestTable/empty (0.00s)
+    --- PASS: TestTable/one (0.00s)
+    --- FAIL: TestTable/wrong (0.00s)
+FAIL
+FAIL	example.com/shop/cart	0.343s
+FAIL
