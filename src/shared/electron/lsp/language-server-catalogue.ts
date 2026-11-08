@@ -384,6 +384,8 @@ const JAVA: LanguageServerDescriptor = {
     push: ['java'],
     startup: { section: 'java', key: 'settings.java' },
   },
+  // It does ask for these two, for each file it opens, and indents the code it generates with them.
+  indentationSections: { tabSize: 'java.format.tabSize', insertSpaces: 'java.format.insertSpaces' },
   settings: [
     {
       section: 'java.referencesCodeLens.enabled',

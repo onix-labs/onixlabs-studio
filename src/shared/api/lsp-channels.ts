@@ -103,6 +103,18 @@ export enum LspChannel {
    * opens it read-only (#1210, #1213). Answers {@link LspGeneratedViewResult} (invoke).
    */
   GeneratedView = 'lsp:generated-view',
+
+  /**
+   * Asks the renderer holding a session how a document is indented — the tab size and whether it
+   * indents with spaces — for a server that asks for them as settings of its own (#1208), and answer
+   * on {@link IndentationReply} (main→renderer, send).
+   */
+  Indentation = 'lsp:indentation',
+
+  /**
+   * Answers an {@link Indentation} with the document's indentation (renderer→main, send).
+   */
+  IndentationReply = 'lsp:indentation-reply',
 }
 
 /**
@@ -438,6 +450,47 @@ export interface LspAttachDebuggerReply {
    * Gets whether the debugger attached.
    */
   readonly didAttach: boolean;
+}
+
+/**
+ * A server's question of how a document is indented (#1208), as the main process forwards it to the
+ * renderer holding the session.
+ */
+export interface LspIndentationRequest {
+  /**
+   * Gets the identifier the answer names.
+   */
+  readonly requestId: string;
+
+  /**
+   * Gets the session whose server asked.
+   */
+  readonly sessionId: string;
+
+  /**
+   * Gets the document asked about, as a `file:` URI.
+   */
+  readonly uri: string;
+}
+
+/**
+ * The renderer's answer to a {@link LspIndentationRequest}.
+ */
+export interface LspIndentationReply {
+  /**
+   * Gets the identifier of the request answered.
+   */
+  readonly requestId: string;
+
+  /**
+   * Gets the document's tab size, or null when no editor holds it.
+   */
+  readonly tabSize: number | null;
+
+  /**
+   * Gets whether the document indents with spaces, or null when no editor holds it.
+   */
+  readonly insertSpaces: boolean | null;
 }
 
 /**
