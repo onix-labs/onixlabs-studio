@@ -36,6 +36,7 @@ import type {
   WorkspaceTextEdits,
 } from '@shared/angular/services/workspace-edit/workspace-edit';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import { CodeLensServerSync } from './code-lens-server-sync';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { DebugAttachRouter } from '@shared/angular/services/debug-attach/debug-attach-router';
 import {
@@ -409,6 +410,8 @@ describe('LspClient', () => {
             },
           },
         },
+        // The servers' own lens switches are kept in step elsewhere (#1215).
+        { provide: CodeLensServerSync, useValue: {} },
         {
           provide: LspSettings,
           useValue: {

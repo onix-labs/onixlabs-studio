@@ -12,7 +12,12 @@ import { Bridge } from '@shared/api/bridge';
 import type { RunConfiguration } from '@shared/api/studio';
 import { Log } from '@shared/angular/services/log/log';
 import { Builds } from '@shared/angular/services/tasks/builds';
-import { type FoldingProvider, Settings } from '@shared/angular/services/settings/settings';
+import {
+  type FoldingProvider,
+  type LanguageOverrides,
+  Settings,
+} from '@shared/angular/services/settings/settings';
+import { codeLensKind, CodeLensSwitches, showsCodeLensKind } from './code-lens-kinds';
 import { BUILT_IN_FORMATTER_LANGUAGES } from '@shared/angular/services/settings/settings-registry';
 import {
   LspChannel,
@@ -1120,6 +1125,19 @@ export class LspFeatures {
       this.settings.defaultFormatterChoices();
       this.applyDefaultFormatter();
     });
+    // A code-lens switch changed (#1215), globally or for a language: every editor asks again, and
+    // the lenses it shows are filtered afresh.
+    let lensChoices: string | undefined;
+    effect((): void => {
+      const choices: string = codeLensChoices(
+        this.settings.globalTextEditor(),
+        this.settings.languageOverrides(),
+      );
+      if (lensChoices !== undefined && choices !== lensChoices) {
+        this.refreshCodeLenses();
+      }
+      lensChoices = choices;
+    });
   }
 
   /**
@@ -1439,6 +1457,13 @@ export class LspFeatures {
     if (ref === null || this.bridge === undefined || ref.codeLens === undefined) {
       return undefined;
     }
+    // Lenses switched off for the language are not asked for at all (#1215).
+    const switches: CodeLensSwitches = this.settings.resolveSettingsForLanguage(
+      model.getLanguageId(),
+    );
+    if (!switches.codeLens) {
+      return undefined;
+    }
     await ref.sync?.(model.getValue());
     let result: unknown;
     try {
@@ -1456,7 +1481,7 @@ export class LspFeatures {
     const lenses: MonacoApi.languages.CodeLens[] = [];
     for (const candidate of Array.isArray(result) ? (result as readonly unknown[]) : []) {
       const range: LspRange | undefined = (candidate as { range?: LspRange } | null)?.range;
-      if (range === undefined) {
+      if (range === undefined || !this.showsLens(switches, candidate)) {
         continue;
       }
       const command: { command?: MonacoApi.languages.Command } | null = this.lensCommand(
@@ -1506,7 +1531,26 @@ export class LspFeatures {
     } catch {
       return lens;
     }
+    // A lens comes filled in as a kind switched off (#1215): the server had no switch of its own to
+    // leave it out by, so it shows nothing.
+    if (!this.showsLens(this.settings.resolveSettingsForLanguage(model.getLanguageId()), result)) {
+      return { ...lens, command: { id: '', title: '' } };
+    }
     return { ...lens, ...(this.lensCommand(model, ref, result) ?? {}) };
+  }
+
+  /**
+   * Determines whether a lens is of a kind its language shows (#1215). A lens not yet filled in has no
+   * kind yet, and is shown until it is.
+   * @param switches The language's code-lens switches.
+   * @param lens The server's lens, untrusted.
+   * @returns Returns true when it is shown.
+   */
+  private showsLens(switches: CodeLensSwitches, lens: unknown): boolean {
+    const command: LspCommand | null = toCommand((lens as { command?: unknown } | null)?.command);
+    return (
+      command === null || showsCodeLensKind(switches, codeLensKind(command.command, command.title))
+    );
   }
 
   /**
@@ -1609,6 +1653,22 @@ export class LspFeatures {
           id: STUDIO_LSP_COMMAND,
           title: command.title,
           arguments: [ref.sessionId, command],
+        },
+      };
+    }
+    // A reference count with no command of its own — lua-language-server's, Svelte's — lists the
+    // references of the symbol it sits on, as any other reference count does (#1215). A count of none
+    // (TypeScript's) has nothing to list, and shows its title alone.
+    if (
+      command.command === '' &&
+      codeLensKind('', command.title) === 'references' &&
+      !/^\s*0\b/.test(command.title)
+    ) {
+      return {
+        command: {
+          id: STUDIO_REFERENCES_LENS_COMMAND,
+          title: command.title,
+          arguments: [model.uri.toString(), (lens as { range?: LspRange } | null)?.range?.start],
         },
       };
     }
@@ -3890,6 +3950,32 @@ function toCommand(raw: unknown): LspCommand | null {
     command: entry.command,
     ...(Array.isArray(entry.arguments) ? { arguments: entry.arguments as unknown[] } : {}),
   };
+}
+
+/**
+ * Sums up every code-lens switch, globally and for each language that overrides one (#1215), so a
+ * change to any of them is seen as one.
+ * @param global The global code settings.
+ * @param overrides Every language's overrides.
+ * @returns Returns the summary.
+ */
+function codeLensChoices(global: CodeLensSwitches, overrides: LanguageOverrides): string {
+  const pick: (from: Partial<CodeLensSwitches>) => unknown[] = (
+    from: Partial<CodeLensSwitches>,
+  ): unknown[] => [
+    from.codeLens,
+    from.codeLensReferences,
+    from.codeLensImplementations,
+    from.codeLensTests,
+    from.codeLensOther,
+  ];
+  return JSON.stringify([
+    pick(global),
+    Object.entries(overrides).map(([language, own]: [string, Partial<CodeLensSwitches>]) => [
+      language,
+      pick(own),
+    ]),
+  ]);
 }
 
 /**
