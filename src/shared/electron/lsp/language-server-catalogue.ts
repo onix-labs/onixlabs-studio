@@ -478,6 +478,38 @@ const KOTLIN: LanguageServerDescriptor = {
   displayName: 'Kotlin Language Server',
   languages: ['kotlin'],
   priority: DEFAULT_PRIORITY,
+  // The server never asks for its settings (#1209): it reads the `kotlin.*` it is pushed, live. The
+  // defaults are the server's own.
+  settingsDelivery: { pull: false, push: ['kotlin'] },
+  settings: [
+    {
+      section: 'kotlin.inlayHints.typeHints',
+      label: 'Inferred Types',
+      description:
+        'Show the type the compiler infers for a variable or property declared without one.',
+      default: false,
+    },
+    {
+      section: 'kotlin.inlayHints.parameterHints',
+      label: 'Parameter Names',
+      description:
+        'Show the name of the parameter each argument is passed to, before the argument.',
+      default: false,
+    },
+    {
+      section: 'kotlin.inlayHints.chainedHints',
+      label: 'Chained Call Types',
+      description: 'Show the type each call in a chain of calls returns, at the end of its line.',
+      default: false,
+    },
+    {
+      section: 'kotlin.completion.snippets.enabled',
+      label: 'Arguments in Completions',
+      description:
+        "Fill in a completed function's arguments as placeholders to type over, rather than only its name.",
+      default: true,
+    },
+  ],
   resolve: async (context: LanguageServerContext): Promise<LspResolution> => {
     const java: string | null = await context.provisioner.detectJava(
       context.settings.get().javaPath,
