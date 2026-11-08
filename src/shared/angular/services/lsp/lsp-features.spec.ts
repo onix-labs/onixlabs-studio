@@ -1170,11 +1170,108 @@ describe('LspFeatures', () => {
     const owned: unknown = {
       uri: { toString: (): string => MODEL_URI },
       getValue: (): string => '',
+      getLanguageId: (): string => 'csharp',
     };
     const LENS: unknown = {
       range: { start: { line: 8, character: 11 }, end: { line: 8, character: 16 } },
       data: { ListIndex: 2 },
     };
+
+    describe('switched by kind (#1215)', () => {
+      it('lensesSwitchedOffForTheLanguage_areNotAskedFor', async () => {
+        codeLensSupport = { resolve: true };
+        responses['textDocument/codeLens'] = [LENS];
+        const features: LspFeatures = await build();
+        TestBed.inject(Settings).setLanguageOverride('csharp', 'codeLens', false);
+        features.enableCodeLens('csharp');
+
+        const list: { lenses: unknown[] } | undefined = await captured.codeLens
+          ?.get('csharp')
+          ?.provideCodeLenses(owned);
+
+        expect(list).toBeUndefined();
+        expect(requests.map((request: { method: string }): string => request.method)).not.toContain(
+          'textDocument/codeLens',
+        );
+      });
+
+      it('aKindSwitchedOff_isLeftOut_andTheRestShown', async () => {
+        codeLensSupport = { resolve: false };
+        responses['textDocument/codeLens'] = [
+          {
+            ...(LENS as object),
+            command: { title: 'Run Test', command: 'dotnet.test.run', arguments: [{}] },
+          },
+          {
+            ...(LENS as object),
+            command: { title: '3 references', command: 'roslyn.client.peekReferences' },
+          },
+        ];
+        const features: LspFeatures = await build();
+        TestBed.inject(Settings).updateTextEditorSettings({ codeLensTests: false });
+        features.enableCodeLens('csharp');
+
+        const list: { lenses: { command?: { title: string } }[] } | undefined =
+          (await captured.codeLens?.get('csharp')?.provideCodeLenses(owned)) as
+            { lenses: { command?: { title: string } }[] } | undefined;
+
+        expect(list?.lenses.map((lens): string | undefined => lens.command?.title)).toEqual([
+          '3 references',
+        ]);
+      });
+
+      it('aLensFilledInAsAKindSwitchedOff_showsNothing', async () => {
+        codeLensSupport = { resolve: true };
+        responses['textDocument/codeLens'] = [LENS];
+        responses['codeLens/resolve'] = {
+          ...(LENS as object),
+          command: { title: '3 references', command: 'roslyn.client.peekReferences' },
+        };
+        const features: LspFeatures = await build();
+        TestBed.inject(Settings).updateTextEditorSettings({ codeLensReferences: false });
+        features.enableCodeLens('csharp');
+        const provider: FakeCodeLensProvider | undefined = captured.codeLens?.get('csharp');
+        const list: { lenses: unknown[] } | undefined = await provider?.provideCodeLenses(owned);
+
+        const resolved: unknown = await provider?.resolveCodeLens(owned, list?.lenses[0]);
+
+        expect((resolved as { command: unknown }).command).toEqual({ id: '', title: '' });
+      });
+
+      it('aReferenceCountWithNoCommand_listsTheReferencesWhereItSits', async () => {
+        // lua-language-server's and Svelte's counts come with an empty command.
+        codeLensSupport = { resolve: false };
+        responses['textDocument/codeLens'] = [
+          { ...(LENS as object), command: { title: '2 references', command: '' } },
+        ];
+        const features: LspFeatures = await build();
+        features.enableCodeLens('csharp');
+
+        const list: { lenses: { command?: { id: string; arguments?: unknown[] } }[] } | undefined =
+          (await captured.codeLens?.get('csharp')?.provideCodeLenses(owned)) as
+            { lenses: { command?: { id: string; arguments?: unknown[] } }[] } | undefined;
+
+        expect(list?.lenses[0]?.command).toEqual({
+          id: 'studio.lsp.codeLensReferences',
+          title: '2 references',
+          arguments: [expect.any(String), { line: 8, character: 11 }],
+        });
+      });
+
+      it('aChangedSwitch_hasEveryEditorAskAgain', async () => {
+        const features: LspFeatures = await build();
+        features.enableCodeLens('csharp');
+        const emitter: FakeEmitter | undefined = (
+          features as unknown as { codeLensChanged?: FakeEmitter }
+        ).codeLensChanged;
+        const before: number = emitter?.fired ?? 0;
+
+        TestBed.inject(Settings).setLanguageOverride('go', 'codeLensOther', false);
+        TestBed.tick();
+
+        expect(emitter?.fired).toBe(before + 1);
+      });
+    });
 
     it('areRegisteredOncePerLanguage_andARefreshAsksEachAgain', async () => {
       const features: LspFeatures = await build();
