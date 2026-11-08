@@ -792,7 +792,9 @@ const SEMANTIC_LEGEND: { tokenTypes: string[]; tokenModifiers: string[] } = {
  * Most entries are Roslyn's: for classifications the standard set has no name for, it sends custom
  * types (`recordClass`, `extensionMethod`, …). Dropping them is how a `record` came to be painted in
  * the plain text colour instead of as a type (#1137). typescript-language-server's `member` is a
- * method by the older name (#1207), and clangd's `concept` names a constraint on a type (#1213). The
+ * method by the older name (#1207), clangd's `concept` names a constraint on a type (#1213), and
+ * jdtls names annotations and records (#1208); its own modifiers (`public`, `generic`, `constructor`,
+ * …) have no standard counterpart and are dropped, as any unknown modifier is. The
  * Rust entries are the types rust-analyzer sends by default (#1210); its finer operator and punctuation
  * types are off until a setting turns them on. Names with no sensible standard equivalent —
  * punctuation, XML doc-comment parts, JSON-in-string parts, a format specifier, a name that resolves to
@@ -830,6 +832,12 @@ const TOKEN_TYPE_ALIASES: Readonly<Record<string, string>> = {
   toolModule: 'decorator',
   procMacro: 'macro',
   concept: 'type',
+  // Java's (#1208): an annotation is a decorator, and its members are declared as methods; a record
+  // is a class, and its components are its fields, coloured as jdtls colours them in the body.
+  annotation: 'decorator',
+  annotationMember: 'method',
+  record: 'class',
+  recordComponent: 'property',
   // Keywords, comments and strings. `self`, `Self`, `true` and `false` are keywords in Rust.
   controlKeyword: 'keyword',
   selfKeyword: 'keyword',
