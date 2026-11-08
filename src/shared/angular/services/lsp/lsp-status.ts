@@ -397,8 +397,17 @@ export class LspStatus {
     }
     const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
     // A settled state ends the server's loading story: its progress and any stall flag are cleared.
-    // A move into starting clears them too — a restart begins a fresh load.
-    next.set(sessionId, { ...current, state, detail, progress: undefined, stalled: false });
+    // A move into starting clears them too — a restart begins a fresh load. A server that is gone or
+    // starting again is doing nothing with any file, so what it last said about one goes too (#1213).
+    const gone: boolean = state === 'starting' || state === 'unavailable';
+    next.set(sessionId, {
+      ...current,
+      state,
+      detail,
+      progress: undefined,
+      stalled: false,
+      ...(gone ? { activity: undefined, activityUri: undefined } : {}),
+    });
     this.entries.set(next);
     this.log.debug('LspStatus', `Server '${current.serverId}' -> ${state}`, sessionId);
     // A move back into starting (a restart) re-arms the watchdog; settling to ready or unavailable

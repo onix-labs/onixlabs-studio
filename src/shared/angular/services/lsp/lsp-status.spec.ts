@@ -171,6 +171,24 @@ describe('LspStatus', () => {
     expect(status.servers()).toHaveLength(1);
   });
 
+  it('setState_startingOrUnavailable_clearsFileActivity_butReadyKeepsIt', () => {
+    register('/root::clangd', 'clangd', '/root');
+    status.setFileActivity('/root::clangd', 'file:///a.cpp', 'Parsing includes — a.cpp');
+
+    status.setState('/root::clangd', 'ready');
+    expect(status.servers()[0].activity).toBe('Parsing includes — a.cpp');
+
+    status.setState('/root::clangd', 'unavailable', 'Stopped.');
+    expect(status.servers()[0].activity).toBeUndefined();
+
+    status.setFileActivity('/root::clangd', 'file:///a.cpp', 'Building preamble — a.cpp');
+    status.setState('/root::clangd', 'starting');
+    expect(status.servers()[0].activity).toBeUndefined();
+    // Going idle afterwards finds nothing to clear, and leaves nothing behind.
+    status.setFileActivity('/root::clangd', 'file:///a.cpp', null);
+    expect(status.servers()[0].activity).toBeUndefined();
+  });
+
   it('setProgress_showsWhatAStartingServerIsDoing_andClearsOnSettle', () => {
     register('/root::csharp', 'csharp', '/root');
     status.setProgress('/root::csharp', 'Loading solution — 40%');
