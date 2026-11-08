@@ -24,6 +24,7 @@ import {
   toAgentHarnesses,
   ContributedHarness,
   toContainerEngineDescriptors,
+  toContributions,
   toDatabaseEngineDescriptors,
   toDebugAdapterEntries,
   toDecoderDescriptors,
@@ -34,6 +35,7 @@ import {
   toVersionControlDescriptors,
   toHostingDescriptors,
   toPackageManagerDescriptors,
+  toTestAdapterDescriptors,
   validManifests,
 } from './plugin-loader';
 import {
@@ -42,6 +44,7 @@ import {
 } from '../../version-control/version-control-descriptor';
 import { HostingDescriptor } from '../../hosting/hosting-descriptor';
 import { PackageManagerDescriptor } from '../../package-managers/package-manager-descriptor';
+import { TestAdapterDescriptor } from '../../test-adapters/test-adapter-descriptor';
 import { ContainerEngineDescriptor } from '../containers/container-engine';
 import { DatabaseEngineDescriptor } from '../database/database-engine-descriptor';
 import { HandPlacedPluginError, PluginDescriptor } from './plugin-catalogue';
@@ -1132,6 +1135,80 @@ describe('a sideloaded plugin carrying its own payload', () => {
       available: false,
       reason: 'Local npm is not installed — install it in Plugins.',
     });
+  });
+
+  /**
+   * A sideloaded manifest contributing a test adapter (#1351).
+   * @returns Returns the manifest.
+   */
+  function testAdapterManifest(): PluginManifest {
+    return {
+      ...decoderManifest(),
+      id: 'local.tests',
+      contributes: {
+        testAdapters: [
+          {
+            id: 'local.tests',
+            displayName: 'Local Tests',
+            frameworks: ['xUnit'],
+            priority: 100,
+            markers: ['*.csproj'],
+            capabilities: ['run', 'debug'],
+            command: { kind: 'node', env: { TESTS_EXTRA: 'yes' } },
+          },
+        ],
+      },
+    };
+  }
+
+  it('toTestAdapterDescriptors_carriesTheManifestAndRunsUnderTheRuntimeEnvironment', () => {
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const descriptors: readonly TestAdapterDescriptor[] = toTestAdapterDescriptors(
+      testAdapterManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({
+        command: '/runtime',
+        args: [entryPoint],
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+      }),
+      root,
+    );
+
+    expect(descriptors[0]).toMatchObject({
+      id: 'local.tests',
+      frameworks: ['xUnit'],
+      markers: ['*.csproj'],
+      capabilities: ['run', 'debug'],
+    });
+    expect(descriptors[0].resolve()).toEqual({
+      available: true,
+      spec: {
+        command: '/runtime',
+        args: [path.join(root, 'payload', 'main.js')],
+        env: { ELECTRON_RUN_AS_NODE: '1', TESTS_EXTRA: 'yes' },
+      },
+    });
+  });
+
+  it('toTestAdapterDescriptors_isUnavailableWithNeitherPayloadNorDownload', () => {
+    const descriptors: readonly TestAdapterDescriptor[] = toTestAdapterDescriptors(
+      testAdapterManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({ command: '/runtime', args: [entryPoint] }),
+      root,
+    );
+
+    expect(descriptors[0].resolve()).toEqual({
+      available: false,
+      reason: 'Local Tests is not installed — install it in Plugins.',
+    });
+  });
+
+  it('toContributions_listsATestAdapterInItsSlot', () => {
+    expect(toContributions(testAdapterManifest())).toEqual([
+      { slot: 'test-adapter', id: 'local.tests', displayName: 'Local Tests', priority: 100 },
+    ]);
   });
 
   /**

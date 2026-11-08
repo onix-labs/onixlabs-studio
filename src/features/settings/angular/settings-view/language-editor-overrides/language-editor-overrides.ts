@@ -46,7 +46,7 @@ export type CodeOverrideSection = 'code-appearance' | 'code-editing';
  * values live.
  */
 const SECTION_NAMES: Readonly<Record<CodeOverrideSection, string>> = {
-  'code-appearance': 'Code › Appearance and Code › Guides and Highlights',
+  'code-appearance': 'Code › Appearance, Code › Guides and Highlights and Code › Code Lenses',
   'code-editing': 'Code › Editing, Code › Saving and Code › Suggestions and Hover',
 };
 
@@ -55,7 +55,7 @@ const SECTION_NAMES: Readonly<Record<CodeOverrideSection, string>> = {
  * covers how its code looks, which the global settings spread over two pages.
  */
 const SECTION_IDS: Readonly<Record<CodeOverrideSection, readonly string[]>> = {
-  'code-appearance': ['code-appearance', 'code-highlighting'],
+  'code-appearance': ['code-appearance', 'code-highlighting', 'code-lens'],
   'code-editing': ['code-editing', 'code-saving', 'code-suggestions'],
 };
 

@@ -77,6 +77,17 @@ export function isMetadataAsSource(target: string): boolean {
 }
 
 /**
+ * Determines whether a path is a view of the code Studio wrote from a server's answer (#1210, #1213): a
+ * macro's expansion, a function's HIR or MIR, a syntax tree. It sits among the decompiled sources so it
+ * opens read-only, but no server is told of it: rust-analyzer would read an expansion as a stray file.
+ * @param target The path to test.
+ * @returns Returns true when it is in the folder those views are written to.
+ */
+export function isGeneratedView(target: string): boolean {
+  return normalise(target).includes('/MetadataAsSource/StudioViews/');
+}
+
+/**
  * Determines whether a path looks like Rust source that belongs to the toolchain (#1210): the standard
  * library, or a crate Cargo downloaded. Only a guess at which session a file joins: the main process
  * decides whether it can be opened at all.
