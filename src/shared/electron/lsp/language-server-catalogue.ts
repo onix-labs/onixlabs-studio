@@ -13,6 +13,7 @@ import {
   unavailable,
 } from './language-server-descriptor';
 import { CUSTOM_AFTER_COMMON_TARGETS, writeCsharpBraceConfig } from './csharp-editor-config';
+import { GOPLS_SETTINGS } from './gopls-settings';
 import { JdtlsInstall } from './lsp-provisioner';
 import { TYPESCRIPT_PROVISION, TYPESCRIPT_SERVER_PROVISION } from './language-server-downloads';
 
@@ -461,6 +462,10 @@ const GO: LanguageServerDescriptor = {
   displayName: 'gopls',
   languages: ['go'],
   priority: DEFAULT_PRIORITY,
+  // gopls asks for its whole `gopls` section, at start-up and after every change (#1211), so its
+  // settings are pulled and answered nested; it also answers `textDocument/diagnostic` unadvertised,
+  // but pushes everything, so nothing is pulled from it.
+  settings: GOPLS_SETTINGS,
   resolve: async (context: LanguageServerContext): Promise<LspResolution> => {
     const go: string | null = await context.provisioner.detectGo(null);
     if (go === null) {
