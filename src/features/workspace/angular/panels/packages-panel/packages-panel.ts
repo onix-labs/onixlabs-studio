@@ -209,12 +209,10 @@ export class PackagesPanel {
    */
   protected readonly sourceOptions: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] =>
-      this.explorer
-        .sources()
-        .map((source: ExploreSource): DropdownOption => ({
-          value: source.key,
-          label: source.name,
-        })),
+      this.explorer.sources().map((source: ExploreSource): DropdownOption => ({
+        value: source.key,
+        label: source.name,
+      })),
   );
 
   /**
