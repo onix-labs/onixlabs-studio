@@ -48,6 +48,8 @@ import {
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
 import { LspServer, LspStatus, NOTICE_MS } from './lsp-status';
 import { EditorConfigs } from '@shared/angular/services/editor-config/editor-configs';
+import { Editors } from '@shared/angular/services/editors/editors';
+import type * as MonacoApi from 'monaco-editor';
 
 /**
  * The registered servers these tests run against, standing in for the catalogue the real settings
@@ -2986,6 +2988,139 @@ describe('LspClient', () => {
     lsp.exit('/root::csharp');
 
     expect(status.servers()[0].activity).toBeUndefined();
+  });
+
+  describe('inactive regions (#1213)', () => {
+    /** The decorations a stand-in model holds, by id. */
+    let shown: Map<string, MonacoApi.editor.IModelDeltaDecoration>;
+
+    /**
+     * Gives the client a Monaco with one model, for `/root/shapes.cpp`, holding three lines.
+     */
+    function withModel(): void {
+      shown = new Map<string, MonacoApi.editor.IModelDeltaDecoration>();
+      let next: number = 0;
+      const model: Partial<MonacoApi.editor.ITextModel> = {
+        getLineCount: (): number => 3,
+        getLineMaxColumn: (line: number): number => line * 10,
+        deltaDecorations: (
+          old: string[],
+          added: MonacoApi.editor.IModelDeltaDecoration[],
+        ): string[] => {
+          old.forEach((id: string): boolean => shown.delete(id));
+          return added.map((decoration: MonacoApi.editor.IModelDeltaDecoration): string => {
+            const id: string = `d${++next}`;
+            shown.set(id, decoration);
+            return id;
+          });
+        },
+      };
+      const api: unknown = {
+        Uri: { parse: (value: string): string => value },
+        editor: {
+          getModel: (uri: string): unknown => (uri === 'inmemory://shapes' ? model : null),
+          TrackedRangeStickiness: { NeverGrowsWhenTypingAtEdges: 1 },
+        },
+      };
+      (monaco as unknown as { getMonaco: () => unknown }).getMonaco = (): unknown => api;
+      vi.spyOn(TestBed.inject(Editors), 'modelUriForPath').mockImplementation(
+        (path: string): string | undefined =>
+          path === '/root/shapes.cpp' ? 'inmemory://shapes' : undefined,
+      );
+    }
+
+    /**
+     * Reads the ranges faded, in the order shown.
+     * @returns Returns the ranges.
+     */
+    function faded(): MonacoApi.IRange[] {
+      return [...shown.values()].map(
+        (decoration: MonacoApi.editor.IModelDeltaDecoration): MonacoApi.IRange => {
+          expect(decoration.options.inlineClassName).toBe('lsp-inactive-region');
+          return decoration.range;
+        },
+      );
+    }
+
+    /**
+     * Opens a document and makes the stand-in model available.
+     * @returns Returns the session the document is served by.
+     */
+    async function open(): Promise<string> {
+      const client: LspClient = build();
+      client.syncDocument({
+        documentId: 'doc-1',
+        path: '/root/Program.cs',
+        languageId: 'csharp',
+        content: '',
+      });
+      await flush();
+      withModel();
+      return '/root::csharp';
+    }
+
+    it('fadesTheWholeLinesOfEachRegion_andAReportReplacesTheLast', async () => {
+      const sessionId: string = await open();
+
+      lsp.notify(sessionId, 'textDocument/inactiveRegions', {
+        textDocument: { uri: 'file:///root/shapes.cpp' },
+        regions: [
+          { start: { line: 1, character: 0 }, end: { line: 1, character: 4 } },
+          // Past the end of the document: cut at its last line.
+          { start: { line: 2, character: 0 }, end: { line: 9, character: 0 } },
+        ],
+      });
+      expect(faded()).toEqual([
+        { startLineNumber: 2, startColumn: 1, endLineNumber: 2, endColumn: 20 },
+        { startLineNumber: 3, startColumn: 1, endLineNumber: 3, endColumn: 30 },
+      ]);
+
+      lsp.notify(sessionId, 'textDocument/inactiveRegions', {
+        textDocument: { uri: 'file:///root/shapes.cpp' },
+        regions: [{ start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }],
+      });
+      expect(faded()).toEqual([
+        { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 10 },
+      ]);
+
+      lsp.notify(sessionId, 'textDocument/inactiveRegions', {
+        textDocument: { uri: 'file:///root/shapes.cpp' },
+        regions: [],
+      });
+      expect(faded()).toEqual([]);
+    });
+
+    it('aFileWithNoEditor_orAMalformedReport_isIgnored', async () => {
+      const sessionId: string = await open();
+
+      lsp.notify(sessionId, 'textDocument/inactiveRegions', {
+        textDocument: { uri: 'file:///root/other.cpp' },
+        regions: [{ start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }],
+      });
+      lsp.notify(sessionId, 'textDocument/inactiveRegions', {
+        textDocument: { uri: 'file:///root/shapes.cpp' },
+        regions: 'all of it',
+      });
+      lsp.notify(sessionId, 'textDocument/inactiveRegions', {
+        textDocument: { uri: 'file:///root/shapes.cpp' },
+        regions: [{ start: { line: 2 }, end: { line: 1 } }, null, { start: { line: -1 } }],
+      });
+
+      expect(faded()).toEqual([]);
+    });
+
+    it('stopsFading_whenTheServerExits', async () => {
+      const sessionId: string = await open();
+      lsp.notify(sessionId, 'textDocument/inactiveRegions', {
+        textDocument: { uri: 'file:///root/shapes.cpp' },
+        regions: [{ start: { line: 0, character: 0 }, end: { line: 1, character: 0 } }],
+      });
+      expect(faded()).toHaveLength(1);
+
+      lsp.exit(sessionId);
+
+      expect(faded()).toEqual([]);
+    });
   });
 
   it('fileStatus_showsWhatClangdIsDoing_andClearsWhenTheFileGoesIdle', async () => {

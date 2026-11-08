@@ -15,6 +15,12 @@ describe('clientCapabilities', () => {
     });
   });
 
+  it('textDocument_tellsClangdItFadesWhatThePreprocessorLeavesOut (#1213)', () => {
+    expect(clientCapabilities('clangd').textDocument).toMatchObject({
+      inactiveRegionsCapabilities: { inactiveRegions: true },
+    });
+  });
+
   it('experimental_asksAServerToSayHowItIs (#1210)', () => {
     expect(clientCapabilities().experimental).toMatchObject({ serverStatusNotification: true });
   });

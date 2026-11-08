@@ -108,6 +108,8 @@ const FORWARDED_NOTIFICATIONS: ReadonlySet<string> = new Set<string>([
   'window/_roslyn_showToast',
   // clangd's word on what it is doing with a file (#1213), which it sends once told to at start-up.
   'textDocument/clangd.fileStatus',
+  // clangd's word on which lines of a file the preprocessor leaves out (#1213), for the editor to fade.
+  'textDocument/inactiveRegions',
   // Sent on from the server's request of the same name, for the editors to ask for hints again.
   'workspace/inlayHint/refresh',
   // Sent on from the server's request of the same name, for the editors to ask for lenses again.
