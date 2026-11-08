@@ -2975,6 +2975,27 @@ describe('LspFeatures', () => {
       expect(await serving.codeActions(model, caret)).toEqual([]);
     });
 
+    it.each<[string, number]>([
+      ['kotlin', 1],
+      ['java', 2],
+    ])(
+      'convertJavaToKotlin_inA_%s_file_leaves_%i_action(s) (#1209)',
+      async (languageId: string, count: number) => {
+        codeActionSupport = 'actions';
+        responses['textDocument/codeAction'] = [
+          { title: 'Convert Java to Kotlin', command: 'convertJavaToKotlin', arguments: [] },
+          { title: 'Fix', kind: 'quickfix' },
+        ];
+        const features: LspFeatures = await build();
+        const typed: MonacoApi.editor.ITextModel = {
+          ...(model as object),
+          getLanguageId: (): string => languageId,
+        } as MonacoApi.editor.ITextModel;
+
+        expect((await features.codeActions(typed, caret))?.length).toBe(count);
+      },
+    );
+
     it('resolve_fillsInTheEdit_forAServerThatResolves_andLeavesAWholeOrRefusedActionAlone', async () => {
       codeActionSupport = 'resolve';
       responses['textDocument/codeAction'] = [{ title: 'Fix', kind: 'quickfix', data: { id: 7 } }];

@@ -3508,7 +3508,7 @@ export class LspFeatures {
     const actions: LspCodeAction[] = [];
     for (const raw of outcome.result as unknown[]) {
       const action: LspCodeAction | null = this.toCodeAction(raw);
-      if (action !== null) {
+      if (action !== null && !isMisplaced(action, model)) {
         actions.push(action);
       }
     }
@@ -3924,6 +3924,26 @@ function isCommand(raw: unknown): boolean {
     raw !== null &&
     typeof (raw as { command?: unknown }).command === 'string'
   );
+}
+
+/**
+ * The server commands that convert a file from one language, keyed by that language. A server offers
+ * them wherever it is asked, and kotlin-language-server offers Convert Java to Kotlin on every span of
+ * a Kotlin file (#1209), where there is no Java to convert.
+ */
+const CONVERSIONS_FROM: Readonly<Record<string, string>> = { convertJavaToKotlin: 'java' };
+
+/**
+ * Determines whether a code action converts from a language other than the document's, so it has
+ * nothing to work on there.
+ * @param action The action.
+ * @param model The document's model.
+ * @returns Returns true when it does.
+ */
+function isMisplaced(action: LspCodeAction, model: MonacoApi.editor.ITextModel): boolean {
+  const from: string | undefined =
+    action.command === null ? undefined : CONVERSIONS_FROM[action.command.command];
+  return from !== undefined && from !== model.getLanguageId();
 }
 
 /**

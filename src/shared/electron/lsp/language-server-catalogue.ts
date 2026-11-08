@@ -519,12 +519,32 @@ const KOTLIN: LanguageServerDescriptor = {
     if (launcher === null) {
       return unavailable('The Kotlin language server could not be downloaded.');
     }
-    const env: Record<string, string> | undefined = path.isAbsolute(java)
-      ? { JAVA_HOME: path.dirname(path.dirname(java)) }
-      : undefined;
-    return resolved({ command: launcher, args: [], env });
+    return resolved({ command: launcher, args: [], env: kotlinServerEnv(java, process.env) });
   },
 };
+
+/**
+ * Builds the environment the Kotlin language server is started with (#1209). Its launcher finds Java
+ * from `JAVA_HOME`, so the runtime Studio found is passed on when its path is absolute. The server
+ * resolves a Gradle project's classpath by running Gradle, which by default leaves a daemon running
+ * for hours after the server has gone, one per workspace opened; telling Gradle not to use one keeps
+ * whatever the user's own `GRADLE_OPTS` say.
+ * @param java The Java runtime Studio found.
+ * @param inherited The environment Studio was started with.
+ * @returns Returns the variables to set over the inherited ones.
+ */
+export function kotlinServerEnv(
+  java: string,
+  inherited: Readonly<Record<string, string | undefined>>,
+): Record<string, string> {
+  const gradleOptions: string = [inherited['GRADLE_OPTS'], '-Dorg.gradle.daemon=false']
+    .filter((part: string | undefined): part is string => part !== undefined && part.length > 0)
+    .join(' ');
+  return {
+    ...(path.isAbsolute(java) ? { JAVA_HOME: path.dirname(path.dirname(java)) } : {}),
+    GRADLE_OPTS: gradleOptions,
+  };
+}
 
 /**
  * gopls, detecting the Go toolchain and building the server with it on first use. gopls shells out to

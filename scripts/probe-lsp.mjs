@@ -508,7 +508,11 @@ function codeFirstServers(profile, root, settings) {
         return {
           command: launcher,
           args: [],
-          env: javaHome ? { JAVA_HOME: javaHome } : undefined,
+          // As Studio starts it: no Gradle daemon left behind (#1209).
+          env: {
+            ...(javaHome ? { JAVA_HOME: javaHome } : {}),
+            GRADLE_OPTS: [env.GRADLE_OPTS, '-Dorg.gradle.daemon=false'].filter(Boolean).join(' '),
+          },
           version,
         };
       },
