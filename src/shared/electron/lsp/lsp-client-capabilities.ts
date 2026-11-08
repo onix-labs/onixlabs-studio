@@ -9,6 +9,14 @@ import { SEMANTIC_TOKEN_MODIFIERS, SEMANTIC_TOKEN_TYPES } from '@shared/api/lsp-
 const FILE_CREATING_SERVERS: ReadonlySet<string> = new Set<string>(['rust']);
 
 /**
+ * clangd's extension to the text-document capabilities (#1213), kept apart because the protocol's type
+ * has no room for it.
+ */
+const INACTIVE_REGIONS_CAPABILITY: Record<string, unknown> = {
+  inactiveRegionsCapabilities: { inactiveRegions: true },
+};
+
+/**
  * Builds the client capabilities advertised to a server. They cover diagnostics, document
  * synchronisation, and the core language features the renderer client surfaces.
  * @param serverId The server, or undefined for what every server is told.
@@ -158,6 +166,10 @@ export function clientCapabilities(serverId?: string): ClientCapabilities {
         overlappingTokenSupport: false,
         multilineTokenSupport: false,
       },
+      // Not in the protocol: clangd reports the lines the preprocessor leaves out, an `#if 0` block or
+      // the branch of an `#ifdef` not taken, only to a client that says it fades them (#1213). Other
+      // servers ignore it.
+      ...INACTIVE_REGIONS_CAPABILITY,
     },
     // `refreshSupport` tells a server it may send `workspace/semanticTokens/refresh` when its
     // classification improves (a project finishes loading); without it heavy servers never signal

@@ -108,6 +108,17 @@ const UNRESOLVED_PROJECT: RegExp = /Project (.+?\.[a-z]+proj) has unresolved dep
 const FILE_STATUS_METHOD: string = 'textDocument/clangd.fileStatus';
 
 /**
+ * The notification in which clangd says which lines of a file the preprocessor leaves out (#1213): an
+ * `#if 0` block, or the branch of an `#ifdef` not taken.
+ */
+const INACTIVE_REGIONS_METHOD: string = 'textDocument/inactiveRegions';
+
+/**
+ * The class that fades code the preprocessor leaves out (#1213), styled in `_diagnostics.scss`.
+ */
+const INACTIVE_REGION_CLASS: string = 'lsp-inactive-region';
+
+/**
  * The request that asks Roslyn to restore projects' packages.
  */
 const RESTORE_METHOD: string = 'workspace/_roslyn_restore';
@@ -324,6 +335,45 @@ export function testLines(
  */
 function testName(name: string): string {
   return name.replace(/\(.*$/, '').split('.').pop() ?? name;
+}
+
+/**
+ * Reads one of clangd's inactive regions (#1213) as the lines it covers, whole: clangd reports the lines
+ * between the directives, and fading part of a line would read as a highlight rather than as code that
+ * is not compiled. A region past the end of the document (the file changed since) is cut at the end.
+ * @param region The region, an LSP `Range`, untrusted.
+ * @param model The document it is in.
+ * @returns Returns the one-based range, or null when it is not a range in the document.
+ */
+export function toInactiveRange(
+  region: unknown,
+  model: Pick<MonacoApi.editor.ITextModel, 'getLineCount' | 'getLineMaxColumn'>,
+): MonacoApi.IRange | null {
+  const candidate: { start?: { line?: unknown }; end?: { line?: unknown } } | null =
+    typeof region === 'object' && region !== null ? region : null;
+  const start: unknown = candidate?.start?.line;
+  const end: unknown = candidate?.end?.line;
+  if (
+    typeof start !== 'number' ||
+    typeof end !== 'number' ||
+    !Number.isInteger(start) ||
+    !Number.isInteger(end) ||
+    start < 0 ||
+    end < start
+  ) {
+    return null;
+  }
+  const lines: number = model.getLineCount();
+  if (start + 1 > lines) {
+    return null;
+  }
+  const last: number = Math.min(end + 1, lines);
+  return {
+    startLineNumber: start + 1,
+    startColumn: 1,
+    endLineNumber: last,
+    endColumn: model.getLineMaxColumn(last),
+  };
 }
 
 /**
@@ -871,6 +921,15 @@ export class LspClient implements OnDestroy {
    */
   private readonly testMarkers: Map<string, { ids: string[]; outcomes: Map<number, TestOutcome> }> =
     new Map<string, { ids: string[]; outcomes: Map<number, TestOutcome> }>();
+
+  /**
+   * Holds the faded code the preprocessor leaves out of each document (#1213), keyed by its Monaco
+   * model URI: the session that said so, and the decorations shown.
+   */
+  private readonly inactiveRegions: Map<string, { sessionId: string; ids: string[] }> = new Map<
+    string,
+    { sessionId: string; ids: string[] }
+  >();
 
   /**
    * Counts the restores Studio has asked for, naming each one's progress token.
@@ -1768,6 +1827,7 @@ export class LspClient implements OnDestroy {
         this.log.info('LspClient', `Stopping documentless standalone session`, sessionId);
         void this.bridge?.invoke(LspChannel.Stop, sessionId);
         this.status.remove(sessionId);
+        this.clearInactiveRegions(sessionId);
         this.legends.delete(sessionId);
         this.pullCapable.delete(sessionId);
         this.settledSessions.delete(sessionId);
@@ -2088,6 +2148,7 @@ export class LspClient implements OnDestroy {
       this.sessions.delete(sessionId);
       this.sessionInfo.delete(sessionId);
       this.status.remove(sessionId);
+      this.clearInactiveRegions(sessionId);
       this.legends.delete(sessionId);
       this.pullCapable.delete(sessionId);
       this.settledSessions.delete(sessionId);
@@ -2130,6 +2191,7 @@ export class LspClient implements OnDestroy {
     for (const sessionId of [...this.sessions.keys()]) {
       void this.bridge?.invoke(LspChannel.Stop, sessionId);
       this.status.remove(sessionId);
+      this.clearInactiveRegions(sessionId);
       this.legends.delete(sessionId);
       this.pullCapable.delete(sessionId);
       this.settledSessions.delete(sessionId);
@@ -2208,6 +2270,7 @@ export class LspClient implements OnDestroy {
     for (const sessionId of this.sessions.keys()) {
       void this.bridge?.invoke(LspChannel.Stop, sessionId);
       this.status.remove(sessionId);
+      this.clearInactiveRegions(sessionId);
     }
     for (const timer of this.diagnosticTimers.values()) {
       clearTimeout(timer);
@@ -2769,6 +2832,11 @@ export class LspClient implements OnDestroy {
       this.onFileStatus(message.sessionId, message.params);
       return;
     }
+    // clangd says which lines the preprocessor leaves out, each time it rebuilds a file (#1213).
+    if (message.method === INACTIVE_REGIONS_METHOD) {
+      this.onInactiveRegions(message.sessionId, message.params);
+      return;
+    }
     // Route the server's own logs into a per-server Output channel (created lazily on first log, so a
     // silent server adds no channel). Not revealed — logs must not steal the panel from a running build.
     if (message.method === 'window/logMessage' || message.method === 'window/showMessage') {
@@ -2877,6 +2945,69 @@ export class LspClient implements OnDestroy {
         ? null
         : `${doing[0].toUpperCase()}${doing.slice(1)} — ${basename(uriToPath(uri))}`,
     );
+  }
+
+  /**
+   * Fades the code the preprocessor leaves out of a document (#1213), as clangd reports it: an `#if 0`
+   * block, or the branch of an `#ifdef` not taken. Each report is the whole set for the file, so it
+   * replaces the last; an empty one clears it. A file with no editor is skipped: clangd reports again
+   * when it next builds the file, which opening it does.
+   * @param sessionId The session reporting.
+   * @param params The notification parameters (`textDocument.uri` and `regions`, a list of ranges).
+   */
+  private onInactiveRegions(sessionId: string, params: unknown): void {
+    const { textDocument, regions } = (params ?? {}) as {
+      textDocument?: { uri?: unknown };
+      regions?: unknown;
+    };
+    if (typeof textDocument?.uri !== 'string' || !Array.isArray(regions)) {
+      return;
+    }
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    const modelUri: string | undefined = this.editors.modelUriForPath(uriToPath(textDocument.uri));
+    const model: MonacoApi.editor.ITextModel | null =
+      monaco === undefined || modelUri === undefined
+        ? null
+        : monaco.editor.getModel(monaco.Uri.parse(modelUri));
+    if (monaco === undefined || model === null || modelUri === undefined) {
+      return;
+    }
+    const decorations: MonacoApi.editor.IModelDeltaDecoration[] = regions
+      .map((region: unknown): MonacoApi.IRange | null => toInactiveRange(region, model))
+      .filter((range: MonacoApi.IRange | null): range is MonacoApi.IRange => range !== null)
+      .map((range: MonacoApi.IRange): MonacoApi.editor.IModelDeltaDecoration => ({
+        range,
+        options: {
+          inlineClassName: INACTIVE_REGION_CLASS,
+          stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+        },
+      }));
+    const shown: { sessionId: string; ids: string[] } | undefined =
+      this.inactiveRegions.get(modelUri);
+    const ids: string[] = model.deltaDecorations(shown?.ids ?? [], decorations);
+    if (ids.length === 0) {
+      this.inactiveRegions.delete(modelUri);
+    } else {
+      this.inactiveRegions.set(modelUri, { sessionId, ids });
+    }
+  }
+
+  /**
+   * Stops fading the code a session's server said was left out (#1213): the server has gone, and what
+   * it said may not hold for the one that replaces it, which says it again.
+   * @param sessionId The session.
+   */
+  private clearInactiveRegions(sessionId: string): void {
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    for (const [modelUri, shown] of [...this.inactiveRegions.entries()]) {
+      if (shown.sessionId !== sessionId) {
+        continue;
+      }
+      this.inactiveRegions.delete(modelUri);
+      const model: MonacoApi.editor.ITextModel | null =
+        monaco?.editor.getModel(monaco.Uri.parse(modelUri)) ?? null;
+      model?.deltaDecorations(shown.ids, []);
+    }
   }
 
   /**
@@ -2996,6 +3127,7 @@ export class LspClient implements OnDestroy {
     }
     clearTimeout(this.analysisTimers.get(exit.sessionId));
     this.analysisTimers.delete(exit.sessionId);
+    this.clearInactiveRegions(exit.sessionId);
     if (exit.restarted === true) {
       // A deliberate restart, with a fresh server already running under the same id: not a crash, so
       // no backoff bookkeeping — just forget the old session's negotiated state and re-open every
