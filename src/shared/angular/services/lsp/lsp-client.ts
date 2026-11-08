@@ -1520,6 +1520,24 @@ export class LspClient implements OnDestroy {
   }
 
   /**
+   * Forgets what a session's server said about itself: its token legend, whether it pulls, whether it
+   * has settled or is loading, its problem, the progress it had begun, and its pending pulls and
+   * recolours. Called whenever the server goes, so its replacement starts from nothing (#1213): a
+   * progress title left behind would name work the new server is not doing.
+   * @param sessionId The session.
+   */
+  private forgetServerState(sessionId: string): void {
+    this.legends.delete(sessionId);
+    this.pullCapable.delete(sessionId);
+    this.settledSessions.delete(sessionId);
+    this.loadingSessions.delete(sessionId);
+    this.serverProblemTexts.delete(sessionId);
+    this.progressTitles.delete(sessionId);
+    this.clearPostLoadPulls(sessionId);
+    this.clearRecolor(sessionId);
+  }
+
+  /**
    * Records a document's diagnostics, what was pushed and what was pulled together, sets them as editor
    * markers, and republishes the aggregate.
    * @param tracked The document the diagnostics belong to.
@@ -1768,13 +1786,7 @@ export class LspClient implements OnDestroy {
         this.log.info('LspClient', `Stopping documentless standalone session`, sessionId);
         void this.bridge?.invoke(LspChannel.Stop, sessionId);
         this.status.remove(sessionId);
-        this.legends.delete(sessionId);
-        this.pullCapable.delete(sessionId);
-        this.settledSessions.delete(sessionId);
-        this.loadingSessions.delete(sessionId);
-        this.serverProblemTexts.delete(sessionId);
-        this.clearPostLoadPulls(sessionId);
-        this.clearRecolor(sessionId);
+        this.forgetServerState(sessionId);
         this.sessions.delete(sessionId);
         // Left in place it would answer to a restart, starting a server for nothing, and its workspace
         // problems would stay listed.
@@ -2088,13 +2100,7 @@ export class LspClient implements OnDestroy {
       this.sessions.delete(sessionId);
       this.sessionInfo.delete(sessionId);
       this.status.remove(sessionId);
-      this.legends.delete(sessionId);
-      this.pullCapable.delete(sessionId);
-      this.settledSessions.delete(sessionId);
-      this.loadingSessions.delete(sessionId);
-      this.serverProblemTexts.delete(sessionId);
-      this.clearPostLoadPulls(sessionId);
-      this.clearRecolor(sessionId);
+      this.forgetServerState(sessionId);
     }
     const orphaned: Set<string> = new Set<string>();
     for (const [key, tracked] of [...this.tracked.entries()]) {
@@ -2130,13 +2136,7 @@ export class LspClient implements OnDestroy {
     for (const sessionId of [...this.sessions.keys()]) {
       void this.bridge?.invoke(LspChannel.Stop, sessionId);
       this.status.remove(sessionId);
-      this.legends.delete(sessionId);
-      this.pullCapable.delete(sessionId);
-      this.settledSessions.delete(sessionId);
-      this.loadingSessions.delete(sessionId);
-      this.serverProblemTexts.delete(sessionId);
-      this.clearPostLoadPulls(sessionId);
-      this.clearRecolor(sessionId);
+      this.forgetServerState(sessionId);
       this.clearStandaloneReap(sessionId);
     }
     this.sessions.clear();
@@ -3001,13 +3001,7 @@ export class LspClient implements OnDestroy {
       // no backoff bookkeeping — just forget the old session's negotiated state and re-open every
       // document against the new one (which re-attaches this client to it).
       this.log.info('LspClient', 'Server restarted; re-opening its documents', exit.sessionId);
-      this.legends.delete(exit.sessionId);
-      this.pullCapable.delete(exit.sessionId);
-      this.settledSessions.delete(exit.sessionId);
-      this.loadingSessions.delete(exit.sessionId);
-      this.serverProblemTexts.delete(exit.sessionId);
-      this.clearPostLoadPulls(exit.sessionId);
-      this.clearRecolor(exit.sessionId);
+      this.forgetServerState(exit.sessionId);
       this.status.setState(exit.sessionId, 'starting');
       for (const tracked of this.tracked.values()) {
         if (`${tracked.rootPath}::${tracked.serverId}` === exit.sessionId) {
@@ -3026,7 +3020,6 @@ export class LspClient implements OnDestroy {
       `Server session exited unexpectedly (crash #${crash.count}${crash.repeated ? ', repeated' : ''})`,
       exit.sessionId,
     );
-    this.legends.delete(exit.sessionId);
     // Keep the crashed server listed as unavailable — with its restart affordance — rather than
     // removing it from the status strip. Removing it made the whole status-strip control vanish (its
     // trigger is mounted only while a server is listed for the workspace), stranding the user with no
@@ -3050,11 +3043,7 @@ export class LspClient implements OnDestroy {
       this.raiseGivenUp(exit.sessionId, crash, tries);
     }
     // The restarted server loads from scratch, so its tokens are degraded again until it re-settles.
-    this.settledSessions.delete(exit.sessionId);
-    this.loadingSessions.delete(exit.sessionId);
-    this.serverProblemTexts.delete(exit.sessionId);
-    this.clearPostLoadPulls(exit.sessionId);
-    this.clearRecolor(exit.sessionId);
+    this.forgetServerState(exit.sessionId);
     for (const tracked of this.tracked.values()) {
       if (`${tracked.rootPath}::${tracked.serverId}` === exit.sessionId) {
         tracked.opened = false;

@@ -2857,6 +2857,99 @@ describe('LspClient', () => {
     expect(status.servers()[0].progress).toBeUndefined();
   });
 
+  it('progress_begunBeforeARestart_isForgotten_soTheNewServerNeverShowsIt', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/Program.cs',
+      languageId: 'csharp',
+      content: '',
+    });
+    await flush();
+    lsp.notify('/root::csharp', '$/progress', {
+      token: 'index',
+      value: { kind: 'begin', title: 'Indexing' },
+    });
+    expect(status.servers()[0].progress).toBe('Indexing');
+
+    await client.restart('/root::csharp');
+    await flush();
+    lsp.notify('/root::csharp', '$/progress', {
+      token: 'load',
+      value: { kind: 'begin', title: 'Loading' },
+    });
+    lsp.notify('/root::csharp', '$/progress', { token: 'load', value: { kind: 'end' } });
+
+    // The old server's indexing ended with it, so nothing is left to show.
+    expect(status.servers()[0].progress).toBeUndefined();
+    // A report on a token the new server never began has no title to read under.
+    lsp.notify('/root::csharp', '$/progress', {
+      token: 'index',
+      value: { kind: 'report', message: '3/9' },
+    });
+    expect(status.servers()[0].progress).toBeUndefined();
+  });
+
+  it('progress_begunBeforeACrash_isForgotten', async () => {
+    const realNow: () => number = Date.now;
+    let now: number = realNow();
+    vi.spyOn(Date, 'now').mockImplementation((): number => now);
+    try {
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      const base: { documentId: string; path: string; languageId: string; content: string } = {
+        documentId: 'doc-1',
+        path: '/root/a.ts',
+        languageId: 'typescript',
+        content: '',
+      };
+      client.syncDocument(base);
+      await flush();
+      lsp.notify('/root::typescript', '$/progress', {
+        token: 'index',
+        value: { kind: 'begin', title: 'Indexing' },
+      });
+      lsp.exit('/root::typescript');
+      expect(status.servers()[0].progress).toBeUndefined();
+
+      now += 5_001;
+      client.syncDocument({ ...base, content: 'x' });
+      await flush();
+      lsp.notify('/root::typescript', '$/progress', {
+        token: 'load',
+        value: { kind: 'begin', title: 'Loading' },
+      });
+      lsp.notify('/root::typescript', '$/progress', { token: 'load', value: { kind: 'end' } });
+
+      expect(lsp.starts).toHaveLength(2);
+      expect(status.servers()[0].progress).toBeUndefined();
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('fileStatus_isCleared_whenTheServerStops', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/Program.cs',
+      languageId: 'csharp',
+      content: '',
+    });
+    await flush();
+    lsp.notify('/root::csharp', 'textDocument/clangd.fileStatus', {
+      uri: 'file:///root/shapes.cpp',
+      state: 'parsing includes, running Update',
+    });
+    expect(status.servers()[0].activity).toBe('Parsing includes — shapes.cpp');
+
+    lsp.exit('/root::csharp');
+
+    expect(status.servers()[0].activity).toBeUndefined();
+  });
+
   it('fileStatus_showsWhatClangdIsDoing_andClearsWhenTheFileGoesIdle', async () => {
     const client: LspClient = build();
     const status: LspStatus = TestBed.inject(LspStatus);
