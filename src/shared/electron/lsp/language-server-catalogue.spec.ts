@@ -1,6 +1,6 @@
 import type { LspServerSettingDescriptor } from '@shared/api/lsp-channels';
 import type { LanguageServerDescriptor } from './language-server-descriptor';
-import { languageServerCatalogue } from './language-server-catalogue';
+import { kotlinServerEnv, languageServerCatalogue } from './language-server-catalogue';
 import {
   LspServerSettingValues,
   pushedSettings,
@@ -99,5 +99,26 @@ describe('the TypeScript server settings (#1207)', () => {
         quotePreference: 'single',
       },
     });
+  });
+});
+
+describe('kotlinServerEnv (#1209)', () => {
+  const java: string = '/jdk/Contents/Home/bin/java';
+
+  it('tellsGradleNotToLeaveADaemon_andPassesTheRuntimeOn', () => {
+    expect(kotlinServerEnv(java, {})).toEqual({
+      JAVA_HOME: '/jdk/Contents/Home',
+      GRADLE_OPTS: '-Dorg.gradle.daemon=false',
+    });
+  });
+
+  it('keepsTheUsersOwnGradleOptions', () => {
+    expect(kotlinServerEnv(java, { GRADLE_OPTS: '-Xmx2g' })['GRADLE_OPTS']).toBe(
+      '-Xmx2g -Dorg.gradle.daemon=false',
+    );
+  });
+
+  it('aRuntimeOnThePath_setsNoJavaHome', () => {
+    expect(kotlinServerEnv('java', {})).toEqual({ GRADLE_OPTS: '-Dorg.gradle.daemon=false' });
   });
 });
