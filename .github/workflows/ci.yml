@@ -168,9 +168,6 @@ jobs:
       - name: Run E2E suite
         run: xvfb-run --auto-servernum -- npm run e2e
 
-      - name: TEMPORARY repeat the language-server restart test (proof for the flaky-test PR)
-        run: xvfb-run --auto-servernum -- npx playwright test --config e2e/playwright.config.ts resilience.e2e.ts -g saysItStopped --repeat-each=20 --retries=0
-
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v7
