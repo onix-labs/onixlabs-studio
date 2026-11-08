@@ -174,13 +174,13 @@ import { isTestAdapterCapability, TestAdapterCapability } from './test-adapter-p
  * whatever the user's settings, such as clangd's `clangdFileStatus`. Absent means none, as before. Adds
  * only.
  *
- * `1.27.0` adds the `testAdapters` contribution point (#802), the slot the Tests panel is filled through:
+ * `1.28.0` adds the `testAdapters` contribution point (#802), the slot the Tests panel is filled through:
  * each ecosystem's plugin finds a folder's tests by reading its source and answers a run with a command
  * Studio runs in a visible terminal, because core knows no test framework. Keyed by **marker** files as
  * package managers are, and likewise not a choice of one: every plugin whose marker a folder holds
  * applies. Adds only.
  */
-export const PLUGIN_API_VERSION: string = '1.27.0';
+export const PLUGIN_API_VERSION: string = '1.28.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -1282,7 +1282,7 @@ export interface ManifestContributions {
   readonly packageManagers?: readonly ManifestPackageManager[];
 
   /**
-   * Gets the test adapters contributed (1.27.0).
+   * Gets the test adapters contributed (1.28.0).
    */
   readonly testAdapters?: readonly ManifestTestAdapter[];
 }
