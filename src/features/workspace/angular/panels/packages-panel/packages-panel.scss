@@ -1,6 +1,6 @@
-// The Package Management dock panel body. The dock supplies the title bar and the shared table owns the
-// scrolling body and fixed header; this styles the tool-strip and the cell content projected into the
-// table. Colours come from the shipped dock tokens and the accent palette's status colours.
+// The Packages dock panel body (#912). The dock supplies the title bar and the shared table owns the
+// scrolling body and fixed header; this styles the strips, the Explore form and the cell content
+// projected into the table. Colours come from the shipped dock tokens and the status colours.
 :host {
   display: flex;
   flex-direction: column;
@@ -13,22 +13,60 @@
   --package-unknown: var(--info-color);
 }
 
-// The table fills the space beneath the tool-strip.
+// Installed · Explore, as the Find & Replace panel's toggles: the control height, not the shorter
+// default of a strip button, so they line up with the icon buttons beside them.
+.packages-strip__toggle {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  block-size: var(--control-height);
+  white-space: nowrap;
+
+  app-icon {
+    flex: 0 0 auto;
+    font-size: 0.85rem;
+  }
+
+  span {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+// The Explore form, on one row under the strip, 0.5rem apart: the picker sized to its own control,
+// the search taking the rest.
+.packages-form {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.5rem 0.5rem;
+  border-block-end: 1px solid var(--dock-border-color);
+  font-size: 0.8rem;
+
+  &__source,
+  &__target {
+    flex: 0 0 auto;
+  }
+
+  &__search {
+    flex: 1 1 auto;
+    min-inline-size: 6rem;
+  }
+
+  &__prerelease {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 0.35rem;
+    white-space: nowrap;
+  }
+}
+
+// The table fills the space between the strips.
 .packages-table {
   flex: 1 1 auto;
   min-block-size: 0;
-}
-
-// The outdated tally sits at the trailing end of the tool-strip.
-.packages-count {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  font-size: 0.78rem;
-
-  &--outdated {
-    color: var(--package-outdated);
-  }
 }
 
 // A project group header's content, projected into the table's full-width group cell.
@@ -50,7 +88,7 @@
     white-space: nowrap;
   }
 
-  // The project's outdated count: a warning chip, as the tally and the outdated rows are warning.
+  // The project's outdated count: a warning chip, as the status strip's tally is.
   &__badge {
     min-inline-size: 1.25rem;
     justify-content: center;
@@ -80,15 +118,10 @@
   }
 }
 
-.packages-scope {
-  opacity: 0.6;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
 .packages-installed,
-.packages-latest {
+.packages-latest,
+.packages-version,
+.packages-downloads {
   font-variant-numeric: tabular-nums;
 }
 
@@ -101,18 +134,8 @@
   opacity: 0.4;
 }
 
-// The Explore search box grows to fill the tool-strip between the source picker and the toggle.
-.packages-search {
-  flex: 1 1 auto;
-  min-inline-size: 6rem;
-}
-
-// The prerelease toggle sits with its label at the trailing end of the tool-strip.
-.packages-prerelease {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.78rem;
+// A row's actions sit at its trailing end, tight together.
+.packages-actions {
   white-space: nowrap;
 }
 
@@ -125,29 +148,16 @@
   }
 }
 
-.packages-version,
-.packages-downloads {
-  font-variant-numeric: tabular-nums;
-}
-
 .packages-desc {
   opacity: 0.8;
 }
 
-// The Explore footer: the loaded/total count and the load-more control.
-.packages-footer {
+// Load more stays at the end of the results: an action, not a status.
+.packages-more {
   flex: 0 0 auto;
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.35rem 0.625rem;
-  font-size: 0.76rem;
-  color: var(--dock-tab-foreground-color);
-  border-block-start: 1px solid var(--dock-container-background-color);
-
-  &__count {
-    opacity: 0.7;
-  }
+  justify-content: center;
+  padding: 0.25rem;
 }
 
 // The empty / loading state, centred in the panel.
@@ -159,16 +169,17 @@
   justify-content: center;
   gap: 0.5rem;
   padding: 1.5rem;
-  opacity: 0.7;
   text-align: center;
 
   app-icon {
     font-size: 1.5rem;
+    opacity: 0.7;
   }
 
   p {
     margin: 0;
     font-size: 0.82rem;
+    opacity: 0.8;
   }
 }
 
@@ -192,4 +203,12 @@
   &__name {
     font-size: 0.82rem;
   }
+}
+
+// The status strip (#882): 26px, one line, no top border; chips state, they do not act.
+.packages-status {
+  block-size: 1.625rem;
+  min-block-size: 1.625rem;
+  overflow: hidden;
+  white-space: nowrap;
 }

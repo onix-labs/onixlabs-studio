@@ -372,7 +372,8 @@ describe('npm packages on disk', () => {
     });
 
     it('resolvesAReferenceFromTheEnvironmentItWasGiven', async () => {
-      privateRegistry('${NPM_TOKEN}');
+      privateRegistry(null);
+      writeFileSync(path.join(home, '.npmrc'), '//acme.example/:_authToken=${NPM_TOKEN}\n');
       const seen: { url: string; headers: Record<string, string> }[] = [];
       const withEnvironment: NpmPackageManager = new NpmPackageManager(undefined, {
         NPM_TOKEN: 'from-environment',
@@ -381,6 +382,42 @@ describe('npm packages on disk', () => {
       await withEnvironment.load(root, recording(seen));
 
       expect(seen[0].headers['Authorization']).toBe('Bearer from-environment');
+    });
+
+    it('load_projectNpmrcReferencesAnEnvironmentVariable_sendsNoHeader', async () => {
+      // Arrange
+      privateRegistry('${NPM_TOKEN}');
+      const seen: { url: string; headers: Record<string, string> }[] = [];
+      const withEnvironment: NpmPackageManager = new NpmPackageManager(undefined, {
+        NPM_TOKEN: 'from-environment',
+      });
+
+      // Act
+      await withEnvironment.load(root, recording(seen));
+
+      // Assert
+      expect(JSON.stringify(seen)).not.toContain('from-environment');
+    });
+
+    it('load_plainHttpRegistry_neverAsksStudioForAToken', async () => {
+      // Arrange
+      write({
+        'package.json': '{"dependencies":{"@acme/a":"*"}}',
+        '.npmrc': '@acme:registry=http://acme.example/\n',
+      });
+      const asked: string[] = [];
+      const seen: { url: string; headers: Record<string, string> }[] = [];
+      const withStudio: NpmPackageManager = new NpmPackageManager((registry: string) => {
+        asked.push(registry);
+        return Promise.resolve('from-studio');
+      });
+
+      // Act
+      await withStudio.load(root, recording(seen));
+
+      // Assert
+      expect(asked).toEqual([]);
+      expect(seen[0].headers['Authorization']).toBeUndefined();
     });
 
     it('keepsAnotherHostsTokenOffAScopedRequest', async () => {
@@ -586,6 +623,48 @@ describe('npm packages on disk', () => {
       const config: Awaited<ReturnType<typeof readNpmConfig>> = await readNpmConfig(root, {});
 
       expect(endpointFor(config, 'x').registry).toBe('https://registry.npmjs.org');
+    });
+
+    it('readNpmConfig_projectNpmrcReferencesAnEnvironmentVariable_sendsNoCredential', async () => {
+      // Arrange
+      write({
+        '.npmrc': 'registry=https://evil.example/\n//evil.example/:_authToken=${SECRET}\n',
+      });
+
+      // Act
+      const config: Awaited<ReturnType<typeof readNpmConfig>> = await readNpmConfig(root, {
+        SECRET: 'leaked',
+      });
+
+      // Assert
+      expect(endpointFor(config, 'x')).toEqual({ registry: 'https://evil.example', headers: {} });
+    });
+
+    it('readNpmConfig_userNpmrcReferencesAnEnvironmentVariable_interpolatesIt', async () => {
+      // Arrange
+      writeFileSync(
+        path.join(home, '.npmrc'),
+        'registry=https://user.example/\n//user.example/:_authToken=${NPM_TOKEN}\n',
+      );
+
+      // Act
+      const config: Awaited<ReturnType<typeof readNpmConfig>> = await readNpmConfig(root, {
+        NPM_TOKEN: 'user-token',
+      });
+
+      // Assert
+      expect(endpointFor(config, 'x').headers).toEqual({ Authorization: 'Bearer user-token' });
+    });
+
+    it('readNpmConfig_projectNpmrcHasALiteralToken_sendsIt', async () => {
+      // Arrange
+      write({ '.npmrc': 'registry=https://acme.example/\n//acme.example/:_authToken=literal\n' });
+
+      // Act
+      const config: Awaited<ReturnType<typeof readNpmConfig>> = await readNpmConfig(root, {});
+
+      // Assert
+      expect(endpointFor(config, 'x').headers).toEqual({ Authorization: 'Bearer literal' });
     });
   });
 });

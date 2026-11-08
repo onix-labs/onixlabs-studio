@@ -299,6 +299,59 @@ describe('DebugSession', () => {
     expect(bridge.invokesOn(DebugChannel.Start)).toHaveLength(0);
   });
 
+  describe('debugging a test (#1352)', () => {
+    it('launchTest_startsTheAdapterTheTestAdapterNamed_withoutResolvingOrBuilding', async () => {
+      // The workspace's own adapter is netcoredbg; the test's launch names debugpy.
+      const session: DebugSession = build();
+
+      const started: boolean = await session.launchTest({
+        adapter: 'debugpy',
+        title: 'Debug test_adds',
+        args: ['tests/test_math.py::test_adds'],
+        cwd: '/ws',
+        env: { PYTHONDONTWRITEBYTECODE: '1' },
+        configuration: { module: 'pytest', justMyCode: true },
+      });
+      await flush();
+
+      expect(started).toBe(true);
+      expect(bridge.invokesOn(DebugChannel.Resolve)).toHaveLength(0);
+      expect(bridge.invokesOn(DebugChannel.Start)[0]?.args[0]).toMatchObject({
+        adapterId: 'debugpy',
+      });
+      const launch: { command: string; args: unknown } | undefined = bridge
+        .requests()
+        .find((r) => r.command === 'launch');
+      expect(launch?.args).toMatchObject({
+        module: 'pytest',
+        justMyCode: true,
+        name: 'Debug test_adds',
+        args: ['tests/test_math.py::test_adds'],
+        cwd: '/ws',
+        env: { PYTHONDONTWRITEBYTECODE: '1' },
+      });
+      // A module launch names no program: debugpy refuses one naming both.
+      expect(launch?.args).not.toHaveProperty('program');
+    });
+
+    it('launchTest_whileASessionRuns_startsNothing', async () => {
+      const session: DebugSession = build();
+      session.launch(config());
+      await flush();
+
+      expect(
+        await session.launchTest({
+          adapter: 'js-debug',
+          title: 't',
+          program: '/ws/x.js',
+          args: [],
+          cwd: '/ws',
+        }),
+      ).toBe(false);
+      expect(bridge.invokesOn(DebugChannel.Start)).toHaveLength(1);
+    });
+  });
+
   it('launch_sendsTheResolvedProgramAndWorkingDirectory', async () => {
     bridge.resolveResult = {
       target: { program: '/ws/bin/Debug/net10.0/App.dll', cwd: '/ws/proj' },

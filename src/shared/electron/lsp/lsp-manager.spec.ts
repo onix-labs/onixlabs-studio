@@ -244,6 +244,7 @@ describe('LspManager (#1015)', () => {
           asked.push(serverId);
           return { 'projects.dotnet_enable_automatic_restore': false };
         },
+        indentationSectionsOf: (): undefined => undefined,
       };
       const manager: InstanceType<typeof LspManager> = new LspManager(
         (): BrowserWindow | null => null,
@@ -264,6 +265,58 @@ describe('LspManager (#1015)', () => {
 
       expect(answer).toEqual([false, null]);
       expect(asked).toEqual(['csharp']);
+    });
+
+    it('answersADocumentsIndentation_fromTheRendererHoldingTheSession (#1208)', async () => {
+      const sections: { tabSize: string; insertSpaces: string } = {
+        tabSize: 'java.format.tabSize',
+        insertSpaces: 'java.format.insertSpaces',
+      };
+      const registry: unknown = {
+        configurationOf: (): unknown => ({ 'java.signatureHelp.enabled': true }),
+        indentationSectionsOf: (): unknown => sections,
+      };
+      const filled: unknown[][] = [];
+      const indentation: unknown = {
+        register: (): void => undefined,
+        dispose: (): void => undefined,
+        fill: (
+          _sessionId: string,
+          _target: unknown,
+          given: unknown,
+          items: readonly unknown[],
+          answers: readonly unknown[],
+        ): Promise<unknown[]> => {
+          filled.push([given, items.length, [...answers]]);
+          return Promise.resolve([answers[0], 2, true]);
+        },
+      };
+      const manager: InstanceType<typeof LspManager> = new LspManager(
+        (): BrowserWindow | null => null,
+        new WorkspaceContext(),
+        registry as LspServerRegistry,
+        new LspApplyEditForwarder(),
+        undefined,
+        undefined,
+        indentation as ConstructorParameters<typeof LspManager>[6],
+      );
+      const connection: FakeConnection = fakeConnection();
+      (manager as unknown as ManagerInternals).answerServerRequests(connection, '/root::java', {
+        request: { sessionId: '/root::java', serverId: 'java', rootPath: '/root' },
+        clients: new Map<WebContents, number>(),
+        watcher: { register: (): void => undefined, unregister: (): void => undefined },
+      });
+
+      const answer: unknown = await connection.handlers.get('workspace/configuration')?.({
+        items: [
+          { section: 'java.signatureHelp.enabled' },
+          { scopeUri: 'file:///root/A.java', section: 'java.format.tabSize' },
+          { scopeUri: 'file:///root/A.java', section: 'java.format.insertSpaces' },
+        ],
+      });
+
+      expect(answer).toEqual([true, 2, true]);
+      expect(filled).toEqual([[sections, 3, [true, null, null]]]);
     });
 
     it('aChangedSetting_tellsThatServersSessionsToReadTheirConfigurationAgain_andNoOthers', () => {
@@ -740,6 +793,28 @@ describe('LspManager (#1015)', () => {
     ]);
   });
 
+  it('aServerAskingForTheWorkspaceFolders_isToldTheSessionsRoot (#1214)', async () => {
+    const manager: InstanceType<typeof LspManager> = new LspManager(
+      (): BrowserWindow | null => null,
+      new WorkspaceContext(),
+      {} as LspServerRegistry,
+      new LspApplyEditForwarder(),
+    );
+    const connection: FakeConnection = fakeConnection();
+    (manager as unknown as ManagerInternals).answerServerRequests(connection, '/root::perl', {
+      request: { sessionId: '/root::perl', serverId: 'perlnavigator', rootPath: '/root' },
+      rootPath: '/root',
+      clients: new Map<WebContents, number>(),
+      watcher: { register: (): void => undefined, unregister: (): void => undefined },
+    });
+
+    const answer: unknown = await connection.handlers.get('workspace/workspaceFolders')?.(
+      undefined,
+    );
+
+    expect(answer).toEqual([{ uri: 'file:///root', name: '/root' }]);
+  });
+
   it('aServersRequestToAttachTheDebugger_isForwardedToTheRendererHoldingTheSession (#1150)', async () => {
     const attaches: { forward: unknown; register: () => void; dispose: () => void } = {
       forward: vi.fn((): Promise<{ didAttach: boolean }> => Promise.resolve({ didAttach: true })),
@@ -836,6 +911,82 @@ describe('LspManager (#1015)', () => {
       manager.notify('/root::csharp', 'textDocument/didClose', CLOSE, main);
       expect(sent).toEqual(['textDocument/didClose file:///root/A.cs']);
     });
+
+    it('aDocumentOpenedSavedOrClosed_asksForTheProjectsToBeChecked_andAnEditDoesNot (#1207)', () => {
+      const manager: Notifying = holding([]);
+      const schedule: ReturnType<typeof vi.fn> = vi.fn();
+      (
+        manager.sessions.get('/root::csharp') as { projectDiagnostics: unknown }
+      ).projectDiagnostics = { schedule };
+      const window: WebContents = contents();
+
+      manager.notify('/root::csharp', 'textDocument/didOpen', OPEN, window);
+      manager.notify('/root::csharp', 'textDocument/didChange', CLOSE, window);
+      expect(schedule).toHaveBeenCalledTimes(1);
+
+      manager.notify('/root::csharp', 'textDocument/didSave', CLOSE, window);
+      expect(schedule).toHaveBeenCalledTimes(2);
+
+      // typescript-language-server clears a closed document's diagnostics; the check says them again.
+      manager.notify('/root::csharp', 'textDocument/didClose', CLOSE, window);
+      expect(schedule).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe('checking whole projects (#1207)', () => {
+    /**
+     * The manager, as the specs start a session's project check.
+     */
+    type Checking = ManagerInternals & {
+      startProjectDiagnostics(sessionId: string, session: unknown): void;
+    };
+
+    /**
+     * Builds a manager whose registry asks the given way.
+     * @param how What the registry answers for the server.
+     * @returns Returns the manager's internals.
+     */
+    function asking(how: 'tsserver' | undefined): Checking {
+      return new LspManager(
+        (): BrowserWindow | null => null,
+        new WorkspaceContext(),
+        { projectDiagnosticsOf: (): 'tsserver' | undefined => how } as unknown as LspServerRegistry,
+        new LspApplyEditForwarder(),
+      ) as unknown as Checking;
+    }
+
+    /**
+     * Builds a session's state, as far as the check reads it.
+     * @returns Returns the session.
+     */
+    function session(): {
+      request: unknown;
+      connection: unknown;
+      openDocuments: unknown;
+      projectDiagnostics: unknown;
+    } {
+      return {
+        request: { serverId: 'typescript' },
+        connection: { sendRequest: (): Promise<unknown> => Promise.resolve(null) },
+        openDocuments: new LspOpenDocuments<unknown>(),
+        projectDiagnostics: null,
+      };
+    }
+
+    it('aServerWhoseDescriptorAsks_getsACheck', () => {
+      const state: ReturnType<typeof session> = session();
+      asking('tsserver').startProjectDiagnostics('/root::typescript', state);
+
+      expect(state.projectDiagnostics).not.toBeNull();
+      (state.projectDiagnostics as { stop(): void }).stop();
+    });
+
+    it('anyOtherServer_getsNone', () => {
+      const state: ReturnType<typeof session> = session();
+      asking(undefined).startProjectDiagnostics('/root::csharp', state);
+
+      expect(state.projectDiagnostics).toBeNull();
+    });
   });
 
   describe('a window attaching to a running session (#1182)', () => {
@@ -930,6 +1081,38 @@ describe('LspManager (#1015)', () => {
       await vi.advanceTimersByTimeAsync(0);
 
       expect(late.sent).toContainEqual({ method: 'experimental/serverStatus', params: status });
+    });
+
+    it('isToldWhichTypescriptTheServerRunsWith_asItSaysSoOnlyAsItStarts (#1207)', async () => {
+      const internals: ManagerInternals = running(false);
+      const late: { contents: WebContents; sent: { method: string; params: unknown }[] } = window();
+      const version: unknown = { version: '5.9.3', source: 'user-setting' };
+
+      internals.forwardNotification('/root::csharp', '$/typescriptVersion', version);
+      await internals.start(START, late.contents);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(late.sent).toContainEqual({ method: '$/typescriptVersion', params: version });
+    });
+
+    it('isToldWhatJdtlsLastSaidOfHowItWas_inTheSameShape (#1208)', async () => {
+      const internals: ManagerInternals = running(false);
+      const late: { contents: WebContents; sent: { method: string; params: unknown }[] } = window();
+
+      internals.forwardNotification('/root::csharp', 'language/status', { type: 'Starting' });
+      internals.forwardNotification('/root::csharp', 'language/status', { type: 'ServiceReady' });
+      // jdtls says it is starting once more after it is ready, which is not a new load.
+      internals.forwardNotification('/root::csharp', 'language/status', { type: 'Starting' });
+      await internals.start(START, late.contents);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(late.sent).toContainEqual({
+        method: 'experimental/serverStatus',
+        params: { health: 'ok', quiescent: true },
+      });
+      expect(late.sent.map((entry: { method: string }): string => entry.method)).not.toContain(
+        'language/status',
+      );
     });
 
     it('aServerThatHasSaidNothingOfHowItIs_isNotReportedOn (#1210)', async () => {

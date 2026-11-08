@@ -12,6 +12,7 @@ import {
   type VersionControlExecutableMode,
 } from './version-control-protocol';
 import { isPackageManagerCapability, PackageManagerCapability } from './package-manager-protocol';
+import { isTestAdapterCapability, TestAdapterCapability } from './test-adapter-protocol';
 
 // The plugin manifest: the declarative description a third-party plugin ships so Studio can install it
 // and register what it contributes, without running any of its code to find out. Keep this module
@@ -177,8 +178,14 @@ import { isPackageManagerCapability, PackageManagerCapability } from './package-
  * closed list of package-manager capabilities gains `searchExactName`, for a registry that has no
  * search and can only look a name up (PyPI, the Go module proxy). A manifest declaring it is refused
  * by an older build, which is why this is a version. Adds only.
+ *
+ * `1.28.0` adds the `testAdapters` contribution point (#802), the slot the Tests panel is filled through:
+ * each ecosystem's plugin finds a folder's tests by reading its source and answers a run with a command
+ * Studio runs in a visible terminal, because core knows no test framework. Keyed by **marker** files as
+ * package managers are, and likewise not a choice of one: every plugin whose marker a folder holds
+ * applies. Adds only.
  */
-export const PLUGIN_API_VERSION: string = '1.27.0';
+export const PLUGIN_API_VERSION: string = '1.28.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -554,6 +561,60 @@ export interface ManifestPackageManager {
    * confirms.
    */
   readonly capabilities: readonly PackageManagerCapability[];
+
+  /**
+   * Gets how to start the plugin.
+   */
+  readonly command: ManifestCommand;
+
+  /**
+   * Gets this contribution's own entry point within the installed payload, or undefined to use the
+   * provision's. See {@link ManifestLanguageServer.entryPoint}.
+   */
+  readonly entryPoint?: string;
+}
+
+/**
+ * Describes a test adapter a plugin contributes (#802): the frameworks of one ecosystem, such as xUnit,
+ * NUnit and MSTest for .NET.
+ *
+ * Keyed by the **marker** files a project carries, as a package manager is, and several can apply to
+ * one folder: a repository can hold a .NET solution and a JavaScript package, each with its own tests.
+ */
+export interface ManifestTestAdapter {
+  /**
+   * Gets the identifier the plugin is registered under.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name, such as `.NET Tests`.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets the frameworks the adapter serves, as names the user knows (`xUnit`, `Vitest`). Shown, and
+   * given no other meaning.
+   */
+  readonly frameworks: readonly string[];
+
+  /**
+   * Gets the order adapters applying to one folder are listed in, higher first. Nothing is chosen by it.
+   */
+  readonly priority: number;
+
+  /**
+   * Gets the file names that mark a project this adapter may find tests in, such as `*.csproj`. A `*`
+   * matches within a name. A folder holding one, or a directory shallowly under it, applies.
+   */
+  readonly markers: readonly string[];
+
+  /**
+   * Gets the optional capabilities the adapter supports. Declared statically because the panel draws its
+   * controls before any process has started; the handshake narrows them to what the running plugin
+   * confirms.
+   */
+  readonly capabilities: readonly TestAdapterCapability[];
 
   /**
    * Gets how to start the plugin.
@@ -1224,6 +1285,11 @@ export interface ManifestContributions {
    * Gets the package managers contributed (1.25.0).
    */
   readonly packageManagers?: readonly ManifestPackageManager[];
+
+  /**
+   * Gets the test adapters contributed (1.28.0).
+   */
+  readonly testAdapters?: readonly ManifestTestAdapter[];
 }
 
 /**
@@ -1915,6 +1981,33 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
       });
     },
   );
+  const testAdapters: ManifestTestAdapter[] = [];
+  readContributionList(
+    source['testAdapters'],
+    'contributes.testAdapters',
+    errors,
+    (entry: Record<string, unknown>, path: string): void => {
+      const command: ManifestCommand | null = readCommand(
+        entry['command'],
+        `${path}.command`,
+        errors,
+      );
+      testAdapters.push({
+        id: readId(entry, 'id', `${path}.`, errors),
+        displayName: readString(entry, 'displayName', `${path}.`, errors),
+        frameworks: readFrameworks(entry['frameworks'], `${path}.frameworks`, errors),
+        priority: readPriority(entry, path, errors),
+        markers: readMarkers(entry['markers'], `${path}.markers`, errors),
+        capabilities: readTestAdapterCapabilities(
+          entry['capabilities'],
+          `${path}.capabilities`,
+          errors,
+        ),
+        command: command ?? { kind: 'executable' },
+        entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
+      });
+    },
+  );
   if (
     languageServers.length === 0 &&
     debugAdapters.length === 0 &&
@@ -1924,11 +2017,12 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
     versionControl.length === 0 &&
     hosting.length === 0 &&
     databaseEngines.length === 0 &&
-    packageManagers.length === 0
+    packageManagers.length === 0 &&
+    testAdapters.length === 0
   ) {
     errors.add(
       'contributes',
-      'must contribute at least one language server, debug adapter, decoder, container engine, agent harness, version-control system, code host, database engine or package manager',
+      'must contribute at least one language server, debug adapter, decoder, container engine, agent harness, version-control system, code host, database engine, package manager or test adapter',
     );
   }
   return {
@@ -1941,6 +2035,7 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
     hosting,
     databaseEngines,
     packageManagers,
+    testAdapters,
   };
 }
 
@@ -2341,6 +2436,57 @@ function readPackageManagerCapabilities(
     return [];
   }
   return value as readonly PackageManagerCapability[];
+}
+
+/**
+ * Validates the frameworks a test adapter serves: at least one, each a short non-empty name.
+ * @param value The candidate array.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the frameworks, or an empty array when invalid.
+ */
+function readFrameworks(value: unknown, path: string, errors: Errors): readonly string[] {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    !value.every(
+      (entry: unknown): boolean =>
+        typeof entry === 'string' && entry.trim().length > 0 && entry.length <= 64,
+    )
+  ) {
+    errors.add(path, 'must be a non-empty array of framework names, such as "xUnit"');
+    return [];
+  }
+  return value as readonly string[];
+}
+
+/**
+ * Validates a test adapter's optional capabilities against the closed list.
+ * @param value The candidate array, or undefined for none.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the capabilities, or an empty array when absent or invalid.
+ */
+function readTestAdapterCapabilities(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): readonly TestAdapterCapability[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    errors.add(path, 'must be an array of capabilities');
+    return [];
+  }
+  const unknown: readonly unknown[] = value.filter(
+    (entry: unknown): boolean => !isTestAdapterCapability(entry),
+  );
+  if (unknown.length > 0) {
+    errors.add(path, `has unknown capabilities: ${unknown.map(String).join(', ')}`);
+    return [];
+  }
+  return value as readonly TestAdapterCapability[];
 }
 
 /**

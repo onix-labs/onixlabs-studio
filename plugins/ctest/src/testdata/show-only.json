@@ -1,0 +1,99 @@
+{
+  "backtraceGraph": {
+    "commands": ["add_test"],
+    "files": ["/repo/calc/CMakeLists.txt", "/repo/calc/lib/CMakeLists.txt"],
+    "nodes": [
+      {
+        "file": 0
+      },
+      {
+        "command": 0,
+        "file": 0,
+        "line": 10,
+        "parent": 0
+      },
+      {
+        "file": 0
+      },
+      {
+        "command": 0,
+        "file": 0,
+        "line": 11,
+        "parent": 2
+      },
+      {
+        "file": 0
+      },
+      {
+        "command": 0,
+        "file": 0,
+        "line": 12,
+        "parent": 4
+      },
+      {
+        "file": 1
+      },
+      {
+        "command": 0,
+        "file": 1,
+        "line": 2,
+        "parent": 6
+      }
+    ]
+  },
+  "kind": "ctestInfo",
+  "tests": [
+    {
+      "backtrace": 1,
+      "command": ["/repo/calc/build/adds"],
+      "name": "adds",
+      "properties": [
+        {
+          "name": "WORKING_DIRECTORY",
+          "value": "/repo/calc/build"
+        }
+      ]
+    },
+    {
+      "backtrace": 3,
+      "command": ["/repo/calc/build/fails"],
+      "name": "fails",
+      "properties": [
+        {
+          "name": "WORKING_DIRECTORY",
+          "value": "/repo/calc/build"
+        }
+      ]
+    },
+    {
+      "backtrace": 5,
+      "command": ["/repo/calc/build/skips"],
+      "name": "skips",
+      "properties": [
+        {
+          "name": "SKIP_RETURN_CODE",
+          "value": 77
+        },
+        {
+          "name": "WORKING_DIRECTORY",
+          "value": "/repo/calc/build"
+        }
+      ]
+    },
+    {
+      "backtrace": 7,
+      "command": ["/repo/calc/build/lib/lib_math"],
+      "name": "lib.math",
+      "properties": [
+        {
+          "name": "WORKING_DIRECTORY",
+          "value": "/repo/calc/build/lib"
+        }
+      ]
+    }
+  ],
+  "version": {
+    "major": 1,
+    "minor": 0
+  }
+}

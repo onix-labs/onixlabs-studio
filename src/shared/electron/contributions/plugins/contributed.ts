@@ -21,6 +21,7 @@ import {
   toVersionControlDescriptors,
   toHostingDescriptors,
   toPackageManagerDescriptors,
+  toTestAdapterDescriptors,
 } from './plugin-loader';
 import { sideloadedDirectories, sideloadedManifests } from './sideloaded';
 import { DecoderDescriptor } from '../../decoders/decoder-descriptor';
@@ -29,6 +30,7 @@ import type { DatabaseEngineDescriptor } from '../database/database-engine-descr
 import { VersionControlDescriptor } from '../../version-control/version-control-descriptor';
 import { HostingDescriptor } from '../../hosting/hosting-descriptor';
 import { PackageManagerDescriptor } from '../../package-managers/package-manager-descriptor';
+import { TestAdapterDescriptor } from '../../test-adapters/test-adapter-descriptor';
 
 // Everything Studio did not compile in: the plugins dropped into the sideload directory and the plugins
 // the curated index offers. They arrive by different routes and are the same kind of thing once they
@@ -231,6 +233,27 @@ export function contributedPackageManagers(
   const local: ReadonlyMap<string, string> = sideloadedDirectories();
   return contributedManifests().flatMap((manifest): readonly PackageManagerDescriptor[] =>
     toPackageManagerDescriptors(
+      manifest,
+      payloadProvisioner,
+      nodeRuntime,
+      local.get(manifest.id),
+      installedVersion,
+    ),
+  );
+}
+
+/**
+ * Gets the test adapters the contributed plugins provide, for the test-adapter host to start (#1351).
+ * Every one is listed, installed or not; an uninstalled one resolves to unavailable.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @returns Returns the descriptors.
+ */
+export function contributedTestAdapters(
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+): readonly TestAdapterDescriptor[] {
+  const local: ReadonlyMap<string, string> = sideloadedDirectories();
+  return contributedManifests().flatMap((manifest): readonly TestAdapterDescriptor[] =>
+    toTestAdapterDescriptors(
       manifest,
       payloadProvisioner,
       nodeRuntime,
