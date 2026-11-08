@@ -431,6 +431,7 @@ describe('SetupWizard', () => {
         'Version Control',
         'Code Hosting',
         'Database Engines',
+        'Package Managers',
         'Security',
         'Terminal',
         'Summary',

@@ -179,7 +179,7 @@ describe('LanguageEditorOverrides', () => {
   it('section_showsOnlyThatPagesOverridableSettings', async () => {
     fixture.componentRef.setInput('section', 'code-appearance');
     await fixture.whenStable();
-    // How code looks, which the global settings spread over two pages.
+    // How code looks, which the global settings spread over three pages.
     expect(titles()).toEqual([
       'Line Numbers',
       'Minimap',
@@ -192,9 +192,14 @@ describe('LanguageEditorOverrides', () => {
       'Semantic Highlighting',
       'Colour Swatches',
       'Minimum Diagnostic Severity',
+      'Show Code Lenses',
+      'References',
+      'Implementations',
+      'Run and Debug Tests',
+      'Other Lenses',
     ]);
     expect(element.textContent).toContain(
-      'untick to follow Code › Appearance and Code › Guides and Highlights',
+      'untick to follow Code › Appearance, Code › Guides and Highlights and Code › Code Lenses',
     );
 
     fixture.componentRef.setInput('section', 'code-editing');

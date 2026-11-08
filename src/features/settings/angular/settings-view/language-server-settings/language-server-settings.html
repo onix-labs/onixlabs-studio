@@ -66,6 +66,13 @@
           [ariaLabel]="setting.descriptor.label"
           (valueChange)="setDeclared(setting, $event)"
         />
+      } @else if (setting.text) {
+        <app-text-field
+          [value]="setting.choice"
+          [ariaLabel]="setting.descriptor.label"
+          [placeholder]="setting.descriptor.default"
+          (valueChange)="setDeclared(setting, $event)"
+        />
       } @else {
         <app-toggle
           [checked]="setting.value === true"

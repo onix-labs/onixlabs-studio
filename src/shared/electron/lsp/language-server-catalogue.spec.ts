@@ -1,6 +1,10 @@
 import type { LspServerSettingDescriptor } from '@shared/api/lsp-channels';
 import type { LanguageServerDescriptor } from './language-server-descriptor';
-import { languageServerCatalogue } from './language-server-catalogue';
+import {
+  jdtlsLaunchArgs,
+  kotlinServerEnv,
+  languageServerCatalogue,
+} from './language-server-catalogue';
 import {
   LspServerSettingValues,
   pushedSettings,
@@ -29,6 +33,60 @@ function typescript(): LanguageServerDescriptor {
 function settings(): readonly LspServerSettingDescriptor[] {
   return typescript().settings ?? [];
 }
+
+describe('the TypeScript server diagnostics (#1207)', () => {
+  it('isAskedToCheckWholeProjects_asItPushesOpenFilesOnly', () => {
+    expect(typescript().projectDiagnostics).toBe('tsserver');
+  });
+
+  it('noOtherServer_isAsked', () => {
+    const asked: readonly string[] = languageServerCatalogue()
+      .filter(
+        (descriptor: LanguageServerDescriptor): boolean =>
+          descriptor.projectDiagnostics !== undefined,
+      )
+      .map((descriptor: LanguageServerDescriptor): string => descriptor.id);
+
+    expect(asked).toEqual(['typescript']);
+  });
+});
+
+describe('the Kotlin server settings (#1209)', () => {
+  /**
+   * Finds the Kotlin server's descriptor in the catalogue.
+   * @returns Returns the descriptor.
+   */
+  function kotlin(): LanguageServerDescriptor {
+    const found: LanguageServerDescriptor | undefined = languageServerCatalogue().find(
+      (descriptor: LanguageServerDescriptor): boolean => descriptor.id === 'kotlin',
+    );
+    if (found === undefined) {
+      throw new Error('The catalogue has no Kotlin server');
+    }
+    return found;
+  }
+
+  it('everySetting_isPushedUnderKotlin_asTheServerNeverAsks', () => {
+    expect(kotlin().settingsDelivery).toEqual({ pull: false, push: ['kotlin'] });
+    for (const setting of kotlin().settings ?? []) {
+      expect(setting.section.startsWith('kotlin.')).toBe(true);
+    }
+  });
+
+  it('pushedSettings_nestAsTheServerReadsThem_withItsOwnDefaults', () => {
+    const descriptor: LanguageServerDescriptor = kotlin();
+    const values: LspServerSettingValues | undefined = withDeclaredDefaults(descriptor.settings, {
+      'kotlin.inlayHints.typeHints': true,
+    });
+
+    expect(pushedSettings(descriptor.settingsDelivery, values)).toEqual({
+      kotlin: {
+        inlayHints: { typeHints: true, parameterHints: false, chainedHints: false },
+        completion: { snippets: { enabled: true } },
+      },
+    });
+  });
+});
 
 describe('the TypeScript server settings (#1207)', () => {
   it('everySetting_reachesTheServer_pushedOrAtStartUp', () => {
@@ -99,5 +157,56 @@ describe('the TypeScript server settings (#1207)', () => {
         quotePreference: 'single',
       },
     });
+  });
+});
+
+describe('jdtlsLaunchArgs (#1208)', () => {
+  const install: { launcherJar: string; configDir: string } = {
+    launcherJar: '/servers/jdtls/1.58.0/plugins/org.eclipse.equinox.launcher_1.7.0.jar',
+    configDir: '/servers/jdtls/1.58.0/config_mac',
+  };
+
+  it('theInstallsConfigurationArea_isOnlyRead_asTheSharedOne', () => {
+    const args: string[] = jdtlsLaunchArgs(install, '/data/area', '/data/workspace');
+
+    expect(args).toContain('-Dosgi.sharedConfiguration.area=/servers/jdtls/1.58.0/config_mac');
+    expect(args).toContain('-Dosgi.sharedConfiguration.area.readOnly=true');
+    expect(args).toContain('-Dosgi.configuration.cascaded=true');
+    expect(args[args.indexOf('-configuration') + 1]).toBe('/data/area');
+  });
+
+  it('theLauncherAndData_comeLast_afterTheJvmArguments', () => {
+    const args: string[] = jdtlsLaunchArgs(install, '/data/area', '/data/workspace');
+
+    expect(args.slice(-6)).toEqual([
+      '-jar',
+      install.launcherJar,
+      '-configuration',
+      '/data/area',
+      '-data',
+      '/data/workspace',
+    ]);
+    expect(args.indexOf('-Dosgi.checkConfiguration=true')).toBeLessThan(args.indexOf('-jar'));
+  });
+});
+
+describe('kotlinServerEnv (#1209)', () => {
+  const java: string = '/jdk/Contents/Home/bin/java';
+
+  it('tellsGradleNotToLeaveADaemon_andPassesTheRuntimeOn', () => {
+    expect(kotlinServerEnv(java, {})).toEqual({
+      JAVA_HOME: '/jdk/Contents/Home',
+      GRADLE_OPTS: '-Dorg.gradle.daemon=false',
+    });
+  });
+
+  it('keepsTheUsersOwnGradleOptions', () => {
+    expect(kotlinServerEnv(java, { GRADLE_OPTS: '-Xmx2g' })['GRADLE_OPTS']).toBe(
+      '-Xmx2g -Dorg.gradle.daemon=false',
+    );
+  });
+
+  it('aRuntimeOnThePath_setsNoJavaHome', () => {
+    expect(kotlinServerEnv('java', {})).toEqual({ GRADLE_OPTS: '-Dorg.gradle.daemon=false' });
   });
 });

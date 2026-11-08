@@ -69,6 +69,35 @@ export function withDeclaredDefaults(
 }
 
 /**
+ * The placeholder a setting's text may name the workspace's folder by (#1212), so a declared default can
+ * point inside whichever workspace the server serves: Pyright's interpreter defaults to
+ * `${workspaceFolder}/.venv/bin/python`.
+ */
+export const WORKSPACE_FOLDER_PLACEHOLDER: string = '${workspaceFolder}';
+
+/**
+ * Puts the workspace's folder where a server's values name it by {@link WORKSPACE_FOLDER_PLACEHOLDER}
+ * (#1212). Only text is changed; a switch, or text without the placeholder, is left as it is.
+ * @param values The server's values, or undefined for none.
+ * @param rootPath The folder the session serves, or undefined to leave the values alone.
+ * @returns Returns the values with the folder put in.
+ */
+export function withWorkspaceFolder(
+  values: LspServerSettingValues | undefined,
+  rootPath: string | undefined,
+): LspServerSettingValues | undefined {
+  if (values === undefined || rootPath === undefined) {
+    return values;
+  }
+  const result: Record<string, LspServerSettingValue> = {};
+  for (const [section, value] of Object.entries(values)) {
+    result[section] =
+      typeof value === 'string' ? value.split(WORKSPACE_FOLDER_PLACEHOLDER).join(rootPath) : value;
+  }
+  return result;
+}
+
+/**
  * Answers a server's `workspace/configuration` request from the user's values: each requested
  * section's value, or null for one the user has not set — null tells a server to use its default,
  * where `{}` is parsed as a value and rejected by servers (such as Roslyn) that expect a scalar. A

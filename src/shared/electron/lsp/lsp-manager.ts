@@ -4,10 +4,14 @@ import { statSync } from 'node:fs';
 import { logger } from '../logger';
 import { answerConfiguration } from './lsp-server-settings';
 import { LspAttachDebuggerForwarder } from './lsp-attach-debugger';
+import { LANGUAGE_STATUS_METHOD, LspServerStatus, serverStatusOf } from './lsp-language-status';
+import { LspIndentationForwarder, LspIndentationSections } from './lsp-indentation';
 import { LspShowMessageForwarder } from './lsp-show-message';
+import { toShowDocumentRequest } from './lsp-show-document';
 import { LspOpenDocuments } from './lsp-open-documents';
 import { LspDiagnosticsCoalescer } from './lsp-diagnostics-coalescer';
 import { WorkspaceDiagnosticsPull, WorkspaceDocumentReport } from './lsp-workspace-diagnostics';
+import { ProjectDiagnosticsCheck } from './lsp-project-diagnostics';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -22,8 +26,10 @@ import {
   LspBraceStyle,
   LspChannel,
   LspExit,
+  LspGeneratedViewResult,
   LspMessage,
   LspServerSummary,
+  LspShowDocumentRequest,
   LspStartRequest,
   LspStartResult,
   PUBLISH_DIAGNOSTICS_METHOD,
@@ -40,6 +46,16 @@ import {
   LspSettingsChange,
 } from './lsp-server-registry';
 import { FileEvent, LspFileWatcher } from './lsp-file-watcher';
+import {
+  createsCompilationDatabase,
+  hasCompilationDatabase,
+  readsCompilationDatabase,
+} from './lsp-compilation-database';
+import {
+  generatedViewRequest,
+  renderGeneratedView,
+  writeGeneratedView,
+} from './lsp-generated-views';
 import { LspServerTail } from './lsp-server-tail';
 import { ApplyEditResult, LspApplyEditForwarder } from './lsp-apply-edit';
 import { clientCapabilities } from './lsp-client-capabilities';
@@ -74,6 +90,12 @@ const PROJECT_INITIALIZATION_COMPLETE: string = 'workspace/projectInitialization
 const SERVER_STATUS: string = 'experimental/serverStatus';
 
 /**
+ * Names the notification typescript-language-server says which TypeScript it runs with (#1207), once,
+ * as it starts, so a window attaching later is told it again.
+ */
+const TYPESCRIPT_VERSION: string = '$/typescriptVersion';
+
+/**
  * The server notifications forwarded to the renderer — exactly the set the renderer's client
  * handles. Everything else (progress, telemetry, server-specific chatter) is dropped here, before it
  * costs an IPC hop.
@@ -85,6 +107,8 @@ const FORWARDED_NOTIFICATIONS: ReadonlySet<string> = new Set<string>([
   'textDocument/publishDiagnostics',
   'workspace/projectInitializationComplete',
   'experimental/serverStatus',
+  // Which TypeScript typescript-language-server runs with (#1207), for its status row.
+  '$/typescriptVersion',
   'workspace/semanticTokens/refresh',
   'window/logMessage',
   'window/showMessage',
@@ -93,6 +117,8 @@ const FORWARDED_NOTIFICATIONS: ReadonlySet<string> = new Set<string>([
   'window/_roslyn_showToast',
   // clangd's word on what it is doing with a file (#1213), which it sends once told to at start-up.
   'textDocument/clangd.fileStatus',
+  // clangd's word on which lines of a file the preprocessor leaves out (#1213), for the editor to fade.
+  'textDocument/inactiveRegions',
   // Sent on from the server's request of the same name, for the editors to ask for hints again.
   'workspace/inlayHint/refresh',
   // Sent on from the server's request of the same name, for the editors to ask for lenses again.
@@ -161,6 +187,12 @@ interface LspSession {
   workspaceDiagnostics: WorkspaceDiagnosticsPull | null;
 
   /**
+   * Holds the check that has the server report every file of the projects its open documents are in
+   * (#1207), or null for a server that is not asked.
+   */
+  projectDiagnostics: ProjectDiagnosticsCheck | null;
+
+  /**
    * Holds whether the server has said it finished loading the workspace
    * (`workspace/projectInitializationComplete`), which a window attaching later is told, since the
    * server says it only once.
@@ -172,6 +204,18 @@ interface LspSession {
    * server that has said nothing.
    */
   serverStatus?: unknown;
+
+  /**
+   * Holds which TypeScript the server said it runs with (`$/typescriptVersion`, #1207), or undefined
+   * for a server that has said nothing of it.
+   */
+  typescriptVersion?: unknown;
+
+  /**
+   * Holds whether jdtls has said it is ready (`language/status`, #1208), after which its saying it is
+   * starting is not a new load.
+   */
+  serviceReady?: boolean;
 
   /**
    * Holds whether a workspace diagnostics pull has run to its end since the server loaded the
@@ -247,6 +291,11 @@ export class LspManager {
   private readonly questions: LspShowMessageForwarder;
 
   /**
+   * Holds the forwarder that asks the renderer how a document is indented (#1208).
+   */
+  private readonly indentation: LspIndentationForwarder;
+
+  /**
    * Initializes a new instance of the {@link LspManager} class.
    * @param windowGetter A function that returns the window server notifications are sent to.
    * @param workspaceContext The open-workspace tracker used to confine sessions to opened roots.
@@ -254,6 +303,7 @@ export class LspManager {
    * @param applyEdits The forwarder that hands a server's edits to the renderer.
    * @param attaches The forwarder that asks the renderer to attach the debugger (#1150).
    * @param questions The forwarder that puts a server's questions to the user (#1154).
+   * @param indentation The forwarder that asks the renderer how a document is indented (#1208).
    */
   public constructor(
     windowGetter: () => BrowserWindow | null,
@@ -262,6 +312,7 @@ export class LspManager {
     applyEdits: LspApplyEditForwarder = new LspApplyEditForwarder(),
     attaches: LspAttachDebuggerForwarder = new LspAttachDebuggerForwarder(),
     questions: LspShowMessageForwarder = new LspShowMessageForwarder(),
+    indentation: LspIndentationForwarder = new LspIndentationForwarder(),
   ) {
     this.windowGetter = windowGetter;
     this.workspaceContext = workspaceContext;
@@ -269,6 +320,7 @@ export class LspManager {
     this.applyEdits = applyEdits;
     this.attaches = attaches;
     this.questions = questions;
+    this.indentation = indentation;
   }
 
   /**
@@ -299,6 +351,15 @@ export class LspManager {
         params: unknown,
       ): Promise<unknown> => this.request(id, method, params),
     );
+    ipcMain.handle(
+      LspChannel.GeneratedView,
+      (
+        _event: IpcMainInvokeEvent,
+        id: unknown,
+        kind: unknown,
+        params: unknown,
+      ): Promise<LspGeneratedViewResult> => this.generatedView(id, kind, params),
+    );
     ipcMain.on(
       LspChannel.Notify,
       (event: IpcMainEvent, id: unknown, method: unknown, params: unknown): void =>
@@ -316,6 +377,7 @@ export class LspManager {
     this.applyEdits.register();
     this.attaches.register();
     this.questions.register();
+    this.indentation.register();
     logger.info('LspManager', 'Registered language-server IPC handlers');
   }
 
@@ -358,6 +420,25 @@ export class LspManager {
   }
 
   /**
+   * Starts the check that has a server report every file of the projects its open documents are in
+   * (#1207), for a server whose descriptor asks for it.
+   * @param sessionId The session.
+   * @param session The session's state.
+   */
+  private startProjectDiagnostics(sessionId: string, session: LspSession): void {
+    if (this.registry.projectDiagnosticsOf(session.request.serverId) !== 'tsserver') {
+      return;
+    }
+    session.projectDiagnostics = new ProjectDiagnosticsCheck(
+      session.connection,
+      (): readonly string[] => session.openDocuments.uris(),
+      sessionId,
+    );
+    // Documents opened before the handshake finished were opened on the server all the same.
+    session.projectDiagnostics.schedule();
+  }
+
+  /**
    * Tells each running session of the given servers that its configuration changed (#1143): pushed
    * the settings, for a server that is pushed them, or told to ask for them again through
    * `workspace/configuration` (#1204). A server that reads a changed setting only when it starts is
@@ -379,6 +460,7 @@ export class LspManager {
       }
       const pushed: Record<string, unknown> | undefined = this.registry.pushedSettingsOf(
         change.serverId,
+        session.rootPath,
       );
       // A bare announcement is `{ settings: null }`, which only a server that asks again can use: the
       // JSON server never asks, reads the settings it is sent, and throws on null (#1219).
@@ -416,6 +498,7 @@ export class LspManager {
     this.applyEdits.dispose();
     this.attaches.dispose();
     this.questions.dispose();
+    this.indentation.dispose();
     for (const id of [...this.sessions.keys()]) {
       this.tearDown(id);
     }
@@ -606,6 +689,10 @@ export class LspManager {
     // switch, a file another tool wrote — through `workspace/didChangeWatchedFiles`. Without it a
     // server's picture of the workspace is a snapshot from spawn time: a package that landed a
     // minute later stays "missing" until the server is restarted.
+    // One exception is restarted after all (#1213): clangd does not take up a compilation database that
+    // first appears once it is running, so the CMake configure that writes one restarts it, once.
+    let awaitingDatabase: boolean =
+      readsCompilationDatabase(parsed.serverId) && !hasCompilationDatabase(parsed.rootPath);
     const watcher: LspFileWatcher = new LspFileWatcher(
       parsed.rootPath,
       (events: readonly FileEvent[]): void => {
@@ -615,6 +702,14 @@ export class LspManager {
             `Told ${parsed.sessionId} about ${events.length} file change(s) on disk`,
           );
           this.tell(connection, 'workspace/didChangeWatchedFiles', { changes: events });
+          if (awaitingDatabase && createsCompilationDatabase(events)) {
+            awaitingDatabase = false;
+            logger.info(
+              'LspManager',
+              `A compilation database appeared under ${parsed.rootPath}; restarting ${parsed.sessionId}`,
+            );
+            void this.restart(parsed.sessionId);
+          }
         }
       },
     );
@@ -628,6 +723,7 @@ export class LspManager {
       tail,
       ready: Promise.resolve({ success: false, error: 'Initialize pending' }),
       workspaceDiagnostics: null,
+      projectDiagnostics: null,
       loaded: false,
       analysed: false,
       openDocuments: new LspOpenDocuments<WebContents>(),
@@ -644,11 +740,12 @@ export class LspManager {
       connection,
       parsed.rootPath,
       spec,
-      this.registry.pushedSettingsOf(parsed.serverId),
+      this.registry.pushedSettingsOf(parsed.serverId, parsed.rootPath),
       parsed.serverId,
     )
       .then((result: InitializeResult): LspStartResult => {
         this.startWorkspaceDiagnostics(parsed.sessionId, session, result);
+        this.startProjectDiagnostics(parsed.sessionId, session);
         return {
           success: true,
           serverInfo: result.serverInfo,
@@ -733,6 +830,50 @@ export class LspManager {
   }
 
   /**
+   * Asks a session's server for a view of the code (#1210, #1213) — a macro's expansion, the HIR or
+   * MIR of a function, the syntax tree at a place, the server's memory — and writes it where the editor
+   * opens it read-only. The renderer names only the kind and the place: the request, the file's name
+   * and its folder are this side's.
+   * @param id The session identifier.
+   * @param kind The kind of view, untrusted.
+   * @param params The place, untrusted.
+   * @returns Returns where the view was written, or why there is none.
+   */
+  private async generatedView(
+    id: unknown,
+    kind: unknown,
+    params: unknown,
+  ): Promise<LspGeneratedViewResult> {
+    const session: LspSession | undefined =
+      typeof id === 'string' ? this.sessions.get(id) : undefined;
+    const request: ReturnType<typeof generatedViewRequest> = generatedViewRequest(kind, params);
+    if (session === undefined || request === null) {
+      return { error: 'Invalid view request' };
+    }
+    let result: unknown;
+    try {
+      result = await session.connection.sendRequest(request.method, request.params);
+    } catch (error: unknown) {
+      logger.debug('LspManager', `${request.method} failed for ${String(id)}`, error);
+      return { error: error instanceof Error ? error.message : 'The server could not answer' };
+    }
+    const view: { readonly name: string; readonly text: string } | null = renderGeneratedView(
+      request.kind,
+      result,
+      request.where,
+    );
+    if (view === null) {
+      return { error: 'Nothing to show here' };
+    }
+    try {
+      return await writeGeneratedView(view);
+    } catch (error: unknown) {
+      logger.warn('LspManager', `Could not write the ${request.kind} view`, error);
+      return { error: 'The view could not be written' };
+    }
+  }
+
+  /**
    * Sends an LSP notification to a session's server. Does nothing when the session or arguments are
    * invalid.
    * @param id The session identifier.
@@ -758,6 +899,15 @@ export class LspManager {
       return;
     }
     this.tell(session.connection, method, params);
+    // A document opened can bring a project in; one saved can break a file of it that is not open; and
+    // one closed has its diagnostics cleared by the server, which a check reports again.
+    if (
+      method === 'textDocument/didOpen' ||
+      method === 'textDocument/didSave' ||
+      method === 'textDocument/didClose'
+    ) {
+      session.projectDiagnostics?.schedule();
+    }
   }
 
   /**
@@ -969,6 +1119,7 @@ export class LspManager {
     this.sessions.delete(id);
     session.watcher.close();
     session.workspaceDiagnostics?.stop();
+    session.projectDiagnostics?.stop();
     try {
       session.connection.dispose();
     } catch (error: unknown) {
@@ -1050,11 +1201,28 @@ export class LspManager {
       return null;
     });
     // Answer each requested configuration item with the user's value for the setting the server
-    // declared (#1143), or null — the server's default — for anything else.
+    // declared (#1143), or null — the server's default — for anything else. What is a document's
+    // indentation is answered from the document's editor (#1208).
     connection.onRequest(
       'workspace/configuration',
-      (params: { items?: readonly unknown[] }): unknown[] =>
-        answerConfiguration(this.registry.configurationOf(session.request.serverId), params.items),
+      (params: { items?: readonly unknown[] }): unknown[] | Promise<unknown[]> => {
+        const answers: unknown[] = answerConfiguration(
+          this.registry.configurationOf(session.request.serverId, session.rootPath),
+          params.items,
+        );
+        const sections: LspIndentationSections | undefined = this.registry.indentationSectionsOf(
+          session.request.serverId,
+        );
+        return sections === undefined
+          ? answers
+          : this.indentation.fill(
+              sessionId,
+              this.applierOf(session),
+              sections,
+              params.items,
+              answers,
+            );
+      },
     );
     // A server's own edit — a code action's or a command's — is applied by the renderer that holds
     // the session, as a rename is (#1015), and the server told whether it was: `{ applied }`, never
@@ -1074,6 +1242,24 @@ export class LspManager {
     connection.onRequest('window/showMessageRequest', (params: unknown): Promise<unknown> =>
       this.questions.forward(sessionId, this.applierOf(session), params),
     );
+    // A server's page or file to show (#1211) — gopls's Browse Documentation serves a page of its own
+    // — opened by the renderer that holds the session: a page in the browser, a file in an editor.
+    connection.onRequest('window/showDocument', (params: unknown): { success: boolean } => {
+      const request: LspShowDocumentRequest | null = toShowDocumentRequest(sessionId, params);
+      const target: WebContents | null = this.applierOf(session);
+      if (request === null || target === null) {
+        logger.debug('LspManager', `Did not show a document for session ${sessionId}`);
+        return { success: false };
+      }
+      target.send(LspChannel.ShowDocument, request);
+      return { success: true };
+    });
+    // The folders the session serves (#1214), as `initialize` named them: Studio advertises workspace
+    // folders, so a null answer would say none is open — perlnavigator asks five times as it starts,
+    // and resolves a workspace's own modules from the answer.
+    connection.onRequest('workspace/workspaceFolders', (): { uri: string; name: string }[] => [
+      { uri: pathToFileURL(session.rootPath).href, name: session.rootPath },
+    ]);
     // Any other server-to-client request is acknowledged with null so the server is never left
     // waiting on a response it requires to make progress.
     connection.onRequest((): null => null);
@@ -1125,7 +1311,8 @@ export class LspManager {
 
   /**
    * Tells a window that attached to a running session what the windows before it were told and the
-   * server will not say again (#1182): that it finished loading the workspace, how it is, and the
+   * server will not say again (#1182): that it finished loading the workspace, how it is, which
+   * TypeScript it runs with (#1207), and the
    * workspace's diagnostics as they stand. Without this, a window reloaded — or a second one opened on the same
    * folder — waited on a load that had long finished, its Error List empty. Sent once the window has
    * its start answer, which it needs to take them.
@@ -1157,6 +1344,14 @@ export class LspManager {
         };
         sender.send(LspChannel.Notification, message);
       }
+      if (session.typescriptVersion !== undefined) {
+        const message: LspMessage = {
+          sessionId,
+          method: TYPESCRIPT_VERSION,
+          params: session.typescriptVersion,
+        };
+        sender.send(LspChannel.Notification, message);
+      }
       if (reports.length > 0 || session.analysed) {
         const message: LspMessage = {
           sessionId,
@@ -1180,6 +1375,20 @@ export class LspManager {
    * @param params The method parameters.
    */
   private forwardNotification(sessionId: string, method: string, params: unknown): void {
+    // jdtls says how it is in a notification of its own (#1208), read here as the one rust-analyzer
+    // sends, so the renderer and a window attaching later handle one shape.
+    if (method === LANGUAGE_STATUS_METHOD) {
+      const session: LspSession | undefined = this.sessions.get(sessionId);
+      const status: LspServerStatus | null = serverStatusOf(params, session?.serviceReady === true);
+      if (status === null) {
+        return;
+      }
+      if (session !== undefined && status.quiescent) {
+        session.serviceReady = true;
+      }
+      this.forwardNotification(sessionId, SERVER_STATUS, status);
+      return;
+    }
     // Only the notifications the renderer actually consumes cross the IPC boundary. A loading server
     // (Roslyn on a big solution) emits a large volume of progress and telemetry notifications; each
     // forwarded one is a structured-clone plus a renderer handler invocation, only to be discarded.
@@ -1196,6 +1405,12 @@ export class LspManager {
       const session: LspSession | undefined = this.sessions.get(sessionId);
       if (session !== undefined) {
         session.serverStatus = params;
+      }
+    }
+    if (method === TYPESCRIPT_VERSION) {
+      const session: LspSession | undefined = this.sessions.get(sessionId);
+      if (session !== undefined) {
+        session.typescriptVersion = params;
       }
     }
     if (method === PUBLISH_DIAGNOSTICS_METHOD) {

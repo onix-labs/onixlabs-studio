@@ -78,9 +78,8 @@ export type PluginSlot =
  * The slots in the order the application presents them — the Plugin Manager's categories and the
  * setup wizard's plugin steps both walk this list, so the two surfaces agree on what comes first.
  *
- * `package-manager` is not listed yet: nothing is served through it until the Packages panel moves onto
- * the seam, and listing it would put an empty step in the wizard. #911 adds it. `test-adapter` waits
- * for the same reason: the curated index offers no test adapter until the first one is released (#802).
+ * `test-adapter` is not listed yet: the curated index offers no test adapter until the first one is
+ * released (#802), and listing it would put an empty step in the wizard.
  */
 export const PLUGIN_SLOTS: readonly PluginSlot[] = [
   'language-server',
@@ -91,6 +90,7 @@ export const PLUGIN_SLOTS: readonly PluginSlot[] = [
   'hosting',
   'agent-harness',
   'database-engine',
+  'package-manager',
 ];
 
 /**
