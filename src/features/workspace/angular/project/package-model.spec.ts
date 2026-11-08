@@ -14,6 +14,10 @@ import {
   RepositoryTrustQuestion,
 } from '@shared/angular/services/repository-trust/repository-trust';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
+import {
+  TerminalLaunchOptions,
+  TerminalSessions,
+} from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { PackageModel, PackageRow } from './package-model';
 
 /**
@@ -67,6 +71,9 @@ describe('PackageModel', () => {
   let calls: string[];
   let plugins: WritableSignal<readonly PluginSummary[]>;
   let pending: WritableSignal<RepositoryTrustQuestion | null>;
+  let launched: TerminalLaunchOptions[];
+  let exitCode: number;
+  let command: unknown;
 
   /**
    * Builds the model and lets its first refresh land.
@@ -86,11 +93,25 @@ describe('PackageModel', () => {
     status = { managers: [manager('npm', true), manager('nuget', true)], trust: 'trusted' };
     plugins = signal<readonly PluginSummary[]>([]);
     pending = signal<RepositoryTrustQuestion | null>(null);
+    launched = [];
+    exitCode = 0;
+    command = {
+      ok: true,
+      result: {
+        executable: 'npm',
+        args: ['install', 'left-pad'],
+        cwd: '/work',
+        title: 'Install left-pad',
+      },
+    };
     const bridge: Bridge = {
       invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
         calls.push(`${channel} ${args.slice(1).join(' ')}`.trim());
         if (channel === (PackageChannel.Managers as string)) {
           return Promise.resolve(status as T);
+        }
+        if (channel === (PackageChannel.Command as string)) {
+          return Promise.resolve(command as T);
         }
         if (channel === (PackageChannel.TrustFolder as string)) {
           status = { ...status, trust: 'trusted' };
@@ -116,6 +137,15 @@ describe('PackageModel', () => {
         },
         { provide: Plugins, useValue: { plugins } },
         { provide: RepositoryTrust, useValue: { pending } },
+        {
+          provide: TerminalSessions,
+          useValue: {
+            launch: (options: TerminalLaunchOptions): Promise<unknown> => {
+              launched.push(options);
+              return Promise.resolve({ exited: Promise.resolve(exitCode) });
+            },
+          },
+        },
       ],
     });
   });
@@ -222,6 +252,48 @@ describe('PackageModel', () => {
 
     await vi.waitFor((): void => {
       expect(calls[0]).toBe(PackageChannel.Managers);
+    });
+  });
+
+  describe('changes', () => {
+    it('write_runsThePluginsCommandInATerminal_thenReadsTheFolderAgain', async () => {
+      const packages: PackageModel = await create();
+      calls = [];
+
+      await packages.write('npm', 'install', { project: '/work/package.json', name: 'left-pad' });
+
+      expect(calls[0]).toBe(`${PackageChannel.Command} npm install [object Object]`);
+      expect(launched).toEqual([
+        {
+          kind: 'task',
+          name: 'Install left-pad',
+          command: 'npm',
+          args: ['install', 'left-pad'],
+          cwd: '/work',
+        },
+      ]);
+      expect(calls).toContain(PackageChannel.Managers);
+      expect(packages.writing()).toBeNull();
+      expect(packages.writeError()).toBeNull();
+    });
+
+    it('write_whenThePluginGivesNoCommand_runsNothingAndSaysWhy', async () => {
+      command = { ok: false, error: 'Remove is not offered for this project.' };
+      const packages: PackageModel = await create();
+
+      await packages.write('npm', 'remove', { project: '/work/package.json', name: 'x' });
+
+      expect(launched).toEqual([]);
+      expect(packages.writeError()).toBe('Remove is not offered for this project.');
+    });
+
+    it('write_thatFails_saysWithWhichExitCode', async () => {
+      exitCode = 1;
+      const packages: PackageModel = await create();
+
+      await packages.write('npm', 'install', { project: '/work/package.json', name: 'left-pad' });
+
+      expect(packages.writeError()).toBe('Install left-pad ended with exit code 1.');
     });
   });
 });

@@ -30,6 +30,12 @@ export enum PackageChannel {
   Search = 'package:search',
 
   /**
+   * Asks a plugin for the command that installs, updates, removes or restores a package (invoke). The
+   * plugin runs nothing: the panel runs what comes back in a visible terminal (#912).
+   */
+  Command = 'package:command',
+
+  /**
    * Trusts an open workspace root that is not a repository, so package managers may read it (invoke).
    * A repository is asked about by version control; a plain folder has nobody else to ask it.
    */
@@ -141,6 +147,32 @@ export type PackageTokenResult =
        */
       readonly error: string;
     };
+
+/**
+ * Names a change the panel can ask a package manager to make.
+ */
+export type PackageWriteOp = 'install' | 'update' | 'remove' | 'restore';
+
+/**
+ * Describes a change the panel asks for: which project, and which package at which version. A restore
+ * names only the project; a remove names no version.
+ */
+export interface PackageWriteRequest {
+  /**
+   * Gets the absolute manifest path of the project, as the plugin reported it.
+   */
+  readonly project: string;
+
+  /**
+   * Gets the package, absent for a restore.
+   */
+  readonly name?: string;
+
+  /**
+   * Gets the version to move to, or null for the latest; absent for a remove or a restore.
+   */
+  readonly version?: string | null;
+}
 
 /**
  * Describes a plugin's answer to one of the panel's questions: the result, or why there is none.
