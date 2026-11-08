@@ -11,7 +11,13 @@ import {
   parsePackagesConfig,
 } from './nuget-manifests';
 import { fetchLatestVersion, fetchSearch, FlatContainerCache } from './nuget-registry';
-import { isPublicSource, NuGetSource, readNuGetSources, tokenHeaders } from './nuget-sources';
+import {
+  isPublicSource,
+  mayCarryCredentials,
+  NuGetSource,
+  readNuGetSources,
+  tokenHeaders,
+} from './nuget-sources';
 import {
   CredentialAsk,
   HttpFetch,
@@ -207,7 +213,8 @@ export class NuGetPackageManager {
   /**
    * Reads a folder's sources, adding a token saved in Studio to any the tool's own configuration has no
    * credential for: the tool's configuration comes first, and nuget.org is left alone, so an ordinary
-   * lookup never asks Studio for anything.
+   * lookup never asks Studio for anything. Nor is a source a credential may not travel to (plain http
+   * off loopback).
    * @param root The absolute workspace root.
    * @returns Returns the sources.
    */
@@ -215,7 +222,11 @@ export class NuGetPackageManager {
     const sources: readonly NuGetSource[] = await readNuGetSources(root, this.env);
     return Promise.all(
       sources.map(async (source: NuGetSource): Promise<NuGetSource> => {
-        if (source.headers['Authorization'] !== undefined || isPublicSource(source)) {
+        if (
+          source.headers['Authorization'] !== undefined ||
+          isPublicSource(source) ||
+          !mayCarryCredentials(source.url)
+        ) {
           return source;
         }
         const token: string | null = await this.credential(source.url);
