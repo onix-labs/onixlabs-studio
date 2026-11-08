@@ -8,6 +8,7 @@ import { HierarchyPanel } from '@features/workspace/angular/panels/hierarchy-pan
 import { SearchPanel } from '@features/workspace/angular/panels/search-panel/search-panel';
 import { SolutionPanel } from '@features/workspace/angular/panels/solution-panel/solution-panel';
 import { TerminalPanel } from '@shared/angular/components/panels/terminal-panel/terminal-panel';
+import { TestsPanel } from '@features/workspace/angular/panels/tests-panel/tests-panel';
 import { TreePanel } from '@features/workspace/angular/panels/tree-panel/tree-panel';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
@@ -114,6 +115,16 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.PROBLEMS,
       role: 'tool',
       component: ProblemsPanel,
+    },
+    {
+      // The Tests panel (#1352): what the installed test adapters found, and how each test last ran.
+      // Catalogued for every workspace tab; the directory view adds it to the bottom group, beside the
+      // Error List, once an installed adapter applies to the folder.
+      id: 'tests',
+      title: 'Tests',
+      icon: Icon.TEST,
+      role: 'tool',
+      component: TestsPanel,
     },
     {
       // Find All References' list (#1014): catalogued for every workspace tab but added to the layout

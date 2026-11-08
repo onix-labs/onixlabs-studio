@@ -1,0 +1,30 @@
+{
+  "id": "onixlabs.vcpkg",
+  "name": "vcpkg",
+  "description": "vcpkg packages: the C and C++ manifests in a folder, the ports each depends on, the version its baseline resolves, what is newer, and search across the vcpkg port list.",
+  "version": "0.1.0",
+  "apiVersion": "1.25.0",
+  "detail": "Reads vcpkg.json and vcpkg-configuration.json, and the vcpkg registry's published baselines. Adding a port and installing run through the vcpkg on your machine, in a terminal you can see.",
+  "provision": {
+    "kind": "npm",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.vcpkg.lock.json",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "executablePath": "node_modules/@onixlabs/vcpkg/main.js"
+  },
+  "contributes": {
+    "packageManagers": [
+      {
+        "id": "onixlabs.vcpkg",
+        "displayName": "vcpkg",
+        "ecosystem": "vcpkg",
+        "priority": 100,
+        "markers": ["vcpkg.json"],
+        "capabilities": ["sources", "search", "install", "restore"],
+        "command": {
+          "kind": "node"
+        },
+        "entryPoint": "node_modules/@onixlabs/vcpkg/main.js"
+      }
+    ]
+  }
+}

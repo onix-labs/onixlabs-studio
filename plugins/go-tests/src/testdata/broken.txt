@@ -1,0 +1,4 @@
+# example.com/broken [example.com/broken.test]
+./thing_test.go:6:14: cannot use "no" (untyped string constant) as int value in variable declaration
+FAIL	example.com/broken [build failed]
+FAIL

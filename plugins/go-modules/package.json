@@ -1,0 +1,11 @@
+{
+  "name": "@onixlabs/go-modules",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Go modules package-manager plugin for ONIXLabs Studio.",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

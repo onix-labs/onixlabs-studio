@@ -1,0 +1,58 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/mathy-63c9d37f95b5708b)
+
+running 6 tests
+test tests::slow ... ignored
+test geometry::area::tests::of_rectangle ... ok
+test geometry::perimeter_of_square ... ok
+test tests::adds ... ok
+test tests::nested::deeper ... ok
+test tests::fails ... FAILED
+
+failures:
+
+---- tests::fails stdout ----
+
+thread 'tests::fails' (15032903) panicked at src/lib.rs:18:9:
+assertion `left == right` failed: one and two
+  left: 3
+ right: 4
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::fails
+
+test result: FAILED. 4 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`
+     Running tests/integration.rs (target/debug/deps/integration-2b1c374aea43367c)
+
+running 2 tests
+test adds_from_outside ... ok
+test panics_from_outside ... FAILED
+
+failures:
+
+---- panics_from_outside stdout ----
+
+thread 'panics_from_outside' (15032907) panicked at tests/integration.rs:8:5:
+integration broke
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    panics_from_outside
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--test integration`
+   Doc-tests mathy
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: 2 targets failed:
+    `--lib`
+    `--test integration`

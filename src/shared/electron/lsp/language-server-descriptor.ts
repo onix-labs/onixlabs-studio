@@ -1,6 +1,7 @@
 import { LspBraceStyle, LspServerId, LspServerSettingDescriptor } from '@shared/api/lsp-channels';
 import { ArchiveProvision } from '../provisioning/archive-provision';
 import { logger } from '../logger';
+import type { LspIndentationSections } from './lsp-indentation';
 import { LspProvisioner } from './lsp-provisioner';
 import { LspSettingsManager } from './lsp-settings';
 
@@ -261,6 +262,14 @@ export interface LanguageServerDescriptor {
   readonly servesWorkspaceDiagnostics?: boolean;
 
   /**
+   * Gets how the server is asked to report every file of the projects its open documents are in
+   * (#1207), for a server that pushes diagnostics for open files only and offers no
+   * `workspace/diagnostic`: `tsserver` for typescript-language-server's `geterrForProject`. Undefined
+   * for a server that is not asked.
+   */
+  readonly projectDiagnostics?: 'tsserver';
+
+  /**
    * Gets the settings the server reads that the user is offered (#1143), on its language's page in
    * Settings. Only settings a user would recognise.
    */
@@ -271,6 +280,13 @@ export interface LanguageServerDescriptor {
    * them through `workspace/configuration` and nothing else.
    */
   readonly settingsDelivery?: LspSettingsDelivery;
+
+  /**
+   * Gets the settings the server asks for, per document, that are the document's indentation
+   * (#1208), answered from the document's editor rather than from the user's server settings — or
+   * undefined for a server that asks for none.
+   */
+  readonly indentationSections?: LspIndentationSections;
 
   /**
    * Resolves the server into a spawn specification, provisioning it and detecting its runtime when

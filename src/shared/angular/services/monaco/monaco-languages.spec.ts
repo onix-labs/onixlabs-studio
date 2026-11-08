@@ -35,6 +35,16 @@ describe('monaco-languages', () => {
     expect(languageForExtension('.c')).toBe('c');
   });
 
+  it('languageForExtension_knowsTheModuleKindsOfTypeScript_andPythonsStubs (#1213)', () => {
+    // ES-module and CommonJS TypeScript, and their declaration files (`.d.mts`).
+    expect(languageForExtension('.mts')).toBe('typescript');
+    expect(languageForExtension('.cts')).toBe('typescript');
+    expect(languageForExtension('.pyi')).toBe('python');
+    expect(languageForExtension('.pyw')).toBe('python');
+    // A Kotlin script, such as a Gradle build file (`build.gradle.kts`).
+    expect(languageForExtension('.kts')).toBe('kotlin');
+  });
+
   it('languageForExtension_fallsBackToPlaintextForUnknownExtensions', () => {
     expect(languageForExtension('.nope')).toBe('plaintext');
   });
