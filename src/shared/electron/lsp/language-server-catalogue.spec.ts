@@ -1,6 +1,10 @@
 import type { LspServerSettingDescriptor } from '@shared/api/lsp-channels';
 import type { LanguageServerDescriptor } from './language-server-descriptor';
-import { jdtlsLaunchArgs, languageServerCatalogue } from './language-server-catalogue';
+import {
+  jdtlsLaunchArgs,
+  kotlinServerEnv,
+  languageServerCatalogue,
+} from './language-server-catalogue';
 import {
   LspServerSettingValues,
   pushedSettings,
@@ -183,5 +187,26 @@ describe('jdtlsLaunchArgs (#1208)', () => {
       '/data/workspace',
     ]);
     expect(args.indexOf('-Dosgi.checkConfiguration=true')).toBeLessThan(args.indexOf('-jar'));
+  });
+});
+
+describe('kotlinServerEnv (#1209)', () => {
+  const java: string = '/jdk/Contents/Home/bin/java';
+
+  it('tellsGradleNotToLeaveADaemon_andPassesTheRuntimeOn', () => {
+    expect(kotlinServerEnv(java, {})).toEqual({
+      JAVA_HOME: '/jdk/Contents/Home',
+      GRADLE_OPTS: '-Dorg.gradle.daemon=false',
+    });
+  });
+
+  it('keepsTheUsersOwnGradleOptions', () => {
+    expect(kotlinServerEnv(java, { GRADLE_OPTS: '-Xmx2g' })['GRADLE_OPTS']).toBe(
+      '-Xmx2g -Dorg.gradle.daemon=false',
+    );
+  });
+
+  it('aRuntimeOnThePath_setsNoJavaHome', () => {
+    expect(kotlinServerEnv('java', {})).toEqual({ GRADLE_OPTS: '-Dorg.gradle.daemon=false' });
   });
 });
