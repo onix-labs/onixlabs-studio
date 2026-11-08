@@ -52,6 +52,11 @@ interface ServerEntry {
   readonly state: LspServerState;
 
   /**
+   * Gets the version of what the server runs, where that is not the server's own, or undefined.
+   */
+  readonly version?: string;
+
+  /**
    * Gets a reason for the state (for example why the server is unavailable), or undefined.
    */
   readonly detail?: string;
@@ -126,6 +131,13 @@ export interface LspServer {
    * Gets the server's current lifecycle state.
    */
   readonly state: LspServerState;
+
+  /**
+   * Gets the version of what the server runs, where that is what the user knows it by (#1207): the
+   * TypeScript typescript-language-server runs with, `5.9.3`. Undefined for a server that says nothing
+   * of it.
+   */
+  readonly version?: string;
 
   /**
    * Gets a reason for the state (for example why the server is unavailable), or undefined.
@@ -245,6 +257,7 @@ export class LspStatus {
         name: this.name(entry.serverId),
         rootPath: entry.rootPath,
         state: entry.state,
+        version: entry.version,
         detail: entry.detail,
         progress: entry.progress,
         activity: entry.activity,
@@ -344,6 +357,22 @@ export class LspStatus {
   }
 
   /**
+   * Records the version of what a server runs (#1207), such as the TypeScript
+   * typescript-language-server runs with. Ignored when the session is not tracked.
+   * @param sessionId The session the server is keyed by.
+   * @param version The version.
+   */
+  public setVersion(sessionId: string, version: string): void {
+    const current: ServerEntry | undefined = this.entries().get(sessionId);
+    if (current === undefined || current.version === version) {
+      return;
+    }
+    const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
+    next.set(sessionId, { ...current, version });
+    this.entries.set(next);
+  }
+
+  /**
    * Records what a server says is wrong with it (#1210), or clears it. It stays on the server's row
    * until the server says otherwise, unlike a passing notice. Ignored when the session is not tracked.
    * @param sessionId The session the server is keyed by.
@@ -397,8 +426,17 @@ export class LspStatus {
     }
     const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
     // A settled state ends the server's loading story: its progress and any stall flag are cleared.
-    // A move into starting clears them too — a restart begins a fresh load.
-    next.set(sessionId, { ...current, state, detail, progress: undefined, stalled: false });
+    // A move into starting clears them too — a restart begins a fresh load. A server that is gone or
+    // starting again is doing nothing with any file, so what it last said about one goes too (#1213).
+    const gone: boolean = state === 'starting' || state === 'unavailable';
+    next.set(sessionId, {
+      ...current,
+      state,
+      detail,
+      progress: undefined,
+      stalled: false,
+      ...(gone ? { activity: undefined, activityUri: undefined } : {}),
+    });
     this.entries.set(next);
     this.log.debug('LspStatus', `Server '${current.serverId}' -> ${state}`, sessionId);
     // A move back into starting (a restart) re-arms the watchdog; settling to ready or unavailable

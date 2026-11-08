@@ -22,6 +22,12 @@ export const DEFAULT_REGISTRY: string = 'https://registry.npmjs.org';
 const NPMRC: string = '.npmrc';
 
 /**
+ * The empty environment a project-level `.npmrc` is interpolated from, so none of its `${VAR}`
+ * references can reach the user's environment.
+ */
+const NO_ENVIRONMENT: Readonly<Record<string, string | undefined>> = Object.freeze({});
+
+/**
  * A registry a folder can search: its display name, with the endpoint it is reached at.
  */
 export interface NpmSource {
@@ -44,8 +50,13 @@ export interface NpmSource {
  * ⛔ The environment is the plugin's own, which Studio cuts down to an allow-list: a `${NPM_TOKEN}`
  * reference to a variable outside it resolves to nothing, and the request goes without a credential
  * rather than the plugin being handed the user's whole shell.
+ *
+ * ⛔ Only the user-level file interpolates `${VAR}` references. A project's `.npmrc` arrives with the
+ * folder, so it could name a registry of its own and a credential of `${ANY_VAR}`, and the panel would
+ * send that variable there on load; its references resolve to nothing instead. Literal tokens in either
+ * file still work.
  * @param root The absolute workspace root.
- * @param env The environment used to interpolate `${VAR}` references in `.npmrc` values.
+ * @param env The environment used to interpolate `${VAR}` references in the user-level `.npmrc`.
  * @returns Returns the merged configuration.
  */
 export async function readNpmConfig(
@@ -53,7 +64,7 @@ export async function readNpmConfig(
   env: Record<string, string | undefined>,
 ): Promise<NpmrcConfig> {
   const home: NpmrcConfig = await readOne(path.join(os.homedir(), NPMRC), env);
-  const project: NpmrcConfig = await readOne(path.join(root, NPMRC), env);
+  const project: NpmrcConfig = await readOne(path.join(root, NPMRC), NO_ENVIRONMENT);
   return mergeNpmrc(home, project);
 }
 

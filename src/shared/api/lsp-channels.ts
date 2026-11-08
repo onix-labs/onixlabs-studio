@@ -96,7 +96,67 @@ export enum LspChannel {
    * Answers a {@link ShowMessage} with the action the user chose, if any (renderer→main, send).
    */
   ShowMessageReply = 'lsp:show-message-reply',
+
+  /**
+   * Asks a session's server for a view of the code it alone can give — a macro's expansion, the
+   * compiler's intermediate form, the syntax tree — and has the main process write it where the editor
+   * opens it read-only (#1210, #1213). Answers {@link LspGeneratedViewResult} (invoke).
+   */
+  GeneratedView = 'lsp:generated-view',
+
+  /**
+   * Asks the renderer holding a session how a document is indented — the tab size and whether it
+   * indents with spaces — for a server that asks for them as settings of its own (#1208), and answer
+   * on {@link IndentationReply} (main→renderer, send).
+   */
+  Indentation = 'lsp:indentation',
+
+  /**
+   * Answers an {@link Indentation} with the document's indentation (renderer→main, send).
+   */
+  IndentationReply = 'lsp:indentation-reply',
+
+  /**
+   * Asks the renderer holding a session to show what a server's `window/showDocument` names (#1211):
+   * a web page in the browser, or a file in an editor with a range selected (main→renderer, send).
+   */
+  ShowDocument = 'lsp:show-document',
 }
+
+/**
+ * Names a view of the code a language server gives that Studio shows as a read-only document (#1210,
+ * #1213): rust-analyzer's expansion of the macro at the caret, and its HIR and MIR of the function
+ * there; clangd's syntax tree at the caret, and how much memory it is using.
+ */
+export type LspGeneratedViewKind = 'expandMacro' | 'hir' | 'mir' | 'syntaxTree' | 'memoryUsage';
+
+/**
+ * Lists every {@link LspGeneratedViewKind}, for validating what the renderer asks for.
+ */
+export const LSP_GENERATED_VIEW_KINDS: readonly LspGeneratedViewKind[] = [
+  'expandMacro',
+  'hir',
+  'mir',
+  'syntaxTree',
+  'memoryUsage',
+];
+
+/**
+ * Says where a document a {@link LspGeneratedViewKind} asks for was written, or why there is none.
+ */
+export type LspGeneratedViewResult =
+  | {
+      /**
+       * Gets the absolute path of the read-only document.
+       */
+      readonly path: string;
+    }
+  | {
+      /**
+       * Gets why there is nothing to show: the server had nothing at the caret, or failed.
+       */
+      readonly error: string;
+    };
 
 /**
  * Identifies a language server known to the main-process registry (for example `typescript`). The
@@ -399,6 +459,47 @@ export interface LspAttachDebuggerReply {
 }
 
 /**
+ * A server's question of how a document is indented (#1208), as the main process forwards it to the
+ * renderer holding the session.
+ */
+export interface LspIndentationRequest {
+  /**
+   * Gets the identifier the answer names.
+   */
+  readonly requestId: string;
+
+  /**
+   * Gets the session whose server asked.
+   */
+  readonly sessionId: string;
+
+  /**
+   * Gets the document asked about, as a `file:` URI.
+   */
+  readonly uri: string;
+}
+
+/**
+ * The renderer's answer to a {@link LspIndentationRequest}.
+ */
+export interface LspIndentationReply {
+  /**
+   * Gets the identifier of the request answered.
+   */
+  readonly requestId: string;
+
+  /**
+   * Gets the document's tab size, or null when no editor holds it.
+   */
+  readonly tabSize: number | null;
+
+  /**
+   * Gets whether the document indents with spaces, or null when no editor holds it.
+   */
+  readonly insertSpaces: boolean | null;
+}
+
+/**
  * A server's question for the user (#1154) — `window/showMessageRequest` — as the main process forwards
  * it to the renderer holding the session.
  */
@@ -427,6 +528,35 @@ export interface LspShowMessageRequest {
    * Gets the titles of the actions offered, in order.
    */
   readonly actions: readonly string[];
+}
+
+/**
+ * A server's request to show a document (#1211) — `window/showDocument` — as the main process forwards
+ * it to the renderer holding the session: gopls's Browse Documentation opens a page it serves itself.
+ */
+export interface LspShowDocumentRequest {
+  /**
+   * Gets the session whose server asked.
+   */
+  readonly sessionId: string;
+
+  /**
+   * Gets the document's URI: an `http:` or `https:` page, or a `file:`.
+   */
+  readonly uri: string;
+
+  /**
+   * Gets whether the page opens in the browser rather than in Studio: always so for a web page.
+   */
+  readonly external: boolean;
+
+  /**
+   * Gets the range to select in a file, zero-based as the protocol counts, or undefined for none.
+   */
+  readonly selection?: {
+    readonly start: { readonly line: number; readonly character: number };
+    readonly end: { readonly line: number; readonly character: number };
+  };
 }
 
 /**

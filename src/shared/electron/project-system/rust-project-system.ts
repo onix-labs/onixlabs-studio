@@ -18,14 +18,21 @@ import {
   parseCargoTargetSources,
 } from './cargo-metadata';
 import { buildItemTree, EvaluatedItem } from './item-tree';
+import {
+  CargoDebugBuild,
+  cargoBuildErrors,
+  cargoDebugBuild,
+  builtPrograms,
+} from './cargo-debug-target';
+import type { DebugResolveResult } from '@shared/api/debug-channels';
+import type { RunConfiguration } from '@shared/api/studio';
 import { ProjectSystem } from './project-system';
 import { logger } from '../logger';
 
 /**
  * The Rust project system's root-independent capabilities: the Build/Clean/Rebuild actions Cargo
- * supports, its dev/release profiles as build configurations, a target-triple axis, and no debug
- * adapter yet — a Rust DAP adapter (lldb via codelldb) is a later phase, so the ribbon's Debug button
- * stays inert until one is provisioned.
+ * supports, its dev/release profiles as build configurations, a target-triple axis, and CodeLLDB as
+ * its debugger (#1210), installed from the Plugin Manager like netcoredbg for .NET.
  */
 const RUST_CAPABILITIES: ProjectCapabilities = {
   actions: ['build', 'clean', 'rebuild'],
@@ -44,7 +51,7 @@ const RUST_CAPABILITIES: ProjectCapabilities = {
       { id: 'wasm32-unknown-unknown', name: 'WebAssembly' },
     ],
   },
-  debug: null,
+  debug: { adapter: 'codelldb' },
   // This ecosystem has no solution folders, so there is nothing to rename.
   renamesSolutionFolders: false,
 };
@@ -81,6 +88,12 @@ const METADATA_TIMEOUT_MS: number = 30_000;
  * The maximum bytes of `cargo metadata` output buffered, generous so a large workspace is not truncated.
  */
 const METADATA_BUFFER: number = 64 * 1024 * 1024;
+
+/**
+ * Bounds how long the build a debug session waits on may take (#1210). A first build of a large crate
+ * graph takes minutes; past this the session gives up rather than hang.
+ */
+const DEBUG_BUILD_TIMEOUT_MS: number = 15 * 60_000;
 
 /**
  * Runs a child process and resolves with its standard output.
@@ -331,6 +344,100 @@ export class RustProjectSystem implements ProjectSystem {
     }
     logger.debug('RustProjectSystem', 'No `cargo` to read the crate with; listing the files.');
     return null;
+  }
+
+  /**
+   * Resolves a run configuration into what CodeLLDB launches (#1210). A Cargo command — the one a Run or
+   * Debug lens gives, or a run configuration's — is built without being run (`cargo test --no-run`,
+   * `cargo run` as `cargo build`), and the program it produced is launched with the arguments that came
+   * after `--`. The build is the same one Run would do, run in the same folder, so it runs the same
+   * build scripts. A configuration that runs a program directly launches that program.
+   * @param configuration The run configuration being launched under the debugger.
+   * @param root The absolute workspace root, which the build must run within.
+   * @returns Returns the launch target, or a reason it could not be resolved.
+   */
+  public async resolveDebugTarget(
+    configuration: RunConfiguration,
+    root: string,
+  ): Promise<DebugResolveResult> {
+    const cwd: string = path.resolve(root, configuration.cwd ?? '.');
+    // The configuration arrives from the renderer, so a hostile one must not run Cargo elsewhere.
+    if (cwd !== path.resolve(root) && !cwd.startsWith(path.resolve(root) + path.sep)) {
+      logger.warn('RustProjectSystem', `Refused a debug build outside the workspace: '${cwd}'.`);
+      return { target: null, error: 'The configuration runs outside the workspace.' };
+    }
+    const env: Readonly<Record<string, string>> = configuration.env ?? {};
+    // CodeLLDB reads Rust's strings, vectors and enums as Rust, rather than as the C they compile to.
+    const launchExtras: Readonly<Record<string, unknown>> = { sourceLanguages: ['rust'] };
+    const named: string | undefined = configuration.program;
+    if (named === undefined) {
+      return { target: null, error: 'The configuration names no program to debug.' };
+    }
+    if (path.basename(named, '.exe') !== 'cargo') {
+      return {
+        target: {
+          program: path.resolve(cwd, named),
+          args: configuration.args,
+          cwd,
+          env,
+          launchExtras,
+        },
+        error: null,
+      };
+    }
+    const build: CargoDebugBuild | null = cargoDebugBuild(configuration.args ?? []);
+    if (build === null) {
+      return {
+        target: null,
+        error: 'Only `cargo run`, `cargo test` and `cargo bench` build something to debug.',
+      };
+    }
+    for (const cargo of this.cargoExecutables()) {
+      let stdout: string;
+      try {
+        logger.debug(
+          'RustProjectSystem',
+          `Building for the debugger: cargo ${build.build.join(' ')}`,
+        );
+        ({ stdout } = await execFileAsync(cargo, build.build, {
+          cwd,
+          env: { ...process.env, ...env },
+          maxBuffer: METADATA_BUFFER,
+          timeout: DEBUG_BUILD_TIMEOUT_MS,
+          killSignal: 'SIGKILL',
+          windowsHide: true,
+        }));
+      } catch (error: unknown) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          continue;
+        }
+        const output: string = (error as { stdout?: unknown }).stdout as string;
+        const errors: string = typeof output === 'string' ? cargoBuildErrors(output) : '';
+        logger.warn('RustProjectSystem', `The debug build failed in '${cwd}'.`, error);
+        return {
+          target: null,
+          error: errors.length > 0 ? `Build failed.\n${errors}` : 'Build failed.',
+        };
+      }
+      const programs: readonly string[] = builtPrograms(stdout, build.test);
+      if (programs.length > 1) {
+        return {
+          target: null,
+          error:
+            'The build produced more than one program. Debug a single test, or name a --bin, --lib or --test.',
+        };
+      }
+      const program: string | undefined = programs[0];
+      if (program === undefined) {
+        return { target: null, error: 'The build produced no program to debug.' };
+      }
+      logger.info('RustProjectSystem', `Resolved a debug target: '${program}'.`);
+      return {
+        target: { program, args: build.executableArgs, cwd, env, launchExtras },
+        error: null,
+      };
+    }
+    return { target: null, error: 'The `cargo` command could not be found on this machine.' };
   }
 
   /**

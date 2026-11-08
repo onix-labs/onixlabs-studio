@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -42,6 +42,18 @@ describe('NuGet credentials', () => {
       path.join(root, 'nuget.config'),
       `<configuration><packageSources><clear /><add key="private" value="${FEED}" /></packageSources>${credentials}</configuration>`,
     );
+  }
+
+  /**
+   * Writes the user-level config in the spec's home, where `readNuGetSources` looks for it on every
+   * platform the suite runs on.
+   * @param xml The config contents.
+   */
+  function writeUserConfig(xml: string): void {
+    const directory: string =
+      process.platform === 'win32' ? path.join(root, 'NuGet') : path.join(root, '.nuget', 'NuGet');
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(path.join(directory, 'NuGet.Config'), xml);
   }
 
   beforeEach(() => {
@@ -115,6 +127,82 @@ describe('NuGet credentials', () => {
     await manager.load(root, recording(seen));
 
     expect(seen[0]).toBe(`${FEED} none`);
+  });
+
+  it('load_projectConfigReferencesAnEnvironmentVariable_sendsNoHeader', async () => {
+    // Arrange
+    writeFixture(
+      '<packageSourceCredentials><private><add key="Username" value="me" /><add key="ClearTextPassword" value="%NUGET_TOKEN%" /></private></packageSourceCredentials>',
+    );
+    const seen: string[] = [];
+    const manager: NuGetPackageManager = new NuGetPackageManager(undefined, {
+      NUGET_TOKEN: 'from-environment',
+    });
+
+    // Act
+    await manager.load(root, recording(seen));
+
+    // Assert
+    expect(seen[0]).toBe(`${FEED} none`);
+  });
+
+  it('load_userConfigReferencesAnEnvironmentVariable_sendsIt', async () => {
+    // Arrange
+    writeFixture();
+    writeUserConfig(
+      `<configuration><packageSources><add key="private" value="${FEED}" /></packageSources><packageSourceCredentials><private><add key="Username" value="me" /><add key="ClearTextPassword" value="%NUGET_TOKEN%" /></private></packageSourceCredentials></configuration>`,
+    );
+    const seen: string[] = [];
+    const manager: NuGetPackageManager = new NuGetPackageManager(undefined, {
+      NUGET_TOKEN: 'from-environment',
+    });
+
+    // Act
+    await manager.load(root, recording(seen));
+
+    // Assert
+    expect(seen[0]).toBe(`${FEED} Basic ${Buffer.from('me:from-environment').toString('base64')}`);
+  });
+
+  it('load_projectConfigPointsTheUsersCredentialedSourceElsewhere_sendsNoCredential', async () => {
+    // Arrange
+    writeUserConfig(
+      `<configuration><packageSources><add key="private" value="https://trusted.example/v3/index.json" /></packageSources><packageSourceCredentials><private><add key="Username" value="me" /><add key="ClearTextPassword" value="user-secret" /></private></packageSourceCredentials></configuration>`,
+    );
+    writeFixture();
+    const seen: string[] = [];
+    const manager: NuGetPackageManager = new NuGetPackageManager(undefined, {});
+
+    // Act
+    await manager.load(root, recording(seen));
+
+    // Assert
+    expect(seen).toEqual([`${FEED} none`]);
+  });
+
+  it('load_plainHttpSource_neverAsksStudioForAToken', async () => {
+    // Arrange
+    writeFileSync(
+      path.join(root, 'Api.csproj'),
+      '<Project><ItemGroup><PackageReference Include="Serilog" Version="3.0.0" /></ItemGroup></Project>',
+    );
+    writeFileSync(
+      path.join(root, 'nuget.config'),
+      '<configuration><packageSources><clear /><add key="private" value="http://feed.example/v3/index.json" /></packageSources></configuration>',
+    );
+    const asked: string[] = [];
+    const seen: string[] = [];
+    const manager: NuGetPackageManager = new NuGetPackageManager((registry: string) => {
+      asked.push(registry);
+      return Promise.resolve('from-studio');
+    }, {});
+
+    // Act
+    await manager.load(root, recording(seen));
+
+    // Assert
+    expect(asked).toEqual([]);
+    expect(seen).toEqual(['http://feed.example/v3/index.json none']);
   });
 
   it('neverListsACredentialAmongTheSources', async () => {

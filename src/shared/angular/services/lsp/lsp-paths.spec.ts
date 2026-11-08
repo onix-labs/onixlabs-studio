@@ -1,5 +1,7 @@
 import {
   basename,
+  isGeneratedView,
+  isMetadataAsSource,
   isToolchainSource,
   isWithin,
   normalise,
@@ -37,6 +39,23 @@ describe('lsp-paths', () => {
     expect(isWithin('/root/a.ts', '/root')).toBe(true);
     expect(isWithin('/root', '/root')).toBe(true);
     expect(isWithin('/other/a.ts', '/root')).toBe(false);
+  });
+});
+
+describe('isGeneratedView (#1210, #1213)', () => {
+  it('isAViewStudioWrote_amongTheDecompiledSources_butNotADecompiledSource', () => {
+    const view: string = '/private/var/T/MetadataAsSource/StudioViews/0b1c/square! expanded.rs';
+    const decompiled: string = '/private/var/T/MetadataAsSource/1a2b/IList.cs';
+
+    expect(isGeneratedView(view)).toBe(true);
+    // It opens read-only by the rule for decompiled sources, which is why it lives among them.
+    expect(isMetadataAsSource(view)).toBe(true);
+    expect(isGeneratedView(decompiled)).toBe(false);
+    expect(
+      isGeneratedView(
+        'C:\\Users\\me\\AppData\\Local\\Temp\\MetadataAsSource\\StudioViews\\1\\a.txt',
+      ),
+    ).toBe(true);
   });
 });
 
