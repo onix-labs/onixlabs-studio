@@ -13,11 +13,18 @@ function send(message) {
 
 /**
  * Handles one message from the client.
- * @param {{ id?: number, method?: string }} message The message.
+ * @param {{ id?: number, method?: string, params?: { textDocument: { uri: string } } }} message The message.
  */
 function receive(message) {
   if (message.method === 'initialize') {
     send({ id: message.id, result: { capabilities: { textDocumentSync: 1 } } });
+  } else if (message.method === 'textDocument/didOpen') {
+    // An opened document has no problems. Saying so is what a real server does, and what turns its
+    // row Ready, so a test can tell a running server from one still starting.
+    send({
+      method: 'textDocument/publishDiagnostics',
+      params: { uri: message.params.textDocument.uri, diagnostics: [] },
+    });
   } else if (message.method === 'shutdown') {
     send({ id: message.id, result: null });
   } else if (message.method === 'exit') {

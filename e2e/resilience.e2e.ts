@@ -232,19 +232,24 @@ test.describe('a language server killed under the editor', () => {
     );
     await openFolderFromWelcome(app, page, scratch);
     await explorerRow(page, file).dblclick();
-    await expect.poll((): number => processesUnder(installs).length).toBeGreaterThan(0);
+    const menu: Locator = page.getByRole('button', { name: 'Language Servers' });
+    const row: Locator = page.locator('.lsp-status-menu__item', {
+      hasText: 'E2E Language Server',
+    });
+    // Killed while still answering `initialize`, the server's start fails instead ("Pending response
+    // rejected since connection got disposed") and the row never says it stopped. This test is about a
+    // running server, so it waits for one: the process existing is not enough on a slow runner. The
+    // flyout stays open throughout, as it does for a user watching the row change.
+    await menu.click();
+    await expect(row).toHaveClass(/lsp-status-menu__item--ready/);
     const killed: readonly number[] = processesUnder(installs);
+    expect(killed.length).toBeGreaterThan(0);
 
     for (const pid of killed) {
       process.kill(pid, 'SIGKILL');
     }
 
     await expect.poll((): number => processesUnder(installs).length).toBe(0);
-    const menu: Locator = page.getByRole('button', { name: 'Language Servers' });
-    await menu.click();
-    const row: Locator = page.locator('.lsp-status-menu__item', {
-      hasText: 'E2E Language Server',
-    });
     await expect(row).toContainText(/stopped|crashed|Restart/i);
     await row.getByRole('button', { name: 'Restart language server' }).click();
 
