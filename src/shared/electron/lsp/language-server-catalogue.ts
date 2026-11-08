@@ -34,6 +34,37 @@ const JDTLS_JVM_ARGS: readonly string[] = [
 ];
 
 /**
+ * Builds the arguments that start the Eclipse JDT Language Server, after its JVM arguments (#1208).
+ * Equinox writes its runtime state into the configuration area it is given, so the install's own
+ * area is only read, as the shared one, and each workspace gets a writable area of its own. Started
+ * on the install's area, every workspace and window wrote into one folder inside the install, and an
+ * install that cannot be written to did not start at all.
+ * @param install The installed server.
+ * @param configurationDir The writable configuration area for this workspace.
+ * @param dataDir The workspace's data folder.
+ * @returns Returns the arguments.
+ */
+export function jdtlsLaunchArgs(
+  install: JdtlsInstall,
+  configurationDir: string,
+  dataDir: string,
+): string[] {
+  return [
+    ...JDTLS_JVM_ARGS,
+    '-Dosgi.checkConfiguration=true',
+    `-Dosgi.sharedConfiguration.area=${install.configDir}`,
+    '-Dosgi.sharedConfiguration.area.readOnly=true',
+    '-Dosgi.configuration.cascaded=true',
+    '-jar',
+    install.launcherJar,
+    '-configuration',
+    configurationDir,
+    '-data',
+    dataDir,
+  ];
+}
+
+/**
  * The priority given to the implementation shipped as a language's default, chosen when the user has
  * expressed no preference.
  */
@@ -408,18 +439,13 @@ const JAVA: LanguageServerDescriptor = {
       return unavailable('The Java language server could not be downloaded.');
     }
     const dataDir: string = await context.provisioner.dataDirectory('jdtls', context.rootPath);
-    return resolved({
-      command: java,
-      args: [
-        ...JDTLS_JVM_ARGS,
-        '-jar',
-        install.launcherJar,
-        '-configuration',
-        install.configDir,
-        '-data',
-        dataDir,
-      ],
-    });
+    // Keyed by the install as well as the workspace: an area holds the state of one install's
+    // bundles, so an update starts from a fresh one rather than one that names the old bundles.
+    const configurationDir: string = await context.provisioner.dataDirectory(
+      'jdtls-configuration',
+      `${install.configDir}\n${context.rootPath}`,
+    );
+    return resolved({ command: java, args: jdtlsLaunchArgs(install, configurationDir, dataDir) });
   },
 };
 
