@@ -1,0 +1,30 @@
+{
+  "id": "onixlabs.dotnet-tests",
+  "name": ".NET Tests",
+  "description": ".NET tests in the Tests panel: xUnit, NUnit and MSTest, found in your test projects and run through dotnet test.",
+  "version": "0.1.0",
+  "apiVersion": "1.27.0",
+  "detail": "Finds tests by reading your project files and C# sources, without building anything. Running them uses the .NET SDK on your machine, in a terminal you can see.",
+  "provision": {
+    "kind": "npm",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.dotnet-tests.lock.json",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "executablePath": "node_modules/@onixlabs/dotnet-tests/main.js"
+  },
+  "contributes": {
+    "testAdapters": [
+      {
+        "id": "onixlabs.dotnet-tests",
+        "displayName": ".NET Tests",
+        "frameworks": ["xUnit", "NUnit", "MSTest"],
+        "priority": 100,
+        "markers": ["*.csproj", "*.fsproj"],
+        "capabilities": ["run", "runSelected"],
+        "command": {
+          "kind": "node"
+        },
+        "entryPoint": "node_modules/@onixlabs/dotnet-tests/main.js"
+      }
+    ]
+  }
+}
