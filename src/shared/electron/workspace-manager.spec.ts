@@ -4,8 +4,6 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock, MockInstance } from 'vitest';
-import { PackageChannel } from '@shared/api/package-channels';
-import type { PackageManagerModel, PackageSearchResult } from '@shared/api/package-management';
 import { ProjectChannel } from '@shared/api/project-channels';
 import type { ProjectOperationResult } from '@shared/api/project-system';
 import type {
@@ -16,7 +14,6 @@ import type {
 } from '@shared/api/workspace-channels';
 import { WorkspaceChannel } from '@shared/api/workspace-channels';
 import type { BrowserWindow } from 'electron';
-import type { PackagePluginRoute } from './package-managers/package-plugin-route';
 
 /**
  * Describes an IPC handler as the fake `ipcMain` captures it.
@@ -67,7 +64,6 @@ const { WorkspaceManager } = await import('./workspace-manager');
 const { WorkspaceContext } = await import('./workspace-context');
 const { TrustedPaths } = await import('./trusted-paths');
 const { projectSystems } = await import('./project-system/default-project-systems');
-const { packageManagers } = await import('./package-management/default-package-managers');
 
 /**
  * The size, in bytes, of one megabyte as the Large File Size Limit counts it.
@@ -1204,19 +1200,15 @@ describe('WorkspaceManager', () => {
     });
   });
 
-  describe('project and package requests', () => {
+  describe('project requests', () => {
     it.each([[undefined], [null], [''], [42]])(
       'loads_withAnUnusableRoot_touchNothing %#',
       async (root: unknown) => {
         const match: MockInstance = vi.spyOn(projectSystems, 'match');
-        const packages: MockInstance = vi.spyOn(packageManagers, 'match');
 
         expect(await invoke(ProjectChannel.ModelLoad, root)).toBeNull();
-        expect(await invoke(PackageChannel.ModelLoad, root)).toBeNull();
-        expect(await invoke(PackageChannel.Sources, root)).toEqual([]);
 
         expect(match).not.toHaveBeenCalled();
-        expect(packages).not.toHaveBeenCalled();
       },
     );
 
@@ -1233,120 +1225,7 @@ describe('WorkspaceManager', () => {
 
     it('loads_inAnOpenRootNoSystemClaims_answerNothing', async () => {
       expect(await invoke(ProjectChannel.ModelLoad, workspaceRoot)).toBeNull();
-      expect(await invoke(PackageChannel.ModelLoad, workspaceRoot)).toBeNull();
-      expect(await invoke(PackageChannel.Sources, workspaceRoot)).toEqual([]);
       expect(await invoke(ProjectChannel.ArtifactResolve, inWorkspace('a.c'), 7)).toBeNull();
-    });
-
-    it('search_refusesAClosedRootAndNonStringTerms', async () => {
-      const empty: unknown = { items: [], total: 0, hasMore: false };
-
-      expect(await invoke(PackageChannel.Search, outside, 'nuget', 'x')).toEqual(empty);
-      expect(await invoke(PackageChannel.Search, workspaceRoot, 42, 'x')).toEqual(empty);
-      expect(await invoke(PackageChannel.Search, workspaceRoot, 'nuget', null)).toEqual(empty);
-      expect(await invoke(PackageChannel.Search, workspaceRoot, 'nuget', 'x')).toEqual(empty);
-    });
-
-    it.each([
-      [
-        { skip: -5, take: 0 },
-        { skip: 0, take: 50, prerelease: false },
-      ],
-      [
-        { skip: 2.9, take: 1e9, prerelease: true },
-        { skip: 2, take: 100, prerelease: true },
-      ],
-      [
-        { skip: Number.NaN, take: Number.NaN, prerelease: 'yes' },
-        { skip: 0, take: 50, prerelease: false },
-      ],
-      [{ skip: Number.POSITIVE_INFINITY }, { skip: 0, take: 50, prerelease: false }],
-      [null, { skip: 0, take: 50, prerelease: false }],
-      ['options', { skip: 0, take: 50, prerelease: false }],
-    ])('search_clampsTheOptions %#', async (options: unknown, expected: unknown) => {
-      const search: Mock = vi.fn().mockResolvedValue({ items: [], total: 0, hasMore: false });
-      vi.spyOn(packageManagers, 'match').mockResolvedValue({
-        search,
-      } as never);
-
-      await invoke(PackageChannel.Search, workspaceRoot, 'nuget', 'x', options);
-
-      expect(search.mock.calls[0]?.[3]).toEqual(expected);
-    });
-
-    describe('with a package-manager plugin route', () => {
-      const empty: PackageSearchResult = { items: [], total: 0, hasMore: false };
-      const model: PackageManagerModel = { ecosystem: 'npm', root: '/ws', projects: [] };
-
-      /**
-       * Registers a manager whose plugin route answers as given.
-       * @param route The route's answers.
-       */
-      function registerWith(route: Partial<PackagePluginRoute>): void {
-        electron.handlers.clear();
-        new WorkspaceManager(
-          (): BrowserWindow | null => null,
-          workspace,
-          trusted,
-          route as PackagePluginRoute,
-        ).register();
-      }
-
-      it('packages_comeFromThePlugin_andCoreIsNotAsked', async () => {
-        const match: MockInstance = vi.spyOn(packageManagers, 'match');
-        registerWith({
-          load: () => Promise.resolve(model),
-          sources: () => Promise.resolve([{ name: 'npm' }]),
-          search: () => Promise.resolve({ ...empty, total: 3 }),
-        });
-
-        expect(await invoke(PackageChannel.ModelLoad, workspaceRoot)).toEqual(model);
-        expect(await invoke(PackageChannel.Sources, workspaceRoot)).toEqual([{ name: 'npm' }]);
-        expect(await invoke(PackageChannel.Search, workspaceRoot, 'npm', 'x')).toEqual({
-          ...empty,
-          total: 3,
-        });
-        expect(match).not.toHaveBeenCalled();
-      });
-
-      it('packages_fallToCore_whenThePluginDeclines', async () => {
-        const match: MockInstance = vi.spyOn(packageManagers, 'match').mockResolvedValue(null);
-        registerWith({
-          load: () => Promise.resolve(null),
-          sources: () => Promise.resolve(null),
-          search: () => Promise.resolve(null),
-        });
-
-        await invoke(PackageChannel.ModelLoad, workspaceRoot);
-        await invoke(PackageChannel.Sources, workspaceRoot);
-        await invoke(PackageChannel.Search, workspaceRoot, 'npm', 'x');
-
-        expect(match).toHaveBeenCalledTimes(3);
-      });
-
-      it('thePlugin_isNotAskedAboutAFolderThatIsNotOpen', async () => {
-        const load: Mock = vi.fn();
-        registerWith({ load, sources: load, search: load });
-
-        await invoke(PackageChannel.ModelLoad, outside);
-        await invoke(PackageChannel.Sources, outside);
-        await invoke(PackageChannel.Search, outside, 'npm', 'x');
-
-        expect(load).not.toHaveBeenCalled();
-      });
-
-      it('search_clampsTheOptionsBeforeThePluginSeesThem', async () => {
-        const search: Mock = vi.fn().mockResolvedValue(empty);
-        registerWith({ search });
-
-        await invoke(PackageChannel.Search, workspaceRoot, 'npm', 'x', { skip: -5, take: 1e9 });
-
-        expect(search).toHaveBeenCalledWith(workspaceRoot, 'npm', 'x', {
-          skip: 0,
-          take: 100,
-          prerelease: false,
-        });
-      });
     });
 
     it('renameSolutionFolder_refusesAClosedRootAndNonStringArguments', async () => {

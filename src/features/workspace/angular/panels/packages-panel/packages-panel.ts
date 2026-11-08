@@ -33,8 +33,18 @@ import {
   TableRowDef,
   TableSort,
 } from '@shared/angular/components/table/table';
-import { PackageModel, PackageRow } from '@features/workspace/angular/project/package-model';
-import { PackageExplorer } from '@features/workspace/angular/project/package-explorer';
+import {
+  PackageManagerState,
+  PackageModel,
+  PackageRow,
+} from '@features/workspace/angular/project/package-model';
+import {
+  ExploreSource,
+  PackageExplorer,
+} from '@features/workspace/angular/project/package-explorer';
+import { PackageManagerSummary } from '@shared/api/package-channels';
+import { PluginAction } from '@shared/angular/components/plugin-action/plugin-action';
+import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
 
 /**
  * The panel's two modes: the installed dependencies of the workspace's projects, or exploring a
@@ -120,6 +130,7 @@ const EXPLORE_COLUMNS: readonly TableColumn[] = [
     Table,
     TableRowDef,
     TableGroupDef,
+    PluginAction,
   ],
   templateUrl: './packages-panel.html',
   styleUrl: './packages-panel.scss',
@@ -168,6 +179,17 @@ export class PackagesPanel {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the workspace's version-control binding, through which a repository is trusted; null outside
+   * a workspace tab.
+   */
+  private readonly workspaceGit: WorkspaceGit | null = inject(WorkspaceGit, { optional: true });
+
+  /**
+   * Holds whether a trust is in progress.
+   */
+  protected readonly trusting: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
    * Holds the active panel mode.
    */
   protected readonly mode: WritableSignal<PackageMode> = signal<PackageMode>('installed');
@@ -189,8 +211,51 @@ export class PackagesPanel {
     (): readonly DropdownOption[] =>
       this.explorer
         .sources()
-        .map((source): DropdownOption => ({ value: source.name, label: source.name })),
+        .map((source: ExploreSource): DropdownOption => ({
+          value: source.key,
+          label: source.name,
+        })),
   );
+
+  /**
+   * Gets the search field's placeholder, which says how the selected source answers: a registry with
+   * no search looks one exact name up, and says so rather than pretending to search.
+   */
+  protected readonly searchPlaceholder: Signal<string> = computed((): string => {
+    const source: string = this.explorer.selected()?.name ?? 'packages';
+    switch (this.explorer.searchMode()) {
+      case 'exact':
+        return `Exact package name on ${source}`;
+      case 'query':
+        return `Type to search ${source}.`;
+      default:
+        return 'Search packages';
+    }
+  });
+
+  /**
+   * Gets the sentence naming the package managers that cannot search their registries.
+   */
+  protected readonly unsearchableText: Signal<string> = computed((): string => {
+    const names: string = this.explorer
+      .unsearchable()
+      .map((manager: PackageManagerSummary): string => manager.displayName)
+      .join(', ');
+    return `${names} cannot search its registry, so there is nothing to explore here.`;
+  });
+
+  /**
+   * Gets why the installed package managers read nothing, when every one of them failed.
+   */
+  protected readonly failure: Signal<string | null> = computed((): string | null => {
+    const states: readonly PackageManagerState[] = this.packages.states();
+    const failed: readonly PackageManagerState[] = states.filter(
+      (state: PackageManagerState): boolean => state.error !== null,
+    );
+    return failed.length > 0 && failed.length === states.length
+      ? failed.map((state: PackageManagerState): string => state.error ?? '').join(' ')
+      : null;
+  });
 
   /**
    * Gets the Installed-mode rows adapted to the table's row shape: a project becomes a group header
@@ -254,6 +319,25 @@ export class PackagesPanel {
    */
   protected toggleOutdatedOnly(): void {
     this.packages.setOutdatedOnly(!this.packages.outdatedOnly());
+  }
+
+  /**
+   * Trusts the open folder, so its package managers may read it. A repository is trusted through
+   * version control, so its panels fill too; any other folder has only this panel to be trusted from.
+   * @returns Returns a promise that resolves once the folder has been read again.
+   */
+  protected async trustFolder(): Promise<void> {
+    this.trusting.set(true);
+    try {
+      if (this.workspaceGit?.isRestricted() === true) {
+        await this.workspaceGit.trustRepository();
+        this.packages.refreshNow();
+      } else {
+        await this.packages.trustFolder();
+      }
+    } finally {
+      this.trusting.set(false);
+    }
   }
 
   /**

@@ -1,0 +1,52 @@
+@for (token of tokens(); track token.pluginId + token.registry) {
+  <app-setting-row [label]="token.registry" [description]="'Saved for ' + managerName(token)">
+    <app-button
+      variant="none"
+      label="Remove"
+      [ariaLabel]="'Remove the token for ' + token.registry"
+      [disabled]="busy()"
+      (click)="remove(token)"
+    />
+  </app-setting-row>
+}
+
+<app-setting-row
+  label="Add a Registry Token"
+  description="For a private registry whose credential is not in the tool's own configuration. The plugin reads that first, as the tool would."
+>
+  <span class="package-registry-tokens__controls">
+    @if (managerOptions().length > 1) {
+      <app-dropdown
+        ariaLabel="Package manager"
+        [options]="managerOptions()"
+        [value]="selectedPlugin() ?? ''"
+        (valueChange)="draftPlugin.set($event)"
+      />
+    }
+    <app-text-field
+      class="package-registry-tokens__registry"
+      placeholder="https://registry.example.com"
+      ariaLabel="Registry address"
+      [value]="draftRegistry()"
+      (valueChange)="draftRegistry.set($event)"
+    />
+    <app-password-field
+      class="package-registry-tokens__token"
+      placeholder="Token"
+      [value]="draftToken()"
+      [disabled]="busy()"
+      (valueChange)="draftToken.set($event)"
+    />
+    <app-button-row align="start">
+      <app-button variant="solid" label="Save" [disabled]="!canSave()" (click)="save()" />
+    </app-button-row>
+  </span>
+</app-setting-row>
+@if (error(); as failure) {
+  <p class="package-registry-tokens__error" role="alert">{{ failure }}</p>
+}
+
+<app-setting-row
+  label="How Tokens Are Stored"
+  description="A token you save is encrypted with your operating system's secure storage and kept in the main process. It is handed only to the package manager it was saved for, only for that registry, and only over https. It cannot be read back from this page."
+/>

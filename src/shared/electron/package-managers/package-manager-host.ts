@@ -21,6 +21,7 @@ import {
   PackageManagerSpec,
 } from './package-manager-descriptor';
 import { PackageManagerEndpoint } from './package-manager-endpoint';
+import { normaliseRegistry } from './package-registry-token-store';
 
 /**
  * Specifies how long an ordinary request may take.
@@ -769,23 +770,4 @@ function checkCommand<Op extends PackageManagerOp>(
   }
   logger.warn('PackageManagerHost', 'A plugin answered a write with a command it may not run');
   return refused('The plugin answered with a command Studio will not run.');
-}
-
-/**
- * Normalises a registry a plugin named: an https URL, without credentials, query or fragment, and
- * without a trailing slash, so one registry is one key however it was written.
- * @param registry The registry.
- * @returns Returns the normalised URL, or null when it is not an https URL.
- */
-function normaliseRegistry(registry: string): string | null {
-  let url: URL;
-  try {
-    url = new URL(registry);
-  } catch {
-    return null;
-  }
-  if (url.protocol !== 'https:' || url.username.length > 0 || url.password.length > 0) {
-    return null;
-  }
-  return `${url.origin}${url.pathname}`.replace(/\/+$/, '');
 }

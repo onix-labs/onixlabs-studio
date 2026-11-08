@@ -25,6 +25,7 @@ import { ProjectsFolder } from './sections/projects-folder/projects-folder';
 import { LanguageServerSettings } from './language-server-settings/language-server-settings';
 import { SettingsSection } from './settings-section/settings-section';
 import { ContainerEngine } from './sections/container-engine/container-engine';
+import { PackageRegistryTokens } from './sections/package-registry-tokens/package-registry-tokens';
 import { DefaultSeverities } from './sections/default-severities/default-severities';
 import { LogFolder } from './sections/log-folder/log-folder';
 import { PersonalDictionary } from './sections/personal-dictionary/personal-dictionary';
@@ -162,6 +163,7 @@ type SettingsSectionId =
   | 'workspaces-search'
   | 'workspaces-run'
   | 'workspaces-new-projects'
+  | 'workspaces-packages'
   // One per capability whose shortcuts are catalogued, each a Keyboard leaf under that capability's
   // root; the bare `keyboard` is Application › Keyboard, for the shortcuts that belong to no one view.
   | `keyboard-${string}`;
@@ -313,6 +315,7 @@ interface SettingsTreeData {
     Button,
     ButtonRow,
     ContainerEngine,
+    PackageRegistryTokens,
     DefaultSeverities,
     LogFolder,
     Modal,
@@ -585,6 +588,8 @@ export class SettingsView {
           label: 'New Projects',
           sectionId: 'workspaces-new-projects',
         },
+        // Only while a package manager is installed: there is nothing to save a token for before then.
+        { id: 'workspaces-packages', label: 'Package Managers', sectionId: 'workspaces-packages' },
       ],
     },
     {
@@ -643,7 +648,7 @@ export class SettingsView {
       // Leaves before branches: each root's Keyboard leaf comes before its Providers or Languages
       // branch, so the branch's open list of entries never pushes the root's own pages out of sight.
       this.withLanguageProviderPages(
-        this.withProviderPages(this.withKeyboardPages(this.staticSections)),
+        this.withProviderPages(this.withKeyboardPages(this.withoutUninstalledPages())),
       ).filter(
         (node: SettingsNavNode): boolean =>
           (node.children?.length ?? 1) > 0 &&
@@ -651,6 +656,27 @@ export class SettingsView {
             installedContributions(this.plugins.plugins(), 'container-engine').length > 0),
       ),
   );
+
+  /**
+   * Leaves out the pages for a capability whose plugin is not installed: Package Managers has nothing
+   * to configure until a package-manager plugin is.
+   * @returns Returns the static sections, less those pages.
+   */
+  private withoutUninstalledPages(): readonly SettingsNavNode[] {
+    if (installedContributions(this.plugins.plugins(), 'package-manager').length > 0) {
+      return this.staticSections;
+    }
+    return this.staticSections.map((node: SettingsNavNode): SettingsNavNode =>
+      node.children === undefined
+        ? node
+        : {
+            ...node,
+            children: node.children.filter(
+              (child: SettingsNavNode): boolean => child.sectionId !== 'workspaces-packages',
+            ),
+          },
+    );
+  }
 
   /**
    * Puts a Keyboard leaf under each root whose capability has catalogued shortcuts, built from the
