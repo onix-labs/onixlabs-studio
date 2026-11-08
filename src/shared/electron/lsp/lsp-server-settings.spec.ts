@@ -10,9 +10,36 @@ import {
   settingArguments,
   startupOptions,
   withDeclaredDefaults,
+  withWorkspaceFolder,
 } from './lsp-server-settings';
 import type { LspServerSettingDescriptor } from '@shared/api/lsp-channels';
 import type { LspSettingsDelivery } from './language-server-descriptor';
+
+describe('withWorkspaceFolder (#1212)', () => {
+  it('putsTheFolderWhereTextNamesIt_andLeavesEverythingElse', () => {
+    expect(
+      withWorkspaceFolder(
+        {
+          'python.pythonPath': '$' + '{workspaceFolder}/.venv/bin/python',
+          'python.analysis.typeCheckingMode': 'strict',
+          'python.analysis.autoImportCompletions': true,
+        },
+        '/w',
+      ),
+    ).toEqual({
+      'python.pythonPath': '/w/.venv/bin/python',
+      'python.analysis.typeCheckingMode': 'strict',
+      'python.analysis.autoImportCompletions': true,
+    });
+  });
+
+  it('leavesThePlaceholder_whenThereIsNoFolder', () => {
+    const values: Record<string, string> = { a: '$' + '{workspaceFolder}/x' };
+
+    expect(withWorkspaceFolder(values, undefined)).toBe(values);
+    expect(withWorkspaceFolder(undefined, '/w')).toBeUndefined();
+  });
+});
 
 describe('parseServerSettings (#1143)', () => {
   it('keepsSwitchesAndChoicesPerServer_andDropsAServerWithNone', () => {
