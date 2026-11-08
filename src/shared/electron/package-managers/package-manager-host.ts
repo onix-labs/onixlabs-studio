@@ -423,7 +423,7 @@ export class PackageManagerHost {
       op === 'search' ? narrowSearch(params, plugin.capabilities) : params;
     if (
       op === 'search' &&
-      plugin.capabilities.includes('searchRequiresQuery') &&
+      needsQuery(plugin.capabilities) &&
       (asked as PackageManagerParams<'search'>).query.trim().length === 0
     ) {
       const nothing: PackageSearchResult = { items: [], total: 0, hasMore: false };
@@ -623,6 +623,15 @@ export class PackageManagerHost {
  */
 function refused<Op extends PackageManagerOp>(error: string): PackageManagerResponse<Op> {
   return { id: 0, ok: false, error, code: 'refused' };
+}
+
+/**
+ * Determines whether a plugin's search needs text: it said so, or it can only look up an exact name.
+ * @param capabilities The plugin's capabilities.
+ * @returns Returns true when an empty query is answered with nothing, without asking the plugin.
+ */
+function needsQuery(capabilities: readonly PackageManagerCapability[]): boolean {
+  return capabilities.includes('searchRequiresQuery') || capabilities.includes('searchExactName');
 }
 
 /**

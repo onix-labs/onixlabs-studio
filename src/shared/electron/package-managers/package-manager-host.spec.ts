@@ -537,6 +537,24 @@ describe('PackageManagerHost', () => {
       expect(fake.requests).toEqual([]);
     });
 
+    it('search_doesNotSendAnEmptyQueryToARegistryThatOnlyLooksUpNames', async () => {
+      const fake: FakeClient = fakeClient(['search', 'searchExactName']);
+      const host: PackageManagerHost = hostFor(fake, {}, [
+        descriptor({ capabilities: ['search', 'searchExactName'] }),
+      ]);
+
+      const response: PackageManagerResponse<'search'> = await host.request('npm', ROOT, 'search', {
+        source: 'PyPI',
+        query: '',
+        skip: 0,
+        take: 10,
+        prerelease: false,
+      });
+
+      expect(response).toMatchObject({ ok: true, result: { items: [], total: 0 } });
+      expect(fake.requests).toEqual([]);
+    });
+
     it('search_sendsAnEmptyQueryToARegistryThatBrowses', async () => {
       const fake: FakeClient = fakeClient(['search']);
       const host: PackageManagerHost = hostFor(fake);
