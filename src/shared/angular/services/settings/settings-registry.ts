@@ -631,6 +631,11 @@ export interface SettingsValues {
   readonly 'textEditor.global.defaultFormatter': DefaultFormatter;
   readonly 'textEditor.global.changeMargin': ChangeMarginMode;
   readonly 'textEditor.global.inlayHints': InlayHintsMode;
+  readonly 'textEditor.global.codeLens': boolean;
+  readonly 'textEditor.global.codeLensReferences': boolean;
+  readonly 'textEditor.global.codeLensImplementations': boolean;
+  readonly 'textEditor.global.codeLensTests': boolean;
+  readonly 'textEditor.global.codeLensOther': boolean;
   readonly 'textEditor.global.semanticHighlighting': boolean;
   readonly 'textEditor.global.highlightOccurrences': boolean;
   readonly 'textEditor.global.selectionHighlight': boolean;
@@ -2632,6 +2637,61 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         },
         profileOverridable: true,
         default: 'hint',
+      },
+    ],
+  },
+  {
+    // Code lenses (#1215): the facts a language server shows above types and members. One switch for
+    // all of them and one per kind, each overridable per language, and recognised the same way for
+    // every server, so a switch means the same whichever server serves the file. A server that has
+    // switches of its own is answered from these, so it does not compute lenses nobody sees.
+    id: 'code-lens',
+    label: 'Code Lenses',
+    settings: [
+      {
+        key: 'textEditor.global.codeLens',
+        title: 'Show Code Lenses',
+        description:
+          'Show the facts a language server puts above types and members, such as reference counts and Run Test. Off, no server is asked for them.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.codeLensReferences',
+        title: 'References',
+        description:
+          'Show how many references a type or member has; clicking the count lists them in the References panel.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.codeLensImplementations',
+        title: 'Implementations',
+        description:
+          'Show how many implementations an interface or abstract member has; clicking the count lists them.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.codeLensTests',
+        title: 'Run and Debug Tests',
+        description:
+          'Show Run Test and Debug Test above each test, and each class or file of them.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.codeLensOther',
+        title: 'Other Lenses',
+        description:
+          'Show the rest: Run above a program, go generate, a go.mod tidy, a schema link, and the like.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
       },
     ],
   },

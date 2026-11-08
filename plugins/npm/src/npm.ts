@@ -11,7 +11,7 @@ import {
   readNpmConfig,
   sourcesFrom,
 } from './npm-sources';
-import { NpmEndpoint, NpmrcConfig } from './npmrc';
+import { mayCarryCredentials, NpmEndpoint, NpmrcConfig } from './npmrc';
 import {
   CredentialAsk,
   HttpFetch,
@@ -193,12 +193,17 @@ export class NpmPackageManager {
   /**
    * Adds a token saved in Studio to a request the tool's own configuration has no credential for: the
    * tool's configuration comes first. The public registry is left alone, so an ordinary lookup never
-   * asks Studio for anything.
+   * asks Studio for anything, and so is a registry a credential may not travel to (plain http off
+   * loopback).
    * @param endpoint The endpoint.
    * @returns Returns the endpoint, with a token when Studio holds one for it.
    */
   private async authorised(endpoint: NpmEndpoint): Promise<NpmEndpoint> {
-    if (endpoint.headers['Authorization'] !== undefined || isPublicRegistry(endpoint.registry)) {
+    if (
+      endpoint.headers['Authorization'] !== undefined ||
+      isPublicRegistry(endpoint.registry) ||
+      !mayCarryCredentials(endpoint.registry)
+    ) {
       return endpoint;
     }
     const token: string | null = await this.credential(endpoint.registry);

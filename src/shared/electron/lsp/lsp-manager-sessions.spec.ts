@@ -235,6 +235,7 @@ describe.skipIf(process.platform === 'win32')('LspManager sessions', () => {
       pushedSettingsOf: (): undefined => undefined,
       pullsSettings: (): boolean => true,
       servesWorkspaceDiagnostics: (): boolean => false,
+      projectDiagnosticsOf: (): undefined => undefined,
       configurationOf: (): undefined => undefined,
       catalogue: (): unknown[] => [{ id: 'fake' }],
       onConfigurationChange: (): void => undefined,

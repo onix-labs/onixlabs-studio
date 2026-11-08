@@ -32,4 +32,14 @@ describe('LspOpenDocuments (#1190)', () => {
     expect(documents.release('pop-out')).toEqual([]);
     expect(documents.release('main')).toEqual([URI]);
   });
+
+  it('listsTheDocumentsSomeWindowHolds_once', () => {
+    const documents: LspOpenDocuments<string> = new LspOpenDocuments<string>();
+    documents.open(URI, 'main');
+    documents.open(URI, 'pop-out');
+    documents.open('file:///root/A.cs', 'pop-out');
+    documents.close(URI, 'main');
+
+    expect(documents.uris()).toEqual([URI, 'file:///root/A.cs']);
+  });
 });

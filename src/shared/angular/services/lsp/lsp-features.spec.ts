@@ -5,6 +5,7 @@ import { Bridge } from '@shared/api/bridge';
 import {
   LspChannel,
   LspSemanticTokensLegend,
+  SEMANTIC_TOKEN_MODIFIERS,
   SEMANTIC_TOKEN_TYPES,
 } from '@shared/api/lsp-channels';
 import { FileChannel } from '@shared/api/file-channels';
@@ -1170,11 +1171,108 @@ describe('LspFeatures', () => {
     const owned: unknown = {
       uri: { toString: (): string => MODEL_URI },
       getValue: (): string => '',
+      getLanguageId: (): string => 'csharp',
     };
     const LENS: unknown = {
       range: { start: { line: 8, character: 11 }, end: { line: 8, character: 16 } },
       data: { ListIndex: 2 },
     };
+
+    describe('switched by kind (#1215)', () => {
+      it('lensesSwitchedOffForTheLanguage_areNotAskedFor', async () => {
+        codeLensSupport = { resolve: true };
+        responses['textDocument/codeLens'] = [LENS];
+        const features: LspFeatures = await build();
+        TestBed.inject(Settings).setLanguageOverride('csharp', 'codeLens', false);
+        features.enableCodeLens('csharp');
+
+        const list: { lenses: unknown[] } | undefined = await captured.codeLens
+          ?.get('csharp')
+          ?.provideCodeLenses(owned);
+
+        expect(list).toBeUndefined();
+        expect(requests.map((request: { method: string }): string => request.method)).not.toContain(
+          'textDocument/codeLens',
+        );
+      });
+
+      it('aKindSwitchedOff_isLeftOut_andTheRestShown', async () => {
+        codeLensSupport = { resolve: false };
+        responses['textDocument/codeLens'] = [
+          {
+            ...(LENS as object),
+            command: { title: 'Run Test', command: 'dotnet.test.run', arguments: [{}] },
+          },
+          {
+            ...(LENS as object),
+            command: { title: '3 references', command: 'roslyn.client.peekReferences' },
+          },
+        ];
+        const features: LspFeatures = await build();
+        TestBed.inject(Settings).updateTextEditorSettings({ codeLensTests: false });
+        features.enableCodeLens('csharp');
+
+        const list: { lenses: { command?: { title: string } }[] } | undefined =
+          (await captured.codeLens?.get('csharp')?.provideCodeLenses(owned)) as
+            { lenses: { command?: { title: string } }[] } | undefined;
+
+        expect(list?.lenses.map((lens): string | undefined => lens.command?.title)).toEqual([
+          '3 references',
+        ]);
+      });
+
+      it('aLensFilledInAsAKindSwitchedOff_showsNothing', async () => {
+        codeLensSupport = { resolve: true };
+        responses['textDocument/codeLens'] = [LENS];
+        responses['codeLens/resolve'] = {
+          ...(LENS as object),
+          command: { title: '3 references', command: 'roslyn.client.peekReferences' },
+        };
+        const features: LspFeatures = await build();
+        TestBed.inject(Settings).updateTextEditorSettings({ codeLensReferences: false });
+        features.enableCodeLens('csharp');
+        const provider: FakeCodeLensProvider | undefined = captured.codeLens?.get('csharp');
+        const list: { lenses: unknown[] } | undefined = await provider?.provideCodeLenses(owned);
+
+        const resolved: unknown = await provider?.resolveCodeLens(owned, list?.lenses[0]);
+
+        expect((resolved as { command: unknown }).command).toEqual({ id: '', title: '' });
+      });
+
+      it('aReferenceCountWithNoCommand_listsTheReferencesWhereItSits', async () => {
+        // lua-language-server's and Svelte's counts come with an empty command.
+        codeLensSupport = { resolve: false };
+        responses['textDocument/codeLens'] = [
+          { ...(LENS as object), command: { title: '2 references', command: '' } },
+        ];
+        const features: LspFeatures = await build();
+        features.enableCodeLens('csharp');
+
+        const list: { lenses: { command?: { id: string; arguments?: unknown[] } }[] } | undefined =
+          (await captured.codeLens?.get('csharp')?.provideCodeLenses(owned)) as
+            { lenses: { command?: { id: string; arguments?: unknown[] } }[] } | undefined;
+
+        expect(list?.lenses[0]?.command).toEqual({
+          id: 'studio.lsp.codeLensReferences',
+          title: '2 references',
+          arguments: [expect.any(String), { line: 8, character: 11 }],
+        });
+      });
+
+      it('aChangedSwitch_hasEveryEditorAskAgain', async () => {
+        const features: LspFeatures = await build();
+        features.enableCodeLens('csharp');
+        const emitter: FakeEmitter | undefined = (
+          features as unknown as { codeLensChanged?: FakeEmitter }
+        ).codeLensChanged;
+        const before: number = emitter?.fired ?? 0;
+
+        TestBed.inject(Settings).setLanguageOverride('go', 'codeLensOther', false);
+        TestBed.tick();
+
+        expect(emitter?.fired).toBe(before + 1);
+      });
+    });
 
     it('areRegisteredOncePerLanguage_andARefreshAsksEachAgain', async () => {
       const features: LspFeatures = await build();
@@ -1256,6 +1354,53 @@ describe('LspFeatures', () => {
         expect((resolved as { command: { id: string } }).command.id).toBe(
           'studio.lsp.codeLensLocations',
         );
+      },
+    );
+
+    it.each<[string, string, string]>([
+      ['java.show.references', '2 references', 'references'],
+      ['java.show.implementations', '1 implementation', 'implementations'],
+      // jdtls names the kind in its command, so a count it words differently is still listed right.
+      ['java.show.implementations', '0 subtypes', 'implementations'],
+    ])(
+      'aJdtlsLens_%s_%s_listsThePlacesItBrought_as %s (#1208)',
+      async (name: string, title: string, kind: string) => {
+        codeLensSupport = { resolve: true };
+        const place: unknown = {
+          uri: 'file:///root/App.java',
+          range: { start: { line: 9, character: 4 }, end: { line: 9, character: 10 } },
+        };
+        responses['textDocument/codeLens'] = [LENS];
+        responses['codeLens/resolve'] = {
+          ...(LENS as object),
+          command: {
+            title,
+            command: name,
+            arguments: ['file:///root/Shapes.java', { line: 5, character: 10 }, [place]],
+          },
+        };
+        const features: LspFeatures = await build();
+        features.enableCodeLens('java');
+        const provider: FakeCodeLensProvider | undefined = captured.codeLens?.get('java');
+        const list: { lenses: unknown[] } | undefined = await provider?.provideCodeLenses(owned);
+
+        const resolved: unknown = await provider?.resolveCodeLens(owned, list?.lenses[0]);
+
+        expect((resolved as { command: unknown }).command).toEqual({
+          id: 'studio.lsp.codeLensLocations',
+          title,
+          arguments: [
+            expect.any(String),
+            { line: 5, character: 10 },
+            kind,
+            [
+              {
+                path: '/root/App.java',
+                range: { startLineNumber: 10, startColumn: 5, endLineNumber: 10, endColumn: 11 },
+              },
+            ],
+          ],
+        });
       },
     );
 
@@ -2054,6 +2199,61 @@ describe('LspFeatures', () => {
           arguments: ['file:///root/app.ts', { line: 2, character: 6 }],
         },
       });
+    });
+
+    it('projectConfigurations_askTsserverWhichConfigurationTheFileIsIn (#1207)', async () => {
+      serverCommands = ['typescript.tsserverRequest'];
+      responses['workspace/executeCommand'] = {
+        type: 'response',
+        success: true,
+        body: {
+          configFileName: '/root/packages/app/tsconfig.json',
+          languageServiceDisabled: false,
+        },
+      };
+      const features: LspFeatures = await build();
+      const model: Parameters<LspFeatures['projectConfigurations']>[0] = owned as Parameters<
+        LspFeatures['projectConfigurations']
+      >[0];
+
+      expect(features.servesProjectConfiguration(model)).toBe(true);
+      expect(await features.projectConfigurations(model)).toEqual([
+        {
+          path: '/root/packages/app/tsconfig.json',
+          range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 },
+        },
+      ]);
+      expect(requests.at(-1)).toEqual({
+        sessionId: '/root::typescript',
+        method: 'workspace/executeCommand',
+        params: {
+          command: 'typescript.tsserverRequest',
+          arguments: ['projectInfo', { file: 'file:///root/app.ts', needFileNameList: false }],
+        },
+      });
+    });
+
+    it('projectConfigurations_ofAFileInAnInferredProject_areNone (#1207)', async () => {
+      serverCommands = ['typescript.tsserverRequest'];
+      responses['workspace/executeCommand'] = {
+        body: { configFileName: '/dev/null/inferredProject1*' },
+      };
+      const features: LspFeatures = await build();
+      const model: Parameters<LspFeatures['projectConfigurations']>[0] = owned as Parameters<
+        LspFeatures['projectConfigurations']
+      >[0];
+
+      expect(await features.projectConfigurations(model)).toEqual([]);
+    });
+
+    it('projectConfigurations_areNull_andNeverAsked_whereTheServerDoesNotRunTheCommand (#1207)', async () => {
+      const features: LspFeatures = await build();
+      const model: Parameters<LspFeatures['projectConfigurations']>[0] = owned as Parameters<
+        LspFeatures['projectConfigurations']
+      >[0];
+
+      expect(features.servesProjectConfiguration(model)).toBe(false);
+      expect(await features.projectConfigurations(model)).toBeNull();
     });
 
     it('sourceDefinitions_areNull_andNeverAsked_whereTheServerDoesNotRunTheCommand (#1207)', async () => {
@@ -3239,6 +3439,40 @@ describe('LspFeatures', () => {
       ]);
     },
   );
+
+  it.each([
+    ['annotation', 'decorator'],
+    ['annotationMember', 'method'],
+    ['record', 'class'],
+    ['recordComponent', 'property'],
+  ])('semanticTokens_coloursJavas_%s_as_%s (#1208)', async (name: string, standard: string) => {
+    semanticLegend = { tokenTypes: [name], tokenModifiers: [] };
+    responses['textDocument/semanticTokens/full'] = { data: [0, 0, 4, 0, 0] };
+    await build();
+    const model: unknown = { uri: { toString: (): string => MODEL_URI } };
+    const tokens: { data: Uint32Array } | undefined =
+      await captured.semantic?.provideDocumentSemanticTokens(model);
+
+    expect(tokens?.data[3]).toBe(SEMANTIC_TOKEN_TYPES.indexOf(standard));
+  });
+
+  it('semanticTokens_keepsJavasStandardModifiers_andDropsItsOwn (#1208)', async () => {
+    // Part of jdtls's legend: `readonly` and `declaration` are standard, `public` and `generic` its own.
+    semanticLegend = {
+      tokenTypes: ['record'],
+      tokenModifiers: ['readonly', 'declaration', 'public', 'generic'],
+    };
+    responses['textDocument/semanticTokens/full'] = { data: [0, 0, 4, 0, 0b1111] };
+    await build();
+    const model: unknown = { uri: { toString: (): string => MODEL_URI } };
+    const tokens: { data: Uint32Array } | undefined =
+      await captured.semantic?.provideDocumentSemanticTokens(model);
+
+    expect(tokens?.data[4]).toBe(
+      (1 << SEMANTIC_TOKEN_MODIFIERS.indexOf('readonly')) |
+        (1 << SEMANTIC_TOKEN_MODIFIERS.indexOf('declaration')),
+    );
+  });
 
   it('semanticTokens_coloursClangdsConceptsAsTypes_itsInactiveCodeAsComments_andLeavesBrackets (#1213)', async () => {
     // Part of clangd's legend. `comment` is how it marks what the preprocessor skipped, and `bracket`

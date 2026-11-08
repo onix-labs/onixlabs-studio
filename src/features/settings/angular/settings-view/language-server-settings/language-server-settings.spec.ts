@@ -311,6 +311,30 @@ describe('LanguageServerSettings', () => {
       ]);
     });
 
+    it('aServersOwnLensSwitch_isLeftToCodeLenses (#1215)', async () => {
+      installed = {
+        csharp: [
+          {
+            ...ROSLYN,
+            settings: [
+              ...(ROSLYN.settings ?? []),
+              {
+                section: 'csharp|code_lens.dotnet_enable_references_code_lens',
+                label: 'Reference Counts',
+                description: 'Counts above members.',
+                default: true,
+              },
+            ],
+          },
+        ],
+      };
+      selection = { csharp: 'csharp' };
+      const element: HTMLElement = await render('csharp', 'C#');
+
+      expect(element.textContent).toContain('Restore Packages');
+      expect(element.textContent).not.toContain('Reference Counts');
+    });
+
     it('aServerThatDeclaresNone_showsNone', async () => {
       installed = { python: [server('pyright', ['python'])] };
       selection = { python: 'pyright' };

@@ -20,6 +20,7 @@ import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { NgTemplateOutlet } from '@angular/common';
 import { Accordion } from '@shared/angular/components/forms/accordion/accordion';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import { isCodeLensServerSwitch } from '@shared/angular/services/lsp/code-lens-kinds';
 
 /**
  * Names the tool-path override a language's server needs, where one applies. These are the runtimes a
@@ -261,8 +262,13 @@ export class LanguageServerSettings {
       const server: LspServerSummary | undefined = this.servers().find(
         (candidate: LspServerSummary): boolean => candidate.id === serverId,
       );
-      return (server?.settings ?? []).map(
-        (descriptor: LspServerSettingDescriptor): DeclaredSetting => {
+      // A server's own lens switches are answered from Code › Code Lenses (#1215), not set here.
+      return (server?.settings ?? [])
+        .filter(
+          (descriptor: LspServerSettingDescriptor): boolean =>
+            !isCodeLensServerSwitch(serverId, descriptor.section),
+        )
+        .map((descriptor: LspServerSettingDescriptor): DeclaredSetting => {
           const value: LspServerSettingValue =
             this.lspSettings.serverSetting(serverId, descriptor.section) ?? descriptor.default;
           return {
@@ -277,8 +283,7 @@ export class LanguageServerSettings {
             ),
             text: typeof descriptor.default === 'string' && descriptor.options === undefined,
           };
-        },
-      );
+        });
     },
   );
 
