@@ -96,6 +96,58 @@ describe('ArchiveProvisioner', () => {
     expect(provisioner.isInstalled(provision())).toBe(true);
   });
 
+  describe('an install in the earlier layout (#1210)', () => {
+    /**
+     * Lays an install out as Studio did before manifests named platforms: under another folder name,
+     * marked complete on the version folder.
+     * @param folder The folder it is under.
+     * @returns Returns the version folder.
+     */
+    async function earlierInstall(folder: string): Promise<string> {
+      const version: string = path.join(root, 'demo', '1.0.0');
+      mkdirSync(path.join(version, folder, 'bin'), { recursive: true });
+      writeFileSync(path.join(version, folder, 'bin', 'demo'), '#!/bin/sh\n');
+      await markComplete(version);
+      return version;
+    }
+
+    it('isAdopted_movedToWhereTheManifestLooks_andMarkedThere', async () => {
+      const version: string = await earlierInstall('x86_64-apple-darwin');
+
+      expect(provisioner.isInstalled(provision())).toBe(true);
+      expect(existsSync(path.join(version, 'x86_64-apple-darwin'))).toBe(false);
+      expect(isComplete(path.join(version, platformKey()))).toBe(true);
+      // And stays installed, with nothing left to adopt.
+      expect(provisioner.isInstalled(provision())).toBe(true);
+    });
+
+    it('isNotAdopted_withoutTheVersionsMarker', () => {
+      const version: string = path.join(root, 'demo', '1.0.0', 'x86_64-apple-darwin', 'bin');
+      mkdirSync(version, { recursive: true });
+      writeFileSync(path.join(version, 'demo'), '#!/bin/sh\n');
+
+      expect(provisioner.isInstalled(provision())).toBe(false);
+    });
+
+    it('isNotAdopted_whenTwoFoldersCouldBeIt', async () => {
+      await earlierInstall('x86_64-apple-darwin');
+      await earlierInstall('aarch64-apple-darwin');
+
+      expect(provisioner.isInstalled(provision())).toBe(false);
+    });
+
+    it('neverTakesAnotherPlatformsInstall', async () => {
+      // Another platform's folder is that platform's install, not an earlier layout of this one.
+      const other: string = ['darwin-x64', 'darwin-arm64', 'linux-x64'].find(
+        (key: string): boolean => key !== platformKey(),
+      )!;
+      const version: string = await earlierInstall(other);
+
+      expect(provisioner.isInstalled(provision())).toBe(false);
+      expect(existsSync(path.join(version, other, 'bin', 'demo'))).toBe(true);
+    });
+  });
+
   it('remove_deletesTheInstallDirectory', async () => {
     const directory: string = installDirectory();
     await markComplete(directory);

@@ -36,6 +36,7 @@ import type {
   WorkspaceTextEdits,
 } from '@shared/angular/services/workspace-edit/workspace-edit';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import { CodeLensServerSync } from './code-lens-server-sync';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { DebugAttachRouter } from '@shared/angular/services/debug-attach/debug-attach-router';
 import {
@@ -411,6 +412,8 @@ describe('LspClient', () => {
             },
           },
         },
+        // The servers' own lens switches are kept in step elsewhere (#1215).
+        { provide: CodeLensServerSync, useValue: {} },
         {
           provide: LspSettings,
           useValue: {
@@ -2072,6 +2075,23 @@ describe('LspClient', () => {
     expect(lsp.starts).toHaveLength(0);
   });
 
+  it('theTypescriptTheServerSaysItRunsWith_showsOnItsRow (#1207)', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: '',
+    });
+    await flush();
+
+    lsp.notify('/root::typescript', '$/typescriptVersion', { version: '5.9.3', source: 'bundled' });
+    lsp.notify('/root::typescript', '$/typescriptVersion', { version: 42 });
+
+    expect(status.servers()[0].version).toBe('5.9.3');
+  });
+
   describe('a server that both pushes and is pulled (#1210)', () => {
     const SESSION: string = '/root::rust';
     const URI: string = 'file:///root/src/lib.rs';
@@ -2187,6 +2207,21 @@ describe('LspClient', () => {
       const client: LspClient = build();
       client.syncDocument({
         documentId: 'doc-2',
+        path: '/root/A.java',
+        languageId: 'java',
+        content: '',
+      });
+      await flush();
+
+      lsp.publishDiagnostics('/root::java', 'file:///root/B.java', [CHECK]);
+
+      expect(diagnostics.emitted).toEqual([]);
+    });
+
+    it('typescriptsPushForAFileNotOpen_reachesTheErrorList_asItsProjectsAreChecked (#1207)', async () => {
+      const client: LspClient = build();
+      client.syncDocument({
+        documentId: 'doc-2',
         path: '/root/a.ts',
         languageId: 'typescript',
         content: '',
@@ -2195,7 +2230,9 @@ describe('LspClient', () => {
 
       lsp.publishDiagnostics('/root::typescript', 'file:///root/b.ts', [CHECK]);
 
-      expect(diagnostics.emitted).toEqual([]);
+      expect(diagnostics.emitted).toEqual([
+        expect.objectContaining({ path: '/root/b.ts', scope: 'workspace' }),
+      ]);
     });
 
     it('whatItSaidOfTheWorkspace_goesWhenItExits', async () => {
@@ -2290,15 +2327,16 @@ describe('LspClient', () => {
   });
 
   it('closeDocument_afterOpen_sendsDidCloseAndClearsDiagnostics', async () => {
+    // A server whose pushes stand for its open documents alone, unlike TypeScript's and Rust's.
     const client: LspClient = build();
     client.syncDocument({
       documentId: 'doc-1',
-      path: '/root/a.ts',
-      languageId: 'typescript',
+      path: '/root/A.java',
+      languageId: 'java',
       content: '',
     });
     await flush();
-    lsp.publishDiagnostics('/root::typescript', 'file:///root/a.ts', [
+    lsp.publishDiagnostics('/root::java', 'file:///root/A.java', [
       { range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }, message: 'x' },
     ]);
     expect(diagnostics.emitted).toHaveLength(1);
@@ -2857,6 +2895,99 @@ describe('LspClient', () => {
 
     lsp.notify('/root::csharp', '$/progress', { token: 'load', value: { kind: 'end' } });
     expect(status.servers()[0].progress).toBeUndefined();
+  });
+
+  it('progress_begunBeforeARestart_isForgotten_soTheNewServerNeverShowsIt', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/Program.cs',
+      languageId: 'csharp',
+      content: '',
+    });
+    await flush();
+    lsp.notify('/root::csharp', '$/progress', {
+      token: 'index',
+      value: { kind: 'begin', title: 'Indexing' },
+    });
+    expect(status.servers()[0].progress).toBe('Indexing');
+
+    await client.restart('/root::csharp');
+    await flush();
+    lsp.notify('/root::csharp', '$/progress', {
+      token: 'load',
+      value: { kind: 'begin', title: 'Loading' },
+    });
+    lsp.notify('/root::csharp', '$/progress', { token: 'load', value: { kind: 'end' } });
+
+    // The old server's indexing ended with it, so nothing is left to show.
+    expect(status.servers()[0].progress).toBeUndefined();
+    // A report on a token the new server never began has no title to read under.
+    lsp.notify('/root::csharp', '$/progress', {
+      token: 'index',
+      value: { kind: 'report', message: '3/9' },
+    });
+    expect(status.servers()[0].progress).toBeUndefined();
+  });
+
+  it('progress_begunBeforeACrash_isForgotten', async () => {
+    const realNow: () => number = Date.now;
+    let now: number = realNow();
+    vi.spyOn(Date, 'now').mockImplementation((): number => now);
+    try {
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      const base: { documentId: string; path: string; languageId: string; content: string } = {
+        documentId: 'doc-1',
+        path: '/root/a.ts',
+        languageId: 'typescript',
+        content: '',
+      };
+      client.syncDocument(base);
+      await flush();
+      lsp.notify('/root::typescript', '$/progress', {
+        token: 'index',
+        value: { kind: 'begin', title: 'Indexing' },
+      });
+      lsp.exit('/root::typescript');
+      expect(status.servers()[0].progress).toBeUndefined();
+
+      now += 5_001;
+      client.syncDocument({ ...base, content: 'x' });
+      await flush();
+      lsp.notify('/root::typescript', '$/progress', {
+        token: 'load',
+        value: { kind: 'begin', title: 'Loading' },
+      });
+      lsp.notify('/root::typescript', '$/progress', { token: 'load', value: { kind: 'end' } });
+
+      expect(lsp.starts).toHaveLength(2);
+      expect(status.servers()[0].progress).toBeUndefined();
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('fileStatus_isCleared_whenTheServerStops', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/Program.cs',
+      languageId: 'csharp',
+      content: '',
+    });
+    await flush();
+    lsp.notify('/root::csharp', 'textDocument/clangd.fileStatus', {
+      uri: 'file:///root/shapes.cpp',
+      state: 'parsing includes, running Update',
+    });
+    expect(status.servers()[0].activity).toBe('Parsing includes — shapes.cpp');
+
+    lsp.exit('/root::csharp');
+
+    expect(status.servers()[0].activity).toBeUndefined();
   });
 
   describe('inactive regions (#1213)', () => {
@@ -3608,6 +3739,112 @@ describe('LspClient', () => {
       await expect(client.fileRenameEdits('/root/a.ts', '/root/b.ts')).resolves.toEqual({
         files: [],
         refused: [],
+      });
+    });
+
+    describe('rust-analyzer (#1210)', () => {
+      /**
+       * The file operations rust-analyzer 2026-07-13 offers: its `.rs` files, and every folder.
+       */
+      const RUST_OFFERED: unknown = {
+        workspace: {
+          fileOperations: {
+            willRename: {
+              filters: [
+                { scheme: 'file', pattern: { glob: '**/*.rs', matches: 'file' } },
+                { scheme: 'file', pattern: { glob: '**', matches: 'folder' } },
+              ],
+            },
+          },
+        },
+      };
+
+      /**
+       * Builds an edit replacing the text on one line.
+       * @param line The zero-based line.
+       * @param from The first character.
+       * @param to The character after the last.
+       * @param newText The text put in.
+       * @returns Returns the LSP edit.
+       */
+      function rename(line: number, from: number, to: number, newText: string): unknown {
+        return {
+          range: { start: { line, character: from }, end: { line, character: to } },
+          newText,
+        };
+      }
+
+      it('renamingAModuleFile_renamesItsModItem_andTheUseOfIt', async () => {
+        lsp.startResult = { success: true, capabilities: RUST_OFFERED };
+        // What it answered for `geometry/circle.rs` → `disk.rs`, `mod.rs` not open (so no version).
+        lsp.requestAnswers['workspace/willRenameFiles'] = {
+          documentChanges: [
+            {
+              textDocument: { version: null, uri: 'file:///root/src/geometry/mod.rs' },
+              edits: [rename(0, 8, 14, 'disk'), rename(2, 8, 14, 'disk')],
+            },
+          ],
+        };
+        const client: LspClient = build();
+        openDocument(client);
+        await flush();
+
+        const edits: WorkspaceTextEdits = await client.fileRenameEdits(
+          '/root/src/geometry/circle.rs',
+          '/root/src/geometry/disk.rs',
+        );
+
+        expect(edits.refused).toEqual([]);
+        expect(edits.files).toEqual([
+          {
+            path: '/root/src/geometry/mod.rs',
+            edits: [
+              {
+                range: { startLineNumber: 1, startColumn: 9, endLineNumber: 1, endColumn: 15 },
+                text: 'disk',
+              },
+              {
+                range: { startLineNumber: 3, startColumn: 9, endLineNumber: 3, endColumn: 15 },
+                text: 'disk',
+              },
+            ],
+          },
+        ]);
+      });
+
+      it('renamingAModuleFolder_renamesItsModItem_andThePathsThroughItInOtherCrates', async () => {
+        lsp.startResult = { success: true, capabilities: RUST_OFFERED };
+        // What it answered for `geometry/` → `geom/`: the `mod` in `lib.rs`, and `app`'s `use`.
+        lsp.requestAnswers['workspace/willRenameFiles'] = {
+          documentChanges: [
+            {
+              textDocument: { version: 1, uri: 'file:///root/src/lib.rs' },
+              edits: [rename(0, 8, 16, 'geom')],
+            },
+            {
+              textDocument: { version: 1, uri: 'file:///root/app/src/main.rs' },
+              edits: [rename(0, 12, 20, 'geom')],
+            },
+          ],
+        };
+        const client: LspClient = build();
+        openDocument(client);
+        await flush();
+
+        const edits: WorkspaceTextEdits = await client.fileRenameEdits(
+          '/root/src/geometry',
+          '/root/src/geom',
+        );
+
+        expect(asked()).toEqual([
+          {
+            files: [{ oldUri: 'file:///root/src/geometry', newUri: 'file:///root/src/geom' }],
+          },
+        ]);
+        expect(edits.files.map((file: FileTextEdits): string => file.path)).toEqual([
+          '/root/src/lib.rs',
+          '/root/app/src/main.rs',
+        ]);
       });
     });
 

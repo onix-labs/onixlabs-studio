@@ -405,6 +405,13 @@
   font-weight: 500;
 }
 
+// Beside the name, quieter: which TypeScript the server runs with (#1207).
+.lsp-status-menu__item-version {
+  margin-left: 0.35em;
+  font-weight: 400;
+  color: var(--settings-muted-foreground-color);
+}
+
 .lsp-status-menu__item-status {
   font-size: 0.75rem;
   color: var(--settings-muted-foreground-color);
