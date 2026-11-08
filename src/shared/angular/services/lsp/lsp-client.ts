@@ -763,9 +763,10 @@ const FROZEN_TOKEN_SERVERS: ReadonlySet<string> = new Set<string>(['csharp']);
 /**
  * The servers whose pushed diagnostics reach the Error List for files that are not open as well
  * (#1210): `cargo check` reports whole crates, so an error a change causes in another file would
- * otherwise show nowhere. The other servers' pushes are left to their open documents.
+ * otherwise show nowhere. So does typescript-language-server once the main process has tsserver check
+ * the open documents' projects (#1207). The other servers' pushes are left to their open documents.
  */
-const WHOLE_WORKSPACE_PUSH_SERVERS: ReadonlySet<string> = new Set<string>(['rust']);
+const WHOLE_WORKSPACE_PUSH_SERVERS: ReadonlySet<string> = new Set<string>(['rust', 'typescript']);
 
 /**
  * How long a session's refresh signals must stay quiet before its recolour pass runs. A loading
@@ -2825,6 +2826,14 @@ export class LspClient implements OnDestroy {
     // than an inert spinner that might as well be a hang.
     if (message.method === '$/progress') {
       this.onProgress(message.sessionId, message.params);
+      return;
+    }
+    // typescript-language-server says which TypeScript it runs with (#1207), once, as it starts.
+    if (message.method === '$/typescriptVersion') {
+      const version: unknown = (message.params as { version?: unknown } | null)?.version;
+      if (typeof version === 'string' && version.length > 0) {
+        this.status.setVersion(message.sessionId, version);
+      }
       return;
     }
     // clangd says what it is doing with each file (#1213): parsing, building the preamble, or idle.

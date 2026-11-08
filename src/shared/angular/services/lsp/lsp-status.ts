@@ -52,6 +52,11 @@ interface ServerEntry {
   readonly state: LspServerState;
 
   /**
+   * Gets the version of what the server runs, where that is not the server's own, or undefined.
+   */
+  readonly version?: string;
+
+  /**
    * Gets a reason for the state (for example why the server is unavailable), or undefined.
    */
   readonly detail?: string;
@@ -126,6 +131,13 @@ export interface LspServer {
    * Gets the server's current lifecycle state.
    */
   readonly state: LspServerState;
+
+  /**
+   * Gets the version of what the server runs, where that is what the user knows it by (#1207): the
+   * TypeScript typescript-language-server runs with, `5.9.3`. Undefined for a server that says nothing
+   * of it.
+   */
+  readonly version?: string;
 
   /**
    * Gets a reason for the state (for example why the server is unavailable), or undefined.
@@ -245,6 +257,7 @@ export class LspStatus {
         name: this.name(entry.serverId),
         rootPath: entry.rootPath,
         state: entry.state,
+        version: entry.version,
         detail: entry.detail,
         progress: entry.progress,
         activity: entry.activity,
@@ -341,6 +354,22 @@ export class LspStatus {
         this.updateNotice(sessionId, undefined);
       }, NOTICE_MS),
     );
+  }
+
+  /**
+   * Records the version of what a server runs (#1207), such as the TypeScript
+   * typescript-language-server runs with. Ignored when the session is not tracked.
+   * @param sessionId The session the server is keyed by.
+   * @param version The version.
+   */
+  public setVersion(sessionId: string, version: string): void {
+    const current: ServerEntry | undefined = this.entries().get(sessionId);
+    if (current === undefined || current.version === version) {
+      return;
+    }
+    const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
+    next.set(sessionId, { ...current, version });
+    this.entries.set(next);
   }
 
   /**

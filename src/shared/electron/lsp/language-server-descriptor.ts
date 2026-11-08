@@ -261,6 +261,14 @@ export interface LanguageServerDescriptor {
   readonly servesWorkspaceDiagnostics?: boolean;
 
   /**
+   * Gets how the server is asked to report every file of the projects its open documents are in
+   * (#1207), for a server that pushes diagnostics for open files only and offers no
+   * `workspace/diagnostic`: `tsserver` for typescript-language-server's `geterrForProject`. Undefined
+   * for a server that is not asked.
+   */
+  readonly projectDiagnostics?: 'tsserver';
+
+  /**
    * Gets the settings the server reads that the user is offered (#1143), on its language's page in
    * Settings. Only settings a user would recognise.
    */

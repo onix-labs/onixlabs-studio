@@ -8,6 +8,7 @@ import { LspShowMessageForwarder } from './lsp-show-message';
 import { LspOpenDocuments } from './lsp-open-documents';
 import { LspDiagnosticsCoalescer } from './lsp-diagnostics-coalescer';
 import { WorkspaceDiagnosticsPull, WorkspaceDocumentReport } from './lsp-workspace-diagnostics';
+import { ProjectDiagnosticsCheck } from './lsp-project-diagnostics';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -79,6 +80,12 @@ const PROJECT_INITIALIZATION_COMPLETE: string = 'workspace/projectInitialization
 const SERVER_STATUS: string = 'experimental/serverStatus';
 
 /**
+ * Names the notification typescript-language-server says which TypeScript it runs with (#1207), once,
+ * as it starts, so a window attaching later is told it again.
+ */
+const TYPESCRIPT_VERSION: string = '$/typescriptVersion';
+
+/**
  * The server notifications forwarded to the renderer — exactly the set the renderer's client
  * handles. Everything else (progress, telemetry, server-specific chatter) is dropped here, before it
  * costs an IPC hop.
@@ -90,6 +97,8 @@ const FORWARDED_NOTIFICATIONS: ReadonlySet<string> = new Set<string>([
   'textDocument/publishDiagnostics',
   'workspace/projectInitializationComplete',
   'experimental/serverStatus',
+  // Which TypeScript typescript-language-server runs with (#1207), for its status row.
+  '$/typescriptVersion',
   'workspace/semanticTokens/refresh',
   'window/logMessage',
   'window/showMessage',
@@ -168,6 +177,12 @@ interface LspSession {
   workspaceDiagnostics: WorkspaceDiagnosticsPull | null;
 
   /**
+   * Holds the check that has the server report every file of the projects its open documents are in
+   * (#1207), or null for a server that is not asked.
+   */
+  projectDiagnostics: ProjectDiagnosticsCheck | null;
+
+  /**
    * Holds whether the server has said it finished loading the workspace
    * (`workspace/projectInitializationComplete`), which a window attaching later is told, since the
    * server says it only once.
@@ -179,6 +194,12 @@ interface LspSession {
    * server that has said nothing.
    */
   serverStatus?: unknown;
+
+  /**
+   * Holds which TypeScript the server said it runs with (`$/typescriptVersion`, #1207), or undefined
+   * for a server that has said nothing of it.
+   */
+  typescriptVersion?: unknown;
 
   /**
    * Holds whether a workspace diagnostics pull has run to its end since the server loaded the
@@ -362,6 +383,25 @@ export class LspManager {
     );
     session.workspaceDiagnostics.start();
     logger.info('LspManager', `Pulling workspace diagnostics for session ${sessionId}`);
+  }
+
+  /**
+   * Starts the check that has a server report every file of the projects its open documents are in
+   * (#1207), for a server whose descriptor asks for it.
+   * @param sessionId The session.
+   * @param session The session's state.
+   */
+  private startProjectDiagnostics(sessionId: string, session: LspSession): void {
+    if (this.registry.projectDiagnosticsOf(session.request.serverId) !== 'tsserver') {
+      return;
+    }
+    session.projectDiagnostics = new ProjectDiagnosticsCheck(
+      session.connection,
+      (): readonly string[] => session.openDocuments.uris(),
+      sessionId,
+    );
+    // Documents opened before the handshake finished were opened on the server all the same.
+    session.projectDiagnostics.schedule();
   }
 
   /**
@@ -647,6 +687,7 @@ export class LspManager {
       tail,
       ready: Promise.resolve({ success: false, error: 'Initialize pending' }),
       workspaceDiagnostics: null,
+      projectDiagnostics: null,
       loaded: false,
       analysed: false,
       openDocuments: new LspOpenDocuments<WebContents>(),
@@ -668,6 +709,7 @@ export class LspManager {
     )
       .then((result: InitializeResult): LspStartResult => {
         this.startWorkspaceDiagnostics(parsed.sessionId, session, result);
+        this.startProjectDiagnostics(parsed.sessionId, session);
         return {
           success: true,
           serverInfo: result.serverInfo,
@@ -777,6 +819,15 @@ export class LspManager {
       return;
     }
     this.tell(session.connection, method, params);
+    // A document opened can bring a project in; one saved can break a file of it that is not open; and
+    // one closed has its diagnostics cleared by the server, which a check reports again.
+    if (
+      method === 'textDocument/didOpen' ||
+      method === 'textDocument/didSave' ||
+      method === 'textDocument/didClose'
+    ) {
+      session.projectDiagnostics?.schedule();
+    }
   }
 
   /**
@@ -988,6 +1039,7 @@ export class LspManager {
     this.sessions.delete(id);
     session.watcher.close();
     session.workspaceDiagnostics?.stop();
+    session.projectDiagnostics?.stop();
     try {
       session.connection.dispose();
     } catch (error: unknown) {
@@ -1144,7 +1196,8 @@ export class LspManager {
 
   /**
    * Tells a window that attached to a running session what the windows before it were told and the
-   * server will not say again (#1182): that it finished loading the workspace, how it is, and the
+   * server will not say again (#1182): that it finished loading the workspace, how it is, which
+   * TypeScript it runs with (#1207), and the
    * workspace's diagnostics as they stand. Without this, a window reloaded — or a second one opened on the same
    * folder — waited on a load that had long finished, its Error List empty. Sent once the window has
    * its start answer, which it needs to take them.
@@ -1173,6 +1226,14 @@ export class LspManager {
           sessionId,
           method: SERVER_STATUS,
           params: session.serverStatus,
+        };
+        sender.send(LspChannel.Notification, message);
+      }
+      if (session.typescriptVersion !== undefined) {
+        const message: LspMessage = {
+          sessionId,
+          method: TYPESCRIPT_VERSION,
+          params: session.typescriptVersion,
         };
         sender.send(LspChannel.Notification, message);
       }
@@ -1215,6 +1276,12 @@ export class LspManager {
       const session: LspSession | undefined = this.sessions.get(sessionId);
       if (session !== undefined) {
         session.serverStatus = params;
+      }
+    }
+    if (method === TYPESCRIPT_VERSION) {
+      const session: LspSession | undefined = this.sessions.get(sessionId);
+      if (session !== undefined) {
+        session.typescriptVersion = params;
       }
     }
     if (method === PUBLISH_DIAGNOSTICS_METHOD) {
