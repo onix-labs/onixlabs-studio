@@ -2070,6 +2070,23 @@ describe('LspClient', () => {
     expect(lsp.starts).toHaveLength(0);
   });
 
+  it('theTypescriptTheServerSaysItRunsWith_showsOnItsRow (#1207)', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: '',
+    });
+    await flush();
+
+    lsp.notify('/root::typescript', '$/typescriptVersion', { version: '5.9.3', source: 'bundled' });
+    lsp.notify('/root::typescript', '$/typescriptVersion', { version: 42 });
+
+    expect(status.servers()[0].version).toBe('5.9.3');
+  });
+
   describe('a server that both pushes and is pulled (#1210)', () => {
     const SESSION: string = '/root::rust';
     const URI: string = 'file:///root/src/lib.rs';

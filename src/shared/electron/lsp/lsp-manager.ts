@@ -75,6 +75,12 @@ const PROJECT_INITIALIZATION_COMPLETE: string = 'workspace/projectInitialization
 const SERVER_STATUS: string = 'experimental/serverStatus';
 
 /**
+ * Names the notification typescript-language-server says which TypeScript it runs with (#1207), once,
+ * as it starts, so a window attaching later is told it again.
+ */
+const TYPESCRIPT_VERSION: string = '$/typescriptVersion';
+
+/**
  * The server notifications forwarded to the renderer — exactly the set the renderer's client
  * handles. Everything else (progress, telemetry, server-specific chatter) is dropped here, before it
  * costs an IPC hop.
@@ -86,6 +92,8 @@ const FORWARDED_NOTIFICATIONS: ReadonlySet<string> = new Set<string>([
   'textDocument/publishDiagnostics',
   'workspace/projectInitializationComplete',
   'experimental/serverStatus',
+  // Which TypeScript typescript-language-server runs with (#1207), for its status row.
+  '$/typescriptVersion',
   'workspace/semanticTokens/refresh',
   'window/logMessage',
   'window/showMessage',
@@ -179,6 +187,12 @@ interface LspSession {
    * server that has said nothing.
    */
   serverStatus?: unknown;
+
+  /**
+   * Holds which TypeScript the server said it runs with (`$/typescriptVersion`, #1207), or undefined
+   * for a server that has said nothing of it.
+   */
+  typescriptVersion?: unknown;
 
   /**
    * Holds whether a workspace diagnostics pull has run to its end since the server loaded the
@@ -1163,7 +1177,8 @@ export class LspManager {
 
   /**
    * Tells a window that attached to a running session what the windows before it were told and the
-   * server will not say again (#1182): that it finished loading the workspace, how it is, and the
+   * server will not say again (#1182): that it finished loading the workspace, how it is, which
+   * TypeScript it runs with (#1207), and the
    * workspace's diagnostics as they stand. Without this, a window reloaded — or a second one opened on the same
    * folder — waited on a load that had long finished, its Error List empty. Sent once the window has
    * its start answer, which it needs to take them.
@@ -1192,6 +1207,14 @@ export class LspManager {
           sessionId,
           method: SERVER_STATUS,
           params: session.serverStatus,
+        };
+        sender.send(LspChannel.Notification, message);
+      }
+      if (session.typescriptVersion !== undefined) {
+        const message: LspMessage = {
+          sessionId,
+          method: TYPESCRIPT_VERSION,
+          params: session.typescriptVersion,
         };
         sender.send(LspChannel.Notification, message);
       }
@@ -1234,6 +1257,12 @@ export class LspManager {
       const session: LspSession | undefined = this.sessions.get(sessionId);
       if (session !== undefined) {
         session.serverStatus = params;
+      }
+    }
+    if (method === TYPESCRIPT_VERSION) {
+      const session: LspSession | undefined = this.sessions.get(sessionId);
+      if (session !== undefined) {
+        session.typescriptVersion = params;
       }
     }
     if (method === PUBLISH_DIAGNOSTICS_METHOD) {

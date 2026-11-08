@@ -1008,6 +1008,18 @@ describe('LspManager (#1015)', () => {
       expect(late.sent).toContainEqual({ method: 'experimental/serverStatus', params: status });
     });
 
+    it('isToldWhichTypescriptTheServerRunsWith_asItSaysSoOnlyAsItStarts (#1207)', async () => {
+      const internals: ManagerInternals = running(false);
+      const late: { contents: WebContents; sent: { method: string; params: unknown }[] } = window();
+      const version: unknown = { version: '5.9.3', source: 'user-setting' };
+
+      internals.forwardNotification('/root::csharp', '$/typescriptVersion', version);
+      await internals.start(START, late.contents);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(late.sent).toContainEqual({ method: '$/typescriptVersion', params: version });
+    });
+
     it('aServerThatHasSaidNothingOfHowItIs_isNotReportedOn (#1210)', async () => {
       const internals: ManagerInternals = running(true);
       const late: { contents: WebContents; sent: { method: string; params: unknown }[] } = window();

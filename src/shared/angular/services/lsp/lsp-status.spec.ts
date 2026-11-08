@@ -193,6 +193,25 @@ describe('LspStatus', () => {
     expect(status.servers()[0].problem).toBeUndefined();
   });
 
+  it('setVersion_isShownOnTheServer_throughAChangeOfState (#1207)', () => {
+    status.register('/root::typescript', {
+      serverId: 'typescript',
+      rootPath: '/root',
+      restart: vi.fn(),
+    });
+
+    status.setVersion('/root::typescript', '5.9.3');
+    status.setState('/root::typescript', 'ready');
+
+    expect(status.servers()[0].version).toBe('5.9.3');
+  });
+
+  it('setVersion_whenSessionUnknown_isIgnored', () => {
+    status.setVersion('/nowhere::typescript', '5.9.3');
+
+    expect(status.servers()).toEqual([]);
+  });
+
   it('setProblem_whenSessionUnknown_isIgnored', () => {
     status.setProblem('/nowhere::rust', 'Failed');
 

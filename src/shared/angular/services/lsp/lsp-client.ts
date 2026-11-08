@@ -2765,6 +2765,14 @@ export class LspClient implements OnDestroy {
       this.onProgress(message.sessionId, message.params);
       return;
     }
+    // typescript-language-server says which TypeScript it runs with (#1207), once, as it starts.
+    if (message.method === '$/typescriptVersion') {
+      const version: unknown = (message.params as { version?: unknown } | null)?.version;
+      if (typeof version === 'string' && version.length > 0) {
+        this.status.setVersion(message.sessionId, version);
+      }
+      return;
+    }
     // clangd says what it is doing with each file (#1213): parsing, building the preamble, or idle.
     if (message.method === FILE_STATUS_METHOD) {
       this.onFileStatus(message.sessionId, message.params);
