@@ -9,3 +9,10 @@
 .monaco-editor.minimum-severity-error .squiggly-warning {
   display: none;
 }
+
+// Code the preprocessor leaves out, an `#if 0` block or the branch of an `#ifdef` not taken (#1213),
+// as clangd reports it. Faded as the clangd extension for VS Code fades it, a little further than code a
+// diagnostic marks unnecessary, since none of it is compiled.
+.monaco-editor .lsp-inactive-region {
+  opacity: 0.55;
+}

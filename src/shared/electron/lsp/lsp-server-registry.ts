@@ -17,6 +17,7 @@ import {
   settingArguments,
   startupOptions,
   withDeclaredDefaults,
+  withWorkspaceFolder,
 } from './lsp-server-settings';
 import { logger } from '../logger';
 import { languageServerCatalogue } from './language-server-catalogue';
@@ -29,6 +30,7 @@ import {
 } from './language-server-descriptor';
 import { contributedLanguageServers } from '../contributions/plugins/contributed';
 import { LspProvisioner } from './lsp-provisioner';
+import type { LspIndentationSections } from './lsp-indentation';
 import { ArchiveProvision } from '../provisioning/archive-provision';
 import { LspSettingsManager } from './lsp-settings';
 
@@ -190,7 +192,11 @@ export class LspServerRegistry {
       : {
           spec: this.withStartupSettings(
             serverId,
-            this.withExtraArgs(serverId, this.withSettingArguments(serverId, resolution.spec)),
+            this.withExtraArgs(
+              serverId,
+              this.withSettingArguments(serverId, resolution.spec, rootPath),
+            ),
+            rootPath,
           ),
           error: null,
         };
@@ -207,28 +213,58 @@ export class LspServerRegistry {
   }
 
   /**
-   * Gets the values to answer a server's `workspace/configuration` requests with (#1143): the user's
-   * for the settings it declares, and each one's default where they have set none.
+   * Gets how a server is asked to report the whole of the projects its open documents are in (#1207).
    * @param serverId The server.
+   * @returns Returns how, or undefined for a server that is not asked.
+   */
+  public projectDiagnosticsOf(serverId: LspServerId): 'tsserver' | undefined {
+    return this.descriptors.get(serverId)?.projectDiagnostics;
+  }
+
+  /**
+   * Gets the values to answer a server's `workspace/configuration` requests with (#1143): the user's
+   * for the settings it declares, and each one's default where they have set none, with the
+   * workspace's folder put where a value names it (#1212).
+   * @param serverId The server.
+   * @param rootPath The folder the session serves, or undefined to leave the placeholder as written.
    * @returns Returns the values, or undefined for a server that declares none and has none set.
    */
-  public configurationOf(serverId: LspServerId): LspServerSettingValues | undefined {
-    return withDeclaredDefaults(
-      this.descriptors.get(serverId)?.settings,
-      this.settings.get().serverSettings[serverId],
+  public configurationOf(
+    serverId: LspServerId,
+    rootPath?: string,
+  ): LspServerSettingValues | undefined {
+    return withWorkspaceFolder(
+      withDeclaredDefaults(
+        this.descriptors.get(serverId)?.settings,
+        this.settings.get().serverSettings[serverId],
+      ),
+      rootPath,
     );
+  }
+
+  /**
+   * Gets the settings a server asks for that are a document's indentation (#1208).
+   * @param serverId The server.
+   * @returns Returns their sections, or undefined for a server that asks for none.
+   */
+  public indentationSectionsOf(serverId: LspServerId): LspIndentationSections | undefined {
+    return this.descriptors.get(serverId)?.indentationSections;
   }
 
   /**
    * Gets the settings to push to a server in `workspace/didChangeConfiguration` (#1204), shaped as it
    * expects them.
    * @param serverId The server.
+   * @param rootPath The folder the session serves, or undefined to leave the placeholder as written.
    * @returns Returns the settings, or undefined for a server that is not pushed them.
    */
-  public pushedSettingsOf(serverId: LspServerId): Record<string, unknown> | undefined {
+  public pushedSettingsOf(
+    serverId: LspServerId,
+    rootPath?: string,
+  ): Record<string, unknown> | undefined {
     return pushedSettings(
       this.descriptors.get(serverId)?.settingsDelivery,
-      this.configurationOf(serverId),
+      this.configurationOf(serverId, rootPath),
     );
   }
 
@@ -286,14 +322,19 @@ export class LspServerRegistry {
    * arguments, so an argument typed in Settings has the last word.
    * @param serverId The server.
    * @param spec The resolved spawn specification.
+   * @param rootPath The folder the session serves.
    * @returns Returns the specification with its settings' options added.
    */
-  private withSettingArguments(serverId: LspServerId, spec: LspServerSpec): LspServerSpec {
+  private withSettingArguments(
+    serverId: LspServerId,
+    spec: LspServerSpec,
+    rootPath: string,
+  ): LspServerSpec {
     const descriptor: LanguageServerDescriptor | undefined = this.descriptors.get(serverId);
     const options: readonly string[] = settingArguments(
       descriptor?.settingsDelivery,
       descriptor?.settings,
-      this.configurationOf(serverId),
+      this.configurationOf(serverId, rootPath),
     );
     return options.length === 0 ? spec : { ...spec, args: [...spec.args, ...options] };
   }
@@ -303,12 +344,17 @@ export class LspServerRegistry {
    * with the options its descriptor resolved.
    * @param serverId The server.
    * @param spec The resolved spawn specification.
+   * @param rootPath The folder the session serves.
    * @returns Returns the specification with its settings' options merged in.
    */
-  private withStartupSettings(serverId: LspServerId, spec: LspServerSpec): LspServerSpec {
+  private withStartupSettings(
+    serverId: LspServerId,
+    spec: LspServerSpec,
+    rootPath: string,
+  ): LspServerSpec {
     const options: Record<string, unknown> | undefined = startupOptions(
       this.descriptors.get(serverId)?.settingsDelivery,
-      this.configurationOf(serverId),
+      this.configurationOf(serverId, rootPath),
     );
     return options === undefined
       ? spec

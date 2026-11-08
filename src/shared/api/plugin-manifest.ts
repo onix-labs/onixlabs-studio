@@ -174,6 +174,11 @@ import { isTestAdapterCapability, TestAdapterCapability } from './test-adapter-p
  * whatever the user's settings, such as clangd's `clangdFileStatus`. Absent means none, as before. Adds
  * only.
  *
+ * `1.27.0` moves the package-manager protocol to 1.1 (#907), with the manifest's shape unchanged: the
+ * closed list of package-manager capabilities gains `searchExactName`, for a registry that has no
+ * search and can only look a name up (PyPI, the Go module proxy). A manifest declaring it is refused
+ * by an older build, which is why this is a version. Adds only.
+ *
  * `1.28.0` adds the `testAdapters` contribution point (#802), the slot the Tests panel is filled through:
  * each ecosystem's plugin finds a folder's tests by reading its source and answers a run with a command
  * Studio runs in a visible terminal, because core knows no test framework. Keyed by **marker** files as

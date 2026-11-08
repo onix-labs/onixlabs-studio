@@ -1,0 +1,21 @@
+// The new token's package manager, registry, token and Save on one row, like Hosting's token rows.
+.package-registry-tokens__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+// A registry address is long; so is a token.
+.package-registry-tokens__registry {
+  min-inline-size: 16rem;
+}
+
+.package-registry-tokens__token {
+  min-inline-size: 14rem;
+}
+
+.package-registry-tokens__error {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  color: var(--error-foreground-color, #e5484d);
+}

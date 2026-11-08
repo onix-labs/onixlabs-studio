@@ -104,10 +104,21 @@ export class LspSettings {
   public readonly catalogueLoaded: Signal<boolean> = this.loaded.asReadonly();
 
   /**
+   * Holds whether the settings have been read from the main process at least once.
+   */
+  private readonly read: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets whether the settings have been read from the main process (#1215): until then they are the
+   * defaults, and anything kept in step with them must wait, or it would write over what is stored.
+   */
+  public readonly settingsLoaded: Signal<boolean> = this.read.asReadonly();
+
+  /**
    * Initializes the service, loading the settings and the server catalogue from the main process.
    */
   public constructor() {
-    void this.refresh();
+    void this.refresh().then((): void => this.read.set(true));
     this.ready = this.loadCatalogue().then((): void => {
       this.loaded.set(true);
     });
@@ -384,6 +395,41 @@ export class LspSettings {
       delete serverSettings[serverId];
     } else {
       serverSettings[serverId] = values;
+    }
+    await this.store({ ...this.current(), serverSettings });
+  }
+
+  /**
+   * Sets several values for settings servers declare at once (#1215), in one write, so changes made
+   * together cannot overwrite one another. Null clears a value, back to the server's default.
+   * @param changes The changes.
+   * @returns Returns a promise that resolves once the changes are stored.
+   */
+  public async setServerSettings(
+    changes: readonly {
+      readonly serverId: string;
+      readonly section: string;
+      readonly value: LspServerSettingValue | null;
+    }[],
+  ): Promise<void> {
+    if (changes.length === 0) {
+      return;
+    }
+    const serverSettings: Record<string, Readonly<Record<string, LspServerSettingValue>>> = {
+      ...this.current().serverSettings,
+    };
+    for (const { serverId, section, value } of changes) {
+      const values: Record<string, LspServerSettingValue> = { ...serverSettings[serverId] };
+      if (value === null) {
+        delete values[section];
+      } else {
+        values[section] = value;
+      }
+      if (Object.keys(values).length === 0) {
+        delete serverSettings[serverId];
+      } else {
+        serverSettings[serverId] = values;
+      }
     }
     await this.store({ ...this.current(), serverSettings });
   }

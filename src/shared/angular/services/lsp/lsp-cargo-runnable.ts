@@ -1,4 +1,4 @@
-import type { RunConfiguration } from '@shared/api/studio';
+import type { RunConfiguration, RunMode } from '@shared/api/studio';
 
 /**
  * What of a rust-analyzer `Runnable` is read, untrusted.
@@ -30,10 +30,16 @@ interface CargoRunnable {
  * through the same terminal, Stop button and problem matching as any other run. `cargo` is always the
  * program: a runnable's `overrideCargo` comes from the server's settings, which a workspace can set
  * through `rust-analyzer.toml`, and a click on Run Tests should not start whatever that names.
+ * A Debug lens gives the same runnable, read the same way and marked to be debugged (#1210): the Rust
+ * project system builds it without running it, and CodeLLDB launches what was built.
  * @param runnable The lens's argument, untrusted: a rust-analyzer `Runnable`.
+ * @param mode Whether it is run, or debugged.
  * @returns Returns the configuration, or null when it is not a Cargo runnable.
  */
-export function cargoRunConfiguration(runnable: unknown): RunConfiguration | null {
+export function cargoRunConfiguration(
+  runnable: unknown,
+  mode: RunMode = 'run',
+): RunConfiguration | null {
   const candidate: CargoRunnable | null = typeof runnable === 'object' ? runnable : null;
   const details: CargoRunnable['args'] = candidate?.args;
   if (
@@ -51,7 +57,7 @@ export function cargoRunConfiguration(runnable: unknown): RunConfiguration | nul
     id: `cargo:${details.cwd}:${candidate.label}`,
     name: candidate.label,
     providerKind: 'rust',
-    mode: 'run',
+    mode,
     program: 'cargo',
     args: [...details.cargoArgs, ...(trailing.length > 0 ? ['--', ...trailing] : [])],
     cwd: details.cwd,

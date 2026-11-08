@@ -21,6 +21,7 @@ import {
   PackageManagerSpec,
 } from './package-manager-descriptor';
 import { PackageManagerEndpoint } from './package-manager-endpoint';
+import { normaliseRegistry } from './package-registry-token-store';
 
 /**
  * Specifies how long an ordinary request may take.
@@ -423,7 +424,7 @@ export class PackageManagerHost {
       op === 'search' ? narrowSearch(params, plugin.capabilities) : params;
     if (
       op === 'search' &&
-      plugin.capabilities.includes('searchRequiresQuery') &&
+      needsQuery(plugin.capabilities) &&
       (asked as PackageManagerParams<'search'>).query.trim().length === 0
     ) {
       const nothing: PackageSearchResult = { items: [], total: 0, hasMore: false };
@@ -626,6 +627,15 @@ function refused<Op extends PackageManagerOp>(error: string): PackageManagerResp
 }
 
 /**
+ * Determines whether a plugin's search needs text: it said so, or it can only look up an exact name.
+ * @param capabilities The plugin's capabilities.
+ * @returns Returns true when an empty query is answered with nothing, without asking the plugin.
+ */
+function needsQuery(capabilities: readonly PackageManagerCapability[]): boolean {
+  return capabilities.includes('searchRequiresQuery') || capabilities.includes('searchExactName');
+}
+
+/**
  * Turns a marker into a pattern for one file name: `*` matches within the name, and everything else
  * stands for itself.
  * @param marker The marker.
@@ -760,23 +770,4 @@ function checkCommand<Op extends PackageManagerOp>(
   }
   logger.warn('PackageManagerHost', 'A plugin answered a write with a command it may not run');
   return refused('The plugin answered with a command Studio will not run.');
-}
-
-/**
- * Normalises a registry a plugin named: an https URL, without credentials, query or fragment, and
- * without a trailing slash, so one registry is one key however it was written.
- * @param registry The registry.
- * @returns Returns the normalised URL, or null when it is not an https URL.
- */
-function normaliseRegistry(registry: string): string | null {
-  let url: URL;
-  try {
-    url = new URL(registry);
-  } catch {
-    return null;
-  }
-  if (url.protocol !== 'https:' || url.username.length > 0 || url.password.length > 0) {
-    return null;
-  }
-  return `${url.origin}${url.pathname}`.replace(/\/+$/, '');
 }
