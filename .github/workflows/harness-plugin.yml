@@ -44,6 +44,7 @@ on:
         'plugin-vcpkg-v*',
         'plugin-conan-v*',
         'plugin-cargo-v*',
+        'plugin-pypi-v*',
         'plugin-dotnet-tests-v*',
         'plugin-js-tests-v*',
         'plugin-python-tests-v*',
