@@ -35,8 +35,11 @@ import type {
  * Holds the protocol version this build speaks. A plugin announcing a different major version is
  * refused rather than spoken to: one that misreads a request could hand back a command the user did
  * not ask for.
+ *
+ * `1.1` adds the `searchExactName` capability (#907), for a registry with no search at all (PyPI, the
+ * Go module proxy): a query is looked up as one exact name. Adds only.
  */
-export const PACKAGE_MANAGER_PROTOCOL_VERSION: string = '1.0';
+export const PACKAGE_MANAGER_PROTOCOL_VERSION: string = '1.1';
 
 /**
  * Names one optional capability a package-manager plugin can advertise. Reading a folder's projects and
@@ -69,6 +72,13 @@ export type PackageManagerCapability =
   | 'prerelease'
 
   /**
+   * A qualifier on `search` (1.1): the registry has no search, so a query is looked up as one exact
+   * package name and the answer holds that package or nothing. The panel says so rather than offering
+   * it as a search, and an empty query is never sent. PyPI and the Go module proxy are like this.
+   */
+  | 'searchExactName'
+
+  /**
    * Answering with the command that adds a package to a project.
    */
   | 'install'
@@ -96,6 +106,7 @@ export const PACKAGE_MANAGER_CAPABILITIES: readonly PackageManagerCapability[] =
   'search',
   'searchRequiresQuery',
   'prerelease',
+  'searchExactName',
   'install',
   'update',
   'remove',
