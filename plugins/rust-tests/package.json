@@ -1,0 +1,11 @@
+{
+  "name": "@onixlabs/rust-tests",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rust test-adapter plugin for ONIXLabs Studio: cargo test.",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}
