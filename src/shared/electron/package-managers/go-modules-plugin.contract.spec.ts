@@ -139,6 +139,9 @@ describe('Go modules plugin contract', () => {
     TIMEOUT,
     async () => {
       await client.start();
+      // The proxy's log is shared by every test in the file; this one asserts on exactly what its
+      // load asked for, so it starts from an empty log whatever ran before it.
+      requests.length = 0;
 
       const response: PackageManagerResponse<'load'> = await client.request(
         'load',
