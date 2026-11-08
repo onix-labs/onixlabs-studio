@@ -96,6 +96,12 @@ export enum LspChannel {
    * Answers a {@link ShowMessage} with the action the user chose, if any (renderer→main, send).
    */
   ShowMessageReply = 'lsp:show-message-reply',
+
+  /**
+   * Asks the renderer holding a session to show what a server's `window/showDocument` names (#1211):
+   * a web page in the browser, or a file in an editor with a range selected (main→renderer, send).
+   */
+  ShowDocument = 'lsp:show-document',
 }
 
 /**
@@ -427,6 +433,35 @@ export interface LspShowMessageRequest {
    * Gets the titles of the actions offered, in order.
    */
   readonly actions: readonly string[];
+}
+
+/**
+ * A server's request to show a document (#1211) — `window/showDocument` — as the main process forwards
+ * it to the renderer holding the session: gopls's Browse Documentation opens a page it serves itself.
+ */
+export interface LspShowDocumentRequest {
+  /**
+   * Gets the session whose server asked.
+   */
+  readonly sessionId: string;
+
+  /**
+   * Gets the document's URI: an `http:` or `https:` page, or a `file:`.
+   */
+  readonly uri: string;
+
+  /**
+   * Gets whether the page opens in the browser rather than in Studio: always so for a web page.
+   */
+  readonly external: boolean;
+
+  /**
+   * Gets the range to select in a file, zero-based as the protocol counts, or undefined for none.
+   */
+  readonly selection?: {
+    readonly start: { readonly line: number; readonly character: number };
+    readonly end: { readonly line: number; readonly character: number };
+  };
 }
 
 /**

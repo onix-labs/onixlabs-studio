@@ -5,6 +5,7 @@ import {
 } from '@shared/angular/services/settings/settings-registry';
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 import { Bridge } from '@shared/api/bridge';
 import {
   LspChannel,
@@ -38,6 +39,8 @@ import type {
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { DebugAttachRouter } from '@shared/angular/services/debug-attach/debug-attach-router';
+import { Shell } from '@shared/angular/services/shell/shell';
+import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
 import {
   Notification,
   NotificationAction,
@@ -103,6 +106,12 @@ class FakeLsp implements Bridge {
 
   public attachDebugger(request: unknown): void {
     this.attachListener?.(request);
+  }
+
+  private showDocumentListener: ((...args: unknown[]) => void) | null = null;
+
+  public showDocument(request: unknown): void {
+    this.showDocumentListener?.(request);
   }
 
   public ask(request: unknown): void {
@@ -204,6 +213,12 @@ class FakeLsp implements Bridge {
       this.attachListener = listener;
       return (): void => {
         this.attachListener = null;
+      };
+    }
+    if (channel === (LspChannel.ShowDocument as string)) {
+      this.showDocumentListener = listener;
+      return (): void => {
+        this.showDocumentListener = null;
       };
     }
     if (channel === (LspChannel.ShowMessage as string)) {
@@ -450,6 +465,79 @@ describe('LspClient', () => {
 
   afterEach(() => {
     delete (window as unknown as { bridge?: unknown }).bridge;
+  });
+
+  describe('pages and files a server asks to show (#1211)', () => {
+    /**
+     * Opens a C# document, starting the Roslyn session.
+     * @param client The client.
+     */
+    async function openCsharp(client: LspClient): Promise<void> {
+      client.syncDocument({
+        documentId: 'a',
+        path: '/root/A.cs',
+        languageId: 'csharp',
+        content: '',
+      });
+      await flush();
+    }
+
+    it('aWebPage_opensThroughTheShell_asContent', async () => {
+      const client: LspClient = build();
+      const open: MockInstance<Shell['openExternal']> = vi
+        .spyOn(TestBed.inject(Shell), 'openExternal')
+        .mockResolvedValue(undefined);
+      await openCsharp(client);
+
+      lsp.showDocument({
+        sessionId: '/root::csharp',
+        uri: 'http://127.0.0.1:6060/gopls/pkg',
+        external: true,
+      });
+
+      expect(open).toHaveBeenCalledWith('http://127.0.0.1:6060/gopls/pkg', 'content');
+    });
+
+    it('aFile_opensInAnEditor_withItsRangeSelected', async () => {
+      const client: LspClient = build();
+      const goTo: MockInstance<EditorNavigation['goTo']> = vi
+        .spyOn(TestBed.inject(EditorNavigation), 'goTo')
+        .mockResolvedValue(undefined);
+      await openCsharp(client);
+
+      lsp.showDocument({
+        sessionId: '/root::csharp',
+        uri: 'file:///root/B.cs',
+        external: false,
+        selection: { start: { line: 2, character: 4 }, end: { line: 2, character: 9 } },
+      });
+
+      expect(goTo).toHaveBeenCalledWith(
+        null,
+        {
+          path: '/root/B.cs',
+          range: { startLineNumber: 3, startColumn: 5, endLineNumber: 3, endColumn: 10 },
+        },
+        true,
+      );
+    });
+
+    it('aRequestForASessionThisWindowDoesNotHold_isLeftAlone', async () => {
+      const client: LspClient = build();
+      const open: MockInstance<Shell['openExternal']> = vi
+        .spyOn(TestBed.inject(Shell), 'openExternal')
+        .mockResolvedValue(undefined);
+      const goTo: MockInstance<EditorNavigation['goTo']> = vi
+        .spyOn(TestBed.inject(EditorNavigation), 'goTo')
+        .mockResolvedValue(undefined);
+      await openCsharp(client);
+
+      lsp.showDocument({ sessionId: '/elsewhere::go', uri: 'https://go.dev', external: true });
+      lsp.showDocument({ sessionId: '/elsewhere::go', uri: 'file:///x.go', external: false });
+
+      expect(open).not.toHaveBeenCalled();
+      expect(goTo).not.toHaveBeenCalled();
+    });
   });
 
   describe('server questions and notices (#1154)', () => {
