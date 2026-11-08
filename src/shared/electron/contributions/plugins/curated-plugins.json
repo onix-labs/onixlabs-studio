@@ -1,5 +1,5 @@
 {
-  "revision": 63,
+  "revision": 64,
   "plugins": [
     {
       "id": "pyright",
@@ -263,7 +263,21 @@
             "priority": 100,
             "command": {
               "kind": "executable"
-            }
+            },
+            "settings": [
+              {
+                "section": "Lua.hint.enable",
+                "label": "Inlay Hints",
+                "description": "Show the server's hints in the code: parameter names, and the types of locals and returns.",
+                "default": true
+              },
+              {
+                "section": "Lua.diagnostics.enable",
+                "label": "Check Lua",
+                "description": "Report syntax errors, undefined globals and the like in the Error List.",
+                "default": true
+              }
+            ]
           }
         ]
       }
@@ -307,6 +321,9 @@
             "priority": 100,
             "command": {
               "kind": "executable"
+            },
+            "settingsDelivery": {
+              "pull": false
             }
           }
         ]
@@ -403,7 +420,28 @@
             "priority": 100,
             "command": {
               "kind": "node"
-            }
+            },
+            "settings": [
+              {
+                "section": "yaml.format.enable",
+                "label": "Formatting",
+                "description": "Let Format Document and Format Selection lay out YAML files.",
+                "default": true
+              },
+              {
+                "section": "yaml.validate",
+                "label": "Check YAML",
+                "description": "Report syntax errors, and values a file's schema does not allow.",
+                "default": true
+              },
+              {
+                "section": "yaml.schemaStore.enable",
+                "label": "Schemas From SchemaStore",
+                "description": "Match well-known files, such as GitHub workflows and Compose files, to their schemas from schemastore.org, which needs the network.",
+                "default": true,
+                "advanced": true
+              }
+            ]
           }
         ]
       }
@@ -456,6 +494,9 @@
             "priority": 100,
             "command": {
               "kind": "node"
+            },
+            "settingsDelivery": {
+              "pull": false
             }
           }
         ]
