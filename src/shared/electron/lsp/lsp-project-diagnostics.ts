@@ -14,7 +14,7 @@ export interface ProjectDiagnosticsConnection {
 }
 
 /**
- * How long a session must go without a document opening or saving before its projects are checked, so
+ * How long a session must go without a document opening, saving or closing before its projects are checked, so
  * a burst (a workspace restoring its tabs, Save All) asks once.
  */
 const QUIET_MS: number = 1_000;
@@ -77,7 +77,7 @@ export class ProjectDiagnosticsCheck {
   ) {}
 
   /**
-   * Asks for a check once the session has been quiet for {@link QUIET_MS}: a document opened or saved.
+   * Asks for a check once the session has been quiet for {@link QUIET_MS}: a document opened, saved or closed.
    */
   public schedule(): void {
     if (this.stopped) {

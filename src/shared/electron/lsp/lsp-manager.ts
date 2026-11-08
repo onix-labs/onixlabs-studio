@@ -786,8 +786,13 @@ export class LspManager {
       return;
     }
     this.tell(session.connection, method, params);
-    // A document opened can bring a project in; one saved can break a file of it that is not open.
-    if (method === 'textDocument/didOpen' || method === 'textDocument/didSave') {
+    // A document opened can bring a project in; one saved can break a file of it that is not open; and
+    // one closed has its diagnostics cleared by the server, which a check reports again.
+    if (
+      method === 'textDocument/didOpen' ||
+      method === 'textDocument/didSave' ||
+      method === 'textDocument/didClose'
+    ) {
       session.projectDiagnostics?.schedule();
     }
   }

@@ -837,7 +837,7 @@ describe('LspManager (#1015)', () => {
       expect(sent).toEqual(['textDocument/didClose file:///root/A.cs']);
     });
 
-    it('aDocumentOpenedOrSaved_asksForTheProjectsToBeChecked_andAnEditDoesNot (#1207)', () => {
+    it('aDocumentOpenedSavedOrClosed_asksForTheProjectsToBeChecked_andAnEditDoesNot (#1207)', () => {
       const manager: Notifying = holding([]);
       const schedule: ReturnType<typeof vi.fn> = vi.fn();
       (
@@ -851,6 +851,10 @@ describe('LspManager (#1015)', () => {
 
       manager.notify('/root::csharp', 'textDocument/didSave', CLOSE, window);
       expect(schedule).toHaveBeenCalledTimes(2);
+
+      // typescript-language-server clears a closed document's diagnostics; the check says them again.
+      manager.notify('/root::csharp', 'textDocument/didClose', CLOSE, window);
+      expect(schedule).toHaveBeenCalledTimes(3);
     });
   });
 
