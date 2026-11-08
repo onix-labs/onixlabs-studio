@@ -318,6 +318,37 @@ describe.skipIf(process.platform === 'win32')('LspManager sessions', () => {
       expect((await start(renderer)).success).toBe(true);
     });
 
+    it('aServerThatDiesOnStart_saysItEnded_withItsLastWords_andTheOriginalError', async () => {
+      mode = 'crash-on-start';
+
+      const outcome: LspStartResult = await start(new FakeRenderer());
+
+      // The connection's own wording stays as the error (it is what the log shows); the flag and the
+      // server's last words are what the renderer words the failure from.
+      expect(outcome).toEqual({
+        success: false,
+        error: 'Pending response rejected since connection got disposed',
+        exited: true,
+        reason: expect.stringContaining('the sky fell') as unknown,
+      });
+    });
+
+    it('aServerStoppedOnPurposeDuringStart_isNotSaidToHaveEnded', async () => {
+      mode = 'hang';
+      const renderer: FakeRenderer = new FakeRenderer();
+      const outcome: Promise<LspStartResult> = start(renderer);
+      // The server has been spawned (and so its session exists) once it has written its pid.
+      while ((await started()).length === 0) {
+        await new Promise<void>((resolve: () => void): void => void setTimeout(resolve, 10));
+      }
+
+      await invoke(LspChannel.Stop, renderer, 'session');
+
+      const result: LspStartResult = await outcome;
+      expect(result.success).toBe(false);
+      expect(result.exited).toBeUndefined();
+    });
+
     it('aServerThatNeverAnswers_isTornDownAfterTheTimeout', async () => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
       mode = 'hang';

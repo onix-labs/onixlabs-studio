@@ -370,6 +370,18 @@ export interface LspStartResult {
   readonly error?: string;
 
   /**
+   * Gets whether the start failed because the server process ended during its handshake — a crash
+   * during start-up, reported to the user as any other crash is, rather than in {@link error}'s
+   * connection-level wording.
+   */
+  readonly exited?: true;
+
+  /**
+   * Gets the server's own last words when it ended during its handshake, when it left any.
+   */
+  readonly reason?: string;
+
+  /**
    * Gets whether the session pulls the server's diagnostics for the whole workspace (#1144), whose
    * first complete pull after the server loaded is when the workspace has been analysed (#1182).
    */

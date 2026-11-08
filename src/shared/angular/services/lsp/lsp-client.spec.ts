@@ -39,6 +39,7 @@ import type {
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { CodeLensServerSync } from './code-lens-server-sync';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { Log } from '@shared/angular/services/log/log';
 import { DebugAttachRouter } from '@shared/angular/services/debug-attach/debug-attach-router';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
@@ -89,6 +90,12 @@ class FakeLsp implements Bridge {
    */
   public readonly running: Set<string> = new Set<string>();
   public startResult: LspStartResult = { success: true };
+  /**
+   * When set, a Start is left unanswered until the test answers it — a server still in its
+   * handshake, which is when a start-up crash happens.
+   */
+  public holdStarts: boolean = false;
+  private readonly heldStarts: ((result: LspStartResult) => void)[] = [];
   public diagnosticReport: unknown = null;
   /** The requests the client sent its servers, and the answers given for chosen methods (#1143). */
   public readonly requests: { sessionId: string; method: string; params: unknown }[] = [];
@@ -125,6 +132,11 @@ class FakeLsp implements Bridge {
     switch (channel) {
       case LspChannel.Start as string:
         this.starts.push(args[0] as LspStartRequest);
+        if (this.holdStarts) {
+          return new Promise<T>((resolve: (value: T) => void): void => {
+            this.heldStarts.push((result: LspStartResult): void => resolve(result as T));
+          });
+        }
         if (this.startResult.success) {
           this.running.add((args[0] as LspStartRequest).sessionId);
         }
@@ -261,6 +273,15 @@ class FakeLsp implements Bridge {
       method: 'window/logMessage',
       params: { type: 3, message },
     });
+  }
+
+  /**
+   * Answers every held Start with the given result.
+   */
+  public answerStarts(result: LspStartResult): void {
+    for (const answer of this.heldStarts.splice(0)) {
+      answer(result);
+    }
   }
 
   public exit(
@@ -2667,6 +2688,119 @@ describe('LspClient', () => {
     expect(server?.detail).toBe(
       'The server stopped unexpectedly: didOpen received for file:///root/a.ts which is already open. Restart it to try again.',
     );
+  });
+
+  describe('a server that dies during start-up', () => {
+    /**
+     * What JSON-RPC rejects the pending handshake with once the dead server's connection is disposed.
+     */
+    const DISPOSED: string = 'Pending response rejected since connection got disposed';
+
+    /**
+     * Opens a document, leaving its server mid-handshake.
+     */
+    async function startHeld(): Promise<LspStatus> {
+      lsp.holdStarts = true;
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      client.syncDocument({
+        documentId: 'doc-1',
+        path: '/root/a.ts',
+        languageId: 'typescript',
+        content: '',
+      });
+      await flush();
+      expect(status.stateOf('/root::typescript')).toBe('starting');
+      return status;
+    }
+
+    /**
+     * Reads the session's status row.
+     */
+    function row(status: LspStatus): LspServer | undefined {
+      return status
+        .servers()
+        .find((entry: LspServer): boolean => entry.sessionId === '/root::typescript');
+    }
+
+    it('exitReportedFirst_saysItStoppedUnexpectedly_notTheConnectionWording', async () => {
+      const status: LspStatus = await startHeld();
+
+      lsp.exit('/root::typescript');
+      lsp.answerStarts({ success: false, error: DISPOSED, exited: true });
+      await flush();
+
+      expect(row(status)).toMatchObject({
+        state: 'unavailable',
+        detail: 'The server stopped unexpectedly. Restart it to try again.',
+      });
+    });
+
+    it('exitReportedFirst_withItsLastWords_keepsThem', async () => {
+      const status: LspStatus = await startHeld();
+
+      lsp.exit('/root::typescript', 'Could not load the project.');
+      lsp.answerStarts({
+        success: false,
+        error: DISPOSED,
+        exited: true,
+        reason: 'Could not load the project.',
+      });
+      await flush();
+
+      expect(row(status)?.detail).toBe(
+        'The server stopped unexpectedly: Could not load the project. Restart it to try again.',
+      );
+    });
+
+    it('noExitReport_stillSaysItStoppedUnexpectedly_withItsLastWords', async () => {
+      const status: LspStatus = await startHeld();
+
+      lsp.answerStarts({ success: false, error: DISPOSED, exited: true, reason: 'Out of memory.' });
+      await flush();
+
+      expect(row(status)).toMatchObject({
+        state: 'unavailable',
+        detail: 'The server stopped unexpectedly: Out of memory. Restart it to try again.',
+      });
+    });
+
+    it('keepsTheOriginalErrorInTheLog', async () => {
+      const status: LspStatus = await startHeld();
+      const error: MockInstance = vi.spyOn(TestBed.inject(Log), 'error');
+
+      lsp.answerStarts({ success: false, error: DISPOSED, exited: true });
+      await flush();
+
+      expect(row(status)?.detail).not.toContain(DISPOSED);
+      expect(error).toHaveBeenCalledWith(
+        'LspClient',
+        "Server 'typescript' failed to start",
+        DISPOSED,
+      );
+    });
+
+    it('aStartThatFailsForAnotherReason_isStillShownAsItWas', async () => {
+      const status: LspStatus = await startHeld();
+
+      lsp.answerStarts({ success: false, error: 'spawn tsserver ENOENT' });
+      await flush();
+
+      expect(row(status)).toMatchObject({ state: 'unavailable', detail: 'spawn tsserver ENOENT' });
+    });
+
+    it('aCrashAfterStartUp_isWordedAsBefore', async () => {
+      const status: LspStatus = await startHeld();
+      lsp.answerStarts({ success: true });
+      await flush();
+
+      lsp.exit('/root::typescript', 'Fatal error.');
+
+      expect(row(status)).toMatchObject({
+        state: 'unavailable',
+        detail: 'The server stopped unexpectedly: Fatal error. Restart it to try again.',
+      });
+    });
   });
 
   it('projectInitializationComplete_pullsOpenDocumentsAgain_butNeverReopensThem', async () => {
