@@ -3,7 +3,7 @@
   "name": "Rust Tests",
   "description": "Rust tests in the Tests panel: finds #[test] functions in each crate and runs them with cargo test.",
   "version": "0.1.0",
-  "apiVersion": "1.27.0",
+  "apiVersion": "1.28.0",
   "detail": "Reads your crates' sources to list their tests; running them uses the cargo on your machine, in a terminal you can see.",
   "provision": {
     "kind": "npm",
