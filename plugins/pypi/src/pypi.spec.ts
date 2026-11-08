@@ -335,9 +335,10 @@ describe('PypiPackageManager', () => {
       init?: { headers?: Record<string, string> },
     ): Promise<HttpResponse> => {
       seen.push({ url, authorization: init?.headers?.['Authorization'] });
-      const body: unknown = url.includes('pypi.org')
-        ? { info: { name: 'demo', version: '1.0' }, releases: { '1.0': [{}] } }
-        : { name: 'demo', files: [{ filename: 'demo-2.0.tar.gz' }] };
+      const body: unknown =
+        new URL(url).hostname === 'pypi.org'
+          ? { info: { name: 'demo', version: '1.0' }, releases: { '1.0': [{}] } }
+          : { name: 'demo', files: [{ filename: 'demo-2.0.tar.gz' }] };
       return Promise.resolve({
         ok: true,
         status: 200,

@@ -233,8 +233,8 @@ describe('JvmPackageManager', () => {
       expect(authorisationFor('https://evil.example.com')).toEqual(new Set<undefined>([undefined]));
       expect(studioAsks).toEqual(['https://evil.example.com/maven']);
       expect(
-        asked.some((request: Asked): boolean =>
-          request.url.startsWith('https://repo.maven.apache.org'),
+        asked.some(
+          (request: Asked): boolean => new URL(request.url).hostname === 'repo.maven.apache.org',
         ),
       ).toBe(false);
     });
