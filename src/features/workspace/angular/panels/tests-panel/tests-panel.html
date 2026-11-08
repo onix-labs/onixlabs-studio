@@ -1,0 +1,219 @@
+<!-- The panel's tool strip (#882, #1352): run everything, re-run what failed, debug the selected test,
+     stop a run; then the tree's Expand / Collapse All and the "…" menu. -->
+<app-panel-toolbar role="group" aria-label="Tests">
+  @if (phase() === 'running') {
+    <app-button
+      variant="none"
+      [icon]="Icon.STOP"
+      label="Stop"
+      tooltip="Stop the Run"
+      (click)="stop()"
+    />
+  } @else {
+    <app-button
+      variant="none"
+      [icon]="Icon.PLAY"
+      label="Run All"
+      tooltip="Run All Tests"
+      [disabled]="phase() !== 'idle' || totals().tests === 0"
+      (click)="runAll()"
+    />
+  }
+  <app-button
+    variant="none"
+    [icon]="Icon.TEST_RUN_FAILED"
+    label="Run Failed"
+    tooltip="Run the Tests That Failed"
+    [disabled]="phase() !== 'idle' || totals().failed === 0"
+    (click)="runFailed()"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.DEBUG"
+    ariaLabel="Debug Test"
+    tooltip="Debug the Selected Test"
+    [disabled]="!canDebugSelected()"
+    (click)="debugSelected()"
+  />
+  <span class="panel-toolbar__spacer"></span>
+  <app-button
+    variant="none"
+    [icon]="Icon.PLUS_SQUARE_DUOTONE"
+    ariaLabel="Expand All"
+    tooltip="Expand All"
+    [disabled]="treeRows().length === 0"
+    (click)="expandAll()"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.MINUS_SQUARE_DUOTONE"
+    ariaLabel="Collapse All"
+    tooltip="Collapse All"
+    [disabled]="treeRows().length === 0"
+    (click)="collapseAll()"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.DOTS_THREE_BOLD"
+    ariaLabel="More Actions"
+    tooltip="More Actions"
+    [cdkMenuTriggerFor]="moreMenu.panel() ?? null"
+    [cdkMenuPosition]="moreMenu.position()"
+  />
+</app-panel-toolbar>
+<app-menu #moreMenu [items]="menuItems()" placement="down-end" (selected)="onMenu($event)" />
+
+@if (explorer.runProblem(); as runProblem) {
+  <!-- Why the last run as a whole failed — a build that broke, a tool that is missing — since no test
+       could say so itself. -->
+  <div class="tests-problem" role="status">
+    <app-icon class="tests-problem__icon" [icon]="Icon.TEST_ERRORED" />
+    <span class="tests-problem__text">{{ runProblem }}</span>
+  </div>
+}
+
+@if (treeRows().length > 0) {
+  <div class="tests-body">
+    <section class="tests-column tests-column--tree">
+      <app-tree-view
+        [rows]="treeRows()"
+        [selectedId]="selectedKey()"
+        [virtual]="true"
+        [contextMenuFor]="rowMenu"
+        (rowClick)="onRowClick($event)"
+        (rowDoubleClick)="onRowDoubleClick($event)"
+        (contextMenuSelect)="onRowMenu($event)"
+      >
+        <ng-template let-row>
+          @let data = rowOf(row);
+          <app-icon
+            [class]="'tree-icon tests-icon tests-icon--' + data.status"
+            [icon]="iconOf(data)"
+            [attr.title]="wordsOf(data.status)"
+          />
+          <span class="tree-name">{{ data.entry.node.label }}</span>
+          @if (data.entry.node.kind !== 'test' && data.failed > 0) {
+            <app-chip class="tree-count" tone="danger">{{ data.failed }}</app-chip>
+          }
+          @if (data.entry.node.kind === 'project' && data.entry.framework) {
+            <app-chip class="tests-framework">{{ data.entry.framework }}</app-chip>
+          }
+          @if (data.durationMs !== undefined) {
+            <span class="tests-duration">{{ duration(data.durationMs) }}</span>
+          }
+        </ng-template>
+      </app-tree-view>
+    </section>
+    <section class="tests-column tests-column--detail" aria-label="Test Result">
+      @if (selected(); as entry) {
+        <header class="tests-detail__title">
+          <app-icon
+            [class]="'tests-icon tests-icon--' + (selectedState()?.outcome ?? 'none')"
+            [icon]="selectedIcon()"
+          />
+          <span class="tests-detail__name">{{ entry.node.label }}</span>
+          @if (selectedState()?.durationMs !== undefined) {
+            <span class="tests-duration">{{ duration(selectedState()?.durationMs) }}</span>
+          }
+        </header>
+        @if (selectedState(); as state) {
+          <p class="tests-detail__outcome">{{ wordsOf(state.outcome) }}</p>
+          @if (state.message) {
+            <pre class="tests-detail__message">{{ state.message }}</pre>
+          }
+          @if (stackRows().length > 0) {
+            <header class="tests-detail__heading">Stack Trace</header>
+            <app-tree-view
+              class="tests-detail__stack"
+              [rows]="stackRows()"
+              (rowClick)="onFrameClick($event)"
+            >
+              <ng-template let-row>
+                @let frame = frameOf(row);
+                <span
+                  [class]="'tests-frame' + (frame.location ? ' tests-frame--link' : '')"
+                  [attr.title]="
+                    frame.location ? frame.location.file + ':' + frame.location.line : null
+                  "
+                  >{{ frame.text }}</span
+                >
+              </ng-template>
+            </app-tree-view>
+          }
+          @if (state.output) {
+            <header class="tests-detail__heading">Output</header>
+            <pre class="tests-detail__output">{{ state.output }}</pre>
+          }
+        } @else if (entry.node.kind === 'test') {
+          <p class="tests-detail__outcome">Not run yet.</p>
+        } @else {
+          <p class="tests-detail__outcome">
+            {{ entry.tests.length }} {{ entry.tests.length === 1 ? 'test' : 'tests' }}
+          </p>
+        }
+      } @else {
+        <p class="tests-detail__hint">Select a test to see how it last ran.</p>
+      }
+    </section>
+  </div>
+  <app-panel-status>
+    @if (phase() === 'running') {
+      <span class="panel-status__item">
+        <app-icon class="tests-spin" [icon]="Icon.SPINNER" />
+        <span class="panel-status__text">Running</span>
+      </span>
+    } @else if (phase() === 'debugging') {
+      <span class="panel-status__item">
+        <app-icon [icon]="Icon.DEBUG" />
+        <span class="panel-status__text">Debugging</span>
+      </span>
+    }
+    <span class="panel-status__item panel-status__item--push panel-status__item--whole">
+      <span class="panel-status__text"
+        >{{ totals().tests }} {{ totals().tests === 1 ? 'test' : 'tests' }}</span
+      >
+      @if (totals().passed > 0) {
+        <app-chip tone="success" [icon]="Icon.TEST_PASSED">{{ totals().passed }} passed</app-chip>
+      }
+      @if (totals().failed > 0) {
+        <app-chip tone="danger" [icon]="Icon.TEST_FAILED">{{ totals().failed }} failed</app-chip>
+      }
+      @if (totals().skipped > 0) {
+        <app-chip tone="neutral" [icon]="Icon.TEST_SKIPPED"
+          >{{ totals().skipped }} skipped</app-chip
+        >
+      }
+    </span>
+  </app-panel-status>
+} @else if (phase() === 'discovering') {
+  <div class="tests-empty" role="status">
+    <app-icon class="tests-empty__spinner" [icon]="Icon.SPINNER" />
+    <p>Finding Tests</p>
+  </div>
+} @else if (problem(); as reason) {
+  <div class="tests-empty" role="status">
+    <app-icon class="tests-empty__icon" [icon]="Icon.TEST" />
+    <p>
+      {{
+        reason.code === 'untrusted'
+          ? 'Trust this folder to find and run its tests.'
+          : reason.message
+      }}
+    </p>
+  </div>
+} @else if (explorer.installed().length === 0 && missing().length > 0) {
+  <!-- An adapter applies but none is installed: say which plugin finds these tests. No button — the
+       Plugin Manager is where plugins are installed. -->
+  <div class="tests-empty" role="status">
+    <app-icon class="tests-empty__icon" [icon]="Icon.TEST" />
+    <p>This workspace looks like it has {{ frameworksOf(missing()) }} tests.</p>
+    <p class="tests-empty__hint">
+      Install {{ namesOf(missing()) }} in the Plugin Manager to find and run them.
+    </p>
+  </div>
+} @else {
+  <div class="tests-empty" role="status">
+    <app-icon class="tests-empty__icon" [icon]="Icon.TEST" />
+    <p>{{ failedOnly() ? 'No failed tests.' : 'No tests found in this workspace.' }}</p>
+  </div>
+}
