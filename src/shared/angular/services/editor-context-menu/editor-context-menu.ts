@@ -10,6 +10,7 @@ import { EditorNavigation } from '@shared/angular/services/references/editor-nav
 import { QuickFixes } from '@shared/angular/services/quick-fix/quick-fixes';
 import { RenameSymbol } from '@shared/angular/services/rename/rename-symbol';
 import { Studio } from '@shared/angular/services/studio/studio';
+import type { LspGeneratedViewKind } from '@shared/api/lsp-channels';
 
 /**
  * Identifies the source label passed to Monaco when the menu runs an editor action.
@@ -26,11 +27,17 @@ export type EditorContextMenuCommand =
   | 'sourceDefinition'
   | 'parentModule'
   | 'cargoManifest'
+  | 'projectConfiguration'
   | 'implementation'
   | 'references'
   | 'callHierarchy'
   | 'typeHierarchy'
   | 'sourceHeader'
+  | 'expandMacro'
+  | 'hir'
+  | 'mir'
+  | 'syntaxTree'
+  | 'memoryUsage'
   | 'symbol'
   | 'line'
   | 'rename'
@@ -98,6 +105,7 @@ const SHORTCUTS: Readonly<Record<EditorContextMenuCommand, ShortcutHints>> = {
   sourceDefinition: { mac: '', windows: '' },
   parentModule: { mac: '', windows: '' },
   cargoManifest: { mac: '', windows: '' },
+  projectConfiguration: { mac: '', windows: '' },
   implementation: { mac: '⌘F12', windows: 'Ctrl+F12' },
   references: { mac: '⇧F12', windows: 'Shift+F12' },
   // Rider's call hierarchy chord; its type hierarchy chord (⌃H) is delete-left in a Mac editor (#1153).
@@ -105,6 +113,12 @@ const SHORTCUTS: Readonly<Record<EditorContextMenuCommand, ShortcutHints>> = {
   typeHierarchy: { mac: '⌃⇧H', windows: 'Ctrl+Shift+H' },
   // Visual Studio's chord (#1213).
   sourceHeader: { mac: '⌘K ⌘O', windows: 'Ctrl+K Ctrl+O' },
+  // The views of the code a server alone gives (#1210, #1213) have no chord anywhere.
+  expandMacro: { mac: '', windows: '' },
+  hir: { mac: '', windows: '' },
+  mir: { mac: '', windows: '' },
+  syntaxTree: { mac: '', windows: '' },
+  memoryUsage: { mac: '', windows: '' },
   symbol: { mac: '⌘⇧O', windows: 'Ctrl+Shift+O' },
   line: { mac: '⌃G', windows: 'Ctrl+G' },
   rename: { mac: 'F2', windows: 'F2' },
@@ -325,6 +339,9 @@ export class EditorContextMenu {
     if (this.navigation.offersCargoManifest(editor)) {
       navigation.push(this.item('cargoManifest', 'Open Cargo.toml'));
     }
+    if (this.navigation.offersProjectConfiguration(editor)) {
+      navigation.push(this.item('projectConfiguration', 'Go to Project Configuration'));
+    }
     if (this.navigation.offersImplementations(editor)) {
       navigation.push(this.item('implementation', 'Go to Implementation'));
     }
@@ -346,6 +363,23 @@ export class EditorContextMenu {
       navigation.push(this.item('sourceHeader', 'Switch Header/Source'));
     }
     navigation.push(this.item('symbol', 'Go to Symbol'), this.item('line', 'Go to Line'));
+
+    // What the server alone can show of the code, each opened as a read-only document (#1210, #1213).
+    const views: MenuItem[] = (
+      [
+        ['expandMacro', 'Expand Macro'],
+        ['hir', 'View HIR'],
+        ['mir', 'View MIR'],
+        ['syntaxTree', 'Show Syntax Tree'],
+        ['memoryUsage', 'Show Server Memory Usage'],
+      ] as const
+    )
+      .filter(([kind]: readonly [LspGeneratedViewKind, string]): boolean =>
+        this.navigation.offersGeneratedView(editor, kind),
+      )
+      .map(([kind, label]: readonly [LspGeneratedViewKind, string]): MenuItem =>
+        this.item(kind, label),
+      );
 
     const find: MenuItem[] = [this.item('find', 'Find', !this.findRouter.answers(editor))];
 
@@ -376,7 +410,7 @@ export class EditorContextMenu {
         ]
       : [this.item('copy', 'Copy'), this.item('selectAll', 'Select All')];
 
-    return [navigation, find, editing, clipboard]
+    return [navigation, views, find, editing, clipboard]
       .filter((group: readonly MenuItem[]): boolean => group.length > 0)
       .flatMap((group: readonly MenuItem[], index: number): readonly MenuItem[] =>
         index === 0 ? group : [{ id: `separator-${index}`, label: '', separator: true }, ...group],
@@ -409,6 +443,9 @@ export class EditorContextMenu {
       case 'cargoManifest':
         void this.navigation.openCargoManifest(editor);
         return;
+      case 'projectConfiguration':
+        void this.navigation.openProjectConfiguration(editor);
+        return;
       case 'implementation':
         void this.navigation.goToImplementation(editor);
         return;
@@ -423,6 +460,13 @@ export class EditorContextMenu {
         return;
       case 'sourceHeader':
         void this.navigation.switchSourceHeader(editor);
+        return;
+      case 'expandMacro':
+      case 'hir':
+      case 'mir':
+      case 'syntaxTree':
+      case 'memoryUsage':
+        void this.navigation.showGeneratedView(editor, command as LspGeneratedViewKind);
         return;
       case 'symbol':
         this.goToRouter.open(editor, 'symbol');

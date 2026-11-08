@@ -252,6 +252,7 @@ describe('EditorContextMenu (#1012)', () => {
     sourceDefinitions: Mock<LspFeatures['sourceDefinitions']>;
     servesParentModule: Mock<LspFeatures['servesParentModule']>;
     servesCargoManifest: Mock<LspFeatures['servesCargoManifest']>;
+    servesProjectConfiguration: Mock<LspFeatures['servesProjectConfiguration']>;
   };
   let opener: { openPath: Mock<(path: string) => Promise<boolean>> };
 
@@ -298,6 +299,9 @@ describe('EditorContextMenu (#1012)', () => {
       ),
       servesParentModule: vi.fn<LspFeatures['servesParentModule']>((): boolean => false),
       servesCargoManifest: vi.fn<LspFeatures['servesCargoManifest']>((): boolean => false),
+      servesProjectConfiguration: vi.fn<LspFeatures['servesProjectConfiguration']>(
+        (): boolean => false,
+      ),
     };
     opener = {
       openPath: vi.fn<(path: string) => Promise<boolean>>((): Promise<boolean> =>
@@ -432,6 +436,62 @@ describe('EditorContextMenu (#1012)', () => {
       expect(rowOf(items, 'sourceDefinition')).toEqual({
         id: 'sourceDefinition',
         label: 'Go to Source Definition',
+      });
+    });
+
+    it('goToProjectConfiguration_shownWhereTheServerAnswersIt (#1207)', () => {
+      const menu: EditorContextMenu = build('darwin');
+      const { editor } = fakeEditor({ language: 'typescript' });
+      lsp.servesDocument.mockReturnValue(true);
+
+      expect(rowOf(menu.itemsFor(editor), 'projectConfiguration')).toBeUndefined();
+
+      lsp.servesProjectConfiguration.mockReturnValue(true);
+
+      expect(rowOf(menu.itemsFor(editor), 'projectConfiguration')).toEqual({
+        id: 'projectConfiguration',
+        label: 'Go to Project Configuration',
+      });
+    });
+
+    it('theServersViews_eachShownWhereItGivesThem_inAGroupOfTheirOwn (#1210, #1213)', () => {
+      const menu: EditorContextMenu = build('darwin');
+      const { editor } = fakeEditor({ language: 'rust' });
+      lsp.servesDocument.mockReturnValue(true);
+
+      expect(rowOf(menu.itemsFor(editor), 'expandMacro')).toBeUndefined();
+
+      const views: readonly string[] = ['expandMacro', 'hir', 'mir'];
+      lsp.servesNavigation.mockImplementation(
+        (_model: MonacoApi.editor.ITextModel, kind: string): boolean => views.includes(kind),
+      );
+      const items: readonly MenuItem[] = menu.itemsFor(editor);
+
+      expect(rowOf(items, 'expandMacro')).toEqual({ id: 'expandMacro', label: 'Expand Macro' });
+      expect(rowOf(items, 'hir')).toEqual({ id: 'hir', label: 'View HIR' });
+      expect(rowOf(items, 'mir')).toEqual({ id: 'mir', label: 'View MIR' });
+      expect(rowOf(items, 'syntaxTree')).toBeUndefined();
+      expect(rowOf(items, 'memoryUsage')).toBeUndefined();
+      // After Go to Line, behind a separator.
+      const line: number = items.findIndex((item: MenuItem): boolean => item.id === 'line');
+      expect(items[line + 1].separator).toBe(true);
+      expect(items[line + 2].id).toBe('expandMacro');
+    });
+
+    it('clangdsViews_areShowSyntaxTree_andShowServerMemoryUsage (#1213)', () => {
+      const menu: EditorContextMenu = build('darwin');
+      const { editor } = fakeEditor({ language: 'cpp' });
+      lsp.servesDocument.mockReturnValue(true);
+      lsp.servesNavigation.mockImplementation(
+        (_model: MonacoApi.editor.ITextModel, kind: string): boolean =>
+          kind === 'syntaxTree' || kind === 'memoryUsage',
+      );
+      const items: readonly MenuItem[] = menu.itemsFor(editor);
+
+      expect(rowOf(items, 'syntaxTree')).toEqual({ id: 'syntaxTree', label: 'Show Syntax Tree' });
+      expect(rowOf(items, 'memoryUsage')).toEqual({
+        id: 'memoryUsage',
+        label: 'Show Server Memory Usage',
       });
     });
 
