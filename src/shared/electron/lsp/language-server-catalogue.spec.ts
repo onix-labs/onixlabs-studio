@@ -1,6 +1,6 @@
 import type { LspServerSettingDescriptor } from '@shared/api/lsp-channels';
 import type { LanguageServerDescriptor } from './language-server-descriptor';
-import { languageServerCatalogue } from './language-server-catalogue';
+import { jdtlsLaunchArgs, languageServerCatalogue } from './language-server-catalogue';
 import {
   LspServerSettingValues,
   pushedSettings,
@@ -29,6 +29,23 @@ function typescript(): LanguageServerDescriptor {
 function settings(): readonly LspServerSettingDescriptor[] {
   return typescript().settings ?? [];
 }
+
+describe('the TypeScript server diagnostics (#1207)', () => {
+  it('isAskedToCheckWholeProjects_asItPushesOpenFilesOnly', () => {
+    expect(typescript().projectDiagnostics).toBe('tsserver');
+  });
+
+  it('noOtherServer_isAsked', () => {
+    const asked: readonly string[] = languageServerCatalogue()
+      .filter(
+        (descriptor: LanguageServerDescriptor): boolean =>
+          descriptor.projectDiagnostics !== undefined,
+      )
+      .map((descriptor: LanguageServerDescriptor): string => descriptor.id);
+
+    expect(asked).toEqual(['typescript']);
+  });
+});
 
 describe('the TypeScript server settings (#1207)', () => {
   it('everySetting_reachesTheServer_pushedOrAtStartUp', () => {
@@ -99,5 +116,35 @@ describe('the TypeScript server settings (#1207)', () => {
         quotePreference: 'single',
       },
     });
+  });
+});
+
+describe('jdtlsLaunchArgs (#1208)', () => {
+  const install: { launcherJar: string; configDir: string } = {
+    launcherJar: '/servers/jdtls/1.58.0/plugins/org.eclipse.equinox.launcher_1.7.0.jar',
+    configDir: '/servers/jdtls/1.58.0/config_mac',
+  };
+
+  it('theInstallsConfigurationArea_isOnlyRead_asTheSharedOne', () => {
+    const args: string[] = jdtlsLaunchArgs(install, '/data/area', '/data/workspace');
+
+    expect(args).toContain('-Dosgi.sharedConfiguration.area=/servers/jdtls/1.58.0/config_mac');
+    expect(args).toContain('-Dosgi.sharedConfiguration.area.readOnly=true');
+    expect(args).toContain('-Dosgi.configuration.cascaded=true');
+    expect(args[args.indexOf('-configuration') + 1]).toBe('/data/area');
+  });
+
+  it('theLauncherAndData_comeLast_afterTheJvmArguments', () => {
+    const args: string[] = jdtlsLaunchArgs(install, '/data/area', '/data/workspace');
+
+    expect(args.slice(-6)).toEqual([
+      '-jar',
+      install.launcherJar,
+      '-configuration',
+      '/data/area',
+      '-data',
+      '/data/workspace',
+    ]);
+    expect(args.indexOf('-Dosgi.checkConfiguration=true')).toBeLessThan(args.indexOf('-jar'));
   });
 });
