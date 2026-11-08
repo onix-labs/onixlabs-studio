@@ -9,6 +9,14 @@ import { SEMANTIC_TOKEN_MODIFIERS, SEMANTIC_TOKEN_TYPES } from '@shared/api/lsp-
 const FILE_CREATING_SERVERS: ReadonlySet<string> = new Set<string>(['rust']);
 
 /**
+ * clangd's extension to the text-document capabilities (#1213), kept apart because the protocol's type
+ * has no room for it.
+ */
+const INACTIVE_REGIONS_CAPABILITY: Record<string, unknown> = {
+  inactiveRegionsCapabilities: { inactiveRegions: true },
+};
+
+/**
  * Builds the client capabilities advertised to a server. They cover diagnostics, document
  * synchronisation, and the core language features the renderer client surfaces.
  * @param serverId The server, or undefined for what every server is told.
@@ -158,6 +166,10 @@ export function clientCapabilities(serverId?: string): ClientCapabilities {
         overlappingTokenSupport: false,
         multilineTokenSupport: false,
       },
+      // Not in the protocol: clangd reports the lines the preprocessor leaves out, an `#if 0` block or
+      // the branch of an `#ifdef` not taken, only to a client that says it fades them (#1213). Other
+      // servers ignore it.
+      ...INACTIVE_REGIONS_CAPABILITY,
     },
     // `refreshSupport` tells a server it may send `workspace/semanticTokens/refresh` when its
     // classification improves (a project finishes loading); without it heavy servers never signal
@@ -212,16 +224,25 @@ export function clientCapabilities(serverId?: string): ClientCapabilities {
     window: {
       workDoneProgress: true,
       showMessage: { messageActionItem: { additionalPropertiesSupport: true } },
+      // A server may ask for a page or file to be shown (#1211): a web page opens in the browser, a
+      // file in an editor with its range selected. gopls's Browse actions offer nothing else.
+      showDocument: { support: true },
     },
     // Not in the protocol, and ignored by any server that does not know them. A server may say when it
     // has finished loading and what stops it loading (`experimental/serverStatus`): rust-analyzer has
     // no other way of saying a broken `Cargo.toml` stopped the workspace loading (#1210). The client
     // commands a server may put on a lens: rust-analyzer drops a lens whose command the client does not
-    // run, so without this it shows none at all (#1210). Debug is not among them until there is a
-    // debugger for Rust.
+    // run, so without this it shows none at all (#1210). Debug runs under CodeLLDB, the Rust debugger
+    // the Plugin Manager installs.
     experimental: {
       serverStatusNotification: true,
-      commands: { commands: ['rust-analyzer.runSingle', 'rust-analyzer.showReferences'] },
+      commands: {
+        commands: [
+          'rust-analyzer.runSingle',
+          'rust-analyzer.debugSingle',
+          'rust-analyzer.showReferences',
+        ],
+      },
     },
   };
 }
