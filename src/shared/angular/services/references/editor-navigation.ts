@@ -423,6 +423,30 @@ export class EditorNavigation {
   }
 
   /**
+   * Determines whether Go to Project Configuration can answer for a document (#1207).
+   * @param editor The editor.
+   * @returns Returns true when the language server serving it does.
+   */
+  public offersProjectConfiguration(editor: MonacoApi.editor.ICodeEditor): boolean {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    return model !== null && this.injector.get(LspFeatures).servesProjectConfiguration(model);
+  }
+
+  /**
+   * Opens the `tsconfig.json` or `jsconfig.json` the project a document is in is configured by (#1207).
+   * @param editor The editor.
+   * @returns Returns a promise that resolves once it is shown, or found not to be.
+   */
+  public openProjectConfiguration(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
+    return this.goToFound(
+      editor,
+      'definitions',
+      async (model: MonacoApi.editor.ITextModel) =>
+        (await this.injector.get(LspFeatures).projectConfigurations(model)) ?? [],
+    );
+  }
+
+  /**
    * Goes to the source behind the symbol at the caret (#1207) — from a package's `.d.ts` to its
    * JavaScript or TypeScript: straight there when there is one, listed when there are several.
    * @param editor The editor.

@@ -474,6 +474,31 @@ export interface TextEditorSettings {
   readonly inlayHints: InlayHintsMode;
 
   /**
+   * Gets whether code lenses are shown at all (#1215); off, no server is asked for them.
+   */
+  readonly codeLens: boolean;
+
+  /**
+   * Gets whether reference-count lenses are shown (#1215).
+   */
+  readonly codeLensReferences: boolean;
+
+  /**
+   * Gets whether implementation-count lenses are shown (#1215).
+   */
+  readonly codeLensImplementations: boolean;
+
+  /**
+   * Gets whether Run Test and Debug Test lenses are shown (#1215).
+   */
+  readonly codeLensTests: boolean;
+
+  /**
+   * Gets whether every other kind of lens is shown (#1215).
+   */
+  readonly codeLensOther: boolean;
+
+  /**
    * Gets a value indicating whether semantic tokens colour the code.
    */
   readonly semanticHighlighting: boolean;
@@ -1022,6 +1047,11 @@ export class Settings {
       defaultFormatter: this.read('textEditor.global.defaultFormatter'),
       changeMargin: this.read('textEditor.global.changeMargin'),
       inlayHints: this.read('textEditor.global.inlayHints'),
+      codeLens: this.read('textEditor.global.codeLens'),
+      codeLensReferences: this.read('textEditor.global.codeLensReferences'),
+      codeLensImplementations: this.read('textEditor.global.codeLensImplementations'),
+      codeLensTests: this.read('textEditor.global.codeLensTests'),
+      codeLensOther: this.read('textEditor.global.codeLensOther'),
       semanticHighlighting: this.read('textEditor.global.semanticHighlighting'),
       highlightOccurrences: this.read('textEditor.global.highlightOccurrences'),
       selectionHighlight: this.read('textEditor.global.selectionHighlight'),
