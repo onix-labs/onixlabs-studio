@@ -4,6 +4,7 @@ import { statSync } from 'node:fs';
 import { logger } from '../logger';
 import { answerConfiguration } from './lsp-server-settings';
 import { LspAttachDebuggerForwarder } from './lsp-attach-debugger';
+import { LANGUAGE_STATUS_METHOD, LspServerStatus, serverStatusOf } from './lsp-language-status';
 import { LspIndentationForwarder, LspIndentationSections } from './lsp-indentation';
 import { LspShowMessageForwarder } from './lsp-show-message';
 import { LspOpenDocuments } from './lsp-open-documents';
@@ -201,6 +202,12 @@ interface LspSession {
    * for a server that has said nothing of it.
    */
   typescriptVersion?: unknown;
+
+  /**
+   * Holds whether jdtls has said it is ready (`language/status`, #1208), after which its saying it is
+   * starting is not a new load.
+   */
+  serviceReady?: boolean;
 
   /**
    * Holds whether a workspace diagnostics pull has run to its end since the server loaded the
@@ -1288,6 +1295,20 @@ export class LspManager {
    * @param params The method parameters.
    */
   private forwardNotification(sessionId: string, method: string, params: unknown): void {
+    // jdtls says how it is in a notification of its own (#1208), read here as the one rust-analyzer
+    // sends, so the renderer and a window attaching later handle one shape.
+    if (method === LANGUAGE_STATUS_METHOD) {
+      const session: LspSession | undefined = this.sessions.get(sessionId);
+      const status: LspServerStatus | null = serverStatusOf(params, session?.serviceReady === true);
+      if (status === null) {
+        return;
+      }
+      if (session !== undefined && status.quiescent) {
+        session.serviceReady = true;
+      }
+      this.forwardNotification(sessionId, SERVER_STATUS, status);
+      return;
+    }
     // Only the notifications the renderer actually consumes cross the IPC boundary. A loading server
     // (Roslyn on a big solution) emits a large volume of progress and telemetry notifications; each
     // forwarded one is a structured-clone plus a renderer handler invocation, only to be discarded.

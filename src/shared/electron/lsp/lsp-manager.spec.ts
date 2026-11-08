@@ -1073,6 +1073,26 @@ describe('LspManager (#1015)', () => {
       expect(late.sent).toContainEqual({ method: '$/typescriptVersion', params: version });
     });
 
+    it('isToldWhatJdtlsLastSaidOfHowItWas_inTheSameShape (#1208)', async () => {
+      const internals: ManagerInternals = running(false);
+      const late: { contents: WebContents; sent: { method: string; params: unknown }[] } = window();
+
+      internals.forwardNotification('/root::csharp', 'language/status', { type: 'Starting' });
+      internals.forwardNotification('/root::csharp', 'language/status', { type: 'ServiceReady' });
+      // jdtls says it is starting once more after it is ready, which is not a new load.
+      internals.forwardNotification('/root::csharp', 'language/status', { type: 'Starting' });
+      await internals.start(START, late.contents);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(late.sent).toContainEqual({
+        method: 'experimental/serverStatus',
+        params: { health: 'ok', quiescent: true },
+      });
+      expect(late.sent.map((entry: { method: string }): string => entry.method)).not.toContain(
+        'language/status',
+      );
+    });
+
     it('aServerThatHasSaidNothingOfHowItIs_isNotReportedOn (#1210)', async () => {
       const internals: ManagerInternals = running(true);
       const late: { contents: WebContents; sent: { method: string; params: unknown }[] } = window();
