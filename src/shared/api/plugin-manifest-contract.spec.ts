@@ -47,6 +47,8 @@ const FINGERPRINTS: Readonly<Record<string, string>> = {
   '1.24.0': '2a5aaeda4c88616834ad26c41a652125422da4bfc82a03b72595ff069f008b2c',
   '1.25.0': '40c9662b3f14ef9fe757ec3b842ee57eada41d09179a53b4a1ff054b528c7b09',
   '1.26.0': '771dd15cbec4d5a234018e26490f6d055b08533c2c48ccd3967a6cf4c2f2eaa0',
+  // The same shape as 1.26.0: what changed is the package-manager protocol's capabilities (#907).
+  '1.27.0': '771dd15cbec4d5a234018e26490f6d055b08533c2c48ccd3967a6cf4c2f2eaa0',
   '1.28.0': '35047b5a862d4c1306dbe3a7a14ec8e978527460a8d04d233015d20df766e494',
 };
 

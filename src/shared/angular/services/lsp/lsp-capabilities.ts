@@ -146,7 +146,9 @@ function isOffered(provider: unknown): boolean {
  * its call and type hierarchies (`callHierarchyProvider`, `typeHierarchyProvider`, #1153), from a file
  * to its header or source, and rust-analyzer's own, from a file to its parent module and to its
  * `Cargo.toml` (`experimental`, #1210). The header or source request is clangd's own, which it
- * advertises nowhere, so it is known by the capability only clangd has: `compilationDatabase`.
+ * advertises nowhere, so it is known by the capability only clangd has: `compilationDatabase`. Also
+ * the views of the code a server alone gives (#1210, #1213): rust-analyzer's macro expansion, HIR and
+ * MIR, and clangd's syntax tree and memory use.
  * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
  * @returns Returns which it answers.
  */
@@ -159,6 +161,8 @@ export function navigationSupportOf(capabilities: unknown): LspNavigationSupport
         callHierarchyProvider?: unknown;
         typeHierarchyProvider?: unknown;
         compilationDatabase?: unknown;
+        astProvider?: unknown;
+        memoryUsageProvider?: unknown;
         experimental?: { parentModule?: unknown; openCargoToml?: unknown };
       }
     | undefined = capabilities as typeof caps;
@@ -171,6 +175,14 @@ export function navigationSupportOf(capabilities: unknown): LspNavigationSupport
     sourceHeader: isOffered(caps?.compilationDatabase),
     ...(caps?.experimental?.parentModule === true ? { parentModule: true } : {}),
     ...(caps?.experimental?.openCargoToml === true ? { cargoManifest: true } : {}),
+    // rust-analyzer advertises none of its views (#1210); `openCargoToml` is its alone, so it stands
+    // for the server that answers them.
+    ...(caps?.experimental?.openCargoToml === true
+      ? { expandMacro: true, hir: true, mir: true }
+      : {}),
+    // clangd says so (#1213).
+    ...(caps?.astProvider === true ? { syntaxTree: true } : {}),
+    ...(caps?.memoryUsageProvider === true ? { memoryUsage: true } : {}),
   };
 }
 

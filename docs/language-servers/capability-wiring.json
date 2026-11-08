@@ -1,0 +1,80 @@
+{
+  "$comment": "The hand-kept layer of the capability matrix (#1205). The probe says what a server offers; this file says what has been checked working in a running Studio against a fixture (verified), what does not apply (notApplicable), which probe report each row is read from (reports), and, for a server with no probe report, its whole row (servers.<id>.cells). Regenerate with: node scripts/probe-lsp.mjs --matrix --docs",
+  "reports": {
+    "bash-language-server": "5.6.0.json",
+    "clangd": "22.1.6.json",
+    "dockerfile-language-server": "0.15.0.json",
+    "go": "v0.23.0.studio-defaults.json",
+    "java": "1.58.0.studio-1216-defaults.json",
+    "kotlin": "1.3.13.default.json",
+    "lua-language-server": "3.19.1.with-settings.shapes.json",
+    "perlnavigator": "0.8.20.json",
+    "pyright": "1.1.410.venv.json",
+    "rust": "2026-07-13.json",
+    "sqls": "0.2.48.with-settings.json",
+    "svelte-language-server": "0.18.4.json",
+    "ty": "0.0.74.studio-defaults.json",
+    "typescript": "4.4.1.with-settings.json",
+    "vscode-css-language-server": "4.10.0.with-settings.json",
+    "vscode-html-language-server": "4.10.0.with-settings.json",
+    "vscode-json-language-server": "4.10.0.with-settings.json",
+    "yaml-language-server": "1.24.0.with-settings.json"
+  },
+  "verified": {},
+  "notApplicable": {
+    "vscode-css-language-server": ["callHierarchy", "typeHierarchy", "implementation"],
+    "vscode-json-language-server": [
+      "callHierarchy",
+      "typeHierarchy",
+      "implementation",
+      "typeDefinition"
+    ],
+    "yaml-language-server": ["callHierarchy", "typeHierarchy", "implementation"],
+    "dockerfile-language-server": ["callHierarchy", "typeHierarchy", "implementation"]
+  },
+  "servers": {
+    "ty": {
+      "source": "Workspace diagnostics: registered with diagnosticMode workspace; the probe's 60 s pull without a partial-result token timed out (#1212)",
+      "cells": { "workspace/diagnostic": "offered" }
+    },
+    "pyright": {
+      "source": "Workspace diagnostics: registered with python.analysis.diagnosticMode workspace; the probe's 60 s pull timed out (#1212)",
+      "cells": { "workspace/diagnostic": "offered" }
+    },
+    "csharp": {
+      "language": "csharp",
+      "displayName": "Roslyn",
+      "version": "5.13",
+      "source": "#1139, checked feature by feature in a second instance against .cache/roslyn-fixture",
+      "cells": {
+        "definition": "verified",
+        "implementation": "verified",
+        "typeDefinition": "verified",
+        "references": "verified",
+        "hover": "verified",
+        "completion": "verified",
+        "signatureHelp": "verified",
+        "formatting": "verified",
+        "rangeFormatting": "verified",
+        "onTypeFormatting": "verified",
+        "rename": "verified",
+        "codeAction": "verified",
+        "codeLens": "verified",
+        "inlayHint": "verified",
+        "foldingRange": "verified",
+        "documentHighlight": "verified",
+        "selectionRange": "verified",
+        "semanticTokens/full": "verified",
+        "semanticTokens/range": "verified",
+        "documentSymbol": "verified",
+        "workspace/symbol": "verified",
+        "callHierarchy": "verified",
+        "typeHierarchy": "verified",
+        "textDocument/diagnostic": "verified",
+        "workspace/diagnostic": "verified",
+        "publishDiagnostics": "notOffered",
+        "willRenameFiles": "notOffered"
+      }
+    }
+  }
+}
