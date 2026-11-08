@@ -224,6 +224,9 @@ export function clientCapabilities(serverId?: string): ClientCapabilities {
     window: {
       workDoneProgress: true,
       showMessage: { messageActionItem: { additionalPropertiesSupport: true } },
+      // A server may ask for a page or file to be shown (#1211): a web page opens in the browser, a
+      // file in an editor with its range selected. gopls's Browse actions offer nothing else.
+      showDocument: { support: true },
     },
     // Not in the protocol, and ignored by any server that does not know them. A server may say when it
     // has finished loading and what stops it loading (`experimental/serverStatus`): rust-analyzer has

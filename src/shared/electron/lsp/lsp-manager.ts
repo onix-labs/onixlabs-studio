@@ -7,6 +7,7 @@ import { LspAttachDebuggerForwarder } from './lsp-attach-debugger';
 import { LANGUAGE_STATUS_METHOD, LspServerStatus, serverStatusOf } from './lsp-language-status';
 import { LspIndentationForwarder, LspIndentationSections } from './lsp-indentation';
 import { LspShowMessageForwarder } from './lsp-show-message';
+import { toShowDocumentRequest } from './lsp-show-document';
 import { LspOpenDocuments } from './lsp-open-documents';
 import { LspDiagnosticsCoalescer } from './lsp-diagnostics-coalescer';
 import { WorkspaceDiagnosticsPull, WorkspaceDocumentReport } from './lsp-workspace-diagnostics';
@@ -28,6 +29,7 @@ import {
   LspGeneratedViewResult,
   LspMessage,
   LspServerSummary,
+  LspShowDocumentRequest,
   LspStartRequest,
   LspStartResult,
   PUBLISH_DIAGNOSTICS_METHOD,
@@ -1239,6 +1241,18 @@ export class LspManager {
     connection.onRequest('window/showMessageRequest', (params: unknown): Promise<unknown> =>
       this.questions.forward(sessionId, this.applierOf(session), params),
     );
+    // A server's page or file to show (#1211) — gopls's Browse Documentation serves a page of its own
+    // — opened by the renderer that holds the session: a page in the browser, a file in an editor.
+    connection.onRequest('window/showDocument', (params: unknown): { success: boolean } => {
+      const request: LspShowDocumentRequest | null = toShowDocumentRequest(sessionId, params);
+      const target: WebContents | null = this.applierOf(session);
+      if (request === null || target === null) {
+        logger.debug('LspManager', `Did not show a document for session ${sessionId}`);
+        return { success: false };
+      }
+      target.send(LspChannel.ShowDocument, request);
+      return { success: true };
+    });
     // Any other server-to-client request is acknowledged with null so the server is never left
     // waiting on a response it requires to make progress.
     connection.onRequest((): null => null);
