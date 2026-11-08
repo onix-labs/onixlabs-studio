@@ -25,6 +25,9 @@ const EXTENSION_TO_LANGUAGE: Readonly<Record<string, string>> = {
   '.jsx': 'javascript',
   '.ts': 'typescript',
   '.tsx': 'typescript',
+  // ES-module and CommonJS TypeScript (#1213): a plain-text `.mts` never reached tsserver.
+  '.mts': 'typescript',
+  '.cts': 'typescript',
   '.json': 'json',
   '.html': 'html',
   '.htm': 'html',
@@ -36,6 +39,9 @@ const EXTENSION_TO_LANGUAGE: Readonly<Record<string, string>> = {
   '.yaml': 'yaml',
   '.yml': 'yaml',
   '.py': 'python',
+  // A type stub, which ty and pyright read as Python, and a script run without a console window.
+  '.pyi': 'python',
+  '.pyw': 'python',
   '.rb': 'ruby',
   '.java': 'java',
   '.c': 'c',
@@ -66,6 +72,8 @@ const EXTENSION_TO_LANGUAGE: Readonly<Record<string, string>> = {
   '.ps1': 'powershell',
   '.swift': 'swift',
   '.kt': 'kotlin',
+  // A Kotlin script, such as a Gradle build file (`build.gradle.kts`).
+  '.kts': 'kotlin',
   '.r': 'r',
   '.lua': 'lua',
   '.pl': 'perl',
