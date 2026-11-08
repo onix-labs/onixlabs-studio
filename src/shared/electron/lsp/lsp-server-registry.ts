@@ -207,6 +207,15 @@ export class LspServerRegistry {
   }
 
   /**
+   * Gets how a server is asked to report the whole of the projects its open documents are in (#1207).
+   * @param serverId The server.
+   * @returns Returns how, or undefined for a server that is not asked.
+   */
+  public projectDiagnosticsOf(serverId: LspServerId): 'tsserver' | undefined {
+    return this.descriptors.get(serverId)?.projectDiagnostics;
+  }
+
+  /**
    * Gets the values to answer a server's `workspace/configuration` requests with (#1143): the user's
    * for the settings it declares, and each one's default where they have set none.
    * @param serverId The server.

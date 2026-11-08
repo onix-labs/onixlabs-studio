@@ -8,6 +8,7 @@ import { LspShowMessageForwarder } from './lsp-show-message';
 import { LspOpenDocuments } from './lsp-open-documents';
 import { LspDiagnosticsCoalescer } from './lsp-diagnostics-coalescer';
 import { WorkspaceDiagnosticsPull, WorkspaceDocumentReport } from './lsp-workspace-diagnostics';
+import { ProjectDiagnosticsCheck } from './lsp-project-diagnostics';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -159,6 +160,12 @@ interface LspSession {
    * null for a server that does not serve them.
    */
   workspaceDiagnostics: WorkspaceDiagnosticsPull | null;
+
+  /**
+   * Holds the check that has the server report every file of the projects its open documents are in
+   * (#1207), or null for a server that is not asked.
+   */
+  projectDiagnostics: ProjectDiagnosticsCheck | null;
 
   /**
    * Holds whether the server has said it finished loading the workspace
@@ -355,6 +362,25 @@ export class LspManager {
     );
     session.workspaceDiagnostics.start();
     logger.info('LspManager', `Pulling workspace diagnostics for session ${sessionId}`);
+  }
+
+  /**
+   * Starts the check that has a server report every file of the projects its open documents are in
+   * (#1207), for a server whose descriptor asks for it.
+   * @param sessionId The session.
+   * @param session The session's state.
+   */
+  private startProjectDiagnostics(sessionId: string, session: LspSession): void {
+    if (this.registry.projectDiagnosticsOf(session.request.serverId) !== 'tsserver') {
+      return;
+    }
+    session.projectDiagnostics = new ProjectDiagnosticsCheck(
+      session.connection,
+      (): readonly string[] => session.openDocuments.uris(),
+      sessionId,
+    );
+    // Documents opened before the handshake finished were opened on the server all the same.
+    session.projectDiagnostics.schedule();
   }
 
   /**
@@ -628,6 +654,7 @@ export class LspManager {
       tail,
       ready: Promise.resolve({ success: false, error: 'Initialize pending' }),
       workspaceDiagnostics: null,
+      projectDiagnostics: null,
       loaded: false,
       analysed: false,
       openDocuments: new LspOpenDocuments<WebContents>(),
@@ -649,6 +676,7 @@ export class LspManager {
     )
       .then((result: InitializeResult): LspStartResult => {
         this.startWorkspaceDiagnostics(parsed.sessionId, session, result);
+        this.startProjectDiagnostics(parsed.sessionId, session);
         return {
           success: true,
           serverInfo: result.serverInfo,
@@ -758,6 +786,10 @@ export class LspManager {
       return;
     }
     this.tell(session.connection, method, params);
+    // A document opened can bring a project in; one saved can break a file of it that is not open.
+    if (method === 'textDocument/didOpen' || method === 'textDocument/didSave') {
+      session.projectDiagnostics?.schedule();
+    }
   }
 
   /**
@@ -969,6 +1001,7 @@ export class LspManager {
     this.sessions.delete(id);
     session.watcher.close();
     session.workspaceDiagnostics?.stop();
+    session.projectDiagnostics?.stop();
     try {
       session.connection.dispose();
     } catch (error: unknown) {

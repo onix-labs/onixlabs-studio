@@ -30,6 +30,23 @@ function settings(): readonly LspServerSettingDescriptor[] {
   return typescript().settings ?? [];
 }
 
+describe('the TypeScript server diagnostics (#1207)', () => {
+  it('isAskedToCheckWholeProjects_asItPushesOpenFilesOnly', () => {
+    expect(typescript().projectDiagnostics).toBe('tsserver');
+  });
+
+  it('noOtherServer_isAsked', () => {
+    const asked: readonly string[] = languageServerCatalogue()
+      .filter(
+        (descriptor: LanguageServerDescriptor): boolean =>
+          descriptor.projectDiagnostics !== undefined,
+      )
+      .map((descriptor: LanguageServerDescriptor): string => descriptor.id);
+
+    expect(asked).toEqual(['typescript']);
+  });
+});
+
 describe('the TypeScript server settings (#1207)', () => {
   it('everySetting_reachesTheServer_pushedOrAtStartUp', () => {
     const pushed: readonly string[] = typescript().settingsDelivery?.push ?? [];

@@ -713,9 +713,10 @@ const FROZEN_TOKEN_SERVERS: ReadonlySet<string> = new Set<string>(['csharp']);
 /**
  * The servers whose pushed diagnostics reach the Error List for files that are not open as well
  * (#1210): `cargo check` reports whole crates, so an error a change causes in another file would
- * otherwise show nowhere. The other servers' pushes are left to their open documents.
+ * otherwise show nowhere. So does typescript-language-server once the main process has tsserver check
+ * the open documents' projects (#1207). The other servers' pushes are left to their open documents.
  */
-const WHOLE_WORKSPACE_PUSH_SERVERS: ReadonlySet<string> = new Set<string>(['rust']);
+const WHOLE_WORKSPACE_PUSH_SERVERS: ReadonlySet<string> = new Set<string>(['rust', 'typescript']);
 
 /**
  * How long a session's refresh signals must stay quiet before its recolour pass runs. A loading

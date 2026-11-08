@@ -109,6 +109,8 @@ const TYPESCRIPT: LanguageServerDescriptor = {
   displayName: 'TypeScript Language Server',
   languages: ['typescript', 'javascript'],
   priority: DEFAULT_PRIORITY,
+  // It pushes diagnostics for open files only; tsserver checks a whole project when asked (#1207).
+  projectDiagnostics: 'tsserver',
   // The server never asks for its settings (#1204): it reads the `typescript.*` and `javascript.*`
   // it is pushed, live, and the tsserver preferences it is given in `initializationOptions` only when
   // it starts. Formatter options sit under `format` in the pushed sections, and each format request
