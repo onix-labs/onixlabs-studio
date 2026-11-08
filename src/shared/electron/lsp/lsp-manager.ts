@@ -40,6 +40,11 @@ import {
   LspSettingsChange,
 } from './lsp-server-registry';
 import { FileEvent, LspFileWatcher } from './lsp-file-watcher';
+import {
+  createsCompilationDatabase,
+  hasCompilationDatabase,
+  readsCompilationDatabase,
+} from './lsp-compilation-database';
 import { LspServerTail } from './lsp-server-tail';
 import { ApplyEditResult, LspApplyEditForwarder } from './lsp-apply-edit';
 import { clientCapabilities } from './lsp-client-capabilities';
@@ -606,6 +611,10 @@ export class LspManager {
     // switch, a file another tool wrote — through `workspace/didChangeWatchedFiles`. Without it a
     // server's picture of the workspace is a snapshot from spawn time: a package that landed a
     // minute later stays "missing" until the server is restarted.
+    // One exception is restarted after all (#1213): clangd does not take up a compilation database that
+    // first appears once it is running, so the CMake configure that writes one restarts it, once.
+    let awaitingDatabase: boolean =
+      readsCompilationDatabase(parsed.serverId) && !hasCompilationDatabase(parsed.rootPath);
     const watcher: LspFileWatcher = new LspFileWatcher(
       parsed.rootPath,
       (events: readonly FileEvent[]): void => {
@@ -615,6 +624,14 @@ export class LspManager {
             `Told ${parsed.sessionId} about ${events.length} file change(s) on disk`,
           );
           this.tell(connection, 'workspace/didChangeWatchedFiles', { changes: events });
+          if (awaitingDatabase && createsCompilationDatabase(events)) {
+            awaitingDatabase = false;
+            logger.info(
+              'LspManager',
+              `A compilation database appeared under ${parsed.rootPath}; restarting ${parsed.sessionId}`,
+            );
+            void this.restart(parsed.sessionId);
+          }
         }
       },
     );
