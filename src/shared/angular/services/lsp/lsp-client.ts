@@ -6,6 +6,8 @@ import {
   LspApplyEditReply,
   LspAttachDebuggerReply,
   LspAttachDebuggerRequest,
+  LspIndentationReply,
+  LspIndentationRequest,
   LspShowMessageReply,
   LspShowMessageRequest,
   LspBraceStyle,
@@ -1128,6 +1130,12 @@ export class LspClient implements OnDestroy {
   private attachDebuggerDisposer: (() => void) | null = null;
 
   /**
+   * Holds the unsubscribe function for the main process's questions of how a document is indented
+   * (#1208).
+   */
+  private indentationDisposer: (() => void) | null = null;
+
+  /**
    * Holds the unsubscribe function for the main process's requests to put a server's question to the
    * user (#1154).
    */
@@ -1287,6 +1295,9 @@ export class LspClient implements OnDestroy {
     );
     this.showMessageDisposer = this.bridge.on(LspChannel.ShowMessage, (...args: unknown[]): void =>
       this.onShowMessage(args[0] as LspShowMessageRequest),
+    );
+    this.indentationDisposer = this.bridge.on(LspChannel.Indentation, (...args: unknown[]): void =>
+      this.onIndentation(args[0] as LspIndentationRequest),
     );
     this.featuresDisposer = this.features.registerDocuments((path: string): LspDocumentRef | null =>
       this.resolveDocument(path),
@@ -2195,6 +2206,7 @@ export class LspClient implements OnDestroy {
     this.applyEditDisposer?.();
     this.attachDebuggerDisposer?.();
     this.showMessageDisposer?.();
+    this.indentationDisposer?.();
     for (const timer of this.analysisTimers.values()) {
       clearTimeout(timer);
     }
@@ -3060,6 +3072,32 @@ export class LspClient implements OnDestroy {
         tracked.opened = false;
       }
     }
+  }
+
+  /**
+   * Tells one of this client's servers how a document is indented (#1208), from the document's
+   * editor, which has already weighed the file's `.editorconfig`, the user's settings and what the
+   * file itself uses. A document no editor holds is answered with nothing, leaving the server its
+   * default. A question for a session this client does not hold is another window's to answer.
+   * @param request The request, as the main process forwards it.
+   */
+  private onIndentation(request: LspIndentationRequest): void {
+    if (!this.ownsSession(request.sessionId)) {
+      return;
+    }
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    const modelUri: string | undefined = this.editors.modelUriForPath(uriToPath(request.uri));
+    const model: MonacoApi.editor.ITextModel | null =
+      monaco === undefined || modelUri === undefined
+        ? null
+        : monaco.editor.getModel(monaco.Uri.parse(modelUri));
+    const options: MonacoApi.editor.TextModelResolvedOptions | undefined = model?.getOptions();
+    const reply: LspIndentationReply = {
+      requestId: request.requestId,
+      tabSize: options?.tabSize ?? null,
+      insertSpaces: options?.insertSpaces ?? null,
+    };
+    this.bridge?.send(LspChannel.IndentationReply, reply);
   }
 
   /**

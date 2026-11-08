@@ -29,6 +29,7 @@ import {
 } from './language-server-descriptor';
 import { contributedLanguageServers } from '../contributions/plugins/contributed';
 import { LspProvisioner } from './lsp-provisioner';
+import type { LspIndentationSections } from './lsp-indentation';
 import { ArchiveProvision } from '../provisioning/archive-provision';
 import { LspSettingsManager } from './lsp-settings';
 
@@ -217,6 +218,15 @@ export class LspServerRegistry {
       this.descriptors.get(serverId)?.settings,
       this.settings.get().serverSettings[serverId],
     );
+  }
+
+  /**
+   * Gets the settings a server asks for that are a document's indentation (#1208).
+   * @param serverId The server.
+   * @returns Returns their sections, or undefined for a server that asks for none.
+   */
+  public indentationSectionsOf(serverId: LspServerId): LspIndentationSections | undefined {
+    return this.descriptors.get(serverId)?.indentationSections;
   }
 
   /**

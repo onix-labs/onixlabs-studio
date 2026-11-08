@@ -4,6 +4,7 @@ import { statSync } from 'node:fs';
 import { logger } from '../logger';
 import { answerConfiguration } from './lsp-server-settings';
 import { LspAttachDebuggerForwarder } from './lsp-attach-debugger';
+import { LspIndentationForwarder, LspIndentationSections } from './lsp-indentation';
 import { LspShowMessageForwarder } from './lsp-show-message';
 import { LspOpenDocuments } from './lsp-open-documents';
 import { LspDiagnosticsCoalescer } from './lsp-diagnostics-coalescer';
@@ -247,6 +248,11 @@ export class LspManager {
   private readonly questions: LspShowMessageForwarder;
 
   /**
+   * Holds the forwarder that asks the renderer how a document is indented (#1208).
+   */
+  private readonly indentation: LspIndentationForwarder;
+
+  /**
    * Initializes a new instance of the {@link LspManager} class.
    * @param windowGetter A function that returns the window server notifications are sent to.
    * @param workspaceContext The open-workspace tracker used to confine sessions to opened roots.
@@ -254,6 +260,7 @@ export class LspManager {
    * @param applyEdits The forwarder that hands a server's edits to the renderer.
    * @param attaches The forwarder that asks the renderer to attach the debugger (#1150).
    * @param questions The forwarder that puts a server's questions to the user (#1154).
+   * @param indentation The forwarder that asks the renderer how a document is indented (#1208).
    */
   public constructor(
     windowGetter: () => BrowserWindow | null,
@@ -262,6 +269,7 @@ export class LspManager {
     applyEdits: LspApplyEditForwarder = new LspApplyEditForwarder(),
     attaches: LspAttachDebuggerForwarder = new LspAttachDebuggerForwarder(),
     questions: LspShowMessageForwarder = new LspShowMessageForwarder(),
+    indentation: LspIndentationForwarder = new LspIndentationForwarder(),
   ) {
     this.windowGetter = windowGetter;
     this.workspaceContext = workspaceContext;
@@ -269,6 +277,7 @@ export class LspManager {
     this.applyEdits = applyEdits;
     this.attaches = attaches;
     this.questions = questions;
+    this.indentation = indentation;
   }
 
   /**
@@ -316,6 +325,7 @@ export class LspManager {
     this.applyEdits.register();
     this.attaches.register();
     this.questions.register();
+    this.indentation.register();
     logger.info('LspManager', 'Registered language-server IPC handlers');
   }
 
@@ -416,6 +426,7 @@ export class LspManager {
     this.applyEdits.dispose();
     this.attaches.dispose();
     this.questions.dispose();
+    this.indentation.dispose();
     for (const id of [...this.sessions.keys()]) {
       this.tearDown(id);
     }
@@ -1050,11 +1061,28 @@ export class LspManager {
       return null;
     });
     // Answer each requested configuration item with the user's value for the setting the server
-    // declared (#1143), or null — the server's default — for anything else.
+    // declared (#1143), or null — the server's default — for anything else. What is a document's
+    // indentation is answered from the document's editor (#1208).
     connection.onRequest(
       'workspace/configuration',
-      (params: { items?: readonly unknown[] }): unknown[] =>
-        answerConfiguration(this.registry.configurationOf(session.request.serverId), params.items),
+      (params: { items?: readonly unknown[] }): unknown[] | Promise<unknown[]> => {
+        const answers: unknown[] = answerConfiguration(
+          this.registry.configurationOf(session.request.serverId),
+          params.items,
+        );
+        const sections: LspIndentationSections | undefined = this.registry.indentationSectionsOf(
+          session.request.serverId,
+        );
+        return sections === undefined
+          ? answers
+          : this.indentation.fill(
+              sessionId,
+              this.applierOf(session),
+              sections,
+              params.items,
+              answers,
+            );
+      },
     );
     // A server's own edit — a code action's or a command's — is applied by the renderer that holds
     // the session, as a rename is (#1015), and the server told whether it was: `{ applied }`, never

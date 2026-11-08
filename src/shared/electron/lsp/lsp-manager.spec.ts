@@ -244,6 +244,7 @@ describe('LspManager (#1015)', () => {
           asked.push(serverId);
           return { 'projects.dotnet_enable_automatic_restore': false };
         },
+        indentationSectionsOf: (): undefined => undefined,
       };
       const manager: InstanceType<typeof LspManager> = new LspManager(
         (): BrowserWindow | null => null,
@@ -264,6 +265,58 @@ describe('LspManager (#1015)', () => {
 
       expect(answer).toEqual([false, null]);
       expect(asked).toEqual(['csharp']);
+    });
+
+    it('answersADocumentsIndentation_fromTheRendererHoldingTheSession (#1208)', async () => {
+      const sections: { tabSize: string; insertSpaces: string } = {
+        tabSize: 'java.format.tabSize',
+        insertSpaces: 'java.format.insertSpaces',
+      };
+      const registry: unknown = {
+        configurationOf: (): unknown => ({ 'java.signatureHelp.enabled': true }),
+        indentationSectionsOf: (): unknown => sections,
+      };
+      const filled: unknown[][] = [];
+      const indentation: unknown = {
+        register: (): void => undefined,
+        dispose: (): void => undefined,
+        fill: (
+          _sessionId: string,
+          _target: unknown,
+          given: unknown,
+          items: readonly unknown[],
+          answers: readonly unknown[],
+        ): Promise<unknown[]> => {
+          filled.push([given, items.length, [...answers]]);
+          return Promise.resolve([answers[0], 2, true]);
+        },
+      };
+      const manager: InstanceType<typeof LspManager> = new LspManager(
+        (): BrowserWindow | null => null,
+        new WorkspaceContext(),
+        registry as LspServerRegistry,
+        new LspApplyEditForwarder(),
+        undefined,
+        undefined,
+        indentation as ConstructorParameters<typeof LspManager>[6],
+      );
+      const connection: FakeConnection = fakeConnection();
+      (manager as unknown as ManagerInternals).answerServerRequests(connection, '/root::java', {
+        request: { sessionId: '/root::java', serverId: 'java', rootPath: '/root' },
+        clients: new Map<WebContents, number>(),
+        watcher: { register: (): void => undefined, unregister: (): void => undefined },
+      });
+
+      const answer: unknown = await connection.handlers.get('workspace/configuration')?.({
+        items: [
+          { section: 'java.signatureHelp.enabled' },
+          { scopeUri: 'file:///root/A.java', section: 'java.format.tabSize' },
+          { scopeUri: 'file:///root/A.java', section: 'java.format.insertSpaces' },
+        ],
+      });
+
+      expect(answer).toEqual([true, 2, true]);
+      expect(filled).toEqual([[sections, 3, [true, null, null]]]);
     });
 
     it('aChangedSetting_tellsThatServersSessionsToReadTheirConfigurationAgain_andNoOthers', () => {

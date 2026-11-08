@@ -1,6 +1,7 @@
 import { LspBraceStyle, LspServerId, LspServerSettingDescriptor } from '@shared/api/lsp-channels';
 import { ArchiveProvision } from '../provisioning/archive-provision';
 import { logger } from '../logger';
+import type { LspIndentationSections } from './lsp-indentation';
 import { LspProvisioner } from './lsp-provisioner';
 import { LspSettingsManager } from './lsp-settings';
 
@@ -271,6 +272,13 @@ export interface LanguageServerDescriptor {
    * them through `workspace/configuration` and nothing else.
    */
   readonly settingsDelivery?: LspSettingsDelivery;
+
+  /**
+   * Gets the settings the server asks for, per document, that are the document's indentation
+   * (#1208), answered from the document's editor rather than from the user's server settings — or
+   * undefined for a server that asks for none.
+   */
+  readonly indentationSections?: LspIndentationSections;
 
   /**
    * Resolves the server into a spawn specification, provisioning it and detecting its runtime when
