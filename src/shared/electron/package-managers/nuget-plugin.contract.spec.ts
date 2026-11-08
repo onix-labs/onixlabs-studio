@@ -159,6 +159,9 @@ describe('NuGet plugin contract', () => {
 
   it('loadsAFolderThroughItsFeed_withTheConfiguredCredential', TIMEOUT, async () => {
     await client.start();
+    // The registry's log is shared by every test in the file; this one asserts on its own first
+    // request, so it starts from an empty log whatever ran before it.
+    requests.length = 0;
 
     const response: PackageManagerResponse<'load'> = await client.request(
       'load',

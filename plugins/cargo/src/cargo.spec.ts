@@ -550,9 +550,14 @@ describe('CargoPackageManager', () => {
       );
 
       // Assert
-      await expect(inherited).rejects.toThrow(/\[workspace\.dependencies\]/);
-      await expect(local).rejects.toThrow(/comes from a path/);
-      await expect(forked).rejects.toThrow(/comes from a git repository/);
+      // All three read the manifest from disk and reject on their own I/O callbacks, so each needs its
+      // handler now: awaiting them one by one left the later two unhandled whenever they settled
+      // first, which vitest reports as an unhandled rejection and fails the run on (main, 633bae46).
+      await Promise.all([
+        expect(inherited).rejects.toThrow(/\[workspace\.dependencies\]/),
+        expect(local).rejects.toThrow(/comes from a path/),
+        expect(forked).rejects.toThrow(/comes from a git repository/),
+      ]);
     });
 
     it('remove_devDependency_removesItFromThatTable', async () => {
