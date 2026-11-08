@@ -20,6 +20,7 @@ import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { NgTemplateOutlet } from '@angular/common';
 import { Accordion } from '@shared/angular/components/forms/accordion/accordion';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import { isCodeLensServerSwitch } from '@shared/angular/services/lsp/code-lens-kinds';
 
 /**
  * Names the tool-path override a language's server needs, where one applies. These are the runtimes a
@@ -87,9 +88,15 @@ interface DeclaredSetting {
   readonly choice: string;
 
   /**
-   * Gets the choices as dropdown options; empty for a switch.
+   * Gets the choices as dropdown options; empty for a switch or text.
    */
   readonly options: readonly DropdownOption[];
+
+  /**
+   * Gets whether the setting is text the user types, such as a path (#1212): a string default and no
+   * choices.
+   */
+  readonly text: boolean;
 }
 
 /**
@@ -255,8 +262,13 @@ export class LanguageServerSettings {
       const server: LspServerSummary | undefined = this.servers().find(
         (candidate: LspServerSummary): boolean => candidate.id === serverId,
       );
-      return (server?.settings ?? []).map(
-        (descriptor: LspServerSettingDescriptor): DeclaredSetting => {
+      // A server's own lens switches are answered from Code › Code Lenses (#1215), not set here.
+      return (server?.settings ?? [])
+        .filter(
+          (descriptor: LspServerSettingDescriptor): boolean =>
+            !isCodeLensServerSwitch(serverId, descriptor.section),
+        )
+        .map((descriptor: LspServerSettingDescriptor): DeclaredSetting => {
           const value: LspServerSettingValue =
             this.lspSettings.serverSetting(serverId, descriptor.section) ?? descriptor.default;
           return {
@@ -269,9 +281,9 @@ export class LanguageServerSettings {
                 label: option.label,
               }),
             ),
+            text: typeof descriptor.default === 'string' && descriptor.options === undefined,
           };
-        },
-      );
+        });
     },
   );
 
@@ -289,10 +301,11 @@ export class LanguageServerSettings {
         : ((setting.descriptor.options ?? []).find(
             (option: LspServerSettingOption): boolean => String(option.value) === value,
           )?.value ?? value);
+    // Text cleared is the default again, rather than an empty value the server would read as one.
     void this.lspSettings.setServerSetting(
       this.activeServer(),
       setting.descriptor.section,
-      chosen === setting.descriptor.default ? null : chosen,
+      chosen === setting.descriptor.default || (setting.text && chosen === '') ? null : chosen,
     );
   }
 

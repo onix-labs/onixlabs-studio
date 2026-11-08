@@ -811,7 +811,7 @@ export class DirectoryView implements OnInit, OnDestroy {
       const needsPlugin: boolean = this.versionControlPrompt.needed() !== null;
       return {
         solution: this.solutionModel.model() !== null,
-        packages: this.packageModel.model() !== null,
+        packages: this.packageModel.available(),
         debug: this.debugSession.state() !== 'idle',
         // The demoted Logs panel is reachable exactly when it has content, as it always was — the
         // difference is that it is now passed over rather than cut out of the layout, so a layout
@@ -1503,7 +1503,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     // docking it beside the File Explorer; remove it when the model goes away. Layout reads/writes are
     // untracked so the effect reacts to the model alone.
     effect((): void => {
-      const hasModel: boolean = this.packageModel.model() !== null;
+      const hasModel: boolean = this.packageModel.available();
       untracked((): void => this.syncPackagesPanel(hasModel));
     });
 

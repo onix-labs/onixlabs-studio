@@ -172,8 +172,13 @@ import { isPackageManagerCapability, PackageManagerCapability } from './package-
  * adds a server's optional `initializationOptions`, fixed values for what it must be told at start-up
  * whatever the user's settings, such as clangd's `clangdFileStatus`. Absent means none, as before. Adds
  * only.
+ *
+ * `1.27.0` moves the package-manager protocol to 1.1 (#907), with the manifest's shape unchanged: the
+ * closed list of package-manager capabilities gains `searchExactName`, for a registry that has no
+ * search and can only look a name up (PyPI, the Go module proxy). A manifest declaring it is refused
+ * by an older build, which is why this is a version. Adds only.
  */
-export const PLUGIN_API_VERSION: string = '1.26.0';
+export const PLUGIN_API_VERSION: string = '1.27.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the

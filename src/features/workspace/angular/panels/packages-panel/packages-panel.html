@@ -43,7 +43,38 @@
     }
   </app-panel-toolbar>
 
-  @if (packages.loading() && packages.model() === null) {
+  @if (packages.installed().length === 0 && packages.offered().length > 0) {
+    <!-- Studio reads no package manifest of its own: with no plugin installed, say which one would. -->
+    <div class="packages-empty">
+      <app-icon [icon]="Icon.PACKAGES" />
+      <p>Install a package manager to see this folder's packages.</p>
+      <ul class="packages-offers">
+        @for (plugin of packages.offered(); track plugin.id) {
+          <li class="packages-offers__item">
+            <span class="packages-offers__name">{{ plugin.name }}</span>
+            <app-plugin-action [plugin]="plugin" />
+          </li>
+        }
+      </ul>
+    </div>
+  } @else if (packages.installed().length > 0 && packages.trust() !== 'trusted') {
+    <!-- Laid out like the source-control panels' untrusted state, and recording the same decision. -->
+    <div class="packages-empty">
+      <app-icon [icon]="Icon.LOCK" />
+      <p>This folder isn't trusted</p>
+      <p>
+        Package managers read this folder's configuration and talk to the registries it names, so
+        Studio runs them only in a folder you trust.
+      </p>
+      <app-button
+        variant="solid"
+        [icon]="Icon.LOCK_OPEN"
+        label="Trust this folder"
+        [disabled]="trusting()"
+        (click)="trustFolder()"
+      />
+    </div>
+  } @else if (packages.loading() && !packages.hasModels()) {
     <div class="packages-empty">
       <app-icon [icon]="Icon.SPINNER" />
       <p>Resolving packages…</p>
@@ -85,10 +116,15 @@
         </td>
       </ng-template>
     </app-table>
-  } @else if (packages.model() !== null && packages.outdatedOnly()) {
+  } @else if (packages.hasModels() && packages.outdatedOnly()) {
     <div class="packages-empty">
       <app-icon [icon]="Icon.CHECK" />
       <p>Everything is up to date.</p>
+    </div>
+  } @else if (failure(); as error) {
+    <div class="packages-empty">
+      <app-icon [icon]="Icon.WARNING" />
+      <p>{{ error }}</p>
     </div>
   } @else {
     <div class="packages-empty">
@@ -110,24 +146,30 @@
       class="packages-search"
       [value]="explorer.query()"
       (valueChange)="explorer.setQuery($event)"
-      placeholder="Search packages…"
+      [placeholder]="searchPlaceholder()"
       ariaLabel="Search packages"
     />
-    <span class="panel-toolbar__spacer"></span>
-    <span class="packages-prerelease">
-      <app-toggle
-        [checked]="explorer.prerelease()"
-        (checkedChange)="explorer.setPrerelease($event)"
-        ariaLabel="Include prereleases"
-      />
-      Prereleases
-    </span>
+    @if (explorer.canFilterPrereleases()) {
+      <span class="panel-toolbar__spacer"></span>
+      <span class="packages-prerelease">
+        <app-toggle
+          [checked]="explorer.prerelease()"
+          (checkedChange)="explorer.setPrerelease($event)"
+          ariaLabel="Include prereleases"
+        />
+        Prereleases
+      </span>
+    }
   </app-panel-toolbar>
 
   @if (explorer.sources().length === 0) {
     <div class="packages-empty">
       <app-icon [icon]="Icon.INFO" />
-      <p>Exploration isn't available for this workspace.</p>
+      @if (explorer.unsearchable().length > 0) {
+        <p>{{ unsearchableText() }}</p>
+      } @else {
+        <p>Exploration isn't available for this workspace.</p>
+      }
     </div>
   } @else {
     <app-table

@@ -423,6 +423,115 @@ describe('LspServerRegistry: rust-analyzer (#1210)', () => {
   });
 });
 
+describe('LspServerRegistry: ty and Pyright (#1212)', () => {
+  /**
+   * Builds a registry holding one curated Python server, as its install contributes it.
+   * @param id The plugin's identifier: `ty` or `pyright`.
+   * @returns Returns the registry, the server's descriptor, and a way to change the user's values.
+   */
+  function python(id: 'ty' | 'pyright'): {
+    readonly registry: InstanceType<typeof LspServerRegistry>;
+    readonly descriptor: LanguageServerDescriptor;
+    readonly settings: ReturnType<typeof userSettings>;
+  } {
+    const entry: unknown = (CURATED.plugins as readonly { id: string }[]).find(
+      (plugin: { id: string }): boolean => plugin.id === id,
+    );
+    const manifest: ReturnType<typeof parsePluginManifest>['manifest'] =
+      parsePluginManifest(entry).manifest;
+    const descriptor: LanguageServerDescriptor = toLanguageServerDescriptors(manifest!)[0];
+    const settings: ReturnType<typeof userSettings> = userSettings({});
+    const registry: InstanceType<typeof LspServerRegistry> = new LspServerRegistry(
+      '/electron',
+      settings.manager,
+    );
+    registry.register(descriptor);
+    return { registry, descriptor, settings };
+  }
+
+  it('ty_isPreferred_overPyright', () => {
+    expect(python('ty').descriptor.priority).toBeGreaterThan(python('pyright').descriptor.priority);
+  });
+
+  it('ty_isGivenItsSettingsFlat_atStartUp', () => {
+    // ty reads `initializationOptions` flat, and shows the user an error for a wrapping key.
+    const { registry, descriptor, settings } = python('ty');
+    settings.change({ ty: { 'ty.diagnosticMode': 'workspace' } });
+
+    expect(startupOptions(descriptor.settingsDelivery, registry.configurationOf('ty'))).toEqual({
+      diagnosticMode: 'workspace',
+      inlayHints: { variableTypes: true, callArgumentNames: true },
+      completions: { autoImport: true },
+    });
+  });
+
+  it('ty_restartsOnEveryChange_asItHasNoHandlerForOne', () => {
+    const { registry, descriptor, settings } = python('ty');
+    const heard: (readonly LspSettingsChange[])[] = [];
+    registry.onConfigurationChange(
+      (changes: readonly LspSettingsChange[]): void => void heard.push(changes),
+    );
+
+    for (const setting of descriptor.settings ?? []) {
+      expect(setting.startupOnly).toBe(true);
+      expect(setting.description).toContain('restarts');
+    }
+    settings.change({ ty: { 'ty.inlayHints.variableTypes': false } });
+
+    expect(heard).toEqual([[{ serverId: 'ty', restart: true }]]);
+  });
+
+  it('pyright_isAnsweredTheWorkspacesOwnVenv_byDefault', () => {
+    const { registry } = python('pyright');
+
+    expect(
+      answerConfiguration(registry.configurationOf('pyright', '/w'), [
+        { section: 'python' },
+        { section: 'python.analysis' },
+      ]),
+    ).toEqual([
+      {
+        pythonPath: '/w/.venv/bin/python',
+        analysis: {
+          typeCheckingMode: 'standard',
+          diagnosticMode: 'openFilesOnly',
+          autoImportCompletions: true,
+        },
+      },
+      {
+        typeCheckingMode: 'standard',
+        diagnosticMode: 'openFilesOnly',
+        autoImportCompletions: true,
+      },
+    ]);
+  });
+
+  it('pyright_isAnsweredTheInterpreterTheUserChose', () => {
+    const { registry, settings } = python('pyright');
+    settings.change({ pyright: { 'python.pythonPath': '/usr/bin/python3' } });
+
+    const [answer]: unknown[] = answerConfiguration(registry.configurationOf('pyright', '/w'), [
+      { section: 'python.pythonPath' },
+    ]);
+
+    expect(answer).toBe('/usr/bin/python3');
+  });
+
+  it.each(['ty', 'pyright'] as const)(
+    '%s_settingsHaveTitleCaseLabels_andChoicesHoldingTheirDefault',
+    (id) => {
+      for (const setting of python(id).descriptor.settings ?? []) {
+        expect(setting.label).toMatch(/^[A-Z][a-z]*(?:[- ](?:on|of|and|[A-Z][a-z]*))*$/);
+        if (setting.options !== undefined) {
+          expect(
+            setting.options.map((option: { value: unknown }): unknown => option.value),
+          ).toContain(setting.default);
+        }
+      }
+    },
+  );
+});
+
 describe('LspServerRegistry: the lighter servers (#1214)', () => {
   /**
    * Builds a registry holding one curated server, as its install contributes it.

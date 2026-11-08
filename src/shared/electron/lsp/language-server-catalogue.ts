@@ -13,6 +13,7 @@ import {
   unavailable,
 } from './language-server-descriptor';
 import { CUSTOM_AFTER_COMMON_TARGETS, writeCsharpBraceConfig } from './csharp-editor-config';
+import { GOPLS_SETTINGS } from './gopls-settings';
 import { JdtlsInstall } from './lsp-provisioner';
 import { TYPESCRIPT_PROVISION, TYPESCRIPT_SERVER_PROVISION } from './language-server-downloads';
 
@@ -32,6 +33,37 @@ const JDTLS_JVM_ARGS: readonly string[] = [
   '--add-opens',
   'java.base/java.lang=ALL-UNNAMED',
 ];
+
+/**
+ * Builds the arguments that start the Eclipse JDT Language Server, after its JVM arguments (#1208).
+ * Equinox writes its runtime state into the configuration area it is given, so the install's own
+ * area is only read, as the shared one, and each workspace gets a writable area of its own. Started
+ * on the install's area, every workspace and window wrote into one folder inside the install, and an
+ * install that cannot be written to did not start at all.
+ * @param install The installed server.
+ * @param configurationDir The writable configuration area for this workspace.
+ * @param dataDir The workspace's data folder.
+ * @returns Returns the arguments.
+ */
+export function jdtlsLaunchArgs(
+  install: JdtlsInstall,
+  configurationDir: string,
+  dataDir: string,
+): string[] {
+  return [
+    ...JDTLS_JVM_ARGS,
+    '-Dosgi.checkConfiguration=true',
+    `-Dosgi.sharedConfiguration.area=${install.configDir}`,
+    '-Dosgi.sharedConfiguration.area.readOnly=true',
+    '-Dosgi.configuration.cascaded=true',
+    '-jar',
+    install.launcherJar,
+    '-configuration',
+    configurationDir,
+    '-data',
+    dataDir,
+  ];
+}
 
 /**
  * The priority given to the implementation shipped as a language's default, chosen when the user has
@@ -109,6 +141,8 @@ const TYPESCRIPT: LanguageServerDescriptor = {
   displayName: 'TypeScript Language Server',
   languages: ['typescript', 'javascript'],
   priority: DEFAULT_PRIORITY,
+  // It pushes diagnostics for open files only; tsserver checks a whole project when asked (#1207).
+  projectDiagnostics: 'tsserver',
   // The server never asks for its settings (#1204): it reads the `typescript.*` and `javascript.*`
   // it is pushed, live, and the tsserver preferences it is given in `initializationOptions` only when
   // it starts. Formatter options sit under `format` in the pushed sections, and each format request
@@ -351,12 +385,28 @@ const JAVA: LanguageServerDescriptor = {
     push: ['java'],
     startup: { section: 'java', key: 'settings.java' },
   },
+  // It does ask for these two, for each file it opens, and indents the code it generates with them.
+  indentationSections: { tabSize: 'java.format.tabSize', insertSpaces: 'java.format.insertSpaces' },
   settings: [
     {
       section: 'java.referencesCodeLens.enabled',
       label: 'Reference Counts',
-      description: 'Show how many references a type or member has above it. Each costs a line.',
+      description:
+        'Show how many references a type or member has above it; clicking the count lists them. Each costs a line.',
       default: true,
+    },
+    {
+      section: 'java.implementationCodeLens',
+      label: 'Implementation Counts',
+      description:
+        'Show how many implementations a type or method has above it; clicking the count lists them. Each costs a line.',
+      default: 'none',
+      options: [
+        { value: 'none', label: 'Off' },
+        { value: 'types', label: 'Types' },
+        { value: 'methods', label: 'Methods' },
+        { value: 'all', label: 'Types and methods' },
+      ],
     },
     {
       section: 'java.inlayHints.parameterNames.enabled',
@@ -408,18 +458,13 @@ const JAVA: LanguageServerDescriptor = {
       return unavailable('The Java language server could not be downloaded.');
     }
     const dataDir: string = await context.provisioner.dataDirectory('jdtls', context.rootPath);
-    return resolved({
-      command: java,
-      args: [
-        ...JDTLS_JVM_ARGS,
-        '-jar',
-        install.launcherJar,
-        '-configuration',
-        install.configDir,
-        '-data',
-        dataDir,
-      ],
-    });
+    // Keyed by the install as well as the workspace: an area holds the state of one install's
+    // bundles, so an update starts from a fresh one rather than one that names the old bundles.
+    const configurationDir: string = await context.provisioner.dataDirectory(
+      'jdtls-configuration',
+      `${install.configDir}\n${context.rootPath}`,
+    );
+    return resolved({ command: java, args: jdtlsLaunchArgs(install, configurationDir, dataDir) });
   },
 };
 
@@ -434,6 +479,38 @@ const KOTLIN: LanguageServerDescriptor = {
   displayName: 'Kotlin Language Server',
   languages: ['kotlin'],
   priority: DEFAULT_PRIORITY,
+  // The server never asks for its settings (#1209): it reads the `kotlin.*` it is pushed, live. The
+  // defaults are the server's own.
+  settingsDelivery: { pull: false, push: ['kotlin'] },
+  settings: [
+    {
+      section: 'kotlin.inlayHints.typeHints',
+      label: 'Inferred Types',
+      description:
+        'Show the type the compiler infers for a variable or property declared without one.',
+      default: false,
+    },
+    {
+      section: 'kotlin.inlayHints.parameterHints',
+      label: 'Parameter Names',
+      description:
+        'Show the name of the parameter each argument is passed to, before the argument.',
+      default: false,
+    },
+    {
+      section: 'kotlin.inlayHints.chainedHints',
+      label: 'Chained Call Types',
+      description: 'Show the type each call in a chain of calls returns, at the end of its line.',
+      default: false,
+    },
+    {
+      section: 'kotlin.completion.snippets.enabled',
+      label: 'Arguments in Completions',
+      description:
+        "Fill in a completed function's arguments as placeholders to type over, rather than only its name.",
+      default: true,
+    },
+  ],
   resolve: async (context: LanguageServerContext): Promise<LspResolution> => {
     const java: string | null = await context.provisioner.detectJava(
       context.settings.get().javaPath,
@@ -445,12 +522,32 @@ const KOTLIN: LanguageServerDescriptor = {
     if (launcher === null) {
       return unavailable('The Kotlin language server could not be downloaded.');
     }
-    const env: Record<string, string> | undefined = path.isAbsolute(java)
-      ? { JAVA_HOME: path.dirname(path.dirname(java)) }
-      : undefined;
-    return resolved({ command: launcher, args: [], env });
+    return resolved({ command: launcher, args: [], env: kotlinServerEnv(java, process.env) });
   },
 };
+
+/**
+ * Builds the environment the Kotlin language server is started with (#1209). Its launcher finds Java
+ * from `JAVA_HOME`, so the runtime Studio found is passed on when its path is absolute. The server
+ * resolves a Gradle project's classpath by running Gradle, which by default leaves a daemon running
+ * for hours after the server has gone, one per workspace opened; telling Gradle not to use one keeps
+ * whatever the user's own `GRADLE_OPTS` say.
+ * @param java The Java runtime Studio found.
+ * @param inherited The environment Studio was started with.
+ * @returns Returns the variables to set over the inherited ones.
+ */
+export function kotlinServerEnv(
+  java: string,
+  inherited: Readonly<Record<string, string | undefined>>,
+): Record<string, string> {
+  const gradleOptions: string = [inherited['GRADLE_OPTS'], '-Dorg.gradle.daemon=false']
+    .filter((part: string | undefined): part is string => part !== undefined && part.length > 0)
+    .join(' ');
+  return {
+    ...(path.isAbsolute(java) ? { JAVA_HOME: path.dirname(path.dirname(java)) } : {}),
+    GRADLE_OPTS: gradleOptions,
+  };
+}
 
 /**
  * gopls, detecting the Go toolchain and building the server with it on first use. gopls shells out to
@@ -461,6 +558,10 @@ const GO: LanguageServerDescriptor = {
   displayName: 'gopls',
   languages: ['go'],
   priority: DEFAULT_PRIORITY,
+  // gopls asks for its whole `gopls` section, at start-up and after every change (#1211), so its
+  // settings are pulled and answered nested; it also answers `textDocument/diagnostic` unadvertised,
+  // but pushes everything, so nothing is pulled from it.
+  settings: GOPLS_SETTINGS,
   resolve: async (context: LanguageServerContext): Promise<LspResolution> => {
     const go: string | null = await context.provisioner.detectGo(null);
     if (go === null) {
