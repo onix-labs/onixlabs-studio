@@ -45,6 +45,7 @@ on:
         'plugin-conan-v*',
         'plugin-cargo-v*',
         'plugin-pypi-v*',
+        'plugin-maven-v*',
         'plugin-dotnet-tests-v*',
         'plugin-js-tests-v*',
         'plugin-python-tests-v*',
