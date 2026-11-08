@@ -899,6 +899,89 @@ describe('parsePluginManifest', () => {
     });
   });
 
+  describe('test-adapter contributions (#1351)', () => {
+    /**
+     * Builds a well-formed test-adapter contribution, which tests then break in one place at a time.
+     * @param overrides Fields to replace on the contribution.
+     * @returns Returns the contribution as untrusted JSON would arrive.
+     */
+    function testAdapter(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        id: 'dotnet-tests',
+        displayName: '.NET Tests',
+        frameworks: ['xUnit', 'NUnit', 'MSTest'],
+        markers: ['*.csproj'],
+        capabilities: ['run', 'runSelected'],
+        command: { kind: 'node' },
+        ...overrides,
+      };
+    }
+
+    it('accepts a test adapter contributed alone', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { testAdapters: [testAdapter()] } }),
+      );
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.testAdapters?.[0]).toMatchObject({
+        id: 'dotnet-tests',
+        frameworks: ['xUnit', 'NUnit', 'MSTest'],
+        priority: 100,
+        markers: ['*.csproj'],
+        capabilities: ['run', 'runSelected'],
+      });
+    });
+
+    it('treats absent capabilities as none, since finding tests needs none', () => {
+      const entry: Record<string, unknown> = testAdapter();
+      delete entry['capabilities'];
+
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { testAdapters: [entry] } }),
+      );
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.testAdapters?.[0].capabilities).toEqual([]);
+    });
+
+    it.each<[string, unknown]>([
+      ['absent', undefined],
+      ['empty', []],
+      ['not text', [7]],
+      ['blank', ['  ']],
+      ['too long', ['x'.repeat(65)]],
+    ])('refuses frameworks that are %s', (_name: string, frameworks: unknown) => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { testAdapters: [testAdapter({ frameworks })] } }),
+      );
+
+      expect(paths(result)).toContain('contributes.testAdapters[0].frameworks');
+    });
+
+    it.each<[string, unknown]>([
+      ['nothing', undefined],
+      ['a path', ['tests/x.csproj']],
+      ['a bare wildcard', ['*']],
+    ])('refuses markers that are %s', (_name: string, markers: unknown) => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { testAdapters: [testAdapter({ markers })] } }),
+      );
+
+      expect(paths(result)).toContain('contributes.testAdapters[0].markers');
+    });
+
+    it.each<[string, unknown]>([
+      ['outside the closed list', ['watch']],
+      ['not a list', 'run'],
+    ])('refuses capabilities %s', (_name: string, capabilities: unknown) => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { testAdapters: [testAdapter({ capabilities })] } }),
+      );
+
+      expect(paths(result)).toContain('contributes.testAdapters[0].capabilities');
+    });
+  });
+
   describe('version-control contributions', () => {
     /**
      * Builds a well-formed version-control contribution, modelled on the Git plugin (#817), which

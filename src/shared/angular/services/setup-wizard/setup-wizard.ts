@@ -232,6 +232,12 @@ const SLOT_STEPS: Readonly<Record<PluginSlot, { icon: Icon; title: string; summa
     summary:
       'What the Packages panel reads and searches, one plugin for each ecosystem you work in.',
   },
+  'test-adapter': {
+    icon: Icon.SETUP_TEST_ADAPTERS,
+    title: 'Test frameworks',
+    summary:
+      'What the Tests panel finds and runs, one plugin for each ecosystem whose tests you run.',
+  },
 };
 
 /**
