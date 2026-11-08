@@ -87,6 +87,7 @@ import {
   Notifications,
 } from '@shared/angular/services/notifications/notifications';
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
+import { CodeLensServerSync } from './code-lens-server-sync';
 import { LspStatus } from './lsp-status';
 import { completionSupportOf, signatureHelpSupportOf } from './lsp-completion';
 
@@ -1234,6 +1235,8 @@ export class LspClient implements OnDestroy {
    * and subscribing to server notifications when the bridge is available.
    */
   public constructor() {
+    // The servers' own lens switches follow the code-lens settings wherever a server runs (#1215).
+    inject(CodeLensServerSync);
     inject(DestroyRef).onDestroy(
       this.editorConfigs.onChanged((path: string): void => this.restartForEditorConfig(path)),
     );

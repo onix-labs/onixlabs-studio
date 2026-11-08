@@ -120,6 +120,8 @@ export interface CodeLensServerSwitch {
 /**
  * The server switches answered from the code-lens switches. Each one's row leaves its language's
  * server page: the switch is on Code › Code Lenses now, and in each language's overrides.
+ * rust-analyzer's master and Run switches stay on its own page: its Run lens runs a test or a program
+ * alike, so no one kind decides it, and Studio's own filter hides what the switches leave out.
  */
 export const CODE_LENS_SERVER_SWITCHES: readonly CodeLensServerSwitch[] = [
   {
@@ -176,6 +178,41 @@ export const CODE_LENS_SERVER_SWITCHES: readonly CodeLensServerSwitch[] = [
     section: 'gopls.codelenses.test',
     language: 'go',
     kind: 'tests',
+    serverDefault: false,
+  },
+  {
+    serverId: 'rust',
+    section: 'rust-analyzer.lens.implementations.enable',
+    language: 'rust',
+    kind: 'implementations',
+    serverDefault: true,
+  },
+  {
+    serverId: 'rust',
+    section: 'rust-analyzer.lens.references.adt.enable',
+    language: 'rust',
+    kind: 'references',
+    serverDefault: false,
+  },
+  {
+    serverId: 'rust',
+    section: 'rust-analyzer.lens.references.method.enable',
+    language: 'rust',
+    kind: 'references',
+    serverDefault: false,
+  },
+  {
+    serverId: 'rust',
+    section: 'rust-analyzer.lens.references.trait.enable',
+    language: 'rust',
+    kind: 'references',
+    serverDefault: false,
+  },
+  {
+    serverId: 'rust',
+    section: 'rust-analyzer.lens.references.enumVariant.enable',
+    language: 'rust',
+    kind: 'references',
     serverDefault: false,
   },
 ];
