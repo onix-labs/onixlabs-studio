@@ -103,7 +103,9 @@ import { StartupPreferences, StartupPreferencesStore } from './startup-preferenc
 import { parseStartupSettings, StartupSettings } from '@shared/api/startup-settings';
 import { VersionControlHost } from '@shared/electron/version-control/version-control-host';
 import { PackageManagerHost } from '@shared/electron/package-managers/package-manager-host';
-import { PackagePluginRoute } from '@shared/electron/package-managers/package-plugin-route';
+import { PackageManagerChannels } from '@shared/electron/package-managers/package-manager-channels';
+import { PackageRegistryTokenStore } from '@shared/electron/package-managers/package-registry-token-store';
+import { createPackageRegistryTokens } from '@shared/electron/package-managers/package-registry-tokens';
 import { VersionControlManager } from '@shared/electron/version-control/version-control-manager';
 import { VersionControlSetup } from '@shared/electron/version-control/version-control-setup';
 import { VersionControlSettings } from '@shared/electron/version-control/version-control-settings';
@@ -460,6 +462,11 @@ class Program {
   });
 
   /**
+   * Holds the registry tokens saved in Studio for package-manager plugins, encrypted at rest (#911).
+   */
+  private readonly packageRegistryTokens: PackageRegistryTokenStore = createPackageRegistryTokens();
+
+  /**
    * Hosts the package-manager plugins (#908): finds which apply to a folder, confines every request to
    * an open, trusted workspace, and refuses what a plugin does not support.
    */
@@ -467,10 +474,22 @@ class Program {
     descriptors: () => contributedPackageManagers(versionControlNodeRuntime),
     roots: this.workspaceContext,
     trust: this.repositoryTrust,
-    // Nothing saves a registry token yet: that is Settings' to add (#911), and a plugin reads the
-    // tool's own configuration meanwhile.
-    credential: () => Promise.resolve(null),
+    // A token the user saved in Settings for this plugin and this registry; the plugin reads the
+    // tool's own configuration first, and asks for this only when that holds none.
+    credential: (pluginId: string, registry: string): Promise<string | null> =>
+      Promise.resolve(this.packageRegistryTokens.token(pluginId, registry)),
   });
+
+  /**
+   * Serves the Packages panel and Settings over the package-manager host (#911). Core reads no package
+   * manifest of its own: with no plugin installed, the panel has nothing to show.
+   */
+  private readonly packageManagerChannels: PackageManagerChannels = new PackageManagerChannels(
+    this.packageManagerHost,
+    this.workspaceContext,
+    this.repositoryTrust,
+    this.packageRegistryTokens,
+  );
 
   /**
    * Holds which tool each version-control plugin runs, as chosen in Settings.
@@ -603,7 +622,6 @@ class Program {
     (): BrowserWindow | null => this.windows.main(),
     this.workspaceContext,
     this.trustedPaths,
-    new PackagePluginRoute(this.packageManagerHost),
   );
 
   /**
@@ -1200,6 +1218,7 @@ class Program {
     this.versionControlManager.register();
     this.hostingManager.register();
     this.workspaceManager.register();
+    this.packageManagerChannels.register();
     this.searchManager.register();
     this.studioStore.register();
     this.worktreeManager.register();

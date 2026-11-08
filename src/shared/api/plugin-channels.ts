@@ -76,9 +76,6 @@ export type PluginSlot =
 /**
  * The slots in the order the application presents them — the Plugin Manager's categories and the
  * setup wizard's plugin steps both walk this list, so the two surfaces agree on what comes first.
- *
- * `package-manager` is not listed yet: nothing is served through it until the Packages panel moves onto
- * the seam, and listing it would put an empty step in the wizard. #911 adds it.
  */
 export const PLUGIN_SLOTS: readonly PluginSlot[] = [
   'language-server',
@@ -89,6 +86,7 @@ export const PLUGIN_SLOTS: readonly PluginSlot[] = [
   'hosting',
   'agent-harness',
   'database-engine',
+  'package-manager',
 ];
 
 /**

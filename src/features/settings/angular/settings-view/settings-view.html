@@ -79,6 +79,9 @@
           <app-projects-folder />
           <app-settings-section sectionId="workspaces-new-projects" />
         }
+        @case ('workspaces-packages') {
+          <app-package-registry-tokens />
+        }
         @case ('code-general') {
           <app-settings-section sectionId="code-general" />
         }

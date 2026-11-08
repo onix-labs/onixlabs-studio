@@ -171,3 +171,25 @@
     font-size: 0.82rem;
   }
 }
+
+// The package managers that would read this folder, each with the Plugin Manager's own action.
+.packages-offers {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  &__item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-inline-size: 14rem;
+  }
+
+  &__name {
+    font-size: 0.82rem;
+  }
+}
