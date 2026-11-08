@@ -573,6 +573,23 @@ describe('TestAdapterHost (#1351)', () => {
       },
     );
 
+    it('planDebug_acceptsALaunchNamingAModuleRatherThanAProgram', async () => {
+      const fake: FakeClient = fakeClient(['debug']);
+      const launch: Record<string, unknown> = {
+        adapter: 'debugpy',
+        title: 'Debug test_adds',
+        args: ['tests/test_math.py::test_adds'],
+        cwd: ROOT,
+        configuration: { module: 'pytest' },
+      };
+      fake.answer = (): TestAdapterResponse => ({ id: 1, ok: true, result: launch as never });
+
+      expect(await host(fake).host.planDebug('dotnet-tests', ROOT, 'a')).toMatchObject({
+        ok: true,
+        value: { launch },
+      });
+    });
+
     it('planDebug_withoutTheCapability_isUnsupported', async () => {
       const fake: FakeClient = fakeClient(['run']);
 

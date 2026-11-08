@@ -295,7 +295,10 @@ export function checkDebugLaunch(value: unknown, root: string): TestDebugLaunch 
   }
   const adapter: unknown = source['adapter'];
   const title: string | null = label(source['title']);
-  const program: string | null = label(source['program']);
+  // Absent is allowed — an adapter such as debugpy can be told to run a module instead — but present
+  // must be text.
+  const program: string | null | undefined =
+    source['program'] === undefined ? undefined : label(source['program']);
   const args: readonly string[] | null = checkArguments(source['args']);
   const env: Readonly<Record<string, string>> | undefined | null = checkEnvironment(source['env']);
   if (
@@ -329,7 +332,7 @@ export function checkDebugLaunch(value: unknown, root: string): TestDebugLaunch 
   return {
     adapter,
     title: title.slice(0, 200),
-    program,
+    ...(program === undefined ? {} : { program }),
     args,
     cwd: path.resolve(source['cwd'] as string),
     ...(env === undefined ? {} : { env }),

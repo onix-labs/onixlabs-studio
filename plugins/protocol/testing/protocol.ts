@@ -123,7 +123,7 @@ export interface TestRunResults {
 export interface TestDebugLaunch {
   readonly adapter: string;
   readonly title: string;
-  readonly program: string;
+  readonly program?: string;
   readonly args: readonly string[];
   readonly cwd: string;
   readonly env?: Readonly<Record<string, string>>;

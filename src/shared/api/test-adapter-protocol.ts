@@ -316,9 +316,10 @@ export interface TestDebugLaunch {
   readonly title: string;
 
   /**
-   * Gets the program to launch.
+   * Gets the program to launch, or undefined when the adapter is told what to run another way, as
+   * debugpy is by its `module` key.
    */
-  readonly program: string;
+  readonly program?: string;
 
   /**
    * Gets its arguments.
