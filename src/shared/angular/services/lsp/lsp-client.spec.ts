@@ -1843,6 +1843,21 @@ describe('LspClient', () => {
     expect(lsp.notificationsTo('didOpen')).toHaveLength(1);
   });
 
+  it('syncDocument_aViewStudioWroteFromAServersAnswer_isNoServersBusiness (#1210)', async () => {
+    // A macro's expansion, read by rust-analyzer as a file of its own, would only be a stray file.
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/tmp/x/MetadataAsSource/StudioViews/1a2b/square! expanded.rs',
+      languageId: 'csharp',
+      content: 'side * side',
+    });
+    await flush();
+
+    expect(lsp.starts).toEqual([]);
+    expect(lsp.notificationsTo('didOpen')).toEqual([]);
+  });
+
   it('syncDocument_rustsStandardLibraryOutsideTheRoot_joinsTheWorkspaceSession (#1210)', async () => {
     // Hover and further navigation inside `Option` work only against the session that loaded it.
     const client: LspClient = build();

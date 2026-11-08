@@ -25,6 +25,7 @@ import {
   LspBraceStyle,
   LspChannel,
   LspExit,
+  LspGeneratedViewResult,
   LspMessage,
   LspServerSummary,
   LspStartRequest,
@@ -48,6 +49,11 @@ import {
   hasCompilationDatabase,
   readsCompilationDatabase,
 } from './lsp-compilation-database';
+import {
+  generatedViewRequest,
+  renderGeneratedView,
+  writeGeneratedView,
+} from './lsp-generated-views';
 import { LspServerTail } from './lsp-server-tail';
 import { ApplyEditResult, LspApplyEditForwarder } from './lsp-apply-edit';
 import { clientCapabilities } from './lsp-client-capabilities';
@@ -342,6 +348,15 @@ export class LspManager {
         method: unknown,
         params: unknown,
       ): Promise<unknown> => this.request(id, method, params),
+    );
+    ipcMain.handle(
+      LspChannel.GeneratedView,
+      (
+        _event: IpcMainInvokeEvent,
+        id: unknown,
+        kind: unknown,
+        params: unknown,
+      ): Promise<LspGeneratedViewResult> => this.generatedView(id, kind, params),
     );
     ipcMain.on(
       LspChannel.Notify,
@@ -809,6 +824,50 @@ export class LspManager {
     }
     logger.trace('LspManager', `Forwarding LSP request ${method} to session ${id}`);
     return session.connection.sendRequest(method, params);
+  }
+
+  /**
+   * Asks a session's server for a view of the code (#1210, #1213) — a macro's expansion, the HIR or
+   * MIR of a function, the syntax tree at a place, the server's memory — and writes it where the editor
+   * opens it read-only. The renderer names only the kind and the place: the request, the file's name
+   * and its folder are this side's.
+   * @param id The session identifier.
+   * @param kind The kind of view, untrusted.
+   * @param params The place, untrusted.
+   * @returns Returns where the view was written, or why there is none.
+   */
+  private async generatedView(
+    id: unknown,
+    kind: unknown,
+    params: unknown,
+  ): Promise<LspGeneratedViewResult> {
+    const session: LspSession | undefined =
+      typeof id === 'string' ? this.sessions.get(id) : undefined;
+    const request: ReturnType<typeof generatedViewRequest> = generatedViewRequest(kind, params);
+    if (session === undefined || request === null) {
+      return { error: 'Invalid view request' };
+    }
+    let result: unknown;
+    try {
+      result = await session.connection.sendRequest(request.method, request.params);
+    } catch (error: unknown) {
+      logger.debug('LspManager', `${request.method} failed for ${String(id)}`, error);
+      return { error: error instanceof Error ? error.message : 'The server could not answer' };
+    }
+    const view: { readonly name: string; readonly text: string } | null = renderGeneratedView(
+      request.kind,
+      result,
+      request.where,
+    );
+    if (view === null) {
+      return { error: 'Nothing to show here' };
+    }
+    try {
+      return await writeGeneratedView(view);
+    } catch (error: unknown) {
+      logger.warn('LspManager', `Could not write the ${request.kind} view`, error);
+      return { error: 'The view could not be written' };
+    }
   }
 
   /**

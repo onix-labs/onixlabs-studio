@@ -50,6 +50,7 @@ import { WorkspaceEditApplier } from '@shared/angular/services/workspace-edit/wo
 import { LSP_MARKER_OWNER } from './lsp-marker-owner';
 import {
   basename,
+  isGeneratedView,
   isMetadataAsSource,
   isToolchainSource,
   isWithin,
@@ -3817,6 +3818,10 @@ export class LspClient implements OnDestroy {
    * @returns Returns the root and whether it is standalone, or null when the document is not handled.
    */
   private documentRoot(filePath: string): { root: string; standalone: boolean } | null {
+    // A view Studio wrote from a server's answer (#1210, #1213) is for reading, and no server's business.
+    if (isGeneratedView(filePath)) {
+      return null;
+    }
     const listing: DirectoryListing | null = this.workspace.root();
     if (listing !== null) {
       // A language server's decompiled source (#1133) lives in the temporary directory, outside the
