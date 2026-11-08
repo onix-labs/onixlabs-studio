@@ -12,6 +12,7 @@ import { Bridge } from '@shared/api/bridge';
 import type { RunConfiguration } from '@shared/api/studio';
 import { Log } from '@shared/angular/services/log/log';
 import { Builds } from '@shared/angular/services/tasks/builds';
+import { Debugger } from '@shared/angular/services/debug/debugger';
 import {
   type FoldingProvider,
   type LanguageOverrides,
@@ -532,6 +533,19 @@ const RUST_RUN_SINGLE_COMMAND: string = 'rust-analyzer.runSingle';
 export const STUDIO_RUN_LENS_COMMAND: string = 'studio.lsp.runLens';
 
 /**
+ * The client command rust-analyzer gives a Debug lens (#1210): its argument is the runnable its Run
+ * lens gives.
+ */
+const RUST_DEBUG_SINGLE_COMMAND: string = 'rust-analyzer.debugSingle';
+
+/**
+ * The Monaco command a rust-analyzer Debug lens runs (#1210): it hands the run configuration read from
+ * the lens, marked to be debugged, to the active workspace's debugger. Its argument is that
+ * configuration.
+ */
+export const STUDIO_DEBUG_LENS_COMMAND: string = 'studio.lsp.debugLens';
+
+/**
  * The command Roslyn gives a test lens (#1150): its argument names the document, the range of the
  * test or class, and whether to attach a debugger.
  */
@@ -979,6 +993,11 @@ export class LspFeatures {
    * Holds the active workspace's runner, which a Run lens runs through (#1210).
    */
   private readonly builds: Builds = inject(Builds);
+
+  /**
+   * Holds the active workspace's debugger, which a Debug lens launches through (#1210).
+   */
+  private readonly debugger: Debugger = inject(Debugger);
 
   /**
    * Holds the structured logger.
@@ -1658,6 +1677,18 @@ export class LspFeatures {
             : { id: STUDIO_RUN_LENS_COMMAND, title: command.title, arguments: [configuration] },
       };
     }
+    if (command.command === RUST_DEBUG_SINGLE_COMMAND) {
+      const configuration: RunConfiguration | null = cargoRunConfiguration(
+        command.arguments?.[0],
+        'debug',
+      );
+      return {
+        command:
+          configuration === null
+            ? { id: '', title: command.title }
+            : { id: STUDIO_DEBUG_LENS_COMMAND, title: command.title, arguments: [configuration] },
+      };
+    }
     if (LOCATIONS_LENS_COMMANDS.has(command.command)) {
       const position: unknown =
         command.arguments?.[1] ?? (lens as { range?: LspRange } | null)?.range?.start;
@@ -2313,6 +2344,18 @@ export class LspFeatures {
       STUDIO_RUN_LENS_COMMAND,
       (_accessor: unknown, configuration: RunConfiguration): void =>
         this.builds.runConfiguration(configuration, [], { restart: true }),
+    );
+    // A Debug lens builds what its Run lens would run and launches it under CodeLLDB (#1210), in the
+    // active workspace's debugger: one session at a time, as from the ribbon.
+    monaco.editor.registerCommand(
+      STUDIO_DEBUG_LENS_COMMAND,
+      (_accessor: unknown, configuration: RunConfiguration): void => {
+        if (this.debugger.running()) {
+          this.log.info('LspFeatures', 'Debug lens ignored: a debug session is already running');
+          return;
+        }
+        this.debugger.launch(configuration);
+      },
     );
     monaco.editor.registerCommand(
       STUDIO_LSP_COMMAND,

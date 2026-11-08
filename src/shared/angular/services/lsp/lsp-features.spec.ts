@@ -12,6 +12,8 @@ import { FileChannel } from '@shared/api/file-channels';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { BuildHandler, Builds } from '@shared/angular/services/tasks/builds';
+import { signal, WritableSignal } from '@angular/core';
+import { DebugHandler, Debugger, DebugState } from '@shared/angular/services/debug/debugger';
 import type { LspDiagnostic } from './lsp-client';
 import {
   escapeMarkdown,
@@ -1440,6 +1442,58 @@ describe('LspFeatures', () => {
         [],
         { restart: true },
       );
+    });
+
+    it('aRustAnalyzerDebugLens_launchesTheSameRunnable_underTheDebugger (#1210)', async () => {
+      const runnable: unknown = {
+        label: 'test tests::rectangle_area',
+        kind: 'cargo',
+        args: {
+          cwd: '/root',
+          cargoArgs: ['test', '--package', 'shapes', '--lib'],
+          executableArgs: ['tests::rectangle_area', '--exact'],
+        },
+      };
+      codeLensSupport = { resolve: true };
+      responses['textDocument/codeLens'] = [
+        {
+          ...(LENS as object),
+          command: {
+            title: '⚙︎ Debug',
+            command: 'rust-analyzer.debugSingle',
+            arguments: [runnable],
+          },
+        },
+      ];
+      const features: LspFeatures = await build();
+      const state: WritableSignal<DebugState> = signal<DebugState>('idle');
+      const launch: ReturnType<typeof vi.fn> = vi.fn();
+      TestBed.inject(Debugger).register({ state, launch } as unknown as DebugHandler);
+      features.enableCodeLens('rust');
+      const provider: FakeCodeLensProvider | undefined = captured.codeLens?.get('rust');
+      const list: { lenses: { command: { id: string; arguments: unknown[] } }[] } | undefined =
+        (await provider?.provideCodeLenses(owned)) as unknown as
+          { lenses: { command: { id: string; arguments: unknown[] } }[] } | undefined;
+      const command: { id: string; arguments: unknown[] } | undefined = list?.lenses[0].command;
+      expect(command?.id).toBe('studio.lsp.debugLens');
+
+      captured.commands?.get('studio.lsp.debugLens')?.(undefined, ...(command?.arguments ?? []));
+
+      expect(launch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: 'debug',
+          providerKind: 'rust',
+          program: 'cargo',
+          args: ['test', '--package', 'shapes', '--lib', '--', 'tests::rectangle_area', '--exact'],
+          cwd: '/root',
+        }),
+      );
+
+      // One session at a time: pressed while one runs, it starts nothing.
+      launch.mockClear();
+      state.set('running');
+      captured.commands?.get('studio.lsp.debugLens')?.(undefined, ...(command?.arguments ?? []));
+      expect(launch).not.toHaveBeenCalled();
     });
 
     it('aRustAnalyzerRunLens_thatCannotBeRead_showsItsTitleAlone (#1210)', async () => {
