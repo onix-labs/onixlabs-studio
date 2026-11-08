@@ -435,6 +435,47 @@ describe('EditorContextMenu (#1012)', () => {
       });
     });
 
+    it('theServersViews_eachShownWhereItGivesThem_inAGroupOfTheirOwn (#1210, #1213)', () => {
+      const menu: EditorContextMenu = build('darwin');
+      const { editor } = fakeEditor({ language: 'rust' });
+      lsp.servesDocument.mockReturnValue(true);
+
+      expect(rowOf(menu.itemsFor(editor), 'expandMacro')).toBeUndefined();
+
+      const views: readonly string[] = ['expandMacro', 'hir', 'mir'];
+      lsp.servesNavigation.mockImplementation(
+        (_model: MonacoApi.editor.ITextModel, kind: string): boolean => views.includes(kind),
+      );
+      const items: readonly MenuItem[] = menu.itemsFor(editor);
+
+      expect(rowOf(items, 'expandMacro')).toEqual({ id: 'expandMacro', label: 'Expand Macro' });
+      expect(rowOf(items, 'hir')).toEqual({ id: 'hir', label: 'View HIR' });
+      expect(rowOf(items, 'mir')).toEqual({ id: 'mir', label: 'View MIR' });
+      expect(rowOf(items, 'syntaxTree')).toBeUndefined();
+      expect(rowOf(items, 'memoryUsage')).toBeUndefined();
+      // After Go to Line, behind a separator.
+      const line: number = items.findIndex((item: MenuItem): boolean => item.id === 'line');
+      expect(items[line + 1].separator).toBe(true);
+      expect(items[line + 2].id).toBe('expandMacro');
+    });
+
+    it('clangdsViews_areShowSyntaxTree_andShowServerMemoryUsage (#1213)', () => {
+      const menu: EditorContextMenu = build('darwin');
+      const { editor } = fakeEditor({ language: 'cpp' });
+      lsp.servesDocument.mockReturnValue(true);
+      lsp.servesNavigation.mockImplementation(
+        (_model: MonacoApi.editor.ITextModel, kind: string): boolean =>
+          kind === 'syntaxTree' || kind === 'memoryUsage',
+      );
+      const items: readonly MenuItem[] = menu.itemsFor(editor);
+
+      expect(rowOf(items, 'syntaxTree')).toEqual({ id: 'syntaxTree', label: 'Show Syntax Tree' });
+      expect(rowOf(items, 'memoryUsage')).toEqual({
+        id: 'memoryUsage',
+        label: 'Show Server Memory Usage',
+      });
+    });
+
     it('rustAnalyzersOwnNavigations_shownWhereTheServerAnswersThem_andNowhereElse (#1210)', () => {
       const menu: EditorContextMenu = build('darwin');
       const { editor } = fakeEditor({ language: 'rust' });
