@@ -30,6 +30,43 @@ function settings(): readonly LspServerSettingDescriptor[] {
   return typescript().settings ?? [];
 }
 
+describe('the Kotlin server settings (#1209)', () => {
+  /**
+   * Finds the Kotlin server's descriptor in the catalogue.
+   * @returns Returns the descriptor.
+   */
+  function kotlin(): LanguageServerDescriptor {
+    const found: LanguageServerDescriptor | undefined = languageServerCatalogue().find(
+      (descriptor: LanguageServerDescriptor): boolean => descriptor.id === 'kotlin',
+    );
+    if (found === undefined) {
+      throw new Error('The catalogue has no Kotlin server');
+    }
+    return found;
+  }
+
+  it('everySetting_isPushedUnderKotlin_asTheServerNeverAsks', () => {
+    expect(kotlin().settingsDelivery).toEqual({ pull: false, push: ['kotlin'] });
+    for (const setting of kotlin().settings ?? []) {
+      expect(setting.section.startsWith('kotlin.')).toBe(true);
+    }
+  });
+
+  it('pushedSettings_nestAsTheServerReadsThem_withItsOwnDefaults', () => {
+    const descriptor: LanguageServerDescriptor = kotlin();
+    const values: LspServerSettingValues | undefined = withDeclaredDefaults(descriptor.settings, {
+      'kotlin.inlayHints.typeHints': true,
+    });
+
+    expect(pushedSettings(descriptor.settingsDelivery, values)).toEqual({
+      kotlin: {
+        inlayHints: { typeHints: true, parameterHints: false, chainedHints: false },
+        completion: { snippets: { enabled: true } },
+      },
+    });
+  });
+});
+
 describe('the TypeScript server settings (#1207)', () => {
   it('everySetting_reachesTheServer_pushedOrAtStartUp', () => {
     const pushed: readonly string[] = typescript().settingsDelivery?.push ?? [];
