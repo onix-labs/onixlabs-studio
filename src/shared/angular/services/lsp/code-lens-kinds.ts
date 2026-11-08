@@ -174,6 +174,14 @@ export const CODE_LENS_SERVER_SWITCHES: readonly CodeLensServerSwitch[] = [
     serverDefault: false,
   },
   {
+    // lua-language-server's one switch for its lenses, which are reference counts (#1214).
+    serverId: 'lua-language-server',
+    section: 'Lua.codeLens.enable',
+    language: 'lua',
+    kind: 'references',
+    serverDefault: false,
+  },
+  {
     serverId: 'go',
     section: 'gopls.codelenses.test',
     language: 'go',
