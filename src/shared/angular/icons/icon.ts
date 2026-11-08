@@ -2205,6 +2205,11 @@ export class Icon {
   public static readonly SETUP_PACKAGE_MANAGERS: Icon = new Icon('ph ph-package');
 
   /**
+   * Gets the setup step for test-adapter plugins.
+   */
+  public static readonly SETUP_TEST_ADAPTERS: Icon = new Icon('ph ph-flask');
+
+  /**
    * Gets the icon of the setup wizard's AI providers step.
    */
   public static readonly SETUP_AI_PROVIDER: Icon = new Icon('ph ph-brain');

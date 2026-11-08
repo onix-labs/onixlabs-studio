@@ -72,6 +72,7 @@ const SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
   'agent-harness': 'AI provider',
   'database-engine': 'Database engine',
   'package-manager': 'Package manager',
+  'test-adapter': 'Test framework',
 };
 
 /**
