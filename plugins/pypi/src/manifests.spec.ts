@@ -202,6 +202,19 @@ describe('readSetupPy', () => {
     expect(packages).toEqual([]);
   });
 
+  it('readSetupPy_aLongRunOfHashes_isReadInLinearTime', () => {
+    // Arrange: an unterminated list whose comment is a run of `#`, which backtracked exponentially.
+    const text: string = `setup(install_requires=[${'#'.repeat(5_000)}`;
+    const started: number = Date.now();
+
+    // Act
+    const packages: readonly DeclaredPackage[] = readSetupPy(text);
+
+    // Assert
+    expect(packages).toEqual([]);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
   it('readSetupPy_extrasInARequirement_doNotEndTheList', () => {
     // Act
     const packages: readonly DeclaredPackage[] = readSetupPy(

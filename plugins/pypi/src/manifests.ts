@@ -182,9 +182,11 @@ export function readSetupPy(text: string): readonly DeclaredPackage[] {
     return [];
   }
   // Each step is blank space and comments, then a plain string and a comma, or the closing bracket.
+  // A comment runs to the end of its line, so a run of `#` is read one way only, never backtracked.
   // Anything else — a variable, a call, a string with escapes — and the list is not read at all,
   // rather than read in part.
-  const item: RegExp = /(?:\s|#[^\n]*)*(?:"([^"\\\n]*)"|'([^'\\\n]*)'|(\]))(?:\s|#[^\n]*)*(,)?/y;
+  const item: RegExp =
+    /(?:\s|#[^\n]*(?=\n|$))*(?:"([^"\\\n]*)"|'([^'\\\n]*)'|(\]))(?:\s|#[^\n]*(?=\n|$))*(,)?/y;
   const strings: string[] = [];
   item.lastIndex = start.index + start[0].length;
   for (;;) {
@@ -201,7 +203,9 @@ export function readSetupPy(text: string): readonly DeclaredPackage[] {
     strings.push(match[1] ?? match[2]);
     if (match[4] === undefined) {
       // No comma: the next thing must be the closing bracket.
-      const close: RegExpExecArray | null = /(?:\s|#[^\n]*)*\]/y.exec(text.slice(item.lastIndex));
+      const close: RegExpExecArray | null = /(?:\s|#[^\n]*(?=\n|$))*\]/y.exec(
+        text.slice(item.lastIndex),
+      );
       if (close === null) {
         return [];
       }
