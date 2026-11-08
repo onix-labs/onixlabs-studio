@@ -1254,6 +1254,12 @@ export class LspManager {
       target.send(LspChannel.ShowDocument, request);
       return { success: true };
     });
+    // The folders the session serves (#1214), as `initialize` named them: Studio advertises workspace
+    // folders, so a null answer would say none is open — perlnavigator asks five times as it starts,
+    // and resolves a workspace's own modules from the answer.
+    connection.onRequest('workspace/workspaceFolders', (): { uri: string; name: string }[] => [
+      { uri: pathToFileURL(session.rootPath).href, name: session.rootPath },
+    ]);
     // Any other server-to-client request is acknowledged with null so the server is never left
     // waiting on a response it requires to make progress.
     connection.onRequest((): null => null);

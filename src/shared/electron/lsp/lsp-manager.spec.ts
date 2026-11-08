@@ -793,6 +793,28 @@ describe('LspManager (#1015)', () => {
     ]);
   });
 
+  it('aServerAskingForTheWorkspaceFolders_isToldTheSessionsRoot (#1214)', async () => {
+    const manager: InstanceType<typeof LspManager> = new LspManager(
+      (): BrowserWindow | null => null,
+      new WorkspaceContext(),
+      {} as LspServerRegistry,
+      new LspApplyEditForwarder(),
+    );
+    const connection: FakeConnection = fakeConnection();
+    (manager as unknown as ManagerInternals).answerServerRequests(connection, '/root::perl', {
+      request: { sessionId: '/root::perl', serverId: 'perlnavigator', rootPath: '/root' },
+      rootPath: '/root',
+      clients: new Map<WebContents, number>(),
+      watcher: { register: (): void => undefined, unregister: (): void => undefined },
+    });
+
+    const answer: unknown = await connection.handlers.get('workspace/workspaceFolders')?.(
+      undefined,
+    );
+
+    expect(answer).toEqual([{ uri: 'file:///root', name: '/root' }]);
+  });
+
   it('aServersRequestToAttachTheDebugger_isForwardedToTheRendererHoldingTheSession (#1150)', async () => {
     const attaches: { forward: unknown; register: () => void; dispose: () => void } = {
       forward: vi.fn((): Promise<{ didAttach: boolean }> => Promise.resolve({ didAttach: true })),

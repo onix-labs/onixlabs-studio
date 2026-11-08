@@ -531,3 +531,46 @@ describe('LspServerRegistry: ty and Pyright (#1212)', () => {
     },
   );
 });
+
+describe('LspServerRegistry: the lighter servers (#1214)', () => {
+  /**
+   * Builds a registry holding one curated server, as its install contributes it.
+   * @param id The plugin's identifier.
+   * @returns Returns the registry.
+   */
+  function curated(id: string): InstanceType<typeof LspServerRegistry> {
+    const entry: unknown = (CURATED.plugins as readonly { id: string }[]).find(
+      (plugin: { id: string }): boolean => plugin.id === id,
+    );
+    const manifest: ReturnType<typeof parsePluginManifest>['manifest'] =
+      parsePluginManifest(entry).manifest;
+    const registry: InstanceType<typeof LspServerRegistry> = new LspServerRegistry(
+      '/electron',
+      userSettings({}).manager,
+    );
+    for (const descriptor of toLanguageServerDescriptors(manifest!)) {
+      registry.register(descriptor);
+    }
+    return registry;
+  }
+
+  it('lua_isAnsweredItsHintsOn_soTheyShow', () => {
+    expect(
+      answerConfiguration(curated('lua-language-server').configurationOf('lua-language-server'), [
+        { section: 'Lua' },
+      ]),
+    ).toEqual([{ hint: { enable: true }, diagnostics: { enable: true } }]);
+  });
+
+  it('yaml_isAnsweredItsFormatterOn_soFormatDocumentIsOffered', () => {
+    expect(
+      answerConfiguration(curated('yaml-language-server').configurationOf('yaml-language-server'), [
+        { section: 'yaml' },
+      ]),
+    ).toEqual([{ format: { enable: true }, validate: true, schemaStore: { enable: true } }]);
+  });
+
+  it.each(['svelte-language-server', 'sqls'])('%s_isNeverToldToAskAgain', (id: string) => {
+    expect(curated(id).pullsSettings(id)).toBe(false);
+  });
+});

@@ -607,7 +607,10 @@ function resolveContributed(profile, manifest, server, settings) {
     manifest.provision.kind === 'archive'
       ? manifest.provision.downloads?.[PLATFORM_KEY]?.executablePath
       : (server.entryPoint ??
-        // An npm tree's default entry point is its package's own `bin`.
+        // As the loader does: the provision's own entry point, which names the package when it is not
+        // the plugin's id (dockerfile-language-server is `dockerfile-language-server-nodejs`), and
+        // only then the `bin` of a package named after the plugin.
+        manifest.provision.executablePath ??
         npmBin(folder, manifest.id));
   const override = option('server-path') ?? settings.serverPaths?.[server.id];
   const entry =
