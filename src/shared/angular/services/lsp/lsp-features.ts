@@ -12,10 +12,18 @@ import { Bridge } from '@shared/api/bridge';
 import type { RunConfiguration } from '@shared/api/studio';
 import { Log } from '@shared/angular/services/log/log';
 import { Builds } from '@shared/angular/services/tasks/builds';
-import { type FoldingProvider, Settings } from '@shared/angular/services/settings/settings';
+import { Debugger } from '@shared/angular/services/debug/debugger';
+import {
+  type FoldingProvider,
+  type LanguageOverrides,
+  Settings,
+} from '@shared/angular/services/settings/settings';
+import { codeLensKind, CodeLensSwitches, showsCodeLensKind } from './code-lens-kinds';
 import { BUILT_IN_FORMATTER_LANGUAGES } from '@shared/angular/services/settings/settings-registry';
 import {
   LspChannel,
+  LspGeneratedViewKind,
+  LspGeneratedViewResult,
   LspSemanticTokensLegend,
   SEMANTIC_TOKEN_MODIFIERS,
   SEMANTIC_TOKEN_TYPES,
@@ -336,6 +344,36 @@ export interface LspNavigationSupport {
   readonly cargoManifest?: boolean;
 
   /**
+   * Gets whether it expands the macro at the caret (rust-analyzer's `rust-analyzer/expandMacro`,
+   * #1210); undefined for a server with no such thing.
+   */
+  readonly expandMacro?: boolean;
+
+  /**
+   * Gets whether it shows the HIR of the function at the caret (rust-analyzer's `rust-analyzer/viewHir`,
+   * #1210); undefined for a server with no such thing.
+   */
+  readonly hir?: boolean;
+
+  /**
+   * Gets whether it shows the MIR of the function at the caret (rust-analyzer's `rust-analyzer/viewMir`,
+   * #1210); undefined for a server with no such thing.
+   */
+  readonly mir?: boolean;
+
+  /**
+   * Gets whether it shows the syntax tree at the caret (clangd's `textDocument/ast`, #1213); undefined
+   * for a server with no such thing.
+   */
+  readonly syntaxTree?: boolean;
+
+  /**
+   * Gets whether it says how much memory it uses (clangd's `$/memoryUsage`, #1213); undefined for a
+   * server with no such thing.
+   */
+  readonly memoryUsage?: boolean;
+
+  /**
    * Gets whether it shows a type's base and derived types (`textDocument/prepareTypeHierarchy`).
    */
   readonly typeHierarchy: boolean;
@@ -462,6 +500,28 @@ const SHOW_REFERENCES_COMMAND: string = 'editor.action.showReferences';
 const RUST_SHOW_REFERENCES_COMMAND: string = 'rust-analyzer.showReferences';
 
 /**
+ * The client command jdtls gives a reference lens (#1208), with the same arguments as
+ * {@link SHOW_REFERENCES_COMMAND}. It is not among the commands jdtls runs itself.
+ */
+const JAVA_SHOW_REFERENCES_COMMAND: string = 'java.show.references';
+
+/**
+ * The client command jdtls gives an implementation lens (#1208), with the same arguments as
+ * {@link SHOW_REFERENCES_COMMAND}.
+ */
+const JAVA_SHOW_IMPLEMENTATIONS_COMMAND: string = 'java.show.implementations';
+
+/**
+ * The client commands that hand a lens the places it counted, for Studio to list itself.
+ */
+const LOCATIONS_LENS_COMMANDS: ReadonlySet<string> = new Set<string>([
+  SHOW_REFERENCES_COMMAND,
+  RUST_SHOW_REFERENCES_COMMAND,
+  JAVA_SHOW_REFERENCES_COMMAND,
+  JAVA_SHOW_IMPLEMENTATIONS_COMMAND,
+]);
+
+/**
  * The client command rust-analyzer gives a Run lens (#1210): its argument says what to run.
  */
 const RUST_RUN_SINGLE_COMMAND: string = 'rust-analyzer.runSingle';
@@ -471,6 +531,19 @@ const RUST_RUN_SINGLE_COMMAND: string = 'rust-analyzer.runSingle';
  * the lens to the active workspace's runner. Its argument is that configuration.
  */
 export const STUDIO_RUN_LENS_COMMAND: string = 'studio.lsp.runLens';
+
+/**
+ * The client command rust-analyzer gives a Debug lens (#1210): its argument is the runnable its Run
+ * lens gives.
+ */
+const RUST_DEBUG_SINGLE_COMMAND: string = 'rust-analyzer.debugSingle';
+
+/**
+ * The Monaco command a rust-analyzer Debug lens runs (#1210): it hands the run configuration read from
+ * the lens, marked to be debugged, to the active workspace's debugger. Its argument is that
+ * configuration.
+ */
+export const STUDIO_DEBUG_LENS_COMMAND: string = 'studio.lsp.debugLens';
 
 /**
  * The command Roslyn gives a test lens (#1150): its argument names the document, the range of the
@@ -484,6 +557,18 @@ const ROSLYN_RUN_TESTS: string = 'dotnet.test.run';
  * wherever a server lists this command. Its arguments are the document's URI and the position.
  */
 const SOURCE_DEFINITION_COMMAND: string = '_typescript.goToSourceDefinition';
+
+/**
+ * typescript-language-server's command that hands a request to tsserver as it is, through which Go to
+ * Project Configuration asks which `tsconfig.json` a file belongs to (#1207).
+ */
+const TSSERVER_REQUEST_COMMAND: string = 'typescript.tsserverRequest';
+
+/**
+ * Where tsserver says an inferred project's configuration is: there is none, as no `tsconfig.json` or
+ * `jsconfig.json` is above the file.
+ */
+const INFERRED_PROJECT: string = '/dev/null/';
 
 /**
  * The Monaco command a Run Test lens runs (#1150): it hands the lens's argument to the session that
@@ -770,7 +855,9 @@ const SEMANTIC_LEGEND: { tokenTypes: string[]; tokenModifiers: string[] } = {
  * Most entries are Roslyn's: for classifications the standard set has no name for, it sends custom
  * types (`recordClass`, `extensionMethod`, …). Dropping them is how a `record` came to be painted in
  * the plain text colour instead of as a type (#1137). typescript-language-server's `member` is a
- * method by the older name (#1207), and clangd's `concept` names a constraint on a type (#1213). The
+ * method by the older name (#1207), clangd's `concept` names a constraint on a type (#1213), and
+ * jdtls names annotations and records (#1208); its own modifiers (`public`, `generic`, `constructor`,
+ * …) have no standard counterpart and are dropped, as any unknown modifier is. The
  * Rust entries are the types rust-analyzer sends by default (#1210); its finer operator and punctuation
  * types are off until a setting turns them on. Names with no sensible standard equivalent —
  * punctuation, XML doc-comment parts, JSON-in-string parts, a format specifier, a name that resolves to
@@ -808,6 +895,12 @@ const TOKEN_TYPE_ALIASES: Readonly<Record<string, string>> = {
   toolModule: 'decorator',
   procMacro: 'macro',
   concept: 'type',
+  // Java's (#1208): an annotation is a decorator, and its members are declared as methods; a record
+  // is a class, and its components are its fields, coloured as jdtls colours them in the body.
+  annotation: 'decorator',
+  annotationMember: 'method',
+  record: 'class',
+  recordComponent: 'property',
   // Keywords, comments and strings. `self`, `Self`, `true` and `false` are keywords in Rust.
   controlKeyword: 'keyword',
   selfKeyword: 'keyword',
@@ -900,6 +993,11 @@ export class LspFeatures {
    * Holds the active workspace's runner, which a Run lens runs through (#1210).
    */
   private readonly builds: Builds = inject(Builds);
+
+  /**
+   * Holds the active workspace's debugger, which a Debug lens launches through (#1210).
+   */
+  private readonly debugger: Debugger = inject(Debugger);
 
   /**
    * Holds the structured logger.
@@ -1077,6 +1175,19 @@ export class LspFeatures {
     effect((): void => {
       this.settings.defaultFormatterChoices();
       this.applyDefaultFormatter();
+    });
+    // A code-lens switch changed (#1215), globally or for a language: every editor asks again, and
+    // the lenses it shows are filtered afresh.
+    let lensChoices: string | undefined;
+    effect((): void => {
+      const choices: string = codeLensChoices(
+        this.settings.globalTextEditor(),
+        this.settings.languageOverrides(),
+      );
+      if (lensChoices !== undefined && choices !== lensChoices) {
+        this.refreshCodeLenses();
+      }
+      lensChoices = choices;
     });
   }
 
@@ -1397,6 +1508,13 @@ export class LspFeatures {
     if (ref === null || this.bridge === undefined || ref.codeLens === undefined) {
       return undefined;
     }
+    // Lenses switched off for the language are not asked for at all (#1215).
+    const switches: CodeLensSwitches = this.settings.resolveSettingsForLanguage(
+      model.getLanguageId(),
+    );
+    if (!switches.codeLens) {
+      return undefined;
+    }
     await ref.sync?.(model.getValue());
     let result: unknown;
     try {
@@ -1414,7 +1532,7 @@ export class LspFeatures {
     const lenses: MonacoApi.languages.CodeLens[] = [];
     for (const candidate of Array.isArray(result) ? (result as readonly unknown[]) : []) {
       const range: LspRange | undefined = (candidate as { range?: LspRange } | null)?.range;
-      if (range === undefined) {
+      if (range === undefined || !this.showsLens(switches, candidate)) {
         continue;
       }
       const command: { command?: MonacoApi.languages.Command } | null = this.lensCommand(
@@ -1464,7 +1582,26 @@ export class LspFeatures {
     } catch {
       return lens;
     }
+    // A lens comes filled in as a kind switched off (#1215): the server had no switch of its own to
+    // leave it out by, so it shows nothing.
+    if (!this.showsLens(this.settings.resolveSettingsForLanguage(model.getLanguageId()), result)) {
+      return { ...lens, command: { id: '', title: '' } };
+    }
     return { ...lens, ...(this.lensCommand(model, ref, result) ?? {}) };
+  }
+
+  /**
+   * Determines whether a lens is of a kind its language shows (#1215). A lens not yet filled in has no
+   * kind yet, and is shown until it is.
+   * @param switches The language's code-lens switches.
+   * @param lens The server's lens, untrusted.
+   * @returns Returns true when it is shown.
+   */
+  private showsLens(switches: CodeLensSwitches, lens: unknown): boolean {
+    const command: LspCommand | null = toCommand((lens as { command?: unknown } | null)?.command);
+    return (
+      command === null || showsCodeLensKind(switches, codeLensKind(command.command, command.title))
+    );
   }
 
   /**
@@ -1540,21 +1677,34 @@ export class LspFeatures {
             : { id: STUDIO_RUN_LENS_COMMAND, title: command.title, arguments: [configuration] },
       };
     }
-    if (
-      command.command === SHOW_REFERENCES_COMMAND ||
-      command.command === RUST_SHOW_REFERENCES_COMMAND
-    ) {
+    if (command.command === RUST_DEBUG_SINGLE_COMMAND) {
+      const configuration: RunConfiguration | null = cargoRunConfiguration(
+        command.arguments?.[0],
+        'debug',
+      );
+      return {
+        command:
+          configuration === null
+            ? { id: '', title: command.title }
+            : { id: STUDIO_DEBUG_LENS_COMMAND, title: command.title, arguments: [configuration] },
+      };
+    }
+    if (LOCATIONS_LENS_COMMANDS.has(command.command)) {
       const position: unknown =
         command.arguments?.[1] ?? (lens as { range?: LspRange } | null)?.range?.start;
       return {
         command: {
           id: STUDIO_LOCATIONS_LENS_COMMAND,
           title: command.title,
-          // Both kinds of lens send this one command: only the count's wording tells them apart.
+          // Most servers send both kinds of lens one command, so only the count's wording tells them
+          // apart; jdtls gives each its own.
           arguments: [
             model.uri.toString(),
             position,
-            /implementation/i.test(command.title) ? 'implementations' : 'references',
+            command.command === JAVA_SHOW_IMPLEMENTATIONS_COMMAND ||
+            /implementation/i.test(command.title)
+              ? 'implementations'
+              : 'references',
             this.lensPlaces(command.arguments?.[2]),
           ],
         },
@@ -1566,6 +1716,22 @@ export class LspFeatures {
           id: STUDIO_LSP_COMMAND,
           title: command.title,
           arguments: [ref.sessionId, command],
+        },
+      };
+    }
+    // A reference count with no command of its own — lua-language-server's, Svelte's — lists the
+    // references of the symbol it sits on, as any other reference count does (#1215). A count of none
+    // (TypeScript's) has nothing to list, and shows its title alone.
+    if (
+      command.command === '' &&
+      codeLensKind('', command.title) === 'references' &&
+      !/^\s*0\b/.test(command.title)
+    ) {
+      return {
+        command: {
+          id: STUDIO_REFERENCES_LENS_COMMAND,
+          title: command.title,
+          arguments: [model.uri.toString(), (lens as { range?: LspRange } | null)?.range?.start],
         },
       };
     }
@@ -2178,6 +2344,18 @@ export class LspFeatures {
       STUDIO_RUN_LENS_COMMAND,
       (_accessor: unknown, configuration: RunConfiguration): void =>
         this.builds.runConfiguration(configuration, [], { restart: true }),
+    );
+    // A Debug lens builds what its Run lens would run and launches it under CodeLLDB (#1210), in the
+    // active workspace's debugger: one session at a time, as from the ribbon.
+    monaco.editor.registerCommand(
+      STUDIO_DEBUG_LENS_COMMAND,
+      (_accessor: unknown, configuration: RunConfiguration): void => {
+        if (this.debugger.running()) {
+          this.log.info('LspFeatures', 'Debug lens ignored: a debug session is already running');
+          return;
+        }
+        this.debugger.launch(configuration);
+      },
     );
     monaco.editor.registerCommand(
       STUDIO_LSP_COMMAND,
@@ -2970,6 +3148,88 @@ export class LspFeatures {
   }
 
   /**
+   * Determines whether the language server that serves a document answers Go to Project Configuration:
+   * it lists tsserver's pass-through command among those it runs (#1207).
+   * @param model The editor model.
+   * @returns Returns true when it does.
+   */
+  public servesProjectConfiguration(model: MonacoApi.editor.ITextModel): boolean {
+    return (this.resolve(model)?.commands ?? []).includes(TSSERVER_REQUEST_COMMAND);
+  }
+
+  /**
+   * Asks the language server that serves a document which `tsconfig.json` or `jsconfig.json` its
+   * project is configured by, for Go to Project Configuration (#1207), as tsserver's `projectInfo`
+   * says. A file with none above it is in an inferred project, which has no configuration to go to.
+   * @param model The editor model.
+   * @returns Returns the configuration's place, none for an inferred project, or null when the server
+   * does not answer this.
+   */
+  public async projectConfigurations(
+    model: MonacoApi.editor.ITextModel,
+  ): Promise<readonly LspDefinition[] | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || !this.servesProjectConfiguration(model)) {
+      return null;
+    }
+    const outcome: LspOutcome = await this.ask(ref, 'workspace/executeCommand', {
+      command: TSSERVER_REQUEST_COMMAND,
+      arguments: ['projectInfo', { file: ref.uri, needFileNameList: false }],
+    });
+    if (!outcome.ok) {
+      return null;
+    }
+    const config: unknown = (outcome.result as { body?: { configFileName?: unknown } } | null)?.body
+      ?.configFileName;
+    return typeof config === 'string' && config.length > 0 && !config.startsWith(INFERRED_PROJECT)
+      ? [
+          {
+            path: config,
+            range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 },
+          },
+        ]
+      : [];
+  }
+
+  /**
+   * Asks the language server that serves a document for a view of the code at a place (#1210, #1213):
+   * the expansion of the macro there, the HIR or MIR of the function there, the syntax tree there, or
+   * the server's memory. The main process writes it where the editor opens it read-only.
+   * @param model The editor model.
+   * @param kind The view.
+   * @param selection The one-based range asked about: the caret, or what is selected.
+   * @returns Returns the view's path, or why there is none; null when the server gives no such view.
+   */
+  public async generatedView(
+    model: MonacoApi.editor.ITextModel,
+    kind: LspGeneratedViewKind,
+    selection: MonacoApi.IRange,
+  ): Promise<LspGeneratedViewResult | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || ref.navigation?.[kind] !== true || this.bridge === undefined) {
+      return null;
+    }
+    await ref.sync?.(model.getValue());
+    try {
+      return await this.bridge.invoke<LspGeneratedViewResult>(
+        LspChannel.GeneratedView,
+        ref.sessionId,
+        kind,
+        {
+          uri: ref.uri,
+          line: selection.startLineNumber - 1,
+          character: selection.startColumn - 1,
+          endLine: selection.endLineNumber - 1,
+          endCharacter: selection.endColumn - 1,
+        },
+      );
+    } catch (error: unknown) {
+      this.log.debug('LspFeatures', `The ${kind} view failed`, error);
+      return { error: serverMessage(error) };
+    }
+  }
+
+  /**
    * Determines whether the language server that serves a document answers Go to Source Definition: it
    * lists the command among those it runs (#1207).
    * @param model The editor model.
@@ -3351,7 +3611,7 @@ export class LspFeatures {
     const actions: LspCodeAction[] = [];
     for (const raw of outcome.result as unknown[]) {
       const action: LspCodeAction | null = this.toCodeAction(raw);
-      if (action !== null) {
+      if (action !== null && !isMisplaced(action, model)) {
         actions.push(action);
       }
     }
@@ -3770,6 +4030,26 @@ function isCommand(raw: unknown): boolean {
 }
 
 /**
+ * The server commands that convert a file from one language, keyed by that language. A server offers
+ * them wherever it is asked, and kotlin-language-server offers Convert Java to Kotlin on every span of
+ * a Kotlin file (#1209), where there is no Java to convert.
+ */
+const CONVERSIONS_FROM: Readonly<Record<string, string>> = { convertJavaToKotlin: 'java' };
+
+/**
+ * Determines whether a code action converts from a language other than the document's, so it has
+ * nothing to work on there.
+ * @param action The action.
+ * @param model The document's model.
+ * @returns Returns true when it does.
+ */
+function isMisplaced(action: LspCodeAction, model: MonacoApi.editor.ITextModel): boolean {
+  const from: string | undefined =
+    action.command === null ? undefined : CONVERSIONS_FROM[action.command.command];
+  return from !== undefined && from !== model.getLanguageId();
+}
+
+/**
  * Reads the data a code action carries for its server: its own `data`, or — for a Roslyn action whose
  * command the client runs — its command's first argument, which carries the same.
  * @param raw The action, untrusted.
@@ -3803,6 +4083,32 @@ function toCommand(raw: unknown): LspCommand | null {
     command: entry.command,
     ...(Array.isArray(entry.arguments) ? { arguments: entry.arguments as unknown[] } : {}),
   };
+}
+
+/**
+ * Sums up every code-lens switch, globally and for each language that overrides one (#1215), so a
+ * change to any of them is seen as one.
+ * @param global The global code settings.
+ * @param overrides Every language's overrides.
+ * @returns Returns the summary.
+ */
+function codeLensChoices(global: CodeLensSwitches, overrides: LanguageOverrides): string {
+  const pick: (from: Partial<CodeLensSwitches>) => unknown[] = (
+    from: Partial<CodeLensSwitches>,
+  ): unknown[] => [
+    from.codeLens,
+    from.codeLensReferences,
+    from.codeLensImplementations,
+    from.codeLensTests,
+    from.codeLensOther,
+  ];
+  return JSON.stringify([
+    pick(global),
+    Object.entries(overrides).map(([language, own]: [string, Partial<CodeLensSwitches>]) => [
+      language,
+      pick(own),
+    ]),
+  ]);
 }
 
 /**
