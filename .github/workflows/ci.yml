@@ -66,6 +66,12 @@ jobs:
     timeout-minutes: 30
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+      # The electron package has no install step: the first `require('electron')` downloads the
+      # ~100 MB binary from GitHub, blocking, and throws "Electron failed to install correctly" if the
+      # download fails. Specs import it (as a bare path string — nothing here launches Electron), so
+      # every run fetched it mid-suite and a releases outage failed whichever specs got there first.
+      # With an override the package names a path and fetches nothing.
+      ELECTRON_OVERRIDE_DIST_PATH: /opt/no-electron-binary
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -128,6 +134,18 @@ jobs:
       # at startup), so no explicit rebuild step is needed.
       - name: Install dependencies
         run: npm ci
+
+      # The electron package downloads its binary on first use rather than at install, and here that
+      # was the first test's `electron.launch`: a GitHub releases outage read as agent.e2e.ts failing.
+      # Fetch it as a step of its own, retried because it is the one download from outside the runner.
+      - name: Install the Electron binary
+        run: |
+          for attempt in 1 2 3; do
+            npx install-electron && exit 0
+            echo "::warning::The Electron download failed (attempt $attempt of 3)"
+            sleep $((attempt * 20))
+          done
+          exit 1
 
       - name: Build renderer (Angular)
         run: npm run build
