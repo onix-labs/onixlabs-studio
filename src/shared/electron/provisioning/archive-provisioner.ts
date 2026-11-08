@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from 'node:fs';
+import { Dirent, existsSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { logger } from '../logger';
@@ -177,7 +177,68 @@ export class ArchiveProvisioner {
   public isInstalled(provision: ArchiveProvision): boolean {
     const directory: string | null = this.directoryOf(provision);
     const target: string | null = this.targetOf(provision);
-    return directory !== null && target !== null && isComplete(directory) && existsSync(target);
+    if (directory === null || target === null) {
+      return false;
+    }
+    if (isComplete(directory) && existsSync(target)) {
+      return true;
+    }
+    return this.adoptEarlierLayout(provision, directory, target);
+  }
+
+  /**
+   * Adopts an install laid out the way Studio laid it out before its manifests named platforms
+   * (#1210): the same version, finished, but under a folder of another name — rust-analyzer's under
+   * the Rust target `x86_64-apple-darwin` rather than `darwin-x64` — and marked complete on the version
+   * folder rather than inside. Such an install runs perfectly well, yet read as not installed: the
+   * server stopped, Studio offered to download what was already there, and the old copy stayed behind.
+   *
+   * It is moved to where the manifest now looks and marked there, once. Only an unambiguous case is
+   * adopted: the version folder marked complete, no folder for this platform yet, and exactly one
+   * other folder holding the entry point, which is not another platform's install.
+   * @param provision The provisioning recipe.
+   * @param directory Where the manifest looks for this platform's install.
+   * @param target The entry point within it.
+   * @returns Returns true when an earlier install was adopted.
+   */
+  private adoptEarlierLayout(
+    provision: ArchiveProvision,
+    directory: string,
+    target: string,
+  ): boolean {
+    const version: string = path.dirname(directory);
+    if (existsSync(directory) || !isComplete(version)) {
+      return false;
+    }
+    const entry: string = path.relative(directory, target);
+    let candidates: string[];
+    try {
+      candidates = readdirSync(version, { withFileTypes: true })
+        .filter(
+          (child: Dirent): boolean =>
+            child.isDirectory() &&
+            provision.downloads[child.name] === undefined &&
+            existsSync(path.join(version, child.name, entry)),
+        )
+        .map((child: Dirent): string => child.name);
+    } catch {
+      return false;
+    }
+    if (candidates.length !== 1) {
+      return false;
+    }
+    try {
+      renameSync(path.join(version, candidates[0]), directory);
+      writeFileSync(path.join(directory, MARKER), new Date(0).toISOString(), 'utf8');
+    } catch (error: unknown) {
+      logger.warn(this.logName, `Could not adopt the earlier install of ${provision.id}`, error);
+      return false;
+    }
+    logger.info(
+      this.logName,
+      `Adopted ${provision.id} ${provision.version} from its earlier folder '${candidates[0]}'`,
+    );
+    return existsSync(target);
   }
 
   /**
