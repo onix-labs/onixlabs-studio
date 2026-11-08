@@ -31,6 +31,7 @@
 //   node scripts/probe-lsp.mjs --server csharp --workspace w --solution w/App.slnx   # Roslyn (see probe-roslyn.mjs)
 //   node scripts/probe-lsp.mjs --server "my-server --stdio" --workspace w --file w/a.foo --language foo
 //   node scripts/probe-lsp.mjs --matrix [--out docs/capability-matrix.md]
+//   node scripts/probe-lsp.mjs --matrix --docs      # docs/language-servers/capability-matrix.md (#1205)
 //
 // Options: --profile <Studio user-data folder> (default: the release profile, then the development one),
 // --server-path <path> (as the Settings path override), --settle <seconds> (how long to wait for the
@@ -468,10 +469,15 @@ function codeFirstServers(profile, root, settings) {
             'java.base/java.util=ALL-UNNAMED',
             '--add-opens',
             'java.base/java.lang=ALL-UNNAMED',
+            // The install's configuration area is only read; each workspace writes its own (#1208).
+            '-Dosgi.checkConfiguration=true',
+            `-Dosgi.sharedConfiguration.area=${config}`,
+            '-Dosgi.sharedConfiguration.area.readOnly=true',
+            '-Dosgi.configuration.cascaded=true',
             '-jar',
             path.join(install, 'plugins', launcher),
             '-configuration',
-            config,
+            dataDirectory('jdtls-configuration', `${config}\n${root}`),
             '-data',
             dataDirectory('jdtls', root),
           ],
@@ -844,6 +850,207 @@ function cell(check) {
   if (check.status === 'skipped') return check.advertised ? 'adv.' : '-';
   if (check.advertised === false && check.status !== 'live') return '-';
   return `${check.status}${mark}`;
+}
+
+// ---- The published capability matrix (#1205) -------------------------------------------------------
+
+/** Where the published matrix, its summary of the probe reports, and its hand-kept layer live. */
+const DOCS = path.join(REPO, 'docs', 'language-servers');
+
+/**
+ * The matrix's columns: a feature a user would name, and the probe check that says whether the server
+ * offers it.
+ */
+const DOC_COLUMNS = [
+  ['Definition', 'definition'],
+  ['Declaration', 'declaration'],
+  ['Implementation', 'implementation'],
+  ['Type definition', 'typeDefinition'],
+  ['References', 'references'],
+  ['Hover', 'hover'],
+  ['Completion', 'completion'],
+  ['Signature help', 'signatureHelp'],
+  ['Format document', 'formatting'],
+  ['Format selection', 'rangeFormatting'],
+  ['Format on type', 'onTypeFormatting'],
+  ['Rename', 'rename'],
+  ['Code actions', 'codeAction'],
+  ['Code lens', 'codeLens'],
+  ['Inlay hints', 'inlayHint'],
+  ['Folding', 'foldingRange'],
+  ['Highlights', 'documentHighlight'],
+  ['Expand selection', 'selectionRange'],
+  ['Document links', 'documentLink'],
+  ['Linked editing', 'linkedEditingRange'],
+  ['Semantic tokens', 'semanticTokens/full'],
+  ['Ranged tokens', 'semanticTokens/range'],
+  ['Document symbols', 'documentSymbol'],
+  ['Workspace symbols', 'workspace/symbol'],
+  ['Call hierarchy', 'callHierarchy'],
+  ['Type hierarchy', 'typeHierarchy'],
+  ['Pushed diagnostics', 'publishDiagnostics'],
+  ['Pulled diagnostics', 'textDocument/diagnostic'],
+  ['Workspace diagnostics', 'workspace/diagnostic'],
+  ['File rename edits', 'willRenameFiles'],
+];
+
+/** The cells, as #1205 defines them. */
+const MARKS = {
+  verified: '✅',
+  offered: '🟡',
+  notOffered: '❌',
+  notApplicable: '—',
+  notProbed: '·',
+};
+
+/**
+ * Says whether a probe check shows the server offering a feature: it advertised it (statically or by
+ * registering it), or answered it with something though it did not.
+ * @param {any} check The check, or undefined when the probe did not make it.
+ * @returns {'offered' | 'notOffered' | 'notProbed'} Returns the answer.
+ */
+function offering(check) {
+  if (check === undefined) return 'notProbed';
+  if (check.status === 'live') return 'offered';
+  return check.advertised === false ? 'notOffered' : 'offered';
+}
+
+/**
+ * Reads each server's chosen report into a summary small enough to commit: no paths, no samples, just
+ * what the server offered. A server with no report under `.cache/lsp-probe` keeps the summary it had.
+ * @param {any} wiring The hand-kept layer.
+ * @param {Record<string, any>} previous The summary committed before.
+ * @returns {Record<string, any>} Returns the summary, by server.
+ */
+function summariseReports(wiring, previous) {
+  const summary = { ...previous };
+  for (const server of folders(REPORTS)) {
+    const names = readdirSafe(path.join(REPORTS, server)).filter((name) => name.endsWith('.json'));
+    const chosen = wiring.reports?.[server];
+    const candidates = names
+      .filter((name) => chosen === undefined || name === chosen)
+      .map((name) => ({ name, report: readJson(path.join(REPORTS, server, name), null) }))
+      .filter(({ report }) => report?.checks !== undefined)
+      .sort((a, b) => String(b.report.probedAt).localeCompare(String(a.report.probedAt)));
+    const pick = candidates[0];
+    if (pick === undefined) continue;
+    const { report, name } = pick;
+    summary[report.serverId] = {
+      displayName: report.displayName,
+      language: report.languageId,
+      // The probe reads a version from the install; a tree it could not date keeps the report's name.
+      version: report.version ?? name.replace(/\.json$/, '').split('.with-settings')[0],
+      probedAt: String(report.probedAt).slice(0, 10),
+      report: `${server}/${name}`,
+      features: Object.fromEntries(
+        DOC_COLUMNS.map(([, feature]) => [feature, offering(report.checks?.[feature])]),
+      ),
+    };
+  }
+  return Object.fromEntries(Object.entries(summary).sort(([a], [b]) => a.localeCompare(b)));
+}
+
+/**
+ * Renders one cell of the published matrix: the hand-kept layer first, then what the probe found.
+ * @param {any} wiring The hand-kept layer.
+ * @param {string} serverId The server.
+ * @param {string} feature The probe check.
+ * @param {string | undefined} probed What the probe found, or undefined for a server never probed.
+ * @returns {string} Returns the cell.
+ */
+function docCell(wiring, serverId, feature, probed) {
+  const own = wiring.servers?.[serverId]?.cells?.[feature];
+  if (own !== undefined) return MARKS[own];
+  if ((wiring.notApplicable?.[serverId] ?? []).includes(feature)) return MARKS.notApplicable;
+  if (probed === undefined || probed === 'notProbed') return MARKS.notProbed;
+  if (probed === 'notOffered') return MARKS.notOffered;
+  return (wiring.verified?.[serverId] ?? []).includes(feature) ? MARKS.verified : MARKS.offered;
+}
+
+if (argv.includes('--matrix') && argv.includes('--docs')) {
+  const wiring = readJson(path.join(DOCS, 'capability-wiring.json'), {});
+  const summaryFile = path.join(DOCS, 'probe-results.json');
+  const summary = summariseReports(wiring, readJson(summaryFile, {}));
+  const rows = [
+    ...Object.entries(summary).map(([id, entry]) => ({ id, ...entry })),
+    ...Object.entries(wiring.servers ?? {})
+      .filter(([id]) => summary[id] === undefined)
+      .map(([id, entry]) => ({ id, ...entry, probedAt: null, features: {} })),
+  ].sort((a, b) => `${a.language} ${a.id}`.localeCompare(`${b.language} ${b.id}`));
+  const header = ['Language', 'Server', 'Version', ...DOC_COLUMNS.map(([label]) => label)];
+  const table = [
+    header,
+    header.map(() => '---'),
+    ...rows.map((row) => [
+      row.language,
+      `${row.displayName} (\`${row.id}\`)`,
+      row.version,
+      ...DOC_COLUMNS.map(([, feature]) => docCell(wiring, row.id, feature, row.features[feature])),
+    ]),
+  ].map((cells) => `| ${cells.join(' | ')} |`);
+  const sources = rows.map(
+    (row) =>
+      `- \`${row.id}\`: ${
+        row.probedAt === null
+          ? (wiring.servers?.[row.id]?.source ?? 'kept by hand')
+          : `probed ${row.probedAt}, report \`.cache/lsp-probe/${row.report}\``
+      }`,
+  );
+  const markdown = [
+    '# Language server capability matrix',
+    '',
+    '<!-- Generated by `node scripts/probe-lsp.mjs --matrix --docs`; edit capability-wiring.json, not this file. -->',
+    '',
+    'Which language-server features each server Studio installs offers, and which Studio has been seen',
+    'working with in a running instance against a fixture. It is the "what is left" view for every',
+    'language epic under #1202, and the first thing to fill in when a server is added',
+    '(see [Adding a language server](adding-a-server.md)).',
+    '',
+    `- ${MARKS.verified} offered, and checked working in Studio`,
+    `- ${MARKS.offered} offered, not yet wired or not yet checked in Studio`,
+    `- ${MARKS.notOffered} not offered by the server, as Studio starts it`,
+    `- ${MARKS.notApplicable} does not apply to the language`,
+    `- ${MARKS.notProbed} not probed`,
+    '',
+    'What a server offers comes from `scripts/probe-lsp.mjs` (#1203): its capabilities, and a real',
+    'request for each feature against a fixture. Offered means advertised, or answered though not',
+    'advertised. Several servers offer more once Studio answers their settings, so each row is read',
+    'from the run closest to what Studio sends (see `capability-wiring.json`). The probe advertises a',
+    'complete client, so a feature Studio does not ask for yet still shows as offered.',
+    '',
+    ...table,
+    '',
+    '## Sources',
+    '',
+    ...sources,
+    '',
+    '## Keeping it current',
+    '',
+    '1. Probe the server: `node scripts/probe-lsp.mjs --server <id> --workspace <fixture> [--settings <json>]`.',
+    '2. Name the report the row should read in `capability-wiring.json` (`reports`), and mark what has',
+    '   been checked working in a running Studio under `verified`, and what does not apply under',
+    '   `notApplicable`.',
+    '3. Regenerate: `node scripts/probe-lsp.mjs --matrix --docs`. It refreshes `probe-results.json` from',
+    '   the reports it finds and keeps every other server as committed, so a matrix can be regenerated',
+    '   on a machine that has probed only one server.',
+    '',
+  ].join('\n');
+  mkdirSync(DOCS, { recursive: true });
+  writeFileSync(summaryFile, `${JSON.stringify(summary, null, 2)}\n`);
+  writeFileSync(path.join(DOCS, 'capability-matrix.md'), markdown);
+  // Laid out as the format check wants it, so a regenerated matrix passes the gate as committed.
+  const prettier = path.join(REPO, 'node_modules', 'prettier', 'bin', 'prettier.cjs');
+  if (existsSync(prettier)) {
+    spawnSync(
+      process.execPath,
+      [prettier, '--write', summaryFile, path.join(DOCS, 'capability-matrix.md')],
+      {
+        stdio: 'ignore',
+      },
+    );
+  }
+  console.error(`wrote ${path.join(DOCS, 'capability-matrix.md')} (${rows.length} server(s))`);
+  exit(0);
 }
 
 if (argv.includes('--matrix')) {

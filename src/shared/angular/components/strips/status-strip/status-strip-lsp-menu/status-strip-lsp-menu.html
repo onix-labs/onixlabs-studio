@@ -19,7 +19,12 @@
       <div class="lsp-status-menu__item lsp-status-menu__item--{{ server.state }}">
         <app-icon class="lsp-status-menu__item-icon" [icon]="iconFor(server.state)" />
         <span class="lsp-status-menu__item-text">
-          <span class="lsp-status-menu__item-name">{{ server.name }}</span>
+          <span class="lsp-status-menu__item-name"
+            >{{ server.name }}
+            @if (server.version) {
+              <span class="lsp-status-menu__item-version">{{ server.version }}</span>
+            }
+          </span>
           <span class="lsp-status-menu__item-status">{{ statusText(server) }}</span>
         </span>
         <!-- A plain button rather than a cdkMenuItem, and the pointer-down kept from moving focus,
