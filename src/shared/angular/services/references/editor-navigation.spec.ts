@@ -8,6 +8,7 @@ import { EditorNavigation } from './editor-navigation';
 import { CodeLocation, ReferenceItem, ReferenceList } from './reference-list';
 import { ReferencesRouter } from './references-router';
 import { HierarchyRouter, HierarchySource } from '@shared/angular/services/hierarchy/hierarchy';
+import type { LspGeneratedViewResult } from '@shared/api/lsp-channels';
 
 /**
  * The model URI of the editor under test.
@@ -65,6 +66,12 @@ function fakeEditor(): FakeEditor {
   const editor: unknown = {
     getModel: (): unknown => model,
     getPosition: (): MonacoApi.IPosition => ({ lineNumber: 2, column: 4 }),
+    getSelection: (): MonacoApi.IRange => ({
+      startLineNumber: 2,
+      startColumn: 4,
+      endLineNumber: 2,
+      endColumn: 4,
+    }),
     getContainerDomNode: (): HTMLElement => container,
     layout: (): void => undefined,
     setSelection: (range: MonacoApi.IRange): void =>
@@ -132,9 +139,12 @@ describe('EditorNavigation (#1014)', () => {
     sourceHeaderOf: Mock<LspFeatures['sourceHeaderOf']>;
     typeDefinitions: Mock<LspFeatures['typeDefinitions']>;
     servesSourceDefinition: Mock<LspFeatures['servesSourceDefinition']>;
+    servesProjectConfiguration: Mock<LspFeatures['servesProjectConfiguration']>;
+    projectConfigurations: Mock<LspFeatures['projectConfigurations']>;
     sourceDefinitions: Mock<LspFeatures['sourceDefinitions']>;
     parentModules: Mock<LspFeatures['parentModules']>;
     cargoManifests: Mock<LspFeatures['cargoManifests']>;
+    generatedView: Mock<LspFeatures['generatedView']>;
     hierarchy: Mock<LspFeatures['hierarchy']>;
   };
   let opener: Mock<(path: string) => Promise<boolean>>;
@@ -183,6 +193,12 @@ describe('EditorNavigation (#1014)', () => {
         (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
       ),
       servesSourceDefinition: vi.fn<LspFeatures['servesSourceDefinition']>((): boolean => false),
+      servesProjectConfiguration: vi.fn<LspFeatures['servesProjectConfiguration']>(
+        (): boolean => false,
+      ),
+      projectConfigurations: vi.fn<LspFeatures['projectConfigurations']>(
+        (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
       sourceDefinitions: vi.fn<LspFeatures['sourceDefinitions']>(
         (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
       ),
@@ -191,6 +207,9 @@ describe('EditorNavigation (#1014)', () => {
       ),
       cargoManifests: vi.fn<LspFeatures['cargoManifests']>(
         (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
+      generatedView: vi.fn<LspFeatures['generatedView']>(
+        (): Promise<LspGeneratedViewResult | null> => Promise.resolve(null),
       ),
       hierarchy: vi.fn<LspFeatures['hierarchy']>((): Promise<HierarchySource | null> =>
         Promise.resolve(null),
@@ -412,6 +431,35 @@ describe('EditorNavigation (#1014)', () => {
       expect(fake.calls).not.toContain('focus');
     });
 
+    it('aGeneratedView_isOfferedWhereTheServerGivesIt_andOpensWhatTheMainProcessWrote (#1210)', async () => {
+      const navigation: EditorNavigation = build();
+      lsp.servesNavigation.mockImplementation(
+        (_model: MonacoApi.editor.ITextModel, kind: string): boolean => kind === 'expandMacro',
+      );
+      lsp.generatedView.mockResolvedValue({ path: '/tmp/MetadataAsSource/StudioViews/1/a.rs' });
+
+      expect(navigation.offersGeneratedView(fake.editor, 'expandMacro')).toBe(true);
+      expect(navigation.offersGeneratedView(fake.editor, 'syntaxTree')).toBe(false);
+      await navigation.showGeneratedView(fake.editor, 'expandMacro');
+
+      expect(lsp.generatedView).toHaveBeenCalledWith(fake.model, 'expandMacro', {
+        startLineNumber: 2,
+        startColumn: 4,
+        endLineNumber: 2,
+        endColumn: 4,
+      });
+      expect(opener).toHaveBeenCalledWith('/tmp/MetadataAsSource/StudioViews/1/a.rs');
+    });
+
+    it('aGeneratedView_withNothingToShow_opensNothing (#1213)', async () => {
+      const navigation: EditorNavigation = build();
+      lsp.generatedView.mockResolvedValue({ error: 'Nothing to show here' });
+
+      await navigation.showGeneratedView(fake.editor, 'syntaxTree');
+
+      expect(opener).not.toHaveBeenCalled();
+    });
+
     it('aParentModule_goesStraightThere_askingAtTheCaret (#1210)', async () => {
       const navigation: EditorNavigation = build();
       TestBed.inject(Editors).register(MODEL_URI, {
@@ -425,6 +473,21 @@ describe('EditorNavigation (#1014)', () => {
 
       expect(lsp.parentModules).toHaveBeenCalledWith(fake.model, { lineNumber: 2, column: 4 });
       expect(fake.calls.some((call: string): boolean => call.includes('1:7'))).toBe(true);
+    });
+
+    it('theProjectConfiguration_opens_whereTheServerAnswersIt (#1207)', async () => {
+      const navigation: EditorNavigation = build();
+      expect(navigation.offersProjectConfiguration(fake.editor)).toBe(false);
+      lsp.servesProjectConfiguration.mockReturnValue(true);
+      expect(navigation.offersProjectConfiguration(fake.editor)).toBe(true);
+      lsp.projectConfigurations.mockResolvedValue([
+        { path: '/root/tsconfig.json', range: span(1, 1, 1) },
+      ]);
+
+      await navigation.openProjectConfiguration(fake.editor);
+
+      expect(lsp.projectConfigurations).toHaveBeenCalledWith(fake.model);
+      expect(opener).toHaveBeenCalledWith('/root/tsconfig.json');
     });
 
     it('theCargoManifest_opens (#1210)', async () => {

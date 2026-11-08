@@ -15,6 +15,12 @@ describe('clientCapabilities', () => {
     });
   });
 
+  it('textDocument_tellsClangdItFadesWhatThePreprocessorLeavesOut (#1213)', () => {
+    expect(clientCapabilities('clangd').textDocument).toMatchObject({
+      inactiveRegionsCapabilities: { inactiveRegions: true },
+    });
+  });
+
   it('experimental_asksAServerToSayHowItIs (#1210)', () => {
     expect(clientCapabilities().experimental).toMatchObject({ serverStatusNotification: true });
   });
@@ -29,9 +35,15 @@ describe('clientCapabilities', () => {
     expect(clientCapabilities().workspace?.workspaceEdit?.resourceOperations).toEqual([]);
   });
 
-  it('experimental_namesTheCommandsALensMayCarry_andNoDebuggerThereIsNot (#1210)', () => {
+  it('experimental_namesTheCommandsALensMayCarry_debugAmongThem (#1210)', () => {
     expect(clientCapabilities().experimental).toMatchObject({
-      commands: { commands: ['rust-analyzer.runSingle', 'rust-analyzer.showReferences'] },
+      commands: {
+        commands: [
+          'rust-analyzer.runSingle',
+          'rust-analyzer.debugSingle',
+          'rust-analyzer.showReferences',
+        ],
+      },
     });
   });
 

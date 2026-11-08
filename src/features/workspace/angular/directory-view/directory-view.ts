@@ -820,7 +820,7 @@ export class DirectoryView implements OnInit, OnDestroy {
       const needsPlugin: boolean = this.versionControlPrompt.needed() !== null;
       return {
         solution: this.solutionModel.model() !== null,
-        packages: this.packageModel.model() !== null,
+        packages: this.packageModel.available(),
         // Listed whenever an adapter applies, installed or not: an uninstalled one is where the panel's
         // empty state names the plugin that finds these tests.
         tests: this.testExplorer.adapters().length > 0,
@@ -1515,7 +1515,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     // docking it beside the File Explorer; remove it when the model goes away. Layout reads/writes are
     // untracked so the effect reacts to the model alone.
     effect((): void => {
-      const hasModel: boolean = this.packageModel.model() !== null;
+      const hasModel: boolean = this.packageModel.available();
       untracked((): void => this.syncPackagesPanel(hasModel));
     });
 
