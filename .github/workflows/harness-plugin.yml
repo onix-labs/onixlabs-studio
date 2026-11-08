@@ -43,6 +43,7 @@ on:
         'plugin-go-modules-v*',
         'plugin-vcpkg-v*',
         'plugin-conan-v*',
+        'plugin-cargo-v*',
         'plugin-dotnet-tests-v*',
         'plugin-js-tests-v*',
         'plugin-python-tests-v*',
