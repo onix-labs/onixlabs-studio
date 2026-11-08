@@ -738,6 +738,19 @@ export function givenUpReason(
 }
 
 /**
+ * Says that a server stopped when nobody asked it to, with its last reason when it gave one. Used
+ * alike for a crash while running and a crash during start-up, so the user reads one plain line
+ * however far the server got.
+ * @param reason The server's own last words, when it left any.
+ * @returns Returns the status line.
+ */
+export function stoppedUnexpectedlyReason(reason: string | undefined): string {
+  return reason === undefined
+    ? 'The server stopped unexpectedly. Restart it to try again.'
+    : `The server stopped unexpectedly: ${reason} Restart it to try again.`;
+}
+
+/**
  * The base delay before a crashed session may be restarted automatically. Each further crash doubles
  * it (up to {@link CRASH_BACKOFF_MAX_MS}), so a struggling server gets progressively longer breathers
  * instead of an immediate respawn on the next keystroke.
@@ -2650,7 +2663,7 @@ export class LspClient implements OnDestroy {
       })
       .then((result: LspStartResult): boolean => {
         if (!result.success) {
-          this.status.setState(sessionId, 'unavailable', result.error);
+          this.reportFailedStart(sessionId, result);
           this.log.error('LspClient', `Server '${serverId}' failed to start`, result.error);
           this.recordStartFailure(sessionId);
           // Forget the failed session so a sync after the cooldown can try again; the attempt cap in
@@ -2733,6 +2746,26 @@ export class LspClient implements OnDestroy {
       });
     this.sessions.set(sessionId, pending);
     return pending;
+  }
+
+  /**
+   * Puts a failed start on the session's status row. A server that died during its handshake is a
+   * crash like any other: the start fails with the connection's own wording ("Pending response
+   * rejected since connection got disposed"), which means nothing to the user, so the row says the
+   * server stopped unexpectedly instead — and when the exit report got there first, its line (which
+   * may already say the restarts gave up) is kept. The original error is still logged by the caller.
+   * @param sessionId The session that failed to start.
+   * @param result The failed start's result.
+   */
+  private reportFailedStart(sessionId: string, result: LspStartResult): void {
+    if (result.exited !== true) {
+      this.status.setState(sessionId, 'unavailable', result.error);
+      return;
+    }
+    if (this.status.stateOf(sessionId) === 'unavailable') {
+      return;
+    }
+    this.status.setState(sessionId, 'unavailable', stoppedUnexpectedlyReason(result.reason));
   }
 
   /**
@@ -3214,11 +3247,7 @@ export class LspClient implements OnDestroy {
     this.status.setState(
       exit.sessionId,
       'unavailable',
-      exhausted
-        ? givenUpReason(crash, tries)
-        : exit.reason === undefined
-          ? 'The server stopped unexpectedly. Restart it to try again.'
-          : `The server stopped unexpectedly: ${exit.reason} Restart it to try again.`,
+      exhausted ? givenUpReason(crash, tries) : stoppedUnexpectedlyReason(exit.reason),
     );
     if (exhausted) {
       this.raiseGivenUp(exit.sessionId, crash, tries);

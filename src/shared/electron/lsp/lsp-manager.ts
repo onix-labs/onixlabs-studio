@@ -181,6 +181,12 @@ interface LspSession {
   ready: Promise<LspStartResult>;
 
   /**
+   * Holds whether the server process ended without being asked to, so a handshake it abandons can
+   * be reported as the server stopping rather than as the connection's own wording.
+   */
+  exited?: boolean;
+
+  /**
    * Holds the pull that keeps the server's diagnostics for the whole workspace flowing (#1144), or
    * null for a server that does not serve them.
    */
@@ -754,11 +760,22 @@ export class LspManager {
         };
       })
       .catch((error: unknown): LspStartResult => {
+        // The original error stays in the log whatever the user is told.
         logger.warn('LspManager', `LSP server ${spec.command} failed to initialize`, error);
         this.tearDown(parsed.sessionId);
+        const message: string = error instanceof Error ? error.message : 'Initialize failed';
+        if (session.exited !== true) {
+          return { success: false, error: message };
+        }
+        // The server died mid-handshake: its exit disposed the connection, which rejects the pending
+        // `initialize` with JSON-RPC's own "connection got disposed". That is the same crash a running
+        // server has, so the renderer says it in the same words, with the server's last words.
+        const reason: string | null = session.tail.summary();
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Initialize failed',
+          error: message,
+          exited: true,
+          ...(reason === null ? {} : { reason }),
         };
       });
     return session.ready;
@@ -1098,6 +1115,7 @@ export class LspManager {
       signal: signal ?? null,
       ...(reason === null ? {} : { reason }),
     };
+    session.exited = true;
     // Ahead of the exit: the renderer forgets the session on hearing it.
     this.diagnostics.flush(id);
     this.send(id, LspChannel.ServerExit, exit);
