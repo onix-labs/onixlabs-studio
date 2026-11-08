@@ -2070,6 +2070,23 @@ describe('LspClient', () => {
     expect(lsp.starts).toHaveLength(0);
   });
 
+  it('theTypescriptTheServerSaysItRunsWith_showsOnItsRow (#1207)', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: '',
+    });
+    await flush();
+
+    lsp.notify('/root::typescript', '$/typescriptVersion', { version: '5.9.3', source: 'bundled' });
+    lsp.notify('/root::typescript', '$/typescriptVersion', { version: 42 });
+
+    expect(status.servers()[0].version).toBe('5.9.3');
+  });
+
   describe('a server that both pushes and is pulled (#1210)', () => {
     const SESSION: string = '/root::rust';
     const URI: string = 'file:///root/src/lib.rs';
@@ -2185,6 +2202,21 @@ describe('LspClient', () => {
       const client: LspClient = build();
       client.syncDocument({
         documentId: 'doc-2',
+        path: '/root/A.java',
+        languageId: 'java',
+        content: '',
+      });
+      await flush();
+
+      lsp.publishDiagnostics('/root::java', 'file:///root/B.java', [CHECK]);
+
+      expect(diagnostics.emitted).toEqual([]);
+    });
+
+    it('typescriptsPushForAFileNotOpen_reachesTheErrorList_asItsProjectsAreChecked (#1207)', async () => {
+      const client: LspClient = build();
+      client.syncDocument({
+        documentId: 'doc-2',
         path: '/root/a.ts',
         languageId: 'typescript',
         content: '',
@@ -2193,7 +2225,9 @@ describe('LspClient', () => {
 
       lsp.publishDiagnostics('/root::typescript', 'file:///root/b.ts', [CHECK]);
 
-      expect(diagnostics.emitted).toEqual([]);
+      expect(diagnostics.emitted).toEqual([
+        expect.objectContaining({ path: '/root/b.ts', scope: 'workspace' }),
+      ]);
     });
 
     it('whatItSaidOfTheWorkspace_goesWhenItExits', async () => {
@@ -2288,15 +2322,16 @@ describe('LspClient', () => {
   });
 
   it('closeDocument_afterOpen_sendsDidCloseAndClearsDiagnostics', async () => {
+    // A server whose pushes stand for its open documents alone, unlike TypeScript's and Rust's.
     const client: LspClient = build();
     client.syncDocument({
       documentId: 'doc-1',
-      path: '/root/a.ts',
-      languageId: 'typescript',
+      path: '/root/A.java',
+      languageId: 'java',
       content: '',
     });
     await flush();
-    lsp.publishDiagnostics('/root::typescript', 'file:///root/a.ts', [
+    lsp.publishDiagnostics('/root::java', 'file:///root/A.java', [
       { range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }, message: 'x' },
     ]);
     expect(diagnostics.emitted).toHaveLength(1);
