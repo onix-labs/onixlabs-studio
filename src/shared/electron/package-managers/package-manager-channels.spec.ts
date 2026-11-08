@@ -226,4 +226,58 @@ describe('PackageManagerChannels', () => {
 
     expect(result).toEqual({ ok: true, tokens: [] });
   });
+
+  describe('commands', () => {
+    const project: string = `${ROOT}/package.json`;
+
+    it('command_install_asksThePluginForTheCommand_withTheLatestWhenNoVersionIsGiven', async () => {
+      const command: unknown = { executable: 'npm', args: ['install'], cwd: ROOT, title: 'x' };
+      host.request.mockResolvedValue({ id: 1, ok: true, result: command });
+
+      const answer: unknown = await invoke(PackageChannel.Command, ROOT, 'npm', 'install', {
+        project,
+        name: 'left-pad',
+      });
+
+      expect(host.request).toHaveBeenCalledWith('npm', ROOT, 'install', {
+        project,
+        name: 'left-pad',
+        version: null,
+      });
+      expect(answer).toEqual({ ok: true, result: command });
+    });
+
+    it('command_remove_sendsNoVersion_andRestoreOnlyTheProject', async () => {
+      await invoke(PackageChannel.Command, ROOT, 'npm', 'remove', {
+        project,
+        name: 'left-pad',
+        version: '1.0.0',
+      });
+      await invoke(PackageChannel.Command, ROOT, 'npm', 'restore', { project, name: 'ignored' });
+
+      expect(host.request.mock.calls).toEqual([
+        ['npm', ROOT, 'remove', { project, name: 'left-pad' }],
+        ['npm', ROOT, 'restore', { project }],
+      ]);
+    });
+
+    it.each([
+      ['publish', { project, name: 'x' }],
+      ['install', { name: 'x' }],
+      ['install', { project, name: '' }],
+      ['update', { project, name: 'x', version: 3 }],
+      ['install', null],
+    ])('command_thatIsNotAChangeStudioAsksFor_isRefused %#', async (op: string, request) => {
+      const answer: { ok: boolean } = await invoke(
+        PackageChannel.Command,
+        ROOT,
+        'npm',
+        op,
+        request,
+      );
+
+      expect(answer.ok).toBe(false);
+      expect(host.request).not.toHaveBeenCalled();
+    });
+  });
 });

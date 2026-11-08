@@ -3,8 +3,16 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Icon } from '@shared/angular/icons/icon';
-import type { InstalledPackage, PackageSearchItem } from '@shared/api/package-management';
-import type { PackageManagerSummary } from '@shared/api/package-channels';
+import type {
+  InstalledPackage,
+  PackageManagerModel,
+  PackageSearchItem,
+} from '@shared/api/package-management';
+import type {
+  PackageManagerSummary,
+  PackageWriteOp,
+  PackageWriteRequest,
+} from '@shared/api/package-channels';
 import type { RepositoryTrustDecision } from '@shared/api/source-control-channels';
 import type { PluginSummary } from '@shared/api/plugin-channels';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
@@ -12,6 +20,7 @@ import {
   PackageManagerState,
   PackageModel,
   PackageRow,
+  PackageWrite,
 } from '@features/workspace/angular/project/package-model';
 import {
   ExploreSearchMode,
@@ -39,14 +48,34 @@ function installed(name: string, status: InstalledPackage['status']): InstalledP
 }
 
 /**
- * The npm package manager, installed.
+ * The npm package manager, installed, with every write.
  */
 const NPM: PackageManagerSummary = {
   pluginId: 'onixlabs.npm',
   displayName: 'npm',
   ecosystem: 'npm',
   installed: true,
-  capabilities: ['sources', 'search', 'searchRequiresQuery'],
+  capabilities: [
+    'sources',
+    'search',
+    'searchRequiresQuery',
+    'install',
+    'update',
+    'remove',
+    'restore',
+  ],
+};
+
+/**
+ * A search result.
+ */
+const LEFT_PAD: PackageSearchItem = {
+  name: 'left-pad',
+  version: '1.3.0',
+  description: 'Pads strings',
+  downloads: 1_500_000,
+  verified: false,
+  sourceName: 'npm',
 };
 
 /**
@@ -67,7 +96,8 @@ class FakePackageModel {
   public readonly states: WritableSignal<readonly PackageManagerState[]> = signal<
     readonly PackageManagerState[]
   >([]);
-  public trusted: number = 0;
+  public readonly writing: WritableSignal<PackageWrite | null> = signal<PackageWrite | null>(null);
+  public readonly writeError: WritableSignal<string | null> = signal<string | null>(null);
   public readonly outdatedOnly: WritableSignal<boolean> = signal<boolean>(false);
   public readonly outdatedCount: Signal<number> = computed((): number =>
     this.rows().reduce(
@@ -77,6 +107,8 @@ class FakePackageModel {
     ),
   );
   public refreshed: number = 0;
+  public trusted: number = 0;
+  public readonly writes: [string, PackageWriteOp, PackageWriteRequest][] = [];
 
   public setOutdatedOnly(value: boolean): void {
     this.outdatedOnly.set(value);
@@ -88,6 +120,11 @@ class FakePackageModel {
 
   public trustFolder(): Promise<void> {
     this.trusted += 1;
+    return Promise.resolve();
+  }
+
+  public write(pluginId: string, op: PackageWriteOp, request: PackageWriteRequest): Promise<void> {
+    this.writes.push([pluginId, op, request]);
     return Promise.resolve();
   }
 }
@@ -124,8 +161,8 @@ class FakePackageExplorer {
     return Promise.resolve();
   }
 
-  public selectSource(name: string): void {
-    this.selectedSource.set(name);
+  public selectSource(key: string): void {
+    this.selectedSource.set(key);
   }
 
   public setQuery(value: string): void {
@@ -191,6 +228,18 @@ describe('PackagesPanel', () => {
   }
 
   /**
+   * Finds a button by its visible text or its accessible name.
+   * @param name The text or name.
+   * @returns Returns the button, or undefined.
+   */
+  function button(name: string): HTMLButtonElement | undefined {
+    return [...host().querySelectorAll<HTMLButtonElement>('button')].find(
+      (candidate: HTMLButtonElement): boolean =>
+        candidate.textContent?.trim() === name || candidate.getAttribute('aria-label') === name,
+    );
+  }
+
+  /**
    * Sets the installed rows: a project per entry, with its packages under it.
    * @param entries Each project's name and its packages' upgrade verdicts.
    */
@@ -216,166 +265,338 @@ describe('PackagesPanel', () => {
     fixture.detectChanges();
   }
 
-  it('groupBadge_whenAProjectHasOutdatedPackages_isAWarningChipWithTheCount', () => {
-    projects(['web', ['outdated', 'current', 'outdated']]);
-
-    const chip: HTMLElement | null = host().querySelector<HTMLElement>(
-      '.packages-group app-chip.packages-group__badge',
-    );
-    expect(chip).not.toBeNull();
-    expect(chip?.classList).toContain('chip--warning');
-    expect(chip?.textContent?.trim()).toBe('2');
-  });
-
-  it('groupBadge_whenAProjectIsUpToDate_isAbsent', () => {
-    projects(['web', ['current', 'current']]);
-
-    expect(host().querySelector('.packages-group')).not.toBeNull();
-    expect(host().querySelector('.packages-group__badge')).toBeNull();
-  });
-
-  it('toolbarTally_showsTheOutdatedCountAcrossProjects_onlyWhenThereAreAny', () => {
-    projects(['web', ['outdated']], ['api', ['outdated', 'outdated']]);
-    expect(host().querySelector('.packages-count--outdated')?.textContent?.trim()).toBe('3');
-
-    projects(['web', ['current']]);
-    expect(host().querySelector('.packages-count--outdated')).toBeNull();
-  });
-
-  it('emptyState_whenFilteringToUpdatesWithNothingOutdated_saysEverythingIsUpToDate', () => {
-    packages.outdatedOnly.set(true);
+  /**
+   * Switches to Explore with one npm source selected, holding the given results.
+   * @param results The results.
+   * @param manager The source's package manager.
+   */
+  function exploring(
+    results: readonly PackageSearchItem[],
+    manager: PackageManagerSummary = NPM,
+  ): void {
+    const source: ExploreSource = { key: `${manager.pluginId}/npm`, name: 'npm', manager };
+    explorer.sources.set([source]);
+    explorer.selected.set(source);
+    explorer.selectedSource.set(source.key);
+    explorer.results.set(results);
+    explorer.total.set(results.length + 10);
     projects();
-
-    expect(host().textContent).toContain('Everything is up to date.');
-  });
-
-  it('emptyState_whileResolvingTheFirstModel_showsProgress', () => {
-    packages.hasModels.set(false);
-    packages.loading.set(true);
+    button('Explore')!.click();
     fixture.detectChanges();
+  }
 
-    expect(host().textContent).toContain('Resolving packages…');
-  });
-
-  it('updatesOnly_toggles_theModelsFilter', () => {
-    projects(['web', ['current']]);
-    const toggle: HTMLButtonElement = [
-      ...host().querySelectorAll<HTMLButtonElement>('button'),
-    ].find(
-      (button: HTMLButtonElement): boolean => button.textContent?.includes('Updates only') === true,
-    )!;
-
-    toggle.click();
-    expect(packages.outdatedOnly()).toBe(true);
-    toggle.click();
-    expect(packages.outdatedOnly()).toBe(false);
-  });
-
-  it('refresh_reloadsTheModel', () => {
-    projects(['web', ['current']]);
-    const refresh: HTMLButtonElement = [
-      ...host().querySelectorAll<HTMLButtonElement>('button'),
-    ].find(
-      (button: HTMLButtonElement): boolean => button.textContent?.includes('Refresh') === true,
-    )!;
-
-    refresh.click();
-
-    expect(packages.refreshed).toBe(1);
-  });
-
-  it('explore_loadsTheSourcesTheFirstTime_andSaysWhenThereAreNone', () => {
-    projects();
-    const explore: HTMLButtonElement = [
-      ...host().querySelectorAll<HTMLButtonElement>('button'),
-    ].find(
-      (button: HTMLButtonElement): boolean => button.textContent?.includes('Explore') === true,
-    )!;
-
-    explore.click();
-    fixture.detectChanges();
-
-    expect(explorer.sourcesRequested).toBe(1);
-    expect(host().textContent).toContain("Exploration isn't available for this workspace.");
-  });
-
-  it('emptyState_withNoPackageManagerInstalled_offersThePluginThatWouldReadTheFolder', () => {
-    packages.installed.set([]);
-    packages.hasModels.set(false);
-    packages.offered.set([
-      {
-        id: 'onixlabs.npm',
-        name: 'npm',
-        state: 'available',
-        contributions: [],
-      } as unknown as PluginSummary,
-    ]);
-    fixture.detectChanges();
-
-    expect(host().textContent).toContain(
-      "Install a package manager to see this folder's packages.",
-    );
-    expect(host().querySelector('.packages-offers__name')?.textContent?.trim()).toBe('npm');
-    expect(host().querySelector('app-plugin-action')).not.toBeNull();
-  });
-
-  it('emptyState_inAFolderNotYetTrusted_offersToTrustIt', () => {
-    packages.trust.set('unknown');
-    packages.hasModels.set(false);
-    fixture.detectChanges();
-    const trust: HTMLButtonElement = [...host().querySelectorAll<HTMLButtonElement>('button')].find(
-      (button: HTMLButtonElement): boolean =>
-        button.textContent?.includes('Trust this folder') === true,
-    )!;
-
-    trust.click();
-
-    expect(host().textContent).toContain("This folder isn't trusted");
-    expect(packages.trusted).toBe(1);
-  });
-
-  it('emptyState_whenEveryPackageManagerFailed_saysWhy', () => {
-    packages.hasModels.set(false);
-    packages.states.set([{ manager: NPM, model: null, error: 'npm broke.', loading: false }]);
-    fixture.detectChanges();
-
-    expect(host().textContent).toContain('npm broke.');
-  });
-
-  it('explore_forARegistryWithNoSearch_saysItLooksUpAnExactName_andHidesPrereleases', () => {
-    const pypi: ExploreSource = {
-      key: 'onixlabs.pypi/PyPI',
-      name: 'PyPI',
-      manager: { ...NPM, pluginId: 'onixlabs.pypi', capabilities: ['sources', 'search'] },
+  /**
+   * Gives the npm package manager a model with the named projects, for Explore's install target.
+   * @param names The projects.
+   */
+  function npmProjects(...names: string[]): void {
+    const model: PackageManagerModel = {
+      ecosystem: 'npm',
+      root: '/work',
+      projects: names.map((name: string) => ({
+        name,
+        manifestPath: `/work/${name}/package.json`,
+        packages: [],
+      })),
     };
-    explorer.sources.set([pypi]);
-    explorer.selected.set(pypi);
-    explorer.searchMode.set('exact');
-    explorer.canFilterPrereleases.set(false);
-    projects();
-    [...host().querySelectorAll<HTMLButtonElement>('button')]
-      .find(
-        (button: HTMLButtonElement): boolean => button.textContent?.includes('Explore') === true,
-      )!
-      .click();
-    fixture.detectChanges();
+    packages.states.set([{ manager: NPM, model, error: null, loading: false }]);
+  }
 
-    const field: HTMLInputElement | null =
-      host().querySelector<HTMLInputElement>('.packages-search input');
-    expect(field?.placeholder).toBe('Exact package name on PyPI');
-    expect(host().textContent).not.toContain('Prereleases');
+  describe('strip', () => {
+    it('strip_holdsInstalledAndExplore_withUpdatesOnlyAndRefreshOnlyInInstalled', () => {
+      projects(['web', ['current']]);
+
+      expect(host().querySelectorAll('.packages-strip__toggle')).toHaveLength(2);
+      expect(button('Updates Only')).toBeDefined();
+      expect(button('Refresh')).toBeDefined();
+
+      button('Explore')!.click();
+      fixture.detectChanges();
+
+      expect(button('Updates Only')).toBeUndefined();
+      expect(button('Refresh')).toBeUndefined();
+      expect(explorer.sourcesRequested).toBe(1);
+    });
+
+    it('updatesOnly_toggles_theModelsFilter', () => {
+      projects(['web', ['current']]);
+
+      button('Updates Only')!.click();
+      expect(packages.outdatedOnly()).toBe(true);
+      button('Updates Only')!.click();
+      expect(packages.outdatedOnly()).toBe(false);
+    });
+
+    it('refresh_reloadsTheModel', () => {
+      projects(['web', ['current']]);
+
+      button('Refresh')!.click();
+
+      expect(packages.refreshed).toBe(1);
+    });
   });
 
-  it('explore_withOnlyManagersThatCannotSearch_namesThem', () => {
-    explorer.unsearchable.set([{ ...NPM, displayName: 'Maven' }]);
-    projects();
-    [...host().querySelectorAll<HTMLButtonElement>('button')]
-      .find(
-        (button: HTMLButtonElement): boolean => button.textContent?.includes('Explore') === true,
-      )!
-      .click();
-    fixture.detectChanges();
+  describe('installed', () => {
+    it('groupBadge_whenAProjectHasOutdatedPackages_isAWarningChipWithTheCount', () => {
+      projects(['web', ['outdated', 'current', 'outdated']]);
 
-    expect(host().textContent).toContain('Maven cannot search its registry');
+      const chip: HTMLElement | null = host().querySelector<HTMLElement>(
+        '.packages-group app-chip.packages-group__badge',
+      );
+      expect(chip?.classList).toContain('chip--warning');
+      expect(chip?.textContent?.trim()).toBe('2');
+    });
+
+    it('groupHeader_namesItsPackageManager_onlyWhenSeveralReadTheFolder', () => {
+      projects(['web', ['current']]);
+      expect(host().querySelector('.packages-group__manager')).toBeNull();
+
+      packages.installed.set([NPM, { ...NPM, pluginId: 'onixlabs.nuget', displayName: 'NuGet' }]);
+      fixture.detectChanges();
+
+      expect(host().querySelector('.packages-group__manager')?.textContent?.trim()).toBe('npm');
+    });
+
+    it('scope_isAChip', () => {
+      projects(['web', ['current']]);
+
+      expect(host().querySelector('.packages-scope app-chip')?.textContent?.trim()).toBe(
+        'production',
+      );
+    });
+
+    it('update_isOfferedOnAnOutdatedPackage_andAsksForTheLatest', () => {
+      projects(['web', ['outdated', 'current']]);
+
+      expect(button('Update p1')).toBeUndefined();
+      button('Update p0')!.click();
+
+      expect(packages.writes).toEqual([
+        [
+          NPM.pluginId,
+          'update',
+          { project: '/work/web/package.json', name: 'p0', version: '2.0.0' },
+        ],
+      ]);
+    });
+
+    it('remove_asksToRemoveThePackageFromItsProject', () => {
+      projects(['web', ['current']]);
+
+      button('Remove p0')!.click();
+
+      expect(packages.writes).toEqual([
+        [NPM.pluginId, 'remove', { project: '/work/web/package.json', name: 'p0' }],
+      ]);
+    });
+
+    it('restore_onAProjectHeader_restoresIt_withoutOpeningTheManifest', () => {
+      projects(['web', ['current']]);
+
+      button('Restore web')!.click();
+
+      expect(packages.writes).toEqual([
+        [NPM.pluginId, 'restore', { project: '/work/web/package.json' }],
+      ]);
+      expect(opened).toEqual([]);
+    });
+
+    it('writes_areNotOffered_whereThePluginDeclaredNone', () => {
+      packages.installed.set([{ ...NPM, capabilities: ['sources', 'search'] }]);
+      projects(['web', ['outdated']]);
+
+      expect(button('Update p0')).toBeUndefined();
+      expect(button('Remove p0')).toBeUndefined();
+      expect(button('Restore web')).toBeUndefined();
+    });
+
+    it('aRunningChange_showsOnItsRow_andDisablesTheOthers', () => {
+      packages.writing.set({
+        pluginId: NPM.pluginId,
+        op: 'update',
+        request: { project: '/work/web/package.json', name: 'p0' },
+        title: 'Update p0',
+      });
+      projects(['web', ['outdated', 'outdated']]);
+
+      expect(button('Update p0')).toBeUndefined();
+      expect(button('Update p1')?.disabled).toBe(true);
+      expect(host().querySelector('.packages-status')?.textContent).toContain('Update p0');
+    });
+
+    it('emptyState_whenFilteringToUpdatesWithNothingOutdated_saysEverythingIsUpToDate', () => {
+      packages.outdatedOnly.set(true);
+      projects();
+
+      expect(host().textContent).toContain('Everything is up to date.');
+    });
+
+    it('emptyState_whileResolvingTheFirstModel_showsProgress', () => {
+      packages.hasModels.set(false);
+      packages.loading.set(true);
+      fixture.detectChanges();
+
+      expect(host().textContent).toContain('Resolving packages…');
+    });
+
+    it('emptyState_withNoPackageManagerInstalled_offersThePluginThatWouldReadTheFolder', () => {
+      packages.installed.set([]);
+      packages.hasModels.set(false);
+      packages.offered.set([
+        { id: 'onixlabs.npm', name: 'npm', state: 'available', contributions: [] },
+      ] as unknown as PluginSummary[]);
+      fixture.detectChanges();
+
+      expect(host().textContent).toContain(
+        "Install a package manager to see this folder's packages.",
+      );
+      expect(host().querySelector('.packages-offers__name')?.textContent?.trim()).toBe('npm');
+      expect(host().querySelector('app-plugin-action')).not.toBeNull();
+    });
+
+    it('emptyState_inAFolderNotYetTrusted_offersToTrustIt', () => {
+      packages.trust.set('unknown');
+      packages.hasModels.set(false);
+      fixture.detectChanges();
+
+      button('Trust this folder')!.click();
+
+      expect(host().textContent).toContain("This folder isn't trusted");
+      expect(packages.trusted).toBe(1);
+    });
+
+    it('emptyState_whenEveryPackageManagerFailed_saysWhy', () => {
+      packages.hasModels.set(false);
+      packages.states.set([{ manager: NPM, model: null, error: 'npm broke.', loading: false }]);
+      fixture.detectChanges();
+
+      expect(host().textContent).toContain('npm broke.');
+    });
+  });
+
+  describe('status strip', () => {
+    it('status_withOutdatedPackages_isAWarningChip', () => {
+      projects(['web', ['outdated']], ['api', ['outdated', 'outdated']]);
+
+      const chip: HTMLElement | null = host().querySelector('.packages-status app-chip');
+      expect(chip?.classList).toContain('chip--warning');
+      expect(chip?.textContent?.trim()).toBe('3 outdated');
+    });
+
+    it('status_withNothingOutdated_isAnUpToDateSuccessChip', () => {
+      projects(['web', ['current']]);
+
+      const chip: HTMLElement | null = host().querySelector('.packages-status app-chip');
+      expect(chip?.classList).toContain('chip--success');
+      expect(chip?.textContent?.trim()).toBe('Up to date');
+    });
+
+    it('status_inExplore_countsWhatIsLoadedOfTheTotal', () => {
+      exploring([LEFT_PAD]);
+
+      expect(host().querySelector('.packages-status app-chip')?.textContent?.trim()).toBe(
+        '1 of 11',
+      );
+    });
+
+    it('status_afterAFailedChange_saysWhy', () => {
+      packages.writeError.set('Install left-pad ended with exit code 1.');
+      projects(['web', ['current']]);
+
+      expect(host().querySelector('.packages-status .chip--danger')?.textContent?.trim()).toBe(
+        'Install left-pad ended with exit code 1.',
+      );
+    });
+  });
+
+  describe('explore', () => {
+    it('columns_arePackageDescriptionDownloadsVersion', () => {
+      exploring([LEFT_PAD]);
+
+      const headers: string[] = [...host().querySelectorAll('th')].map(
+        (cell: Element): string => cell.textContent?.trim() ?? '',
+      );
+      expect(headers.slice(0, 4)).toEqual(['Package', 'Description', 'Downloads', 'Version']);
+      expect(host().querySelector('.packages-downloads')?.textContent?.trim()).toBe('1.5M');
+    });
+
+    it('form_isOneRow_withPrereleasesOnlyForASourceThatCanFilterThem', () => {
+      explorer.canFilterPrereleases.set(false);
+      exploring([LEFT_PAD]);
+
+      expect(host().querySelector('.packages-form')).not.toBeNull();
+      expect(host().querySelector('.packages-form__prerelease')).toBeNull();
+
+      explorer.canFilterPrereleases.set(true);
+      fixture.detectChanges();
+
+      expect(host().querySelector('.packages-form__prerelease')).not.toBeNull();
+    });
+
+    it('aSourceThatNeedsText_saysSoWhileTheFieldIsEmpty', () => {
+      explorer.searchMode.set('query');
+      exploring([]);
+
+      expect(host().textContent).toContain('Type to search npm.');
+    });
+
+    it('aRegistryWithNoSearch_saysItLooksUpAnExactName', () => {
+      explorer.searchMode.set('exact');
+      exploring([]);
+
+      expect(host().textContent).toContain(
+        "npm has no search. Type a package's exact name to look it up.",
+      );
+      expect(
+        host().querySelector<HTMLInputElement>('.packages-form__search input')?.placeholder,
+      ).toBe('Exact package name on npm');
+      expect(host().querySelector('.packages-status')?.textContent).toContain('Exact name only');
+    });
+
+    it('install_withOneProject_goesIntoIt_atTheListedVersion', () => {
+      npmProjects('web');
+      exploring([LEFT_PAD]);
+
+      expect(host().querySelector('.packages-form__target')).toBeNull();
+      button('Install left-pad')!.click();
+
+      expect(packages.writes).toEqual([
+        [
+          NPM.pluginId,
+          'install',
+          { project: '/work/web/package.json', name: 'left-pad', version: '1.3.0' },
+        ],
+      ]);
+    });
+
+    it('install_withSeveralProjects_offersWhereItGoes', () => {
+      npmProjects('web', 'api');
+      exploring([LEFT_PAD]);
+
+      expect(host().querySelector('.packages-form__target')).not.toBeNull();
+    });
+
+    it('install_isNotOffered_byAPackageManagerThatCannot', () => {
+      npmProjects('web');
+      exploring([LEFT_PAD], { ...NPM, capabilities: ['sources', 'search'] });
+
+      expect(button('Install left-pad')).toBeUndefined();
+    });
+
+    it('explore_withOnlyManagersThatCannotSearch_namesThem', () => {
+      explorer.unsearchable.set([{ ...NPM, displayName: 'Maven' }]);
+      projects();
+      button('Explore')!.click();
+      fixture.detectChanges();
+
+      expect(host().textContent).toContain('Maven cannot search its registry');
+    });
+
+    it('loadMore_isOfferedAtTheEnd_whileThereIsMore', () => {
+      explorer.hasMore.set(true);
+      exploring([LEFT_PAD]);
+
+      expect(button('Load more')).toBeDefined();
+    });
   });
 });
