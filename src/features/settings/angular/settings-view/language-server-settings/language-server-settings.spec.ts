@@ -277,6 +277,40 @@ describe('LanguageServerSettings', () => {
       expect(row(element, 'Names for Other Arguments').closest('app-accordion')).toBe(accordion);
     });
 
+    it('aTextSetting_isATextField_storingWhatIsTyped_andClearingToTheDefault (#1212)', async () => {
+      installed = {
+        python: [
+          {
+            ...server('pyright', ['python']),
+            settings: [
+              {
+                section: 'python.pythonPath',
+                label: 'Python Interpreter',
+                description: 'The interpreter.',
+                default: '${workspaceFolder}/.venv/bin/python',
+              },
+            ],
+          },
+        ],
+      };
+      selection = { python: 'pyright' };
+      const element: HTMLElement = await render('python', 'Python');
+      const field: HTMLInputElement = row(element, 'Python Interpreter').querySelector(
+        'app-text-field input',
+      )!;
+      expect(field.value).toBe('${workspaceFolder}/.venv/bin/python');
+
+      field.value = '/usr/bin/python3';
+      field.dispatchEvent(new Event('input'));
+      field.value = '';
+      field.dispatchEvent(new Event('input'));
+
+      expect(calls).toEqual([
+        'setting:pyright:python.pythonPath:/usr/bin/python3',
+        'setting:pyright:python.pythonPath:null',
+      ]);
+    });
+
     it('aServersOwnLensSwitch_isLeftToCodeLenses (#1215)', async () => {
       installed = {
         csharp: [
