@@ -3569,6 +3569,112 @@ describe('LspClient', () => {
       });
     });
 
+    describe('rust-analyzer (#1210)', () => {
+      /**
+       * The file operations rust-analyzer 2026-07-13 offers: its `.rs` files, and every folder.
+       */
+      const RUST_OFFERED: unknown = {
+        workspace: {
+          fileOperations: {
+            willRename: {
+              filters: [
+                { scheme: 'file', pattern: { glob: '**/*.rs', matches: 'file' } },
+                { scheme: 'file', pattern: { glob: '**', matches: 'folder' } },
+              ],
+            },
+          },
+        },
+      };
+
+      /**
+       * Builds an edit replacing the text on one line.
+       * @param line The zero-based line.
+       * @param from The first character.
+       * @param to The character after the last.
+       * @param newText The text put in.
+       * @returns Returns the LSP edit.
+       */
+      function rename(line: number, from: number, to: number, newText: string): unknown {
+        return {
+          range: { start: { line, character: from }, end: { line, character: to } },
+          newText,
+        };
+      }
+
+      it('renamingAModuleFile_renamesItsModItem_andTheUseOfIt', async () => {
+        lsp.startResult = { success: true, capabilities: RUST_OFFERED };
+        // What it answered for `geometry/circle.rs` → `disk.rs`, `mod.rs` not open (so no version).
+        lsp.requestAnswers['workspace/willRenameFiles'] = {
+          documentChanges: [
+            {
+              textDocument: { version: null, uri: 'file:///root/src/geometry/mod.rs' },
+              edits: [rename(0, 8, 14, 'disk'), rename(2, 8, 14, 'disk')],
+            },
+          ],
+        };
+        const client: LspClient = build();
+        openDocument(client);
+        await flush();
+
+        const edits: WorkspaceTextEdits = await client.fileRenameEdits(
+          '/root/src/geometry/circle.rs',
+          '/root/src/geometry/disk.rs',
+        );
+
+        expect(edits.refused).toEqual([]);
+        expect(edits.files).toEqual([
+          {
+            path: '/root/src/geometry/mod.rs',
+            edits: [
+              {
+                range: { startLineNumber: 1, startColumn: 9, endLineNumber: 1, endColumn: 15 },
+                text: 'disk',
+              },
+              {
+                range: { startLineNumber: 3, startColumn: 9, endLineNumber: 3, endColumn: 15 },
+                text: 'disk',
+              },
+            ],
+          },
+        ]);
+      });
+
+      it('renamingAModuleFolder_renamesItsModItem_andThePathsThroughItInOtherCrates', async () => {
+        lsp.startResult = { success: true, capabilities: RUST_OFFERED };
+        // What it answered for `geometry/` → `geom/`: the `mod` in `lib.rs`, and `app`'s `use`.
+        lsp.requestAnswers['workspace/willRenameFiles'] = {
+          documentChanges: [
+            {
+              textDocument: { version: 1, uri: 'file:///root/src/lib.rs' },
+              edits: [rename(0, 8, 16, 'geom')],
+            },
+            {
+              textDocument: { version: 1, uri: 'file:///root/app/src/main.rs' },
+              edits: [rename(0, 12, 20, 'geom')],
+            },
+          ],
+        };
+        const client: LspClient = build();
+        openDocument(client);
+        await flush();
+
+        const edits: WorkspaceTextEdits = await client.fileRenameEdits(
+          '/root/src/geometry',
+          '/root/src/geom',
+        );
+
+        expect(asked()).toEqual([
+          {
+            files: [{ oldUri: 'file:///root/src/geometry', newUri: 'file:///root/src/geom' }],
+          },
+        ]);
+        expect(edits.files.map((file: FileTextEdits): string => file.path)).toEqual([
+          '/root/src/lib.rs',
+          '/root/app/src/main.rs',
+        ]);
+      });
+    });
+
     it('givesNothing_whenTheServerTakesTooLong', async () => {
       lsp.startResult = { success: true, capabilities: OFFERED };
       lsp.unansweredRequests.add('workspace/willRenameFiles');
