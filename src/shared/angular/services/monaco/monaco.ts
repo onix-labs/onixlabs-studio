@@ -29,6 +29,7 @@ import { editorTypingOptions } from './editor-typing-options';
 import { registerAsmLanguage } from './monaco-asm-language';
 import { registerScssLanguage } from './monaco-scss-language';
 import { registerCypherLanguage } from './monaco-cypher-language';
+import { registerDocCommentRules } from './monaco-doc-comment-rules';
 import { registerBraceFolding } from './monaco-folding';
 import { installFindCommands } from './monaco-find-commands';
 import { installGoToCommands } from './monaco-goto-commands';
@@ -712,6 +713,7 @@ export class Monaco {
     registerAsmLanguage(window.monaco);
     registerScssLanguage(window.monaco);
     registerCypherLanguage(window.monaco);
+    registerDocCommentRules(window.monaco);
     this.foldingRefreshers.push(
       registerBraceFolding(
         window.monaco,
@@ -993,6 +995,7 @@ export class Monaco {
       registerAsmLanguage(monaco, target);
       registerScssLanguage(monaco, target);
       registerCypherLanguage(monaco, target);
+      registerDocCommentRules(monaco);
       this.foldingRefreshers.push(
         registerBraceFolding(
           monaco,

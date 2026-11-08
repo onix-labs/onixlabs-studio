@@ -18,16 +18,9 @@ import {
   ProjectModel,
   ProjectOperationResult,
 } from '@shared/api/project-system';
-import {
-  PackageManagerModel,
-  PackageSearchOptions,
-  PackageSearchResult,
-  PackageSourceInfo,
-} from '@shared/api/package-management';
 import { FileInfo } from '@shared/api/file-channels';
 import { imageMimeTypeOf } from '@shared/api/image-formats';
 import { ProjectChannel } from '@shared/api/project-channels';
-import { PackageChannel } from '@shared/api/package-channels';
 import {
   BinaryChunk,
   BinaryPatch,
@@ -41,9 +34,6 @@ import {
 import type { FileHandle } from 'node:fs/promises';
 import { projectSystems } from './project-system/default-project-systems';
 import { ProjectSystem } from './project-system/project-system';
-import { packageManagers } from './package-management/default-package-managers';
-import { HttpFetch, PackageManager } from './package-management/package-manager';
-import { PackagePluginRoute } from './package-managers/package-plugin-route';
 import { readOnlySourcePath } from './lsp/toolchain-source';
 import { TrustedPaths } from './trusted-paths';
 import { trashOrRemove } from './trash-or-remove';
@@ -107,38 +97,20 @@ export class WorkspaceManager {
   private readonly trusted: TrustedPaths;
 
   /**
-   * Holds the route to an installed package-manager plugin, or null when there is none to ask. Core's
-   * own npm and NuGet serve whatever it declines, until #911 removes them.
-   */
-  private readonly packagePlugins: PackagePluginRoute | null;
-
-  /**
-   * Holds the HTTP fetch used for package-registry queries (the main-process global fetch), referenced
-   * through `globalThis` so this module carries no ambient fetch-type dependency.
-   */
-  private readonly httpFetch: HttpFetch = (
-    url: string,
-    init?: { headers?: Record<string, string> },
-  ): ReturnType<HttpFetch> => (globalThis as unknown as { fetch: HttpFetch }).fetch(url, init);
-
-  /**
    * Initializes a new instance of the {@link WorkspaceManager} class.
    * @param windowGetter A function that returns the window dialogs are parented to when the
    * requesting window is gone.
    * @param workspace The shared workspace context to update when a folder is opened or closed.
    * @param trusted The store recording paths the user has opened, gating path-based re-opens.
-   * @param packagePlugins The route to an installed package-manager plugin, or null for none.
    */
   public constructor(
     windowGetter: () => BrowserWindow | null,
     workspace: WorkspaceContext,
     trusted: TrustedPaths,
-    packagePlugins: PackagePluginRoute | null = null,
   ) {
     this.windowGetter = windowGetter;
     this.workspace = workspace;
     this.trusted = trusted;
-    this.packagePlugins = packagePlugins;
   }
 
   /**
@@ -322,139 +294,7 @@ export class WorkspaceManager {
         return this.renameSolutionFolder(root, folderPath, name);
       },
     );
-    ipcMain.handle(
-      PackageChannel.ModelLoad,
-      (_event: IpcMainInvokeEvent, root: unknown): Promise<PackageManagerModel | null> => {
-        logger.trace('WorkspaceManager.register', `IPC ${PackageChannel.ModelLoad}`);
-        return this.loadPackageModel(root);
-      },
-    );
-    ipcMain.handle(
-      PackageChannel.Sources,
-      (_event: IpcMainInvokeEvent, root: unknown): Promise<readonly PackageSourceInfo[]> => {
-        logger.trace('WorkspaceManager.register', `IPC ${PackageChannel.Sources}`);
-        return this.loadPackageSources(root);
-      },
-    );
-    ipcMain.handle(
-      PackageChannel.Search,
-      (
-        _event: IpcMainInvokeEvent,
-        root: unknown,
-        sourceName: unknown,
-        query: unknown,
-        options: unknown,
-      ): Promise<PackageSearchResult> => {
-        logger.trace('WorkspaceManager.register', `IPC ${PackageChannel.Search}`);
-        return this.searchPackages(root, sourceName, query, options);
-      },
-    );
     logger.info('WorkspaceManager', 'Registered workspace IPC handlers');
-  }
-
-  /**
-   * Loads the package model for an open workspace root, resolving the package manager that applies to
-   * it. Confined to open roots so the renderer cannot drive a filesystem scan (or registry queries) of
-   * arbitrary locations.
-   * @param root The candidate workspace root.
-   * @returns Returns the model, or null when the root is not open or no package manager applies.
-   */
-  private async loadPackageModel(root: unknown): Promise<PackageManagerModel | null> {
-    if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
-      logger.warn('WorkspaceManager.loadPackageModel', 'Rejected non-open root');
-      return null;
-    }
-    const served: PackageManagerModel | null | undefined = await this.packagePlugins?.load(root);
-    if (served !== null && served !== undefined) {
-      return served;
-    }
-    const manager: PackageManager | null = await packageManagers.match(root);
-    if (manager === null) {
-      logger.debug('WorkspaceManager.loadPackageModel', `No package manager for ${root}`);
-      return null;
-    }
-    logger.debug('WorkspaceManager.loadPackageModel', `Loading package model for ${root}`);
-    return manager.load(root, this.httpFetch);
-  }
-
-  /**
-   * Lists the package sources available to browse for an open workspace root. Confined to open roots.
-   * @param root The candidate workspace root.
-   * @returns Returns the sources, or an empty list when the root is not open or has no searchable manager.
-   */
-  private async loadPackageSources(root: unknown): Promise<readonly PackageSourceInfo[]> {
-    if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
-      return [];
-    }
-    const served: readonly PackageSourceInfo[] | null | undefined =
-      await this.packagePlugins?.sources(root);
-    if (served !== null && served !== undefined) {
-      return served;
-    }
-    const manager: PackageManager | null = await packageManagers.match(root);
-    return (await manager?.listSources?.(root)) ?? [];
-  }
-
-  /**
-   * Searches (or browses) a source's packages for an open workspace root. Confined to open roots; the
-   * paging options are clamped so the renderer cannot request an unbounded page.
-   * @param root The candidate workspace root.
-   * @param sourceName The source to search.
-   * @param query The search text.
-   * @param options The paging and prerelease options.
-   * @returns Returns a page of results, empty when the root is not open or the manager cannot search.
-   */
-  private async searchPackages(
-    root: unknown,
-    sourceName: unknown,
-    query: unknown,
-    options: unknown,
-  ): Promise<PackageSearchResult> {
-    const empty: PackageSearchResult = { items: [], total: 0, hasMore: false };
-    if (
-      typeof root !== 'string' ||
-      !this.workspace.isRoot(root) ||
-      typeof sourceName !== 'string' ||
-      typeof query !== 'string'
-    ) {
-      return empty;
-    }
-    const served: PackageSearchResult | null | undefined = await this.packagePlugins?.search(
-      root,
-      sourceName,
-      query,
-      this.searchOptions(options),
-    );
-    if (served !== null && served !== undefined) {
-      return served;
-    }
-    const manager: PackageManager | null = await packageManagers.match(root);
-    if (manager?.search === undefined) {
-      logger.debug('WorkspaceManager.searchPackages', `No searchable package manager for ${root}`);
-      return empty;
-    }
-    logger.debug('WorkspaceManager.searchPackages', `Searching ${sourceName} for "${query}"`);
-    return manager.search(root, sourceName, query, this.searchOptions(options), this.httpFetch);
-  }
-
-  /**
-   * Sanitises the renderer-supplied search options: a non-negative skip and a positive take bounded to
-   * a sane page size, with prerelease defaulting off.
-   * @param options The candidate options.
-   * @returns Returns the clamped options.
-   */
-  private searchOptions(options: unknown): PackageSearchOptions {
-    const record: { skip?: unknown; take?: unknown; prerelease?: unknown } =
-      typeof options === 'object' && options !== null ? options : {};
-    const skip: number =
-      typeof record.skip === 'number' && Number.isFinite(record.skip) && record.skip > 0
-        ? Math.floor(record.skip)
-        : 0;
-    const take: number =
-      typeof record.take === 'number' && record.take > 0
-        ? Math.min(Math.floor(record.take), 100)
-        : 50;
-    return { skip, take, prerelease: record.prerelease === true };
   }
 
   /**
