@@ -41,6 +41,8 @@ on:
         'plugin-npm-v*',
         'plugin-nuget-v*',
         'plugin-go-modules-v*',
+        'plugin-vcpkg-v*',
+        'plugin-conan-v*',
         'plugin-dotnet-tests-v*',
         'plugin-js-tests-v*',
         'plugin-python-tests-v*',
