@@ -1,49 +1,82 @@
-<app-panel-toolbar role="group" aria-label="Package view">
-  <app-button
-    variant="none"
-    [icon]="Icon.PACKAGES"
-    label="Installed"
-    [pressed]="mode() === 'installed'"
-    tooltip="Installed dependencies"
+<!-- One tool strip (#882, #912): Installed · Explore in the Find & Replace style, and in Installed the
+     icon-only Updates only and Refresh at the right. -->
+<app-panel-toolbar class="packages-strip" role="tablist" aria-label="Packages">
+  <button
+    type="button"
+    class="panel-toolbar__button packages-strip__toggle"
+    role="tab"
+    [class.panel-toolbar__button--active]="mode() === 'installed'"
+    [attr.aria-selected]="mode() === 'installed'"
     (click)="setMode('installed')"
-  />
-  <app-button
-    variant="none"
-    [icon]="Icon.SEARCH"
-    label="Explore"
-    [pressed]="mode() === 'explore'"
-    tooltip="Browse and search packages"
+  >
+    <app-icon [icon]="Icon.PACKAGES" />
+    <span>Installed</span>
+  </button>
+  <button
+    type="button"
+    class="panel-toolbar__button packages-strip__toggle"
+    role="tab"
+    [class.panel-toolbar__button--active]="mode() === 'explore'"
+    [attr.aria-selected]="mode() === 'explore'"
     (click)="setMode('explore')"
-  />
-</app-panel-toolbar>
-
-@if (mode() === 'installed') {
-  <app-panel-toolbar role="group" aria-label="Installed packages">
+  >
+    <app-icon [icon]="Icon.SEARCH" />
+    <span>Explore</span>
+  </button>
+  @if (mode() === 'installed') {
+    <span class="panel-toolbar__spacer"></span>
     <app-button
       variant="none"
       [icon]="Icon.ARROW_UP"
-      label="Updates only"
-      [pressed]="packages.outdatedOnly()"
+      ariaLabel="Updates Only"
       tooltip="Show only packages with updates"
+      [pressed]="packages.outdatedOnly()"
       (click)="toggleOutdatedOnly()"
     />
     <app-button
       variant="none"
       [icon]="Icon.REFRESH"
-      label="Refresh"
+      ariaLabel="Refresh"
       tooltip="Re-check installed and latest versions"
+      [disabled]="packages.writing() !== null"
       (click)="refresh()"
     />
-    <span class="panel-toolbar__spacer"></span>
-    @if (packages.outdatedCount() > 0) {
-      <span class="packages-count packages-count--outdated">
-        <app-icon [icon]="Icon.ARROW_UP" />
-        {{ packages.outdatedCount() }}
-      </span>
-    }
-  </app-panel-toolbar>
+  }
+</app-panel-toolbar>
 
-  @if (packages.loading() && packages.model() === null) {
+@if (mode() === 'installed') {
+  @if (packages.installed().length === 0 && packages.offered().length > 0) {
+    <!-- Studio reads no package manifest of its own: with no plugin installed, say which one would. -->
+    <div class="packages-empty">
+      <app-icon [icon]="Icon.PACKAGES" />
+      <p>Install a package manager to see this folder's packages.</p>
+      <ul class="packages-offers">
+        @for (plugin of packages.offered(); track plugin.id) {
+          <li class="packages-offers__item">
+            <span class="packages-offers__name">{{ plugin.name }}</span>
+            <app-plugin-action [plugin]="plugin" />
+          </li>
+        }
+      </ul>
+    </div>
+  } @else if (packages.installed().length > 0 && packages.trust() !== 'trusted') {
+    <!-- Laid out like the source-control panels' untrusted state, and recording the same decision. -->
+    <div class="packages-empty">
+      <app-icon [icon]="Icon.LOCK" />
+      <p>This folder isn't trusted</p>
+      <p>
+        Package managers read this folder's configuration and talk to the registries it names, so
+        Studio runs them only in a folder you trust.
+      </p>
+      <app-button
+        variant="solid"
+        [icon]="Icon.LOCK_OPEN"
+        label="Trust this folder"
+        [disabled]="trusting()"
+        (click)="trustFolder()"
+      />
+    </div>
+  } @else if (packages.loading() && !packages.hasModels()) {
     <div class="packages-empty">
       <app-icon [icon]="Icon.SPINNER" />
       <p>Resolving packages…</p>
@@ -61,34 +94,83 @@
         <span class="packages-group">
           <app-icon class="packages-group__icon" [icon]="Icon.PROJECT" />
           <span class="packages-group__name">{{ group(row).name }}</span>
+          @if (several()) {
+            <app-chip class="packages-group__manager">{{ group(row).manager }}</app-chip>
+          }
           @if (group(row).outdated > 0) {
             <app-chip class="packages-group__badge" tone="warning">{{
               group(row).outdated
             }}</app-chip>
           }
+          @if (can(group(row).pluginId, 'restore')) {
+            <app-button
+              class="packages-group__action"
+              variant="none"
+              [icon]="Icon.DOWNLOAD"
+              [ariaLabel]="'Restore ' + group(row).name"
+              tooltip="Restore what this project declares"
+              [disabled]="packages.writing() !== null"
+              (click)="restore($event, group(row))"
+            />
+          }
         </span>
       </ng-template>
 
       <ng-template appTableRow let-row>
-        <td [class]="'packages-name packages-name--' + pkg(row).status">
-          <app-icon class="packages-name__icon" [icon]="iconFor(pkg(row).status)" />
-          <span class="packages-name__text">{{ pkg(row).name }}</span>
+        <td [class]="'packages-name packages-name--' + pkg(row).package.status">
+          <app-icon class="packages-name__icon" [icon]="iconFor(pkg(row).package.status)" />
+          <span class="packages-name__text">{{ pkg(row).package.name }}</span>
         </td>
-        <td class="packages-scope">{{ pkg(row).scope }}</td>
-        <td class="packages-installed">{{ pkg(row).installed ?? pkg(row).requested }}</td>
-        <td class="packages-latest packages-latest--{{ pkg(row).status }}">
-          @if (pkg(row).status === 'outdated') {
-            {{ pkg(row).latest }}
+        <td class="packages-scope">
+          <app-chip>{{ pkg(row).package.scope }}</app-chip>
+        </td>
+        <td class="packages-installed">
+          {{ pkg(row).package.installed ?? pkg(row).package.requested }}
+        </td>
+        <td class="packages-latest packages-latest--{{ pkg(row).package.status }}">
+          @if (pkg(row).package.status === 'outdated') {
+            {{ pkg(row).package.latest }}
           } @else {
             <span class="packages-latest__dash">—</span>
           }
         </td>
+        <td class="packages-actions">
+          @if (isWriting(pkg(row))) {
+            <app-icon [icon]="Icon.SPINNER" />
+          } @else {
+            @if (pkg(row).package.status === 'outdated' && can(pkg(row).pluginId, 'update')) {
+              <app-button
+                variant="none"
+                [icon]="Icon.ARROW_UP"
+                [ariaLabel]="'Update ' + pkg(row).package.name"
+                [tooltip]="'Update to ' + pkg(row).package.latest"
+                [disabled]="packages.writing() !== null"
+                (click)="update(pkg(row))"
+              />
+            }
+            @if (can(pkg(row).pluginId, 'remove')) {
+              <app-button
+                variant="none"
+                [icon]="Icon.TRASH"
+                [ariaLabel]="'Remove ' + pkg(row).package.name"
+                tooltip="Remove from this project"
+                [disabled]="packages.writing() !== null"
+                (click)="remove(pkg(row))"
+              />
+            }
+          }
+        </td>
       </ng-template>
     </app-table>
-  } @else if (packages.model() !== null && packages.outdatedOnly()) {
+  } @else if (packages.hasModels() && packages.outdatedOnly()) {
     <div class="packages-empty">
       <app-icon [icon]="Icon.CHECK" />
       <p>Everything is up to date.</p>
+    </div>
+  } @else if (failure(); as error) {
+    <div class="packages-empty">
+      <app-icon [icon]="Icon.WARNING" />
+      <p>{{ error }}</p>
     </div>
   } @else {
     <div class="packages-empty">
@@ -97,43 +179,67 @@
     </div>
   }
 } @else {
-  <app-panel-toolbar role="group" aria-label="Explore packages">
-    @if (explorer.sources().length > 0) {
+  <!-- The Explore form, on one row under the strip: the source, the search, where an install goes when
+       there is a choice, and Prereleases only for a source that can filter by them. -->
+  @if (explorer.sources().length > 0) {
+    <div class="packages-form">
       <app-dropdown
+        class="packages-form__source"
         [options]="sourceOptions()"
         [value]="explorer.selectedSource() ?? ''"
         (valueChange)="explorer.selectSource($event)"
         ariaLabel="Package source"
       />
-    }
-    <app-text-field
-      class="packages-search"
-      [value]="explorer.query()"
-      (valueChange)="explorer.setQuery($event)"
-      placeholder="Search packages…"
-      ariaLabel="Search packages"
-    />
-    <span class="panel-toolbar__spacer"></span>
-    <span class="packages-prerelease">
-      <app-toggle
-        [checked]="explorer.prerelease()"
-        (checkedChange)="explorer.setPrerelease($event)"
-        ariaLabel="Include prereleases"
+      <app-text-field
+        class="packages-form__search"
+        kind="search"
+        [value]="explorer.query()"
+        (valueChange)="explorer.setQuery($event)"
+        [placeholder]="searchPlaceholder()"
+        ariaLabel="Search packages"
       />
-      Prereleases
-    </span>
-  </app-panel-toolbar>
+      @if (targetOptions().length > 1) {
+        <app-dropdown
+          class="packages-form__target"
+          [options]="targetOptions()"
+          [value]="installTarget() ?? ''"
+          (valueChange)="target.set($event)"
+          ariaLabel="Install into"
+        />
+      }
+      @if (explorer.canFilterPrereleases()) {
+        <span class="packages-form__prerelease">
+          <app-toggle
+            [checked]="explorer.prerelease()"
+            (checkedChange)="explorer.setPrerelease($event)"
+            ariaLabel="Include prereleases"
+          />
+          Prereleases
+        </span>
+      }
+    </div>
+  }
 
   @if (explorer.sources().length === 0) {
     <div class="packages-empty">
       <app-icon [icon]="Icon.INFO" />
-      <p>Exploration isn't available for this workspace.</p>
+      @if (explorer.unsearchable().length > 0) {
+        <p>{{ unsearchableText() }}</p>
+      } @else {
+        <p>Exploration isn't available for this workspace.</p>
+      }
+    </div>
+  } @else if (explorer.searchMode() !== 'browse' && explorer.query().trim().length === 0) {
+    <div class="packages-empty">
+      <app-icon [icon]="Icon.SEARCH" />
+      <p>{{ promptText() }}</p>
     </div>
   } @else {
     <app-table
       class="packages-table"
       [columns]="exploreColumns"
       [rows]="exploreRows()"
+      [emptyText]="explorer.loading() ? 'Searching…' : 'No packages found.'"
       (sortChange)="onExploreSort($event)"
     >
       <ng-template appTableRow let-row>
@@ -143,26 +249,64 @@
           }
           <span class="packages-explore-name__text">{{ item(row).name }}</span>
         </td>
-        <td class="packages-version">{{ item(row).version }}</td>
-        <td class="packages-downloads">{{ formatDownloads(item(row).downloads) }}</td>
         <td class="packages-desc">{{ item(row).description }}</td>
+        <td class="packages-downloads">{{ formatDownloads(item(row).downloads) }}</td>
+        <td class="packages-version">{{ item(row).version }}</td>
+        <td class="packages-actions">
+          @if (canInstall()) {
+            @if (isInstalling(item(row))) {
+              <app-icon [icon]="Icon.SPINNER" />
+            } @else {
+              <app-button
+                variant="none"
+                [icon]="Icon.PLUS"
+                [ariaLabel]="'Install ' + item(row).name"
+                [tooltip]="installTooltip()"
+                [disabled]="packages.writing() !== null || installTarget() === null"
+                (click)="install(item(row))"
+              />
+            }
+          }
+        </td>
       </ng-template>
     </app-table>
 
-    <div class="packages-footer">
-      @if (explorer.loading()) {
-        <app-icon [icon]="Icon.SPINNER" />
-        <span>Loading…</span>
-      } @else if (exploreRows().length === 0) {
-        <span>No packages found.</span>
-      } @else {
-        <span class="packages-footer__count"
-          >{{ exploreRows().length }} of {{ explorer.total() }}</span
-        >
-        @if (explorer.hasMore()) {
-          <app-button variant="none" label="Load more" (click)="explorer.loadMore()" />
-        }
-      }
-    </div>
+    @if (explorer.hasMore() && !explorer.loading()) {
+      <div class="packages-more">
+        <app-button variant="none" label="Load more" (click)="explorer.loadMore()" />
+      </div>
+    }
   }
 }
+
+<!-- The status strip: what the panel is showing, as chips; read-only. -->
+<app-panel-status class="packages-status">
+  @if (packages.writing(); as running) {
+    <app-chip tone="info" [icon]="Icon.SPINNER">{{ running.title }}</app-chip>
+  } @else if (packages.writeError(); as error) {
+    <app-chip tone="danger">{{ error }}</app-chip>
+  }
+  @if (mode() === 'installed') {
+    @if (packages.hasModels()) {
+      <span class="panel-status__item">{{ summaryText() }}</span>
+      <span class="panel-toolbar__spacer"></span>
+      @if (packages.outdatedCount() > 0) {
+        <app-chip tone="warning" [icon]="Icon.ARROW_UP"
+          >{{ packages.outdatedCount() }} outdated</app-chip
+        >
+      } @else {
+        <app-chip tone="success" [icon]="Icon.CHECK">Up to date</app-chip>
+      }
+    }
+  } @else if (explorer.sources().length > 0) {
+    @if (explorer.searchMode() === 'exact') {
+      <app-chip tone="info">Exact name only</app-chip>
+    }
+    <span class="panel-toolbar__spacer"></span>
+    @if (explorer.loading()) {
+      <app-chip [icon]="Icon.SPINNER">Searching</app-chip>
+    } @else if (exploreRows().length > 0) {
+      <app-chip>{{ exploreRows().length }} of {{ explorer.total() }}</app-chip>
+    }
+  }
+</app-panel-status>

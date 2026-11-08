@@ -79,6 +79,9 @@
           <app-projects-folder />
           <app-settings-section sectionId="workspaces-new-projects" />
         }
+        @case ('workspaces-packages') {
+          <app-package-registry-tokens />
+        }
         @case ('code-general') {
           <app-settings-section sectionId="code-general" />
         }
@@ -87,6 +90,9 @@
         }
         @case ('code-highlighting') {
           <app-settings-section sectionId="code-highlighting" />
+        }
+        @case ('code-lens') {
+          <app-settings-section sectionId="code-lens" />
         }
         @case ('code-editing') {
           <app-settings-section sectionId="code-editing" />
