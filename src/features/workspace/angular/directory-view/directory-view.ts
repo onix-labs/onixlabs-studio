@@ -143,6 +143,7 @@ import { ActiveRun } from '@shared/angular/services/tasks/builds';
 import { createMinimumHold, MinimumHold } from '@shared/angular/services/minimum-hold/minimum-hold';
 import { Debugger } from '@shared/angular/services/debug/debugger';
 import { DebugSession } from '@features/workspace/angular/debug/debug-session';
+import { TestExplorer } from '@features/workspace/angular/tests/test-explorer';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
 import {
   ActiveWorkspace,
@@ -220,6 +221,7 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
   terminal: ['errors', 'output'],
   output: ['errors', 'terminal'],
   packages: ['errors', 'terminal'],
+  tests: ['errors', 'terminal'],
   references: ['errors', 'terminal'],
   hierarchy: ['references', 'errors', 'terminal'],
   debug: ['errors', 'terminal'],
@@ -291,6 +293,8 @@ const AGENT_OPEN: OpenOptions = { background: true };
     ReferencesPanelState,
     // The hierarchy this tab's Hierarchy panel shows (#1153), per view for the same reason.
     HierarchyPanelState,
+    // This tab's tests and test runs (#1352), per view so a run carries on while the panel is hidden.
+    TestExplorer,
     // Where this tab's problems are, for its explorers' error squiggles and filters (#1182 follow-up).
     WorkspaceProblems,
     // Beside the openers it switches between, so a switch acts on this tab's dock and documents.
@@ -585,6 +589,11 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly packageModel: PackageModel = inject(PackageModel);
 
   /**
+   * Holds this tab's tests, whose adapters drive the Tests panel (#1352).
+   */
+  private readonly testExplorer: TestExplorer = inject(TestExplorer);
+
+  /**
    * Holds this tab's scoped language-server client, started eagerly for a .NET solution.
    */
   private readonly lspClient: LspClient = inject(LspClient);
@@ -812,6 +821,9 @@ export class DirectoryView implements OnInit, OnDestroy {
       return {
         solution: this.solutionModel.model() !== null,
         packages: this.packageModel.available(),
+        // Listed whenever an adapter applies, installed or not: an uninstalled one is where the panel's
+        // empty state names the plugin that finds these tests.
+        tests: this.testExplorer.adapters().length > 0,
         debug: this.debugSession.state() !== 'idle',
         // The demoted Logs panel is reachable exactly when it has content, as it always was — the
         // difference is that it is now passed over rather than cut out of the layout, so a layout
@@ -1507,6 +1519,14 @@ export class DirectoryView implements OnInit, OnDestroy {
       untracked((): void => this.syncPackagesPanel(hasModel));
     });
 
+    // Add the Tests panel to the bottom group once an installed test adapter applies to this tab's
+    // folder (#1352). Only an installed one: a folder that merely looks like it has tests does not get
+    // a tab of its own, though View → Panels still lists it.
+    effect((): void => {
+      const hasAdapter: boolean = this.testExplorer.installed().length > 0;
+      untracked((): void => this.syncTestsPanel(hasAdapter));
+    });
+
     // Reveal the Debug panel (call stack / variables / watch) while a debug session runs, tabbing it
     // beside the Error List; remove it when the session ends. Layout reads/writes are untracked
     // so the effect reacts to the session state alone.
@@ -1831,6 +1851,31 @@ export class DirectoryView implements OnInit, OnDestroy {
       if (previous !== null) {
         this.dockState.setActive(anchor.id, previous);
       }
+    }
+  }
+
+  /**
+   * Adds the Tests panel to the bottom tool group, beside the Error List, once an installed test adapter
+   * applies (#1352), for a layout that does not already name it — in the background, without taking the
+   * active tab. Mirrors {@link syncPackagesPanel}: it only adds, and the dock passes over the panel
+   * while no adapter applies.
+   * @param hasAdapter Whether an installed adapter applies to this tab's folder.
+   */
+  private syncTestsPanel(hasAdapter: boolean): void {
+    if (!hasAdapter || collectPanelIds(this.dockState.layout()).includes('tests')) {
+      return;
+    }
+    const anchor: StackNode | null =
+      findStackOfPanel(this.dockState.layout(), 'errors') ??
+      findStackOfPanel(this.dockState.layout(), 'terminal') ??
+      firstStackOfRole(this.dockState.layout(), 'tool');
+    if (anchor === null) {
+      return;
+    }
+    const previous: string | null = anchor.active;
+    this.dockState.tabInto(anchor.id, 'tests');
+    if (previous !== null) {
+      this.dockState.setActive(anchor.id, previous);
     }
   }
 
