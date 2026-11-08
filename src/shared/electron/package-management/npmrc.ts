@@ -222,6 +222,9 @@ export function resolveNpmEndpoint(
  * @returns Returns the headers (empty when no credential matches).
  */
 function authHeaders(auth: readonly NpmAuthEntry[], registry: string): Record<string, string> {
+  if (!mayCarryCredentials(registry)) {
+    return {};
+  }
   const schemeless: string = `${registry.replace(/^https?:/, '')}/`;
   let best: NpmAuthEntry | null = null;
   for (const entry of auth) {
@@ -242,6 +245,32 @@ function authHeaders(auth: readonly NpmAuthEntry[], registry: string): Record<st
     return { Authorization: `Basic ${best.basic}` };
   }
   return {};
+}
+
+/**
+ * The hosts a plain-http registry may still be sent a credential at, because the traffic never leaves
+ * the machine.
+ */
+const LOOPBACK_HOSTS: ReadonlySet<string> = new Set<string>(['localhost', '127.0.0.1', '[::1]']);
+
+/**
+ * Determines whether a request to a registry may carry a credential: only over https, or over plain
+ * http to loopback. ⛔ Auth prefixes are scheme-less, so without this a `registry=http://...` line
+ * would send a token saved for the https host across the network in clear.
+ * @param registry The registry URL.
+ * @returns Returns true when an Authorization header may be attached.
+ */
+export function mayCarryCredentials(registry: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(registry);
+  } catch {
+    return false;
+  }
+  if (url.protocol === 'https:') {
+    return true;
+  }
+  return url.protocol === 'http:' && LOOPBACK_HOSTS.has(url.hostname);
 }
 
 /**

@@ -121,6 +121,7 @@ type SettingsSectionId =
   | 'code-general'
   | 'code-appearance'
   | 'code-highlighting'
+  | 'code-lens'
   | 'code-editing'
   | 'code-saving'
   | 'code-suggestions'
@@ -529,6 +530,7 @@ export class SettingsView {
           label: 'Guides and Highlights',
           sectionId: 'code-highlighting',
         },
+        { id: 'code-lens-leaf', label: 'Code Lenses', sectionId: 'code-lens' },
         { id: 'code-editing-leaf', label: 'Editing', sectionId: 'code-editing' },
         { id: 'code-saving-leaf', label: 'Saving', sectionId: 'code-saving' },
         {
