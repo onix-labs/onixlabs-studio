@@ -15,6 +15,7 @@ import {
   ManifestVersionControl,
   ManifestHosting,
   ManifestPackageManager,
+  ManifestTestAdapter,
   parsePluginManifest,
   PluginManifest,
 } from '@shared/api/plugin-manifest';
@@ -60,6 +61,10 @@ import {
   PackageManagerDescriptor,
   PackageManagerResolution,
 } from '../../package-managers/package-manager-descriptor';
+import {
+  TestAdapterDescriptor,
+  TestAdapterResolution,
+} from '../../test-adapters/test-adapter-descriptor';
 
 /**
  * The file a sideloaded plugin is described by, inside its own directory.
@@ -537,6 +542,14 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
     displayName: manager.displayName,
     priority: manager.priority,
   }));
+  const testAdapters: readonly PluginContribution[] = (manifest.contributes.testAdapters ?? []).map(
+    (adapter: ManifestTestAdapter): PluginContribution => ({
+      slot: 'test-adapter',
+      id: adapter.id,
+      displayName: adapter.displayName,
+      priority: adapter.priority,
+    }),
+  );
   return [
     ...servers,
     ...adapters,
@@ -547,6 +560,7 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
     ...harnesses,
     ...databaseEngines,
     ...packageManagers,
+    ...testAdapters,
   ];
 }
 
@@ -981,6 +995,58 @@ export function toPackageManagerDescriptors(
           manager.command,
           entryPoint,
           manager.displayName,
+          nodeRuntime,
+        );
+        return typeof spec === 'string'
+          ? { available: false, reason: spec }
+          : { available: true, spec };
+      },
+    }),
+  );
+}
+
+/**
+ * Turns a manifest's test adapters into descriptors the test-adapter host can start (#1351).
+ *
+ * Like a package manager, an adapter that is not installed stays registered and resolves to
+ * unavailable, so the Tests panel can say why and offer the install.
+ * @param manifest The validated manifest.
+ * @param provisioner Gets the provisioner the plugin's install went through.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @param localRoot The sideloaded plugin's directory, or undefined when it was not sideloaded.
+ * @param installedVersion Resolves the installed version of a plugin.
+ * @returns Returns the descriptors.
+ */
+export function toTestAdapterDescriptors(
+  manifest: PluginManifest,
+  provisioner: () => LspProvisioner,
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+  localRoot?: string,
+  installedVersion?: InstalledVersion,
+): readonly TestAdapterDescriptor[] {
+  const ops: PayloadOps = payloadOps(manifest, localRoot, installedVersion);
+  return (manifest.contributes.testAdapters ?? []).map(
+    (adapter: ManifestTestAdapter): TestAdapterDescriptor => ({
+      id: adapter.id,
+      displayName: adapter.displayName,
+      frameworks: adapter.frameworks,
+      priority: adapter.priority,
+      markers: adapter.markers,
+      capabilities: adapter.capabilities,
+      resolve: (): TestAdapterResolution => {
+        const entryPoint: string | null = ops.isInstalled(provisioner())
+          ? ops.target(provisioner(), adapter.entryPoint)
+          : null;
+        if (entryPoint === null) {
+          return {
+            available: false,
+            reason: `${adapter.displayName} is not installed — install it in Plugins.`,
+          };
+        }
+        const spec: NodeRuntimeSpec | string = toCommandSpec(
+          adapter.command,
+          entryPoint,
+          adapter.displayName,
           nodeRuntime,
         );
         return typeof spec === 'string'

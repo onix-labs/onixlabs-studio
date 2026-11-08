@@ -103,6 +103,8 @@ import { StartupPreferences, StartupPreferencesStore } from './startup-preferenc
 import { parseStartupSettings, StartupSettings } from '@shared/api/startup-settings';
 import { VersionControlHost } from '@shared/electron/version-control/version-control-host';
 import { PackageManagerHost } from '@shared/electron/package-managers/package-manager-host';
+import { TestAdapterHost } from '@shared/electron/test-adapters/test-adapter-host';
+import { TestAdapterManager } from '@shared/electron/test-adapters/test-adapter-manager';
 import { PackagePluginRoute } from '@shared/electron/package-managers/package-plugin-route';
 import { VersionControlManager } from '@shared/electron/version-control/version-control-manager';
 import { VersionControlSetup } from '@shared/electron/version-control/version-control-setup';
@@ -112,6 +114,7 @@ import type { MetadataPolicies } from '@shared/electron/directory-watch-filter';
 import {
   contributedHosting,
   contributedPackageManagers,
+  contributedTestAdapters,
   contributedVersionControl,
 } from '@shared/electron/contributions/plugins/contributed';
 import {
@@ -471,6 +474,24 @@ class Program {
     // tool's own configuration meanwhile.
     credential: () => Promise.resolve(null),
   });
+
+  /**
+   * Hosts the test-adapter plugins (#1351): finds which apply to a folder, confines every request to an
+   * open, trusted workspace, gives each run its own output folder, and checks every command and launch
+   * a plugin answers with before Studio runs it. Core knows no test framework — each is a plugin.
+   */
+  private readonly testAdapterHost: TestAdapterHost = new TestAdapterHost({
+    descriptors: () => contributedTestAdapters(versionControlNodeRuntime),
+    roots: this.workspaceContext,
+    trust: this.repositoryTrust,
+  });
+
+  /**
+   * Serves the Tests panel's requests to the test-adapter host.
+   */
+  private readonly testAdapterManager: TestAdapterManager = new TestAdapterManager(
+    this.testAdapterHost,
+  );
 
   /**
    * Holds which tool each version-control plugin runs, as chosen in Settings.
@@ -1199,6 +1220,7 @@ class Program {
     this.codeRunner.register();
     this.versionControlManager.register();
     this.hostingManager.register();
+    this.testAdapterManager.register();
     this.workspaceManager.register();
     this.searchManager.register();
     this.studioStore.register();
@@ -1250,6 +1272,8 @@ class Program {
         this.versionControlHost.restartPlugin(contribution.id);
       } else if (contribution.slot === 'package-manager') {
         this.packageManagerHost.restartPlugin(contribution.id);
+      } else if (contribution.slot === 'test-adapter') {
+        this.testAdapterHost.restartPlugin(contribution.id);
       } else if (contribution.slot === 'agent-harness') {
         this.aiManager.retireHarnessSessions(contribution.id);
       } else if (contribution.slot === 'database-engine') {
@@ -1617,6 +1641,7 @@ class Program {
     this.decoderHost.dispose();
     this.versionControlManager.dispose();
     this.packageManagerHost.dispose();
+    this.testAdapterManager.dispose();
     this.hostingManager.dispose();
     this.fileWatcher.disposeAll();
     this.directoryWatcher.disposeAll();
