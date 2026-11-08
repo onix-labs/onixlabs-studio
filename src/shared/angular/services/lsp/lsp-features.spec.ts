@@ -5,6 +5,7 @@ import { Bridge } from '@shared/api/bridge';
 import {
   LspChannel,
   LspSemanticTokensLegend,
+  SEMANTIC_TOKEN_MODIFIERS,
   SEMANTIC_TOKEN_TYPES,
 } from '@shared/api/lsp-channels';
 import { FileChannel } from '@shared/api/file-channels';
@@ -3286,6 +3287,40 @@ describe('LspFeatures', () => {
       ]);
     },
   );
+
+  it.each([
+    ['annotation', 'decorator'],
+    ['annotationMember', 'method'],
+    ['record', 'class'],
+    ['recordComponent', 'property'],
+  ])('semanticTokens_coloursJavas_%s_as_%s (#1208)', async (name: string, standard: string) => {
+    semanticLegend = { tokenTypes: [name], tokenModifiers: [] };
+    responses['textDocument/semanticTokens/full'] = { data: [0, 0, 4, 0, 0] };
+    await build();
+    const model: unknown = { uri: { toString: (): string => MODEL_URI } };
+    const tokens: { data: Uint32Array } | undefined =
+      await captured.semantic?.provideDocumentSemanticTokens(model);
+
+    expect(tokens?.data[3]).toBe(SEMANTIC_TOKEN_TYPES.indexOf(standard));
+  });
+
+  it('semanticTokens_keepsJavasStandardModifiers_andDropsItsOwn (#1208)', async () => {
+    // Part of jdtls's legend: `readonly` and `declaration` are standard, `public` and `generic` its own.
+    semanticLegend = {
+      tokenTypes: ['record'],
+      tokenModifiers: ['readonly', 'declaration', 'public', 'generic'],
+    };
+    responses['textDocument/semanticTokens/full'] = { data: [0, 0, 4, 0, 0b1111] };
+    await build();
+    const model: unknown = { uri: { toString: (): string => MODEL_URI } };
+    const tokens: { data: Uint32Array } | undefined =
+      await captured.semantic?.provideDocumentSemanticTokens(model);
+
+    expect(tokens?.data[4]).toBe(
+      (1 << SEMANTIC_TOKEN_MODIFIERS.indexOf('readonly')) |
+        (1 << SEMANTIC_TOKEN_MODIFIERS.indexOf('declaration')),
+    );
+  });
 
   it('semanticTokens_coloursClangdsConceptsAsTypes_itsInactiveCodeAsComments_andLeavesBrackets (#1213)', async () => {
     // Part of clangd's legend. `comment` is how it marks what the preprocessor skipped, and `bracket`
