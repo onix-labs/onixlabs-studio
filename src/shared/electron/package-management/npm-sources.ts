@@ -22,11 +22,22 @@ const DEFAULT_REGISTRY: string = 'https://registry.npmjs.org';
 const NPMRC: string = '.npmrc';
 
 /**
+ * The empty environment a project-level `.npmrc` is interpolated from, so none of its `${VAR}`
+ * references can reach the user's environment.
+ */
+const NO_ENVIRONMENT: Readonly<Record<string, string | undefined>> = Object.freeze({});
+
+/**
  * Reads the effective `.npmrc` configuration for a workspace root by merging the user-level `~/.npmrc`
  * with the project-level `<root>/.npmrc` (project wins), so a scoped registry and its token declared
  * either place drive latest-version lookups. Absent files contribute nothing.
+ *
+ * ⛔ Only the user-level file interpolates `${VAR}` references. A project's `.npmrc` arrives with the
+ * folder, so it could name a registry of its own and a credential of `${ANY_VAR}`, and the panel would
+ * send that variable there on load; its references resolve to nothing instead. Literal tokens in either
+ * file still work.
  * @param root The absolute workspace root.
- * @param env The environment used to interpolate `${VAR}` references in `.npmrc` values.
+ * @param env The environment used to interpolate `${VAR}` references in the user-level `.npmrc`.
  * @returns Returns the merged configuration.
  */
 export async function readNpmConfig(
@@ -34,7 +45,7 @@ export async function readNpmConfig(
   env: Record<string, string | undefined>,
 ): Promise<NpmrcConfig> {
   const home: NpmrcConfig = await readOne(path.join(os.homedir(), NPMRC), env);
-  const project: NpmrcConfig = await readOne(path.join(root, NPMRC), env);
+  const project: NpmrcConfig = await readOne(path.join(root, NPMRC), NO_ENVIRONMENT);
   const merged: NpmrcConfig = mergeNpmrc(home, project);
   logger.debug(
     'npm-sources',

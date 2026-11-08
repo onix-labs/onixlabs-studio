@@ -132,6 +132,8 @@ describe('EditorNavigation (#1014)', () => {
     sourceHeaderOf: Mock<LspFeatures['sourceHeaderOf']>;
     typeDefinitions: Mock<LspFeatures['typeDefinitions']>;
     servesSourceDefinition: Mock<LspFeatures['servesSourceDefinition']>;
+    servesProjectConfiguration: Mock<LspFeatures['servesProjectConfiguration']>;
+    projectConfigurations: Mock<LspFeatures['projectConfigurations']>;
     sourceDefinitions: Mock<LspFeatures['sourceDefinitions']>;
     parentModules: Mock<LspFeatures['parentModules']>;
     cargoManifests: Mock<LspFeatures['cargoManifests']>;
@@ -183,6 +185,12 @@ describe('EditorNavigation (#1014)', () => {
         (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
       ),
       servesSourceDefinition: vi.fn<LspFeatures['servesSourceDefinition']>((): boolean => false),
+      servesProjectConfiguration: vi.fn<LspFeatures['servesProjectConfiguration']>(
+        (): boolean => false,
+      ),
+      projectConfigurations: vi.fn<LspFeatures['projectConfigurations']>(
+        (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
       sourceDefinitions: vi.fn<LspFeatures['sourceDefinitions']>(
         (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
       ),
@@ -425,6 +433,21 @@ describe('EditorNavigation (#1014)', () => {
 
       expect(lsp.parentModules).toHaveBeenCalledWith(fake.model, { lineNumber: 2, column: 4 });
       expect(fake.calls.some((call: string): boolean => call.includes('1:7'))).toBe(true);
+    });
+
+    it('theProjectConfiguration_opens_whereTheServerAnswersIt (#1207)', async () => {
+      const navigation: EditorNavigation = build();
+      expect(navigation.offersProjectConfiguration(fake.editor)).toBe(false);
+      lsp.servesProjectConfiguration.mockReturnValue(true);
+      expect(navigation.offersProjectConfiguration(fake.editor)).toBe(true);
+      lsp.projectConfigurations.mockResolvedValue([
+        { path: '/root/tsconfig.json', range: span(1, 1, 1) },
+      ]);
+
+      await navigation.openProjectConfiguration(fake.editor);
+
+      expect(lsp.projectConfigurations).toHaveBeenCalledWith(fake.model);
+      expect(opener).toHaveBeenCalledWith('/root/tsconfig.json');
     });
 
     it('theCargoManifest_opens (#1210)', async () => {

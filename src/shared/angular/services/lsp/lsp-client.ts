@@ -6,6 +6,8 @@ import {
   LspApplyEditReply,
   LspAttachDebuggerReply,
   LspAttachDebuggerRequest,
+  LspIndentationReply,
+  LspIndentationRequest,
   LspShowDocumentRequest,
   LspShowMessageReply,
   LspShowMessageRequest,
@@ -90,6 +92,7 @@ import {
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
+import { CodeLensServerSync } from './code-lens-server-sync';
 import { LspStatus } from './lsp-status';
 import { completionSupportOf, signatureHelpSupportOf } from './lsp-completion';
 
@@ -716,9 +719,10 @@ const FROZEN_TOKEN_SERVERS: ReadonlySet<string> = new Set<string>(['csharp']);
 /**
  * The servers whose pushed diagnostics reach the Error List for files that are not open as well
  * (#1210): `cargo check` reports whole crates, so an error a change causes in another file would
- * otherwise show nowhere. The other servers' pushes are left to their open documents.
+ * otherwise show nowhere. So does typescript-language-server once the main process has tsserver check
+ * the open documents' projects (#1207). The other servers' pushes are left to their open documents.
  */
-const WHOLE_WORKSPACE_PUSH_SERVERS: ReadonlySet<string> = new Set<string>(['rust']);
+const WHOLE_WORKSPACE_PUSH_SERVERS: ReadonlySet<string> = new Set<string>(['rust', 'typescript']);
 
 /**
  * How long a session's refresh signals must stay quiet before its recolour pass runs. A loading
@@ -1131,6 +1135,12 @@ export class LspClient implements OnDestroy {
   private attachDebuggerDisposer: (() => void) | null = null;
 
   /**
+   * Holds the unsubscribe function for the main process's questions of how a document is indented
+   * (#1208).
+   */
+  private indentationDisposer: (() => void) | null = null;
+
+  /**
    * Holds the unsubscribe function for the main process's requests to put a server's question to the
    * user (#1154).
    */
@@ -1253,6 +1263,8 @@ export class LspClient implements OnDestroy {
    * and subscribing to server notifications when the bridge is available.
    */
   public constructor() {
+    // The servers' own lens switches follow the code-lens settings wherever a server runs (#1215).
+    inject(CodeLensServerSync);
     inject(DestroyRef).onDestroy(
       this.editorConfigs.onChanged((path: string): void => this.restartForEditorConfig(path)),
     );
@@ -1306,6 +1318,9 @@ export class LspClient implements OnDestroy {
     );
     this.showMessageDisposer = this.bridge.on(LspChannel.ShowMessage, (...args: unknown[]): void =>
       this.onShowMessage(args[0] as LspShowMessageRequest),
+    );
+    this.indentationDisposer = this.bridge.on(LspChannel.Indentation, (...args: unknown[]): void =>
+      this.onIndentation(args[0] as LspIndentationRequest),
     );
     this.showDocumentDisposer = this.bridge.on(
       LspChannel.ShowDocument,
@@ -1540,6 +1555,24 @@ export class LspClient implements OnDestroy {
   private clearRecolor(sessionId: string): void {
     clearTimeout(this.recolorTimers.get(sessionId));
     this.recolorTimers.delete(sessionId);
+  }
+
+  /**
+   * Forgets what a session's server said about itself: its token legend, whether it pulls, whether it
+   * has settled or is loading, its problem, the progress it had begun, and its pending pulls and
+   * recolours. Called whenever the server goes, so its replacement starts from nothing (#1213): a
+   * progress title left behind would name work the new server is not doing.
+   * @param sessionId The session.
+   */
+  private forgetServerState(sessionId: string): void {
+    this.legends.delete(sessionId);
+    this.pullCapable.delete(sessionId);
+    this.settledSessions.delete(sessionId);
+    this.loadingSessions.delete(sessionId);
+    this.serverProblemTexts.delete(sessionId);
+    this.progressTitles.delete(sessionId);
+    this.clearPostLoadPulls(sessionId);
+    this.clearRecolor(sessionId);
   }
 
   /**
@@ -1791,13 +1824,7 @@ export class LspClient implements OnDestroy {
         this.log.info('LspClient', `Stopping documentless standalone session`, sessionId);
         void this.bridge?.invoke(LspChannel.Stop, sessionId);
         this.status.remove(sessionId);
-        this.legends.delete(sessionId);
-        this.pullCapable.delete(sessionId);
-        this.settledSessions.delete(sessionId);
-        this.loadingSessions.delete(sessionId);
-        this.serverProblemTexts.delete(sessionId);
-        this.clearPostLoadPulls(sessionId);
-        this.clearRecolor(sessionId);
+        this.forgetServerState(sessionId);
         this.sessions.delete(sessionId);
         // Left in place it would answer to a restart, starting a server for nothing, and its workspace
         // problems would stay listed.
@@ -2111,13 +2138,7 @@ export class LspClient implements OnDestroy {
       this.sessions.delete(sessionId);
       this.sessionInfo.delete(sessionId);
       this.status.remove(sessionId);
-      this.legends.delete(sessionId);
-      this.pullCapable.delete(sessionId);
-      this.settledSessions.delete(sessionId);
-      this.loadingSessions.delete(sessionId);
-      this.serverProblemTexts.delete(sessionId);
-      this.clearPostLoadPulls(sessionId);
-      this.clearRecolor(sessionId);
+      this.forgetServerState(sessionId);
     }
     const orphaned: Set<string> = new Set<string>();
     for (const [key, tracked] of [...this.tracked.entries()]) {
@@ -2153,13 +2174,7 @@ export class LspClient implements OnDestroy {
     for (const sessionId of [...this.sessions.keys()]) {
       void this.bridge?.invoke(LspChannel.Stop, sessionId);
       this.status.remove(sessionId);
-      this.legends.delete(sessionId);
-      this.pullCapable.delete(sessionId);
-      this.settledSessions.delete(sessionId);
-      this.loadingSessions.delete(sessionId);
-      this.serverProblemTexts.delete(sessionId);
-      this.clearPostLoadPulls(sessionId);
-      this.clearRecolor(sessionId);
+      this.forgetServerState(sessionId);
       this.clearStandaloneReap(sessionId);
     }
     this.sessions.clear();
@@ -2218,6 +2233,7 @@ export class LspClient implements OnDestroy {
     this.applyEditDisposer?.();
     this.attachDebuggerDisposer?.();
     this.showMessageDisposer?.();
+    this.indentationDisposer?.();
     this.showDocumentDisposer?.();
     for (const timer of this.analysisTimers.values()) {
       clearTimeout(timer);
@@ -2788,6 +2804,14 @@ export class LspClient implements OnDestroy {
       this.onProgress(message.sessionId, message.params);
       return;
     }
+    // typescript-language-server says which TypeScript it runs with (#1207), once, as it starts.
+    if (message.method === '$/typescriptVersion') {
+      const version: unknown = (message.params as { version?: unknown } | null)?.version;
+      if (typeof version === 'string' && version.length > 0) {
+        this.status.setVersion(message.sessionId, version);
+      }
+      return;
+    }
     // clangd says what it is doing with each file (#1213): parsing, building the preamble, or idle.
     if (message.method === FILE_STATUS_METHOD) {
       this.onFileStatus(message.sessionId, message.params);
@@ -3025,13 +3049,7 @@ export class LspClient implements OnDestroy {
       // no backoff bookkeeping — just forget the old session's negotiated state and re-open every
       // document against the new one (which re-attaches this client to it).
       this.log.info('LspClient', 'Server restarted; re-opening its documents', exit.sessionId);
-      this.legends.delete(exit.sessionId);
-      this.pullCapable.delete(exit.sessionId);
-      this.settledSessions.delete(exit.sessionId);
-      this.loadingSessions.delete(exit.sessionId);
-      this.serverProblemTexts.delete(exit.sessionId);
-      this.clearPostLoadPulls(exit.sessionId);
-      this.clearRecolor(exit.sessionId);
+      this.forgetServerState(exit.sessionId);
       this.status.setState(exit.sessionId, 'starting');
       for (const tracked of this.tracked.values()) {
         if (`${tracked.rootPath}::${tracked.serverId}` === exit.sessionId) {
@@ -3050,7 +3068,6 @@ export class LspClient implements OnDestroy {
       `Server session exited unexpectedly (crash #${crash.count}${crash.repeated ? ', repeated' : ''})`,
       exit.sessionId,
     );
-    this.legends.delete(exit.sessionId);
     // Keep the crashed server listed as unavailable — with its restart affordance — rather than
     // removing it from the status strip. Removing it made the whole status-strip control vanish (its
     // trigger is mounted only while a server is listed for the workspace), stranding the user with no
@@ -3074,16 +3091,38 @@ export class LspClient implements OnDestroy {
       this.raiseGivenUp(exit.sessionId, crash, tries);
     }
     // The restarted server loads from scratch, so its tokens are degraded again until it re-settles.
-    this.settledSessions.delete(exit.sessionId);
-    this.loadingSessions.delete(exit.sessionId);
-    this.serverProblemTexts.delete(exit.sessionId);
-    this.clearPostLoadPulls(exit.sessionId);
-    this.clearRecolor(exit.sessionId);
+    this.forgetServerState(exit.sessionId);
     for (const tracked of this.tracked.values()) {
       if (`${tracked.rootPath}::${tracked.serverId}` === exit.sessionId) {
         tracked.opened = false;
       }
     }
+  }
+
+  /**
+   * Tells one of this client's servers how a document is indented (#1208), from the document's
+   * editor, which has already weighed the file's `.editorconfig`, the user's settings and what the
+   * file itself uses. A document no editor holds is answered with nothing, leaving the server its
+   * default. A question for a session this client does not hold is another window's to answer.
+   * @param request The request, as the main process forwards it.
+   */
+  private onIndentation(request: LspIndentationRequest): void {
+    if (!this.ownsSession(request.sessionId)) {
+      return;
+    }
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    const modelUri: string | undefined = this.editors.modelUriForPath(uriToPath(request.uri));
+    const model: MonacoApi.editor.ITextModel | null =
+      monaco === undefined || modelUri === undefined
+        ? null
+        : monaco.editor.getModel(monaco.Uri.parse(modelUri));
+    const options: MonacoApi.editor.TextModelResolvedOptions | undefined = model?.getOptions();
+    const reply: LspIndentationReply = {
+      requestId: request.requestId,
+      tabSize: options?.tabSize ?? null,
+      insertSpaces: options?.insertSpaces ?? null,
+    };
+    this.bridge?.send(LspChannel.IndentationReply, reply);
   }
 
   /**
