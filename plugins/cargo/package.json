@@ -1,0 +1,11 @@
+{
+  "name": "@onixlabs/cargo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cargo package-manager plugin for ONIXLabs Studio.",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}
