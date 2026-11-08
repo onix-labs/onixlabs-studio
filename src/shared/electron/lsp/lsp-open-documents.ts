@@ -64,4 +64,12 @@ export class LspOpenDocuments<THolder> {
     }
     return closed;
   }
+
+  /**
+   * Lists the documents some window holds open (#1207), in the order they were first opened.
+   * @returns Returns their URIs.
+   */
+  public uris(): string[] {
+    return [...this.holders.keys()];
+  }
 }

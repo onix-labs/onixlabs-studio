@@ -1,0 +1,11 @@
+{
+  "name": "@onixlabs/jvm-tests",
+  "version": "0.1.0",
+  "private": true,
+  "description": "JVM test-adapter plugin for ONIXLabs Studio: JUnit through Gradle and Maven.",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

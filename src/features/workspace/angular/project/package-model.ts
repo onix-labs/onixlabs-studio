@@ -5,7 +5,14 @@ import {
   PackageChannel,
   PackageManagerSummary,
   PackageWorkspaceStatus,
+  PackageWriteOp,
+  PackageWriteRequest,
 } from '@shared/api/package-channels';
+import type { PackageCommand } from '@shared/api/package-manager-protocol';
+import {
+  TerminalLaunch,
+  TerminalSessions,
+} from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import {
   InstalledPackage,
   PackageManagerModel,
@@ -108,6 +115,31 @@ export interface PackageManagerState {
 }
 
 /**
+ * Describes a change running in a terminal.
+ */
+export interface PackageWrite {
+  /**
+   * Gets the plugin making it.
+   */
+  readonly pluginId: string;
+
+  /**
+   * Gets the change.
+   */
+  readonly op: PackageWriteOp;
+
+  /**
+   * Gets what it changes.
+   */
+  readonly request: PackageWriteRequest;
+
+  /**
+   * Gets the terminal's title, in the user's terms, such as `Install left-pad`.
+   */
+  readonly title: string;
+}
+
+/**
  * Holds and drives this tab's Packages model (#911). Every package manager is a plugin, so the model
  * first asks which apply to the open root — installed or only offered — and whether the user trusts
  * the folder, then asks each installed one for its projects and their packages. With nothing installed
@@ -135,6 +167,23 @@ export class PackageModel {
    * Holds the structured logger for the package model.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds this tab's terminals, where a change runs where the user can see it (#912).
+   */
+  private readonly terminals: TerminalSessions = inject(TerminalSessions);
+
+  /**
+   * Holds the change running in a terminal, or null when none is.
+   */
+  private readonly writingSignal: WritableSignal<PackageWrite | null> = signal<PackageWrite | null>(
+    null,
+  );
+
+  /**
+   * Holds why the last change could not be made, or null.
+   */
+  private readonly writeErrorSignal: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
    * Holds the generic transport, or undefined when running outside Electron.
@@ -179,6 +228,17 @@ export class PackageModel {
    * Gets whether the row list is filtered to outdated packages only.
    */
   public readonly outdatedOnly: Signal<boolean> = this.outdatedOnlySignal.asReadonly();
+
+  /**
+   * Gets the change running in a terminal, or null. One runs at a time: two package managers writing
+   * one lockfile at once is how a lockfile is broken.
+   */
+  public readonly writing: Signal<PackageWrite | null> = this.writingSignal.asReadonly();
+
+  /**
+   * Gets why the last change could not be made, or null.
+   */
+  public readonly writeError: Signal<string | null> = this.writeErrorSignal.asReadonly();
 
   /**
    * Gets whether the Packages panel has anything to say for this root: a package manager applies to
@@ -355,6 +415,54 @@ export class PackageModel {
   public refreshNow(): void {
     this.log.info('workspace.packages', 'Reload package model requested');
     void this.refresh(this.workspace.root()?.path ?? null);
+  }
+
+  /**
+   * Makes a change through a package manager: asks its plugin for the command, runs that in a visible
+   * terminal, and reads the folder again once it ends. The plugin never runs anything itself, and the
+   * main process has checked the command before it comes back.
+   * @param pluginId The plugin.
+   * @param op The change.
+   * @param request What to change.
+   * @returns Returns a promise that resolves once the change has ended and the folder been read again.
+   */
+  public async write(
+    pluginId: string,
+    op: PackageWriteOp,
+    request: PackageWriteRequest,
+  ): Promise<void> {
+    const root: string | null = this.workspace.root()?.path ?? null;
+    if (this.bridge === undefined || root === null || this.writingSignal() !== null) {
+      return;
+    }
+    this.writeErrorSignal.set(null);
+    const answer: PackageAnswer<PackageCommand> = await this.bridge.invoke<
+      PackageAnswer<PackageCommand>
+    >(PackageChannel.Command, root, pluginId, op, request);
+    if (!answer.ok) {
+      this.log.warn('workspace.packages', `${pluginId} gave no command for ${op}`, answer.error);
+      this.writeErrorSignal.set(answer.error);
+      return;
+    }
+    const command: PackageCommand = answer.result;
+    this.writingSignal.set({ pluginId, op, request, title: command.title });
+    this.log.info('workspace.packages', 'Running a package change', command.title);
+    try {
+      const launch: TerminalLaunch = await this.terminals.launch({
+        kind: 'task',
+        name: command.title,
+        command: command.executable,
+        args: command.args,
+        cwd: command.cwd,
+      });
+      const exitCode: number = await launch.exited;
+      if (exitCode !== 0) {
+        this.writeErrorSignal.set(`${command.title} ended with exit code ${exitCode}.`);
+      }
+    } finally {
+      this.writingSignal.set(null);
+    }
+    await this.refresh(this.workspace.root()?.path ?? null);
   }
 
   /**

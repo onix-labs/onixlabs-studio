@@ -2205,6 +2205,46 @@ export class Icon {
   public static readonly SETUP_PACKAGE_MANAGERS: Icon = new Icon('ph ph-package');
 
   /**
+   * Gets the setup step for test-adapter plugins.
+   */
+  public static readonly SETUP_TEST_ADAPTERS: Icon = new Icon('ph ph-flask');
+
+  /**
+   * Gets the Tests panel's mark for a test that passed (#1352).
+   */
+  public static readonly TEST_PASSED: Icon = new Icon('ph-fill ph-check-circle');
+
+  /**
+   * Gets the Tests panel's mark for a test that failed.
+   */
+  public static readonly TEST_FAILED: Icon = new Icon('ph-fill ph-x-circle');
+
+  /**
+   * Gets the Tests panel's mark for a test that could not run: a crash, a timeout, a broken build.
+   */
+  public static readonly TEST_ERRORED: Icon = new Icon('ph-fill ph-warning-circle');
+
+  /**
+   * Gets the Tests panel's mark for a test that was skipped.
+   */
+  public static readonly TEST_SKIPPED: Icon = new Icon('ph-duotone ph-minus-circle');
+
+  /**
+   * Gets the Tests panel's mark for a test that has not run.
+   */
+  public static readonly TEST_NOT_RUN: Icon = new Icon('ph ph-circle-dashed');
+
+  /**
+   * Gets the Tests panel's mark for a test waiting its turn in a run.
+   */
+  public static readonly TEST_QUEUED: Icon = new Icon('ph ph-clock');
+
+  /**
+   * Gets the Tests panel's Run Failed command.
+   */
+  public static readonly TEST_RUN_FAILED: Icon = new Icon('ph-duotone ph-arrow-counter-clockwise');
+
+  /**
    * Gets the icon of the setup wizard's AI providers step.
    */
   public static readonly SETUP_AI_PROVIDER: Icon = new Icon('ph ph-brain');

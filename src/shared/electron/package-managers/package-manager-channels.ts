@@ -6,6 +6,7 @@ import {
   PackageRegistryToken,
   PackageTokenResult,
   PackageWorkspaceStatus,
+  PackageWriteOp,
 } from '@shared/api/package-channels';
 import type {
   PackageManagerModel,
@@ -13,6 +14,7 @@ import type {
   PackageSourceInfo,
 } from '@shared/api/package-management';
 import type {
+  PackageCommand,
   PackageManagerOp,
   PackageManagerParams,
   PackageManagerResponse,
@@ -175,6 +177,16 @@ export class PackageManagerChannels {
         this.search(root, pluginId, source, query, options),
     );
     ipcMain.handle(
+      PackageChannel.Command,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        pluginId: unknown,
+        op: unknown,
+        request: unknown,
+      ): Promise<PackageAnswer<PackageCommand>> => this.command(root, pluginId, op, request),
+    );
+    ipcMain.handle(
       PackageChannel.TrustFolder,
       (_event: IpcMainInvokeEvent, root: unknown): RepositoryTrustDecision =>
         this.trustFolder(root),
@@ -270,6 +282,50 @@ export class PackageManagerChannels {
   }
 
   /**
+   * Asks a plugin for the command that makes a change. The host checks that the project lies in the
+   * root, that the plugin declared and confirmed the capability, and that what comes back is a
+   * well-formed command whose folder is inside the root; only then does the panel run it.
+   * @param root The root, untrusted.
+   * @param pluginId The plugin, untrusted.
+   * @param op The change, untrusted.
+   * @param request What to change, untrusted.
+   * @returns Returns the command, or why there is none.
+   */
+  private command(
+    root: unknown,
+    pluginId: unknown,
+    op: unknown,
+    request: unknown,
+  ): Promise<PackageAnswer<PackageCommand>> {
+    const record: Record<string, unknown> =
+      typeof request === 'object' && request !== null ? (request as Record<string, unknown>) : {};
+    const project: unknown = record['project'];
+    const name: unknown = record['name'];
+    const version: unknown = record['version'];
+    const refused: Promise<PackageAnswer<PackageCommand>> = Promise.resolve({
+      ok: false,
+      error: 'That is not a change Studio can ask for.',
+      code: 'refused',
+    });
+    if (!isWriteOp(op) || typeof project !== 'string') {
+      return refused;
+    }
+    if (op === 'restore') {
+      return this.ask(root, pluginId, 'restore', { project });
+    }
+    if (typeof name !== 'string' || name.length === 0) {
+      return refused;
+    }
+    if (op === 'remove') {
+      return this.ask(root, pluginId, 'remove', { project, name });
+    }
+    if (version !== null && version !== undefined && typeof version !== 'string') {
+      return refused;
+    }
+    return this.ask(root, pluginId, op, { project, name, version: version ?? null });
+  }
+
+  /**
    * Puts one question to a plugin about an open root.
    * @param root The root, untrusted.
    * @param pluginId The plugin, untrusted.
@@ -277,7 +333,7 @@ export class PackageManagerChannels {
    * @param params Its parameters.
    * @returns Returns the plugin's answer, or why it was not asked.
    */
-  private async ask<Op extends 'load' | 'sources' | 'search'>(
+  private async ask<Op extends Exclude<PackageManagerOp, 'initialize'>>(
     root: unknown,
     pluginId: unknown,
     op: Op,
@@ -363,4 +419,13 @@ export class PackageManagerChannels {
   private isOpenRoot(root: unknown): root is string {
     return typeof root === 'string' && root.length > 0 && this.roots.isRoot(root);
   }
+}
+
+/**
+ * Determines whether a value names a change the panel may ask for.
+ * @param op The candidate.
+ * @returns Returns true when it does.
+ */
+function isWriteOp(op: unknown): op is PackageWriteOp {
+  return op === 'install' || op === 'update' || op === 'remove' || op === 'restore';
 }

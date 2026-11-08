@@ -106,6 +106,8 @@ import { PackageManagerHost } from '@shared/electron/package-managers/package-ma
 import { PackageManagerChannels } from '@shared/electron/package-managers/package-manager-channels';
 import { PackageRegistryTokenStore } from '@shared/electron/package-managers/package-registry-token-store';
 import { createPackageRegistryTokens } from '@shared/electron/package-managers/package-registry-tokens';
+import { TestAdapterHost } from '@shared/electron/test-adapters/test-adapter-host';
+import { TestAdapterManager } from '@shared/electron/test-adapters/test-adapter-manager';
 import { VersionControlManager } from '@shared/electron/version-control/version-control-manager';
 import { VersionControlSetup } from '@shared/electron/version-control/version-control-setup';
 import { VersionControlSettings } from '@shared/electron/version-control/version-control-settings';
@@ -114,6 +116,7 @@ import type { MetadataPolicies } from '@shared/electron/directory-watch-filter';
 import {
   contributedHosting,
   contributedPackageManagers,
+  contributedTestAdapters,
   contributedVersionControl,
 } from '@shared/electron/contributions/plugins/contributed';
 import {
@@ -489,6 +492,24 @@ class Program {
     this.workspaceContext,
     this.repositoryTrust,
     this.packageRegistryTokens,
+  );
+
+  /**
+   * Hosts the test-adapter plugins (#1351): finds which apply to a folder, confines every request to an
+   * open, trusted workspace, gives each run its own output folder, and checks every command and launch
+   * a plugin answers with before Studio runs it. Core knows no test framework — each is a plugin.
+   */
+  private readonly testAdapterHost: TestAdapterHost = new TestAdapterHost({
+    descriptors: () => contributedTestAdapters(versionControlNodeRuntime),
+    roots: this.workspaceContext,
+    trust: this.repositoryTrust,
+  });
+
+  /**
+   * Serves the Tests panel's requests to the test-adapter host.
+   */
+  private readonly testAdapterManager: TestAdapterManager = new TestAdapterManager(
+    this.testAdapterHost,
   );
 
   /**
@@ -1217,6 +1238,7 @@ class Program {
     this.codeRunner.register();
     this.versionControlManager.register();
     this.hostingManager.register();
+    this.testAdapterManager.register();
     this.workspaceManager.register();
     this.packageManagerChannels.register();
     this.searchManager.register();
@@ -1269,6 +1291,8 @@ class Program {
         this.versionControlHost.restartPlugin(contribution.id);
       } else if (contribution.slot === 'package-manager') {
         this.packageManagerHost.restartPlugin(contribution.id);
+      } else if (contribution.slot === 'test-adapter') {
+        this.testAdapterHost.restartPlugin(contribution.id);
       } else if (contribution.slot === 'agent-harness') {
         this.aiManager.retireHarnessSessions(contribution.id);
       } else if (contribution.slot === 'database-engine') {
@@ -1636,6 +1660,7 @@ class Program {
     this.decoderHost.dispose();
     this.versionControlManager.dispose();
     this.packageManagerHost.dispose();
+    this.testAdapterManager.dispose();
     this.hostingManager.dispose();
     this.fileWatcher.disposeAll();
     this.directoryWatcher.disposeAll();

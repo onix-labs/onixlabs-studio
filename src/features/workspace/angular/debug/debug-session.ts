@@ -14,6 +14,7 @@ import {
   DebugStartResult,
 } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
+import type { TestDebugLaunch } from '@shared/api/test-adapter-protocol';
 import { Output, OutputChannel } from '@shared/angular/services/output/output';
 import {
   TerminalLaunch,
@@ -526,7 +527,67 @@ export class DebugSession implements DebugHandler, OnDestroy {
       this.reset();
       return;
     }
+    await this.startResolved(sessionId, adapter, root, configuration, resolution.target);
+  }
 
+  /**
+   * Debugs one test (#1352): the launch a test adapter answered with, started under the debug adapter it
+   * named. Nothing is resolved or built first — the test adapter already said what to run — but the
+   * session is configured exactly as a run configuration's is, breakpoints included.
+   * @param launch The test's launch, as the test-adapter host checked it.
+   * @returns Returns a promise resolving true once the launch was sent, false when it could not be (a
+   * session already running, no root, or the adapter refused to start).
+   */
+  public async launchTest(launch: TestDebugLaunch): Promise<boolean> {
+    const root: string | undefined = this.workspace.root()?.path;
+    if (this.bridge === undefined || this.stateSignal() !== 'idle' || root === undefined) {
+      return false;
+    }
+    // The user may have chosen another implementation for the adapter the test adapter named.
+    const adapter: string = this.debugAdapters.resolveAdapter(launch.adapter);
+    const configuration: RunConfiguration = {
+      id: `test:${launch.title}`,
+      name: launch.title,
+      providerKind: 'tests',
+      mode: 'debug',
+    };
+    this.activeConfigurationName = configuration.name;
+    this.activeAdapterId = adapter;
+    const sessionId: string = `${root}#${++this.counter}`;
+    this.currentSession = sessionId;
+    this.threadId = undefined;
+    this.capabilities = {};
+    this.stateSignal.set('running');
+    this.debugChannel.reveal();
+    this.debugChannel.appendLine(`> Debug ${configuration.name}`);
+    return this.startResolved(sessionId, adapter, root, configuration, {
+      program: launch.program ?? '',
+      args: launch.args,
+      cwd: launch.cwd,
+      ...(launch.env === undefined ? {} : { env: launch.env }),
+      ...(launch.configuration === undefined ? {} : { launchExtras: launch.configuration }),
+    });
+  }
+
+  /**
+   * Starts the adapter for a session whose launch target is known, then sends the `launch` request.
+   * @param sessionId The session.
+   * @param adapter The debug adapter to start.
+   * @param root The workspace root.
+   * @param configuration The configuration being debugged.
+   * @param target The resolved launch target.
+   * @returns Returns a promise resolving true once the launch was sent.
+   */
+  private async startResolved(
+    sessionId: string,
+    adapter: string,
+    root: string,
+    configuration: RunConfiguration,
+    target: DebugLaunchTarget,
+  ): Promise<boolean> {
+    if (this.bridge === undefined) {
+      return false;
+    }
     const result: DebugStartResult = await this.bridge.invoke<DebugStartResult>(
       DebugChannel.Start,
       {
@@ -536,18 +597,18 @@ export class DebugSession implements DebugHandler, OnDestroy {
       },
     );
     if (this.currentSession !== sessionId) {
-      return;
+      return false;
     }
     if (!result.success) {
       this.debugChannel.appendLine(`Debug failed: ${result.error ?? 'unknown error'}`);
       this.reset();
-      return;
+      return false;
     }
     this.capabilities = (result.capabilities as DebugProtocol.Capabilities | undefined) ?? {};
     // Fire the launch request without awaiting it: the adapter answers only after it has emitted
     // `initialized` and we have replied with `configurationDone` (handled in onEvent), so awaiting here
     // before that reply would stall.
-    void this.request('launch', this.launchArguments(configuration, root, resolution.target)).catch(
+    void this.request('launch', this.launchArguments(configuration, root, target)).catch(
       (error: unknown): void => {
         if (this.currentSession === sessionId) {
           this.log.error('debug-session', 'Debug launch failed', error);
@@ -556,6 +617,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
         }
       },
     );
+    return true;
   }
 
   /**
@@ -980,7 +1042,9 @@ export class DebugSession implements DebugHandler, OnDestroy {
       request: 'launch',
       name: configuration.name,
       type: configuration.providerKind,
-      program: target.program,
+      // A test's launch may run a module rather than a program (debugpy's `module`, #1352), and an
+      // adapter refuses a launch naming both.
+      ...(target.program.length > 0 ? { program: target.program } : {}),
       args: target.args ?? configuration.args,
       cwd: target.cwd ?? configuration.cwd ?? root,
       env: target.env ?? configuration.env,
