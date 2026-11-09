@@ -91,7 +91,7 @@ describe('fetchLatestVersion', () => {
       init?: { headers?: Record<string, string> },
     ): Promise<HttpResponse> => {
       seenAuth.push(init?.headers?.['Authorization']);
-      if (url.startsWith('https://nuget.pkg.github.com')) {
+      if (new URL(url).host === 'nuget.pkg.github.com') {
         // The private feed has no such package (empty versions), so resolution moves on.
         return url.endsWith('/index.json') && url.includes('/acme/')
           ? Promise.resolve(

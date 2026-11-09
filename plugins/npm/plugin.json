@@ -2,13 +2,13 @@
   "id": "onixlabs.npm",
   "name": "npm",
   "description": "npm packages: the projects in a folder, what each declares, what is installed, what is newer, and search across its registries.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "apiVersion": "1.25.0",
   "detail": "Reads package.json, your lockfile and .npmrc. Installing and updating run through the npm, pnpm or Yarn on your machine, in a terminal you can see.",
   "provision": {
     "kind": "npm",
     "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.npm.lock.json",
-    "sha256": "f9756c94868ecf638644a15e21e6eff5f292177c099d47988c5117b9a365ccdf",
+    "sha256": "8e951db189bb344a5af923491992cadddde5459a8204f4b44ee5d74c34a7f448",
     "executablePath": "node_modules/@onixlabs/npm/main.js"
   },
   "contributes": {

@@ -48,7 +48,7 @@ describe('fetchLatestVersion', () => {
     headers: { authorization: 'Bearer t' },
   };
 
-  it('keepsAScopedNamesSlash_andSendsTheEndpointsHeaders', async () => {
+  it('addressesAScopedNameAsTheCliDoes_andSendsTheEndpointsHeaders', async () => {
     const urls: string[] = [];
     const fetchFn: HttpFetch = (url: string, init?: unknown): Promise<HttpResponse> => {
       urls.push(`${url} ${JSON.stringify(init)}`);
@@ -57,8 +57,25 @@ describe('fetchLatestVersion', () => {
 
     expect(await fetchLatestVersion('@scope/pkg', ENDPOINT, fetchFn)).toBe('1.0.0');
 
-    expect(urls[0]).toContain('https://registry.example/@scope/pkg');
+    expect(urls[0]).toContain('https://registry.example/@scope%2Fpkg ');
     expect(urls[0]).toContain('Bearer t');
+  });
+
+  it.each<[string, string]>([
+    ['../../-/whoami', 'https://registry.example/..%2F..%2F-%2Fwhoami'],
+    ['@scope/../../x', 'https://registry.example/@scope%2F..%2F..%2Fx'],
+    ['a@b', 'https://registry.example/a%40b'],
+  ])('neverLetsTheName_%s_addPathSegments', async (name: string, expected: string) => {
+    const urls: string[] = [];
+    const fetchFn: HttpFetch = (url: string): Promise<HttpResponse> => {
+      urls.push(url);
+      return Promise.resolve(json({ 'dist-tags': { latest: '1.0.0' } }));
+    };
+
+    await fetchLatestVersion(name, ENDPOINT, fetchFn);
+
+    expect(urls).toEqual([expected]);
+    expect(new URL(urls[0]).pathname.split('/')).toHaveLength(2);
   });
 
   it.each<[string, HttpFetch]>([
