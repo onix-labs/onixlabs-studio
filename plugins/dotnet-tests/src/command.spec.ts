@@ -157,6 +157,35 @@ describe('.NET run plans (#1353)', () => {
     ]);
   });
 
+  it('planRun_xUnitUnderTheTestingPlatform_asksXUnitForItsOwnTrxReport', () => {
+    const tree: readonly TestNode[] = TREE.map((project: TestNode): TestNode => ({
+      ...project,
+      framework: 'xUnit',
+    }));
+
+    const command: TestCommand = planRun(tree, [], { ...CONTEXT, testingPlatform: true });
+
+    expect(command.args).toEqual([
+      'test',
+      '--solution',
+      '/repo/All.sln',
+      '--report-xunit-trx',
+      '--results-directory',
+      '/tmp/out',
+    ]);
+  });
+
+  it('planRun_xUnitAndAnotherFrameworkUnderTheTestingPlatform_isRefused', () => {
+    const tree: readonly TestNode[] = [
+      { ...TREE[0], framework: 'xUnit' },
+      { ...TREE[1], framework: 'MSTest' },
+    ];
+
+    expect(() => planRun(tree, [], { ...CONTEXT, testingPlatform: true })).toThrow(
+      /Run one project at a time/,
+    );
+  });
+
   it('escapeFilterValue_escapesWhatTheFilterReadsAsSyntax', () => {
     expect(escapeFilterValue('A.B(x|y)&!~=\\')).toBe('A.B\\(x\\|y\\)\\&\\!\\~\\=\\\\');
   });
