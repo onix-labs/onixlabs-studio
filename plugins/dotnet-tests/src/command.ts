@@ -178,7 +178,7 @@ export function planRun(
         'test',
         /\.slnx?$/i.test(target) ? '--solution' : '--project',
         target,
-        '--report-trx',
+        trxReportOption(tree, selection.projects),
         '--results-directory',
         context.outputDirectory,
       ]
@@ -195,6 +195,31 @@ export function planRun(
     title: ids.length === 0 ? `Test ${name}` : `Test ${name} (selected)`,
     env: { DOTNET_NOLOGO: '1', DOTNET_CLI_TELEMETRY_OPTOUT: '1' },
   };
+}
+
+/**
+ * Chooses the option that makes a Microsoft.Testing.Platform run write a TRX report. xUnit v3 writes one
+ * itself, behind `--report-xunit-trx`; `--report-trx` exists only where the
+ * Microsoft.Testing.Extensions.TrxReport package is referenced (MSTest's SDK and NUnit's runner), and xUnit
+ * answers it with its help text and no run. One command passes one option to every project, so projects
+ * of both kinds cannot run together.
+ * @param tree The discovered tree.
+ * @param projects The project files the run touches.
+ * @returns Returns the option.
+ */
+function trxReportOption(tree: readonly TestNode[], projects: ReadonlySet<string>): string {
+  const xunit: readonly boolean[] = tree
+    .filter((project: TestNode): boolean => projects.has(projectFile(project)))
+    .map((project: TestNode): boolean => project.framework === 'xUnit');
+  if (xunit.every((isXunit: boolean): boolean => isXunit)) {
+    return '--report-xunit-trx';
+  }
+  if (xunit.some((isXunit: boolean): boolean => isXunit)) {
+    throw new Error(
+      'Those tests are in xUnit projects and projects of another framework, which Microsoft.Testing.Platform cannot report on together. Run one project at a time.',
+    );
+  }
+  return '--report-trx';
 }
 
 /**
