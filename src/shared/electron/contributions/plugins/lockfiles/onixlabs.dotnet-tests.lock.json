@@ -1,0 +1,20 @@
+{
+  "name": "dotnet-tests",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "dotnet-tests",
+      "version": "1.0.0",
+      "dependencies": {
+        "@onixlabs/dotnet-tests": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-dotnet-tests-v0.1.0/onixlabs-dotnet-tests-0.1.0.tgz"
+      }
+    },
+    "node_modules/@onixlabs/dotnet-tests": {
+      "version": "0.1.0",
+      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-dotnet-tests-v0.1.0/onixlabs-dotnet-tests-0.1.0.tgz",
+      "integrity": "sha512-M25g2Hzutm4ps4SlX/K5AAuuoir+RCXT8I2H9Yo7FywRhIczipS4k+9idJr9Q+d/8GgCcuj4lfutyyAEf4GBEA=="
+    }
+  }
+}

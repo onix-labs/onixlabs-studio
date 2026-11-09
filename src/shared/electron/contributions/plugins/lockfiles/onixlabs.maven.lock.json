@@ -1,0 +1,20 @@
+{
+  "name": "maven",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "maven",
+      "version": "1.0.0",
+      "dependencies": {
+        "@onixlabs/maven": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-maven-v0.1.0/onixlabs-maven-0.1.0.tgz"
+      }
+    },
+    "node_modules/@onixlabs/maven": {
+      "version": "0.1.0",
+      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-maven-v0.1.0/onixlabs-maven-0.1.0.tgz",
+      "integrity": "sha512-0UQ8TVklpi3g7ixHDg+aACFreN79vavihKYWNDF3526cjp0IJmt6GZknEKFfwvGrBCJYZKbqsgfMkIi1d6vZDw=="
+    }
+  }
+}

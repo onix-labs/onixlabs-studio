@@ -8,7 +8,7 @@
   "provision": {
     "kind": "npm",
     "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.cargo.lock.json",
-    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sha256": "6a36ac9c68fc42baf3d4229d76889bf32dd90b0cae4f085435944a8ad81069e7",
     "executablePath": "node_modules/@onixlabs/cargo/main.js"
   },
   "contributes": {

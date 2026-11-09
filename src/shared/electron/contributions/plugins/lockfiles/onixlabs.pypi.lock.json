@@ -1,0 +1,20 @@
+{
+  "name": "pypi",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "pypi",
+      "version": "1.0.0",
+      "dependencies": {
+        "@onixlabs/pypi": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-pypi-v0.1.0/onixlabs-pypi-0.1.0.tgz"
+      }
+    },
+    "node_modules/@onixlabs/pypi": {
+      "version": "0.1.0",
+      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-pypi-v0.1.0/onixlabs-pypi-0.1.0.tgz",
+      "integrity": "sha512-rTPAGgcswOlgSy/+lji46A6pni/gkZzLAsjL1UxGkjMVfcR+lPmHZRm/d6FsX+eDjClT38ZsHAKsWuopqz+i7g=="
+    }
+  }
+}

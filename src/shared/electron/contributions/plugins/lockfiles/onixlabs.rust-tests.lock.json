@@ -1,0 +1,20 @@
+{
+  "name": "rust-tests",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "rust-tests",
+      "version": "1.0.0",
+      "dependencies": {
+        "@onixlabs/rust-tests": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-rust-tests-v0.1.0/onixlabs-rust-tests-0.1.0.tgz"
+      }
+    },
+    "node_modules/@onixlabs/rust-tests": {
+      "version": "0.1.0",
+      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-rust-tests-v0.1.0/onixlabs-rust-tests-0.1.0.tgz",
+      "integrity": "sha512-skZcPBBCetEn6Y80+OgjhspnHCGdLfLET86wvbnLU1k5XipoztJTplYtQwrX5oeVTZpVQkEUOXRCLffR9G40xg=="
+    }
+  }
+}

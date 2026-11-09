@@ -1,0 +1,20 @@
+{
+  "name": "nuget",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "nuget",
+      "version": "1.0.0",
+      "dependencies": {
+        "@onixlabs/nuget": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-nuget-v0.1.0/onixlabs-nuget-0.1.0.tgz"
+      }
+    },
+    "node_modules/@onixlabs/nuget": {
+      "version": "0.1.0",
+      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-nuget-v0.1.0/onixlabs-nuget-0.1.0.tgz",
+      "integrity": "sha512-AHYoIRY9gnbFdbbq81wb8Eeb19lELZj4xyG9wJT5Y9D8VmaMx/43Ng20xM0sRDRVb7rW1ZU01Fi/nw9F3iNT3w=="
+    }
+  }
+}

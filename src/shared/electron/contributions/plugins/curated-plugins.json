@@ -1,5 +1,5 @@
 {
-  "revision": 64,
+  "revision": 65,
   "plugins": [
     {
       "id": "pyright",
@@ -673,8 +673,14 @@
                 "description": "The Cargo command run on save. Clippy needs the clippy component of the toolchain.",
                 "default": "check",
                 "options": [
-                  { "value": "check", "label": "Cargo Check" },
-                  { "value": "clippy", "label": "Clippy" }
+                  {
+                    "value": "check",
+                    "label": "Cargo Check"
+                  },
+                  {
+                    "value": "clippy",
+                    "label": "Clippy"
+                  }
                 ]
               },
               {
@@ -707,9 +713,18 @@
                 "description": "Show the lifetimes the compiler fills in on a function's signature.",
                 "default": "never",
                 "options": [
-                  { "value": "never", "label": "Off" },
-                  { "value": "skip_trivial", "label": "Except trivial cases" },
-                  { "value": "always", "label": "Always" }
+                  {
+                    "value": "never",
+                    "label": "Off"
+                  },
+                  {
+                    "value": "skip_trivial",
+                    "label": "Except trivial cases"
+                  },
+                  {
+                    "value": "always",
+                    "label": "Always"
+                  }
                 ]
               },
               {
@@ -718,9 +733,18 @@
                 "description": "Show the return type the compiler infers for a closure.",
                 "default": "never",
                 "options": [
-                  { "value": "never", "label": "Off" },
-                  { "value": "with_block", "label": "Closures with a block" },
-                  { "value": "always", "label": "Always" }
+                  {
+                    "value": "never",
+                    "label": "Off"
+                  },
+                  {
+                    "value": "with_block",
+                    "label": "Closures with a block"
+                  },
+                  {
+                    "value": "always",
+                    "label": "Always"
+                  }
                 ],
                 "advanced": true
               },
@@ -737,9 +761,18 @@
                 "description": "Show where the compiler reborrows a reference by itself.",
                 "default": "never",
                 "options": [
-                  { "value": "never", "label": "Off" },
-                  { "value": "mutable", "label": "Mutable references" },
-                  { "value": "always", "label": "Always" }
+                  {
+                    "value": "never",
+                    "label": "Off"
+                  },
+                  {
+                    "value": "mutable",
+                    "label": "Mutable references"
+                  },
+                  {
+                    "value": "always",
+                    "label": "Always"
+                  }
                 ],
                 "advanced": true
               },
@@ -756,9 +789,18 @@
                 "description": "Show the value of each enum variant.",
                 "default": "never",
                 "options": [
-                  { "value": "never", "label": "Off" },
-                  { "value": "fieldless", "label": "Enums without fields" },
-                  { "value": "always", "label": "Always" }
+                  {
+                    "value": "never",
+                    "label": "Off"
+                  },
+                  {
+                    "value": "fieldless",
+                    "label": "Enums without fields"
+                  },
+                  {
+                    "value": "always",
+                    "label": "Always"
+                  }
                 ],
                 "advanced": true
               },
@@ -810,7 +852,10 @@
                 "description": "What Go to Symbol in Workspace searches.",
                 "default": "workspace",
                 "options": [
-                  { "value": "workspace", "label": "The workspace" },
+                  {
+                    "value": "workspace",
+                    "label": "The workspace"
+                  },
                   {
                     "value": "workspace_and_dependencies",
                     "label": "The workspace and its dependencies"
@@ -830,9 +875,18 @@
                 "description": "What completing a function or method name adds after it.",
                 "default": "fill_arguments",
                 "options": [
-                  { "value": "fill_arguments", "label": "Parentheses and arguments" },
-                  { "value": "add_parentheses", "label": "Parentheses" },
-                  { "value": "none", "label": "Nothing" }
+                  {
+                    "value": "fill_arguments",
+                    "label": "Parentheses and arguments"
+                  },
+                  {
+                    "value": "add_parentheses",
+                    "label": "Parentheses"
+                  },
+                  {
+                    "value": "none",
+                    "label": "Nothing"
+                  }
                 ]
               },
               {
@@ -841,11 +895,26 @@
                 "description": "How imports added by a completion or a code action are merged into the use items already there.",
                 "default": "crate",
                 "options": [
-                  { "value": "crate", "label": "One use per crate" },
-                  { "value": "module", "label": "One use per module" },
-                  { "value": "item", "label": "One use per item" },
-                  { "value": "one", "label": "A single use" },
-                  { "value": "preserve", "label": "As they are" }
+                  {
+                    "value": "crate",
+                    "label": "One use per crate"
+                  },
+                  {
+                    "value": "module",
+                    "label": "One use per module"
+                  },
+                  {
+                    "value": "item",
+                    "label": "One use per item"
+                  },
+                  {
+                    "value": "one",
+                    "label": "A single use"
+                  },
+                  {
+                    "value": "preserve",
+                    "label": "As they are"
+                  }
                 ],
                 "advanced": true
               },
@@ -855,9 +924,18 @@
                 "description": "How the paths of imports added by a completion or a code action start.",
                 "default": "crate",
                 "options": [
-                  { "value": "crate", "label": "From the crate" },
-                  { "value": "self", "label": "From this module" },
-                  { "value": "plain", "label": "Shortest path" }
+                  {
+                    "value": "crate",
+                    "label": "From the crate"
+                  },
+                  {
+                    "value": "self",
+                    "label": "From this module"
+                  },
+                  {
+                    "value": "plain",
+                    "label": "Shortest path"
+                  }
                 ],
                 "advanced": true
               },
@@ -969,8 +1047,14 @@
                 "description": "Add the #include a completion needs when it is accepted. The server reads this only when it starts, so changing it restarts it.",
                 "default": "iwyu",
                 "options": [
-                  { "value": "iwyu", "label": "When a Completion Needs One" },
-                  { "value": "never", "label": "Never" }
+                  {
+                    "value": "iwyu",
+                    "label": "When a Completion Needs One"
+                  },
+                  {
+                    "value": "never",
+                    "label": "Never"
+                  }
                 ]
               },
               {
@@ -983,9 +1067,18 @@
             "settingsDelivery": {
               "pull": false,
               "arguments": [
-                { "section": "clangd.clangTidy", "flag": "--clang-tidy" },
-                { "section": "clangd.headerInsertion", "flag": "--header-insertion" },
-                { "section": "clangd.backgroundIndex", "flag": "--background-index" }
+                {
+                  "section": "clangd.clangTidy",
+                  "flag": "--clang-tidy"
+                },
+                {
+                  "section": "clangd.headerInsertion",
+                  "flag": "--header-insertion"
+                },
+                {
+                  "section": "clangd.backgroundIndex",
+                  "flag": "--background-index"
+                }
               ]
             }
           }
@@ -1098,7 +1191,9 @@
             "displayName": "Rust (CodeLLDB)",
             "languages": ["rust"],
             "priority": 100,
-            "command": { "kind": "executable" }
+            "command": {
+              "kind": "executable"
+            }
           }
         ]
       }
@@ -1642,13 +1737,13 @@
       "id": "onixlabs.git",
       "name": "Git",
       "description": "Git version control: status, history, diffs, commits, branches, remotes, tags, stashes, merges, rebases, worktree checkouts, ignore rules and per-file history.",
-      "version": "0.7.0",
+      "version": "0.8.0",
       "apiVersion": "1.14.0",
       "detail": "Drives the git installed on your machine, or one you point it at in Settings. Needs git 2.23 or later.",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.git.lock.json",
-        "sha256": "32c7e86dc7a8840f041d468176b2ec881bc5f0e5d5bca0113f3b1303986d37c3",
+        "sha256": "f366462fd317801e6e9b6f4db9f2bc4f71480107df54062ccf7d20225bcd8197",
         "executablePath": "node_modules/@onixlabs/git/main.js"
       },
       "contributes": {
@@ -1732,13 +1827,13 @@
       "id": "onixlabs.claude-harness",
       "name": "Claude",
       "description": "Runs Claude through Anthropic's Agent SDK in its own process, over Studio's agent protocol.",
-      "version": "0.18.0",
+      "version": "0.19.0",
       "apiVersion": "1.12.0",
       "detail": "The full Claude agent: sessions held open across turns, sub-agents, background tasks, slash commands, per-tool policy, write confinement, the OS sandbox, model discovery, and Remote Control through claude.ai/code. Authenticates with your local `claude` login, or with an Anthropic API key set on the connection. Downloads around 200MB: the SDK ships its Claude Code CLI as a native binary, and one platform's is fetched.",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.claude-harness.lock.json",
-        "sha256": "50dbc6db83d7e7b223b5b66ac49834fe8072d3f8814419557ae851751c262190",
+        "sha256": "2e87cf6c07e83cec47b0c40a726aa010006a447fb151656d4abdbec2fea50388",
         "executablePath": "node_modules/@onixlabs/claude-harness/main.js"
       },
       "contributes": {
@@ -1966,6 +2061,511 @@
                 ]
               }
             ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.npm",
+      "name": "npm",
+      "description": "npm packages: the projects in a folder, what each declares, what is installed, what is newer, and search across its registries.",
+      "version": "0.1.0",
+      "apiVersion": "1.25.0",
+      "detail": "Reads package.json, your lockfile and .npmrc. Installing and updating run through the npm, pnpm or Yarn on your machine, in a terminal you can see.",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.npm.lock.json",
+        "sha256": "f9756c94868ecf638644a15e21e6eff5f292177c099d47988c5117b9a365ccdf",
+        "executablePath": "node_modules/@onixlabs/npm/main.js"
+      },
+      "contributes": {
+        "packageManagers": [
+          {
+            "id": "onixlabs.npm",
+            "displayName": "npm",
+            "ecosystem": "npm",
+            "priority": 100,
+            "markers": ["package.json"],
+            "capabilities": [
+              "sources",
+              "search",
+              "searchRequiresQuery",
+              "install",
+              "update",
+              "remove",
+              "restore"
+            ],
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/npm/main.js"
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.nuget",
+      "name": "NuGet",
+      "description": "NuGet packages: the .NET projects in a folder, what each references, what is restored, what is newer, and search across its feeds.",
+      "version": "0.1.0",
+      "apiVersion": "1.25.0",
+      "detail": "Reads your project files, restore output and nuget.config. Adding and updating run through the dotnet on your machine, in a terminal you can see.",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.nuget.lock.json",
+        "sha256": "e0e7e46512c79930ae7dc366d0a614b284ba67be76445b84af8216c0241e8bfa",
+        "executablePath": "node_modules/@onixlabs/nuget/main.js"
+      },
+      "contributes": {
+        "packageManagers": [
+          {
+            "id": "onixlabs.nuget",
+            "displayName": "NuGet",
+            "ecosystem": "nuget",
+            "priority": 200,
+            "markers": ["*.sln", "*.slnx", "*.csproj", "*.fsproj", "*.vbproj"],
+            "capabilities": [
+              "sources",
+              "search",
+              "prerelease",
+              "install",
+              "update",
+              "remove",
+              "restore"
+            ],
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/nuget/main.js"
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.go-modules",
+      "name": "Go modules",
+      "description": "Go modules: the modules in a folder or go.work workspace, what each requires, the version selected, what is newer on the module proxy, and lookup of a module by its exact path.",
+      "version": "0.1.0",
+      "apiVersion": "1.27.0",
+      "detail": "Reads go.mod, go.work, go.sum and your Go environment (GOPROXY, GOPRIVATE). Adding, updating and removing run through the go on your machine, in a terminal you can see.",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.go-modules.lock.json",
+        "sha256": "e5b53fbafab1b6b31bd0fb3454e15b855ab2ba91a83948777fea57b02673a348",
+        "executablePath": "node_modules/@onixlabs/go-modules/main.js"
+      },
+      "contributes": {
+        "packageManagers": [
+          {
+            "id": "onixlabs.go-modules",
+            "displayName": "Go modules",
+            "ecosystem": "go",
+            "priority": 600,
+            "markers": ["go.mod", "go.work"],
+            "capabilities": [
+              "sources",
+              "search",
+              "searchExactName",
+              "install",
+              "update",
+              "remove",
+              "restore"
+            ],
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/go-modules/main.js"
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.vcpkg",
+      "name": "vcpkg",
+      "description": "vcpkg packages: the C and C++ manifests in a folder, the ports each depends on, the version its baseline resolves, what is newer, and search across the vcpkg port list.",
+      "version": "0.1.0",
+      "apiVersion": "1.25.0",
+      "detail": "Reads vcpkg.json and vcpkg-configuration.json, and the vcpkg registry's published baselines. Adding a port and installing run through the vcpkg on your machine, in a terminal you can see.",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.vcpkg.lock.json",
+        "sha256": "44ac6691af4d061c9daa669309e5f9364b89e92e7ea843b4f986abd7182729ff",
+        "executablePath": "node_modules/@onixlabs/vcpkg/main.js"
+      },
+      "contributes": {
+        "packageManagers": [
+          {
+            "id": "onixlabs.vcpkg",
+            "displayName": "vcpkg",
+            "ecosystem": "vcpkg",
+            "priority": 100,
+            "markers": ["vcpkg.json"],
+            "capabilities": ["sources", "search", "install", "restore"],
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/vcpkg/main.js"
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.conan",
+      "name": "Conan",
+      "description": "Conan packages: the C and C++ conanfiles in a folder, what each requires, what its lockfile resolved, what is newer, and search across its remotes.",
+      "version": "0.1.0",
+      "apiVersion": "1.25.0",
+      "detail": "Reads conanfile.txt, conanfile.py (as text, never run), conan.lock and your Conan remotes. Installing runs through the conan on your machine, in a terminal you can see.",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.conan.lock.json",
+        "sha256": "04176d9bbc35776d13f664283bd462c23074322dffc279797ecc28264b35d032",
+        "executablePath": "node_modules/@onixlabs/conan/main.js"
+      },
+      "contributes": {
+        "packageManagers": [
+          {
+            "id": "onixlabs.conan",
+            "displayName": "Conan",
+            "ecosystem": "conan",
+            "priority": 100,
+            "markers": ["conanfile.txt", "conanfile.py"],
+            "capabilities": ["sources", "search", "searchRequiresQuery", "restore"],
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/conan/main.js"
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.cargo",
+      "name": "Cargo",
+      "description": "Cargo crates: the Rust crates and workspaces in a folder, what each depends on, what Cargo.lock resolved, what is newer, and search across crates.io and your registries.",
+      "version": "0.1.0",
+      "apiVersion": "1.25.0",
+      "detail": "Reads your Cargo.toml files, Cargo.lock and Cargo's own config and credentials. Adding, updating and removing run through the cargo on your machine, in a terminal you can see.",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.cargo.lock.json",
+        "sha256": "6a36ac9c68fc42baf3d4229d76889bf32dd90b0cae4f085435944a8ad81069e7",
+        "executablePath": "node_modules/@onixlabs/cargo/main.js"
+      },
+      "contributes": {
+        "packageManagers": [
+          {
+            "id": "onixlabs.cargo",
+            "displayName": "Cargo",
+            "ecosystem": "cargo",
+            "priority": 100,
+            "markers": ["Cargo.toml"],
+            "capabilities": [
+              "sources",
+              "search",
+              "prerelease",
+              "install",
+              "update",
+              "remove",
+              "restore"
+            ],
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/cargo/main.js"
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.pypi",
+      "name": "PyPI",
+      "description": "Python packages: the projects in a folder, what each declares, what is locked or installed, what is newer on PyPI or your own index, and exact-name lookup.",
+      "version": "0.1.0",
+      "apiVersion": "1.27.0",
+      "detail": "Reads pyproject.toml, requirements files, Pipfile, setup.cfg, your lockfile or virtual environment, and pip.conf. Never runs Python. Changes run through the uv, Poetry, Pipenv or pip on your machine, in a terminal you can see.",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.pypi.lock.json",
+        "sha256": "f12516d725be0e4ec33b824e90d7335ab216c113174d3f19972e894ec3c34c86",
+        "executablePath": "node_modules/@onixlabs/pypi/main.js"
+      },
+      "contributes": {
+        "packageManagers": [
+          {
+            "id": "onixlabs.pypi",
+            "displayName": "PyPI",
+            "ecosystem": "pypi",
+            "priority": 300,
+            "markers": ["pyproject.toml", "requirements*.txt", "setup.cfg", "setup.py", "Pipfile"],
+            "capabilities": [
+              "sources",
+              "search",
+              "searchExactName",
+              "install",
+              "update",
+              "remove",
+              "restore"
+            ],
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/pypi/main.js"
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.maven",
+      "name": "Maven and Gradle",
+      "description": "JVM packages: the Maven and Gradle projects in a folder, what each declares, what is newer on Maven Central or your own repositories, and search across Maven Central.",
+      "version": "0.1.0",
+      "apiVersion": "1.25.0",
+      "detail": "Reads your POMs, Gradle build scripts, version catalog, Gradle lockfiles, ~/.m2/settings.xml and gradle.properties. Neither Maven nor Gradle has a command that adds a dependency, so this plugin only resolves them, through the mvn or gradle on your machine, in a terminal you can see.",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.maven.lock.json",
+        "sha256": "8aead4409d15bc0819d5e45ba8da35a4815c032c22316f8f54e54ee5f47e128a",
+        "executablePath": "node_modules/@onixlabs/maven/main.js"
+      },
+      "contributes": {
+        "packageManagers": [
+          {
+            "id": "onixlabs.maven",
+            "displayName": "Maven and Gradle",
+            "ecosystem": "maven",
+            "priority": 150,
+            "markers": [
+              "pom.xml",
+              "build.gradle",
+              "build.gradle.kts",
+              "settings.gradle",
+              "settings.gradle.kts",
+              "libs.versions.toml"
+            ],
+            "capabilities": ["sources", "search", "searchRequiresQuery", "restore"],
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/maven/main.js"
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.dotnet-tests",
+      "name": ".NET Tests",
+      "description": ".NET tests in the Tests panel: xUnit, NUnit and MSTest, found in your test projects and run through dotnet test.",
+      "version": "0.1.0",
+      "apiVersion": "1.28.0",
+      "detail": "Finds tests by reading your project files and C# sources, without building anything. Running them uses the .NET SDK on your machine, in a terminal you can see.",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.dotnet-tests.lock.json",
+        "sha256": "9e3d00f2c143501b007db442435c60e61c1be7b3651df108a19f6381b9ad59cd",
+        "executablePath": "node_modules/@onixlabs/dotnet-tests/main.js"
+      },
+      "contributes": {
+        "testAdapters": [
+          {
+            "id": "onixlabs.dotnet-tests",
+            "displayName": ".NET Tests",
+            "frameworks": ["xUnit", "NUnit", "MSTest"],
+            "priority": 100,
+            "markers": ["*.csproj", "*.fsproj"],
+            "capabilities": ["run", "runSelected"],
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/dotnet-tests/main.js"
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.js-tests",
+      "name": "JavaScript Tests",
+      "description": "JavaScript and TypeScript tests: finds what Vitest, Jest and Playwright Test would run, runs them, and reads their results back.",
+      "version": "0.1.0",
+      "apiVersion": "1.28.0",
+      "detail": "Reads package.json and your test files to find tests, without running anything. Running them uses the Vitest, Jest or Playwright your project installs, in a terminal you can see.",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.js-tests.lock.json",
+        "sha256": "1d2f3b3a9e6e218b04455aa47d7afa67341ca6dde2793728cce90a497b14b64b",
+        "executablePath": "node_modules/@onixlabs/js-tests/main.js"
+      },
+      "contributes": {
+        "testAdapters": [
+          {
+            "id": "onixlabs.js-tests",
+            "displayName": "JavaScript Tests",
+            "frameworks": ["Vitest", "Jest", "Playwright Test"],
+            "priority": 100,
+            "markers": ["package.json"],
+            "capabilities": ["run", "runSelected", "debug"],
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/js-tests/main.js"
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.python-tests",
+      "name": "Python Tests",
+      "description": "Python tests: finds what pytest would collect, unittest suites included, runs them, and reads their results back.",
+      "version": "0.1.0",
+      "apiVersion": "1.28.0",
+      "detail": "Reads your test files to find tests, without starting Python. Running them uses the project's own virtual environment (.venv or venv) when it has one, else python3, with pytest installed there, in a terminal you can see.",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.python-tests.lock.json",
+        "sha256": "51ddd6f12c230e90d0dacb54311a55976b175ddbe606544c15e166d9228825d9",
+        "executablePath": "node_modules/@onixlabs/python-tests/main.js"
+      },
+      "contributes": {
+        "testAdapters": [
+          {
+            "id": "onixlabs.python-tests",
+            "displayName": "Python Tests",
+            "frameworks": ["pytest", "unittest"],
+            "priority": 100,
+            "markers": [
+              "pyproject.toml",
+              "pytest.ini",
+              "setup.cfg",
+              "setup.py",
+              "tox.ini",
+              "conftest.py",
+              "requirements*.txt"
+            ],
+            "capabilities": ["run", "runSelected", "debug"],
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/python-tests/main.js"
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.rust-tests",
+      "name": "Rust Tests",
+      "description": "Rust tests in the Tests panel: finds #[test] functions in each crate and runs them with cargo test.",
+      "version": "0.1.0",
+      "apiVersion": "1.28.0",
+      "detail": "Reads your crates' sources to list their tests; running them uses the cargo on your machine, in a terminal you can see.",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.rust-tests.lock.json",
+        "sha256": "100ebc43686007a81aafc04c4fcd096965144a0df4637eed5be726b9178ace51",
+        "executablePath": "node_modules/@onixlabs/rust-tests/main.js"
+      },
+      "contributes": {
+        "testAdapters": [
+          {
+            "id": "onixlabs.rust-tests",
+            "displayName": "Rust Tests",
+            "frameworks": ["cargo test"],
+            "priority": 100,
+            "markers": ["Cargo.toml"],
+            "capabilities": ["run", "runSelected"],
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/rust-tests/main.js"
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.go-tests",
+      "name": "Go Tests",
+      "description": "Go tests in the Tests panel: finds Test and Fuzz functions in each package and runs them with go test.",
+      "version": "0.1.0",
+      "apiVersion": "1.28.0",
+      "detail": "Reads your packages' _test.go files to list their tests; running them uses the go on your machine, in a terminal you can see.",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.go-tests.lock.json",
+        "sha256": "dde2d14e763577183aa636e2d79ba30ca3b5262165d0f2fba1a957a427f284dd",
+        "executablePath": "node_modules/@onixlabs/go-tests/main.js"
+      },
+      "contributes": {
+        "testAdapters": [
+          {
+            "id": "onixlabs.go-tests",
+            "displayName": "Go Tests",
+            "frameworks": ["go test"],
+            "priority": 100,
+            "markers": ["go.mod"],
+            "capabilities": ["run", "runSelected"],
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/go-tests/main.js"
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.jvm-tests",
+      "name": "JVM Tests",
+      "description": "JUnit tests in the Tests panel: finds test classes and methods under src/test and runs them with Gradle or Maven.",
+      "version": "0.1.0",
+      "apiVersion": "1.28.0",
+      "detail": "Reads your test sources to list their tests; running them uses your Gradle or Maven wrapper, or the one on your machine, in a terminal you can see.",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.jvm-tests.lock.json",
+        "sha256": "e9aaf8744c0e1182a6c2d229e831baf5bb5b456e9019b6f66a1d3c8f2574d95d",
+        "executablePath": "node_modules/@onixlabs/jvm-tests/main.js"
+      },
+      "contributes": {
+        "testAdapters": [
+          {
+            "id": "onixlabs.jvm-tests",
+            "displayName": "JVM Tests",
+            "frameworks": ["JUnit 5"],
+            "priority": 100,
+            "markers": ["pom.xml", "build.gradle", "build.gradle.kts"],
+            "capabilities": ["run", "runSelected"],
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/jvm-tests/main.js"
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.ctest",
+      "name": "CTest",
+      "description": "C and C++ tests in the Tests panel: lists a CMake build's CTest tests and runs them with ctest.",
+      "version": "0.1.0",
+      "apiVersion": "1.28.0",
+      "detail": "Asks ctest which tests a configured build directory declares, which runs none of them; running them uses the ctest on your machine, in a terminal you can see.",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.ctest.lock.json",
+        "sha256": "010b447bed7042ba0fd93dd85a7c3b56e3c197be52b50c5465d400fbce0f7a31",
+        "executablePath": "node_modules/@onixlabs/ctest/main.js"
+      },
+      "contributes": {
+        "testAdapters": [
+          {
+            "id": "onixlabs.ctest",
+            "displayName": "CTest",
+            "frameworks": ["CTest"],
+            "priority": 100,
+            "markers": ["CMakeLists.txt"],
+            "capabilities": ["run", "runSelected"],
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/ctest/main.js"
           }
         ]
       }

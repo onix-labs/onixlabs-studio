@@ -8,7 +8,7 @@
   "provision": {
     "kind": "npm",
     "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.rust-tests.lock.json",
-    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sha256": "100ebc43686007a81aafc04c4fcd096965144a0df4637eed5be726b9178ace51",
     "executablePath": "node_modules/@onixlabs/rust-tests/main.js"
   },
   "contributes": {
