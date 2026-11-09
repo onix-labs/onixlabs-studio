@@ -2,7 +2,7 @@
   "id": "onixlabs.npm",
   "name": "npm",
   "description": "npm packages: the projects in a folder, what each declares, what is installed, what is newer, and search across its registries.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "apiVersion": "1.25.0",
   "detail": "Reads package.json, your lockfile and .npmrc. Installing and updating run through the npm, pnpm or Yarn on your machine, in a terminal you can see.",
   "provision": {

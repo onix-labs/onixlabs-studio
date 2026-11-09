@@ -16,9 +16,10 @@ export async function fetchLatestVersion(
   endpoint: NpmEndpoint,
   fetchFn: HttpFetch,
 ): Promise<string | null> {
-  // Scoped names (`@scope/pkg`) must keep their slash but encode the `@` and inner slash per the
-  // registry's addressing; encodeURIComponent then restoring the separators does exactly that.
-  const encoded: string = encodeURIComponent(name).replace('%40', '@').replace('%2F', '/');
+  // A scoped name is addressed as `@scope%2Fpkg`, as the npm CLI sends it: only a leading `@` is
+  // restored, and every `/` stays encoded, so a name read from a workspace's package.json can never
+  // add path segments (`../`) to a URL that carries the registry's credentials.
+  const encoded: string = encodeURIComponent(name).replace(/^%40/, '@');
   const url: string = `${endpoint.registry}/${encoded}`;
   try {
     const response: Awaited<ReturnType<HttpFetch>> = await fetchFn(url, {
