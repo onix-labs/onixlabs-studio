@@ -1,0 +1,30 @@
+{
+  "id": "onixlabs.js-tests",
+  "name": "JavaScript Tests",
+  "description": "JavaScript and TypeScript tests: finds what Vitest, Jest and Playwright Test would run, runs them, and reads their results back.",
+  "version": "0.1.0",
+  "apiVersion": "1.28.0",
+  "detail": "Reads package.json and your test files to find tests, without running anything. Running them uses the Vitest, Jest or Playwright your project installs, in a terminal you can see.",
+  "provision": {
+    "kind": "npm",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.js-tests.lock.json",
+    "sha256": "1d2f3b3a9e6e218b04455aa47d7afa67341ca6dde2793728cce90a497b14b64b",
+    "executablePath": "node_modules/@onixlabs/js-tests/main.js"
+  },
+  "contributes": {
+    "testAdapters": [
+      {
+        "id": "onixlabs.js-tests",
+        "displayName": "JavaScript Tests",
+        "frameworks": ["Vitest", "Jest", "Playwright Test"],
+        "priority": 100,
+        "markers": ["package.json"],
+        "capabilities": ["run", "runSelected", "debug"],
+        "command": {
+          "kind": "node"
+        },
+        "entryPoint": "node_modules/@onixlabs/js-tests/main.js"
+      }
+    ]
+  }
+}

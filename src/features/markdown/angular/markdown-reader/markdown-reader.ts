@@ -9,6 +9,8 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
+import type { ReadAloudPitch } from '@shared/angular/services/settings/settings-registry';
 import { EMPTY_DOCUMENT, ReadDocument, ReadParagraph, ReadWord } from './read-tokenize';
 import { HighlightMode, ReadSession, VoiceOption } from './reader-types';
 
@@ -65,6 +67,16 @@ const MAX_PROGRESS: number = 1;
 const ENHANCED_VOICE: string = 'enhanced';
 
 /**
+ * Holds the utterance pitch of each Read Aloud Pitch choice.
+ */
+const PITCHES: Readonly<Record<ReadAloudPitch, number>> = { low: 0.75, normal: 1, high: 1.25 };
+
+/**
+ * Percent of full volume, which is what an utterance's volume is a fraction of.
+ */
+const FULL_VOLUME: number = 100;
+
+/**
  * Resolves the platform speech synthesiser, or null when the runtime does not provide one (such as a
  * headless test environment).
  * @returns Returns the speech controller, or null.
@@ -112,6 +124,12 @@ export class Reader {
    * Holds the structured logging client for read-along playback actions.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the settings the reader takes its defaults from. A choice in the Reader panel lasts for the
+   * session and is not written back.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the platform speech controller once resolved, or null when unavailable. Resolved lazily by
@@ -298,6 +316,21 @@ export class Reader {
    * Loads the available voices and keeps the in-document highlight in sync with the spoken word.
    */
   public constructor() {
+    effect((): void => this.rateState.set(this.settings.get('markdownEditor.readAloudSpeed')));
+    effect((): void =>
+      this.highlightState.set(this.settings.get('markdownEditor.readAlongHighlight')),
+    );
+    effect((): void => {
+      const voice: string = this.settings.get('markdownEditor.readAloudVoice');
+      this.selectedVoiceState.set(voice.length > 0 ? voice : null);
+    });
+    effect((): void => {
+      this.settings.get('markdownEditor.enhancedVoicesOnly');
+      if (this.voicesLoaded) {
+        this.loadVoices();
+      }
+    });
+
     // The speech controller is NOT touched here — see `synthesisResolved`. Opening a markdown
     // document must cost nothing for a feature most documents never use.
     effect((): void => {
@@ -308,7 +341,9 @@ export class Reader {
       if (this.engagedState() && this.canRead()) {
         const index: number = this.clampedIndex();
         session.highlight(index, this.highlightState());
-        session.revealWord(index);
+        if (this.settings.get('markdownEditor.followSpokenWord')) {
+          session.revealWord(index);
+        }
       } else {
         session.clearHighlight();
       }
@@ -472,7 +507,7 @@ export class Reader {
    */
   public setVoiceUri(uri: string): void {
     this.log.debug('markdown.reader', 'Voice changed', { uri });
-    this.selectedVoiceState.set(uri);
+    this.selectedVoiceState.set(uri.length > 0 ? uri : null);
     if (this.playingState()) {
       this.speakFrom(this.clampedIndex());
     }
@@ -541,6 +576,8 @@ export class Reader {
       paragraph.text.slice(word.charOffset),
     );
     utterance.rate = this.rateState();
+    utterance.pitch = PITCHES[this.settings.get('markdownEditor.readAloudPitch')];
+    utterance.volume = this.settings.get('markdownEditor.readAloudVolume') / FULL_VOLUME;
     const voice: SpeechSynthesisVoice | null = this.resolveVoice();
     if (voice !== null) {
       utterance.voice = voice;
@@ -660,11 +697,14 @@ export class Reader {
     if (synth === null) {
       return;
     }
-    const voices: SpeechSynthesisVoice[] = synth
-      .getVoices()
-      .filter((voice: SpeechSynthesisVoice): boolean =>
-        voice.name.toLowerCase().includes(ENHANCED_VOICE),
-      );
+    const all: SpeechSynthesisVoice[] = synth.getVoices();
+    const enhanced: SpeechSynthesisVoice[] = all.filter((voice: SpeechSynthesisVoice): boolean =>
+      voice.name.toLowerCase().includes(ENHANCED_VOICE),
+    );
+    const voices: SpeechSynthesisVoice[] =
+      this.settings.get('markdownEditor.enhancedVoicesOnly') && enhanced.length > ZERO
+        ? enhanced
+        : all;
     this.voicesState.set(
       voices.map((voice: SpeechSynthesisVoice): VoiceOption => ({
         uri: voice.voiceURI,
@@ -672,8 +712,5 @@ export class Reader {
         lang: voice.lang,
       })),
     );
-    if (this.selectedVoiceState() === null && voices.length > ZERO) {
-      this.selectedVoiceState.set(voices[ZERO].voiceURI);
-    }
   }
 }

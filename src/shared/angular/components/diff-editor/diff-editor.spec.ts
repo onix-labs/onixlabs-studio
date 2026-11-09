@@ -6,6 +6,7 @@ import type { MockInstance } from 'vitest';
 import { EditorContextMenuHost } from '@shared/angular/components/editor-context-menu/editor-context-menu-host';
 import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { HoverCards } from '@shared/angular/services/hover/hover-cards';
 import { ColourPickers } from '@shared/angular/services/colour-picker/colour-pickers';
 import { DiffEditor } from './diff-editor';
@@ -168,5 +169,73 @@ describe('DiffEditor over a stand-in Monaco diff editor (#1012)', () => {
     expect(detached).toBe(2);
     expect(cardsDetached).toBe(2);
     expect(pickersDetached).toBe(2);
+  });
+
+  it('followsTheWhitespaceSwitch_andTheDiffSettings_whileOpen', async () => {
+    const side: () => MonacoApi.editor.ICodeEditor = (): MonacoApi.editor.ICodeEditor =>
+      ({
+        onDidChangeCursorPosition: (): MonacoApi.IDisposable => ({
+          dispose: (): void => undefined,
+        }),
+        getPosition: (): null => null,
+        addCommand: (): null => null,
+        focus: (): void => undefined,
+      }) as unknown as MonacoApi.editor.ICodeEditor;
+    const original: MonacoApi.editor.ICodeEditor = side();
+    const modified: MonacoApi.editor.ICodeEditor = side();
+    const updates: MonacoApi.editor.IDiffEditorOptions[] = [];
+    let created: MonacoApi.editor.IStandaloneDiffEditorConstructionOptions | undefined;
+    const diff: unknown = {
+      onDidUpdateDiff: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
+      getLineChanges: (): null => null,
+      getOriginalEditor: (): MonacoApi.editor.ICodeEditor => original,
+      getModifiedEditor: (): MonacoApi.editor.ICodeEditor => modified,
+      setModel: (): void => undefined,
+      updateOptions: (options: MonacoApi.editor.IDiffEditorOptions): void =>
+        void updates.push(options),
+      dispose: (): void => undefined,
+    };
+    await TestBed.configureTestingModule({ imports: [DiffEditor] }).compileComponents();
+    const monaco: Monaco = TestBed.inject(Monaco);
+    vi.spyOn(monaco, 'ensureLoaded').mockResolvedValue(undefined);
+    vi.spyOn(monaco, 'getMonaco').mockReturnValue({
+      ...STAND_IN_KEYS,
+      editor: {
+        createDiffEditor: (
+          _host: HTMLElement,
+          options: MonacoApi.editor.IStandaloneDiffEditorConstructionOptions,
+        ): unknown => {
+          created = options;
+          return diff;
+        },
+        createModel: (): unknown => ({ dispose: (): void => undefined }),
+        setTheme: (): void => undefined,
+      },
+    } as unknown as typeof MonacoApi);
+    // The sides' menus, hover cards and colour pickers are another test's concern.
+    vi.spyOn(TestBed.inject(EditorContextMenu), 'attach').mockReturnValue((): void => undefined);
+    vi.spyOn(TestBed.inject(HoverCards), 'attach').mockReturnValue((): void => undefined);
+    vi.spyOn(TestBed.inject(ColourPickers), 'attach').mockReturnValue((): void => undefined);
+
+    const fixture: ComponentFixture<DiffEditor> = TestBed.createComponent(DiffEditor);
+    fixture.componentRef.setInput('ignoreWhitespace', true);
+    await fixture.whenStable();
+    expect(created?.ignoreTrimWhitespace).toBe(true);
+    expect(created?.diffAlgorithm).toBe('advanced');
+
+    // The session switch flips an open diff at once.
+    fixture.componentRef.setInput('ignoreWhitespace', false);
+    await fixture.whenStable();
+    expect(updates.at(-1)?.ignoreTrimWhitespace).toBe(false);
+
+    // And so does a setting.
+    try {
+      TestBed.inject(Settings).set('textEditor.diffCollapseUnchanged', false);
+      await fixture.whenStable();
+      expect(updates.at(-1)?.hideUnchangedRegions?.enabled).toBe(false);
+    } finally {
+      localStorage.removeItem('settings');
+    }
+    fixture.destroy();
   });
 });

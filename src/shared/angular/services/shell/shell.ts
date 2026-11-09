@@ -35,13 +35,16 @@ export class Shell {
 
   /**
    * Opens an external URL in the operating system's default browser. Only http, https, and mailto URLs
-   * are honoured by the main process; anything else is ignored.
+   * are honoured by the main process; anything else is ignored. The main process asks first when
+   * Confirm Before Opening External Links says to.
    * @param url The URL to open.
+   * @param origin Where the link came from: one of Studio's own (help, releases), which is trusted, or
+   * content — agent output, Markdown, a server's or a host's data — which is not.
    * @returns Returns a promise that resolves once the request has been handed to the main process.
    */
-  public async openExternal(url: string): Promise<void> {
-    this.log.info('Shell', 'Opening external URL', url);
-    await this.bridge?.invoke<void>(ShellChannel.OpenExternal, url);
+  public async openExternal(url: string, origin: 'studio' | 'content' = 'content'): Promise<void> {
+    this.log.info('Shell', 'Opening external URL', url, origin);
+    await this.bridge?.invoke<void>(ShellChannel.OpenExternal, url, origin);
   }
 
   /**

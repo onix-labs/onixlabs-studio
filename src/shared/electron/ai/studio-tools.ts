@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { dirname, join } from 'node:path';
 import {
   ASK_USER,
   PROPOSE_WORKSPACE,
@@ -395,7 +396,8 @@ export const RUN_CONFIGURATION_PROMPT_APPENDIX: string = [
   '("run" or "debug"), and optionally `program` + `args` (the command to launch), `cwd` (relative to the',
   'workspace root), and `env`. When `program` is given it wins; otherwise the provider derives the',
   'command from the kind and id (for example `node` runs `npm run <id>`, `dotnet` runs',
-  '`dotnet run --project <id>`).',
+  '`dotnet run --project <id>`). Set `default: true` on the one a single press of Run should start; a',
+  'workspace has at most one default, so saving one replaces the last.',
   'A configuration may instead be a **compound**: give it `members` — the ids of other configurations —',
   'and starting it starts all of them in parallel, each individually stoppable. When the user says they',
   'need several things running together, author the individual configurations AND a compound that starts',
@@ -616,10 +618,10 @@ export async function writeTerminalInput(
     `Tool invoked: write_terminal_input (tab=${tabId}, submit=${submit})`,
   );
   // A command the user keeps agents off (#853) is refused before it reaches a shell — the AI SDK
-  // providers have no shell of their own, so this tool is their only way to run one.
-  const blocked: string | null = submit
-    ? findBlockedCommand(text, context.blockedCommands ?? [])
-    : null;
+  // providers have no shell of their own, so this tool is their only way to run one. Text carrying
+  // its own line end runs as surely as submitted text does.
+  const blocked: string | null =
+    submit || /[\r\n]/.test(text) ? findBlockedCommand(text, context.blockedCommands ?? []) : null;
   if (blocked !== null) {
     logger.info('StudioTools', `write_terminal_input refused: ${blocked} is blocked`);
     return blockedCommandMessage(blocked);
@@ -1619,14 +1621,17 @@ export async function readSourceControlStatus(context: AgentRunContext): Promise
  * paths win. A boundary rather than a prompt — the same rule a harness applies to its own file tools,
  * so a workspace tool cannot be a way around it.
  * @param context The agent run context.
- * @param target The absolute or workspace-relative path.
+ * @param requested The absolute or workspace-relative path.
  * @returns Returns null when the write may proceed, or the refusal to report to the model.
  */
-function refuseOutsideConfinement(context: AgentRunContext, target: string): string | null {
+function refuseOutsideConfinement(context: AgentRunContext, requested: string): string | null {
   const base: string | null = context.workspaceRoot;
   if (base === null) {
     return 'No workspace is open, so there is nothing to act on.';
   }
+  // The renderer trims the path before it acts on it, so that is the path to judge: ` /etc/hosts`
+  // reads here as a name inside the workspace, and there as `/etc/hosts`.
+  const target: string = requested.trim();
   const roots: readonly string[] = [base, ...context.allowedWritePaths];
   if (!isWriteWithinRoots(target, roots)) {
     return (
@@ -1727,7 +1732,10 @@ export async function renamePath(
   name: string,
 ): Promise<string> {
   logger.trace('StudioTools', `Tool invoked: rename_path (${path} -> ${name})`);
-  const refusal: string | null = refuseOutsideConfinement(context, path);
+  // The new name is written to as much as the old one is: `notes.txt` must not become a denied `.env`.
+  const refusal: string | null =
+    refuseOutsideConfinement(context, path) ??
+    refuseOutsideConfinement(context, join(dirname(path.trim()), name.trim()));
   if (refusal !== null) {
     return refusal;
   }

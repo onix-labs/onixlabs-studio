@@ -17,6 +17,7 @@ import {
 } from '@shared/api/version-control-protocol';
 import { languageForFileName } from '../monaco/monaco-languages';
 import { DiffTarget, GitCommit, GitFileChange, GitStash } from '../repository/repository-data';
+import type { GitCommandSettings } from './git-command-settings';
 import { relativeDate } from './relative-date';
 import {
   FileDiff,
@@ -101,13 +102,25 @@ export class VersionControlProvider implements SourceControlProvider {
   private readonly api: SourceControlClient | undefined;
 
   /**
+   * Reads the Version Control settings git operations run with, or undefined to send none (the
+   * plugin then keeps its own behaviour).
+   */
+  private readonly settings: (() => GitCommandSettings) | undefined;
+
+  /**
    * Initialises a new instance bound to a repository root.
    * @param root The repository's absolute root path.
    * @param client The source-control client, or undefined when running outside Electron.
+   * @param settings Reads the settings git operations run with, fresh for each operation.
    */
-  public constructor(root: string, client: SourceControlClient | undefined) {
+  public constructor(
+    root: string,
+    client: SourceControlClient | undefined,
+    settings?: () => GitCommandSettings,
+  ) {
     this.root = root;
     this.api = client;
+    this.settings = settings;
   }
 
   /**
@@ -305,7 +318,13 @@ export class VersionControlProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public commit(message: string): Promise<MutationResult> {
-    return this.mutate('commit', { message });
+    const settings: GitCommandSettings | undefined = this.settings?.();
+    return this.mutate(
+      'commit',
+      settings === undefined
+        ? { message }
+        : { message, sign: settings.sign, signoff: settings.signoff, hooks: settings.hooks },
+    );
   }
 
   /**
@@ -313,7 +332,11 @@ export class VersionControlProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public stash(): Promise<MutationResult> {
-    return this.mutate('stash', {});
+    const settings: GitCommandSettings | undefined = this.settings?.();
+    return this.mutate(
+      'stash',
+      settings === undefined ? {} : { includeUntracked: settings.stashUntracked },
+    );
   }
 
   /**
@@ -363,11 +386,15 @@ export class VersionControlProvider implements SourceControlProvider {
   }
 
   /**
-   * Fetches all remotes, pruning deleted remote-tracking branches.
+   * Fetches all remotes, pruning deleted remote-tracking branches when Prune on Fetch is on.
    * @returns Returns the outcome.
    */
   public fetch(): Promise<MutationResult> {
-    return this.mutate('fetch', {});
+    const settings: GitCommandSettings | undefined = this.settings?.();
+    return this.mutate(
+      'fetch',
+      settings === undefined ? {} : { prune: settings.prune, timeoutMs: settings.networkTimeoutMs },
+    );
   }
 
   /**
@@ -386,7 +413,13 @@ export class VersionControlProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public pull(): Promise<MutationResult> {
-    return this.mutate('pull', {});
+    const settings: GitCommandSettings | undefined = this.settings?.();
+    return this.mutate(
+      'pull',
+      settings === undefined
+        ? {}
+        : { mode: settings.pullMode, timeoutMs: settings.networkTimeoutMs },
+    );
   }
 
   /**
@@ -395,7 +428,13 @@ export class VersionControlProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public push(target?: PushTarget): Promise<MutationResult> {
-    return this.mutate('push', { target: target ?? null });
+    const settings: GitCommandSettings | undefined = this.settings?.();
+    return this.mutate(
+      'push',
+      settings === undefined
+        ? { target: target ?? null }
+        : { target: target ?? null, timeoutMs: settings.networkTimeoutMs },
+    );
   }
 
   /**

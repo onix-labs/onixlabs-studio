@@ -1,12 +1,21 @@
 import type * as MonacoApi from 'monaco-editor';
-import { markerSeverityOf, severityOf, toDiagnostic, toMarkerData } from './lsp-diagnostic-mapper';
+import {
+  isErrorListDiagnostic,
+  markerSeverityOf,
+  markerTagsOf,
+  mergeDiagnostics,
+  severityOf,
+  toDiagnostic,
+  toMarkerData,
+} from './lsp-diagnostic-mapper';
 import type { LspDiagnostic } from './lsp-client';
 
 /**
- * A fake Monaco namespace exposing only the marker-severity enum the mapper reads.
+ * A fake Monaco namespace exposing only the marker enums the mapper reads.
  */
 const monaco: typeof MonacoApi = {
   MarkerSeverity: { Error: 8, Warning: 4, Info: 2, Hint: 1 },
+  MarkerTag: { Unnecessary: 1, Deprecated: 2 },
 } as unknown as typeof MonacoApi;
 
 /**
@@ -73,5 +82,78 @@ describe('lsp-diagnostic-mapper', () => {
 
     expect(marker.code).toBe('2304');
     expect('data' in marker).toBe(false);
+  });
+
+  it('toMarkerData_carriesUnnecessaryAndDeprecatedTags', () => {
+    const [faded, struck] = toMarkerData(monaco, [
+      { ...diagnostic, severity: 4, tags: [1] },
+      { ...diagnostic, severity: 4, tags: [2] },
+    ]);
+
+    expect(faded.tags).toEqual([1]);
+    expect(struck.tags).toEqual([2]);
+  });
+
+  it('toMarkerData_withNoTags_leavesTheFieldOff', () => {
+    const [marker] = toMarkerData(monaco, [{ ...diagnostic, tags: [] }]);
+
+    expect('tags' in marker).toBe(false);
+  });
+
+  it('markerTagsOf_leavesOutATagItDoesNotKnow', () => {
+    expect(markerTagsOf(monaco, [1, 2, 99])).toEqual([1, 2]);
+    expect(markerTagsOf(monaco, undefined)).toEqual([]);
+  });
+
+  it.each<[string, number | undefined, number[] | undefined, boolean]>([
+    ['AnUntaggedHint', 4, undefined, true],
+    ['AHintWithAnUnknownTag', 4, [99], true],
+    ['AFadedHint', 4, [1], false],
+    ['AStruckHint', 4, [2], false],
+    ['ATaggedDiagnosticWithNoSeverity', undefined, [1], false],
+    ['AnUnusedNameTheProjectMadeAnError', 1, [1], true],
+    ['ADeprecationTheServerMadeAWarning', 2, [2], true],
+    ['ATaggedInformation', 3, [1], true],
+  ])(
+    'isErrorListDiagnostic_with%s_answers',
+    (
+      _name: string,
+      severity: number | undefined,
+      tags: number[] | undefined,
+      expected: boolean,
+    ) => {
+      expect(isErrorListDiagnostic({ ...diagnostic, severity, tags })).toBe(expected);
+    },
+  );
+});
+
+describe('mergeDiagnostics (#1210)', () => {
+  const RANGE: LspDiagnostic['range'] = {
+    start: { line: 1, character: 0 },
+    end: { line: 1, character: 4 },
+  };
+  const NATIVE: LspDiagnostic = { range: RANGE, severity: 1, message: 'from the server' };
+  const CHECK: LspDiagnostic = { range: RANGE, severity: 1, message: 'from cargo check' };
+
+  it('keepsBoth_asNeitherIsTheWholePicture', () => {
+    expect(mergeDiagnostics([NATIVE], [CHECK])).toEqual([NATIVE, CHECK]);
+  });
+
+  it('keepsTheOneThatIsThere_whenTheOtherHasNothing', () => {
+    expect(mergeDiagnostics([], [CHECK])).toEqual([CHECK]);
+    expect(mergeDiagnostics([NATIVE], [])).toEqual([NATIVE]);
+  });
+
+  it('keepsOnce_aDiagnosticBothSay', () => {
+    expect(mergeDiagnostics([NATIVE], [{ ...NATIVE }])).toEqual([NATIVE]);
+  });
+
+  it('keepsBoth_thoughTheySayTheSameThing_whenTheyAreInDifferentPlaces', () => {
+    const elsewhere: LspDiagnostic = {
+      ...NATIVE,
+      range: { start: { line: 2, character: 0 }, end: { line: 2, character: 4 } },
+    };
+
+    expect(mergeDiagnostics([NATIVE], [elsewhere])).toEqual([NATIVE, elsewhere]);
   });
 });

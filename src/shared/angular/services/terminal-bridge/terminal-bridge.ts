@@ -64,6 +64,15 @@ export class TerminalBridge {
   }
 
   /**
+   * Tells main that output has been parsed, so a session flooding the terminal can be paced.
+   * @param id The terminal identifier.
+   * @param length The characters parsed.
+   */
+  public acknowledge(id: string, length: number): void {
+    void this.bridge?.invoke<void>(TerminalChannel.Acknowledge, id, length);
+  }
+
+  /**
    * Resizes a session.
    * @param id The terminal identifier.
    * @param cols The new column count.
@@ -89,10 +98,14 @@ export class TerminalBridge {
    * Terminates a session's process tree (SIGTERM escalating to SIGKILL) while keeping the session
    * and its scrollback — stop what runs, without removing the tab.
    * @param id The terminal identifier.
+   * @param graceMilliseconds How long the process has to end before it is killed.
    * @returns Returns true when the session exists and was signalled.
    */
-  public terminate(id: string): Promise<boolean> {
-    return this.bridge?.invoke<boolean>(TerminalChannel.Terminate, id) ?? Promise.resolve(false);
+  public terminate(id: string, graceMilliseconds?: number): Promise<boolean> {
+    return (
+      this.bridge?.invoke<boolean>(TerminalChannel.Terminate, id, graceMilliseconds) ??
+      Promise.resolve(false)
+    );
   }
 
   /**
@@ -102,6 +115,17 @@ export class TerminalBridge {
    */
   public getCwd(id: string): Promise<string | null> {
     return this.bridge?.invoke<string | null>(TerminalChannel.GetCwd, id) ?? Promise.resolve(null);
+  }
+
+  /**
+   * Gets the program a session runs in the foreground, when it is not the shell itself.
+   * @param id The terminal identifier.
+   * @returns Returns the program's name, or null when only the shell runs or the session has ended.
+   */
+  public foreground(id: string): Promise<string | null> {
+    return (
+      this.bridge?.invoke<string | null>(TerminalChannel.GetForeground, id) ?? Promise.resolve(null)
+    );
   }
 
   /**

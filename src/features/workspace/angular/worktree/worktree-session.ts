@@ -71,6 +71,17 @@ export class WorktreeSession {
   private readonly claimedRoots: Set<string> = new Set<string>();
 
   /**
+   * Holds the number of the newest descriptor read. Reads can land out of order, and an older one
+   * landing last would bring back a checkout that has since been removed.
+   */
+  private descriptorRead: number = 0;
+
+  /**
+   * Holds the number of the newest status read. See {@link descriptorRead}.
+   */
+  private statusRead: number = 0;
+
+  /**
    * Gets the container root path, or null while the tab is an ordinary workspace.
    */
   public readonly root: Signal<string | null> = this.rootSignal.asReadonly();
@@ -210,9 +221,16 @@ export class WorktreeSession {
     if (root === null || this.worktrees.client === undefined) {
       return;
     }
-    const descriptor: WorktreeDescriptor | null = await this.worktrees.client.describe(root);
-    if (descriptor !== null) {
-      this.descriptorSignal.set(descriptor);
+    const read: number = ++this.descriptorRead;
+    try {
+      const descriptor: WorktreeDescriptor | null = await this.worktrees.client.describe(root);
+      if (descriptor !== null && read === this.descriptorRead) {
+        this.descriptorSignal.set(descriptor);
+      }
+    } catch (error: unknown) {
+      // A refresh only catches the panel up: what it last knew stands, and what the caller just did
+      // (a clone, a removal) has happened whether or not it could be read back.
+      this.log.warn('workspace.worktree', 'Reading the container failed', error);
     }
     await this.refreshStatus();
   }
@@ -226,17 +244,22 @@ export class WorktreeSession {
     if (root === null || this.worktrees.client === undefined) {
       return;
     }
-    const statuses: readonly WorktreeCheckoutStatus[] | null =
-      await this.worktrees.client.status(root);
-    if (statuses !== null) {
-      this.statusSignal.set(
-        new Map<string, WorktreeCheckoutStatus>(
-          statuses.map((status: WorktreeCheckoutStatus): [string, WorktreeCheckoutStatus] => [
-            status.id,
-            status,
-          ]),
-        ),
-      );
+    const read: number = ++this.statusRead;
+    try {
+      const statuses: readonly WorktreeCheckoutStatus[] | null =
+        await this.worktrees.client.status(root);
+      if (statuses !== null && read === this.statusRead) {
+        this.statusSignal.set(
+          new Map<string, WorktreeCheckoutStatus>(
+            statuses.map((status: WorktreeCheckoutStatus): [string, WorktreeCheckoutStatus] => [
+              status.id,
+              status,
+            ]),
+          ),
+        );
+      }
+    } catch (error: unknown) {
+      this.log.warn('workspace.worktree', 'Reading the checkout statuses failed', error);
     }
   }
 

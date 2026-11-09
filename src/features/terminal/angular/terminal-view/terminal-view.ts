@@ -15,7 +15,8 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
-import { Terminal } from '@shared/angular/components/terminal/terminal';
+import { Terminal, TerminalExit } from '@shared/angular/components/terminal/terminal';
+import { closesOnShellExit } from '@shared/angular/services/terminal-close-guard/terminal-close-guard';
 import { FindPanel } from '@shared/angular/components/find-panel/find-panel';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelArrangements } from '@shared/angular/components/panel-layout/panel-arrangements';
@@ -286,6 +287,18 @@ export class TerminalView implements OnInit, OnDestroy {
       tabId: this.tabId(),
       shell: name,
     });
+  }
+
+  /**
+   * Closes the tab when its shell exits and When the Shell Exits says to. The shell has ended, so
+   * there is nothing left running to ask about.
+   * @param exit The code the shell exited with, and the signal that ended it.
+   */
+  protected onExited(exit: TerminalExit): void {
+    if (closesOnShellExit(this.settings.get('terminal.onShellExit'), exit.code, exit.signal)) {
+      this.log.info('terminal.view', 'Closing the tab: the shell exited', this.tabId());
+      this.tabsService.close(this.tabId());
+    }
   }
 
   /**

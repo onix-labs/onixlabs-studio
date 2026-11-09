@@ -95,7 +95,7 @@ export class TerminalRibbon {
           {
             id: 'terminal.new',
             label: 'New Terminal',
-            accelerator: 'CmdOrCtrl+Shift+T',
+            binding: 'terminal.new',
             run: (): void => this.onNew(),
           },
         ],

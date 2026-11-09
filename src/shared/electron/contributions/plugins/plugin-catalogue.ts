@@ -283,12 +283,17 @@ export function pluginCatalogue(): readonly PluginDescriptor[] {
       version: ROSLYN_VERSION,
       contributions: [languageServer('csharp', 'Roslyn Language Server', ['csharp'], 100)],
       detail: 'Needs the .NET 10+ SDK to run once installed.',
+      // Installed whatever version is on disk: when a release moves the pin, an older install stays
+      // installed and working, and the Plugin Manager offers the update rather than reporting the
+      // plugin gone (#1135). Install downloads the pin; the manager then prunes the older version.
       detect: (context: PluginContext): Promise<boolean> =>
-        Promise.resolve(context.provisioner.isProvisioned('roslyn', ROSLYN_VERSION)),
+        Promise.resolve(context.provisioner.installedRoslyn() !== null),
       install: (context: PluginContext): Promise<string | null> =>
         context.provisioner.ensureRoslyn(),
+      pruneOtherVersions: (context: PluginContext): Promise<void> =>
+        context.provisioner.pruneRoslyn(),
       uninstall: (context: PluginContext): Promise<void> =>
-        context.provisioner.removeProvisioned('roslyn', ROSLYN_VERSION),
+        context.provisioner.removeProvisioned('roslyn'),
     },
     {
       id: 'gopls',

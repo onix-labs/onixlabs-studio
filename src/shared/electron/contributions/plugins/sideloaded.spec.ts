@@ -115,6 +115,7 @@ describe('sideloaded plugins', () => {
       inForce: false,
       locked: false,
       skipped: 2,
+      directory: join(host.userData, 'plugins'),
     });
   });
 
@@ -141,6 +142,7 @@ describe('sideloaded plugins', () => {
       inForce: true,
       locked: true,
       skipped: 0,
+      directory: join(host.userData, 'plugins'),
     });
   });
 
@@ -154,6 +156,7 @@ describe('sideloaded plugins', () => {
       inForce: false,
       locked: false,
       skipped: 1,
+      directory: join(host.userData, 'plugins'),
     });
     expect(sideloadedManifests()).toEqual([]);
 

@@ -141,9 +141,21 @@ export class Output {
   private readonly active: WritableSignal<string> = signal<string>(DEFAULT_CHANNEL);
 
   /**
+   * Holds how many times a channel has been asked to be shown, so the active workspace can bring its
+   * Logs panel forward on each request.
+   */
+  private readonly showCount: WritableSignal<number> = signal<number>(0);
+
+  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Gets how many times a channel has been asked to be shown — by the user choosing "Show log" on a
+   * notification, say (#1134). The active workspace reveals its Logs panel each time it changes.
+   */
+  public readonly showRequests: Signal<number> = this.showCount.asReadonly();
 
   /**
    * Gets the channels available for selection, in creation order.
@@ -183,6 +195,16 @@ export class Output {
     this.ensure(id, id);
     this.active.set(id);
     this.log.info('Output', 'Revealed output channel', id);
+  }
+
+  /**
+   * Shows a channel: makes it the active one and asks the active workspace to bring its Logs panel
+   * forward. For a user's explicit request — a producer writing to a channel never shows it unasked.
+   * @param id The channel identifier.
+   */
+  public show(id: string): void {
+    this.setActive(id);
+    this.showCount.update((count: number): number => count + 1);
   }
 
   /**

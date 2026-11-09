@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)"
+	tests="4"
+	failures="1"
+	disabled="0"
+	skipped="1"
+	hostname=""
+	time="1"
+	timestamp="2026-11-08T07:30:07"
+	>
+	<testcase name="adds" classname="adds" time="0.33938" status="run">
+		<properties/>
+		<system-out>1 + 2 = 3
+</system-out>
+	</testcase>
+	<testcase name="fails" classname="fails" time="0.343375" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>tests/fails.cpp:4: expected 4, got 3
+</system-out>
+	</testcase>
+	<testcase name="skips" classname="skips" time="0.34753" status="notrun">
+		<skipped message="SKIP_RETURN_CODE=77"/>
+		<properties/>
+		<system-out>no network here
+</system-out>
+	</testcase>
+	<testcase name="lib.math" classname="lib.math" time="0.344823" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+</testsuite>

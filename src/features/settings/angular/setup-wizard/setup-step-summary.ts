@@ -119,6 +119,8 @@ const PLUGIN_GROUP_SLOTS: readonly PluginSlot[] = [
   'debug-adapter',
   'decoder',
   'container-engine',
+  'database-engine',
+  'package-manager',
 ];
 
 /**
@@ -160,6 +162,7 @@ const PLUGIN_GROUP_SLOTS: readonly PluginSlot[] = [
               @if (row.stepId; as stepId) {
                 <app-button
                   class="env__change"
+                  variant="ghost"
                   size="small"
                   label="Change"
                   [ariaLabel]="'Change ' + row.name"
@@ -175,6 +178,7 @@ const PLUGIN_GROUP_SLOTS: readonly PluginSlot[] = [
     @if (probes.isAvailable) {
       <div class="env__actions">
         <app-button
+          variant="ghost"
           label="Check again"
           [loading]="probes.busy()"
           (click)="recheck()"

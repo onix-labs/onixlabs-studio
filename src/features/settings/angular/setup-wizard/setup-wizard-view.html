@@ -133,7 +133,12 @@
             <app-button-row>
               <!-- Back mirrors Next: the same arrow at the same size, leading where Next's trails. Both
                    are projected, so the two glyphs match; the label is projected too, after the arrow. -->
-              <app-button size="large" [disabled]="!wizard.canGoBack()" (click)="wizard.back()">
+              <app-button
+                variant="ghost"
+                size="large"
+                [disabled]="!wizard.canGoBack()"
+                (click)="wizard.back()"
+              >
                 <app-icon [icon]="Icon.ARROW_LEFT" [size]="0.85" />
                 <span class="setup__action-label">Back</span>
               </app-button>

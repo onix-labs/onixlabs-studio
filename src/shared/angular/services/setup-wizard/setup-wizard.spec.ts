@@ -1,4 +1,5 @@
 import { signal, WritableSignal } from '@angular/core';
+import { DEFAULT_STARTUP_SETTINGS } from '@shared/api/startup-settings';
 import { TestBed } from '@angular/core/testing';
 import type { HostEnv } from '@shared/api/host';
 import type { PluginSummary } from '@shared/api/plugin-channels';
@@ -43,6 +44,8 @@ function stubHostVersion(version: string | null, skipSetup: boolean = false): vo
         hardwareAccelerationEnabled: true,
       },
       logFloor: 'trace',
+      startupSettings: DEFAULT_STARTUP_SETTINGS,
+      packaged: false,
     } satisfies HostEnv,
   });
 }
@@ -222,6 +225,7 @@ describe('SetupWizard', () => {
 
   afterEach(() => {
     localStorage.removeItem(LAST_SEEN_KEY);
+    localStorage.removeItem('settings');
     Reflect.deleteProperty(window, 'host');
     TestBed.resetTestingModule();
   });
@@ -253,12 +257,23 @@ describe('SetupWizard', () => {
       expect(build().mode).toBe('upgrade');
     });
 
-    it('isOpen_onADowngrade_runsAgain', () => {
-      // A downgrade changes the environment as much as an upgrade does — the gate is inequality, not
-      // an ordering, so it must catch this too.
+    it('isOpen_onADowngradeWithNothingNew_recordsTheVersionQuietly', () => {
+      // A downgrade brings no highlights and no newer settings, so Run Setup After Updates' default
+      // (when something's new) has nothing to open the wizard for; the version is still recorded.
       localStorage.setItem(LAST_SEEN_KEY, JSON.stringify('2026.2.0'));
 
-      expect(build().isOpen()).toBe(true);
+      expect(build().isOpen()).toBe(false);
+      expect(JSON.parse(localStorage.getItem(LAST_SEEN_KEY) ?? 'null')).toBe('2026.1.0-beta.5');
+    });
+
+    it('isOpen_afterAnUpdateWhenSetToNever_doesNotRun', () => {
+      localStorage.setItem(LAST_SEEN_KEY, JSON.stringify('2026.1.0-beta.4'));
+      localStorage.setItem(
+        'settings',
+        JSON.stringify({ 'application.runSetupAfterUpdates': 'never' }),
+      );
+
+      expect(build().isOpen()).toBe(false);
     });
 
     it('isOpen_outsideElectron_neverRuns', () => {
@@ -415,6 +430,8 @@ describe('SetupWizard', () => {
         'Container Engines',
         'Version Control',
         'Code Hosting',
+        'Database Engines',
+        'Package Managers',
         'Security',
         'Terminal',
         'Summary',

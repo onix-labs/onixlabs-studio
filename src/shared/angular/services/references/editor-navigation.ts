@@ -2,8 +2,14 @@ import { inject, Injector, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { EditorLocation, Editors } from '@shared/angular/services/editors/editors';
 import { revealTarget } from '@shared/angular/services/go-to/go-to-model';
+import {
+  HierarchyKind,
+  HierarchyRouter,
+  HierarchySource,
+} from '@shared/angular/services/hierarchy/hierarchy';
 import { Log } from '@shared/angular/services/log/log';
 import { LspDefinition, LspFeatures } from '@shared/angular/services/lsp/lsp-features';
+import type { LspGeneratedViewKind, LspGeneratedViewResult } from '@shared/api/lsp-channels';
 import {
   hasDefinitionProvider,
   hasReferenceProvider,
@@ -11,7 +17,7 @@ import {
   providedReferences,
 } from '@shared/angular/services/monaco/monaco-editor-capabilities';
 import { LinePreviews } from './line-previews';
-import { CodeLocation, ReferenceItem, ReferenceList } from './reference-list';
+import { CodeLocation, ReferenceItem, ReferenceList, ReferenceListKind } from './reference-list';
 import { ReferencesRouter } from './references-router';
 
 /**
@@ -46,6 +52,11 @@ export class EditorNavigation {
    * Holds the router that shows a references list where it is answered.
    */
   private readonly router: ReferencesRouter = inject(ReferencesRouter);
+
+  /**
+   * Holds the router that shows a hierarchy in the workspace's Hierarchy panel (#1153).
+   */
+  private readonly hierarchies: HierarchyRouter = inject(HierarchyRouter);
 
   /**
    * Holds the reader of each listed place's line.
@@ -136,16 +147,390 @@ export class EditorNavigation {
    * @param editor The editor.
    * @returns Returns a promise that resolves once the definition is shown, or found not to be.
    */
-  public async goToDefinition(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
+  public goToDefinition(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
+    return this.goToFound(
+      editor,
+      'definitions',
+      (model: MonacoApi.editor.ITextModel, position: MonacoApi.Position) =>
+        this.definitionsAt(editor, model, position),
+    );
+  }
+
+  /**
+   * Determines whether Go to Declaration can answer for a document: the language server serving it
+   * answers `textDocument/declaration` (#1213).
+   * @param editor The editor.
+   * @returns Returns true when it does.
+   */
+  public offersDeclarations(editor: MonacoApi.editor.ICodeEditor): boolean {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    return model !== null && this.injector.get(LspFeatures).servesNavigation(model, 'declaration');
+  }
+
+  /**
+   * Determines whether Switch Header/Source can answer for a document: clangd serves it (#1213).
+   * @param editor The editor.
+   * @returns Returns true when it can.
+   */
+  public offersSourceHeader(editor: MonacoApi.editor.ICodeEditor): boolean {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    return model !== null && this.injector.get(LspFeatures).servesNavigation(model, 'sourceHeader');
+  }
+
+  /**
+   * Determines whether Go to Implementation can answer for a document: the language server serving it
+   * answers `textDocument/implementation` (#1142).
+   * @param editor The editor.
+   * @returns Returns true when it can.
+   */
+  public offersImplementations(editor: MonacoApi.editor.ICodeEditor): boolean {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    return (
+      model !== null && this.injector.get(LspFeatures).servesNavigation(model, 'implementation')
+    );
+  }
+
+  /**
+   * Determines whether Go to Type Definition can answer for a document: the language server serving
+   * it answers `textDocument/typeDefinition` (#1142).
+   * @param editor The editor.
+   * @returns Returns true when it can.
+   */
+  public offersTypeDefinitions(editor: MonacoApi.editor.ICodeEditor): boolean {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    return (
+      model !== null && this.injector.get(LspFeatures).servesNavigation(model, 'typeDefinition')
+    );
+  }
+
+  /**
+   * Determines whether Go to Source Definition can answer for a document (#1207).
+   * @param editor The editor.
+   * @returns Returns true when the language server serving it does.
+   */
+  public offersSourceDefinitions(editor: MonacoApi.editor.ICodeEditor): boolean {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    return model !== null && this.injector.get(LspFeatures).servesSourceDefinition(model);
+  }
+
+  /**
+   * Determines whether Show Call Hierarchy or Show Type Hierarchy can answer for a document (#1153):
+   * the language server serving it gives that hierarchy, and a workspace is in front to show it in.
+   * @param editor The editor.
+   * @param kind Which hierarchy.
+   * @returns Returns true when it can.
+   */
+  public offersHierarchy(editor: MonacoApi.editor.ICodeEditor, kind: HierarchyKind): boolean {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    return (
+      model !== null &&
+      this.hierarchies.available() &&
+      this.injector
+        .get(LspFeatures)
+        .servesNavigation(model, kind === 'calls' ? 'callHierarchy' : 'typeHierarchy')
+    );
+  }
+
+  /**
+   * Shows the call or type hierarchy of the symbol at the caret in the workspace's Hierarchy panel
+   * (#1153): a member's callers (and, a click away, its callees), or a type's base types (and its
+   * derived types), each expanded a level at a time.
+   * @param editor The editor.
+   * @param kind Which hierarchy.
+   * @returns Returns a promise that resolves once the hierarchy is shown, or found not to be.
+   */
+  public async showHierarchy(
+    editor: MonacoApi.editor.ICodeEditor,
+    kind: HierarchyKind,
+  ): Promise<void> {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    const position: MonacoApi.Position | null = editor.getPosition();
+    if (model === null || position === null || !this.hierarchies.available()) {
+      return;
+    }
+    const source: HierarchySource | null = await this.injector
+      .get(LspFeatures)
+      .hierarchy(model, position, kind);
+    if (source === null) {
+      this.log.debug('navigation', `No ${kind} hierarchy answers this document`);
+      return;
+    }
+    this.hierarchies.show(source);
+  }
+
+  /**
+   * Shows the call or type hierarchy of the symbol at the caret in the active document's editor — the
+   * Edit menu's way to what ⌃⌥H and ⌃⇧H do in an editor (#1153), which focus has left by the time
+   * a menu item is chosen.
+   * @param kind Which hierarchy.
+   * @returns Returns a promise that resolves once the hierarchy is shown, or found not to be.
+   */
+  public showHierarchyInActiveEditor(kind: HierarchyKind): Promise<void> {
+    const editor: MonacoApi.editor.ICodeEditor | null = this.activeEditor();
+    if (editor === null) {
+      this.log.debug('navigation', 'No code editor is active to show a hierarchy from');
+      return Promise.resolve();
+    }
+    return this.showHierarchy(editor, kind);
+  }
+
+  /**
+   * Finds the editor showing the active workspace's active document: the one the user was last
+   * editing, in front in its group.
+   * @returns Returns the editor, or null when the active document is not a code document.
+   */
+  private activeEditor(): MonacoApi.editor.ICodeEditor | null {
+    const documentId: string | null = this.hierarchies.activeDocumentId();
+    if (documentId === null) {
+      return null;
+    }
+    return (
+      window.monaco?.editor
+        .getEditors()
+        .find((candidate: MonacoApi.editor.ICodeEditor): boolean => {
+          const uri: string | undefined = candidate.getModel()?.uri.toString();
+          return uri !== undefined && this.editors.locate(uri)?.documentId === documentId;
+        }) ?? null
+    );
+  }
+
+  /**
+   * Goes to where the symbol at the caret is declared (#1213) — in C++, the header, where Go to
+   * Definition goes to the source file: straight there when there is one, listed when there are several.
+   * @param editor The editor.
+   * @returns Returns a promise that resolves once the declaration is shown, or found not to be.
+   */
+  public goToDeclaration(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
+    return this.goToFound(
+      editor,
+      'definitions',
+      async (model: MonacoApi.editor.ITextModel, position: MonacoApi.Position) =>
+        (await this.injector.get(LspFeatures).declarations(model, position)) ?? [],
+    );
+  }
+
+  /**
+   * Goes from a C or C++ file to its header or source (#1213). Going back to a file shown in an editor
+   * leaves its caret where it was, so the two can be flipped between; otherwise it opens at the top.
+   * @param editor The editor.
+   * @returns Returns a promise that resolves once the file is shown, or found to have no counterpart.
+   */
+  public async switchSourceHeader(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    if (model === null) {
+      return;
+    }
+    const path: string | null = await this.injector.get(LspFeatures).sourceHeaderOf(model);
+    if (path === null) {
+      this.log.debug('navigation', 'The file has no header or source to switch to');
+      return;
+    }
+    const caret: MonacoApi.IPosition = instanceOf(editor)
+      ?.editor.getEditors()
+      .find((candidate: MonacoApi.editor.ICodeEditor): boolean => {
+        const shown: MonacoApi.editor.ITextModel | null = candidate.getModel();
+        return shown !== null && this.shows(shown, path);
+      })
+      ?.getPosition() ?? { lineNumber: 1, column: 1 };
+    await this.goTo(editor, {
+      path,
+      range: {
+        startLineNumber: caret.lineNumber,
+        startColumn: caret.column,
+        endLineNumber: caret.lineNumber,
+        endColumn: caret.column,
+      },
+    });
+  }
+
+  /**
+   * Goes to the code that implements the symbol at the caret (#1142) — for an interface or abstract
+   * member, the classes that implement it: straight there when there is one, listed in the References
+   * panel when there are several.
+   * @param editor The editor.
+   * @returns Returns a promise that resolves once the implementation is shown, or found not to be.
+   */
+  public goToImplementation(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
+    return this.goToFound(
+      editor,
+      'implementations',
+      async (model: MonacoApi.editor.ITextModel, position: MonacoApi.Position) =>
+        (await this.injector.get(LspFeatures).implementations(model, position)) ?? [],
+    );
+  }
+
+  /**
+   * Goes to the declaration of the type of the symbol at the caret (#1142) — from a variable,
+   * parameter or property to its type: straight there when there is one, listed when there are several.
+   * @param editor The editor.
+   * @returns Returns a promise that resolves once the type is shown, or found not to be.
+   */
+  public goToTypeDefinition(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
+    return this.goToFound(
+      editor,
+      'definitions',
+      async (model: MonacoApi.editor.ITextModel, position: MonacoApi.Position) =>
+        (await this.injector.get(LspFeatures).typeDefinitions(model, position)) ?? [],
+    );
+  }
+
+  /**
+   * Determines whether Go to Parent Module can answer for a document (#1210).
+   * @param editor The editor.
+   * @returns Returns true when the language server serving it does.
+   */
+  public offersParentModule(editor: MonacoApi.editor.ICodeEditor): boolean {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    return model !== null && this.injector.get(LspFeatures).servesParentModule(model);
+  }
+
+  /**
+   * Goes to what declares the module the caret is in (#1210): its `mod` item, or at a crate's root its
+   * `Cargo.toml`. Straight there when there is one place, listed when a file is in several crates.
+   * @param editor The editor.
+   * @returns Returns a promise that resolves once it is shown, or found not to be.
+   */
+  public goToParentModule(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
+    return this.goToFound(
+      editor,
+      'definitions',
+      async (model: MonacoApi.editor.ITextModel, position: MonacoApi.Position) =>
+        (await this.injector.get(LspFeatures).parentModules(model, position)) ?? [],
+    );
+  }
+
+  /**
+   * Determines whether Open Cargo.toml can answer for a document (#1210).
+   * @param editor The editor.
+   * @returns Returns true when the language server serving it does.
+   */
+  public offersCargoManifest(editor: MonacoApi.editor.ICodeEditor): boolean {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    return model !== null && this.injector.get(LspFeatures).servesCargoManifest(model);
+  }
+
+  /**
+   * Opens the `Cargo.toml` of the crate a document is in (#1210).
+   * @param editor The editor.
+   * @returns Returns a promise that resolves once it is shown, or found not to be.
+   */
+  public openCargoManifest(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
+    return this.goToFound(
+      editor,
+      'definitions',
+      async (model: MonacoApi.editor.ITextModel) =>
+        (await this.injector.get(LspFeatures).cargoManifests(model)) ?? [],
+    );
+  }
+
+  /**
+   * Determines whether Go to Project Configuration can answer for a document (#1207).
+   * @param editor The editor.
+   * @returns Returns true when the language server serving it does.
+   */
+  public offersProjectConfiguration(editor: MonacoApi.editor.ICodeEditor): boolean {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    return model !== null && this.injector.get(LspFeatures).servesProjectConfiguration(model);
+  }
+
+  /**
+   * Opens the `tsconfig.json` or `jsconfig.json` the project a document is in is configured by (#1207).
+   * @param editor The editor.
+   * @returns Returns a promise that resolves once it is shown, or found not to be.
+   */
+  public openProjectConfiguration(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
+    return this.goToFound(
+      editor,
+      'definitions',
+      async (model: MonacoApi.editor.ITextModel) =>
+        (await this.injector.get(LspFeatures).projectConfigurations(model)) ?? [],
+    );
+  }
+
+  /**
+   * Determines whether the language server serving a document gives a view of the code (#1210, #1213).
+   * @param editor The editor.
+   * @param kind The view.
+   * @returns Returns true when it does.
+   */
+  public offersGeneratedView(
+    editor: MonacoApi.editor.ICodeEditor,
+    kind: LspGeneratedViewKind,
+  ): boolean {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    return model !== null && this.injector.get(LspFeatures).servesNavigation(model, kind);
+  }
+
+  /**
+   * Opens a view of the code at the caret, or of what is selected, as a read-only document (#1210,
+   * #1213): the expansion of the macro there, the HIR or MIR of the function there, the syntax tree
+   * there, or the server's memory. Where the server has nothing to show, nothing opens, and the log
+   * says why.
+   * @param editor The editor.
+   * @param kind The view.
+   * @returns Returns a promise that resolves once the view is open, or found not to be.
+   */
+  public async showGeneratedView(
+    editor: MonacoApi.editor.ICodeEditor,
+    kind: LspGeneratedViewKind,
+  ): Promise<void> {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    const selection: MonacoApi.Selection | null = editor.getSelection();
+    if (model === null || selection === null) {
+      return;
+    }
+    const view: LspGeneratedViewResult | null = await this.injector
+      .get(LspFeatures)
+      .generatedView(model, kind, selection);
+    if (view === null || 'error' in view) {
+      this.log.info('navigation', `No ${kind} view`, view?.error ?? 'not offered');
+      return;
+    }
+    if (this.openFile === null || !(await this.openFile(view.path))) {
+      this.log.warn('navigation', `Could not open the ${kind} view`, view.path);
+    }
+  }
+
+  /**
+   * Goes to the source behind the symbol at the caret (#1207) — from a package's `.d.ts` to its
+   * JavaScript or TypeScript: straight there when there is one, listed when there are several.
+   * @param editor The editor.
+   * @returns Returns a promise that resolves once the source is shown, or found not to be.
+   */
+  public goToSourceDefinition(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
+    return this.goToFound(
+      editor,
+      'definitions',
+      async (model: MonacoApi.editor.ITextModel, position: MonacoApi.Position) =>
+        (await this.injector.get(LspFeatures).sourceDefinitions(model, position)) ?? [],
+    );
+  }
+
+  /**
+   * Finds places for the symbol at the caret and goes to them: straight there when there is one (or no
+   * References panel answers the editor), listed in the References panel when there are several.
+   * @param editor The editor.
+   * @param kind What the list lists, when there are several.
+   * @param find Finds the places.
+   * @returns Returns a promise that resolves once a place is shown, or none was found.
+   */
+  private async goToFound(
+    editor: MonacoApi.editor.ICodeEditor,
+    kind: ReferenceListKind,
+    find: (
+      model: MonacoApi.editor.ITextModel,
+      position: MonacoApi.Position,
+    ) => Promise<readonly CodeLocation[]>,
+  ): Promise<void> {
     const model: MonacoApi.editor.ITextModel | null = editor.getModel();
     const position: MonacoApi.Position | null = editor.getPosition();
     if (model === null || position === null) {
       return;
     }
-    const found: readonly CodeLocation[] = await this.definitionsAt(editor, model, position);
+    const found: readonly CodeLocation[] = await find(model, position);
     const first: CodeLocation | undefined = found[0];
     if (first === undefined) {
-      this.log.debug('navigation', 'No definition found', model.getLanguageId());
+      this.log.debug('navigation', `No ${kind} found`, model.getLanguageId());
       return;
     }
     if (found.length === 1 || !this.router.answers(editor)) {
@@ -153,10 +538,7 @@ export class EditorNavigation {
       return;
     }
     const items: readonly ReferenceItem[] = await this.linePreviews.fill(found, instanceOf(editor));
-    this.router.show(
-      { kind: 'definitions', symbol: symbolAt(model, position), status: 'done', items },
-      editor,
-    );
+    this.router.show({ kind, symbol: symbolAt(model, position), status: 'done', items }, editor);
   }
 
   /**
@@ -186,6 +568,36 @@ export class EditorNavigation {
     }
     this.log.debug('navigation', 'References found', list.status, list.items.length);
     this.router.show(list, editor);
+  }
+
+  /**
+   * Lists places already found, for a lens that brings its own (#1207): in the References panel, even
+   * for one, as clicking a count lists what it counts — or goes to the first, where no panel answers.
+   * @param editor The editor, placed at the symbol the list is about.
+   * @param kind What the list lists.
+   * @param places The places.
+   * @returns Returns a promise that resolves once they are shown.
+   */
+  public async listPlaces(
+    editor: MonacoApi.editor.ICodeEditor,
+    kind: ReferenceListKind,
+    places: readonly CodeLocation[],
+  ): Promise<void> {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    const position: MonacoApi.Position | null = editor.getPosition();
+    const first: CodeLocation | undefined = places[0];
+    if (model === null || position === null || first === undefined) {
+      return;
+    }
+    if (!this.router.answers(editor)) {
+      await this.goTo(editor, first);
+      return;
+    }
+    const items: readonly ReferenceItem[] = await this.linePreviews.fill(
+      places,
+      instanceOf(editor),
+    );
+    this.router.show({ kind, symbol: symbolAt(model, position), status: 'done', items }, editor);
   }
 
   /**

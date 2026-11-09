@@ -80,6 +80,13 @@ import {
 } from '@features/workspace/angular/workspace-find/workspace-find';
 import { SearchPanelRequests } from '@features/workspace/angular/panels/search-panel/search-panel-requests';
 import { ReferencesPanelState } from '@features/workspace/angular/panels/references-panel/references-panel-state';
+import { WorkspaceProblems } from '@features/workspace/angular/workspace-problems/workspace-problems';
+import { HierarchyPanelState } from '@features/workspace/angular/panels/hierarchy-panel/hierarchy-panel-state';
+import {
+  HierarchyReveal,
+  HierarchyRouter,
+  HierarchySource,
+} from '@shared/angular/services/hierarchy/hierarchy';
 import {
   WorkspaceReferences,
   WorkspaceReferencesOpen,
@@ -105,10 +112,16 @@ import {
 } from '@shared/angular/services/dock-layout/dock-tree';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { isWithin } from '@shared/angular/services/lsp/lsp-paths';
 import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsaved-work-registry';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
-import { LspClient } from '@shared/angular/services/lsp/lsp-client';
+import { idleStopMs, LspClient } from '@shared/angular/services/lsp/lsp-client';
+import { EntryRename } from '@shared/angular/services/rename/entry-rename';
+import { WorkspaceSymbolRouter } from '@shared/angular/services/go-to/workspace-symbol-router';
+import { DebugAttachRouter } from '@shared/angular/services/debug-attach/debug-attach-router';
+import { WorkspaceSymbolPalette } from '../workspace-symbols/workspace-symbol-palette';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { SolutionModel } from '@features/workspace/angular/project/solution-model';
 import { PackageModel } from '@features/workspace/angular/project/package-model';
 import { PackageExplorer } from '@features/workspace/angular/project/package-explorer';
@@ -130,6 +143,7 @@ import { ActiveRun } from '@shared/angular/services/tasks/builds';
 import { createMinimumHold, MinimumHold } from '@shared/angular/services/minimum-hold/minimum-hold';
 import { Debugger } from '@shared/angular/services/debug/debugger';
 import { DebugSession } from '@features/workspace/angular/debug/debug-session';
+import { TestExplorer } from '@features/workspace/angular/tests/test-explorer';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
 import {
   ActiveWorkspace,
@@ -181,14 +195,6 @@ const PRESTART_LANGUAGES: Readonly<Record<string, string>> = {
 };
 
 /**
- * How long a view must stay hidden before its language servers are released. Long enough that tab
- * flipping never churns servers; short enough that a parked checkout stops holding a multi-gigabyte
- * server for the rest of the session. Follow-up: make this configurable alongside
- * `ai.agentSessionLifetime`.
- */
-const HIDDEN_LSP_REAP_MS: number = 10 * 60_000;
-
-/**
  * The minimum time the Mission Control Run button shows its launching spinner after a press. A fast
  * toolchain (an already-warm `npm run`) can start its terminal near-instantly, which would flash the
  * spinner past too quickly to register; holding it for this long makes the press always read as "it
@@ -215,7 +221,9 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
   terminal: ['errors', 'output'],
   output: ['errors', 'terminal'],
   packages: ['errors', 'terminal'],
+  tests: ['errors', 'terminal'],
   references: ['errors', 'terminal'],
+  hierarchy: ['references', 'errors', 'terminal'],
   debug: ['errors', 'terminal'],
   history: ['errors', 'terminal'],
 };
@@ -241,6 +249,7 @@ const AGENT_OPEN: OpenOptions = { background: true };
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [
     Workspace,
+    EntryRename,
     Documents,
     Output,
     Diagnostics,
@@ -254,6 +263,8 @@ const AGENT_OPEN: OpenOptions = { background: true };
     },
     DebugSession,
     LspClient,
+    // Go to Symbol in Workspace (#1146) searches this workspace's language servers.
+    WorkspaceSymbolPalette,
     SolutionModel,
     PackageModel,
     PackageExplorer,
@@ -280,6 +291,12 @@ const AGENT_OPEN: OpenOptions = { background: true };
     SearchPanelRequests,
     // The list this tab's References panel shows (#1014), per view so it outlives the panel.
     ReferencesPanelState,
+    // The hierarchy this tab's Hierarchy panel shows (#1153), per view for the same reason.
+    HierarchyPanelState,
+    // This tab's tests and test runs (#1352), per view so a run carries on while the panel is hidden.
+    TestExplorer,
+    // Where this tab's problems are, for its explorers' error squiggles and filters (#1182 follow-up).
+    WorkspaceProblems,
     // Beside the openers it switches between, so a switch acts on this tab's dock and documents.
     DocumentDiffSwitch,
     // The issue pair belongs beside the diff pair, and for the same reason: an opener reaches for
@@ -514,7 +531,7 @@ export class DirectoryView implements OnInit, OnDestroy {
         this.workspaceRunConfigurations.defaultConfiguration(),
       starting: (): boolean => this.defaultRunStarting(),
       running: (): boolean => this.defaultRunRunning(),
-      run: (): void => this.runDefaultConfiguration(),
+      run: (): void => void this.runDefaultConfiguration(),
       stop: (): void => this.stopDefaultConfiguration(),
     },
   });
@@ -572,6 +589,11 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly packageModel: PackageModel = inject(PackageModel);
 
   /**
+   * Holds this tab's tests, whose adapters drive the Tests panel (#1352).
+   */
+  private readonly testExplorer: TestExplorer = inject(TestExplorer);
+
+  /**
    * Holds this tab's scoped language-server client, started eagerly for a .NET solution.
    */
   private readonly lspClient: LspClient = inject(LspClient);
@@ -580,6 +602,11 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Holds the language-server settings, used to resolve which server serves a prestarted language.
    */
   private readonly lspSettings: LspSettings = inject(LspSettings);
+
+  /**
+   * Holds the settings, read for when language servers start and how long a hidden view keeps them.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds this tab's scoped document model.
@@ -793,7 +820,10 @@ export class DirectoryView implements OnInit, OnDestroy {
       const needsPlugin: boolean = this.versionControlPrompt.needed() !== null;
       return {
         solution: this.solutionModel.model() !== null,
-        packages: this.packageModel.model() !== null,
+        packages: this.packageModel.available(),
+        // Listed whenever an adapter applies, installed or not: an uninstalled one is where the panel's
+        // empty state names the plugin that finds these tests.
+        tests: this.testExplorer.adapters().length > 0,
         debug: this.debugSession.state() !== 'idle',
         // The demoted Logs panel is reachable exactly when it has content, as it always was — the
         // difference is that it is now passed over rather than cut out of the layout, so a layout
@@ -910,6 +940,37 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly workspaceFind: WorkspaceFind = inject(WorkspaceFind);
 
   /**
+   * Holds Go to Symbol in Workspace (#1146), opened by its chord and, through the router, from the
+   * ribbon and the application menu.
+   */
+  private readonly symbolPalette: WorkspaceSymbolPalette = inject(WorkspaceSymbolPalette);
+
+  /**
+   * Holds the router the shared surfaces open Go to Symbol in Workspace through, registered while
+   * this workspace is in front.
+   */
+  private readonly symbolRouter: WorkspaceSymbolRouter = inject(WorkspaceSymbolRouter);
+
+  /**
+   * Opens Go to Symbol in Workspace, as the router hands this workspace's handler on.
+   */
+  private readonly openSymbolPalette: () => void = (): void => this.symbolPalette.open();
+
+  /**
+   * Holds the router a language server's request to attach the debugger reaches this workspace's
+   * debug session through, registered while this workspace is in front (#1150).
+   */
+  private readonly debugAttach: DebugAttachRouter = inject(DebugAttachRouter);
+
+  /**
+   * Attaches this workspace's debugger to a process, as the router hands this workspace's handler on.
+   */
+  private readonly attachDebugger: (processId: number, name: string) => Promise<boolean> = (
+    processId: number,
+    name: string,
+  ): Promise<boolean> => this.debugSession.attachToProcess(processId, name);
+
+  /**
    * Holds the channel find requests reach this tab's Search panel through (#1007).
    */
   private readonly searchRequests: SearchPanelRequests = inject(SearchPanelRequests);
@@ -930,6 +991,23 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Holds the list this tab's References panel shows.
    */
   private readonly referencesState: ReferencesPanelState = inject(ReferencesPanelState);
+
+  /**
+   * Holds the router Show Call Hierarchy and Show Type Hierarchy reach this tab through (#1153).
+   */
+  private readonly hierarchyRouter: HierarchyRouter = inject(HierarchyRouter);
+
+  /**
+   * Holds the hierarchy this tab's Hierarchy panel shows.
+   */
+  private readonly hierarchyState: HierarchyPanelState = inject(HierarchyPanelState);
+
+  /**
+   * Holds a stable reveal callback registered with {@link hierarchyRouter}, so it can be unregistered
+   * by identity.
+   */
+  private readonly revealHierarchyHandler: HierarchyReveal = (source: HierarchySource): void =>
+    this.revealHierarchy(source);
 
   /**
    * Holds a stable reveal callback registered with {@link workspaceReferences}, so it can be
@@ -1090,6 +1168,8 @@ export class DirectoryView implements OnInit, OnDestroy {
     ),
     save: (): void => void this.saveActive(),
     saveAll: (): void => void this.saveAll(),
+    hasUnsavedFiles: (): boolean => this.unsavedFiles().length > 0,
+    saveFiles: (): Promise<void> => this.saveFiles(),
   };
 
   /**
@@ -1435,8 +1515,16 @@ export class DirectoryView implements OnInit, OnDestroy {
     // docking it beside the File Explorer; remove it when the model goes away. Layout reads/writes are
     // untracked so the effect reacts to the model alone.
     effect((): void => {
-      const hasModel: boolean = this.packageModel.model() !== null;
+      const hasModel: boolean = this.packageModel.available();
       untracked((): void => this.syncPackagesPanel(hasModel));
+    });
+
+    // Add the Tests panel to the bottom group once an installed test adapter applies to this tab's
+    // folder (#1352). Only an installed one: a folder that merely looks like it has tests does not get
+    // a tab of its own, though View → Panels still lists it.
+    effect((): void => {
+      const hasAdapter: boolean = this.testExplorer.installed().length > 0;
+      untracked((): void => this.syncTestsPanel(hasAdapter));
     });
 
     // Reveal the Debug panel (call stack / variables / watch) while a debug session runs, tabbing it
@@ -1457,6 +1545,14 @@ export class DirectoryView implements OnInit, OnDestroy {
       }
     });
 
+    // Bring the Logs panel forward when the user asks to see a channel (a notification's "Show log",
+    // #1134) — in the workspace they are looking at, never a background tab.
+    effect((): void => {
+      if (this.outputService.showRequests() > 0 && untracked((): boolean => this.isActive())) {
+        untracked((): void => this.ensureLogsPanel(true));
+      }
+    });
+
     // Start the structure-aware language server as soon as a recognised project model opens, rather
     // than on the first file, so it begins loading the workspace up front: Roslyn for a .NET
     // solution, the TypeScript server for a Node/npm workspace, jdtls for a Gradle/Maven JVM build.
@@ -1471,7 +1567,9 @@ export class DirectoryView implements OnInit, OnDestroy {
       // resolves its model before the catalogue arrives, and would otherwise never prestart.
       const serverId: string | null =
         language === null ? null : this.lspSettings.serverForLanguage(language);
-      if (model !== null && serverId !== null && this.isActive()) {
+      // Start Language Server: When the First File Opens leaves the server to the first document.
+      const prestart: boolean = this.settings.value('lsp.startMode')() === 'open';
+      if (prestart && model !== null && serverId !== null && this.isActive()) {
         untracked((): void => this.lspClient.prestartServer(serverId, model.root));
       }
     });
@@ -1485,9 +1583,16 @@ export class DirectoryView implements OnInit, OnDestroy {
         untracked((): void => this.lspClient.resume());
         return;
       }
+      // How long a view stays hidden before its servers go: Stop Idle Language Servers After — long
+      // enough that tab flipping never churns servers, short enough that a parked checkout stops
+      // holding a multi-gigabyte server. Never keeps them for as long as the view lives.
+      const idleMs: number | null = idleStopMs(this.settings.value('lsp.idleStopMinutes')());
+      if (idleMs === null) {
+        return;
+      }
       const reapTimer: ReturnType<typeof setTimeout> = setTimeout((): void => {
         this.lspClient.suspend();
-      }, HIDDEN_LSP_REAP_MS);
+      }, idleMs);
       onCleanup((): void => clearTimeout(reapTimer));
     });
 
@@ -1529,15 +1634,24 @@ export class DirectoryView implements OnInit, OnDestroy {
             command: (): void => this.revealSearch({ mode: 'find', scope: 'workspace' }),
           },
           { id: 'workspace.saveAll', command: (): void => void this.saveAll() },
+          { id: 'workspace.goToSymbol', command: this.openSymbolPalette },
         ]);
+        this.symbolRouter.register(this.openSymbolPalette);
+        this.debugAttach.register(this.attachDebugger);
         this.workspaceFind.register(this.revealSearchHandler);
         this.workspaceReferences.register(this.revealReferencesHandler, this.openReferenceHandler);
+        this.hierarchyRouter.register(this.revealHierarchyHandler, (): string | null =>
+          this.documents.activeDocumentId(),
+        );
         this.workspaceDocuments.register(this.documentHandler);
         this.dockPanelCommands.register(this.dockPanelHandler);
       } else {
         this.keybindings.deactivate(this.viewScope());
+        this.symbolRouter.unregister(this.openSymbolPalette);
+        this.debugAttach.unregister(this.attachDebugger);
         this.workspaceFind.unregister(this.revealSearchHandler);
         this.workspaceReferences.unregister(this.revealReferencesHandler);
+        this.hierarchyRouter.unregister(this.revealHierarchyHandler);
         this.workspaceDocuments.unregister(this.documentHandler);
         this.dockPanelCommands.unregister(this.dockPanelHandler);
       }
@@ -1586,6 +1700,27 @@ export class DirectoryView implements OnInit, OnDestroy {
       }
     }
     return saved;
+  }
+
+  /**
+   * Gets the documents with a file and unsaved changes: what a run or build saves first.
+   * @returns Returns the documents.
+   */
+  private unsavedFiles(): readonly CodeDocument[] {
+    return this.documents
+      .list()
+      .filter(
+        (document: CodeDocument): boolean => document.dirty() && document.filePath() !== null,
+      );
+  }
+
+  /**
+   * Saves the documents with a file and unsaved changes.
+   */
+  private async saveFiles(): Promise<void> {
+    for (const document of this.unsavedFiles()) {
+      await this.documents.save(document.id);
+    }
   }
 
   /**
@@ -1648,6 +1783,29 @@ export class DirectoryView implements OnInit, OnDestroy {
   }
 
   /**
+   * Shows a hierarchy in this tab's Hierarchy panel (#1153) — tabbing the panel in beside References
+   * (or the Error List, or the Terminal, or any tool group) when the layout has none — then bringing
+   * it forward. A panel the layout already holds stays wherever it was put.
+   * @param source The hierarchy, which replaces the one shown.
+   */
+  private revealHierarchy(source: HierarchySource): void {
+    this.hierarchyState.show(source);
+    if (!collectPanelIds(this.dockState.layout()).includes('hierarchy')) {
+      const anchor: StackNode | null =
+        findStackOfPanel(this.dockState.layout(), 'references') ??
+        findStackOfPanel(this.dockState.layout(), 'errors') ??
+        findStackOfPanel(this.dockState.layout(), 'terminal') ??
+        firstStackOfRole(this.dockState.layout(), 'tool');
+      if (anchor !== null) {
+        this.dockState.tabInto(anchor.id, 'hierarchy');
+      } else {
+        this.dockState.dockEdge('hierarchy', 'bottom');
+      }
+    }
+    this.dockReveal.reveal('hierarchy');
+  }
+
+  /**
    * Adds the Solution Explorer panel beside the File Explorer once this tab has a project model,
    * for a layout that does not already name it.
    *
@@ -1697,6 +1855,31 @@ export class DirectoryView implements OnInit, OnDestroy {
   }
 
   /**
+   * Adds the Tests panel to the bottom tool group, beside the Error List, once an installed test adapter
+   * applies (#1352), for a layout that does not already name it — in the background, without taking the
+   * active tab. Mirrors {@link syncPackagesPanel}: it only adds, and the dock passes over the panel
+   * while no adapter applies.
+   * @param hasAdapter Whether an installed adapter applies to this tab's folder.
+   */
+  private syncTestsPanel(hasAdapter: boolean): void {
+    if (!hasAdapter || collectPanelIds(this.dockState.layout()).includes('tests')) {
+      return;
+    }
+    const anchor: StackNode | null =
+      findStackOfPanel(this.dockState.layout(), 'errors') ??
+      findStackOfPanel(this.dockState.layout(), 'terminal') ??
+      firstStackOfRole(this.dockState.layout(), 'tool');
+    if (anchor === null) {
+      return;
+    }
+    const previous: string | null = anchor.active;
+    this.dockState.tabInto(anchor.id, 'tests');
+    if (previous !== null) {
+      this.dockState.setActive(anchor.id, previous);
+    }
+  }
+
+  /**
    * Adds the Debug panel beside the Error List (falling back to any tool stack) when a debug session
    * starts, for a layout that does not already name it. No template names the Debug panel, so this is
    * how it arrives; it is not taken away again when the session ends, because the dock already passes
@@ -1704,8 +1887,9 @@ export class DirectoryView implements OnInit, OnDestroy {
    * @param running Whether a debug session is currently running in this tab.
    */
   private syncDebugPanel(running: boolean): void {
+    const shown: boolean = this.settings.get('workspaces.showDebugPanelsOnStart');
     const present: boolean = collectPanelIds(this.dockState.layout()).includes('debug');
-    if (running && !present) {
+    if (running && shown && !present) {
       const anchor: StackNode | null =
         findStackOfPanel(this.dockState.layout(), 'errors') ??
         firstStackOfRole(this.dockState.layout(), 'tool');
@@ -1713,10 +1897,12 @@ export class DirectoryView implements OnInit, OnDestroy {
         this.dockState.tabInto(anchor.id, 'debug');
       }
     }
-    if (running) {
+    if (running && shown) {
       // Until runInTerminal lands, the debuggee's output arrives in the Logs channel: bring Logs
       // forward for the session's start, with the Debug panel a tab away for the first break.
-      this.ensureLogsPanel(true);
+      this.ensureLogsPanel(this.settings.get('workspaces.revealDebugOutputOnStart'));
+    } else if (running && this.settings.get('workspaces.revealDebugOutputOnStart')) {
+      this.dockReveal.reveal('output');
     }
   }
 
@@ -1930,12 +2116,28 @@ export class DirectoryView implements OnInit, OnDestroy {
    */
   private async revealForAgent(path: string): Promise<boolean> {
     const root: string | undefined = this.workspace.root()?.path;
-    if (root === undefined || !path.startsWith(root) || path.length <= root.length) {
+    if (root === undefined || !this.liesInside(path, root)) {
       return false;
     }
     await this.workspace.revealPath(path);
     this.dockReveal.reveal('files');
     return true;
+  }
+
+  /**
+   * Determines whether a path an agent gave lies strictly below a root. Checked on whole segments, so
+   * a sibling sharing the root's prefix (`/ws-other` beside `/ws`) is outside it, and a `..` anywhere
+   * is taken as outside rather than resolved, since the path has come from an agent.
+   * @param path The absolute path.
+   * @param root The root directory.
+   * @returns Returns true when the path is below the root.
+   */
+  private liesInside(path: string, root: string): boolean {
+    return (
+      isWithin(path, root) &&
+      path.length > root.length &&
+      !path.split(/[\\/]/).some((segment: string): boolean => segment === '..')
+    );
   }
 
   /**
@@ -1945,7 +2147,7 @@ export class DirectoryView implements OnInit, OnDestroy {
    */
   private parentOf(path: string): string {
     const cut: number = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
-    return cut <= 0 ? path : path.slice(0, cut);
+    return cut < 0 ? path : path.slice(0, Math.max(cut, 1));
   }
 
   /**
@@ -2035,7 +2237,11 @@ export class DirectoryView implements OnInit, OnDestroy {
     for (const reference of start.context ?? []) {
       this.agent.attachContext(reference);
     }
-    void this.agent.sendWhenReady(start.prompt, this.tabId(), 'workspace', start.images ?? []);
+    if (start.send === false) {
+      this.agentConversation.draft.set(start.prompt);
+    } else {
+      void this.agent.sendWhenReady(start.prompt, this.tabId(), 'workspace', start.images ?? []);
+    }
     this.dockReveal.reveal('agent');
   }
 
@@ -2050,6 +2256,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     this.keybindings.forget(this.viewScope());
     this.workspaceFind.unregister(this.revealSearchHandler);
     this.workspaceReferences.unregister(this.revealReferencesHandler);
+    this.hierarchyRouter.unregister(this.revealHierarchyHandler);
     this.workspaceDocuments.unregister(this.documentHandler);
     this.dockPanelCommands.unregister(this.dockPanelHandler);
     this.forgeRepository.dispose();
@@ -2082,7 +2289,7 @@ export class DirectoryView implements OnInit, OnDestroy {
    * this only guards a race). The workspace's other configurations are passed as siblings so a default
    * that is a compound resolves its members.
    */
-  private runDefaultConfiguration(): void {
+  private async runDefaultConfiguration(): Promise<void> {
     const configuration: RunConfiguration | null =
       this.workspaceRunConfigurations.defaultConfiguration();
     if (configuration === null) {
@@ -2091,6 +2298,10 @@ export class DirectoryView implements OnInit, OnDestroy {
     // Latch the spinner first, so a near-instant launch still shows one long enough to register.
     this.log.info('workspace.run', 'Default run configuration started', configuration.name);
     this.runStartingHold.begin();
+    // Mission Control has no ribbon to ask from, so Ask runs what is on disk, as Never does.
+    if (this.settings.get('workspaces.saveBeforeRun') === 'always') {
+      await this.saveFiles();
+    }
     this.buildRunner.runConfiguration(
       configuration,
       this.workspaceRunConfigurations.configurations(),
@@ -2205,14 +2416,24 @@ export class DirectoryView implements OnInit, OnDestroy {
     if (path === undefined) {
       return false;
     }
-    const info: RepositoryInfo | null = await (this.sourceControlApi?.resolveRepository(path) ??
-      Promise.resolve(null));
+    let info: RepositoryInfo | null;
+    try {
+      info = await (this.sourceControlApi?.resolveRepository(path) ?? Promise.resolve(null));
+    } catch (error: unknown) {
+      this.log.warn('source-control', 'Resolving the repository failed', error);
+      return false;
+    }
     if (info === null) {
       return false;
     }
     // A repository the user has not trusted is not acted on: the main process would refuse anyway,
-    // and the explorer's own binding has already shown why.
-    if (!(await this.repositoryTrust.ensureTrusted(info))) {
+    // and the explorer's own binding has already shown why. A tab that closed meanwhile asks nothing,
+    // and binds nothing, or the hold this resolve took would outlive it: teardown has been and gone.
+    if (this.destroyRef.destroyed || !(await this.repositoryTrust.ensureTrusted(info))) {
+      void this.sourceControlApi?.closeRepository(info.root);
+      return false;
+    }
+    if (this.destroyRef.destroyed) {
       void this.sourceControlApi?.closeRepository(info.root);
       return false;
     }

@@ -1,3 +1,7 @@
+import { EditorConfigs } from '@shared/angular/services/editor-config/editor-configs';
+import { RememberedState } from '@shared/angular/services/remembered-state/remembered-state';
+import type { TextEditorSettings } from '@shared/angular/services/settings/settings';
+import type { EditorConfigProperties } from '@shared/api/editor-config-channels';
 import { computed, inject, Service, Signal, signal, WritableSignal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
@@ -39,12 +43,12 @@ const LEGACY_SCRATCH_KEY: string = 'api-explorer.workspace';
 /**
  * How many sends the history keeps. Old entries fall off the end rather than growing without bound.
  */
-const HISTORY_LIMIT: number = 100;
+const BYTES_PER_MIB: number = 1024 * 1024;
 
 /**
  * The default per-request timeout, in milliseconds.
  */
-const DEFAULT_TIMEOUT_MS: number = 30_000;
+const MS_PER_SECOND: number = 1000;
 
 /**
  * Who asked for a send: the user working in the view, or the agent through its tools. Only the
@@ -56,6 +60,17 @@ export type SendOrigin = 'user' | 'agent';
  * The name an unsaved workspace goes by, in the tab and in the save dialog.
  */
 const UNTITLED_NAME: string = 'Untitled';
+
+/**
+ * Drops what a kept history entry has no room for: a response's body and an outcome's detail.
+ * @param entry The entry.
+ * @returns Returns the entry as it is kept.
+ */
+function withoutBody(entry: ApiHistoryEntry): ApiHistoryEntry {
+  return entry.outcome.kind === 'response'
+    ? { ...entry, outcome: { ...entry.outcome, body: '' } }
+    : entry;
+}
 
 /**
  * Mints an identifier for a folder, request, environment, field or history entry.
@@ -144,6 +159,16 @@ export class ApiWorkspace {
    * Holds the settings the agent's allowed network locations are read from.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the history kept across sessions, and the file's indentation's source.
+   */
+  private readonly remembered: RememberedState = inject(RememberedState);
+
+  /**
+   * Holds what EditorConfig says about the document's file.
+   */
+  private readonly editorConfigs: EditorConfigs = inject(EditorConfigs);
 
   /**
    * Holds the structured logger.
@@ -277,15 +302,15 @@ export class ApiWorkspace {
   );
 
   /**
-   * Starts an untitled workspace: the scratch left by an older build if there is one, otherwise a
-   * seeded starter collection and environment so there is something to send rather than an empty tree.
+   * Starts an untitled workspace: the scratch left by an older build if there is one, otherwise empty,
+   * or with a starter collection and environment while Start New Workspaces With Sample Content is on.
    *
    * Either way it starts clean. Neither a seed nor an adopted scratch is work the user has done in
    * this tab, and a workspace that arrived dirty would ask to be saved before it had been touched.
    */
   public constructor() {
     const legacy: ApiDocument | null = this.adoptLegacyScratch();
-    if (legacy === null) {
+    if (legacy === null && this.settings.get('apiExplorer.sampleContent')) {
       this.seed();
     }
     this.dirtySignal.set(false);
@@ -333,7 +358,9 @@ export class ApiWorkspace {
     this.requestsSignal.set(document.requests);
     this.environmentsSignal.set(document.environments);
     this.activeEnvironmentIdSignal.set(document.activeEnvironmentId);
-    this.historySignal.set([]);
+    this.historySignal.set(
+      this.settings.get('apiExplorer.keepHistory') ? this.keptHistory(path)() : [],
+    );
     this.filePathSignal.set(path);
     this.dirtySignal.set(false);
     this.log.info('api-explorer.workspace', 'Loaded API document', {
@@ -387,13 +414,38 @@ export class ApiWorkspace {
   }
 
   /**
+   * Finds the indentation a document is written with: EditorConfig's where it has a say, otherwise
+   * what the JSON language is set to.
+   * @param path The absolute path being written.
+   * @returns Returns a promise resolving what `JSON.stringify` is told to indent with.
+   */
+  private async indentation(path: string): Promise<string | number> {
+    const json: TextEditorSettings = this.settings.resolveSettingsForLanguage('json');
+    const honoured: boolean = this.settings.get('textEditor.honourEditorConfig');
+    const config: EditorConfigProperties | null = honoured
+      ? (await this.editorConfigs.resolve(path)).properties
+      : null;
+    const tabs: boolean =
+      config?.indentStyle === undefined ? !json.insertSpaces : config.indentStyle === 'tab';
+    const size: number | 'tab' | undefined = config?.indentSize;
+    return tabs ? '\t' : typeof size === 'number' ? size : (config?.tabWidth ?? json.tabSize);
+  }
+
+  /**
    * Writes the document to a path and binds the workspace to it.
    * @param path The absolute path to write to.
    * @returns Returns a promise resolving true when the write succeeded.
    */
   private async write(path: string): Promise<boolean> {
-    const content: string = `${JSON.stringify(this.toDocument(), null, 2)}\n`;
-    const result: FileWriteResult = await this.fileSystem.write(path, content);
+    const content: string = `${JSON.stringify(this.toDocument(), null, await this.indentation(path))}\n`;
+    let result: FileWriteResult;
+    try {
+      result = await this.fileSystem.write(path, content);
+    } catch (error: unknown) {
+      // A bridge that fails outright is a failed save: the ribbon's save awaits nothing.
+      this.log.warn('api-explorer.workspace', 'Save failed', { path, error });
+      return false;
+    }
     if (!result.success) {
       this.log.warn('api-explorer.workspace', 'Save failed', { path });
       return false;
@@ -753,8 +805,17 @@ export class ApiWorkspace {
       url: this.buildUrl(this.substitute(request.url).trim(), query),
       headers,
       body,
-      timeoutMs: DEFAULT_TIMEOUT_MS,
-      followRedirects: true,
+      timeoutMs:
+        (request.timeoutSeconds ?? this.settings.get('apiExplorer.requestTimeoutSeconds')) *
+        MS_PER_SECOND,
+      followRedirects: request.followRedirects ?? this.settings.get('apiExplorer.followRedirects'),
+      maxBodyBytes: this.settings.get('apiExplorer.maxResponseMib') * BYTES_PER_MIB,
+      acceptSelfSigned: this.settings.get('apiExplorer.acceptSelfSigned'),
+      proxy: {
+        mode: this.settings.get('apiExplorer.proxyMode'),
+        address: this.settings.get('apiExplorer.proxyAddress'),
+        bypass: this.settings.get('apiExplorer.proxyBypass'),
+      },
     };
   }
 
@@ -801,7 +862,7 @@ export class ApiWorkspace {
       (ids: ReadonlySet<string>): ReadonlySet<string> => new Set<string>([...ids, id]),
     );
     try {
-      const outcome: HttpOutcome = await this.http.send(resolved);
+      const outcome: HttpOutcome = await this.attempt(resolved, at);
       this.outcomesSignal.update(
         (outcomes: ReadonlyMap<string, HttpOutcome>): ReadonlyMap<string, HttpOutcome> =>
           new Map<string, HttpOutcome>([...outcomes, [id, outcome]]),
@@ -822,6 +883,28 @@ export class ApiWorkspace {
         next.delete(id);
         return next;
       });
+    }
+  }
+
+  /**
+   * Sends a resolved request, a bridge that fails outright being an outcome like any other: the user
+   * sees why it failed, and the ribbon's send, which awaits nothing, has nothing to go unhandled.
+   * @param resolved The request.
+   * @param at When the send began, in epoch milliseconds.
+   * @returns Returns a promise resolving to the outcome.
+   */
+  private async attempt(resolved: ResolvedHttpRequest, at: number): Promise<HttpOutcome> {
+    try {
+      return await this.http.send(resolved);
+    } catch (error: unknown) {
+      this.log.warn('api-explorer.workspace', 'Send failed', { id: resolved.id, error });
+      return {
+        kind: 'failure',
+        id: resolved.id,
+        message: error instanceof Error ? error.message : 'The request could not be sent.',
+        cancelled: false,
+        durationMs: Date.now() - at,
+      };
     }
   }
 
@@ -851,6 +934,10 @@ export class ApiWorkspace {
    */
   public clearHistory(): void {
     this.historySignal.set([]);
+    const path: string | null = this.filePathSignal();
+    if (path !== null) {
+      this.keptHistory(path).set([]);
+    }
   }
 
   /**
@@ -983,7 +1070,23 @@ export class ApiWorkspace {
    */
   private record(entry: ApiHistoryEntry): void {
     this.historySignal.update((history: readonly ApiHistoryEntry[]): readonly ApiHistoryEntry[] =>
-      [entry, ...history].slice(0, HISTORY_LIMIT),
+      [entry, ...history].slice(0, this.settings.get('apiExplorer.historySize')),
+    );
+    const path: string | null = this.filePathSignal();
+    if (path !== null && this.settings.get('apiExplorer.keepHistory')) {
+      this.keptHistory(path).set(this.historySignal().map(withoutBody));
+    }
+  }
+
+  /**
+   * Gets a saved workspace's history as kept across sessions.
+   * @param path The workspace's path.
+   * @returns Returns the kept history.
+   */
+  private keptHistory(path: string): WritableSignal<readonly ApiHistoryEntry[]> {
+    return this.remembered.acrossLaunches<readonly ApiHistoryEntry[]>(
+      `apiExplorer.history.${path}`,
+      [],
     );
   }
 

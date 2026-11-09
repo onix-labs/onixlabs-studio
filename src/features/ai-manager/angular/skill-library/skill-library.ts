@@ -4,12 +4,15 @@ import {
   computed,
   DestroyRef,
   inject,
-  signal,
   Signal,
+  signal,
   WritableSignal,
 } from '@angular/core';
+import { Alert } from '@shared/angular/components/alert/alert';
 import { GLOBAL_SCOPE, PromptScope } from '@shared/api/ai-types';
 import { Skill, SkillDraft, SkillSaveResult } from '@shared/api/skill-channels';
+import { skillProblem } from '@shared/api/skill-file';
+import type { SkillImportDraft } from '@shared/api/skill-import-channels';
 import {
   MultiSelect,
   MultiSelectItem,
@@ -23,19 +26,25 @@ import { TextField } from '@shared/angular/components/forms/text-field/text-fiel
 import { MarkdownField } from '@shared/angular/components/forms/markdown-field/markdown-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { Panel } from '@shared/angular/components/panel-layout/panel';
-import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
-import { CategoryItem, CategoryList } from '@shared/angular/components/category-list/category-list';
-import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
+import { CategoryItem } from '@shared/angular/components/category-list/category-list';
 import { Icon } from '@shared/angular/icons/icon';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { Log } from '@shared/angular/services/log/log';
+import { Agent } from '@shared/angular/services/agent/agent';
 import { Skills } from '@shared/angular/services/skills/skills';
 import {
   AiLibraryCommandHandler,
   AiLibraryCommands,
 } from '../ai-library-commands/ai-library-commands';
 import { PromptScopeEditor } from '../prompt-scope-editor/prompt-scope-editor';
+import {
+  AiManagerSidebarList,
+  AiManagerSidebarState,
+} from '../ai-manager-sidebar/ai-manager-sidebar-state';
+import { SkillAssist, SkillAssistModel, SkillAssistResult } from '../skill-assist/skill-assist';
+import { SkillImportModal } from '../skill-import/skill-import-modal';
+import { SkillImportSession } from '../skill-import/skill-import-session';
+import { SkillReview } from '../skill-review/skill-review';
 import { SKILL_TAG_OPTIONS, splitSkillTags } from '../skill-tags/skill-tags';
 
 /**
@@ -89,21 +98,22 @@ export interface SkillRow {
 @Component({
   selector: 'app-skill-library',
   imports: [
+    Alert,
     AppIcon,
     Button,
     ButtonRow,
-    CategoryList,
     MarkdownField,
     Modal,
     ModalContent,
-    Panel,
-    PanelLayout,
     PromptScopeEditor,
     SettingRow,
     MultiSelect,
+    SkillImportModal,
+    SkillReview,
     TextField,
     Toggle,
   ],
+  providers: [SkillImportSession],
   templateUrl: './skill-library.html',
   styleUrl: '../library.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -115,19 +125,22 @@ export class SkillLibrarySection {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Gets the edges the side panel may sit on: only its own, since it is part of the sub-view.
-   */
-  protected readonly sideEdges: readonly PanelEdge[] = ['left'];
-
-  /**
    * Gets the options of a skill's languages and technologies.
    */
   protected readonly tagOptions: readonly MultiSelectItem[] = SKILL_TAG_OPTIONS;
 
   /**
-   * Holds the side panel's search text.
+   * Holds the AI Manager's sidebar, which lists this section's entries and owns the search; absent
+   * outside the AI Manager view.
    */
-  protected readonly query: WritableSignal<string> = signal<string>('');
+  private readonly sidebar: AiManagerSidebarState | null = inject(AiManagerSidebarState, {
+    optional: true,
+  });
+
+  /**
+   * Gets the sidebar's search text, which narrows the entries.
+   */
+  protected readonly query: Signal<string> = this.sidebar?.query ?? signal<string>('').asReadonly();
 
   /**
    * Gets the label for showing a skill's folder in the file system.
@@ -143,6 +156,62 @@ export class SkillLibrarySection {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the AI Manager's agent, whose connection and model AI help runs through; absent outside the
+   * AI Manager view.
+   */
+  private readonly agent: Agent | null = inject(Agent, { optional: true });
+
+  /**
+   * Holds the AI helper.
+   */
+  private readonly assist: SkillAssist = inject(SkillAssist);
+
+  /**
+   * Holds the import session the import dialogs show.
+   */
+  private readonly importSession: SkillImportSession = inject(SkillImportSession);
+
+  /**
+   * Gets the name of the connection AI help runs through, or null when there is none to use.
+   */
+  protected readonly aiLabel: Signal<string | null> = computed((): string | null =>
+    this.agent === null || !this.assist.isAvailable ? null : (this.agent.providerLabel() ?? null),
+  );
+
+  /**
+   * Holds the skill being improved with AI, while the AI works: its row key.
+   */
+  protected readonly improving: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds the AI's version of a library skill under review, or null.
+   */
+  protected readonly improvement: WritableSignal<{
+    readonly key: string;
+    readonly original: SkillImportDraft;
+    readonly draft: SkillImportDraft;
+  } | null> = signal<{
+    readonly key: string;
+    readonly original: SkillImportDraft;
+    readonly draft: SkillImportDraft;
+  } | null>(null);
+
+  /**
+   * Gets why the AI's version under review cannot be accepted, or null when it can.
+   */
+  protected readonly improvementProblem: Signal<string | null> = computed((): string | null => {
+    const review: { readonly draft: SkillImportDraft } | null = this.improvement();
+    return review === null
+      ? null
+      : skillProblem(review.draft.name.trim(), review.draft.description.trim());
+  });
+
+  /**
+   * Holds the controller that cancels an improvement in flight.
+   */
+  private improveAbort: AbortController | null = null;
 
   /**
    * Holds the drafts, keyed by row key. A stored skill with no entry here is shown as stored.
@@ -250,6 +319,28 @@ export class SkillLibrarySection {
       }
       this.saveTimers.clear();
     });
+    this.registerWithSidebar();
+  }
+
+  /**
+   * Puts the skills in the AI Manager's sidebar while this section is shown.
+   */
+  private registerWithSidebar(): void {
+    const sidebar: AiManagerSidebarState | null = this.sidebar;
+    if (sidebar === null) {
+      return;
+    }
+    const list: AiManagerSidebarList = {
+      items: this.items,
+      selectedId: computed((): string | null => this.selected()?.key ?? null),
+      select: (key: string): void => this.select(key),
+      action: (key: string): void => this.askDelete(key),
+      emptyText: computed((): string =>
+        this.query().trim().length > 0 ? 'No skills match.' : 'No skills yet.',
+      ),
+    };
+    sidebar.register('skills', list);
+    inject(DestroyRef).onDestroy((): void => sidebar.unregister(list));
   }
 
   /**
@@ -491,20 +582,103 @@ export class SkillLibrarySection {
   }
 
   /**
-   * Imports a skill through the platform dialog.
-   * @returns Resolves once the dialog has closed and the library answered.
+   * Imports skills from a folder, a file or an export the user picks (#1263), walking them through
+   * it one file at a time.
+   * @returns Resolves once the import has finished or been cancelled.
    */
   protected async import(): Promise<void> {
-    const result: SkillSaveResult | null = await this.skills.import();
-    if (result === null) {
+    this.notice.set(null);
+    const outcome: string | null = await this.importSession.start(this.assistModel());
+    if (outcome !== null) {
+      this.notice.set(outcome);
+    }
+  }
+
+  /**
+   * Has an AI bring a skill up to date (#1263), then shows its version for review.
+   * @param row The row.
+   * @returns Resolves once the AI has answered.
+   */
+  protected async improve(row: SkillRow): Promise<void> {
+    const model: SkillAssistModel | null = this.assistModel();
+    if (model === null || this.improving() !== null) {
       return;
     }
-    if (result.error !== null) {
-      this.notice.set(result.error);
+    const latest: SkillRow = this.drafts().get(row.key) ?? row;
+    const original: SkillImportDraft = { ...latest.draft };
+    this.improveAbort = new AbortController();
+    this.improving.set(row.key);
+    this.notice.set(null);
+    const result: SkillAssistResult = await this.assist.improve(
+      original,
+      model,
+      this.improveAbort.signal,
+    );
+    this.improving.set(null);
+    if (this.improveAbort.signal.aborted) {
       return;
     }
-    this.notice.set(`Imported "${result.skill?.name ?? 'skill'}".`);
-    this.selectedKey.set(result.skill?.name ?? null);
+    this.improveAbort = null;
+    if (result.kind === 'draft') {
+      this.improvement.set({ key: row.key, original, draft: result.draft });
+    } else {
+      this.notice.set(`The AI couldn't improve “${original.name}”: ${result.reason}`);
+    }
+  }
+
+  /**
+   * Stops an improvement in flight.
+   */
+  protected cancelImprove(): void {
+    this.improveAbort?.abort();
+    this.improveAbort = null;
+    this.improving.set(null);
+  }
+
+  /**
+   * Edits the AI's version under review.
+   * @param draft The edited version.
+   */
+  protected reviseImprovement(draft: SkillImportDraft): void {
+    const current: { key: string; original: SkillImportDraft; draft: SkillImportDraft } | null =
+      this.improvement();
+    if (current !== null) {
+      this.improvement.set({ ...current, draft });
+    }
+  }
+
+  /**
+   * Applies the AI's version under review to the skill, which then saves itself as any edit does.
+   */
+  protected acceptImprovement(): void {
+    const current: { key: string; original: SkillImportDraft; draft: SkillImportDraft } | null =
+      this.improvement();
+    this.improvement.set(null);
+    const row: SkillRow | undefined = this.rows().find(
+      (candidate: SkillRow): boolean => candidate.key === current?.key,
+    );
+    if (current !== null && row !== undefined) {
+      this.edit(row, current.draft);
+      this.notice.set(`Applied the AI's improvements to “${current.draft.name}”.`);
+    }
+  }
+
+  /**
+   * Discards the AI's version under review.
+   */
+  protected discardImprovement(): void {
+    this.improvement.set(null);
+  }
+
+  /**
+   * Gets where AI help runs: the AI Manager agent's connection and model, or null when there is none.
+   * @returns Returns the model.
+   */
+  private assistModel(): SkillAssistModel | null {
+    if (this.agent === null || !this.assist.isAvailable) {
+      return null;
+    }
+    return { providerId: this.agent.provider(), model: this.agent.model() };
   }
 
   /**

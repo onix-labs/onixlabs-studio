@@ -66,3 +66,49 @@
   resize: none;
   overflow-y: auto;
 }
+
+.textarea--monospace {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+// The floating variant: the text field's, over several lines. The label rests on the first line and
+// rises to the top edge once the field has focus or a value; risen, it keeps a backing, so text
+// scrolled up under it never collides with it.
+:host(.textarea--floating) {
+  position: relative;
+}
+
+:host(.textarea--floating) .textarea {
+  padding: 1.25rem 0.6rem 0.4rem;
+  resize: none;
+
+  &::placeholder {
+    color: transparent;
+  }
+
+  &:focus::placeholder {
+    color: var(--form-muted-foreground-color);
+  }
+}
+
+.textarea__floating-label {
+  position: absolute;
+  inset-block-start: 0.0625rem;
+  inset-inline: calc(0.6rem + 0.0625rem);
+  padding-block: 0.65rem 0;
+  font-size: 0.8rem;
+  line-height: 1;
+  color: var(--form-muted-foreground-color);
+  pointer-events: none;
+  transform-origin: 0 0;
+  transition:
+    padding-block 120ms ease-out,
+    font-size 120ms ease-out;
+}
+
+.textarea:focus ~ .textarea__floating-label,
+.textarea:not(:placeholder-shown) ~ .textarea__floating-label {
+  padding-block: 0.35rem 0.15rem;
+  font-size: 0.64rem;
+  background: var(--form-control-background-color);
+}

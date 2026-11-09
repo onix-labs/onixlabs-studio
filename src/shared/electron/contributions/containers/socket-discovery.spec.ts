@@ -5,6 +5,7 @@ import {
   EndpointDiscovery,
   endpointToPath,
   expandVariables,
+  customEndpoint,
   resolveEndpoint,
   ResolvedEndpoint,
 } from './socket-discovery';
@@ -332,5 +333,31 @@ describe('resolveEndpoint', () => {
     };
 
     expect(resolveEndpoint(nowhere, environmentWith({}))).toBeNull();
+  });
+});
+
+describe('customEndpoint', () => {
+  it('leaves discovery be without an address', () => {
+    expect(customEndpoint(environmentWith({}))).toBeNull();
+  });
+
+  it('takes a network address on trust', () => {
+    const environment: DiscoveryEnvironment = {
+      ...environmentWith({}),
+      customAddress: 'tcp://10.0.0.5:2375',
+    };
+    expect(customEndpoint(environment)).toEqual({
+      path: 'tcp://10.0.0.5:2375',
+      source: 'custom',
+      exists: true,
+    });
+  });
+
+  it('checks a socket path', () => {
+    const environment: DiscoveryEnvironment = {
+      ...environmentWith({}),
+      customAddress: 'unix:///no/such.sock',
+    };
+    expect(customEndpoint(environment)?.exists).toBe(false);
   });
 });

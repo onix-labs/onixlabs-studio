@@ -1,15 +1,27 @@
-<app-setting-row label="Applies in" description="Leave empty to apply everywhere.">
+@if (floating()) {
   <app-multi-select
-    class="prompt-scope-editor__control"
+    label="Applies In"
     [fullWidth]="true"
     [options]="surfaceOptions"
     [value]="scope().surfaces"
     [disabled]="disabled()"
     placeholder="Everywhere"
-    ariaLabel="Surfaces this applies in"
     (valueChange)="onSurfaces($event)"
   />
-</app-setting-row>
+} @else {
+  <app-setting-row label="Applies in" description="Leave empty to apply everywhere.">
+    <app-multi-select
+      class="prompt-scope-editor__control"
+      [fullWidth]="true"
+      [options]="surfaceOptions"
+      [value]="scope().surfaces"
+      [disabled]="disabled()"
+      placeholder="Everywhere"
+      ariaLabel="Surfaces this applies in"
+      (valueChange)="onSurfaces($event)"
+    />
+  </app-setting-row>
+}
 
 @if (showLanguages()) {
   <app-setting-row

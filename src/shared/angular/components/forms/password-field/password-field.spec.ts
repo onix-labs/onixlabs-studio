@@ -37,4 +37,22 @@ describe('PasswordField', () => {
 
     expect(component.value()).toBe('sk-ant-secret');
   });
+
+  it('floating_namesTheField_withALabelTiedToIt', async () => {
+    fixture.componentRef.setInput('label', 'Passphrase');
+    await fixture.whenStable();
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    const label: HTMLLabelElement | null = element.querySelector('label');
+    expect(element.classList.contains('password-field--floating')).toBe(true);
+    expect(label?.textContent).toBe('Passphrase');
+    expect(label?.htmlFor).toBe(element.querySelector('input')?.id);
+  });
+
+  it('plain_hasNoLabel', () => {
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    expect(element.querySelector('label')).toBeNull();
+    expect(element.classList.contains('password-field--floating')).toBe(false);
+  });
 });

@@ -28,6 +28,7 @@ const NEW_TAB_TYPES: readonly { readonly type: TabType; readonly label: string }
   { type: 'terminal', label: 'Terminal' },
   { type: 'agent', label: 'Agent' },
   { type: 'api-explorer', label: 'API Request' },
+  { type: 'database-explorer', label: 'Database Explorer' },
 ];
 
 /**
@@ -59,6 +60,9 @@ const TOOL_TAB_TYPES: readonly { readonly type: TabType; readonly label: string 
  * chord away from them. Unlike the clipboard, selecting text is something the renderer can do for
  * itself, so `EditingChords` serves Cmd+A for the focused text box from the window's key listener
  * instead — which costs the menu a Select All row and keeps every editor's own.
+ *
+ * Open File, Settings and Close Tab take their shortcuts from the keyboard catalogue
+ * (`APPLICATION_KEYBINDINGS`), so they are editable on Application › Keyboard.
  *
  * Instantiated once by the shell.
  */
@@ -118,7 +122,7 @@ export class CoreMenu {
           {
             id: 'core.file.open',
             label: 'Open File',
-            accelerator: 'CmdOrCtrl+O',
+            binding: 'app.openFile',
             run: (): void => void this.documents.openFile(),
           },
           MENU_SEPARATOR,
@@ -172,14 +176,14 @@ export class CoreMenu {
             {
               id: 'core.file.settings',
               label: 'Settings',
-              accelerator: 'CmdOrCtrl+,',
+              binding: 'app.settings',
               run: (): void => void this.tabs.open('settings'),
             },
             MENU_SEPARATOR,
             {
               id: 'core.file.closeTab',
               label: 'Close Tab',
-              accelerator: 'CmdOrCtrl+W',
+              binding: 'app.closeTab',
               enabled: active !== undefined,
               run: (): void => {
                 const tab: Tab | undefined = this.activeTab();
@@ -196,8 +200,18 @@ export class CoreMenu {
           items: [
             MENU_SEPARATOR,
             { id: 'core.view.fullscreen', label: 'Toggle Full Screen', role: 'togglefullscreen' },
-            { id: 'core.view.devtools', label: 'Toggle Developer Tools', role: 'toggleDevTools' },
-            { id: 'core.view.reload', label: 'Reload', role: 'forceReload' },
+            // Development aids, left out of a packaged build: a reload there throws away the session's
+            // state for nothing, and the developer tools are no use to someone using Studio.
+            ...(window.host?.packaged === true
+              ? []
+              : [
+                  {
+                    id: 'core.view.devtools',
+                    label: 'Toggle Developer Tools',
+                    role: 'toggleDevTools' as const,
+                  },
+                  { id: 'core.view.reload', label: 'Reload', role: 'forceReload' as const },
+                ]),
           ],
         },
         {

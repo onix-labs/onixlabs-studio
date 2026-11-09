@@ -1,0 +1,11 @@
+{
+  "name": "@onixlabs/dotnet-tests",
+  "version": "0.1.0",
+  "private": true,
+  "description": ".NET test adapter for ONIXLabs Studio: xUnit, NUnit and MSTest.",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

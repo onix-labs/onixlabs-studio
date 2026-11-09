@@ -39,7 +39,7 @@ describe('SetupStepSettings', () => {
     // The order is the step's, not the registry's: a step curates, so it also sequences.
     await render(['notifications.toastDuration', 'accessibility.showTooltips']);
 
-    expect(rowLabels()).toEqual(['Toast duration', 'Tooltips on icon-only controls']);
+    expect(rowLabels()).toEqual(['Toast Duration', 'Tooltips on Icon-Only Controls']);
   });
 
   it('render_whenGivenNoKeys_showsNothing', async () => {
@@ -53,7 +53,7 @@ describe('SetupStepSettings', () => {
     // apart from a control that failed to load.
     await render(['accessibility.showTooltips', 'nonsense.notASetting']);
 
-    expect(rowLabels()).toEqual(['Tooltips on icon-only controls']);
+    expect(rowLabels()).toEqual(['Tooltips on Icon-Only Controls']);
   });
 
   it('render_whenAKeyIsCustomRendered_skipsIt', async () => {
@@ -61,7 +61,7 @@ describe('SetupStepSettings', () => {
     // skips them exactly as the settings section does.
     await render(['terminal.defaultShell', 'accessibility.showTooltips']);
 
-    expect(rowLabels()).toEqual(['Tooltips on icon-only controls']);
+    expect(rowLabels()).toEqual(['Tooltips on Icon-Only Controls']);
   });
 
   it('render_whenASettingIsQualifiedOnAnother_showsItOnlyWhileTheConditionHolds', async () => {
@@ -70,13 +70,13 @@ describe('SetupStepSettings', () => {
     settings.assign('application.menuMode', 'hidden');
 
     await render(['application.menuMode', 'application.menuAppearance']);
-    expect(rowLabels()).toEqual(['Application menu']);
+    expect(rowLabels()).toEqual(['Application Menu']);
 
     settings.assign('application.menuMode', 'icon');
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(rowLabels()).toEqual(['Application menu', 'Application menu appearance']);
+    expect(rowLabels()).toEqual(['Application Menu', 'Application Menu Appearance']);
   });
 
   it('render_whenTheSettingStatesShortText_showsThatRatherThanTheFullDescription', async () => {

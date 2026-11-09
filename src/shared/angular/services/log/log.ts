@@ -145,6 +145,14 @@ export class Log {
   }
 
   /**
+   * Opens the folder the logs are kept in.
+   * @returns Returns a promise resolving once it has been asked to open.
+   */
+  public openFolder(): Promise<void> {
+    return this.bridge?.invoke<void>(LogChannel.OpenFolder) ?? Promise.resolve();
+  }
+
+  /**
    * Subscribes to newly-recorded log records pushed from the main process. Records arrive batched
    * per flush window; the listener is invoked once per record, oldest first. The first listener
    * opens the main-process stream ({@link LogChannel.Subscribe}) and the last to detach closes it,

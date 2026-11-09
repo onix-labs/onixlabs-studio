@@ -13,8 +13,14 @@ import {
   ProvidedHover,
   providedHovers,
 } from '@shared/angular/services/monaco/monaco-editor-capabilities';
+import { watchHeldModifier } from '@shared/angular/services/monaco/held-modifier';
 import type { ProblemDirection } from '@shared/angular/services/monaco/monaco-hover-commands';
 import { QuickFixes } from '@shared/angular/services/quick-fix/quick-fixes';
+import {
+  MinimumDiagnosticSeverity,
+  Settings,
+  ShowHoverCards,
+} from '@shared/angular/services/settings/settings';
 import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
 import {
   decorationMessages,
@@ -93,6 +99,11 @@ export class HoverCards {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the settings, read for the Minimum Diagnostic Severity of an editor's language.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Holds each attached editor's card.
    */
   private readonly attachments: WeakMap<MonacoApi.editor.ICodeEditor, Attachment> = new WeakMap<
@@ -109,7 +120,9 @@ export class HoverCards {
    */
   public attach(editor: MonacoApi.editor.ICodeEditor, injector: Injector): () => void {
     const controller: HoverCardController = new HoverCardController(editor, {
-      markers: (): readonly MonacoApi.editor.IMarker[] => markersOf(editor),
+      delay: (): number => this.settings.get('textEditor.global.hoverDelay'),
+      pointerCards: (): ShowHoverCards => this.settings.get('textEditor.global.showHoverCards'),
+      markers: (): readonly MonacoApi.editor.IMarker[] => this.underlined(editor),
       content: (spot: HoverSpot): Promise<HoverCardContent | null> => this.contentAt(editor, spot),
       present: (
         content: HoverCardContent,
@@ -119,7 +132,12 @@ export class HoverCards {
     });
     const attachment: Attachment = { controller, injector };
     this.attachments.set(editor, attachment);
+    const stopWatching: () => void = watchHeldModifier(
+      editor.getContainerDomNode().ownerDocument.defaultView ?? window,
+      (held: boolean): void => controller.setHeld(held),
+    );
     return (): void => {
+      stopWatching();
       controller.dispose();
       if (this.attachments.get(editor) === attachment) {
         this.attachments.delete(editor);
@@ -151,7 +169,7 @@ export class HoverCards {
   public goToProblem(editor: MonacoApi.editor.ICodeEditor, direction: ProblemDirection): void {
     const caret: MonacoApi.Position | null = editor.getPosition();
     const problem: MonacoApi.IRange | null =
-      caret === null ? null : problemFrom(markersOf(editor), caret, direction);
+      caret === null ? null : problemFrom(this.underlined(editor), caret, direction);
     if (problem === null) {
       this.log.debug('hover', 'No problem to go to');
       return;
@@ -201,7 +219,7 @@ export class HoverCards {
     }
     const hovers: readonly ProvidedHover[] =
       monaco === undefined ? [] : await providedHovers(monaco, model, spot.position);
-    const problems: readonly HoverProblem[] = problemsAt(markersOf(editor), spot.position);
+    const problems: readonly HoverProblem[] = problemsAt(this.underlined(editor), spot.position);
     const navigation: EditorNavigation = this.injector.get(EditorNavigation);
     const word: boolean = model.getWordAtPosition(spot.position) !== null;
     return {
@@ -325,7 +343,37 @@ export class HoverCards {
   private hide(editor: MonacoApi.editor.ICodeEditor): void {
     this.attachments.get(editor)?.controller.hide();
   }
+
+  /**
+   * Reads the problems an editor underlines, which are the ones its card and problem navigation may
+   * land on: a hidden underline must not raise a card.
+   * @param editor The editor.
+   * @returns Returns the problems at or above the language's Minimum Diagnostic Severity.
+   */
+  private underlined(editor: MonacoApi.editor.ICodeEditor): readonly MonacoApi.editor.IMarker[] {
+    const language: string | undefined = editor.getModel()?.getLanguageId();
+    if (language === undefined) {
+      return [];
+    }
+    const floor: number =
+      SEVERITY_FLOORS[this.settings.resolveSettingsForLanguage(language).minimumDiagnosticSeverity];
+    return markersOf(editor).filter((marker: MonacoApi.editor.IMarker): boolean => {
+      const severity: number = marker.severity;
+      return severity >= floor;
+    });
+  }
 }
+
+/**
+ * Holds the value of Monaco's `MarkerSeverity` at each minimum severity. Plain numbers, as an editor
+ * attached in another window has its own Monaco instance to read the enum from.
+ */
+const SEVERITY_FLOORS: Readonly<Record<MinimumDiagnosticSeverity, number>> = {
+  hint: 1,
+  info: 2,
+  warning: 4,
+  error: 8,
+};
 
 /**
  * Reads the problems of an editor's document from its Monaco instance.

@@ -1,0 +1,342 @@
+import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
+import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
+import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
+import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
+import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
+import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
+import {
+  RibbonMenuItem,
+  RibbonStripMenuButton,
+} from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
+import { Icon } from '@shared/angular/icons/icon';
+import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
+import {
+  MENU_SEPARATOR,
+  MenuContribution,
+  MenuEntry,
+} from '@shared/angular/services/app-menu/app-menu-model';
+import {
+  DatabaseExplorerCommands,
+  RibbonPanel,
+} from '../database-explorer-commands/database-explorer-commands';
+
+/**
+ * Identifies the Save-As item in the Save menu button's dropdown.
+ */
+const VARIANT_SAVE_AS: string = 'save-as';
+
+/**
+ * Identifies the passphrase items in the Save menu button's dropdown.
+ */
+const VARIANT_SET_PASSPHRASE: string = 'set-passphrase';
+const VARIANT_UNLOCK: string = 'unlock-passphrase';
+const VARIANT_REMOVE_PASSPHRASE: string = 'remove-passphrase';
+
+/**
+ * The contextual ribbon of a Database Explorer tab (#1102), grouped by what each command acts on:
+ * File (Save, its passphrase items), Connection (New, Connect/Disconnect, Refresh, Edit — on the
+ * selected connection, else the front query's), Query (New, Execute/Cancel), and Tools (the agent's
+ * toggle; the other panels and Reset Layout are in the View menu). The app menu carries the same commands. Its actions drive the active
+ * view through the {@link DatabaseExplorerCommands} registry.
+ */
+@Component({
+  selector: 'app-database-explorer-ribbon',
+  imports: [
+    RibbonStripOverflow,
+    RibbonStripGroup,
+    RibbonStripButton,
+    RibbonStripButtonSmall,
+    RibbonStripColumn,
+    RibbonStripMenuButton,
+  ],
+  template: `
+    <app-ribbon-overflow>
+      <app-ribbon-strip-group title="File">
+        <app-ribbon-strip-menu-button
+          [icon]="Icon.SAVE"
+          label="Save"
+          [items]="saveItems()"
+          (action)="commands.saveDocument()"
+          (selected)="onSaveVariant($event)"
+        />
+      </app-ribbon-strip-group>
+      <!-- What the Connection buttons act on: the connection selected in the Object Explorer (or the
+           one the selected item belongs to), else the connection of the query in front (#1102). -->
+      <app-ribbon-strip-group title="Connection">
+        <app-ribbon-strip-button
+          [icon]="Icon.DATABASE_CONNECTION"
+          label="New"
+          (action)="commands.newConnection()"
+        />
+        <app-ribbon-strip-column>
+          <app-ribbon-strip-button-small
+            [icon]="
+              commands.connectionTarget()?.state === 'open'
+                ? Icon.DATABASE_DISCONNECT
+                : Icon.DATABASE_CONNECT
+            "
+            [label]="commands.connectionTarget()?.state === 'open' ? 'Disconnect' : 'Connect'"
+            [disabled]="
+              commands.connectionTarget() === null ||
+              commands.connectionTarget()?.state === 'connecting'
+            "
+            (action)="commands.toggleConnection()"
+          />
+          <app-ribbon-strip-button-small
+            [icon]="Icon.REFRESH"
+            label="Refresh"
+            [disabled]="commands.connectionTarget()?.state !== 'open'"
+            (action)="commands.refreshConnection()"
+          />
+          <app-ribbon-strip-button-small
+            [icon]="Icon.PENCIL"
+            label="Edit"
+            [disabled]="commands.connectionTarget() === null"
+            (action)="commands.editConnection()"
+          />
+        </app-ribbon-strip-column>
+      </app-ribbon-strip-group>
+      <app-ribbon-strip-group title="Query">
+        <app-ribbon-strip-button
+          [icon]="Icon.DATABASE_QUERY"
+          label="New"
+          (action)="commands.newQuery()"
+        />
+        <app-ribbon-strip-button
+          [icon]="commands.executing() ? Icon.STOP : Icon.PLAY"
+          [label]="commands.executing() ? 'Cancel' : 'Execute'"
+          [disabled]="!commands.canExecute()"
+          (action)="commands.execute()"
+        />
+        @if (commands.manualTransactions() || commands.transactionOpen()) {
+          <app-ribbon-strip-column>
+            <app-ribbon-strip-button-small
+              [icon]="Icon.CHECK"
+              label="Commit"
+              [disabled]="!commands.transactionOpen()"
+              (action)="commands.commit()"
+            />
+            <app-ribbon-strip-button-small
+              [icon]="Icon.UNDO"
+              label="Rollback"
+              [disabled]="!commands.transactionOpen()"
+              (action)="commands.rollback()"
+            />
+          </app-ribbon-strip-column>
+        }
+      </app-ribbon-strip-group>
+      <!-- The agent's toggle, lit while its panel shows; the other panels, and Reset Layout, are in
+           the app's View menu. -->
+      <app-ribbon-strip-group title="Tools">
+        @if (agentPanel(); as agent) {
+          <app-ribbon-strip-button
+            [icon]="agent.icon"
+            [label]="agent.title"
+            [toggle]="true"
+            [pressed]="agent.open"
+            (action)="commands.togglePanel(agent.id)"
+          />
+        }
+      </app-ribbon-strip-group>
+    </app-ribbon-overflow>
+  `,
+  hostDirectives: [RibbonHost],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class DatabaseExplorerRibbon {
+  protected readonly Icon: typeof Icon = Icon;
+  protected readonly commands: DatabaseExplorerCommands = inject(DatabaseExplorerCommands);
+
+  /**
+   * Gets the agent panel, the one tool panel the ribbon toggles.
+   */
+  protected readonly agentPanel: Signal<RibbonPanel | null> = computed(
+    (): RibbonPanel | null =>
+      this.commands.panels().find((panel: RibbonPanel): boolean => panel.id === 'agent') ?? null,
+  );
+
+  /**
+   * Gets the Save menu button's extra actions.
+   */
+  protected readonly saveItems: Signal<readonly RibbonMenuItem[]> = computed(
+    (): readonly RibbonMenuItem[] => [
+      { id: VARIANT_SAVE_AS, label: 'Save As', icon: Icon.SAVE_AS },
+      ...(this.commands.locked()
+        ? [{ id: VARIANT_UNLOCK, label: 'Unlock Passwords', icon: Icon.DATABASE_UNLOCK }]
+        : []),
+      {
+        id: VARIANT_SET_PASSPHRASE,
+        label: this.commands.hasPassphrase() ? 'Change Passphrase' : 'Set Passphrase',
+        icon: Icon.DATABASE_PASSPHRASE,
+      },
+      ...(this.commands.hasPassphrase()
+        ? [
+            {
+              id: VARIANT_REMOVE_PASSPHRASE,
+              label: 'Remove Passphrase',
+              icon: Icon.DATABASE_REMOVE_PASSPHRASE,
+            },
+          ]
+        : []),
+    ],
+  );
+
+  /**
+   * Contributes this tab's menu while the ribbon is mounted.
+   */
+  private readonly menu: void = contributeFeatureMenu(
+    'database-explorer',
+    (): readonly MenuContribution[] => [
+      {
+        id: 'file',
+        label: 'File',
+        items: [
+          {
+            id: 'database.save',
+            label: 'Save',
+            binding: 'database.save',
+            run: (): void => this.commands.saveDocument(),
+          },
+          {
+            id: 'database.saveAs',
+            label: 'Save As',
+            binding: 'database.saveAs',
+            run: (): void => this.commands.saveDocumentAs(),
+          },
+          MENU_SEPARATOR,
+          ...(this.commands.locked()
+            ? [
+                {
+                  id: 'database.unlockPassphrase',
+                  label: 'Unlock Passwords',
+                  run: (): void => this.commands.unlockPassphrase(),
+                },
+              ]
+            : []),
+          {
+            id: 'database.setPassphrase',
+            label: this.commands.hasPassphrase() ? 'Change Passphrase' : 'Set Passphrase',
+            run: (): void => this.commands.setPassphrase(),
+          },
+          ...(this.commands.hasPassphrase()
+            ? [
+                {
+                  id: 'database.removePassphrase',
+                  label: 'Remove Passphrase',
+                  run: (): void => this.commands.removePassphrase(),
+                },
+              ]
+            : []),
+        ],
+      },
+      {
+        id: 'database',
+        label: 'Database',
+        items: [
+          {
+            id: 'database.newConnection',
+            label: 'New Connection',
+            run: (): void => this.commands.newConnection(),
+          },
+          {
+            id: 'database.toggleConnection',
+            label: this.commands.connectionTarget()?.state === 'open' ? 'Disconnect' : 'Connect',
+            enabled:
+              this.commands.connectionTarget() !== null &&
+              this.commands.connectionTarget()?.state !== 'connecting',
+            run: (): void => this.commands.toggleConnection(),
+          },
+          {
+            id: 'database.refreshConnection',
+            label: 'Refresh Connection',
+            enabled: this.commands.connectionTarget()?.state === 'open',
+            run: (): void => this.commands.refreshConnection(),
+          },
+          {
+            id: 'database.editConnection',
+            label: 'Edit Connection',
+            enabled: this.commands.connectionTarget() !== null,
+            run: (): void => this.commands.editConnection(),
+          },
+          MENU_SEPARATOR,
+          {
+            id: 'database.newQuery',
+            label: 'New Query',
+            run: (): void => this.commands.newQuery(),
+          },
+          {
+            id: 'database.execute',
+            label: this.commands.executing() ? 'Cancel Query' : 'Execute Query',
+            enabled: this.commands.canExecute(),
+            run: (): void => this.commands.execute(),
+          },
+          {
+            id: 'database.executeStatement',
+            label: 'Execute Current Statement',
+            enabled: this.commands.canExecute() && !this.commands.executing(),
+            run: (): void => this.commands.executeStatement(),
+          },
+          ...(this.commands.manualTransactions() || this.commands.transactionOpen()
+            ? [
+                MENU_SEPARATOR,
+                {
+                  id: 'database.commit',
+                  label: 'Commit Transaction',
+                  enabled: this.commands.transactionOpen(),
+                  run: (): void => this.commands.commit(),
+                },
+                {
+                  id: 'database.rollback',
+                  label: 'Roll Back Transaction',
+                  enabled: this.commands.transactionOpen(),
+                  run: (): void => this.commands.rollback(),
+                },
+              ]
+            : []),
+        ],
+      },
+      {
+        id: 'view',
+        label: 'View',
+        items: [
+          ...this.commands.panels().map((panel: RibbonPanel): MenuEntry => ({
+            id: `database.panel.${panel.id}`,
+            label: panel.title,
+            kind: 'checkbox',
+            checked: panel.open,
+            run: (): void => this.commands.togglePanel(panel.id),
+          })),
+          MENU_SEPARATOR,
+          {
+            id: 'database.resetLayout',
+            label: 'Reset Layout',
+            run: (): void => this.commands.resetLayout(),
+          },
+        ],
+      },
+    ],
+  );
+
+  /**
+   * Runs the action chosen from the Save menu button's dropdown.
+   * @param id The chosen variant.
+   */
+  protected onSaveVariant(id: string): void {
+    switch (id) {
+      case VARIANT_SAVE_AS:
+        this.commands.saveDocumentAs();
+        return;
+      case VARIANT_SET_PASSPHRASE:
+        this.commands.setPassphrase();
+        return;
+      case VARIANT_UNLOCK:
+        this.commands.unlockPassphrase();
+        return;
+      case VARIANT_REMOVE_PASSPHRASE:
+        this.commands.removePassphrase();
+        return;
+    }
+    this.commands.saveDocument();
+  }
+}

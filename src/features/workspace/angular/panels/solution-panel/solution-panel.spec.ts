@@ -1,4 +1,9 @@
 import { signal, WritableSignal } from '@angular/core';
+import type { MockInstance } from 'vitest';
+import { EntryRename } from '@shared/angular/services/rename/entry-rename';
+import { Workspace } from '@shared/angular/services/workspace/workspace';
+import { ExplorerFilter } from '@shared/angular/services/explorer-filter/explorer-filter';
+import { Diagnostic, Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import {
   ProjectAction,
@@ -25,6 +30,16 @@ import { ExplorerVcsMenu } from '@features/workspace/angular/workspace-git/explo
 import { SolutionPanel } from './solution-panel';
 
 /**
+ * Builds a filter that remembers nothing between specs: its storage is cleared first.
+ * @param key The storage key's stem.
+ * @returns Returns the filter.
+ */
+function freshFilter(key: string): ExplorerFilter {
+  localStorage.removeItem(`${key}.filters`);
+  localStorage.removeItem(`${key}.changesOnly`);
+  return new ExplorerFilter(`${key}.filters`, `${key}.changesOnly`);
+}
+/**
  * A fake solution model whose rows and model presence the test sets, recording toggles, search queries,
  * and expand/collapse calls the panel forwards from its toolbar.
  */
@@ -35,6 +50,7 @@ class FakeSolutionModel {
   public readonly selectedKey: WritableSignal<string | null> = signal<string | null>(null);
   public readonly followsActiveDocument: WritableSignal<boolean> = signal<boolean>(true);
   public readonly showsGitStatus: WritableSignal<boolean> = signal<boolean>(true);
+  public readonly collapsesEmptyFolders: WritableSignal<boolean> = signal<boolean>(false);
   public readonly toggled: SolutionRow[] = [];
   public readonly queries: string[] = [];
   public expandAllCount: number = 0;
@@ -55,10 +71,16 @@ class FakeSolutionModel {
     this.showsGitStatus.update((value: boolean): boolean => !value);
   }
 
-  public readonly showsChangesOnly: WritableSignal<boolean> = signal<boolean>(false);
+  public toggleCollapseEmptyFolders(): void {
+    this.collapsesEmptyFolders.update((value: boolean): boolean => !value);
+  }
 
-  public toggleChangesOnly(): void {
-    this.showsChangesOnly.update((value: boolean): boolean => !value);
+  public readonly filter: ExplorerFilter = freshFilter('test.solution');
+
+  public setChangesOnly(on: boolean): void {
+    if (this.filter.selected().has('changes') !== on) {
+      this.filter.toggle('changes');
+    }
   }
 
   public refreshFromDisk(): void {
@@ -236,6 +258,7 @@ describe('SolutionPanel', () => {
         { provide: Shell, useValue: shell },
         { provide: BuildRunner, useValue: builds },
         { provide: Notifications, useValue: notifications },
+        { provide: EntryRename, useValue: { rename: (): void => undefined } },
       ],
     }).compileComponents();
 
@@ -377,7 +400,7 @@ describe('SolutionPanel', () => {
       });
       solution.model.set(model);
       solution.rows.set([root, a, b]);
-      solution.showsChangesOnly.set(true);
+      solution.setChangesOnly(true);
       fixture.detectChanges();
       await fixture.whenStable();
 
@@ -385,6 +408,125 @@ describe('SolutionPanel', () => {
       expect(
         rowButtons().map((button: HTMLButtonElement): string => button.textContent.trim()),
       ).toHaveLength(2);
+    });
+
+    it('rename_aFileOrAFolderOnDisk_renamesItThroughTheWorkspace_theFilesStemSelected', async () => {
+      const rename: ReturnType<typeof vi.spyOn> = vi
+        .spyOn(TestBed.inject(EntryRename), 'rename')
+        .mockResolvedValue({ success: true, path: '/root/A/Renamed.cs' });
+      const file: SolutionRow = makeRow({
+        key: 'g',
+        label: 'g.cs',
+        kind: 'file',
+        path: '/root/A/g.cs',
+      });
+      const folder: SolutionRow = makeRow({
+        key: 'sub',
+        label: 'Sub',
+        kind: 'item-folder',
+        path: '/root/A/Sub',
+      });
+      const internals: { renameSelection: () => string } = component as unknown as {
+        renameSelection: () => string;
+      };
+
+      component.onContextAction({ itemId: 'rename', row: treeRow(file) });
+      expect(component.renameTarget()).toBe(file);
+      expect(internals.renameSelection()).toBe('stem');
+      await component.commitRename({ row: treeRow(file), value: 'Renamed.cs' });
+
+      component.onContextAction({ itemId: 'rename', row: treeRow(folder) });
+      expect(internals.renameSelection()).toBe('all');
+      await component.commitRename({ row: treeRow(folder), value: 'Sub' });
+
+      // The folder kept its name: nothing to do.
+      expect(rename).toHaveBeenCalledTimes(1);
+      expect(rename).toHaveBeenCalledWith('/root/A/g.cs', 'Renamed.cs');
+    });
+
+    it('delete_asksFirst_thenDeletesEverySelectedFileThroughTheWorkspace', async () => {
+      const remove: MockInstance<Workspace['delete']> = vi
+        .spyOn(TestBed.inject(Workspace), 'delete')
+        .mockResolvedValue({ success: true, trashed: true });
+      const g: SolutionRow = makeRow({
+        key: 'g',
+        label: 'g.cs',
+        kind: 'file',
+        path: '/root/A/g.cs',
+      });
+      const h: SolutionRow = makeRow({
+        key: 'h',
+        label: 'h.cs',
+        kind: 'file',
+        path: '/root/A/h.cs',
+      });
+      solution.rows.set([g, h]);
+      fixture.detectChanges();
+      component.onRowSelect({ row: treeRow(g), mode: 'replace' });
+      component.onRowSelect({ row: treeRow(h), mode: 'toggle' });
+
+      component.onContextAction({ itemId: 'delete', row: treeRow(g) });
+      expect(component.deleteTargets()).toEqual([g, h]);
+      expect(remove).not.toHaveBeenCalled();
+      await component.confirmDelete();
+
+      expect(remove.mock.calls).toEqual([
+        ['/root/A/g.cs', false],
+        ['/root/A/h.cs', false],
+      ]);
+      expect(component.deleteTargets()).toBeNull();
+    });
+
+    it('aProjectOrASolutionFolder_isNeitherRenamedNorDeletedHere', () => {
+      solution.model.set(model);
+
+      expect(menuIds(makeRow({ kind: 'project', path: '/root/A/A.csproj' }))).not.toContain(
+        'delete',
+      );
+      expect(menuIds(makeRow({ kind: 'project', path: '/root/A/A.csproj' }))).not.toContain(
+        'rename',
+      );
+      expect(menuIds(makeRow({ kind: 'folder', path: null }))).not.toContain('delete');
+    });
+
+    it('anError_squigglesItsFile_andEveryRowLeadingToIt_toTheRoot (#1182 follow-up)', () => {
+      TestBed.inject(Diagnostics).register({
+        id: 'test',
+        connect: (onChange: (diagnostics: readonly Diagnostic[]) => void): (() => void) => {
+          onChange([
+            {
+              file: 'g.cs',
+              message: 'CS0029',
+              severity: 'error',
+              line: 1,
+              column: 1,
+              source: 'csharp',
+              documentId: null,
+              path: '/root/A/g.cs',
+              scope: 'workspace',
+            },
+          ]);
+          return (): void => undefined;
+        },
+      });
+      const rows: readonly SolutionRow[] = [
+        makeRow({ key: 'root', kind: 'solution', path: null, scmPaths: ['/root'] }),
+        makeRow({ key: 'folder', kind: 'folder', path: null, scmPaths: ['/root/A'] }),
+        makeRow({ key: 'a', kind: 'project', path: '/root/A/A.csproj', scmPaths: ['/root/A'] }),
+        makeRow({ key: 'g', kind: 'file', path: '/root/A/g.cs' }),
+        makeRow({ key: 'b', kind: 'project', path: '/root/B/B.csproj', scmPaths: ['/root/B'] }),
+      ];
+      solution.model.set(model);
+      solution.rows.set(rows);
+
+      const squiggled: string[] = (
+        component as unknown as { rows: () => readonly { id: string; squiggle?: boolean }[] }
+      )
+        .rows()
+        .filter((tree: { squiggle?: boolean }): boolean => tree.squiggle === true)
+        .map((tree: { id: string }): string => tree.id);
+
+      expect(squiggled).toEqual(['root', 'folder', 'a', 'g']);
     });
 
     it('statusStrip_saysWhereTheSelectionIs_andWhatItIs', () => {
@@ -428,7 +570,13 @@ describe('SolutionPanel', () => {
       component.onRowSelect({ row: treeRow(g), mode: 'replace' });
       component.onRowSelect({ row: treeRow(h), mode: 'toggle' });
 
-      expect(menuIds(g)).toEqual(['open', 'copy-path', 'copy-relative-path']);
+      expect(menuIds(g)).toEqual([
+        'open',
+        'copy-path',
+        'copy-relative-path',
+        'solution-menu.sep-edit',
+        'delete',
+      ]);
       component.onContextAction({ itemId: 'copy-path', row: treeRow(h) });
       expect(copied).toEqual(['/root/A/g.cs\n/root/A/h.cs']);
 
@@ -438,7 +586,15 @@ describe('SolutionPanel', () => {
 
     it('contextMenuFor_aFile_offersOpenAndThePathActions', () => {
       const ids: string[] = menuIds(makeRow({ kind: 'file', path: '/root/A/g.cs' }));
-      expect(ids).toEqual(['open', 'copy-path', 'copy-relative-path', 'reveal']);
+      expect(ids).toEqual([
+        'open',
+        'copy-path',
+        'copy-relative-path',
+        'reveal',
+        'solution-menu.sep-edit',
+        'rename',
+        'delete',
+      ]);
     });
 
     it('contextMenuFor_aModifiedFile_offersShowDiff_andChoosingItOpensTheDiff', () => {
@@ -457,6 +613,9 @@ describe('SolutionPanel', () => {
         'reveal',
         'solution-menu.sep-vcs',
         'show-diff',
+        'solution-menu.sep-edit',
+        'rename',
+        'delete',
       ]);
       expect(menuIds(makeRow({ kind: 'file', path: '/root/A/h.cs' }))).not.toContain('show-diff');
 
@@ -543,6 +702,9 @@ describe('SolutionPanel', () => {
         'copy-path',
         'copy-relative-path',
         'reveal',
+        'solution-menu.sep-edit',
+        'rename',
+        'delete',
       ]);
     });
 
@@ -719,6 +881,9 @@ describe('SolutionPanel', () => {
         'copy-path',
         'copy-relative-path',
         'reveal',
+        'solution-menu.sep-edit',
+        'rename',
+        'delete',
       ]);
     });
 
@@ -925,6 +1090,7 @@ describe('SolutionPanel', () => {
       expect(optionsChildren().map((item: MenuItem): string => item.id)).toEqual([
         'follow-active',
         'git-status',
+        'collapse-empty-folders',
       ]);
     });
 
@@ -933,6 +1099,7 @@ describe('SolutionPanel', () => {
       expect(checkedById()).toEqual({
         'follow-active': true,
         'git-status': true,
+        'collapse-empty-folders': false,
       });
 
       solution.followsActiveDocument.set(false);
@@ -940,6 +1107,7 @@ describe('SolutionPanel', () => {
       expect(checkedById()).toEqual({
         'follow-active': false,
         'git-status': true,
+        'collapse-empty-folders': false,
       });
     });
 

@@ -298,6 +298,49 @@ describe('SolutionModel', () => {
     expect(rowFor(model, 'index.js')?.depth).toBe(1);
   });
 
+  it('collapseEmptyFolders_runsAChainOfFoldersIntoOneRow', async () => {
+    localStorage.removeItem('workspace.solution.collapseEmptyFolders');
+    project.model = {
+      kind: 'node',
+      root: '/root',
+      solution: null,
+      projects: [{ name: 'root', path: '/root/package.json' }],
+      tree: [{ type: 'project', name: 'root', path: '/root/package.json' }],
+      capabilities: sampleCapabilities(),
+    };
+    project.itemsByPath.set('/root/package.json', {
+      projectPath: '/root/package.json',
+      tree: [
+        {
+          type: 'folder',
+          name: 'com',
+          path: '/root/com',
+          children: [
+            {
+              type: 'folder',
+              name: 'org',
+              path: '/root/com/org',
+              children: [{ type: 'file', name: 'Main.java', path: '/root/com/org/Main.java' }],
+            },
+          ],
+        },
+      ],
+    });
+    const model: SolutionModel = build();
+    await open(model);
+    expect(labels(model)).toEqual(['root', 'com']);
+
+    model.toggleCollapseEmptyFolders();
+    expect(labels(model)).toEqual(['root', 'com/org']);
+
+    model.toggle(rowFor(model, 'com/org')!);
+    expect(labels(model)).toEqual(['root', 'com/org', 'Main.java']);
+    expect(rowFor(model, 'com/org')?.path).toBe('/root/com/org');
+
+    model.toggleCollapseEmptyFolders();
+    localStorage.removeItem('workspace.solution.collapseEmptyFolders');
+  });
+
   it('rows_withASingleProjectInASubdirectory_keepsItsRow', async () => {
     project.model = {
       kind: 'node',

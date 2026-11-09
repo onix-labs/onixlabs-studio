@@ -1,0 +1,33 @@
+@if (question(); as asked) {
+  <app-modal
+    [open]="true"
+    [width]="32"
+    [ariaLabel]="asked.title"
+    [frameless]="true"
+    (dismiss)="answer(false)"
+  >
+    <ng-template appModalContent>
+      <div class="terminal-confirm">
+        <h2 class="terminal-confirm__title">{{ asked.title }}</h2>
+        <p class="terminal-confirm__body">{{ asked.body }}</p>
+        @if (asked.detail) {
+          <pre class="terminal-confirm__detail">{{ asked.detail }}</pre>
+        }
+        <app-button-row>
+          <app-button
+            variant="solid"
+            [label]="asked.confirmLabel"
+            data-testid="terminal-confirm"
+            (click)="answer(true)"
+          />
+          <app-button
+            variant="none"
+            label="Cancel"
+            data-testid="terminal-cancel"
+            (click)="answer(false)"
+          />
+        </app-button-row>
+      </div>
+    </ng-template>
+  </app-modal>
+}

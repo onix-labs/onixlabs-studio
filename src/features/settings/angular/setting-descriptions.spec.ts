@@ -25,8 +25,15 @@ describe('SettingDescriptions', () => {
     );
   });
 
+  it('resolve_whenGraphicsAcceleration_namesTheLevelButNotTheGpu', () => {
+    // The GPU's driver string is long and belongs with the machine's readings in the System Monitor.
+    expect(descriptions.resolve('display.graphicsAcceleration')).toMatch(
+      /Automatic resolves to (Full|Limited) on this system\.$/,
+    );
+  });
+
   it('resolve_whenNoDynamicDescription_returnsUndefined', () => {
-    expect(descriptions.resolve('application.undoStackSize')).toBeUndefined();
+    expect(descriptions.resolve('application.showWindowLock')).toBeUndefined();
   });
 
   it('resolveConcise_whenTheSettingStatesShortText_buildsOnThatInstead', () => {
@@ -45,7 +52,7 @@ describe('SettingDescriptions', () => {
   });
 
   it('resolveConcise_whenTheSettingStatesNoShortText_matchesTheFullResolution', () => {
-    expect(descriptions.resolveConcise('application.undoStackSize')).toBeUndefined();
+    expect(descriptions.resolveConcise('application.showWindowLock')).toBeUndefined();
   });
 
   it('resolveConcise_isShorterThanResolve_forASettingThatStatesBoth', () => {

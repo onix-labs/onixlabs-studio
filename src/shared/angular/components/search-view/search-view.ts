@@ -19,6 +19,8 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { Modal } from '@shared/angular/components/modal/modal';
+import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
@@ -27,9 +29,10 @@ import { FindRequest, FindScope } from '@shared/angular/components/find-panel/fi
 import { Icon } from '@shared/angular/icons/icon';
 import { Log } from '@shared/angular/services/log/log';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
-import { ReplaceFailure, ReplaceResponse } from '@shared/api/search-channels';
+import { ReplaceFailure, ReplaceResponse, SearchFileFilter } from '@shared/api/search-channels';
 import { SearchAdapter, SearchReplaceOutcome } from './search-adapter';
 import { SearchResultsTree } from './search-results-tree';
+import { FindOptions } from '@shared/angular/services/find-options/find-options';
 
 /**
  * Labels each scope as the scope dropdown offers it (#1007).
@@ -58,6 +61,26 @@ const SCOPE_FALLBACK: Readonly<Partial<Record<FindScope, FindScope>>> = {
  * @returns Returns an empty set.
  */
 const NO_UNSAVED_PATHS: () => ReadonlySet<string> = (): ReadonlySet<string> => new Set<string>();
+
+/**
+ * What a Replace All across files will do, as its confirmation says it.
+ */
+interface PendingReplace {
+  /**
+   * Gets the files left alone for their unsaved edits.
+   */
+  readonly skipped: readonly string[];
+
+  /**
+   * Gets how many replacements it will make.
+   */
+  readonly replacements: number;
+
+  /**
+   * Gets how many files it will change.
+   */
+  readonly files: number;
+}
 
 /**
  * Names the view's two forms, chosen by the strip's toggles.
@@ -93,6 +116,8 @@ export type SearchViewMode = 'find' | 'replace';
     ButtonRow,
     Checkbox,
     Dropdown,
+    Modal,
+    ModalContent,
     PanelToolbar,
     SearchResultsTree,
     TextField,
@@ -212,19 +237,52 @@ export class SearchView implements OnDestroy {
   private readonly searched: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
-   * Holds whether the search is case-sensitive.
+   * Holds whether the search is case-sensitive — remembered for the session, as the other two
+   * options are.
    */
-  protected readonly caseSensitive: WritableSignal<boolean> = signal<boolean>(false);
+  protected readonly caseSensitive: WritableSignal<boolean> =
+    inject(FindOptions).search.caseSensitive;
 
   /**
    * Holds whether the search matches whole words only.
    */
-  protected readonly wholeWord: WritableSignal<boolean> = signal<boolean>(false);
+  protected readonly wholeWord: WritableSignal<boolean> = inject(FindOptions).search.wholeWord;
 
   /**
    * Holds whether the text is a regular expression.
    */
-  protected readonly regexp: WritableSignal<boolean> = signal<boolean>(false);
+  protected readonly regexp: WritableSignal<boolean> = inject(FindOptions).search.regexp;
+
+  /**
+   * Holds the patterns of the files to search, for this search alone; comma-separated.
+   */
+  protected readonly filesToInclude: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds the patterns of the files to leave out, for this search alone; comma-separated.
+   */
+  protected readonly filesToExclude: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds whether files the workspace's ignore rules name are searched.
+   */
+  protected readonly searchIgnored: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds whether the folders Studio leaves out of every search are searched.
+   */
+  protected readonly searchExcluded: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds whether hidden files and folders are searched.
+   */
+  protected readonly searchHidden: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds what a Replace All across files is waiting on the user to confirm, or null when nothing is.
+   */
+  protected readonly pendingReplace: WritableSignal<PendingReplace | null> =
+    signal<PendingReplace | null>(null);
 
   /**
    * Gets the matches for the last search.
@@ -389,7 +447,8 @@ export class SearchView implements OnDestroy {
   }
 
   /**
-   * Replaces every match listed, but for files on disk with unsaved edits.
+   * Replaces every match listed, but for files on disk with unsaved edits. Across files it asks first,
+   * saying how much it will change, as there is often no undoing it.
    */
   protected async replaceEvery(): Promise<void> {
     if (!this.canReplaceAll()) {
@@ -403,10 +462,62 @@ export class SearchView implements OnDestroy {
     const skipped: readonly string[] = adapter
       .paths()
       .filter((path: string): boolean => unsaved.has(path));
+    if (adapter.onDisk() || adapter.paths().length > 1) {
+      this.pendingReplace.set({
+        skipped,
+        replacements: this.matches()
+          .filter((item: FindResultItem): boolean => !this.inSkippedFile(item, skipped))
+          .reduce(
+            (total: number, item: FindResultItem): number => total + (item.occurrences ?? 1),
+            0,
+          ),
+        files: adapter.paths().length - skipped.length,
+      });
+      return;
+    }
+    await this.applyReplaceEvery(skipped);
+  }
+
+  /**
+   * Runs the Replace All the user just confirmed.
+   */
+  protected async confirmReplaceEvery(): Promise<void> {
+    const pending: PendingReplace | null = this.pendingReplace();
+    this.pendingReplace.set(null);
+    if (pending !== null) {
+      await this.applyReplaceEvery(pending.skipped);
+    }
+  }
+
+  /**
+   * Replaces every match listed.
+   * @param skipped The files to leave alone for their unsaved edits.
+   */
+  private async applyReplaceEvery(skipped: readonly string[]): Promise<void> {
+    const adapter: SearchAdapter = this.adapter();
     await this.replaceWith(
       (): SearchReplaceOutcome | Promise<SearchReplaceOutcome> =>
         adapter.replaceFiles(this.replacement(), new Set<string>(skipped)),
       skipped,
+    );
+  }
+
+  /**
+   * Determines whether a match lies in a file a replace leaves alone. A match names its file relative
+   * to the root and the skipped list by absolute path, so the path's tail decides.
+   * @param item The match.
+   * @param skipped The absolute paths left alone.
+   * @returns Returns true when the match will not be replaced.
+   */
+  private inSkippedFile(item: FindResultItem, skipped: readonly string[]): boolean {
+    return (
+      item.file !== undefined &&
+      skipped.some(
+        (path: string): boolean =>
+          path === item.file ||
+          path.endsWith(`/${item.file ?? ''}`) ||
+          path.endsWith(`\\${item.file ?? ''}`),
+      )
     );
   }
 
@@ -426,8 +537,23 @@ export class SearchView implements OnDestroy {
       caseSensitive: this.caseSensitive(),
       wholeWord: this.wholeWord(),
       regexp: this.regexp(),
+      ...(this.adapter().onDisk() ? { files: this.fileFilter() } : {}),
     };
     this.adapter().setQuery(query);
+  }
+
+  /**
+   * Builds which files a search on disk reads, from the fields and switches.
+   * @returns Returns the filter.
+   */
+  private fileFilter(): SearchFileFilter {
+    return {
+      include: patternsIn(this.filesToInclude()),
+      exclude: patternsIn(this.filesToExclude()),
+      ignored: this.searchIgnored(),
+      excluded: this.searchExcluded(),
+      hidden: this.searchHidden(),
+    };
   }
 
   /**
@@ -527,6 +653,18 @@ export class SearchView implements OnDestroy {
     field?.focus();
     field?.select();
   }
+}
+
+/**
+ * Splits a field of comma-separated glob patterns.
+ * @param field The field's text.
+ * @returns Returns the patterns.
+ */
+function patternsIn(field: string): readonly string[] {
+  return field
+    .split(',')
+    .map((pattern: string): string => pattern.trim())
+    .filter((pattern: string): boolean => pattern.length > 0);
 }
 
 /**

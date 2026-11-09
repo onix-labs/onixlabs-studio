@@ -8,6 +8,7 @@ import {
   untracked,
   WritableSignal,
 } from '@angular/core';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { installedContributions, PluginContribution } from '@shared/api/plugin-channels';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { Forge } from '@shared/angular/services/forge/forge';
@@ -92,6 +93,16 @@ const IDLE: ForgeSection<never> = {
 const POLL_INTERVAL_MS: number = 60_000;
 
 /**
+ * Names the hosting lists Load More can grow.
+ */
+export type ForgeListKind = 'pullRequests' | 'issues' | 'runs';
+
+/**
+ * Names which pull requests and issues a list shows: only open ones, or every state.
+ */
+export type ForgeListState = 'open' | 'all';
+
+/**
  * Holds this workspace's forge-backed view of its repository: which repository the remote names on a
  * forge, and what that forge says about it (#433).
  *
@@ -120,6 +131,11 @@ export class ForgeRepository {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the settings store, whose Default Remote is tried first.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the plugin client, watched for hosting plugins arriving or leaving.
@@ -200,6 +216,28 @@ export class ForgeRepository {
   public readonly issues: Signal<ForgeSection<ForgeIssue>> = this.issueSection.asReadonly();
 
   /**
+   * Holds how many pages of each list Load More has asked for; one page is Hosting List Size items.
+   */
+  private readonly pagesSignal: WritableSignal<Readonly<Record<ForgeListKind, number>>> = signal<
+    Readonly<Record<ForgeListKind, number>>
+  >({ pullRequests: 1, issues: 1, runs: 1 });
+
+  /**
+   * Holds this session's choice of open or all pull requests and issues, made from the panel, or null
+   * to follow the PR and Issue States setting. Never written to the setting.
+   */
+  private readonly stateOverride: WritableSignal<ForgeListState | null> =
+    signal<ForgeListState | null>(null);
+
+  /**
+   * Gets which pull requests and issues are listed: this session's choice, else the setting.
+   */
+  public readonly listState: Signal<ForgeListState> = computed(
+    (): ForgeListState =>
+      this.stateOverride() ?? this.settings.value('versionControl.pullRequestAndIssueStates')(),
+  );
+
+  /**
    * Gets the workflow-run section.
    */
   public readonly workflowRuns: Signal<ForgeSection<ForgeWorkflowRun>> =
@@ -222,6 +260,14 @@ export class ForgeRepository {
    * and disappear with it, rather than waiting to be opened to find out.
    */
   public constructor() {
+    // Hosting Refresh Interval: restart the poll at the new pace, or stop it when Off.
+    effect((): void => {
+      this.settings.value('versionControl.hostingRefreshSeconds')();
+      untracked((): void => {
+        this.stopPoll();
+        this.syncPoll();
+      });
+    });
     effect((): void => {
       this.repository.remotes();
       this.installedHosting();
@@ -251,8 +297,10 @@ export class ForgeRepository {
    */
   public async detect(): Promise<ForgeRepositoryRef | null> {
     const remotes: readonly GitRemote[] = this.repository.remotes();
+    const preferred: string = this.settings.get('versionControl.defaultRemote').trim();
     const ordered: readonly GitRemote[] = [...remotes].sort(
-      (left: GitRemote, right: GitRemote): number => rank(left.name) - rank(right.name),
+      (left: GitRemote, right: GitRemote): number =>
+        rank(left.name, preferred) - rank(right.name, preferred),
     );
     for (const remote of ordered) {
       if (remote.url.length === 0) {
@@ -299,7 +347,10 @@ export class ForgeRepository {
    */
   public loadPullRequests(): Promise<void> {
     return this.load(this.pullRequestSection, (reference: ForgeRepositoryRef) =>
-      this.forge.pullRequests(reference),
+      this.forge.pullRequests(reference, {
+        limit: this.limitFor('pullRequests'),
+        state: this.listState(),
+      }),
     );
   }
 
@@ -309,8 +360,77 @@ export class ForgeRepository {
    */
   public loadIssues(): Promise<void> {
     return this.load(this.issueSection, (reference: ForgeRepositoryRef) =>
-      this.forge.issues(reference),
+      this.forge.issues(reference, { limit: this.limitFor('issues'), state: this.listState() }),
     );
+  }
+
+  /**
+   * Gets how many items a list asks for: Hosting List Size times the pages Load More has asked for.
+   * @param kind The list.
+   * @returns Returns the limit.
+   */
+  private limitFor(kind: ForgeListKind): number {
+    return this.settings.get('versionControl.hostingListSize') * this.pagesSignal()[kind];
+  }
+
+  /**
+   * Determines whether a list may have more to show: it came back as full as it was asked to be.
+   * @param kind The list.
+   * @returns Returns true when Load More is worth offering.
+   */
+  public canLoadMore(kind: ForgeListKind): boolean {
+    const items: number =
+      kind === 'pullRequests'
+        ? this.pullRequestSection().items.length
+        : kind === 'issues'
+          ? this.issueSection().items.length
+          : this.runSection().items.length;
+    return items > 0 && items >= this.limitFor(kind);
+  }
+
+  /**
+   * Reads one more page of a list (Load More).
+   * @param kind The list.
+   * @returns Returns a promise that resolves once the list has settled.
+   */
+  public loadMore(kind: ForgeListKind): Promise<void> {
+    this.pagesSignal.update(
+      (
+        pages: Readonly<Record<ForgeListKind, number>>,
+      ): Readonly<Record<ForgeListKind, number>> => ({
+        ...pages,
+        [kind]: pages[kind] + 1,
+      }),
+    );
+    this.log.info('forge', `Loading more ${kind}`, this.limitFor(kind));
+    return kind === 'pullRequests'
+      ? this.loadPullRequests()
+      : kind === 'issues'
+        ? this.loadIssues()
+        : this.loadWorkflowRuns();
+  }
+
+  /**
+   * Shows open or all pull requests and issues for this session, without changing the PR and Issue
+   * States setting, and re-reads both lists from their first page.
+   * @param state The state to show.
+   * @returns Returns a promise that resolves once both lists have settled.
+   */
+  public async setListState(state: ForgeListState): Promise<void> {
+    this.stateOverride.set(
+      state === this.settings.get('versionControl.pullRequestAndIssueStates') ? null : state,
+    );
+    this.pagesSignal.update(
+      (
+        pages: Readonly<Record<ForgeListKind, number>>,
+      ): Readonly<Record<ForgeListKind, number>> => ({
+        ...pages,
+        pullRequests: 1,
+        issues: 1,
+      }),
+    );
+    this.log.info('forge', `Showing ${state} pull requests and issues for this session`);
+    await Promise.all([this.loadPullRequests(), this.loadIssues()]);
   }
 
   /**
@@ -400,8 +520,16 @@ export class ForgeRepository {
    * @returns Returns a promise that resolves once the section has settled.
    */
   public loadWorkflowRuns(): Promise<void> {
+    // CI Runs Scope: one branch's runs, the checked-out one, or every branch's.
+    const branch: string | undefined =
+      this.settings.get('versionControl.ciRunsScope') === 'branch'
+        ? this.repository.currentBranch()?.name
+        : undefined;
     return this.load(this.runSection, (reference: ForgeRepositoryRef) =>
-      this.forge.workflowRuns(reference),
+      this.forge.workflowRuns(reference, {
+        limit: this.limitFor('runs'),
+        ...(branch === undefined ? {} : { branch }),
+      }),
     );
   }
 
@@ -580,10 +708,23 @@ export class ForgeRepository {
    * means no timer at all — an idle workspace must not talk to the forge.
    */
   private syncPoll(): void {
-    const wanted: boolean = this.viewActive && this.watched.size > 0;
+    const seconds: number = this.settings.get('versionControl.hostingRefreshSeconds');
+    const wanted: boolean = this.viewActive && this.watched.size > 0 && seconds > 0;
     if (wanted && this.timer === null) {
-      this.timer = setInterval((): void => this.poll(), POLL_INTERVAL_MS);
-    } else if (!wanted && this.timer !== null) {
+      this.timer = setInterval(
+        (): void => this.poll(),
+        seconds > 0 ? seconds * 1000 : POLL_INTERVAL_MS,
+      );
+    } else if (!wanted) {
+      this.stopPoll();
+    }
+  }
+
+  /**
+   * Stops the poll, if it is running.
+   */
+  private stopPoll(): void {
+    if (this.timer !== null) {
       clearInterval(this.timer);
       this.timer = null;
     }
@@ -628,11 +769,16 @@ export class ForgeRepository {
 }
 
 /**
- * Ranks a remote name against the preferred order, so `origin` is tried before anything else.
+ * Ranks a remote name against the preferred order — the Default Remote setting first, then `origin`
+ * and `upstream` — so the remote the user pushes to is tried before anything else.
  * @param name The remote name.
+ * @param preferred The Default Remote setting, or empty for none.
  * @returns Returns the rank; unlisted remotes sort last.
  */
-function rank(name: string): number {
+function rank(name: string, preferred: string): number {
+  if (preferred.length > 0 && name === preferred) {
+    return -1;
+  }
   const index: number = PREFERRED_REMOTES.indexOf(name);
   return index === -1 ? PREFERRED_REMOTES.length : index;
 }

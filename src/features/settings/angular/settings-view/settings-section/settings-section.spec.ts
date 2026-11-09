@@ -1,12 +1,20 @@
+import { signal } from '@angular/core';
+import type { PluginSummary } from '@shared/api/plugin-channels';
+import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { Display } from '@shared/angular/services/display/display';
+import { SettingDef } from '@shared/angular/services/settings/settings-schema';
 import { findSection } from '@shared/angular/services/settings/settings-registry';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { ACCENT_PRESETS } from '@shared/angular/services/theme/theme';
 import { SettingsSection } from './settings-section';
 
 describe('SettingsSection', () => {
+  afterEach(() => {
+    localStorage.removeItem('settings');
+  });
+
   let fixture: ComponentFixture<SettingsSection>;
 
   beforeEach(async () => {
@@ -43,7 +51,11 @@ describe('SettingsSection', () => {
   it('render_whenSectionHasSettings_rendersARowAndControlPerSetting', async () => {
     // Every setting in this section is visible under the registry's defaults, so the count matches
     // it outright; a conditional setting's own behaviour is covered below.
-    const expected: number = findSection('application')?.settings.length ?? 0;
+    // Custom-control settings (the spell-checking languages) are drawn by their own rows instead.
+    const expected: number =
+      findSection('application')?.settings.filter(
+        (setting: SettingDef): boolean => setting.control.kind !== 'custom',
+      ).length ?? 0;
     const element: HTMLElement = await render('application');
     expect(element.querySelectorAll('app-setting-row').length).toBe(expected);
     expect(element.querySelectorAll('app-setting-control').length).toBe(expected);
@@ -56,26 +68,26 @@ describe('SettingsSection', () => {
 
     const element: HTMLElement = await render('application');
 
-    expect(element.textContent).toContain('Application menu');
-    expect(element.textContent).not.toContain('Application menu appearance');
+    expect(element.textContent).toContain('Application Menu');
+    expect(element.textContent).not.toContain('Application Menu Appearance');
   });
 
   it('render_whenAForeignOwnedConditionFails_leavesTheDependentSettingOut', async () => {
-    // The workspace texture is painted only at the full graphics-acceleration level, so below it the
+    // The workspace texture (Workspaces › General) is painted only at the full graphics-acceleration level, so below it the
     // control goes rather than sitting there having no effect. The condition names a Display-owned
     // key, which resolves through the binding layer rather than the settings store.
     TestBed.inject(Display).setGraphicsAcceleration('limited');
 
-    const element: HTMLElement = await render('appearance');
+    const element: HTMLElement = await render('workspaces');
 
-    expect(element.textContent).toContain('Graphics Acceleration');
+    expect(element.textContent).toContain('Expand All Scope');
     expect(element.textContent).not.toContain('Workspace Texture');
   });
 
   it('render_whenAForeignOwnedConditionHolds_showsTheDependentSetting', async () => {
     TestBed.inject(Display).setGraphicsAcceleration('full');
 
-    const element: HTMLElement = await render('appearance');
+    const element: HTMLElement = await render('workspaces');
 
     expect(element.textContent).toContain('Workspace Texture');
   });
@@ -85,7 +97,7 @@ describe('SettingsSection', () => {
     // recommendation the automatic mode is the full level, so the texture applies and must be offered.
     TestBed.inject(Display).setGraphicsAcceleration('auto');
 
-    const element: HTMLElement = await render('appearance');
+    const element: HTMLElement = await render('workspaces');
 
     expect(element.textContent).toContain('Workspace Texture');
   });
@@ -95,18 +107,21 @@ describe('SettingsSection', () => {
 
     const element: HTMLElement = await render('application');
 
-    expect(element.textContent).toContain('Application menu appearance');
+    expect(element.textContent).toContain('Application Menu Appearance');
   });
 
   it('render_whenSectionHasSettings_labelsEachRowFromTheRegistry', async () => {
     const element: HTMLElement = await render('application');
-    expect(element.textContent).toContain('Undo history');
-    expect(element.textContent).toContain('Print margins');
+    expect(element.textContent).toContain('Window Lock Switch');
+    // Undo history bounded nothing anyone could undo, and the print margin moved to each capability
+    // that prints, so neither is an application setting any more.
+    expect(element.textContent).not.toContain('Undo history');
+    expect(element.textContent).not.toContain('Print Margins');
   });
 
   it('render_whenMarkdownSection_rendersEverySetting', async () => {
     const element: HTMLElement = await render('markdown');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(7);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(16);
   });
 
   it('render_whenSectionUnknown_rendersNothing', async () => {
@@ -115,15 +130,67 @@ describe('SettingsSection', () => {
   });
 
   it('render_whenSectionHasCustomSettings_skipsThem', async () => {
-    // The Text Editor section has 16 scalar settings plus a custom "language overrides" entry, which is
-    // rendered by a bespoke host rather than this component.
-    const element: HTMLElement = await render('text-editor');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(16);
+    // Code › Editing has scalar settings (Format on Type, #1141, among them) plus a custom "language
+    // overrides" entry, which is rendered by a bespoke host rather than this component.
+    const element: HTMLElement = await render('code-editing');
+    expect(element.querySelectorAll('app-setting-row').length).toBe(17);
   });
 
-  it('render_whenTextEditorSection_offersTheGoToStyle_defaultingToTheQuickOpenBox', async () => {
+  it('render_whenCodeAppearanceSection_rendersEverySetting', async () => {
+    // How code looks wherever it appears, Print Margins among them.
+    const element: HTMLElement = await render('code-appearance');
+    expect(element.querySelectorAll('app-setting-row').length).toBe(20);
+  });
+
+  it('render_whenTheQuickFixIndicatorIsOff_hidesItsDelay', async () => {
+    TestBed.inject(Settings).set('textEditor.global.quickFixIndicator', false);
+    const element: HTMLElement = await render('code-editing');
+    expect(element.textContent).not.toContain('Quick Fix Indicator Delay');
+  });
+
+  it('render_whenCodeSavingSection_rendersEverySetting', async () => {
+    const element: HTMLElement = await render('code-saving');
+    expect(element.querySelectorAll('app-setting-row').length).toBe(7);
+  });
+
+  it('render_whenCodeSuggestionsSection_rendersEverySetting', async () => {
+    const element: HTMLElement = await render('code-suggestions');
+    expect(element.querySelectorAll('app-setting-row').length).toBe(13);
+  });
+
+  it('render_whenCodeHighlightingSection_rendersEverySetting', async () => {
+    const element: HTMLElement = await render('code-highlighting');
+    expect(element.querySelectorAll('app-setting-row').length).toBe(12);
+  });
+
+  it('render_whenTheCursorIsNotALine_hidesCursorWidth', async () => {
+    TestBed.inject(Settings).set('textEditor.global.cursorStyle', 'block');
+    const element: HTMLElement = await render('code-appearance');
+    expect(element.textContent).not.toContain('Cursor Width');
+  });
+
+  it('render_whenPrintingSection_rendersTheSharedPrintSettings', async () => {
+    // Application › Printing (#1237): how code and Markdown print, apart from their own margins.
+    const element: HTMLElement = await render('printing');
+    const labels: string[] = Array.from(element.querySelectorAll('.setting-row__label')).map(
+      (label: Element): string => label.textContent?.trim() ?? '',
+    );
+    expect(labels).toEqual([
+      'Paper Size',
+      'Orientation',
+      'Print Background Colours',
+      'Print Syntax Colours',
+      'Print Line Numbers',
+      'Print Font Size',
+      'Header and Footer',
+      'Open PDF After Export',
+    ]);
+  });
+
+  it('render_whenCodeFindSection_offersTheGoToStyle_defaultingToTheQuickOpenBox', async () => {
     // #1009: how Go to Symbol and Go to Line ask where to go, editor-wide (no per-language override).
-    const element: HTMLElement = await render('text-editor');
+    // On Code › Find and Navigation since #1236.
+    const element: HTMLElement = await render('code-find');
     const row: Element | undefined = Array.from(element.querySelectorAll('app-setting-row')).find(
       (candidate: Element): boolean =>
         candidate.querySelector('.setting-row__label')?.textContent?.trim().toLowerCase() ===
@@ -139,22 +206,19 @@ describe('SettingsSection', () => {
   it('render_whenForeignOwnedSection_rendersItsRows', async () => {
     // Security is owned by its own service rather than the Settings store, so this covers the
     // owner-adapter path the language-server section used to before it became a per-language page.
+    // Privacy & Content: the link confirmation and the (security-owned) remote image policy; the
+    // remembered file access list is a custom row drawn beside the section.
     const element: HTMLElement = await render('security');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(1);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(2);
   });
 
-  it('render_whenSectionHasFooter_rendersTheHint', async () => {
-    const element: HTMLElement = await render('security');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(1);
-    expect(element.querySelector('.settings-section__hint')?.textContent).toContain(
-      'content-security policy',
-    );
-  });
-
-  it('render_whenAppearanceSection_rendersThemeOwnedRowsAndAccentPicker', async () => {
-    // Graphics acceleration, theme, accent, ribbon alignment, workspace texture.
-    const element: HTMLElement = await render('appearance');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(5);
+  it('render_whenApplicationSection_rendersThemeOwnedRowsAndAccentPicker', async () => {
+    // Appearance merged into Application › General: graphics acceleration, theme, accent, corner
+    // style, the application menu and its appearance, ribbon alignment, the window and quitting
+    // behaviour, setup after updates, the window lock, spell checking. The workspace texture
+    // moved to Workspaces › General.
+    const element: HTMLElement = await render('application');
+    expect(element.querySelectorAll('app-setting-row').length).toBe(14);
     // The accent picker renders a dropdown with an option per preset plus the trailing Custom entry.
     expect(element.querySelector('app-accent-picker')).toBeTruthy();
     expect(element.querySelectorAll('app-accent-picker option').length).toBe(
@@ -162,11 +226,11 @@ describe('SettingsSection', () => {
     );
   });
 
-  it('render_whenAppearanceSection_keepsTheChosenSettingOrder', async () => {
+  it('render_whenApplicationSection_keepsTheChosenSettingOrder', async () => {
     // The section renders in registry order, and this order was chosen deliberately: the setting that
     // governs what the rest of them can do comes first. Nothing else pins it, so an edit that
     // reordered the registry entries would otherwise shuffle the page silently.
-    const element: HTMLElement = await render('appearance');
+    const element: HTMLElement = await render('application');
     const titles: string[] = Array.from(element.querySelectorAll('app-setting-row')).map(
       (row: Element): string => row.querySelector('.setting-row__label')?.textContent?.trim() ?? '',
     );
@@ -175,13 +239,56 @@ describe('SettingsSection', () => {
       'Graphics Acceleration',
       'Theme',
       'Accent',
+      'Corner Style',
+      'Application Menu',
+      'Application Menu Appearance',
       'Ribbon Alignment',
-      'Workspace Texture',
+      'Window Size on Launch',
+      'Restore Full Screen',
+      'Quit When the Last Window Closes',
+      'Confirm Before Quitting',
+      'Run Setup After Updates',
+      'Window Lock Switch',
+      'Spell Checking',
     ]);
   });
 
   it('render_whenSettingHasDynamicDescription_usesTheResolvedText', async () => {
-    const element: HTMLElement = await render('appearance');
+    const element: HTMLElement = await render('application');
     expect(element.textContent).toContain('Automatic resolves to');
+  });
+});
+
+describe('SettingsSection plugin gating', () => {
+  afterEach(() => {
+    localStorage.removeItem('settings');
+  });
+
+  /**
+   * Renders the Queries page with some plugins installed.
+   * @param plugins The plugins.
+   * @returns Returns the page's text.
+   */
+  function renderWith(plugins: readonly PluginSummary[]): string {
+    TestBed.configureTestingModule({
+      imports: [SettingsSection],
+      providers: [{ provide: Plugins, useValue: { plugins: signal(plugins) } }],
+    });
+    const fixture: ComponentFixture<SettingsSection> = TestBed.createComponent(SettingsSection);
+    fixture.componentRef.setInput('sectionId', 'database-explorer');
+    fixture.detectChanges();
+    return (fixture.nativeElement as HTMLElement).textContent ?? '';
+  }
+
+  it('hidesASettingForAPluginThatIsNotInstalled', () => {
+    expect(renderWith([])).not.toContain('Neo4j Match Count');
+  });
+
+  it('showsItOnceThePluginIsInstalled', () => {
+    const neo4j: PluginSummary = {
+      state: 'installed',
+      contributions: [{ slot: 'database-engine', id: 'neo4j' }],
+    } as unknown as PluginSummary;
+    expect(renderWith([neo4j])).toContain('Neo4j Match Count');
   });
 });

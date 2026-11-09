@@ -1,4 +1,5 @@
 import { Signal } from '@angular/core';
+import type { SearchFileFilter } from '@shared/api/search-channels';
 
 /**
  * Defines the query the find panel asks an adapter to search for. The options mirror the panel's
@@ -25,6 +26,11 @@ export interface FindQuery {
    * Gets a value indicating whether {@link text} is a regular-expression pattern.
    */
   readonly regexp: boolean;
+
+  /**
+   * Gets which files to read, for a surface that searches files on disk; the others ignore it.
+   */
+  readonly files?: SearchFileFilter;
 }
 
 /**
@@ -64,6 +70,12 @@ export interface FindResultItem {
    * single-document surface.
    */
   readonly file?: string;
+
+  /**
+   * Gets how many times the query occurs on the line, where a surface lists a line once; undefined
+   * means once.
+   */
+  readonly occurrences?: number;
 }
 
 /**

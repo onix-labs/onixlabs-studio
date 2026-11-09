@@ -26,6 +26,7 @@ describe('QuickOpen', () => {
   let picked: GoToTarget[];
   let dismissed: number;
   let renamed: string[];
+  let searched: string[];
 
   /**
    * Opens the box in a mode.
@@ -34,7 +35,7 @@ describe('QuickOpen', () => {
    * @param currentName The name of the symbol being renamed, for rename mode.
    */
   function open(
-    mode: 'symbol' | 'line' | 'rename',
+    mode: 'symbol' | 'line' | 'rename' | 'workspace',
     symbols: readonly GoToSymbol[] | null = null,
     currentName: string = '',
   ): void {
@@ -47,6 +48,8 @@ describe('QuickOpen', () => {
     picked = [];
     dismissed = 0;
     renamed = [];
+    searched = [];
+    fixture.componentInstance.searched.subscribe((query: string): number => searched.push(query));
     fixture.componentInstance.picked.subscribe((target: GoToTarget): number => picked.push(target));
     fixture.componentInstance.renamed.subscribe((name: string): number => renamed.push(name));
     fixture.componentInstance.dismissed.subscribe((): number => (dismissed += 1));
@@ -258,6 +261,67 @@ describe('QuickOpen', () => {
       press('Escape');
 
       expect(dismissed).toBe(1);
+    });
+  });
+
+  describe('workspace mode (#1146)', () => {
+    const found: GoToSymbol = {
+      id: '0:/root/Services/FormalGreeter.cs:5:21',
+      name: 'FormalGreeter',
+      container: 'project Fixture.Services (net10.0)',
+      icon: Icon.SYMBOL_CLASS,
+      target: {
+        path: '/root/Services/FormalGreeter.cs',
+        line: 5,
+        column: 21,
+        endLine: 5,
+        endColumn: 34,
+      },
+    };
+
+    it('asksForANameAnywhereInTheWorkspace_andSaysToTypeOne', () => {
+      open('workspace', []);
+
+      expect(field().placeholder).toBe('Go to a symbol in the workspace');
+      expect(element.querySelector('[aria-label="Go to Symbol in Workspace"]')).not.toBeNull();
+      expect(element.textContent).toContain('Type a name to find it anywhere in the workspace');
+    });
+
+    it('reportsWhatIsTyped_forItsOpenerToSearch', () => {
+      open('workspace', []);
+
+      type('FoGr');
+      type('FoGre');
+
+      expect(searched).toEqual(['', 'FoGr', 'FoGre']);
+    });
+
+    it('listsWhatTheSearchFound_andGoesToTheChosenSymbolsFile', () => {
+      open('workspace', []);
+      type('FoGr');
+      fixture.componentRef.setInput('symbols', [found]);
+      fixture.detectChanges();
+
+      expect(listed()).toEqual(['FormalGreeter*']);
+      press('Enter');
+
+      expect(picked).toEqual([found.target]);
+    });
+
+    it('aSearchThatFindsNothing_saysSo', () => {
+      open('workspace', []);
+
+      type('Nothing');
+
+      expect(element.textContent).toContain('No symbols match “Nothing”');
+    });
+
+    it('otherModes_reportNothingTyped', () => {
+      open('symbol', []);
+
+      type('greet');
+
+      expect(searched).toEqual([]);
     });
   });
 });

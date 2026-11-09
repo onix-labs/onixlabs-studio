@@ -6,14 +6,17 @@ import {
   resolveForLanguage,
   setLanguageOverride,
 } from './settings-language-overrides';
+import { TEXT_EDITOR_SETTINGS } from './text-editor-settings.fixture';
 
 const GLOBAL: TextEditorSettings = {
+  ...TEXT_EDITOR_SETTINGS,
   showLineNumbers: true,
   showMinimap: true,
   currentLineHighlight: 'filled',
   colorBrackets: true,
   wordWrap: false,
   stickyScroll: true,
+  formatOnType: true,
   cursorBlinking: 'blink',
   cursorSmoothCaretAnimation: 'off',
   insertSpaces: true,

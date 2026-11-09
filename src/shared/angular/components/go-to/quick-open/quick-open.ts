@@ -3,12 +3,15 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
+  inject,
   input,
   InputSignal,
   OnInit,
   output,
   OutputEmitterRef,
   Signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -19,6 +22,7 @@ import type {
   GoToSymbol,
   GoToTarget,
 } from '@shared/angular/services/go-to/go-to-model';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { GoToPicker } from '../go-to-picker';
 
 /**
@@ -78,13 +82,37 @@ export class QuickOpen implements OnInit {
   public readonly dismissed: OutputEmitterRef<void> = output<void>();
 
   /**
+   * Emitted with what was typed, as it changes, in workspace mode (#1146): the symbols are searched
+   * for by whoever opened the box, and handed back through {@link symbols}.
+   */
+  public readonly searched: OutputEmitterRef<string> = output<string>();
+
+  /**
    * Holds the state behind the box: what was typed, and what it matches or names.
    */
   protected readonly picker: GoToPicker = new GoToPicker(
     (): readonly GoToSymbol[] | null => this.symbols(),
     (): number => this.lineCount(),
     (): string => this.currentName(),
+    (query: string): string => {
+      if (this.mode() !== 'workspace') {
+        return 'No symbols in this file';
+      }
+      return query.length === 0
+        ? 'Type a name to find it anywhere in the workspace'
+        : `No symbols match “${query}”`;
+    },
+    // A workspace search's symbols are what the servers matched; narrowing them again would drop
+    // what their own matching found. Go to Symbol Matching governs one file's symbols.
+    (): boolean =>
+      this.mode() === 'workspace' ||
+      this.settings.value('textEditor.goToSymbolMatching')() === 'fuzzy',
   );
+
+  /**
+   * Holds the settings, read for how symbols are matched.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Gets the field's placeholder for the mode.
@@ -95,6 +123,8 @@ export class QuickOpen implements OnInit {
         return 'Line number, or line:column';
       case 'rename':
         return 'New name';
+      case 'workspace':
+        return 'Go to a symbol in the workspace';
       default:
         return 'Go to a symbol in this file';
     }
@@ -109,6 +139,8 @@ export class QuickOpen implements OnInit {
         return 'Go to Line';
       case 'rename':
         return 'Rename Symbol';
+      case 'workspace':
+        return 'Go to Symbol in Workspace';
       default:
         return 'Go to Symbol';
     }
@@ -145,6 +177,13 @@ export class QuickOpen implements OnInit {
    */
   public constructor() {
     afterNextRender((): void => this.field()?.focus());
+    // A workspace search asks for symbols as the name is typed (#1146).
+    effect((): void => {
+      const query: string = this.picker.query();
+      if (untracked((): GoToSurfaceMode => this.mode()) === 'workspace') {
+        this.searched.emit(query);
+      }
+    });
   }
 
   /**

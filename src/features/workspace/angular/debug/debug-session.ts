@@ -1,3 +1,4 @@
+import { StudioConfig } from '@shared/angular/services/studio/studio-config';
 import { effect, inject, OnDestroy, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import { Bridge } from '@shared/api/bridge';
@@ -13,6 +14,7 @@ import {
   DebugStartResult,
 } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
+import type { TestDebugLaunch } from '@shared/api/test-adapter-protocol';
 import { Output, OutputChannel } from '@shared/angular/services/output/output';
 import {
   TerminalLaunch,
@@ -35,13 +37,40 @@ const DEFAULT_THREAD_ID: number = 1;
  * to host the debuggee in a run terminal, so stdin-reading programs are debuggable. netcoredbg stays
  * on internalConsole until a real .NET run confirms its support (see #343).
  */
-const RUN_IN_TERMINAL_ADAPTERS: ReadonlySet<string> = new Set<string>(['js-debug']);
+export const RUN_IN_TERMINAL_ADAPTERS: ReadonlySet<string> = new Set<string>(['js-debug']);
 
 /**
  * The maximum number of stack frames requested for the call stack, a bound so a runaway recursion does
  * not fetch an unbounded stack.
  */
 const MAX_STACK_FRAMES: number = 50;
+
+/**
+ * Matches the adapters' names for their uncaught-exception filter (`uncaught`, `unhandled`,
+ * `user-unhandled`).
+ */
+const UNCAUGHT_FILTER: RegExp = /uncaught|unhandled/i;
+
+/**
+ * Matches the adapters' names for their every-exception filter (`all`, `raised`).
+ */
+const ALL_FILTER: RegExp = /^(all|raised)/i;
+
+/**
+ * Determines whether a stack goes on past the frames read: the adapter's total says so where it gives
+ * one, and otherwise a full page means there may be more.
+ * @param body The last stackTrace response.
+ * @param loaded How many frames are loaded in all.
+ * @returns Returns true when more can be asked for.
+ */
+function hasMoreFrames(
+  body: DebugProtocol.StackTraceResponse['body'] | undefined,
+  loaded: number,
+): boolean {
+  return body?.totalFrames !== undefined
+    ? body.totalFrames > loaded
+    : (body?.stackFrames ?? []).length === MAX_STACK_FRAMES;
+}
 
 /**
  * A call-stack frame the debug UI renders, mapped from the adapter's richer frame.
@@ -191,6 +220,11 @@ export class DebugSession implements DebugHandler, OnDestroy {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the workspace's `.studio` configuration, which remembers the exceptions to break on.
+   */
+  private readonly studio: StudioConfig = inject(StudioConfig);
+
+  /**
    * Holds the generic transport, or undefined outside Electron.
    */
   private readonly bridge: Bridge | undefined = window.bridge;
@@ -250,6 +284,16 @@ export class DebugSession implements DebugHandler, OnDestroy {
    * Gets the call stack of the stopped thread, top frame first.
    */
   public readonly callStack: Signal<readonly DebugFrame[]> = this.callStackSignal.asReadonly();
+
+  /**
+   * Holds whether the call stack goes on beyond the frames loaded.
+   */
+  private readonly moreFramesSignal: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets whether the call stack goes on beyond the frames loaded.
+   */
+  public readonly hasMoreFrames: Signal<boolean> = this.moreFramesSignal.asReadonly();
 
   /**
    * Holds the id of the selected stack frame (whose scopes are shown), or null when none is stopped.
@@ -483,7 +527,67 @@ export class DebugSession implements DebugHandler, OnDestroy {
       this.reset();
       return;
     }
+    await this.startResolved(sessionId, adapter, root, configuration, resolution.target);
+  }
 
+  /**
+   * Debugs one test (#1352): the launch a test adapter answered with, started under the debug adapter it
+   * named. Nothing is resolved or built first — the test adapter already said what to run — but the
+   * session is configured exactly as a run configuration's is, breakpoints included.
+   * @param launch The test's launch, as the test-adapter host checked it.
+   * @returns Returns a promise resolving true once the launch was sent, false when it could not be (a
+   * session already running, no root, or the adapter refused to start).
+   */
+  public async launchTest(launch: TestDebugLaunch): Promise<boolean> {
+    const root: string | undefined = this.workspace.root()?.path;
+    if (this.bridge === undefined || this.stateSignal() !== 'idle' || root === undefined) {
+      return false;
+    }
+    // The user may have chosen another implementation for the adapter the test adapter named.
+    const adapter: string = this.debugAdapters.resolveAdapter(launch.adapter);
+    const configuration: RunConfiguration = {
+      id: `test:${launch.title}`,
+      name: launch.title,
+      providerKind: 'tests',
+      mode: 'debug',
+    };
+    this.activeConfigurationName = configuration.name;
+    this.activeAdapterId = adapter;
+    const sessionId: string = `${root}#${++this.counter}`;
+    this.currentSession = sessionId;
+    this.threadId = undefined;
+    this.capabilities = {};
+    this.stateSignal.set('running');
+    this.debugChannel.reveal();
+    this.debugChannel.appendLine(`> Debug ${configuration.name}`);
+    return this.startResolved(sessionId, adapter, root, configuration, {
+      program: launch.program ?? '',
+      args: launch.args,
+      cwd: launch.cwd,
+      ...(launch.env === undefined ? {} : { env: launch.env }),
+      ...(launch.configuration === undefined ? {} : { launchExtras: launch.configuration }),
+    });
+  }
+
+  /**
+   * Starts the adapter for a session whose launch target is known, then sends the `launch` request.
+   * @param sessionId The session.
+   * @param adapter The debug adapter to start.
+   * @param root The workspace root.
+   * @param configuration The configuration being debugged.
+   * @param target The resolved launch target.
+   * @returns Returns a promise resolving true once the launch was sent.
+   */
+  private async startResolved(
+    sessionId: string,
+    adapter: string,
+    root: string,
+    configuration: RunConfiguration,
+    target: DebugLaunchTarget,
+  ): Promise<boolean> {
+    if (this.bridge === undefined) {
+      return false;
+    }
     const result: DebugStartResult = await this.bridge.invoke<DebugStartResult>(
       DebugChannel.Start,
       {
@@ -493,18 +597,18 @@ export class DebugSession implements DebugHandler, OnDestroy {
       },
     );
     if (this.currentSession !== sessionId) {
-      return;
+      return false;
     }
     if (!result.success) {
       this.debugChannel.appendLine(`Debug failed: ${result.error ?? 'unknown error'}`);
       this.reset();
-      return;
+      return false;
     }
     this.capabilities = (result.capabilities as DebugProtocol.Capabilities | undefined) ?? {};
     // Fire the launch request without awaiting it: the adapter answers only after it has emitted
     // `initialized` and we have replied with `configurationDone` (handled in onEvent), so awaiting here
     // before that reply would stall.
-    void this.request('launch', this.launchArguments(configuration, root, resolution.target)).catch(
+    void this.request('launch', this.launchArguments(configuration, root, target)).catch(
       (error: unknown): void => {
         if (this.currentSession === sessionId) {
           this.log.error('debug-session', 'Debug launch failed', error);
@@ -513,6 +617,69 @@ export class DebugSession implements DebugHandler, OnDestroy {
         }
       },
     );
+    return true;
+  }
+
+  /**
+   * Attaches the debugger to a process that is already running (#1150) — the test host Roslyn starts
+   * for Debug Test and waits in for a debugger — rather than launching one. The workspace's debug
+   * adapter is started as for a launch, and configured the same way once it reports `initialized`:
+   * the workspace's breakpoints are sent, then `configurationDone`.
+   * @param processId The process to attach to.
+   * @param name What is being debugged, as the session names it.
+   * @returns Returns a promise resolving true once the debugger has attached, false when it could not
+   * (no adapter, a session already running, or the adapter refused).
+   */
+  public async attachToProcess(processId: number, name: string): Promise<boolean> {
+    const declared: string | undefined = this.solutionModel.capabilities()?.debug?.adapter;
+    const adapter: string | undefined =
+      declared === undefined ? undefined : this.debugAdapters.resolveAdapter(declared);
+    const root: string | undefined = this.workspace.root()?.path;
+    if (this.bridge === undefined || this.stateSignal() !== 'idle' || root === undefined) {
+      return false;
+    }
+    if (adapter === undefined) {
+      this.debugChannel.appendLine('No debug adapter is available for this workspace.');
+      return false;
+    }
+    this.activeConfigurationName = name;
+    this.activeAdapterId = adapter;
+    const sessionId: string = `${root}#${++this.counter}`;
+    this.currentSession = sessionId;
+    this.threadId = undefined;
+    this.capabilities = {};
+    this.stateSignal.set('running');
+    this.debugChannel.appendLine(`> Debug ${name} (attaching to process ${processId})`);
+    const result: DebugStartResult = await this.bridge.invoke<DebugStartResult>(
+      DebugChannel.Start,
+      { sessionId, adapterId: adapter, rootPath: root },
+    );
+    if (this.currentSession !== sessionId) {
+      return false;
+    }
+    if (!result.success) {
+      this.debugChannel.appendLine(`Debug failed: ${result.error ?? 'unknown error'}`);
+      this.reset();
+      return false;
+    }
+    this.capabilities = (result.capabilities as DebugProtocol.Capabilities | undefined) ?? {};
+    // The adapter answers `attach` once configuration is done (onEvent's `initialized` sends the
+    // breakpoints and `configurationDone`), so awaiting it here waits until the debugger is in place.
+    try {
+      await this.request('attach', { processId });
+      // netcoredbg drops breakpoints set before it has a process — and `initialized` came before the
+      // attach — so they are sent again now it has one. The process is still waiting for the answer
+      // (Roslyn's test host waits for the debugger), so they are in place before its code runs.
+      await this.syncBreakpoints();
+    } catch (error: unknown) {
+      if (this.currentSession === sessionId) {
+        this.log.error('debug-session', 'Debug attach failed', error);
+        this.debugChannel.appendLine(`Debug attach failed: ${messageOf(error)}`);
+        this.stop();
+      }
+      return false;
+    }
+    return this.currentSession === sessionId;
   }
 
   /**
@@ -574,6 +741,10 @@ export class DebugSession implements DebugHandler, OnDestroy {
    */
   private async configure(): Promise<void> {
     await this.syncBreakpoints();
+    await this.sendExceptionBreakpoints(
+      this.studio.breakOnUncaughtExceptions(),
+      this.studio.breakOnAllExceptions(),
+    );
     if (this.capabilities.supportsConfigurationDoneRequest === true) {
       void this.request('configurationDone');
     }
@@ -664,6 +835,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
       >('stackTrace', { threadId, startFrame: 0, levels: MAX_STACK_FRAMES });
       const frames: readonly DebugFrame[] = (body?.stackFrames ?? []).map(toFrame);
       this.callStackSignal.set(frames);
+      this.moreFramesSignal.set(hasMoreFrames(body, frames.length));
       const top: DebugFrame | undefined = frames[0];
       this.currentFrameSignal.set(top?.id ?? null);
       this.locationSignal.set(locationOf(top));
@@ -675,6 +847,70 @@ export class DebugSession implements DebugHandler, OnDestroy {
     } catch {
       // A failed stackTrace leaves the call stack empty; the session is still usable.
       this.clearInspection();
+    }
+  }
+
+  /**
+   * Loads the next page of the stopped thread's call stack, onto the end of what is shown.
+   * @returns Returns a promise that resolves once the frames are in.
+   */
+  public async loadMoreFrames(): Promise<void> {
+    const start: number = this.callStackSignal().length;
+    try {
+      const body: DebugProtocol.StackTraceResponse['body'] = await this.request<
+        DebugProtocol.StackTraceResponse['body']
+      >('stackTrace', {
+        threadId: this.threadId ?? DEFAULT_THREAD_ID,
+        startFrame: start,
+        levels: MAX_STACK_FRAMES,
+      });
+      const frames: readonly DebugFrame[] = (body?.stackFrames ?? []).map(toFrame);
+      this.callStackSignal.update((current: readonly DebugFrame[]): readonly DebugFrame[] => [
+        ...current,
+        ...frames,
+      ]);
+      this.moreFramesSignal.set(hasMoreFrames(body, start + frames.length));
+    } catch {
+      // What is shown stays; the frames beyond it could not be read.
+      this.moreFramesSignal.set(false);
+    }
+  }
+
+  /**
+   * Chooses which exceptions the debugger breaks on, remembering the choice for this workspace and
+   * telling a running session.
+   * @param uncaught Whether it breaks on uncaught exceptions.
+   * @param all Whether it breaks on every exception.
+   */
+  public setBreakOnExceptions(uncaught: boolean, all: boolean): void {
+    void this.studio.setBreakOnExceptions(uncaught, all);
+    if (this.currentSession !== null) {
+      void this.sendExceptionBreakpoints(uncaught, all);
+    }
+  }
+
+  /**
+   * Tells the adapter which exceptions to break on, in its own filter names. An adapter that offers no
+   * such filters is not asked.
+   * @param uncaught Whether it breaks on uncaught exceptions.
+   * @param all Whether it breaks on every exception.
+   */
+  private async sendExceptionBreakpoints(uncaught: boolean, all: boolean): Promise<void> {
+    const offered: readonly DebugProtocol.ExceptionBreakpointsFilter[] =
+      this.capabilities.exceptionBreakpointFilters ?? [];
+    if (offered.length === 0) {
+      return;
+    }
+    const filters: readonly string[] = offered
+      .map((filter: DebugProtocol.ExceptionBreakpointsFilter): string => filter.filter)
+      .filter(
+        (filter: string): boolean =>
+          (uncaught && UNCAUGHT_FILTER.test(filter)) || (all && ALL_FILTER.test(filter)),
+      );
+    try {
+      await this.request('setExceptionBreakpoints', { filters });
+    } catch (error: unknown) {
+      this.log.warn('debug-session', 'Exception breakpoints refused', error);
     }
   }
 
@@ -765,6 +1001,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
    */
   private clearInspection(): void {
     this.callStackSignal.set([]);
+    this.moreFramesSignal.set(false);
     this.scopesSignal.set([]);
     this.currentFrameSignal.set(null);
     this.locationSignal.set(null);
@@ -805,17 +1042,23 @@ export class DebugSession implements DebugHandler, OnDestroy {
       request: 'launch',
       name: configuration.name,
       type: configuration.providerKind,
-      program: target.program,
+      // A test's launch may run a module rather than a program (debugpy's `module`, #1352), and an
+      // adapter refuses a launch naming both.
+      ...(target.program.length > 0 ? { program: target.program } : {}),
       args: target.args ?? configuration.args,
       cwd: target.cwd ?? configuration.cwd ?? root,
       env: target.env ?? configuration.env,
       // Adapters that honour runInTerminal host the debuggee in the workspace's run terminal (real
       // stdin, coloured output); the rest run it under their own console, stdout/stderr arriving as
       // `output` events this session routes into the Logs channel.
-      console: RUN_IN_TERMINAL_ADAPTERS.has(this.activeAdapterId)
-        ? 'integratedTerminal'
-        : 'internalConsole',
+      console:
+        RUN_IN_TERMINAL_ADAPTERS.has(this.activeAdapterId) &&
+        configuration.debugConsole !== 'debug-console'
+          ? 'integratedTerminal'
+          : 'internalConsole',
       noDebug: false,
+      // Adapters name this one of two ways, and ignore the one that is not theirs.
+      ...(configuration.stopAtEntry === true ? { stopOnEntry: true, stopAtEntry: true } : {}),
     };
   }
 

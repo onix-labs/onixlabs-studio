@@ -184,7 +184,20 @@
                  word count ticking up as progress. Reasoning the model kept to itself arrives as
                  an empty item; that is the label alone, since a box with nothing in it and a caret
                  that opens onto nothing both say less than the label does. -->
-            @if (row.item!.text.trim().length > 0) {
+            @if (row.item!.text.trim().length > 0 && !expandThinking()) {
+              <!-- Expand Thinking off: the reasoning folds behind its label, as a tool call does. -->
+              <details class="agent__action agent__thinking-fold">
+                <summary class="agent__action-summary">
+                  <span class="agent__action-label">{{ row.label }}</span>
+                  <span class="agent__lane-meta">{{ row.meta }}</span>
+                  <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN_BOLD" />
+                </summary>
+                <app-markdown-renderer
+                  class="agent__action-detail agent__thinking-body agent__markdown"
+                  [text]="row.item!.text"
+                />
+              </details>
+            } @else if (row.item!.text.trim().length > 0) {
               <div class="agent__action agent__thinking">
                 <span class="agent__thinking-head">
                   <span class="agent__action-label">{{ row.label }}</span>
@@ -292,6 +305,8 @@
               <details
                 class="agent__action agent__lane"
                 [class.agent__action--error]="row.item!.toolState === 'error'"
+                [open]="expandToolCalls()"
+                (toggle)="onLaneToggle(row.id, $event)"
               >
                 <summary class="agent__action-summary agent__lane-summary">
                   <app-icon class="agent__lane-icon" [icon]="Icon.SUBAGENT" aria-hidden="true" />
@@ -302,27 +317,32 @@
                   }
                   <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN_BOLD" />
                 </summary>
-                <div class="agent__action-detail agent__lane-body">
-                  @if (row.item!.toolDetail) {
-                    <span class="agent__action-tech">{{ row.item!.toolDetail }}</span>
-                  }
-                  <!-- The sub-agent's own activity, rendered through the same rail template as
-                             the parent so it reads as a nested agent transcript, not a flat list. -->
-                  <div class="agent__lane-rail">
-                    @for (child of lane.rows; track child.id) {
-                      <ng-container
-                        [ngTemplateOutlet]="railRow"
-                        [ngTemplateOutletContext]="{ $implicit: child }"
-                      />
+                <!-- Mounted once opened: a long-running sub-agent holds thousands of rows, and the
+                     browser would keep all of them behind a closed disclosure. -->
+                @if (laneShown(row.id)) {
+                  <div class="agent__action-detail agent__lane-body">
+                    @if (row.item!.toolDetail) {
+                      <span class="agent__action-tech">{{ row.item!.toolDetail }}</span>
                     }
+                    <!-- The sub-agent's own activity, rendered through the same rail template as
+                               the parent so it reads as a nested agent transcript, not a flat list. -->
+                    <div class="agent__lane-rail">
+                      @for (child of lane.rows; track child.id) {
+                        <ng-container
+                          [ngTemplateOutlet]="railRow"
+                          [ngTemplateOutletContext]="{ $implicit: child }"
+                        />
+                      }
+                    </div>
+                    <ng-container [ngTemplateOutlet]="payloads" />
                   </div>
-                  <ng-container [ngTemplateOutlet]="payloads" />
-                </div>
+                }
               </details>
             } @else {
               <details
                 class="agent__action"
                 [class.agent__action--error]="row.item!.toolState === 'error'"
+                [open]="expandToolCalls()"
               >
                 <summary class="agent__action-summary">
                   <span class="agent__action-label">{{ row.label }}</span>
@@ -331,6 +351,11 @@
                        as "finished" at a glance, and the label does not change. -->
                   @if (row.item!.toolState === 'backgrounded') {
                     <span class="agent__lane-status">In background…</span>
+                  }
+                  <!-- Which commands left the sandbox has to read at a glance, without opening each
+                       row; why it was allowed is on the badge (#1160). -->
+                  @if (row.item!.toolUnsandboxed; as reason) {
+                    <span class="agent__action-unsandboxed" [attr.title]="reason">Unsandboxed</span>
                   }
                   <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN_BOLD" />
                 </summary>

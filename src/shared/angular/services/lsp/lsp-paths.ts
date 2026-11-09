@@ -63,3 +63,43 @@ export function isWithin(target: string, root: string): boolean {
   const normalisedRoot: string = normalise(root);
   return normalisedTarget === normalisedRoot || normalisedTarget.startsWith(`${normalisedRoot}/`);
 }
+
+/**
+ * Determines whether a path is a language server's decompiled source — a file under a
+ * `MetadataAsSource` folder, where Roslyn writes the source it answers Go to Definition with for a
+ * framework or package symbol (#1133). A shape test only: the main process decides, on real paths,
+ * whether such a file may be opened at all.
+ * @param target The path to test.
+ * @returns Returns true when it has a `MetadataAsSource` folder in it.
+ */
+export function isMetadataAsSource(target: string): boolean {
+  return normalise(target).includes('/MetadataAsSource/');
+}
+
+/**
+ * Determines whether a path is a view of the code Studio wrote from a server's answer (#1210, #1213): a
+ * macro's expansion, a function's HIR or MIR, a syntax tree. It sits among the decompiled sources so it
+ * opens read-only, but no server is told of it: rust-analyzer would read an expansion as a stray file.
+ * @param target The path to test.
+ * @returns Returns true when it is in the folder those views are written to.
+ */
+export function isGeneratedView(target: string): boolean {
+  return normalise(target).includes('/MetadataAsSource/StudioViews/');
+}
+
+/**
+ * Determines whether a path looks like Rust source that belongs to the toolchain (#1210): the standard
+ * library, or a crate Cargo downloaded. Only a guess at which session a file joins: the main process
+ * decides whether it can be opened at all.
+ * @param target The path to test.
+ * @returns Returns true when it is a `.rs` file in one of those folders.
+ */
+export function isToolchainSource(target: string): boolean {
+  const path: string = normalise(target);
+  return (
+    path.endsWith('.rs') &&
+    ['/lib/rustlib/src/', '/registry/src/', '/git/checkouts/'].some((folder: string): boolean =>
+      path.includes(folder),
+    )
+  );
+}

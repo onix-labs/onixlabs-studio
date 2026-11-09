@@ -12,6 +12,8 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
 import { FormModal } from './form-modal';
 
 /**
@@ -35,7 +37,7 @@ export interface CollapseInsert {
  */
 @Component({
   selector: 'app-markdown-collapse-modal',
-  imports: [FormModal],
+  imports: [FormModal, Textarea, TextField],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './insert-modal.scss',
   template: `
@@ -48,28 +50,22 @@ export interface CollapseInsert {
       (cancelled)="cancel()"
     >
       <div class="insert-modal__field">
-        <label class="insert-modal__label" for="collapse-summary">Summary</label>
-        <input
-          #summaryInput
-          id="collapse-summary"
-          class="insert-modal__input"
-          type="text"
+        <app-text-field
+          variant="floating"
+          label="Summary"
           placeholder="Click to expand"
-          [value]="summary()"
-          (input)="summary.set(summaryInput.value)"
+          [(value)]="summary"
         />
       </div>
 
       <div class="insert-modal__field">
-        <label class="insert-modal__label" for="collapse-body">Body (optional)</label>
-        <textarea
-          #bodyInput
-          id="collapse-body"
-          class="insert-modal__textarea"
+        <app-textarea
+          variant="floating"
+          label="Body (optional)"
           placeholder="Hidden content…"
-          [value]="body()"
-          (input)="body.set(bodyInput.value)"
-        ></textarea>
+          [rows]="3"
+          [(value)]="body"
+        />
       </div>
     </app-form-modal>
   `,

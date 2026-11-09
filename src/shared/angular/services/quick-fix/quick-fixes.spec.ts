@@ -38,6 +38,16 @@ const READ_ONLY_OPTION: number = 104;
 const MODEL_URI: string = 'inmemory://model/1';
 
 /**
+ * The whole of the stand-in editor's document.
+ */
+const FULL_RANGE: MonacoApi.IRange = {
+  startLineNumber: 1,
+  startColumn: 1,
+  endLineNumber: 9,
+  endColumn: 1,
+};
+
+/**
  * Builds a one-line edit to a file.
  * @param path The file.
  * @param text The text it puts in.
@@ -84,6 +94,7 @@ function fakeEditor(readOnly: boolean = false): {
   const model: unknown = {
     uri: { toString: (): string => MODEL_URI },
     getLanguageId: (): string => 'typescript',
+    getFullModelRange: (): MonacoApi.IRange => FULL_RANGE,
   };
   const container: HTMLElement = document.createElement('div');
   const editor: unknown = {
@@ -165,6 +176,7 @@ describe('QuickFixes (#1016)', () => {
     servesCodeActions: Mock<LspFeatures['servesCodeActions']>;
     codeActions: Mock<LspFeatures['codeActions']>;
     resolveCodeAction: Mock<LspFeatures['resolveCodeAction']>;
+    resolveFixAll: Mock<LspFeatures['resolveFixAll']>;
     executeCommand: Mock<LspFeatures['executeCommand']>;
   };
   let applied: WorkspaceTextEdits[];
@@ -241,6 +253,10 @@ describe('QuickFixes (#1016)', () => {
       resolveCodeAction: vi.fn<LspFeatures['resolveCodeAction']>(
         (_model: MonacoApi.editor.ITextModel, action: LspCodeAction): Promise<LspCodeAction> =>
           Promise.resolve(action),
+      ),
+      resolveFixAll: vi.fn<LspFeatures['resolveFixAll']>(
+        (_model: MonacoApi.editor.ITextModel, action: LspCodeAction): Promise<LspCodeAction> =>
+          Promise.resolve({ ...action, command: null }),
       ),
       executeCommand: vi.fn<LspFeatures['executeCommand']>((): Promise<LspCommandOutcome> => {
         order.push('command');
@@ -325,6 +341,121 @@ describe('QuickFixes (#1016)', () => {
     );
   });
 
+  it('open_asksForSourceActionsByKind_whenTheServerHeldThemBack (#1207)', async () => {
+    const fixes: QuickFixes = build();
+    lsp.codeActions.mockImplementation(
+      (
+        _model: unknown,
+        _range: unknown,
+        only?: readonly string[],
+      ): Promise<readonly LspCodeAction[]> =>
+        Promise.resolve(
+          only === undefined
+            ? [served('Extract to function', { kind: 'refactor.extract' })]
+            : [served('Organize Imports', { kind: 'source.organizeImports.ts' })],
+        ),
+    );
+
+    const rows: readonly MenuItem[] = await choose(fixes, fakeEditor().editor, 'nothing');
+
+    expect(lsp.codeActions.mock.calls.map((call: unknown[]): unknown => call[2])).toEqual([
+      undefined,
+      ['source'],
+    ]);
+    expect(rows.map((item: MenuItem): string | undefined => item.label)).toContain(
+      'Organize Imports',
+    );
+  });
+
+  it('open_doesNotAskAgain_whenTheServerGaveItsSourceActions (#1207)', async () => {
+    const fixes: QuickFixes = build();
+    lsp.codeActions.mockResolvedValue([
+      served('Organize imports', { kind: 'source.organizeImports' }),
+    ]);
+
+    await fixes.open(fakeEditor().editor);
+
+    expect(lsp.codeActions).toHaveBeenCalledTimes(1);
+  });
+
+  it('hasFixes_neverAsksForSourceActions (#1207)', async () => {
+    const fixes: QuickFixes = build();
+
+    await fixes.hasFixes(fakeEditor().editor);
+
+    expect(lsp.codeActions).toHaveBeenCalledTimes(1);
+  });
+
+  describe('organizeImports (#1207)', () => {
+    /**
+     * An edit the server's action makes.
+     */
+    const edit: WorkspaceTextEdits = {
+      files: [fileEdit('/root/app.ts', 'import a;')],
+      refused: [],
+    };
+
+    it('asksAboutTheWholeDocument_andAppliesTheEdit_leavingTheFocus', async () => {
+      const fixes: QuickFixes = build();
+      const { editor, calls } = fakeEditor();
+      lsp.codeActions.mockResolvedValue([
+        served('Organize Imports', { kind: 'source.organizeImports.ts', edit }),
+      ]);
+
+      await expect(fixes.organizeImports(editor)).resolves.toBe(true);
+
+      expect(lsp.codeActions.mock.calls[0][1]).toEqual(FULL_RANGE);
+      expect(lsp.codeActions.mock.calls[0][2]).toEqual(['source.organizeImports']);
+      expect(applied).toEqual([edit]);
+      expect(calls).toEqual([]);
+    });
+
+    it('fillsInAnActionThatCameWithoutItsEdit', async () => {
+      const fixes: QuickFixes = build();
+      const bare: LspCodeAction = served('Organize Imports', { kind: 'source.organizeImports' });
+      lsp.codeActions.mockResolvedValue([bare]);
+      lsp.resolveCodeAction.mockResolvedValue({ ...bare, edit });
+
+      await fixes.organizeImports(fakeEditor().editor);
+
+      expect(applied).toEqual([edit]);
+    });
+
+    it('runsTheCommandOfAnActionThatHasOne', async () => {
+      const fixes: QuickFixes = build();
+      const command: LspCommand = { title: 'Organize', command: 'server.organize' };
+      lsp.codeActions.mockResolvedValue([
+        served('Organize Imports', { kind: 'source.organizeImports', command }),
+      ]);
+
+      await fixes.organizeImports(fakeEditor().editor);
+
+      expect(lsp.executeCommand).toHaveBeenCalledTimes(1);
+    });
+
+    it('skipsADisabledAction', async () => {
+      const fixes: QuickFixes = build();
+      lsp.codeActions.mockResolvedValue([
+        served('Organize Imports', {
+          kind: 'source.organizeImports',
+          disabledReason: 'Not here',
+          edit,
+        }),
+      ]);
+
+      await expect(fixes.organizeImports(fakeEditor().editor)).resolves.toBe(true);
+
+      expect(applied).toEqual([]);
+    });
+
+    it('answersFalse_whenNoServerServesTheDocument', async () => {
+      const fixes: QuickFixes = build();
+      lsp.codeActions.mockResolvedValue(null);
+
+      await expect(fixes.organizeImports(fakeEditor().editor)).resolves.toBe(false);
+    });
+  });
+
   it('open_withNothingToOffer_saysSo', async () => {
     const fixes: QuickFixes = build();
 
@@ -342,6 +473,18 @@ describe('QuickFixes (#1016)', () => {
 
     expect(lsp.codeActions).not.toHaveBeenCalled();
     expect(menu.openAtCaret).not.toHaveBeenCalled();
+  });
+
+  it('choosing_anEditThatOnlyCreatesAFile_appliesIt (#1210)', async () => {
+    // rust-analyzer's Create Module: a file to create is the whole of the edit.
+    const edit: WorkspaceTextEdits = { files: [], refused: [], creates: ['/root/missing.rs'] };
+    lsp.codeActions.mockResolvedValue([served('Create module', { edit })]);
+    const fixes: QuickFixes = build();
+    const { editor } = fakeEditor();
+
+    await choose(fixes, editor, 'Create module');
+
+    expect(applied).toEqual([edit]);
   });
 
   it('choosing_appliesTheEditThroughTheApplier_thenRunsTheCommandOnTheServer', async () => {
@@ -381,6 +524,112 @@ describe('QuickFixes (#1016)', () => {
     expect(applied).toEqual([edit]);
   });
 
+  describe('fix-all and nested actions (#1151)', () => {
+    /**
+     * Opens the menu, then chooses the row at the given labels.
+     * @param fixes The service.
+     * @param editor The editor.
+     * @param labels The labels down to the row.
+     */
+    async function chooseAt(
+      fixes: QuickFixes,
+      editor: MonacoApi.editor.ICodeEditor,
+      ...labels: string[]
+    ): Promise<void> {
+      await fixes.open(editor);
+      const [, rows, run] = menu.openAtCaret.mock.calls.at(-1) as [
+        MonacoApi.editor.ICodeEditor,
+        readonly MenuItem[],
+        (id: string) => void,
+      ];
+      let level: readonly MenuItem[] = rows;
+      let row: MenuItem | undefined;
+      for (const label of labels) {
+        row = level.find((item: MenuItem): boolean => item.label === label);
+        level = row?.children ?? [];
+      }
+      if (row !== undefined) {
+        run(row.id);
+      }
+      await flush();
+    }
+
+    const FIX_ALL: LspCodeAction = served('Fix All: Remove unused variable', {
+      path: ['Remove unused variable'],
+      fixAllScopes: ['Document', 'Solution'],
+      command: { title: 'Fix All', command: 'roslyn.client.fixAllCodeAction' },
+    });
+
+    it('aFixAllScope_asksTheServerForThatScopesEdit_andAppliesIt_runningNoCommand', async () => {
+      const edit: WorkspaceTextEdits = { files: [fileEdit('/root/app.ts', '')], refused: [] };
+      lsp.codeActions.mockResolvedValue([
+        served('Remove unused variable', { path: ['Remove unused variable'] }),
+        FIX_ALL,
+      ]);
+      lsp.resolveFixAll.mockResolvedValue({ ...FIX_ALL, edit, command: null });
+      const fixes: QuickFixes = build();
+
+      await chooseAt(fixes, fakeEditor().editor, 'Remove unused variable', 'Fix All in Document');
+
+      expect(lsp.resolveFixAll).toHaveBeenCalledWith(expect.anything(), FIX_ALL, 'Document');
+      expect(applied).toEqual([edit]);
+      expect(lsp.executeCommand).not.toHaveBeenCalled();
+    });
+
+    it('fixHere_appliesTheFixAlone', async () => {
+      const edit: WorkspaceTextEdits = { files: [fileEdit('/root/app.ts', 'x')], refused: [] };
+      lsp.codeActions.mockResolvedValue([
+        served('Remove unused variable', { path: ['Remove unused variable'], edit }),
+        FIX_ALL,
+      ]);
+      const fixes: QuickFixes = build();
+
+      await chooseAt(fixes, fakeEditor().editor, 'Remove unused variable', 'Fix Here');
+
+      expect(lsp.resolveFixAll).not.toHaveBeenCalled();
+      expect(applied).toEqual([edit]);
+    });
+
+    it('aNestedAction_isResolvedAndApplied_likeAnyOther', async () => {
+      const edit: WorkspaceTextEdits = {
+        files: [fileEdit('/root/.editorconfig', 'x')],
+        refused: [],
+      };
+      const error: LspCodeAction = served('Error', {
+        path: ['Suppress or configure issues', 'Configure CS0219 severity', 'Error'],
+      });
+      lsp.codeActions.mockResolvedValue([
+        served('Suppress or configure issues', {
+          path: ['Suppress or configure issues'],
+          command: { title: 'Suppress', command: 'roslyn.client.nestedCodeAction' },
+          children: [
+            served('None', {
+              path: ['Suppress or configure issues', 'Configure CS0219 severity', 'None'],
+            }),
+            error,
+          ],
+        }),
+      ]);
+      lsp.resolveCodeAction.mockImplementation(
+        (_model: MonacoApi.editor.ITextModel, action: LspCodeAction): Promise<LspCodeAction> =>
+          Promise.resolve({ ...action, edit }),
+      );
+      const fixes: QuickFixes = build();
+
+      await chooseAt(
+        fixes,
+        fakeEditor().editor,
+        'Suppress or configure issues',
+        'Configure CS0219 severity',
+        'Error',
+      );
+
+      expect(lsp.resolveCodeAction).toHaveBeenCalledWith(expect.anything(), error);
+      expect(applied).toEqual([edit]);
+      expect(lsp.executeCommand).not.toHaveBeenCalled();
+    });
+  });
+
   it('choosing_anEditAcrossFiles_asksTheRenameConfirmationFirst', async () => {
     const edit: WorkspaceTextEdits = {
       files: [fileEdit('/root/a.ts', 'x'), fileEdit('/root/lib/b.ts', 'y')],
@@ -394,7 +643,7 @@ describe('QuickFixes (#1016)', () => {
     await choose(fixes, editor, 'Move to file');
     const request: RenameConfirmationRequest | null = confirmation.pending();
     expect(request).toMatchObject({
-      title: 'Apply “Move to file”?',
+      title: 'Apply Move to file?',
       confirmLabel: 'Apply',
       files: [
         { path: '/root/a.ts', name: 'a.ts', folder: '', edits: 1, open: false },

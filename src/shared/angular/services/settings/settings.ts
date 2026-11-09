@@ -19,6 +19,9 @@ import type {
 import {
   AiConnectionModels,
   ConversationTextSize,
+  DatabaseGridlines,
+  DatabaseGridlineTone,
+  DatabaseSelectAction,
   SETTINGS_BY_KEY,
   SETTINGS_DEFAULTS,
   SettingsKey,
@@ -57,6 +60,65 @@ export type CursorSmoothCaretAnimation = 'off' | 'on' | 'explicit';
 export type BraceStyle = 'kr' | 'allman' | 'gnu';
 
 /**
+ * Identifies which whitespace the editor draws: none, between words only, in the selection, at the
+ * ends of lines, or all of it.
+ */
+export type RenderWhitespace = 'none' | 'boundary' | 'selection' | 'trailing' | 'all';
+
+/**
+ * Identifies how indentation is guided: not at all, with a line per level, or with the active level
+ * also highlighted.
+ */
+export type IndentGuides = 'off' | 'on' | 'highlight-active';
+
+/**
+ * Identifies which bracket pairs get a guide: none, the pair around the caret, or all of them.
+ */
+export type BracketPairGuides = 'off' | 'active' | 'all';
+
+/**
+ * Identifies the shape of the text editor cursor.
+ */
+export type EditorCursorStyle = 'line' | 'block' | 'underline';
+
+/**
+ * Identifies when the fold controls show in the gutter: always, or while the pointer is over it.
+ */
+export type FoldingControls = 'always' | 'hover';
+
+/**
+ * Identifies what folds a language's code: the best there is (the language server where one folds, the
+ * brace folding, then indentation), the language server, the brace folding, or indentation alone.
+ */
+export type FoldingProvider = 'automatic' | 'language-server' | 'braces' | 'indentation';
+
+/**
+ * Identifies which formatter a language with a built-in one uses: that, or its language server's.
+ */
+export type DefaultFormatter = 'built-in' | 'language-server';
+
+/**
+ * Identifies what the change margin marks: nothing, lines that differ from the saved file, or those
+ * and the lines in sync with it.
+ */
+export type ChangeMarginMode = 'off' | 'unsaved' | 'all';
+
+/**
+ * Identifies when inlay hints show: always, never, or while a modifier is held.
+ */
+export type InlayHintsMode = 'on' | 'off' | 'while-holding';
+
+/**
+ * Identifies the least severe diagnostic an editor underlines.
+ */
+export type MinimumDiagnosticSeverity = 'hint' | 'info' | 'warning' | 'error';
+
+/**
+ * Identifies what a save formats: nothing, the whole file, or the lines changed since the last save.
+ */
+export type FormatOnSave = 'off' | 'whole' | 'changed';
+
+/**
  * Identifies the document margin size for the markdown editor.
  */
 export type MarginSize = 'narrow' | 'medium' | 'wide' | 'full-width';
@@ -82,6 +144,17 @@ export type SelectAllScope = 'block' | 'document';
  * `regular` doubles it, and `wide` doubles it again.
  */
 export type PrintMargin = 'narrow' | 'regular' | 'wide';
+
+/**
+ * Identifies the paper a document is printed or exported on; `system` picks Letter or A4 by the
+ * region of the system locale.
+ */
+export type PrintPaperSize = 'system' | 'a4' | 'letter' | 'legal' | 'a3';
+
+/**
+ * Identifies which way up a printed or exported page is laid out.
+ */
+export type PrintOrientation = 'portrait' | 'landscape';
 
 /**
  * Identifies how the ribbon's controls are aligned within the ribbon strip.
@@ -171,6 +244,75 @@ export type DocumentWellPlacement = 'split-horizontal' | 'split-vertical' | 'col
 export type GoToStyle = 'quick-open' | 'dialogs';
 
 /**
+ * Identifies how a diff lays out the two versions it compares: `side-by-side`, the original and the
+ * changed text in two columns; `inline`, one column with removed and added lines interleaved.
+ */
+export type DiffLayout = 'side-by-side' | 'inline';
+
+/**
+ * Identifies when the pointer brings up a hover card: always, never, or while a modifier is held.
+ * ⌘K ⌘I shows one at the caret whichever is chosen.
+ */
+export type ShowHoverCards = 'on' | 'off' | 'while-holding';
+
+/**
+ * Identifies when a typed bracket or quote gets its closing one: always, only before whitespace, or
+ * never.
+ */
+export type AutoCloseBrackets = 'always' | 'before-whitespace' | 'never';
+
+/**
+ * Identifies what typing a bracket or quote over a selection wraps it in.
+ */
+export type AutoSurround = 'brackets-and-quotes' | 'brackets' | 'quotes' | 'never';
+
+/**
+ * Identifies how much a new line's indentation is worked out for you.
+ */
+export type AutoIndent = 'none' | 'keep' | 'brackets' | 'full';
+
+/**
+ * Identifies the modifier that adds a cursor when clicking: `alt` is ⌥ (Alt); `ctrl-cmd` is ⌘ (Ctrl).
+ * Go to Definition takes the other.
+ */
+export type MultiCursorModifier = 'alt' | 'ctrl-cmd';
+
+/**
+ * Identifies what happens to Line Separator and Paragraph Separator characters found in a document.
+ */
+export type UnusualLineTerminators = 'ask' | 'remove' | 'ignore';
+
+/**
+ * Identifies where the completion list opens by itself as you type. ⌃Space opens it anywhere.
+ */
+export type QuickSuggestions = 'off' | 'code' | 'code-and-strings' | 'everywhere';
+
+/**
+ * Identifies which keys accept the completion list's focused row.
+ */
+export type AcceptSuggestionWith = 'enter-and-tab' | 'tab' | 'enter';
+
+/**
+ * Identifies which documents the words the completion list offers come from.
+ */
+export type WordBasedSuggestions = 'off' | 'this-file' | 'all-open-files';
+
+/**
+ * Identifies where snippets sit in the completion list, or that they are left out.
+ */
+export type SnippetSuggestions = 'top' | 'inline' | 'bottom' | 'none';
+
+/**
+ * Identifies which row of the completion list is focused when it opens.
+ */
+export type SuggestionSelection = 'first' | 'recently-used';
+
+/**
+ * Identifies what accepting a completion does to the text after the caret: keeps it, or replaces it.
+ */
+export type CompletionInsertMode = 'insert' | 'replace';
+
+/**
  * Defines the global text editor settings.
  */
 export interface TextEditorSettings {
@@ -203,6 +345,12 @@ export interface TextEditorSettings {
    * Gets a value indicating whether sticky scroll (pinned scope context) is shown.
    */
   readonly stickyScroll: boolean;
+
+  /**
+   * Gets a value indicating whether the language's formatter lays out the line as a closing brace, a
+   * semicolon or a new line is typed (#1141).
+   */
+  readonly formatOnType: boolean;
 
   /**
    * Gets the cursor blinking animation style.
@@ -243,6 +391,287 @@ export interface TextEditorSettings {
    * Gets the brace placement style the editor formats to.
    */
   readonly braceStyle: BraceStyle;
+
+  /**
+   * Gets a value indicating whether a file's indentation is read from its content, leaving the tab
+   * size and insert spaces settings to new and empty files.
+   */
+  readonly detectIndentation: boolean;
+
+  /**
+   * Gets which whitespace the editor draws.
+   */
+  readonly renderWhitespace: RenderWhitespace;
+
+  /**
+   * Gets the columns rulers are drawn at, as the user typed them; see `parseRulers`.
+   */
+  readonly rulers: string;
+
+  /**
+   * Gets how indentation is guided.
+   */
+  readonly indentGuides: IndentGuides;
+
+  /**
+   * Gets which bracket pairs get a guide.
+   */
+  readonly bracketPairGuides: BracketPairGuides;
+
+  /**
+   * Gets a value indicating whether the bracket matching the one at the caret is highlighted.
+   */
+  readonly matchBrackets: boolean;
+
+  /**
+   * Gets a value indicating whether the font's ligatures are drawn.
+   */
+  readonly fontLigatures: boolean;
+
+  /**
+   * Gets the shape of the cursor.
+   */
+  readonly cursorStyle: EditorCursorStyle;
+
+  /**
+   * Gets the width of the line cursor, in pixels.
+   */
+  readonly cursorWidth: number;
+
+  /**
+   * Gets a value indicating whether scrolling animates. Reduce Motion also turns it off.
+   */
+  readonly smoothScrolling: boolean;
+
+  /**
+   * Gets a value indicating whether the editor scrolls past the last line.
+   */
+  readonly scrollBeyondLastLine: boolean;
+
+  /**
+   * Gets when the fold controls show.
+   */
+  readonly foldingControls: FoldingControls;
+
+  /**
+   * Gets what folds the code.
+   */
+  readonly foldingProvider: FoldingProvider;
+
+  /**
+   * Gets which formatter runs, for a language with a built-in one.
+   */
+  readonly defaultFormatter: DefaultFormatter;
+
+  /**
+   * Gets what the change margin marks.
+   */
+  readonly changeMargin: ChangeMarginMode;
+
+  /**
+   * Gets when inlay hints show.
+   */
+  readonly inlayHints: InlayHintsMode;
+
+  /**
+   * Gets whether code lenses are shown at all (#1215); off, no server is asked for them.
+   */
+  readonly codeLens: boolean;
+
+  /**
+   * Gets whether reference-count lenses are shown (#1215).
+   */
+  readonly codeLensReferences: boolean;
+
+  /**
+   * Gets whether implementation-count lenses are shown (#1215).
+   */
+  readonly codeLensImplementations: boolean;
+
+  /**
+   * Gets whether Run Test and Debug Test lenses are shown (#1215).
+   */
+  readonly codeLensTests: boolean;
+
+  /**
+   * Gets whether every other kind of lens is shown (#1215).
+   */
+  readonly codeLensOther: boolean;
+
+  /**
+   * Gets a value indicating whether semantic tokens colour the code.
+   */
+  readonly semanticHighlighting: boolean;
+
+  /**
+   * Gets a value indicating whether other occurrences of the symbol at the caret are highlighted.
+   */
+  readonly highlightOccurrences: boolean;
+
+  /**
+   * Gets a value indicating whether other matches of the selected text are highlighted.
+   */
+  readonly selectionHighlight: boolean;
+
+  /**
+   * Gets a value indicating whether colour values get a swatch.
+   */
+  readonly colourSwatches: boolean;
+
+  /**
+   * Gets the least severe diagnostic the editor underlines.
+   */
+  readonly minimumDiagnosticSeverity: MinimumDiagnosticSeverity;
+
+  /**
+   * Gets a value indicating whether ⌘ or Ctrl and the mouse wheel zoom the editors.
+   */
+  readonly mouseWheelZoom: boolean;
+
+  /**
+   * Gets what a save formats.
+   */
+  readonly formatOnSave: FormatOnSave;
+
+  /**
+   * Gets a value indicating whether a save organises the imports.
+   */
+  readonly organiseImportsOnSave: boolean;
+
+  /**
+   * Gets a value indicating whether a save removes whitespace at the ends of lines.
+   */
+  readonly trimTrailingWhitespace: boolean;
+
+  /**
+   * Gets a value indicating whether a save ensures the text ends with a newline.
+   */
+  readonly insertFinalNewline: boolean;
+
+  /**
+   * Gets a value indicating whether a save removes blank lines after the last line of text.
+   */
+  readonly trimFinalNewlines: boolean;
+
+  /**
+   * Gets a value indicating whether a new UTF-8 file starts with a byte-order mark.
+   */
+  readonly addByteOrderMark: boolean;
+
+  /**
+   * Gets a value indicating whether pasted text is formatted.
+   */
+  readonly formatOnPaste: boolean;
+
+  /**
+   * Gets how long the pointer rests before a hover card shows, in milliseconds.
+   */
+  readonly hoverDelay: number;
+
+  /**
+   * Gets when the pointer brings up a hover card.
+   */
+  readonly showHoverCards: ShowHoverCards;
+
+  /**
+   * Gets where the completion list opens by itself as you type.
+   */
+  readonly quickSuggestions: QuickSuggestions;
+
+  /**
+   * Gets how long after typing the completion list opens by itself, in milliseconds.
+   */
+  readonly quickSuggestionsDelay: number;
+
+  /**
+   * Gets a value indicating whether a language's trigger characters open the completion list.
+   */
+  readonly suggestOnTriggerCharacters: boolean;
+
+  /**
+   * Gets which keys accept the completion list's focused row.
+   */
+  readonly acceptSuggestionWith: AcceptSuggestionWith;
+
+  /**
+   * Gets a value indicating whether a character a completion commits on accepts it.
+   */
+  readonly acceptOnCommitCharacter: boolean;
+
+  /**
+   * Gets which documents the completion list's words come from.
+   */
+  readonly wordBasedSuggestions: WordBasedSuggestions;
+
+  /**
+   * Gets where snippets sit in the completion list.
+   */
+  readonly snippetSuggestions: SnippetSuggestions;
+
+  /**
+   * Gets which row of the completion list is focused when it opens.
+   */
+  readonly suggestionSelection: SuggestionSelection;
+
+  /**
+   * Gets what accepting a completion does to the text after the caret.
+   */
+  readonly completionInsertMode: CompletionInsertMode;
+
+  /**
+   * Gets how many rows the completion list shows before it scrolls.
+   */
+  readonly suggestionListSize: number;
+
+  /**
+   * Gets a value indicating whether the signature card shows as you type a call.
+   */
+  readonly parameterHints: boolean;
+
+  /**
+   * Gets when a typed bracket or quote gets its closing one.
+   */
+  readonly autoCloseBrackets: AutoCloseBrackets;
+
+  /**
+   * Gets what typing a bracket or quote over a selection wraps it in.
+   */
+  readonly autoSurround: AutoSurround;
+
+  /**
+   * Gets how much a new line's indentation is worked out for you.
+   */
+  readonly autoIndent: AutoIndent;
+
+  /**
+   * Gets a value indicating whether renaming one of a linked pair, such as an HTML tag, renames both.
+   */
+  readonly linkedEditing: boolean;
+
+  /**
+   * Gets a value indicating whether a language server fills in a doc comment as it is begun.
+   */
+  readonly docCommentAutoInsert: boolean;
+
+  /**
+   * Gets the modifier that adds a cursor when clicking.
+   */
+  readonly multiCursorModifier: MultiCursorModifier;
+
+  /**
+   * Gets a value indicating whether the fix icon shows beside the caret's line.
+   */
+  readonly quickFixIndicator: boolean;
+
+  /**
+   * Gets how long things must stay still before the fix icon looks for fixes, in milliseconds.
+   */
+  readonly quickFixIndicatorDelay: number;
+
+  /**
+   * Gets what happens to unusual line terminators found in a document.
+   */
+  readonly unusualLineTerminators: UnusualLineTerminators;
 }
 
 /**
@@ -253,7 +682,7 @@ export type PartialTextEditorSettings = Partial<TextEditorSettings>;
 /**
  * Maps a Monaco language identifier to the text editor settings overridden for that language. A
  * language absent from the map, or a field absent from its entry, falls back to the global setting.
- * Each language's overrides are edited on its own page under Text Editor › Language Providers.
+ * Each language's overrides are edited on its own page under Code › Languages.
  */
 export type LanguageOverrides = Readonly<Record<string, PartialTextEditorSettings>>;
 
@@ -276,16 +705,6 @@ export interface TextEditorSettingsWithOverrides {
  * Defines the application-level settings.
  */
 export interface ApplicationSettings {
-  /**
-   * Gets the maximum number of undo steps kept in history.
-   */
-  readonly undoStackSize: number;
-
-  /**
-   * Gets the page margin applied when printing or exporting a document.
-   */
-  readonly printMargin: PrintMargin;
-
   /**
    * Gets how much of the application menu the title strip carries.
    */
@@ -521,8 +940,6 @@ export class Settings {
    * Gets the application-level settings.
    */
   public readonly application: Signal<ApplicationSettings> = computed((): ApplicationSettings => ({
-    undoStackSize: this.read('application.undoStackSize'),
-    printMargin: this.read('application.printMargin'),
     menuMode: this.read('application.menuMode'),
     menuAppearance: this.read('application.menuAppearance'),
     showWindowLock: this.read('application.showWindowLock'),
@@ -571,11 +988,6 @@ export class Settings {
   );
 
   /**
-   * Gets the undo stack size.
-   */
-  public readonly undoStackSize: Signal<number> = this.value('application.undoStackSize');
-
-  /**
    * Gets the text editor settings with their per-language overrides.
    */
   public readonly textEditor: Signal<TextEditorSettingsWithOverrides> = computed(
@@ -610,6 +1022,7 @@ export class Settings {
       colorBrackets: this.read('textEditor.global.colorBrackets'),
       wordWrap: this.read('textEditor.global.wordWrap'),
       stickyScroll: this.read('textEditor.global.stickyScroll'),
+      formatOnType: this.read('textEditor.global.formatOnType'),
       cursorBlinking: this.read('textEditor.global.cursorBlinking'),
       cursorSmoothCaretAnimation: this.read('textEditor.global.cursorSmoothCaretAnimation'),
       insertSpaces: this.read('textEditor.global.insertSpaces'),
@@ -618,7 +1031,111 @@ export class Settings {
       fontSize: this.read('textEditor.global.fontSize'),
       lineHeight: this.read('textEditor.global.lineHeight'),
       braceStyle: this.read('textEditor.global.braceStyle'),
+      detectIndentation: this.read('textEditor.global.detectIndentation'),
+      renderWhitespace: this.read('textEditor.global.renderWhitespace'),
+      rulers: this.read('textEditor.global.rulers'),
+      indentGuides: this.read('textEditor.global.indentGuides'),
+      bracketPairGuides: this.read('textEditor.global.bracketPairGuides'),
+      matchBrackets: this.read('textEditor.global.matchBrackets'),
+      fontLigatures: this.read('textEditor.global.fontLigatures'),
+      cursorStyle: this.read('textEditor.global.cursorStyle'),
+      cursorWidth: this.read('textEditor.global.cursorWidth'),
+      smoothScrolling: this.read('textEditor.global.smoothScrolling'),
+      scrollBeyondLastLine: this.read('textEditor.global.scrollBeyondLastLine'),
+      foldingControls: this.read('textEditor.global.foldingControls'),
+      foldingProvider: this.read('textEditor.global.foldingProvider'),
+      defaultFormatter: this.read('textEditor.global.defaultFormatter'),
+      changeMargin: this.read('textEditor.global.changeMargin'),
+      inlayHints: this.read('textEditor.global.inlayHints'),
+      codeLens: this.read('textEditor.global.codeLens'),
+      codeLensReferences: this.read('textEditor.global.codeLensReferences'),
+      codeLensImplementations: this.read('textEditor.global.codeLensImplementations'),
+      codeLensTests: this.read('textEditor.global.codeLensTests'),
+      codeLensOther: this.read('textEditor.global.codeLensOther'),
+      semanticHighlighting: this.read('textEditor.global.semanticHighlighting'),
+      highlightOccurrences: this.read('textEditor.global.highlightOccurrences'),
+      selectionHighlight: this.read('textEditor.global.selectionHighlight'),
+      colourSwatches: this.read('textEditor.global.colourSwatches'),
+      minimumDiagnosticSeverity: this.read('textEditor.global.minimumDiagnosticSeverity'),
+      mouseWheelZoom: this.read('textEditor.global.mouseWheelZoom'),
+      formatOnSave: this.read('textEditor.global.formatOnSave'),
+      organiseImportsOnSave: this.read('textEditor.global.organiseImportsOnSave'),
+      trimTrailingWhitespace: this.read('textEditor.global.trimTrailingWhitespace'),
+      insertFinalNewline: this.read('textEditor.global.insertFinalNewline'),
+      trimFinalNewlines: this.read('textEditor.global.trimFinalNewlines'),
+      addByteOrderMark: this.read('textEditor.global.addByteOrderMark'),
+      formatOnPaste: this.read('textEditor.global.formatOnPaste'),
+      hoverDelay: this.read('textEditor.global.hoverDelay'),
+      showHoverCards: this.read('textEditor.global.showHoverCards'),
+      quickSuggestions: this.read('textEditor.global.quickSuggestions'),
+      quickSuggestionsDelay: this.read('textEditor.global.quickSuggestionsDelay'),
+      suggestOnTriggerCharacters: this.read('textEditor.global.suggestOnTriggerCharacters'),
+      acceptSuggestionWith: this.read('textEditor.global.acceptSuggestionWith'),
+      acceptOnCommitCharacter: this.read('textEditor.global.acceptOnCommitCharacter'),
+      wordBasedSuggestions: this.read('textEditor.global.wordBasedSuggestions'),
+      snippetSuggestions: this.read('textEditor.global.snippetSuggestions'),
+      suggestionSelection: this.read('textEditor.global.suggestionSelection'),
+      completionInsertMode: this.read('textEditor.global.completionInsertMode'),
+      suggestionListSize: this.read('textEditor.global.suggestionListSize'),
+      parameterHints: this.read('textEditor.global.parameterHints'),
+      autoCloseBrackets: this.read('textEditor.global.autoCloseBrackets'),
+      autoSurround: this.read('textEditor.global.autoSurround'),
+      autoIndent: this.read('textEditor.global.autoIndent'),
+      linkedEditing: this.read('textEditor.global.linkedEditing'),
+      docCommentAutoInsert: this.read('textEditor.global.docCommentAutoInsert'),
+      multiCursorModifier: this.read('textEditor.global.multiCursorModifier'),
+      quickFixIndicator: this.read('textEditor.global.quickFixIndicator'),
+      quickFixIndicatorDelay: this.read('textEditor.global.quickFixIndicatorDelay'),
+      unusualLineTerminators: this.read('textEditor.global.unusualLineTerminators'),
     }),
+  );
+
+  /**
+   * Gets a value that changes only when Semantic Highlighting does, globally or for any language, so
+   * token providers are asked again for that and not for every other code setting.
+   */
+  public readonly semanticHighlightingChoices: Signal<string> = computed((): string =>
+    JSON.stringify([
+      this.read('textEditor.global.semanticHighlighting'),
+      Object.entries(this.languageOverrides()).map(
+        ([language, own]: [string, PartialTextEditorSettings]): [string, boolean | undefined] => [
+          language,
+          own.semanticHighlighting,
+        ],
+      ),
+    ]),
+  );
+
+  /**
+   * Gets a value that changes only when Folding Provider does, globally or for any language, so open
+   * documents are folded again for that and not for every other code setting.
+   */
+  public readonly foldingProviderChoices: Signal<string> = computed((): string =>
+    JSON.stringify([
+      this.read('textEditor.global.foldingProvider'),
+      Object.entries(this.languageOverrides()).map(
+        ([language, own]: [string, PartialTextEditorSettings]): [
+          string,
+          FoldingProvider | undefined,
+        ] => [language, own.foldingProvider],
+      ),
+    ]),
+  );
+
+  /**
+   * Gets a value that changes only when Default Formatter does, globally or for any language, so the
+   * language servers' formatters are added or withdrawn for that alone.
+   */
+  public readonly defaultFormatterChoices: Signal<string> = computed((): string =>
+    JSON.stringify([
+      this.read('textEditor.global.defaultFormatter'),
+      Object.entries(this.languageOverrides()).map(
+        ([language, own]: [string, PartialTextEditorSettings]): [
+          string,
+          DefaultFormatter | undefined,
+        ] => [language, own.defaultFormatter],
+      ),
+    ]),
   );
 
   /**
@@ -799,6 +1316,11 @@ export class Settings {
     this.value('ai.agentSessionLifetime');
 
   /**
+   * Gets the most agent sessions kept live at once, or 0 for no limit.
+   */
+  public readonly aiMaxLiveSessions: Signal<number> = this.value('ai.maxLiveSessions');
+
+  /**
    * Gets the shell whose login profile the agent sources its environment from (an absolute path), or
    * the empty string to inherit the default login shell's environment.
    */
@@ -841,6 +1363,27 @@ export class Settings {
   );
 
   /**
+   * Gets what the Database Explorer does with a query a select action opens.
+   */
+  public readonly databaseSelectAction: Signal<DatabaseSelectAction> = this.value(
+    'databaseExplorer.selectAction',
+  );
+
+  /**
+   * Gets which rules the Database Explorer's results grid draws between its cells.
+   */
+  public readonly databaseGridlines: Signal<DatabaseGridlines> = this.value(
+    'databaseExplorer.gridlines',
+  );
+
+  /**
+   * Gets how strongly the Database Explorer's results grid draws its gridlines.
+   */
+  public readonly databaseGridlineTone: Signal<DatabaseGridlineTone> = this.value(
+    'databaseExplorer.gridlineTone',
+  );
+
+  /**
    * Holds the last override map applied from another window's write, so the auto-persist effect can
    * tell an externally-sourced state (which must not be written back) from a local edit. The browser
    * never fires the storage notification in the writing window, so this guard only ever suppresses
@@ -872,6 +1415,34 @@ export class Settings {
       this.log.debug('Settings', 'Applied settings changed by another window');
     });
     inject(DestroyRef).onDestroy(unfollow);
+  }
+
+  /**
+   * Gets the sparse override map: only the settings the user has changed from their defaults, which is
+   * what a settings export carries.
+   */
+  public readonly changed: Signal<SettingsOverrides> = this.overrides.asReadonly();
+
+  /**
+   * Applies a set of imported overrides, each validated as {@link set} would. Merging keeps every
+   * setting the import does not mention; replacing returns those to their defaults.
+   * @param overrides The imported overrides, already restricted to known Settings-owned keys.
+   * @param replace Whether settings the import does not mention go back to their defaults.
+   */
+  public applyOverrides(overrides: SettingsOverrides, replace: boolean): void {
+    const validated: SettingsOverrides = Object.fromEntries(
+      Object.entries(overrides).map(([key, value]: [string, unknown]): [string, unknown] => [
+        key,
+        this.validate(key as SettingsKey, value),
+      ]),
+    );
+    this.overrides.update((current: SettingsOverrides): SettingsOverrides =>
+      replace ? validated : { ...current, ...validated },
+    );
+    this.log.info('Settings', 'Applied imported settings', {
+      count: Object.keys(validated).length,
+      replace,
+    });
   }
 
   /**
@@ -962,14 +1533,6 @@ export class Settings {
    */
   public setWorkspaceTexture(value: WorkspaceTexture): void {
     this.set('appearance.workspaceTexture', value);
-  }
-
-  /**
-   * Sets the undo stack size.
-   * @param size The requested undo stack size.
-   */
-  public setUndoStackSize(size: number): void {
-    this.set('application.undoStackSize', size);
   }
 
   /**

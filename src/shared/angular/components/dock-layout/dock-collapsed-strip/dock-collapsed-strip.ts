@@ -34,8 +34,14 @@ import { DockPanelOutlet } from '../dock-panel-outlet/dock-panel-outlet';
 const FALLBACK_FLOAT_RECT: Rect = { left: 120, top: 120, width: 360, height: 240 };
 
 /**
- * The flyout's resizable extent, in pixels, when no docked size was captured: a width for vertical
- * strips, a height for horizontal ones.
+ * How much of the room it opens into a flyout takes until the user resizes it: half, so a panel that
+ * flies out has space to be used in rather than the sliver its collapsed strip suggests.
+ */
+const FLYOUT_SHARE_OF_ROOM: number = 0.5;
+
+/**
+ * The flyout's resizable extent, in pixels, when its room could not be measured and no docked size
+ * was captured: a width for vertical strips, a height for horizontal ones.
  */
 const DEFAULT_FLYOUT_WIDTH: number = 300;
 const DEFAULT_FLYOUT_HEIGHT: number = 230;
@@ -115,7 +121,7 @@ export class DockCollapsedStrip {
   ) as ElementRef<HTMLElement>;
 
   /**
-   * Holds the user-resized flyout extent in pixels, or null to use the captured docked size.
+   * Holds the user-resized flyout extent in pixels, or null to take half the room.
    */
   private readonly resized: WritableSignal<number | null> = signal<number | null>(null);
 
@@ -201,13 +207,18 @@ export class DockCollapsedStrip {
   );
 
   /**
-   * Gets the flyout's preferred resizable extent in pixels: the live resized value when present,
-   * otherwise the captured docked size for the resizable axis, falling back to a default.
+   * Gets the flyout's preferred resizable extent in pixels: the size the user resized it to, otherwise
+   * half the room it opens into (never below the resize floor). Only when the room cannot be measured
+   * does it fall back to the captured docked size, then to a default.
    */
   private readonly preferredSize: Signal<number> = computed((): number => {
     const resized: number | null = this.resized();
     if (resized !== null) {
       return resized;
+    }
+    const room: number | null = this.room();
+    if (room !== null) {
+      return Math.max(MINIMUM_FLYOUT_SIZE, Math.round(room * FLYOUT_SHARE_OF_ROOM));
     }
     const docked: PeekSize | null = this.autoHide.peekSize(this.stack().id);
     if (docked !== null) {

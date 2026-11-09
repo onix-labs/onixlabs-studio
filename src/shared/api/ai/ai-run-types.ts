@@ -172,6 +172,25 @@ export interface AiRunRequest {
   readonly tokenCap: number;
 
   /**
+   * Gets the most steps (model turns plus tool round-trips) the turn may take before the agentic loop
+   * stops (Maximum Agent Steps per Turn), or 0 for no limit. Honoured by harnesses that run the loop
+   * themselves (the API-key providers); absent means the harness's own default of 16.
+   */
+  readonly maxSteps?: number;
+
+  /**
+   * Gets a value indicating whether shell commands are refused where the machine has no OS sandbox
+   * (Require OS Sandbox). Absent means on.
+   */
+  readonly requireSandbox?: boolean;
+
+  /**
+   * Gets a value indicating whether a shell command that runs inside the OS sandbox goes ahead without
+   * asking (Auto-Allow Sandboxed Shell Commands). Absent means off.
+   */
+  readonly autoAllowSandboxedShell?: boolean;
+
+  /**
    * Gets the absolute path of the shell whose login profile the agent's Bash environment is sourced
    * from (#318), or absent/empty to inherit the process environment (hydrated from the default login
    * shell at startup, #317). Only an absolute path is honoured; anything else falls back to the
@@ -204,6 +223,13 @@ export interface AiRunRequest {
    * current setting; ignored by the transient (stateless) path.
    */
   readonly agentSessionLifetimeMs?: number;
+
+  /**
+   * Gets the most live sessions kept open at once (Maximum Live Agent Sessions), or 0 for no limit.
+   * Beyond it the least recently used session is reaped. Carried on every turn so the cap tracks the
+   * current setting; absent keeps the previous cap.
+   */
+  readonly maxLiveSessions?: number;
 
   /**
    * Gets the reasoning-effort level to run at (#330), or absent for the provider default. Honoured only

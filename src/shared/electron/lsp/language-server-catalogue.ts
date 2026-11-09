@@ -12,6 +12,8 @@ import {
   resolved,
   unavailable,
 } from './language-server-descriptor';
+import { CUSTOM_AFTER_COMMON_TARGETS, writeCsharpBraceConfig } from './csharp-editor-config';
+import { GOPLS_SETTINGS } from './gopls-settings';
 import { JdtlsInstall } from './lsp-provisioner';
 import { TYPESCRIPT_PROVISION, TYPESCRIPT_SERVER_PROVISION } from './language-server-downloads';
 
@@ -31,6 +33,37 @@ const JDTLS_JVM_ARGS: readonly string[] = [
   '--add-opens',
   'java.base/java.lang=ALL-UNNAMED',
 ];
+
+/**
+ * Builds the arguments that start the Eclipse JDT Language Server, after its JVM arguments (#1208).
+ * Equinox writes its runtime state into the configuration area it is given, so the install's own
+ * area is only read, as the shared one, and each workspace gets a writable area of its own. Started
+ * on the install's area, every workspace and window wrote into one folder inside the install, and an
+ * install that cannot be written to did not start at all.
+ * @param install The installed server.
+ * @param configurationDir The writable configuration area for this workspace.
+ * @param dataDir The workspace's data folder.
+ * @returns Returns the arguments.
+ */
+export function jdtlsLaunchArgs(
+  install: JdtlsInstall,
+  configurationDir: string,
+  dataDir: string,
+): string[] {
+  return [
+    ...JDTLS_JVM_ARGS,
+    '-Dosgi.checkConfiguration=true',
+    `-Dosgi.sharedConfiguration.area=${install.configDir}`,
+    '-Dosgi.sharedConfiguration.area.readOnly=true',
+    '-Dosgi.configuration.cascaded=true',
+    '-jar',
+    install.launcherJar,
+    '-configuration',
+    configurationDir,
+    '-data',
+    dataDir,
+  ];
+}
 
 /**
  * The priority given to the implementation shipped as a language's default, chosen when the user has
@@ -108,6 +141,216 @@ const TYPESCRIPT: LanguageServerDescriptor = {
   displayName: 'TypeScript Language Server',
   languages: ['typescript', 'javascript'],
   priority: DEFAULT_PRIORITY,
+  // It pushes diagnostics for open files only; tsserver checks a whole project when asked (#1207).
+  projectDiagnostics: 'tsserver',
+  // The server never asks for its settings (#1204): it reads the `typescript.*` and `javascript.*`
+  // it is pushed, live, and the tsserver preferences it is given in `initializationOptions` only when
+  // it starts. Formatter options sit under `format` in the pushed sections, and each format request
+  // merges them in. The defaults are the server's own.
+  settingsDelivery: {
+    pull: false,
+    push: ['typescript', 'javascript', 'completions'],
+    startup: { section: 'preferences', key: 'preferences' },
+  },
+  settings: [
+    {
+      section: 'typescript.referencesCodeLens.enabled',
+      label: 'Reference Counts in TypeScript',
+      description:
+        'Show how many references a TypeScript declaration has above it; clicking the count lists them. Each costs a line.',
+      default: false,
+    },
+    {
+      section: 'typescript.implementationsCodeLens.enabled',
+      label: 'Implementation Counts in TypeScript',
+      description:
+        'Show how many implementations an interface or abstract member has above it; clicking the count lists them.',
+      default: false,
+    },
+    {
+      section: 'javascript.referencesCodeLens.enabled',
+      label: 'Reference Counts in JavaScript',
+      description:
+        'Show how many references a JavaScript declaration has above it; clicking the count lists them. Each costs a line.',
+      default: false,
+    },
+    {
+      section: 'typescript.inlayHints.includeInlayParameterNameHints',
+      label: 'Parameter Names in TypeScript',
+      description:
+        'Show the name of the parameter each argument is passed to, before the argument: for literal arguments only, or for all of them.',
+      default: 'none',
+      options: [
+        { value: 'none', label: 'Off' },
+        { value: 'literals', label: 'Literals' },
+        { value: 'all', label: 'All arguments' },
+      ],
+    },
+    {
+      section: 'javascript.inlayHints.includeInlayParameterNameHints',
+      label: 'Parameter Names in JavaScript',
+      description:
+        'Show the name of the parameter each argument is passed to, before the argument: for literal arguments only, or for all of them.',
+      default: 'none',
+      options: [
+        { value: 'none', label: 'Off' },
+        { value: 'literals', label: 'Literals' },
+        { value: 'all', label: 'All arguments' },
+      ],
+    },
+    {
+      section: 'typescript.inlayHints.includeInlayFunctionLikeReturnTypeHints',
+      label: 'Return Types in TypeScript',
+      description:
+        'Show the return type the compiler infers for a function that does not name one.',
+      default: false,
+      advanced: true,
+    },
+    {
+      section: 'javascript.inlayHints.includeInlayFunctionLikeReturnTypeHints',
+      label: 'Return Types in JavaScript',
+      description:
+        'Show the return type the compiler infers for a function that does not name one.',
+      default: false,
+      advanced: true,
+    },
+    {
+      section: 'typescript.inlayHints.includeInlayVariableTypeHints',
+      label: 'Variable Types in TypeScript',
+      description:
+        'Show the type the compiler infers for a variable that does not name one. A constant set to a literal shows nothing.',
+      default: false,
+    },
+    {
+      section: 'javascript.inlayHints.includeInlayVariableTypeHints',
+      label: 'Variable Types in JavaScript',
+      description:
+        'Show the type the compiler infers for a variable that does not name one. A constant set to a literal shows nothing.',
+      default: false,
+    },
+    {
+      section: 'typescript.inlayHints.includeInlayFunctionParameterTypeHints',
+      label: 'Parameter Types in TypeScript',
+      description:
+        'Show the type the compiler infers for a parameter that does not name one, such as in a callback.',
+      default: false,
+      advanced: true,
+    },
+    {
+      section: 'javascript.inlayHints.includeInlayFunctionParameterTypeHints',
+      label: 'Parameter Types in JavaScript',
+      description:
+        'Show the type the compiler infers for a parameter that does not name one, such as in a callback.',
+      default: false,
+      advanced: true,
+    },
+    {
+      section: 'typescript.inlayHints.includeInlayPropertyDeclarationTypeHints',
+      label: 'Property Types in TypeScript',
+      description: 'Show the type the compiler infers for a class property that does not name one.',
+      default: false,
+      advanced: true,
+    },
+    {
+      section: 'javascript.inlayHints.includeInlayPropertyDeclarationTypeHints',
+      label: 'Property Types in JavaScript',
+      description: 'Show the type the compiler infers for a class property that does not name one.',
+      default: false,
+      advanced: true,
+    },
+    {
+      section: 'typescript.inlayHints.includeInlayEnumMemberValueHints',
+      label: 'Enum Values in TypeScript',
+      description: 'Show the value of each enum member that does not state one.',
+      default: false,
+      advanced: true,
+    },
+    {
+      section: 'typescript.format.semicolons',
+      label: 'Semicolons in TypeScript',
+      description:
+        'What the formatter does with the semicolon that may end a statement: leave it as written, add it, or remove it.',
+      default: 'ignore',
+      options: [
+        { value: 'ignore', label: 'Leave as written' },
+        { value: 'insert', label: 'Add' },
+        { value: 'remove', label: 'Remove' },
+      ],
+    },
+    {
+      section: 'javascript.format.semicolons',
+      label: 'Semicolons in JavaScript',
+      description:
+        'What the formatter does with the semicolon that may end a statement: leave it as written, add it, or remove it.',
+      default: 'ignore',
+      options: [
+        { value: 'ignore', label: 'Leave as written' },
+        { value: 'insert', label: 'Add' },
+        { value: 'remove', label: 'Remove' },
+      ],
+    },
+    {
+      section: 'typescript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBraces',
+      label: 'Spaces Inside Braces in TypeScript',
+      description:
+        'Keep a space inside the braces of a non-empty object or import when formatting: { a } rather than {a}.',
+      default: true,
+      advanced: true,
+    },
+    {
+      section: 'javascript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBraces',
+      label: 'Spaces Inside Braces in JavaScript',
+      description:
+        'Keep a space inside the braces of a non-empty object or import when formatting: { a } rather than {a}.',
+      default: true,
+      advanced: true,
+    },
+    {
+      section: 'completions.completeFunctionCalls',
+      label: 'Complete Function Calls',
+      description:
+        'Fill in the parentheses and parameters when a function is chosen from the completion list.',
+      default: false,
+    },
+    {
+      section: 'preferences.quotePreference',
+      label: 'Quote Style in Generated Code',
+      description:
+        'The quotes used by auto-imports and code actions: chosen from the file, single or double. The server reads this only when it starts, so changing it restarts it.',
+      default: 'auto',
+      options: [
+        { value: 'auto', label: 'Match the file' },
+        { value: 'single', label: 'Single' },
+        { value: 'double', label: 'Double' },
+      ],
+      startupOnly: true,
+      advanced: true,
+    },
+    {
+      section: 'preferences.importModuleSpecifierPreference',
+      label: 'Import Paths in Generated Code',
+      description:
+        'How auto-imports and code actions write the path of a module. The server reads this only when it starts, so changing it restarts it.',
+      default: 'shortest',
+      options: [
+        { value: 'shortest', label: 'Shortest' },
+        { value: 'relative', label: 'Relative' },
+        { value: 'non-relative', label: 'Non-relative' },
+        { value: 'project-relative', label: 'Relative within a project' },
+      ],
+      startupOnly: true,
+      advanced: true,
+    },
+    {
+      section: 'preferences.includeCompletionsForModuleExports',
+      label: 'Auto-Import Suggestions',
+      description:
+        'Suggest exports of modules the file does not import yet, adding the import when one is chosen. The server reads this only when it starts, so changing it restarts it.',
+      default: true,
+      startupOnly: true,
+      advanced: true,
+    },
+  ],
   resolve: (context: LanguageServerContext): LspResolution => {
     const bundled: string | null = context.installedPath(TYPESCRIPT_PROVISION);
     const initializationOptions: { tsserver: { path: string } } | undefined =
@@ -134,6 +377,75 @@ const JAVA: LanguageServerDescriptor = {
   displayName: 'Eclipse JDT Language Server',
   languages: ['java'],
   priority: DEFAULT_PRIORITY,
+  // jdtls never asks for its settings (#1204): it is given `java.*` in
+  // `initializationOptions.settings` when it starts and pushed them on a change, as vscode-java does.
+  // How it imports a project it reads only as it starts. The defaults are the server's own.
+  settingsDelivery: {
+    pull: false,
+    push: ['java'],
+    startup: { section: 'java', key: 'settings.java' },
+  },
+  // It does ask for these two, for each file it opens, and indents the code it generates with them.
+  indentationSections: { tabSize: 'java.format.tabSize', insertSpaces: 'java.format.insertSpaces' },
+  settings: [
+    {
+      section: 'java.referencesCodeLens.enabled',
+      label: 'Reference Counts',
+      description:
+        'Show how many references a type or member has above it; clicking the count lists them. Each costs a line.',
+      default: true,
+    },
+    {
+      section: 'java.implementationCodeLens',
+      label: 'Implementation Counts',
+      description:
+        'Show how many implementations a type or method has above it; clicking the count lists them. Each costs a line.',
+      default: 'none',
+      options: [
+        { value: 'none', label: 'Off' },
+        { value: 'types', label: 'Types' },
+        { value: 'methods', label: 'Methods' },
+        { value: 'all', label: 'Types and methods' },
+      ],
+    },
+    {
+      section: 'java.inlayHints.parameterNames.enabled',
+      label: 'Parameter Names',
+      description:
+        'Show the name of the parameter each argument is passed to, before the argument: for literal arguments only, or for all of them.',
+      default: 'literals',
+      options: [
+        { value: 'none', label: 'Off' },
+        { value: 'literals', label: 'Literals' },
+        { value: 'all', label: 'All arguments' },
+      ],
+    },
+    {
+      section: 'java.signatureHelp.enabled',
+      label: 'Signature Help',
+      description: "Show a method's parameters as you type its arguments.",
+      default: true,
+      advanced: true,
+    },
+    {
+      section: 'java.import.gradle.enabled',
+      label: 'Import Gradle Projects',
+      description:
+        'Load a folder built with Gradle as a Gradle project. The server reads this only when it starts, so changing it restarts it.',
+      default: true,
+      startupOnly: true,
+      advanced: true,
+    },
+    {
+      section: 'java.import.maven.enabled',
+      label: 'Import Maven Projects',
+      description:
+        'Load a folder built with Maven as a Maven project. The server reads this only when it starts, so changing it restarts it.',
+      default: true,
+      startupOnly: true,
+      advanced: true,
+    },
+  ],
   resolve: async (context: LanguageServerContext): Promise<LspResolution> => {
     const java: string | null = await context.provisioner.detectJava(
       context.settings.get().javaPath,
@@ -146,18 +458,13 @@ const JAVA: LanguageServerDescriptor = {
       return unavailable('The Java language server could not be downloaded.');
     }
     const dataDir: string = await context.provisioner.dataDirectory('jdtls', context.rootPath);
-    return resolved({
-      command: java,
-      args: [
-        ...JDTLS_JVM_ARGS,
-        '-jar',
-        install.launcherJar,
-        '-configuration',
-        install.configDir,
-        '-data',
-        dataDir,
-      ],
-    });
+    // Keyed by the install as well as the workspace: an area holds the state of one install's
+    // bundles, so an update starts from a fresh one rather than one that names the old bundles.
+    const configurationDir: string = await context.provisioner.dataDirectory(
+      'jdtls-configuration',
+      `${install.configDir}\n${context.rootPath}`,
+    );
+    return resolved({ command: java, args: jdtlsLaunchArgs(install, configurationDir, dataDir) });
   },
 };
 
@@ -172,6 +479,38 @@ const KOTLIN: LanguageServerDescriptor = {
   displayName: 'Kotlin Language Server',
   languages: ['kotlin'],
   priority: DEFAULT_PRIORITY,
+  // The server never asks for its settings (#1209): it reads the `kotlin.*` it is pushed, live. The
+  // defaults are the server's own.
+  settingsDelivery: { pull: false, push: ['kotlin'] },
+  settings: [
+    {
+      section: 'kotlin.inlayHints.typeHints',
+      label: 'Inferred Types',
+      description:
+        'Show the type the compiler infers for a variable or property declared without one.',
+      default: false,
+    },
+    {
+      section: 'kotlin.inlayHints.parameterHints',
+      label: 'Parameter Names',
+      description:
+        'Show the name of the parameter each argument is passed to, before the argument.',
+      default: false,
+    },
+    {
+      section: 'kotlin.inlayHints.chainedHints',
+      label: 'Chained Call Types',
+      description: 'Show the type each call in a chain of calls returns, at the end of its line.',
+      default: false,
+    },
+    {
+      section: 'kotlin.completion.snippets.enabled',
+      label: 'Arguments in Completions',
+      description:
+        "Fill in a completed function's arguments as placeholders to type over, rather than only its name.",
+      default: true,
+    },
+  ],
   resolve: async (context: LanguageServerContext): Promise<LspResolution> => {
     const java: string | null = await context.provisioner.detectJava(
       context.settings.get().javaPath,
@@ -183,12 +522,32 @@ const KOTLIN: LanguageServerDescriptor = {
     if (launcher === null) {
       return unavailable('The Kotlin language server could not be downloaded.');
     }
-    const env: Record<string, string> | undefined = path.isAbsolute(java)
-      ? { JAVA_HOME: path.dirname(path.dirname(java)) }
-      : undefined;
-    return resolved({ command: launcher, args: [], env });
+    return resolved({ command: launcher, args: [], env: kotlinServerEnv(java, process.env) });
   },
 };
+
+/**
+ * Builds the environment the Kotlin language server is started with (#1209). Its launcher finds Java
+ * from `JAVA_HOME`, so the runtime Studio found is passed on when its path is absolute. The server
+ * resolves a Gradle project's classpath by running Gradle, which by default leaves a daemon running
+ * for hours after the server has gone, one per workspace opened; telling Gradle not to use one keeps
+ * whatever the user's own `GRADLE_OPTS` say.
+ * @param java The Java runtime Studio found.
+ * @param inherited The environment Studio was started with.
+ * @returns Returns the variables to set over the inherited ones.
+ */
+export function kotlinServerEnv(
+  java: string,
+  inherited: Readonly<Record<string, string | undefined>>,
+): Record<string, string> {
+  const gradleOptions: string = [inherited['GRADLE_OPTS'], '-Dorg.gradle.daemon=false']
+    .filter((part: string | undefined): part is string => part !== undefined && part.length > 0)
+    .join(' ');
+  return {
+    ...(path.isAbsolute(java) ? { JAVA_HOME: path.dirname(path.dirname(java)) } : {}),
+    GRADLE_OPTS: gradleOptions,
+  };
+}
 
 /**
  * gopls, detecting the Go toolchain and building the server with it on first use. gopls shells out to
@@ -199,6 +558,10 @@ const GO: LanguageServerDescriptor = {
   displayName: 'gopls',
   languages: ['go'],
   priority: DEFAULT_PRIORITY,
+  // gopls asks for its whole `gopls` section, at start-up and after every change (#1211), so its
+  // settings are pulled and answered nested; it also answers `textDocument/diagnostic` unadvertised,
+  // but pushes everything, so nothing is pulled from it.
+  settings: GOPLS_SETTINGS,
   resolve: async (context: LanguageServerContext): Promise<LspResolution> => {
     const go: string | null = await context.provisioner.detectGo(null);
     if (go === null) {
@@ -218,15 +581,154 @@ const GO: LanguageServerDescriptor = {
 };
 
 /**
- * The Roslyn C# language server, detecting a .NET SDK and downloading the server on first use. Unlike
- * most servers, Roslyn does not load a workspace from `rootUri` alone, so the spec carries a
- * `solution/open` (or `project/open`) notification for the manager to send after the handshake.
+ * The Roslyn C# language server, detecting a .NET SDK and starting whichever server the plugin has
+ * installed. Unlike most servers, Roslyn does not load a workspace from `rootUri` alone, so the spec
+ * carries a `solution/open` (or `project/open`) notification for the manager to send after the
+ * handshake.
  */
 const CSHARP: LanguageServerDescriptor = {
   id: 'csharp',
   displayName: 'Roslyn Language Server',
   languages: ['csharp'],
   priority: DEFAULT_PRIORITY,
+  takesBraceStyle: true,
+  readsEditorConfigAtStart: true,
+  // Roslyn answers workspace/diagnostic though it advertises otherwise without dynamic registration;
+  // how far it reaches is the analysis scope below (#1144).
+  servesWorkspaceDiagnostics: true,
+  // What Roslyn reads through workspace/configuration that a user would recognise (#1143); the
+  // defaults are Roslyn's own, which it uses while the user has set nothing — bar the compiler's
+  // scope, which defaults to the whole solution as Visual Studio's does (#1182): the Error List then
+  // lists every file's errors from the start. Code analysis, the slow part, stays on open files.
+  settings: [
+    {
+      section: 'csharp|background_analysis.dotnet_compiler_diagnostics_scope',
+      label: 'Errors and Warnings',
+      description:
+        'Which files the compiler checks for the Error List: the files you have open, or every file in the solution, open or not.',
+      default: 'fullSolution',
+      options: [
+        { value: 'openFiles', label: 'Open files' },
+        { value: 'fullSolution', label: 'Whole solution' },
+      ],
+    },
+    {
+      section: 'csharp|background_analysis.dotnet_analyzer_diagnostics_scope',
+      label: 'Code Analysis',
+      description:
+        'Which files code analysis — analyzer warnings and suggestions — runs on. The whole solution is thorough, but slow on a large one.',
+      default: 'openFiles',
+      options: [
+        { value: 'openFiles', label: 'Open files' },
+        { value: 'fullSolution', label: 'Whole solution' },
+        { value: 'none', label: 'Off' },
+      ],
+    },
+    {
+      section: 'csharp|inlay_hints.dotnet_enable_inlay_hints_for_parameters',
+      label: 'Parameter Names',
+      description:
+        'Show the name of the parameter each argument is passed to, before the argument.',
+      default: false,
+    },
+    {
+      section: 'csharp|inlay_hints.csharp_enable_inlay_hints_for_types',
+      label: 'Inferred Types',
+      description:
+        'Show the type the compiler infers where the code does not name it, such as after var.',
+      default: false,
+    },
+    {
+      section: 'csharp|inlay_hints.dotnet_enable_inlay_hints_for_literal_parameters',
+      label: 'Names for Literal Arguments',
+      description:
+        'Show parameter names for arguments that are literals, such as numbers and strings.',
+      default: true,
+      advanced: true,
+    },
+    {
+      section: 'csharp|inlay_hints.dotnet_enable_inlay_hints_for_object_creation_parameters',
+      label: 'Names in Object Creation',
+      description: 'Show parameter names for the arguments of a new expression.',
+      default: true,
+      advanced: true,
+    },
+    {
+      section: 'csharp|inlay_hints.dotnet_enable_inlay_hints_for_indexer_parameters',
+      label: 'Names for Indexer Arguments',
+      description: 'Show parameter names for the arguments of an indexer.',
+      default: true,
+      advanced: true,
+    },
+    {
+      section: 'csharp|inlay_hints.dotnet_enable_inlay_hints_for_other_parameters',
+      label: 'Names for Other Arguments',
+      description:
+        'Show parameter names for every other argument, such as variables and member accesses.',
+      default: false,
+      advanced: true,
+    },
+    {
+      section: 'csharp|inlay_hints.csharp_enable_inlay_hints_for_implicit_variable_types',
+      label: 'Types of var Declarations',
+      description: 'Show the inferred type of a variable declared with var.',
+      default: true,
+      advanced: true,
+    },
+    {
+      section: 'csharp|inlay_hints.csharp_enable_inlay_hints_for_lambda_parameter_types',
+      label: 'Types of Lambda Parameters',
+      description: "Show the inferred types of a lambda expression's parameters.",
+      default: true,
+      advanced: true,
+    },
+    {
+      section: 'csharp|inlay_hints.csharp_enable_inlay_hints_for_implicit_object_creation',
+      label: 'Types of Target-Typed new',
+      description: 'Show the type a target-typed new() creates.',
+      default: true,
+      advanced: true,
+    },
+    {
+      section: 'csharp|inlay_hints.csharp_enable_inlay_hints_for_collection_expressions',
+      label: 'Types of Collection Expressions',
+      description: 'Show the type a collection expression creates.',
+      default: true,
+      advanced: true,
+    },
+    {
+      section: 'csharp|code_lens.dotnet_enable_references_code_lens',
+      label: 'Reference Counts',
+      description:
+        'Show how many references a type or member has above it; clicking the count lists them. Each costs a line.',
+      default: true,
+    },
+    {
+      section: 'projects.dotnet_enable_automatic_restore',
+      label: 'Restore Packages',
+      description:
+        "Restore a project's NuGet packages when it needs them — on opening the solution, or when a project file changes — or ask first.",
+      default: true,
+      options: [
+        { value: true, label: 'Automatically' },
+        { value: false, label: 'Ask first' },
+      ],
+    },
+    {
+      section: 'projects.dotnet_enable_file_based_programs',
+      label: 'File-Based Programs',
+      description:
+        'Give a C# file that belongs to no project — a program run with `dotnet run app.cs` — full language support of its own.',
+      default: true,
+    },
+    {
+      section: 'navigation.dotnet_navigate_to_decompiled_sources',
+      label: 'Go to Decompiled Sources',
+      description:
+        'Go to Definition on framework or package code opens its decompiled source, rather than only its signatures.',
+      default: true,
+    },
+  ],
   resolve: async (context: LanguageServerContext): Promise<LspResolution> => {
     const dotnet: string | null = await context.provisioner.detectDotnet(
       context.settings.get().dotnetPath,
@@ -236,9 +738,12 @@ const CSHARP: LanguageServerDescriptor = {
         '.NET SDK 10+ not found — set its path in Settings or install the .NET 10 SDK.',
       );
     }
-    const server: string | null = await context.provisioner.ensureRoslyn();
+    // The installed server, whichever version it is — never a download. Installing and updating are
+    // the Plugin Manager's, so a release that moves the pin does not fetch ~70 MB the next time a C#
+    // file opens (#1135).
+    const server: string | null = context.provisioner.installedRoslyn();
     if (server === null) {
-      return unavailable('The C# language server could not be downloaded.');
+      return unavailable('The C# language server is not installed — install it in Plugins.');
     }
     const logDir: string = await context.provisioner.dataDirectory('roslyn', context.rootPath);
     const model: ProjectModel | null =
@@ -252,6 +757,18 @@ const CSHARP: LanguageServerDescriptor = {
     if (path.isAbsolute(dotnet)) {
       // Help the server's apphost find the .NET runtime when it is not on the spawned PATH.
       env['DOTNET_ROOT'] = path.dirname(dotnet);
+    }
+    // Roslyn takes brace placement only from analyzer config, so the user's Brace style reaches it as
+    // a global config of Studio's own, which a project's .editorconfig still overrides (#1177).
+    if (context.braceStyle !== undefined) {
+      Object.assign(
+        env,
+        await writeCsharpBraceConfig(
+          logDir,
+          context.braceStyle,
+          process.env[CUSTOM_AFTER_COMMON_TARGETS],
+        ),
+      );
     }
     return resolved({
       command: server,

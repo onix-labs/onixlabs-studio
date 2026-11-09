@@ -1,0 +1,9 @@
+<app-setting-row label="Default Projects Folder" [description]="description()">
+  <app-button
+    variant="ghost"
+    label="Choose Folder"
+    [icon]="Icon.FOLDER_OPEN"
+    data-testid="projects-folder-choose"
+    (click)="choose()"
+  />
+</app-setting-row>

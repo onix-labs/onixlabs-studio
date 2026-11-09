@@ -1,12 +1,16 @@
 <app-text-editor
   [content]="doc()?.content() ?? ''"
   [language]="doc()?.language() ?? 'plaintext'"
-  [options]="editorOptions"
+  [options]="editorOptions()"
+  [readOnly]="doc()?.readOnly() ?? false"
+  [newDocumentEol]="newDocumentEol()"
+  [editorConfig]="doc()?.editorConfig() ?? null"
   [isActive]="isActive()"
   (ready)="onReady()"
   (contentChange)="onContentChange($event)"
   (cursorChange)="onCursorChange($event)"
   (eolChange)="onEolChange($event)"
+  (indentationChange)="indentationChange.emit($event)"
   (selectionChange)="onSelectionChange($event)"
 />
 
@@ -35,15 +39,16 @@
     </div>
     <app-button-row class="breakpoint-editor__actions">
       <app-button variant="solid" label="Save" (click)="saveBreakpointEdit()" />
-      <app-button label="Remove" (click)="removeBreakpointEdit()" />
-      <app-button label="Cancel" (click)="closeBreakpointEdit()" />
+      <app-button variant="ghost" tone="danger" label="Remove" (click)="removeBreakpointEdit()" />
+      <app-button variant="none" label="Cancel" (click)="closeBreakpointEdit()" />
     </app-button-row>
   </div>
 }
 
 <!--
   Print-only full-file rendering. Monaco is virtualised — only the visible lines exist in the DOM — so
-  it prints just the viewport. This plain-text mirror of the whole document is hidden on screen and
-  swapped in for the editor when printing (see the print stylesheet), so the entire file paginates.
+  it prints just the viewport. This mirror of the whole document is hidden on screen, filled just
+  before a print (coloured and numbered as the Printing settings choose) and swapped in for the editor
+  by the print stylesheet, so the entire file paginates. It is emptied again once the print is done.
 -->
-<pre class="code-print" aria-hidden="true">{{ doc()?.content() ?? '' }}</pre>
+<pre #printMirror class="code-print" aria-hidden="true"></pre>

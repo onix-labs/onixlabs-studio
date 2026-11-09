@@ -276,4 +276,36 @@ describe('ChangeMarginController', () => {
     expect(harness.contentDisposed()).toBe(true);
     expect(harness.modelDisposed()).toBe(true);
   });
+
+  it('setMode_whenUnsavedOnly_marksOnlyTheChangedLines', () => {
+    const harness: EditorHarness = createHarness('one\ntwo');
+    const controller: ChangeMarginController = new ChangeMarginController(
+      harness.monaco,
+      harness.editor,
+      'one\nold',
+      true,
+      TEST_OPTIONS,
+    );
+
+    controller.setMode('unsaved');
+
+    expect(harness.decorations()).toEqual([{ className: 'change-margin--unsaved', line: 2 }]);
+    controller.dispose();
+  });
+
+  it('setMode_whenOff_clearsTheMargin', () => {
+    const harness: EditorHarness = createHarness('one\ntwo');
+    const controller: ChangeMarginController = new ChangeMarginController(
+      harness.monaco,
+      harness.editor,
+      'one\nold',
+      true,
+      TEST_OPTIONS,
+    );
+
+    controller.setMode('off');
+
+    expect(harness.decorations()).toEqual([]);
+    controller.dispose();
+  });
 });

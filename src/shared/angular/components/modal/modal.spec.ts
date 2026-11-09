@@ -21,6 +21,7 @@ import { ModalContent } from './modal-content';
       [open]="open()"
       [dismissable]="dismissable()"
       [expandable]="expandable()"
+      [frameless]="frameless()"
       [width]="width()"
       [minWidth]="minWidth()"
       [maxWidth]="maxWidth()"
@@ -39,6 +40,7 @@ class WindowedHost {
   public readonly open: WritableSignal<boolean> = signal<boolean>(false);
   public readonly dismissable: WritableSignal<boolean> = signal<boolean>(true);
   public readonly expandable: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly frameless: WritableSignal<boolean> = signal<boolean>(false);
   public readonly width: WritableSignal<number | undefined> = signal<number | undefined>(26);
   public readonly minWidth: WritableSignal<number | undefined> = signal<number | undefined>(
     undefined,
@@ -188,6 +190,23 @@ describe('Modal', () => {
     expect(request.resizable).toBe(false);
     expect(request.closable).toBe(true);
     expect(request.parented).toBe(true);
+  });
+
+  it('request_whenFrameless_carriesTheFlagToTheWindow', () => {
+    component.frameless.set(true);
+    component.open.set(true);
+    fixture.detectChanges();
+
+    expect(windows.requests[0].frameless).toBe(true);
+    // Frameless keeps its drag band, which is what sets it apart from a chromeless modal.
+    expect(windows.requests[0].dragless).toBe(false);
+  });
+
+  it('request_whenNotStated_isNotFrameless', () => {
+    component.open.set(true);
+    fixture.detectChanges();
+
+    expect(windows.requests[0].frameless).toBe(false);
   });
 
   it('request_whenBoundsAreStated_carriesThemAsTheWindowsResizeLimits', () => {

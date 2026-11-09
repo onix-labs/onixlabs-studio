@@ -22,12 +22,13 @@ const LOADING_ICON: Icon = Icon.SPINNER;
  *
  * - `solid` — filled with the accent. The affirmative action of a pair, and never more than one in a
  *   group.
- * - `outline` — bordered, transparent until hovered. The standard button, and the counterpart to a
- *   solid one (Cancel beside Clear).
+ * - `ghost` — a tinted fill and border at rest, stronger on hover. The standard button: a secondary
+ *   action that needs to stand out beside a solid one (Push Only beside Set Upstream), as opposed to
+ *   one that steps back (Cancel, which is `none`).
  * - `none` — neither border nor fill until hovered. Tool strips, ribbon strips and panel toolbars,
  *   where a row of buttons would otherwise read as a wall of boxes.
  */
-export type ButtonVariant = 'solid' | 'outline' | 'none';
+export type ButtonVariant = 'solid' | 'ghost' | 'none';
 
 /**
  * Names the MEANING a button carries, the axis {@link ButtonVariant} deliberately leaves out. Tone
@@ -72,7 +73,7 @@ export type ButtonSize = 'medium' | 'small' | 'large';
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[class.button--solid]': "variant() === 'solid'",
-    '[class.button--outline]': "variant() === 'outline'",
+    '[class.button--ghost]': "variant() === 'ghost'",
     '[class.button--none]': "variant() === 'none'",
     '[class.button--tone-success]': "tone() === 'success'",
     '[class.button--tone-warning]': "tone() === 'warning'",
@@ -89,10 +90,10 @@ export type ButtonSize = 'medium' | 'small' | 'large';
 })
 export class Button {
   /**
-   * Gets how the button is drawn. The standard button is bordered; a caller states otherwise for the
+   * Gets how the button is drawn. The standard button is a ghost; a caller states otherwise for the
    * affirmative action of a pair, or for a button living in a strip.
    */
-  public readonly variant: InputSignal<ButtonVariant> = input<ButtonVariant>('outline');
+  public readonly variant: InputSignal<ButtonVariant> = input<ButtonVariant>('ghost');
 
   /**
    * Gets the meaning the button carries, which colours it. Defaults to the accent, so an ordinary

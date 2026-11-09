@@ -1,11 +1,14 @@
+import { vi } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { WorkspaceChannel } from '@shared/api/workspace-channels';
 import { Tab } from '@shared/angular/services/tabs/tab';
+import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { BinaryDocumentEntry, BinaryDocuments } from '../binary-document/binary-document';
 import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
 import { BinaryPanels } from '../binary-panels/binary-panels';
-import { BinaryRibbon } from './binary-ribbon';
+import { BinaryRibbon, formatBytes } from './binary-ribbon';
 
 /**
  * Exposes the protected members the ribbon's controls are wired to, so their behaviour can be
@@ -19,6 +22,7 @@ interface BinaryRibbonInternals {
   onToggleInspector(): void;
   onGoToEnd(): void;
   onCopy(): Promise<void>;
+  onOpenAsText(): void;
 }
 
 /**
@@ -118,6 +122,42 @@ describe('BinaryRibbon', () => {
     internals.onToggleInspector();
     expect(panels.isVisible(document.tabId, 'inspector')).toBe(true);
     expect(internals.inspectorShown()).toBe(true);
+  });
+
+  it('onOpenAsText_opensTheFileInTheCodeEditor', async () => {
+    const opened: string[] = [];
+    vi.spyOn(TestBed.inject(FileOpener), 'openAsText').mockImplementation(
+      (path: string): Promise<boolean> => {
+        opened.push(path);
+        return Promise.resolve(true);
+      },
+    );
+    await openDocument();
+
+    internals.onOpenAsText();
+
+    expect(opened).toEqual(['/ws/data.bin']);
+  });
+
+  it('onOpenAsText_overTheLargeFileSizeLimit_saysSo_andOpensNothing', async () => {
+    const opened: string[] = [];
+    vi.spyOn(TestBed.inject(FileOpener), 'openAsText').mockImplementation(
+      (path: string): Promise<boolean> => {
+        opened.push(path);
+        return Promise.resolve(true);
+      },
+    );
+    const document: BinaryDocumentEntry = await openDocument();
+    document.size.set(60 * 1024 * 1024);
+
+    internals.onOpenAsText();
+
+    expect(opened).toEqual([]);
+    expect(
+      TestBed.inject(Notifications)
+        .toasts()
+        .some((toast) => toast.title === 'data.bin is too large to open as text'),
+    ).toBe(true);
   });
 
   it('onGoToEnd_revealsTheLastByte', async () => {
@@ -246,4 +286,17 @@ describe('BinaryRibbon', () => {
     }
     return match;
   }
+});
+
+describe('formatBytes', () => {
+  it('formatBytes_writesEachCopyFormat', () => {
+    const bytes: readonly number[] = [0xab, 0x41];
+
+    expect(formatBytes(bytes, 'hex', 'upper')).toBe('AB 41');
+    expect(formatBytes(bytes, 'hex', 'lower')).toBe('ab 41');
+    expect(formatBytes(bytes, '0x', 'lower')).toBe('0xab, 0x41');
+    expect(formatBytes(bytes, 'c-array', 'lower')).toBe('{ 0xab, 0x41 }');
+    expect(formatBytes(bytes, 'base64', 'upper')).toBe('q0E=');
+    expect(formatBytes(bytes, 'text', 'upper')).toBe('.A');
+  });
 });

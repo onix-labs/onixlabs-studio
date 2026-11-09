@@ -71,7 +71,10 @@ Two explorers sit alongside your work: one showing the project as its tooling se
 showing plain files on disk. Both stay responsive in very large repositories. A **package management**
 panel rounds it out, listing what a project depends on, flagging what has a newer version available,
 and letting you search a registry for something new — including **private feeds**, using the
-credentials your project is already configured with.
+credentials your project is already configured with. Installing, updating, removing and restoring run
+through your own package manager, in a terminal you can watch. Each ecosystem is a plugin — npm,
+NuGet, PyPI, Cargo, Go modules, Maven and Gradle, vcpkg and Conan — and a folder can use several at
+once.
 
 ### Editing, Language Intelligence, and Debugging
 
@@ -108,8 +111,8 @@ formatted — no separate REST client needed.
 
 Finally, three panels manage Studio itself. The **model manager** runs local models on your own
 machine — installing the runtime, pulling and removing weights — while hosted providers are
-configured in Settings. The **plugin manager** installs and removes the language servers and debug
-adapters your languages need. The **system monitor** shows what Studio is doing: resource use, and a
+configured in Settings. The **plugin manager** installs and removes the language servers, debug
+adapters and package managers your languages need. The **system monitor** shows what Studio is doing: resource use, and a
 searchable log of the session.
 
 ### On the way
@@ -120,8 +123,6 @@ coming rather than discovering it missing:
 - **Container logs and shells** — reading a container's output and opening a shell inside it.
 - **Cluster orchestration** — a view over deployed workloads, their health, and their logs.
 - **A database explorer** — connections, schema browsing, and queries with results in a grid.
-- **Installing packages** — the package panel lists dependencies, flags upgrades and searches
-  registries today; adding and updating from it is next.
 - **Signed releases** — until then, macOS and Windows will warn on first launch.
 
 > [!WARNING]
@@ -227,7 +228,7 @@ src/
     markdown/           Markdown editing surface
     mission-control/    Multi-agent overview
     model-manager/      Local model management
-    plugin-manager/     Language server and debug adapter management
+    plugin-manager/     Plugin catalogue: install, update and remove every kind of plugin
     settings/           Settings surface
     system-monitor/     Resource use and session log
     terminal/           Terminal surface

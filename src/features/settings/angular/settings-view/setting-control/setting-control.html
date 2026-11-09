@@ -14,6 +14,24 @@
       (valueChange)="onChange($event)"
     />
   }
+  @case ('folder') {
+    <span class="setting-control__folder">
+      <app-text-field
+        [value]="$any(current())"
+        [placeholder]="placeholder()"
+        [disabled]="disabled()"
+        (valueChange)="onChange($event)"
+      />
+      <app-button
+        variant="ghost"
+        label="Choose Folder"
+        [icon]="Icon.FOLDER_OPEN"
+        [disabled]="disabled()"
+        data-testid="setting-folder-choose"
+        (click)="chooseFolder()"
+      />
+    </span>
+  }
   @case ('number') {
     <app-number-field
       [min]="min()"

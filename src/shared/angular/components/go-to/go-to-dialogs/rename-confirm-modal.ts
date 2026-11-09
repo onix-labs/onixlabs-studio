@@ -28,13 +28,14 @@ import {
       <app-modal
         [open]="true"
         [width]="34"
+        [frameless]="true"
         [ariaLabel]="request.title === undefined ? 'Rename Symbol' : request.title"
         (dismiss)="confirmation.answer(false)"
       >
         <ng-template appModalContent>
           <div class="go-to-dialog">
             <h2 class="go-to-dialog__title">{{ heading() }}</h2>
-            <p class="go-to-dialog__summary">{{ summary() }}</p>
+            <p class="go-to-dialog__message">{{ summary() }}</p>
             <app-list-view class="go-to-dialog__list go-to-dialog__list--files" [rows]="rows()">
               <ng-template let-row>
                 @let file = fileOf(row);
@@ -52,7 +53,7 @@ import {
                 [label]="request.confirmLabel ?? 'Rename'"
                 (click)="confirmation.answer(true)"
               />
-              <app-button label="Cancel" (click)="confirmation.answer(false)" />
+              <app-button variant="none" label="Cancel" (click)="confirmation.answer(false)" />
             </app-button-row>
           </div>
         </ng-template>
@@ -84,7 +85,7 @@ export class RenameConfirmModal {
     if (request === null) {
       return '';
     }
-    return request.title ?? `Rename “${request.oldName}” to “${request.newName}”?`;
+    return request.title ?? `Rename ${request.oldName} to ${request.newName}?`;
   });
 
   /**

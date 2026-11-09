@@ -1,3 +1,5 @@
+import type { SpellingProbe } from '@shared/api/spelling-channels';
+
 /**
  * Zero (indices, counts, comparisons).
  */
@@ -17,6 +19,56 @@ const MAX_EDIT: number = 2;
  * Maximum number of suggestions returned per misspelling.
  */
 const SUGGESTION_COUNT: number = 3;
+
+/**
+ * Answers the two questions Markdown review asks of a spell checker. Met by the bundled
+ * {@link SpellChecker} and by {@link ProbeChecker}, which asks Studio's own spell checker.
+ */
+export interface WordChecker {
+  /**
+   * Determines whether a word is spelled correctly.
+   * @param word The word to check.
+   * @returns Returns true when the word is correct.
+   */
+  isCorrect(word: string): boolean;
+
+  /**
+   * Suggests corrections for a misspelled word.
+   * @param word The misspelled word.
+   * @returns Returns the suggestions, best first.
+   */
+  suggest(word: string): string[];
+}
+
+/**
+ * Asks Studio's own spell checker — the one that underlines text boxes, so review follows the chosen
+ * languages (the system's on macOS) — through the window's spelling probe.
+ */
+export class ProbeChecker implements WordChecker {
+  /**
+   * Initializes a new instance of the {@link ProbeChecker} class.
+   * @param probe The window's spelling probe.
+   */
+  public constructor(private readonly probe: SpellingProbe) {}
+
+  /**
+   * Determines whether a word is spelled correctly.
+   * @param word The word to check.
+   * @returns Returns true unless the spell checker flags the word.
+   */
+  public isCorrect(word: string): boolean {
+    return !this.probe.isMisspelled(word);
+  }
+
+  /**
+   * Suggests corrections for a misspelled word.
+   * @param word The misspelled word.
+   * @returns Returns up to three suggestions, best first.
+   */
+  public suggest(word: string): string[] {
+    return this.probe.suggestions(word).slice(ZERO, SUGGESTION_COUNT);
+  }
+}
 
 /**
  * Loads the spelling dictionary's words.
@@ -74,7 +126,7 @@ function boundedLevenshtein(a: string, b: string, max: number): number {
  * suggestions. Words are bucketed by first letter so suggestion lookups scan only a slice of the
  * dictionary.
  */
-export class SpellChecker {
+export class SpellChecker implements WordChecker {
   /**
    * Holds the lowercased dictionary words.
    */

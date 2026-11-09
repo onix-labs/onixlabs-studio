@@ -1,11 +1,23 @@
 import type * as MonacoApi from 'monaco-editor';
+import type {
+  CodeLocation,
+  ReferenceListKind,
+} from '@shared/angular/services/references/reference-list';
 import { FIND_PASSTHROUGH_CONTEXT_KEY, focusedEditor } from './monaco-find-commands';
 
 /**
  * Names where Studio's navigation takes an editor: to the definition of the symbol at the caret, or to
  * the list of every reference to it (#1014).
  */
-export type NavigationMode = 'definition' | 'references';
+export type NavigationMode =
+  | 'definition'
+  | 'references'
+  | 'declaration'
+  | 'implementation'
+  | 'typeDefinition'
+  | 'callHierarchy'
+  | 'typeHierarchy'
+  | 'sourceHeader';
 
 /**
  * Lists every Monaco command that goes to a symbol's definition, declaration, type definition,
@@ -34,9 +46,57 @@ export const MONACO_NAVIGATION_COMMANDS: readonly string[] = [
 export const STUDIO_GO_TO_DEFINITION_COMMAND: string = 'studio.goToDefinition';
 
 /**
+ * The Monaco command a references lens runs (#1149): it lists the lens's symbol's references in the
+ * References panel. Its arguments are the model's URI and the symbol's protocol position.
+ */
+export const STUDIO_REFERENCES_LENS_COMMAND: string = 'studio.lsp.codeLensReferences';
+
+/**
+ * The Monaco command a lens that brings its own places runs (#1207): typescript-language-server's
+ * reference and implementation lenses hand over what they found, so nothing is asked again and the
+ * list says what the count on the lens says. Its arguments are the model's URI, the symbol's protocol
+ * position, what the list lists, and the places.
+ */
+export const STUDIO_LOCATIONS_LENS_COMMAND: string = 'studio.lsp.codeLensLocations';
+
+/**
  * Names Studio's Find All References command, bound to ⇧F12 (Shift+F12) in every editor.
  */
 export const STUDIO_FIND_REFERENCES_COMMAND: string = 'studio.findReferences';
+
+/**
+ * Names Studio's Go to Implementation (#1142), bound to ⌘F12 (Ctrl+F12) as in Visual Studio and VS
+ * Code, in place of Monaco's own, which opened its peek.
+ */
+export const STUDIO_GO_TO_IMPLEMENTATION_COMMAND: string = 'studio.goToImplementation';
+
+/**
+ * Names Studio's Go to Type Definition (#1142). No chord: neither Visual Studio nor VS Code gives it
+ * one, so it is reached from the editor's right-click menu.
+ */
+export const STUDIO_GO_TO_TYPE_DEFINITION_COMMAND: string = 'studio.goToTypeDefinition';
+
+/**
+ * Names Studio's Go to Declaration (#1213). No chord: Visual Studio's, ⌃F12, is Go to Implementation
+ * here, so it is reached from the editor's right-click menu.
+ */
+export const STUDIO_GO_TO_DECLARATION_COMMAND: string = 'studio.goToDeclaration';
+
+/**
+ * Names Studio's Switch Header/Source (#1213), bound to ⌘K ⌘O (Ctrl+K Ctrl+O) as in Visual Studio.
+ */
+export const STUDIO_SWITCH_SOURCE_HEADER_COMMAND: string = 'studio.switchSourceHeader';
+
+/**
+ * Names Studio's Show Call Hierarchy (#1153), bound to ⌃⌥H (Ctrl+Alt+H) as in Rider.
+ */
+export const STUDIO_CALL_HIERARCHY_COMMAND: string = 'studio.showCallHierarchy';
+
+/**
+ * Names Studio's Show Type Hierarchy (#1153), bound to ⌃⇧H (Ctrl+Shift+H): Rider's own ⌃H is
+ * delete-left in a Mac editor.
+ */
+export const STUDIO_TYPE_HIERARCHY_COMMAND: string = 'studio.showTypeHierarchy';
 
 /**
  * Names the editor contribution behind Monaco's ⌘-click (Ctrl-click) on a symbol: it underlines the
@@ -94,11 +154,17 @@ interface DefinitionLinkContribution extends MonacoApi.editor.IEditorContributio
  * @param monaco The Monaco instance.
  * @param isMac Whether the host is macOS, which decides the ⌘-click modifier (⌘ there, Ctrl elsewhere).
  * @param onNavigate Receives the editor and the mode when F12, ⇧F12 or a ⌘-click runs.
+ * @param onPlaces Receives the editor, what the list lists and the places when a lens brings its own.
  */
 export function installNavigationCommands(
   monaco: typeof MonacoApi,
   isMac: boolean,
   onNavigate: (editor: MonacoApi.editor.ICodeEditor, mode: NavigationMode) => void,
+  onPlaces: (
+    editor: MonacoApi.editor.ICodeEditor,
+    kind: ReferenceListKind,
+    places: readonly CodeLocation[],
+  ) => void,
 ): void {
   const run: (mode: NavigationMode) => () => void =
     (mode: NavigationMode): (() => void) =>
@@ -110,7 +176,65 @@ export function installNavigationCommands(
     };
   monaco.editor.registerCommand(STUDIO_GO_TO_DEFINITION_COMMAND, run('definition'));
   monaco.editor.registerCommand(STUDIO_FIND_REFERENCES_COMMAND, run('references'));
+  monaco.editor.registerCommand(STUDIO_GO_TO_IMPLEMENTATION_COMMAND, run('implementation'));
+  monaco.editor.registerCommand(STUDIO_GO_TO_DECLARATION_COMMAND, run('declaration'));
+  monaco.editor.registerCommand(STUDIO_GO_TO_TYPE_DEFINITION_COMMAND, run('typeDefinition'));
+  monaco.editor.registerCommand(STUDIO_SWITCH_SOURCE_HEADER_COMMAND, run('sourceHeader'));
+  monaco.editor.registerCommand(STUDIO_CALL_HIERARCHY_COMMAND, run('callHierarchy'));
+  monaco.editor.registerCommand(STUDIO_TYPE_HIERARCHY_COMMAND, run('typeHierarchy'));
+  // A lens's symbol is in the document the lens is in: the editor showing it is placed at the symbol.
+  const atSymbol: (
+    modelUri: unknown,
+    position: unknown,
+  ) => MonacoApi.editor.ICodeEditor | undefined = (
+    modelUri: unknown,
+    position: unknown,
+  ): MonacoApi.editor.ICodeEditor | undefined => {
+    const at: { line?: unknown; character?: unknown } | null =
+      (position as { line?: unknown; character?: unknown } | null) ?? null;
+    if (
+      typeof modelUri !== 'string' ||
+      typeof at?.line !== 'number' ||
+      typeof at.character !== 'number'
+    ) {
+      return undefined;
+    }
+    const editor: MonacoApi.editor.ICodeEditor | undefined = monaco.editor
+      .getEditors()
+      .find(
+        (candidate: MonacoApi.editor.ICodeEditor): boolean =>
+          candidate.getModel()?.uri.toString() === modelUri,
+      );
+    editor?.setPosition({ lineNumber: at.line + 1, column: at.character + 1 });
+    return editor;
+  };
+  // A references lens (#1149) lists its symbol's references, searched for as Find All References does.
+  monaco.editor.registerCommand(
+    STUDIO_REFERENCES_LENS_COMMAND,
+    (_accessor: unknown, modelUri: unknown, position: unknown): void => {
+      const editor: MonacoApi.editor.ICodeEditor | undefined = atSymbol(modelUri, position);
+      if (editor !== undefined) {
+        onNavigate(editor, 'references');
+      }
+    },
+  );
+  monaco.editor.registerCommand(
+    STUDIO_LOCATIONS_LENS_COMMAND,
+    (
+      _accessor: unknown,
+      modelUri: unknown,
+      position: unknown,
+      kind: ReferenceListKind,
+      places: readonly CodeLocation[],
+    ): void => {
+      const editor: MonacoApi.editor.ICodeEditor | undefined = atSymbol(modelUri, position);
+      if (editor !== undefined) {
+        onPlaces(editor, kind, places);
+      }
+    },
+  );
   const when: string = `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`;
+  const control: number = isMac ? monaco.KeyMod.WinCtrl : monaco.KeyMod.CtrlCmd;
   monaco.editor.addKeybindingRules([
     // A removal with no chord drops every chord the command has, whichever platform Monaco runs on.
     ...MONACO_NAVIGATION_COMMANDS.map((command: string): MonacoApi.editor.IKeybindingRule => ({
@@ -123,6 +247,30 @@ export function installNavigationCommands(
       command: STUDIO_FIND_REFERENCES_COMMAND,
       when,
     },
+    {
+      keybinding: monaco.KeyMod.CtrlCmd | monaco.KeyCode.F12,
+      command: STUDIO_GO_TO_IMPLEMENTATION_COMMAND,
+      when,
+    },
+    // The control key itself on every platform: ⌃ on a Mac (Monaco's WinCtrl), Ctrl elsewhere.
+    {
+      keybinding: control | monaco.KeyMod.Alt | monaco.KeyCode.KeyH,
+      command: STUDIO_CALL_HIERARCHY_COMMAND,
+      when,
+    },
+    {
+      keybinding: control | monaco.KeyMod.Shift | monaco.KeyCode.KeyH,
+      command: STUDIO_TYPE_HIERARCHY_COMMAND,
+      when,
+    },
+    {
+      keybinding: monaco.KeyMod.chord(
+        monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
+        monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyO,
+      ),
+      command: STUDIO_SWITCH_SOURCE_HEADER_COMMAND,
+      when,
+    },
   ]);
   monaco.editor.onDidCreateEditor((editor: MonacoApi.editor.ICodeEditor): void => {
     editor.updateOptions(NAVIGATION_EDITOR_OPTIONS);
@@ -131,9 +279,29 @@ export function installNavigationCommands(
 }
 
 /**
+ * Determines whether a click holds the modifier for Go to Definition, which is whichever one Multi-Cursor
+ * Modifier does not take.
+ * @param event The editor's mouse event.
+ * @param editor The editor.
+ * @param isMac Whether the host is macOS.
+ * @returns Returns true when the click holds the modifier, and not the one that adds a cursor.
+ */
+function hasLinkModifier(
+  event: MonacoApi.editor.IEditorMouseEvent,
+  editor: MonacoApi.editor.ICodeEditor,
+  isMac: boolean,
+): boolean {
+  const primary: boolean = isMac ? event.event.metaKey : event.event.ctrlKey;
+  return editor.getRawOptions().multiCursorModifier === 'ctrlCmd'
+    ? event.event.altKey && !primary
+    : primary && !event.event.altKey;
+}
+
+/**
  * Takes over ⌘-click (Ctrl-click) on a symbol in one editor: Monaco's own navigation from the click is
  * replaced with nothing, and a click with the modifier that lands on the text, not dragged, runs
- * Studio's Go to Definition from where it landed.
+ * Studio's Go to Definition from where it landed. When Multi-Cursor Modifier takes ⌘ (Ctrl), Go to
+ * Definition takes ⌥ (Alt) instead, read at each click so the setting applies at once.
  * @param editor The editor, just created.
  * @param isMac Whether the host is macOS, which decides the modifier.
  * @param onNavigate Receives the editor and the mode.
@@ -157,8 +325,7 @@ export function takeOverDefinitionClicks(
     event: MonacoApi.editor.IEditorMouseEvent,
   ): boolean =>
     event.event.leftButton &&
-    !event.event.altKey &&
-    (isMac ? event.event.metaKey : event.event.ctrlKey) &&
+    hasLinkModifier(event, editor, isMac) &&
     LINK_TARGETS.has(event.target.type) &&
     event.target.position !== null;
   editor.onMouseDown((event: MonacoApi.editor.IEditorMouseEvent): void => {

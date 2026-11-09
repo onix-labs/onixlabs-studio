@@ -15,6 +15,7 @@ import { contributedEngines } from './container-engine-registry';
 import {
   DiscoveryEnvironment,
   EndpointDiscovery,
+  customEndpoint,
   processDiscoveryEnvironment,
   reportEndpoint,
   resolveEndpoint,
@@ -72,7 +73,7 @@ export interface ContainerEngine {
    * @param id The container identifier.
    * @returns Returns true when the engine accepted the request.
    */
-  remove(id: string): Promise<boolean>;
+  remove(id: string, volumes?: boolean): Promise<boolean>;
 
   /**
    * Reads a container's most recent log lines.
@@ -153,7 +154,11 @@ export interface ContainerEngine {
    * @param request What to run.
    * @returns Returns the new container's id, or why it could not be run.
    */
-  run(request: RunContainerRequest): Promise<{ id?: string; error?: string }>;
+  run(request: RunContainerRequest): Promise<{
+    id?: string;
+    error?: string;
+    missingImage?: boolean;
+  }>;
 
   /**
    * Watches the engine's event stream.
@@ -227,7 +232,8 @@ export function engineEndpoint(
   descriptor: ContainerEngineDescriptor,
   environment: DiscoveryEnvironment = processDiscoveryEnvironment(),
 ): ResolvedEndpoint | null {
-  const endpoint: ResolvedEndpoint | null = resolveEndpoint(descriptor.discovery, environment);
+  const endpoint: ResolvedEndpoint | null =
+    customEndpoint(environment) ?? resolveEndpoint(descriptor.discovery, environment);
   reportEndpoint(descriptor.id, endpoint);
   return endpoint;
 }

@@ -60,6 +60,7 @@
   --ribbon-control-border-color--hover: var(--gray-600);
 
   --form-control-background-color: var(--gray-900);
+  --key-cap-background-color: var(--gray-900);
   --form-control-background-color--hover: var(--gray-700);
   --form-control-border-color: var(--gray-600);
   --form-control-border-color--hover: var(--gray-500);
@@ -81,6 +82,7 @@
   --dropdown-menu-item-foreground-color--hover: var(--form-on-accent-color);
 
   --settings-background-color: var(--gray-800);
+  --settings-row-background-color--hover: var(--gray-750);
   --settings-nav-background-color: var(--gray-900);
   --settings-border-color: var(--gray-700);
   --settings-muted-foreground-color: var(--gray-550);
@@ -141,6 +143,14 @@
     white
   );
 
+  // A resizable table's column splitter: one line, the lighter of the groove's two, so it reads
+  // against a dark header as the gridlines below it read against the rows.
+  --table-splitter-color: var(--status-strip-bevel-highlight-color);
+  // The query results grid's column splitters: a shade darker than the table splitter in dark mode.
+  --database-results-splitter-color: var(--gray-700);
+  // The Graph view's nodes: a theme grey with the accent at their rim, never a colour of their own.
+  --graph-node-background-color: var(--gray-900);
+
   // The backdrop behind the docked panes (and, since splitters are transparent, the gaps between
   // them). The single knob for the dock container surface; decoupled from --root-content so it can
   // be retuned without moving the app root.
@@ -181,4 +191,11 @@
   --change-margin-unsaved: #e0b341;
   --change-margin-saved: #3fb950;
   --change-margin-deleted: #f85149;
+
+  // The same marks in an Okabe-Ito palette, which stays distinct for colour-blind eyes.
+  &[data-colour-blind-safe='true'] {
+    --change-margin-unsaved: #e69f00;
+    --change-margin-saved: #56b4e9;
+    --change-margin-deleted: #d55e00;
+  }
 }

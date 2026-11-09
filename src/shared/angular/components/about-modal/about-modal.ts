@@ -27,7 +27,8 @@ import { AboutFacts, Help } from '@shared/angular/services/help/help';
   template: `
     <app-modal
       [open]="help.aboutOpen()"
-      [width]="26"
+      [width]="32"
+      [frameless]="true"
       ariaLabel="About ONIXLabs Studio"
       (dismiss)="close()"
     >
@@ -51,7 +52,7 @@ import { AboutFacts, Help } from '@shared/angular/services/help/help';
               <dd>{{ facts().pluginApi }}</dd>
             </div>
             <div class="about__fact">
-              <dt>Catalogue revision</dt>
+              <dt>Catalogue Revision</dt>
               <dd>{{ revision() }}</dd>
             </div>
             <div class="about__fact">
@@ -75,6 +76,7 @@ import { AboutFacts, Help } from '@shared/angular/services/help/help';
           <app-button-row>
             <app-button variant="solid" label="Close" (click)="close()" />
             <app-button
+              variant="ghost"
               [label]="copied() ? 'Copied' : 'Copy'"
               tooltip="Copy these versions, ready to paste into an issue"
               (click)="copy()"
@@ -119,9 +121,9 @@ import { AboutFacts, Help } from '@shared/angular/services/help/help';
       .about__blurb {
         margin: 0;
         text-align: center;
-        font-size: 0.85rem;
+        font-size: 1rem;
         line-height: 1.5;
-        color: var(--muted-foreground-color, var(--body-foreground-color));
+        color: var(--body-foreground-color);
       }
 
       // A table in everything but element: no borders, no separators — the label reads from the left
@@ -131,7 +133,7 @@ import { AboutFacts, Help } from '@shared/angular/services/help/help';
         flex-direction: column;
         gap: 0.3rem;
         margin: 0;
-        font-size: 0.85rem;
+        font-size: 1rem;
       }
 
       .about__fact {
@@ -155,8 +157,8 @@ import { AboutFacts, Help } from '@shared/angular/services/help/help';
       .about__licence {
         margin: 0;
         text-align: center;
-        font-size: 0.78rem;
-        color: var(--muted-foreground-color, var(--body-foreground-color));
+        font-size: 1rem;
+        color: var(--form-muted-foreground-color);
       }
     `,
   ],

@@ -5,8 +5,10 @@ import { Editors } from '@shared/angular/services/editors/editors';
 import { LspDefinition, LspFeatures } from '@shared/angular/services/lsp/lsp-features';
 import { captureEditorCapabilities } from '@shared/angular/services/monaco/monaco-editor-capabilities';
 import { EditorNavigation } from './editor-navigation';
-import { ReferenceItem, ReferenceList } from './reference-list';
+import { CodeLocation, ReferenceItem, ReferenceList } from './reference-list';
 import { ReferencesRouter } from './references-router';
+import { HierarchyRouter, HierarchySource } from '@shared/angular/services/hierarchy/hierarchy';
+import type { LspGeneratedViewResult } from '@shared/api/lsp-channels';
 
 /**
  * The model URI of the editor under test.
@@ -64,6 +66,12 @@ function fakeEditor(): FakeEditor {
   const editor: unknown = {
     getModel: (): unknown => model,
     getPosition: (): MonacoApi.IPosition => ({ lineNumber: 2, column: 4 }),
+    getSelection: (): MonacoApi.IRange => ({
+      startLineNumber: 2,
+      startColumn: 4,
+      endLineNumber: 2,
+      endColumn: 4,
+    }),
     getContainerDomNode: (): HTMLElement => container,
     layout: (): void => undefined,
     setSelection: (range: MonacoApi.IRange): void =>
@@ -125,6 +133,19 @@ describe('EditorNavigation (#1014)', () => {
     servesDocument: Mock<LspFeatures['servesDocument']>;
     definitions: Mock<LspFeatures['definitions']>;
     references: Mock<LspFeatures['references']>;
+    servesNavigation: Mock<LspFeatures['servesNavigation']>;
+    implementations: Mock<LspFeatures['implementations']>;
+    declarations: Mock<LspFeatures['declarations']>;
+    sourceHeaderOf: Mock<LspFeatures['sourceHeaderOf']>;
+    typeDefinitions: Mock<LspFeatures['typeDefinitions']>;
+    servesSourceDefinition: Mock<LspFeatures['servesSourceDefinition']>;
+    servesProjectConfiguration: Mock<LspFeatures['servesProjectConfiguration']>;
+    projectConfigurations: Mock<LspFeatures['projectConfigurations']>;
+    sourceDefinitions: Mock<LspFeatures['sourceDefinitions']>;
+    parentModules: Mock<LspFeatures['parentModules']>;
+    cargoManifests: Mock<LspFeatures['cargoManifests']>;
+    generatedView: Mock<LspFeatures['generatedView']>;
+    hierarchy: Mock<LspFeatures['hierarchy']>;
   };
   let opener: Mock<(path: string) => Promise<boolean>>;
   let shown: ReferenceList[];
@@ -156,6 +177,41 @@ describe('EditorNavigation (#1014)', () => {
         Promise.resolve(null),
       ),
       references: vi.fn<LspFeatures['references']>((): Promise<readonly ReferenceItem[] | null> =>
+        Promise.resolve(null),
+      ),
+      servesNavigation: vi.fn<LspFeatures['servesNavigation']>((): boolean => false),
+      implementations: vi.fn<LspFeatures['implementations']>(
+        (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
+      declarations: vi.fn<LspFeatures['declarations']>(
+        (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
+      sourceHeaderOf: vi.fn<LspFeatures['sourceHeaderOf']>((): Promise<string | null> =>
+        Promise.resolve(null),
+      ),
+      typeDefinitions: vi.fn<LspFeatures['typeDefinitions']>(
+        (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
+      servesSourceDefinition: vi.fn<LspFeatures['servesSourceDefinition']>((): boolean => false),
+      servesProjectConfiguration: vi.fn<LspFeatures['servesProjectConfiguration']>(
+        (): boolean => false,
+      ),
+      projectConfigurations: vi.fn<LspFeatures['projectConfigurations']>(
+        (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
+      sourceDefinitions: vi.fn<LspFeatures['sourceDefinitions']>(
+        (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
+      parentModules: vi.fn<LspFeatures['parentModules']>(
+        (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
+      cargoManifests: vi.fn<LspFeatures['cargoManifests']>(
+        (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
+      generatedView: vi.fn<LspFeatures['generatedView']>(
+        (): Promise<LspGeneratedViewResult | null> => Promise.resolve(null),
+      ),
+      hierarchy: vi.fn<LspFeatures['hierarchy']>((): Promise<HierarchySource | null> =>
         Promise.resolve(null),
       ),
     };
@@ -268,6 +324,260 @@ describe('EditorNavigation (#1014)', () => {
     });
   });
 
+  describe('go to implementation and type definition (#1142)', () => {
+    it('areOffered_onlyWhereTheServerAnswersThem', () => {
+      const navigation: EditorNavigation = build();
+      lsp.servesNavigation.mockImplementation(
+        (_model: unknown, kind: string): boolean => kind === 'implementation',
+      );
+
+      expect(navigation.offersImplementations(fake.editor)).toBe(true);
+      expect(navigation.offersTypeDefinitions(fake.editor)).toBe(false);
+      expect(lsp.servesNavigation).toHaveBeenCalledWith(fake.model, 'typeDefinition');
+    });
+
+    it('declaration_goesThroughTheLanguageFeatures (#1213)', async () => {
+      const navigation: EditorNavigation = build();
+      lsp.servesNavigation.mockReturnValue(true);
+
+      expect(navigation.offersDeclarations(fake.editor)).toBe(true);
+      expect(lsp.servesNavigation).toHaveBeenCalledWith(fake.model, 'declaration');
+
+      await navigation.goToDeclaration(fake.editor);
+
+      expect(lsp.declarations).toHaveBeenCalledWith(fake.model, { lineNumber: 2, column: 4 });
+    });
+
+    it('switchSourceHeader_opensTheCounterpart_atTheTop (#1213)', async () => {
+      const navigation: EditorNavigation = build();
+      (monaco.editor as unknown as { getEditors: () => unknown[] }).getEditors = (): unknown[] => [
+        fake.editor,
+      ];
+      lsp.sourceHeaderOf.mockResolvedValue('/root/shapes.hpp');
+
+      await navigation.switchSourceHeader(fake.editor);
+
+      expect(lsp.sourceHeaderOf).toHaveBeenCalledWith(fake.model);
+      expect(opener).toHaveBeenCalledWith('/root/shapes.hpp');
+    });
+
+    it('switchSourceHeader_doesNothing_whenTheFileHasNoCounterpart (#1213)', async () => {
+      const navigation: EditorNavigation = build();
+
+      await navigation.switchSourceHeader(fake.editor);
+
+      expect(opener).not.toHaveBeenCalled();
+    });
+
+    it('severalImplementations_areListedAsImplementations_inThePanel', async () => {
+      const navigation: EditorNavigation = build();
+      TestBed.inject(Editors).register(MODEL_URI, {
+        documentId: 'doc-1',
+        path: '/root/app.ts',
+        name: 'app.ts',
+      });
+      lsp.implementations.mockResolvedValue([
+        { path: '/root/app.ts', range: span(2, 3, 8) },
+        { path: '/root/app.ts', range: span(4, 15, 20) },
+      ]);
+
+      await navigation.goToImplementation(fake.editor);
+
+      expect(lsp.implementations).toHaveBeenCalledWith(fake.model, { lineNumber: 2, column: 4 });
+      expect(shown).toEqual([
+        {
+          kind: 'implementations',
+          symbol: 'greet',
+          status: 'done',
+          items: [
+            { path: '/root/app.ts', range: span(2, 3, 8), preview: '  greet(): void {}' },
+            { path: '/root/app.ts', range: span(4, 15, 20), preview: 'new Greeter().greet();' },
+          ],
+        },
+      ]);
+    });
+
+    it('offersSourceDefinitions_asksTheLanguageFeatures (#1207)', () => {
+      const navigation: EditorNavigation = build();
+      lsp.servesSourceDefinition.mockReturnValue(true);
+
+      expect(navigation.offersSourceDefinitions(fake.editor)).toBe(true);
+      expect(lsp.servesSourceDefinition).toHaveBeenCalledWith(fake.model);
+    });
+
+    it('oneSourceDefinition_goesStraightThere_listingNothing (#1207)', async () => {
+      const navigation: EditorNavigation = build();
+      TestBed.inject(Editors).register(MODEL_URI, {
+        documentId: 'doc-1',
+        path: '/root/app.ts',
+        name: 'app.ts',
+      });
+      lsp.sourceDefinitions.mockResolvedValue([{ path: '/root/app.ts', range: span(1, 7, 14) }]);
+
+      await navigation.goToSourceDefinition(fake.editor);
+
+      expect(lsp.sourceDefinitions).toHaveBeenCalledWith(fake.model, { lineNumber: 2, column: 4 });
+      expect(shown).toEqual([]);
+      expect(fake.calls.some((call: string): boolean => call.includes('1:7'))).toBe(true);
+    });
+
+    it('noSourceDefinitionAnswer_goesNowhere (#1207)', async () => {
+      const navigation: EditorNavigation = build();
+      lsp.sourceDefinitions.mockResolvedValue(null);
+
+      await navigation.goToSourceDefinition(fake.editor);
+
+      expect(shown).toEqual([]);
+      expect(fake.calls).not.toContain('focus');
+    });
+
+    it('aGeneratedView_isOfferedWhereTheServerGivesIt_andOpensWhatTheMainProcessWrote (#1210)', async () => {
+      const navigation: EditorNavigation = build();
+      lsp.servesNavigation.mockImplementation(
+        (_model: MonacoApi.editor.ITextModel, kind: string): boolean => kind === 'expandMacro',
+      );
+      lsp.generatedView.mockResolvedValue({ path: '/tmp/MetadataAsSource/StudioViews/1/a.rs' });
+
+      expect(navigation.offersGeneratedView(fake.editor, 'expandMacro')).toBe(true);
+      expect(navigation.offersGeneratedView(fake.editor, 'syntaxTree')).toBe(false);
+      await navigation.showGeneratedView(fake.editor, 'expandMacro');
+
+      expect(lsp.generatedView).toHaveBeenCalledWith(fake.model, 'expandMacro', {
+        startLineNumber: 2,
+        startColumn: 4,
+        endLineNumber: 2,
+        endColumn: 4,
+      });
+      expect(opener).toHaveBeenCalledWith('/tmp/MetadataAsSource/StudioViews/1/a.rs');
+    });
+
+    it('aGeneratedView_withNothingToShow_opensNothing (#1213)', async () => {
+      const navigation: EditorNavigation = build();
+      lsp.generatedView.mockResolvedValue({ error: 'Nothing to show here' });
+
+      await navigation.showGeneratedView(fake.editor, 'syntaxTree');
+
+      expect(opener).not.toHaveBeenCalled();
+    });
+
+    it('aParentModule_goesStraightThere_askingAtTheCaret (#1210)', async () => {
+      const navigation: EditorNavigation = build();
+      TestBed.inject(Editors).register(MODEL_URI, {
+        documentId: 'doc-1',
+        path: '/root/app.ts',
+        name: 'app.ts',
+      });
+      lsp.parentModules.mockResolvedValue([{ path: '/root/app.ts', range: span(1, 7, 14) }]);
+
+      await navigation.goToParentModule(fake.editor);
+
+      expect(lsp.parentModules).toHaveBeenCalledWith(fake.model, { lineNumber: 2, column: 4 });
+      expect(fake.calls.some((call: string): boolean => call.includes('1:7'))).toBe(true);
+    });
+
+    it('theProjectConfiguration_opens_whereTheServerAnswersIt (#1207)', async () => {
+      const navigation: EditorNavigation = build();
+      expect(navigation.offersProjectConfiguration(fake.editor)).toBe(false);
+      lsp.servesProjectConfiguration.mockReturnValue(true);
+      expect(navigation.offersProjectConfiguration(fake.editor)).toBe(true);
+      lsp.projectConfigurations.mockResolvedValue([
+        { path: '/root/tsconfig.json', range: span(1, 1, 1) },
+      ]);
+
+      await navigation.openProjectConfiguration(fake.editor);
+
+      expect(lsp.projectConfigurations).toHaveBeenCalledWith(fake.model);
+      expect(opener).toHaveBeenCalledWith('/root/tsconfig.json');
+    });
+
+    it('theCargoManifest_opens (#1210)', async () => {
+      const navigation: EditorNavigation = build();
+      lsp.cargoManifests.mockResolvedValue([{ path: '/root/Cargo.toml', range: span(1, 1, 1) }]);
+
+      await navigation.openCargoManifest(fake.editor);
+
+      expect(lsp.cargoManifests).toHaveBeenCalledWith(fake.model);
+      expect(opener).toHaveBeenCalledWith('/root/Cargo.toml');
+    });
+
+    it('noAnswerToEither_goesNowhere (#1210)', async () => {
+      const navigation: EditorNavigation = build();
+
+      await navigation.goToParentModule(fake.editor);
+      await navigation.openCargoManifest(fake.editor);
+
+      expect(shown).toEqual([]);
+      expect(fake.calls).not.toContain('focus');
+    });
+
+    describe('listPlaces (#1207)', () => {
+      /**
+       * A place in the document the editor shows.
+       */
+      const PLACE: CodeLocation = { path: '/root/app.ts', range: span(1, 7, 14) };
+
+      it('listsThem_evenOne_asClickingACountListsWhatItCounts', async () => {
+        const navigation: EditorNavigation = build();
+
+        await navigation.listPlaces(fake.editor, 'implementations', [PLACE]);
+
+        expect(shown).toHaveLength(1);
+        expect(shown[0]).toMatchObject({ kind: 'implementations', status: 'done' });
+        expect(shown[0].items).toHaveLength(1);
+      });
+
+      it('goesToTheFirst_whereNoPanelAnswers', async () => {
+        const navigation: EditorNavigation = build(false);
+        TestBed.inject(Editors).register(MODEL_URI, {
+          documentId: 'doc-1',
+          path: '/root/app.ts',
+          name: 'app.ts',
+        });
+
+        await navigation.listPlaces(fake.editor, 'references', [PLACE]);
+
+        expect(shown).toEqual([]);
+        expect(fake.calls.some((call: string): boolean => call.includes('1:7'))).toBe(true);
+      });
+
+      it('doesNothing_withNoPlaces', async () => {
+        const navigation: EditorNavigation = build();
+
+        await navigation.listPlaces(fake.editor, 'references', []);
+
+        expect(shown).toEqual([]);
+      });
+    });
+
+    it('oneTypeDefinition_goesStraightThere_listingNothing', async () => {
+      const navigation: EditorNavigation = build();
+      TestBed.inject(Editors).register(MODEL_URI, {
+        documentId: 'doc-1',
+        path: '/root/app.ts',
+        name: 'app.ts',
+      });
+      lsp.typeDefinitions.mockResolvedValue([{ path: '/root/app.ts', range: span(1, 7, 14) }]);
+
+      await navigation.goToTypeDefinition(fake.editor);
+
+      expect(lsp.typeDefinitions).toHaveBeenCalledWith(fake.model, { lineNumber: 2, column: 4 });
+      expect(shown).toEqual([]);
+      expect(fake.calls).toContain('focus');
+      expect(fake.calls.some((call: string): boolean => call.includes('1:7'))).toBe(true);
+    });
+
+    it('noAnswer_goesNowhere', async () => {
+      const navigation: EditorNavigation = build();
+
+      await navigation.goToImplementation(fake.editor);
+      await navigation.goToTypeDefinition(fake.editor);
+
+      expect(shown).toEqual([]);
+      expect(fake.calls).toEqual([]);
+      expect(opener).not.toHaveBeenCalled();
+    });
+  });
+
   describe('go to a listed place', () => {
     it('inTheEditorsOwnDocument_selectsItsSpan_centred_andFocused', async () => {
       const navigation: EditorNavigation = build();
@@ -312,6 +622,75 @@ describe('EditorNavigation (#1014)', () => {
 
       expect(opener).not.toHaveBeenCalled();
       expect(reveal).toHaveBeenCalledWith('doc-7', 3, 2, 4);
+    });
+  });
+
+  describe('hierarchies (#1153)', () => {
+    const SOURCE: HierarchySource = {
+      kind: 'calls',
+      roots: [],
+      children: (): Promise<null> => Promise.resolve(null),
+    };
+
+    it('areOffered_whereTheServerGivesThem_andAWorkspaceShowsThem', () => {
+      const navigation: EditorNavigation = build();
+      lsp.servesNavigation.mockImplementation(
+        (_model: unknown, kind: string): boolean => kind === 'callHierarchy',
+      );
+
+      expect(navigation.offersHierarchy(fake.editor, 'calls')).toBe(false);
+      TestBed.inject(HierarchyRouter).register((): void => undefined);
+      expect(navigation.offersHierarchy(fake.editor, 'calls')).toBe(true);
+      expect(navigation.offersHierarchy(fake.editor, 'types')).toBe(false);
+    });
+
+    it('show_asksTheServerAtTheCaret_andRoutesWhatItFindsToTheWorkspace', async () => {
+      const navigation: EditorNavigation = build();
+      const revealed: HierarchySource[] = [];
+      TestBed.inject(HierarchyRouter).register(
+        (source: HierarchySource): void => void revealed.push(source),
+      );
+      lsp.hierarchy.mockResolvedValueOnce(SOURCE).mockResolvedValueOnce(null);
+
+      await navigation.showHierarchy(fake.editor, 'calls');
+      await navigation.showHierarchy(fake.editor, 'types');
+
+      expect(lsp.hierarchy).toHaveBeenNthCalledWith(
+        1,
+        fake.model,
+        { lineNumber: 2, column: 4 },
+        'calls',
+      );
+      expect(revealed).toEqual([SOURCE]);
+    });
+
+    it('fromTheRibbon_showsTheActiveDocumentsEditor', async () => {
+      const navigation: EditorNavigation = build();
+      const revealed: HierarchySource[] = [];
+      let active: string | null = null;
+      // The workspace in front reads its own active document: each tab keeps one.
+      TestBed.inject(HierarchyRouter).register(
+        (source: HierarchySource): void => void revealed.push(source),
+        (): string | null => active,
+      );
+      (monaco.editor as unknown as { getEditors: () => unknown[] }).getEditors = (): unknown[] => [
+        fake.editor,
+      ];
+      TestBed.inject(Editors).register(MODEL_URI, {
+        documentId: 'doc-3',
+        path: '/root/app.ts',
+        name: 'app.ts',
+      });
+      lsp.hierarchy.mockResolvedValue(SOURCE);
+
+      await navigation.showHierarchyInActiveEditor('types');
+      expect(lsp.hierarchy).not.toHaveBeenCalled();
+
+      active = 'doc-3';
+      await navigation.showHierarchyInActiveEditor('types');
+
+      expect(lsp.hierarchy).toHaveBeenCalledWith(fake.model, { lineNumber: 2, column: 4 }, 'types');
+      expect(revealed).toEqual([SOURCE]);
     });
   });
 });

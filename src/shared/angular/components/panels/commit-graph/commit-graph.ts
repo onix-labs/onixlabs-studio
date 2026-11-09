@@ -12,6 +12,8 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
+import { Settings } from '@shared/angular/services/settings/settings';
+import type { HistoryDateFormat } from '@shared/angular/services/settings/settings-registry';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Chip, ChipTone } from '@shared/angular/components/chip/chip';
@@ -494,6 +496,36 @@ export class CommitGraph {
     if (top < container.scrollTop || bottom > container.scrollTop + viewport) {
       container.scrollTop = Math.max(0, top - (viewport - ROW_HEIGHT) / 2);
     }
+  }
+
+  /**
+   * Holds the settings store, for the History Date Format.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Gets how commit dates read (History Date Format).
+   */
+  private readonly dateFormat: Signal<HistoryDateFormat> = this.settings.value(
+    'versionControl.historyDateFormat',
+  );
+
+  /**
+   * Gets a commit's date as History Date Format asks: relative ("3 days ago"), the date and time in
+   * the user's locale, or both.
+   * @param commit The commit.
+   * @returns Returns the date text.
+   */
+  protected commitDate(commit: GitCommit): string {
+    const format: HistoryDateFormat = this.dateFormat();
+    if (format === 'relative') {
+      return commit.relativeDate;
+    }
+    const absolute: string = new Date(commit.isoDate).toLocaleString(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+    return format === 'absolute' ? absolute : `${absolute} (${commit.relativeDate})`;
   }
 
   /**

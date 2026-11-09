@@ -5,6 +5,7 @@
 // process before the window was created. Keep this module platform-neutral (types only).
 
 import type { Severity } from './log-channels';
+import type { StartupSettings } from './startup-settings';
 
 /**
  * Identifies how much of the GPU rendering path the interface uses — one ladder replacing what were
@@ -151,4 +152,16 @@ export interface HostEnv {
    * level setting, which adopts the floor the main process replies with.
    */
   readonly logFloor: Severity;
+
+  /**
+   * Gets the startup settings as the main process held them when the window opened, so a setting
+   * that shapes the first paint (the corner style) is in force before the renderer reads its store.
+   */
+  readonly startupSettings: StartupSettings;
+
+  /**
+   * Gets a value indicating whether this is a packaged build, in which development-only commands
+   * (developer tools, reload) are left out of the menus.
+   */
+  readonly packaged: boolean;
 }

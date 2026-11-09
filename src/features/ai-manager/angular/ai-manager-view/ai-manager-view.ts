@@ -38,6 +38,11 @@ import {
 import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import { AiManagerAgentCapabilities } from '../ai-manager-agent/ai-manager-agent-capabilities';
 import { AiManagerAgentPanelState } from '../ai-manager-agent/ai-manager-agent-panel-state';
+import { AiManagerSidebar } from '../ai-manager-sidebar/ai-manager-sidebar';
+import { AiManagerSidebarState } from '../ai-manager-sidebar/ai-manager-sidebar-state';
+import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
 
 /**
  * How many entries a library sub-view holds, and how many of them are switched on.
@@ -63,6 +68,8 @@ export interface LibraryCounts {
 @Component({
   selector: 'app-ai-manager-view',
   imports: [
+    AiManagerSidebar,
+    AppIcon,
     ModelManagerView,
     PromptProfilesSection,
     SkillLibrarySection,
@@ -77,6 +84,7 @@ export interface LibraryCounts {
     AgentConversation,
     { provide: AGENT_CONVERSATION_KIND, useValue: 'models' },
     AiManagerAgentCapabilities,
+    AiManagerSidebarState,
   ],
   templateUrl: './ai-manager-view.html',
   styleUrl: './ai-manager-view.scss',
@@ -117,6 +125,16 @@ export class AiManagerView implements OnInit {
   );
 
   /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Gets the edges the sidebar may sit on: only its own, since it is part of the view.
+   */
+  protected readonly sideEdges: readonly PanelEdge[] = ['left'];
+
+  /**
    * Holds whether the docked agent is showing, shared with the ribbon.
    */
   protected readonly agentPanel: AiManagerAgentPanelState = inject(AiManagerAgentPanelState);
@@ -144,7 +162,7 @@ export class AiManagerView implements OnInit {
   /**
    * Gets the sub-view shown.
    */
-  public readonly section: Signal<AiManagerSection> = this.navigation.section;
+  public readonly section: Signal<AiManagerSection | null> = this.navigation.section;
 
   /**
    * Gets the Local Models sub-view while it is shown, so its runtime summary can reach the status strip.
@@ -176,6 +194,8 @@ export class AiManagerView implements OnInit {
    * Publishes this view's injector to the status strip, now that the tab id is readable.
    */
   public ngOnInit(): void {
+    // Every showing opens where it was left, unless something opened it at a section.
+    this.navigation.begin();
     this.statusHost.register(this.tabId());
     this.agentHost.register(this.tabId());
   }

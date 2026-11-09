@@ -48,6 +48,7 @@ import {
   fitScale,
   formatZoom,
   ImageRect,
+  ImageResampling,
   ImageSize,
   isUsefulCrop,
   rectBetween,
@@ -58,12 +59,20 @@ import {
 } from '../image-geometry/image-geometry';
 import { ImageStatus } from '../image-status/image-status';
 import { ImageViews } from '../image-views/image-views';
+import { RememberedState } from '@shared/angular/services/remembered-state/remembered-state';
+import { Settings } from '@shared/angular/services/settings/settings';
+import type {
+  ImageCheckerboardSize,
+  ImageDefaultBackground,
+  ImageFallbackSaveFormat,
+  ImageSmoothing,
+} from '@shared/angular/services/settings/settings-registry';
 
 /**
  * Names the backdrop an image is shown against: a checkerboard that makes transparency visible, or
  * a plain light or dark ground.
  */
-export type ImageBackground = 'checker' | 'light' | 'dark';
+export type ImageBackground = ImageDefaultBackground;
 
 /**
  * Names the editing tool open over the image, or `none` when the image is only being viewed.
@@ -74,6 +83,25 @@ export type ImageTool = 'none' | 'crop' | 'resize' | 'export';
  * Names where a view is hosted: as a top-level tab, or inside a workspace's document well.
  */
 export type ImageHost = 'tab' | 'well';
+
+/**
+ * Specifies the scale, as Automatic smoothing draws it, from which the pixels show.
+ */
+const PIXELATED_FROM: number = 4;
+
+/**
+ * Holds how a percentage setting becomes a fraction, and what a whole image scales to.
+ */
+const PERCENT: number = 100;
+
+/**
+ * Holds the checkerboard's square size at each Checkerboard Size.
+ */
+const CHECKER_SIZES: Readonly<Record<ImageCheckerboardSize, string>> = {
+  small: '0.5rem',
+  medium: '1rem',
+  large: '2rem',
+};
 
 /**
  * Specifies the breathing room, in pixels, kept around a fitted image on every side.
@@ -151,6 +179,14 @@ export class ImageView implements OnInit, OnDestroy {
   /**
    * Gets the resize unit options, exposed for the template.
    */
+  protected readonly resamplings: readonly DropdownOption[] = [
+    { value: 'smooth', label: 'Smooth' },
+    { value: 'pixelated', label: 'Pixelated' },
+  ];
+
+  /**
+   * Gets the units a resize can be entered in.
+   */
   protected readonly resizeUnits: readonly DropdownOption[] = [
     { value: 'px', label: 'Pixels' },
     { value: '%', label: 'Percent' },
@@ -218,6 +254,16 @@ export class ImageView implements OnInit, OnDestroy {
   private readonly notifications: Notifications = inject(Notifications);
 
   /**
+   * Holds the settings behind the view's defaults.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the choices the editing tools remember from one use to the next.
+   */
+  private readonly remembered: RememberedState = inject(RememberedState);
+
+  /**
    * Holds the view's host element, focused so its chords apply.
    */
   private readonly hostElement: ElementRef<HTMLElement> =
@@ -254,7 +300,9 @@ export class ImageView implements OnInit, OnDestroy {
   /**
    * Holds the zoom: `fit` follows the window, a number is a fixed scale.
    */
-  private readonly zoom: WritableSignal<'fit' | number> = signal<'fit' | number>('fit');
+  private readonly zoom: WritableSignal<'fit' | number> = signal<'fit' | number>(
+    this.settings.get('imageViewer.zoomOnOpen') === 'actual' ? 1 : 'fit',
+  );
 
   /**
    * Holds the drag in progress, or null.
@@ -274,7 +322,24 @@ export class ImageView implements OnInit, OnDestroy {
   /**
    * Gets the backdrop the image is shown against.
    */
-  public readonly background: WritableSignal<ImageBackground> = signal<ImageBackground>('checker');
+  public readonly background: WritableSignal<ImageBackground> = signal<ImageBackground>(
+    this.settings.get('imageViewer.defaultBackground'),
+  );
+
+  /**
+   * Gets the size of the checkerboard's squares, as the stage's CSS length.
+   */
+  protected readonly checkerSize: Signal<string> = computed(
+    (): string => CHECKER_SIZES[this.settings.get('imageViewer.checkerboardSize')],
+  );
+
+  /**
+   * Gets whether the image is drawn with hard pixels at its current scale.
+   */
+  protected readonly pixelated: Signal<boolean> = computed((): boolean => {
+    const smoothing: ImageSmoothing = this.settings.get('imageViewer.smoothing');
+    return smoothing === 'automatic' ? this.scale() >= PIXELATED_FROM : smoothing === 'sharp';
+  });
 
   /**
    * Gets the editing tool open over the image.
@@ -298,10 +363,11 @@ export class ImageView implements OnInit, OnDestroy {
     const viewport: ImageSize = this.viewportSize();
     return size === null
       ? 1
-      : fitScale(size, {
-          width: viewport.width - FIT_MARGIN * 2,
-          height: viewport.height - FIT_MARGIN * 2,
-        });
+      : fitScale(
+          size,
+          { width: viewport.width - FIT_MARGIN * 2, height: viewport.height - FIT_MARGIN * 2 },
+          this.settings.get('imageViewer.enlargeSmallImages'),
+        );
   });
 
   /**
@@ -373,12 +439,21 @@ export class ImageView implements OnInit, OnDestroy {
   /**
    * Gets the resize unit.
    */
-  protected readonly resizeUnit: WritableSignal<'px' | '%'> = signal<'px' | '%'>('px');
+  protected readonly resizeUnit: WritableSignal<'px' | '%'> = this.remembered.acrossLaunches<
+    'px' | '%'
+  >('image.resizeUnit', 'px');
 
   /**
    * Gets a value indicating whether the resize keeps the aspect ratio.
    */
-  protected readonly resizeLocked: WritableSignal<boolean> = signal<boolean>(true);
+  protected readonly resizeLocked: WritableSignal<boolean> =
+    this.remembered.acrossLaunches<boolean>('image.resizeAspectLocked', true);
+
+  /**
+   * Holds how a resize draws the new pixels.
+   */
+  protected readonly resizeResampling: WritableSignal<ImageResampling> =
+    this.remembered.acrossLaunches<ImageResampling>('image.resizeResampling', 'smooth');
 
   /**
    * Gets the export format.
@@ -389,7 +464,16 @@ export class ImageView implements OnInit, OnDestroy {
   /**
    * Gets the export quality, as a percentage.
    */
-  protected readonly exportQuality: WritableSignal<number> = signal<number>(90);
+  protected readonly exportQuality: WritableSignal<number> = this.remembered.acrossLaunches<number>(
+    'image.exportQuality',
+    90,
+  );
+
+  /**
+   * Holds the format last exported to, or null before anything has been.
+   */
+  private readonly lastExportType: WritableSignal<EncodableImageType | null> =
+    this.remembered.acrossLaunches<EncodableImageType | null>('image.exportType', null);
 
   /**
    * Gets the export scale, as a percentage.
@@ -563,7 +647,8 @@ export class ImageView implements OnInit, OnDestroy {
     }
     if (tool === 'export') {
       this.exportType.set(
-        document.canSaveInPlace ? (document.mime as EncodableImageType) : 'image/png',
+        this.lastExportType() ??
+          (document.canSaveInPlace ? (document.mime as EncodableImageType) : 'image/png'),
       );
     }
     this.tool.set(tool);
@@ -599,7 +684,12 @@ export class ImageView implements OnInit, OnDestroy {
   public applyResize(): void {
     const size: ImageSize = this.resizeTarget();
     this.edit((document: ImageDocument): Promise<boolean> =>
-      document.apply({ kind: 'resize', width: size.width, height: size.height }),
+      document.apply({
+        kind: 'resize',
+        width: size.width,
+        height: size.height,
+        resampling: this.resizeResampling(),
+      }),
     );
     this.cancelTool();
   }
@@ -620,6 +710,7 @@ export class ImageView implements OnInit, OnDestroy {
     };
     const outcome: ImageExportOutcome = await this.documents.exportInteractive(document, options);
     if (outcome === 'exported') {
+      this.lastExportType.set(options.type);
       this.cancelTool();
     } else if (outcome === 'failed') {
       this.reportFailure(`Could not export ${document.fileName}`);
@@ -637,10 +728,7 @@ export class ImageView implements OnInit, OnDestroy {
       return;
     }
     if (!document.canSaveInPlace) {
-      this.log.info('image.view', 'Format cannot be written back; opening export', document.path);
-      if (this.tool() !== 'export') {
-        this.toggleTool('export');
-      }
+      await this.saveInFallbackFormat(document);
       return;
     }
     if (!(await this.documents.save(document.path))) {
@@ -649,17 +737,48 @@ export class ImageView implements OnInit, OnDestroy {
   }
 
   /**
+   * Keeps the edits of a format that cannot be written back: in the fallback format, offering the file
+   * through the save dialog so nothing is overwritten unasked, or by opening the export tool.
+   * @param document The document.
+   * @returns Returns a promise that resolves once it has settled.
+   */
+  private async saveInFallbackFormat(document: ImageDocument): Promise<void> {
+    const fallback: ImageFallbackSaveFormat = this.settings.get('imageViewer.fallbackSaveFormat');
+    if (fallback === 'ask') {
+      this.log.info('image.view', 'Format cannot be written back; opening export', document.path);
+      if (this.tool() !== 'export') {
+        this.toggleTool('export');
+      }
+      return;
+    }
+    const outcome: ImageExportOutcome = await this.documents.exportInteractive(document, {
+      type: fallback === 'webp' ? 'image/webp' : 'image/png',
+      quality: this.settings.get('imageViewer.saveQuality') / PERCENT,
+      scalePercent: PERCENT,
+    });
+    if (outcome === 'failed') {
+      this.reportFailure(`Could not save ${document.fileName}`);
+    }
+  }
+
+  /**
    * Undoes the most recent edit.
    */
   public undo(): void {
-    void this.document()?.undo();
+    this.edit(async (document: ImageDocument): Promise<boolean> => {
+      await document.undo();
+      return true;
+    });
   }
 
   /**
    * Redoes the most recently undone edit.
    */
   public redo(): void {
-    void this.document()?.redo();
+    this.edit(async (document: ImageDocument): Promise<boolean> => {
+      await document.redo();
+      return true;
+    });
   }
 
   /**
@@ -767,11 +886,12 @@ export class ImageView implements OnInit, OnDestroy {
 
   /**
    * Zooms with ⌘-wheel or a trackpad pinch (which Chromium reports as a ctrl-wheel), keeping the
-   * point under the pointer where it is. A plain wheel scrolls as usual.
+   * point under the pointer where it is. A plain wheel scrolls, unless Mouse Wheel says Zoom.
    * @param event The wheel event.
    */
   protected onWheel(event: WheelEvent): void {
-    if (!event.ctrlKey && !event.metaKey) {
+    const zooms: boolean = this.settings.get('imageViewer.mouseWheel') === 'zoom';
+    if (!zooms && !event.ctrlKey && !event.metaKey) {
       return;
     }
     event.preventDefault();
@@ -811,6 +931,14 @@ export class ImageView implements OnInit, OnDestroy {
    */
   protected onResizeUnit(unit: string): void {
     this.resizeUnit.set(unit === '%' ? '%' : 'px');
+  }
+
+  /**
+   * Updates how a resize draws the new pixels.
+   * @param resampling The chosen resampling.
+   */
+  protected onResizeResampling(resampling: string): void {
+    this.resizeResampling.set(resampling === 'pixelated' ? 'pixelated' : 'smooth');
   }
 
   /**

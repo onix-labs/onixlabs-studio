@@ -86,6 +86,7 @@ export class MarkdownReaderPanel {
   protected readonly highlightOptions: readonly ButtonGroupOption[] = [
     { value: 'word', label: 'Word' },
     { value: 'sentence', label: 'Sentence' },
+    { value: 'none', label: 'None' },
   ];
 
   /**
@@ -152,11 +153,13 @@ export class MarkdownReaderPanel {
    * Gets the available voices as dropdown options.
    */
   protected readonly voiceOptions: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] =>
-      this.voices().map((voice: VoiceOption): DropdownOption => ({
+    (): readonly DropdownOption[] => [
+      { value: '', label: 'System Default' },
+      ...this.voices().map((voice: VoiceOption): DropdownOption => ({
         value: voice.uri,
         label: `${voice.name} · ${voice.lang}`,
       })),
+    ],
   );
 
   /**

@@ -1,4 +1,8 @@
 import { Service, signal, Signal, WritableSignal } from '@angular/core';
+import type {
+  DocumentStatusActions,
+  EditorConfigSegment,
+} from '@shared/angular/services/document-status/document-status';
 
 /**
  * Identifies the end-of-line sequence of the active document.
@@ -33,6 +37,22 @@ export interface CodeContext {
    * Gets the document's encoding label (for example "UTF-8" or "UTF-8 with BOM").
    */
   readonly encoding: string;
+
+  /**
+   * Gets the indentation in force (for example "Spaces: 4"), or empty before the editor reports it.
+   */
+  readonly indent?: string;
+
+  /**
+   * Gets the segments an `.editorconfig` decided.
+   */
+  readonly editorConfig?: readonly EditorConfigSegment[];
+
+  /**
+   * Gets what the strip's end-of-line and encoding segments can do to the document, or undefined when
+   * they only show it.
+   */
+  readonly actions?: DocumentStatusActions;
 }
 
 /**

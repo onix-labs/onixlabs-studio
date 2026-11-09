@@ -1,4 +1,8 @@
+import { RememberedSwitch } from '@shared/angular/services/explorer-filter/remembered-switch';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { explorerSorted } from '@shared/angular/services/workspace/explorer-sort';
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { ExplorerFilter } from '@shared/angular/services/explorer-filter/explorer-filter';
 import { Bridge } from '@shared/api/bridge';
 import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import { ProjectChannel } from '@shared/api/project-channels';
@@ -45,6 +49,11 @@ const RELOAD_DEBOUNCE_MS: number = 300;
  * How long, in milliseconds, search-query keystrokes are debounced before the tree filter runs.
  */
 const QUERY_DEBOUNCE_MS: number = 150;
+
+/**
+ * Describes a project item that is a folder.
+ */
+type ProjectItemFolder = Extract<ProjectItemNode, { readonly type: 'folder' }>;
 
 /**
  * A flattened Solution Explorer row: one visible line of the tree, with its depth, expansion, and
@@ -154,6 +163,11 @@ export class SolutionModel {
   private readonly workspace: Workspace = inject(Workspace);
 
   /**
+   * Holds the settings, for Sort Order.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Holds the view's dock context, whose display name titles the workspace root row.
    */
   private readonly context: DockTabContext = inject(DockTabContext);
@@ -260,6 +274,14 @@ export class SolutionModel {
   private readonly selectedKeySignal: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
+   * Holds whether a chain of folders holding only one another shows as a single row.
+   */
+  private readonly collapsingEmptyFolders: RememberedSwitch = new RememberedSwitch(
+    'workspace.solution.collapseEmptyFolders',
+    false,
+  );
+
+  /**
    * Holds whether the tree follows the active document, expanding to and selecting it as the editor
    * changes.
    *
@@ -267,12 +289,18 @@ export class SolutionModel {
    * because it is not always — reading around a solution while a generated file stays open drags the
    * selection back with every tab change.
    */
-  private readonly syncWithActive: WritableSignal<boolean> = signal<boolean>(true);
+  private readonly syncWithActive: RememberedSwitch = new RememberedSwitch(
+    'workspace.solution.followActiveDocument',
+    true,
+  );
 
   /**
    * Holds whether rows carry their git change badge.
    */
-  private readonly gitStatusShown: WritableSignal<boolean> = signal<boolean>(true);
+  private readonly gitStatusShown: RememberedSwitch = new RememberedSwitch(
+    'workspace.solution.showGitStatus',
+    true,
+  );
 
   /**
    * Holds the generation of the current load, so a stale load (the root changed while it was in flight)
@@ -281,9 +309,21 @@ export class SolutionModel {
   private generation: number = 0;
 
   /**
+   * Holds whether the project model has been determined for the current root.
+   */
+  private readonly settledSignal: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
    * Gets the current project model, or null when there is none.
    */
   public readonly model: Signal<ProjectModel | null> = this.current.asReadonly();
+
+  /**
+   * Gets whether the workspace's project model has been determined — a solution, or that there is
+   * none — rather than still being loaded (#1182): until then, its language servers have not even
+   * been started, and the Error List is still analysing rather than finding nothing.
+   */
+  public readonly settled: Signal<boolean> = computed((): boolean => this.settledSignal());
 
   /**
    * Gets the active project's declared capabilities, or null when there is no model. Exposed so the
@@ -572,47 +612,48 @@ export class SolutionModel {
   /**
    * Gets whether the tree follows the active document.
    */
-  public readonly followsActiveDocument: Signal<boolean> = this.syncWithActive.asReadonly();
+  public readonly followsActiveDocument: Signal<boolean> = this.syncWithActive.on;
 
   /**
    * Gets whether rows carry their git change badge.
    */
-  public readonly showsGitStatus: Signal<boolean> = this.gitStatusShown.asReadonly();
+  public readonly showsGitStatus: Signal<boolean> = this.gitStatusShown.on;
+
+  /**
+   * Gets whether a chain of folders holding only one another shows as a single row.
+   */
+  public readonly collapsesEmptyFolders: Signal<boolean> = this.collapsingEmptyFolders.on;
+
+  /**
+   * Toggles whether a chain of folders holding only one another shows as a single row.
+   */
+  public toggleCollapseEmptyFolders(): void {
+    this.collapsingEmptyFolders.toggle();
+  }
 
   /**
    * Toggles whether the tree follows the active document.
    */
   public toggleFollowActiveDocument(): void {
-    this.syncWithActive.update((value: boolean): boolean => !value);
+    this.syncWithActive.toggle();
   }
 
   /**
    * Toggles whether rows carry their git change badge.
    */
   public toggleGitStatus(): void {
-    this.gitStatusShown.update((value: boolean): boolean => !value);
+    this.gitStatusShown.toggle();
   }
 
   /**
-   * Holds whether the Solution Explorer shows only what version control sees as changed (#1053), remembered
-   * across restarts.
+   * Holds what the tree is narrowed to (#1182 follow-up): files version control sees as changed, or
+   * with problems of the severities ticked — remembered across restarts, and carrying over the older
+   * Show Changed Files Only switch (#1053).
    */
-  private readonly changesOnly: WritableSignal<boolean> = signal<boolean>(
-    readStoredFlag('workspace.solution.changesOnly'),
+  public readonly filter: ExplorerFilter = new ExplorerFilter(
+    'workspace.solution.filters',
+    'workspace.solution.changesOnly',
   );
-
-  /**
-   * Gets whether the Solution Explorer shows only what version control sees as changed (#1053).
-   */
-  public readonly showsChangesOnly: Signal<boolean> = this.changesOnly.asReadonly();
-
-  /**
-   * Toggles whether the Solution Explorer shows only what changed, and remembers the choice.
-   */
-  public toggleChangesOnly(): void {
-    this.changesOnly.update((value: boolean): boolean => !value);
-    writeStoredFlag('workspace.solution.changesOnly', this.changesOnly());
-  }
 
   /**
    * Rebuilds the solution from disk, preserving expansion. Used when a project file has been edited
@@ -696,8 +737,10 @@ export class SolutionModel {
     const generation: number = ++this.generation;
     if (this.bridge === undefined || root === null) {
       this.reset(null);
+      this.settledSignal.set(true);
       return;
     }
+    this.settledSignal.set(false);
     const model: ProjectModel | null = await this.bridge.invoke<ProjectModel | null>(
       ProjectChannel.ModelLoad,
       root,
@@ -706,6 +749,7 @@ export class SolutionModel {
       return;
     }
     this.reset(model);
+    this.settledSignal.set(true);
     if (model !== null) {
       this.log.info(
         'workspace.solution',
@@ -1101,7 +1145,26 @@ export class SolutionModel {
       a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
     const folders: ProjectNode[] = nodes.filter((node: ProjectNode) => node.type === 'folder');
     const projects: ProjectNode[] = nodes.filter((node: ProjectNode) => node.type === 'project');
-    return [...folders.sort(byName), ...projects.sort(byName)];
+    return explorerSorted(
+      [...folders.sort(byName), ...projects.sort(byName)],
+      (node: ProjectNode): boolean => node.type === 'folder',
+      byName,
+      this.settings.value('workspaces.sortOrder')(),
+    );
+  }
+
+  /**
+   * Orders a project's items by Sort Order.
+   * @param nodes The item nodes, as the project lists them.
+   * @returns Returns the nodes in display order.
+   */
+  private orderedItems(nodes: readonly ProjectItemNode[]): readonly ProjectItemNode[] {
+    return explorerSorted(
+      nodes,
+      (node: ProjectItemNode): boolean => node.type === 'folder',
+      (a: ProjectItemNode, b: ProjectItemNode): number => a.name.localeCompare(b.name),
+      this.settings.value('workspaces.sortOrder')(),
+    );
   }
 
   /**
@@ -1133,6 +1196,17 @@ export class SolutionModel {
   }
 
   /**
+   * Gets a folder's only child when that child is a folder too and Collapse Empty Folders is on.
+   * @param folder The folder.
+   * @returns Returns the child, or null when the row stops at this folder.
+   */
+  private loneFolder(folder: ProjectItemFolder): ProjectItemFolder | null {
+    const only: ProjectItemNode | undefined =
+      this.collapsesEmptyFolders() && folder.children.length === 1 ? folder.children[0] : undefined;
+    return only?.type === 'folder' ? only : null;
+  }
+
+  /**
    * Appends the rows for a run of project-item nodes (folders and files), recursing into the expanded
    * folders.
    * @param nodes The item nodes to append.
@@ -1146,15 +1220,27 @@ export class SolutionModel {
     parentKey: string,
     rows: SolutionRow[],
   ): void {
-    for (const node of nodes) {
+    for (const node of this.orderedItems(nodes)) {
       if (node.type === 'folder') {
-        const key: string = `${parentKey}/${node.name}`;
+        let last: ProjectItemFolder = node;
+        const names: string[] = [node.name];
+        let key: string = `${parentKey}/${node.name}`;
+        let next: ProjectItemFolder | null = this.loneFolder(last);
+        while (next !== null) {
+          last = next;
+          names.push(last.name);
+          key = `${key}/${last.name}`;
+          next = this.loneFolder(last);
+        }
+        const label: string = names.join(
+          this.settings.value('workspaces.collapsedFolderSeparator')(),
+        );
         const expanded: boolean = this.expandedKeys().has(key);
         rows.push(
-          this.row(key, depth, node.name, 'item-folder', true, expanded, false, false, node.path),
+          this.row(key, depth, label, 'item-folder', true, expanded, false, false, last.path),
         );
         if (expanded) {
-          this.appendItems(node.children, depth + 1, key, rows);
+          this.appendItems(last.children, depth + 1, key, rows);
         }
       } else {
         rows.push(
@@ -1274,7 +1360,7 @@ export class SolutionModel {
     query: string,
   ): boolean {
     let matched: boolean = false;
-    for (const node of nodes) {
+    for (const node of this.orderedItems(nodes)) {
       if (node.type === 'folder') {
         const key: string = `${parentKey}/${node.name}`;
         const childRows: SolutionRow[] = [];
@@ -1425,31 +1511,5 @@ export class SolutionModel {
   private directoryOf(path: string): string {
     const slash: number = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
     return slash > 0 ? path.slice(0, slash) : path;
-  }
-}
-
-/**
- * Reads a remembered on/off switch, off when it was never set or storage is unavailable.
- * @param key The storage key.
- * @returns Returns the switch.
- */
-function readStoredFlag(key: string): boolean {
-  try {
-    return localStorage.getItem(key) === 'true';
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Remembers an on/off switch, quietly when storage is unavailable.
- * @param key The storage key.
- * @param value The switch.
- */
-function writeStoredFlag(key: string, value: boolean): void {
-  try {
-    localStorage.setItem(key, String(value));
-  } catch {
-    // Not remembered; the switch still works for this session.
   }
 }

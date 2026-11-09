@@ -1,3 +1,4 @@
+import { Settings } from '@shared/angular/services/settings/settings';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
@@ -48,6 +49,10 @@ class FakeHttp {
 }
 
 describe('ApiHistoryPanel (#882)', () => {
+  afterEach(() => {
+    localStorage.removeItem('settings');
+  });
+
   let fixture: ComponentFixture<ApiHistoryPanel>;
   let workspace: ApiWorkspace;
 
@@ -82,7 +87,7 @@ describe('ApiHistoryPanel (#882)', () => {
    * @param url The request's address.
    */
   async function send(name: string, url: string): Promise<void> {
-    const parent: string = workspace.folders()[0].id;
+    const parent: string = workspace.folders()[0]?.id ?? workspace.addCollection('Tests').id;
     await workspace.send(workspace.addRequest(parent, { name, url }).id);
   }
 
@@ -98,6 +103,7 @@ describe('ApiHistoryPanel (#882)', () => {
     }).compileComponents();
 
     fixture = TestBed.createComponent(ApiHistoryPanel);
+    TestBed.inject(Settings).set('apiExplorer.sampleContent', true);
     workspace = TestBed.inject(ApiWorkspace);
     fixture.componentRef.setInput('panel', {
       id: 'history',

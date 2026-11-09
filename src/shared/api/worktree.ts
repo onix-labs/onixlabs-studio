@@ -255,17 +255,40 @@ export function mintCheckoutId(): string {
 }
 
 /**
+ * Names a new checkout after its branch, so its folder reads as what it holds: path separators and
+ * anything else a folder name should not carry become dashes, and a name already taken is numbered. A
+ * checkout with no branch, or a branch with nothing usable in its name, takes a minted id.
+ * @param branch The branch it starts on, if any.
+ * @param taken The names in use: the container's checkouts and folders.
+ * @returns Returns the new identifier.
+ */
+export function checkoutIdForBranch(branch: string | undefined, taken: readonly string[]): string {
+  const name: string = (branch ?? '')
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '');
+  if (name.length === 0) {
+    return mintCheckoutId();
+  }
+  // Compared without case: on a case-insensitive disk `Feature` and `feature` are one folder.
+  const used: ReadonlySet<string> = new Set<string>(
+    taken.map((id: string): string => id.toLowerCase()),
+  );
+  let candidate: string = name;
+  for (let number: number = 2; used.has(candidate.toLowerCase()); number += 1) {
+    candidate = `${name}-${number}`;
+  }
+  return candidate;
+}
+
+/**
  * Determines whether a value is safe to use as a checkout identifier. Ids are joined into filesystem
- * paths on the renderer's say-so, so only the exact UUID shape is accepted — anything else (path
- * separators, traversal, an empty string) is rejected.
+ * paths on the renderer's say-so, so only a single plain folder name is accepted — anything else (path
+ * separators, traversal, a leading dot or dash, an empty string) is rejected.
  * @param value The value to test.
  * @returns Returns true when the value is a well-formed checkout id.
  */
 export function isSafeCheckoutId(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
-  );
+  return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value);
 }
 
 /**

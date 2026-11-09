@@ -1,8 +1,9 @@
-import { inject, Injector, Service } from '@angular/core';
+import { effect, inject, Injector, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
 import {
   LspCodeAction,
   LspCommandOutcome,
@@ -35,14 +36,26 @@ import { QuickFixIndicator } from './quick-fix-indicator';
 import {
   buildQuickFixMenu,
   isQuickFixKind,
+  isSourceKind,
   QuickFixAction,
-  quickFixIndexOf,
+  QuickFixChoice,
+  quickFixChoiceOf,
 } from './quick-fix-menu';
 
 /**
  * Holds the key every quick-fix notification is raised under, so a newer one replaces an older one.
  */
 const NOTIFICATION_KEY: string = 'quick-fix';
+
+/**
+ * The code action kind every source action sits under.
+ */
+const SOURCE_KIND: string = 'source';
+
+/**
+ * The code action kind that organises a file's imports.
+ */
+const ORGANIZE_IMPORTS_KIND: string = 'source.organizeImports';
 
 /**
  * The code actions at an editor's caret, and how to release what their providers hold for them.
@@ -108,6 +121,28 @@ export class QuickFixes {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the settings the fix icon follows.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds each attached editor's fix icon, so a change of the setting reaches them.
+   */
+  private readonly indicators: Set<QuickFixIndicator> = new Set<QuickFixIndicator>();
+
+  /**
+   * Initialises the service, keeping the fix icons on the Quick Fix Indicator setting.
+   */
+  public constructor() {
+    effect((): void => {
+      this.settings.value('textEditor.global.quickFixIndicator')();
+      for (const indicator of this.indicators) {
+        indicator.refresh();
+      }
+    });
+  }
+
+  /**
    * Holds the actions of the menu last opened, released when the next opens or one is applied.
    */
   private session: QuickFixSession | null = null;
@@ -145,14 +180,67 @@ export class QuickFixes {
     const indicator: QuickFixIndicator = new QuickFixIndicator(editor, monaco, {
       hasFixes: (): Promise<boolean> => this.hasFixes(editor),
       open: (): void => void this.open(editor),
-      enabled: (): boolean => this.offersQuickFixes(editor),
+      enabled: (): boolean =>
+        this.settings.get('textEditor.global.quickFixIndicator') && this.offersQuickFixes(editor),
+      delay: (): number => this.settings.get('textEditor.global.quickFixIndicatorDelay'),
       onMarkersChanged:
         monaco?.editor.onDidChangeMarkers === undefined
           ? undefined
           : (listener: (uris: readonly MonacoApi.Uri[]) => void): MonacoApi.IDisposable =>
               monaco.editor.onDidChangeMarkers(listener),
     });
-    return (): void => indicator.dispose();
+    this.indicators.add(indicator);
+    return (): void => {
+      this.indicators.delete(indicator);
+      indicator.dispose();
+    };
+  }
+
+  /**
+   * Organises a document's imports through the language server that serves it, for Code Cleanup and
+   * Organise Imports on Save: the whole document is asked about, and what comes back is applied
+   * without opening anything or moving the focus, as a save may be for an editor the user has left.
+   * @param editor The editor.
+   * @returns Returns a promise resolving to true when a server answered for the document, even with
+   * nothing to do; false when none does, and Monaco's own action is all there is.
+   */
+  public async organizeImports(editor: MonacoApi.editor.ICodeEditor): Promise<boolean> {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    if (model === null) {
+      return false;
+    }
+    const features: LspFeatures = this.injector.get(LspFeatures);
+    const served: readonly LspCodeAction[] | null = await features.codeActions(
+      model,
+      model.getFullModelRange(),
+      [ORGANIZE_IMPORTS_KIND],
+    );
+    if (served === null) {
+      return false;
+    }
+    const first: LspCodeAction | undefined = served.find(
+      (action: LspCodeAction): boolean => action.disabledReason === null,
+    );
+    if (first === undefined) {
+      this.log.debug('quickFix', 'The server has no imports to organise');
+      return true;
+    }
+    const unresolved: QuickFixAction = this.fromServer(model, first, features);
+    const action: QuickFixAction =
+      unresolved.edit === null && unresolved.resolve !== null
+        ? await unresolved.resolve()
+        : unresolved;
+    let changed: boolean = false;
+    if (action.edit !== null) {
+      const outcome: WorkspaceEditOutcome = await this.applier.apply(
+        action.edit,
+        instanceOf(editor),
+      );
+      changed = outcome.applied.length > 0;
+      this.reportSkipped(action.title, action.edit.files.length, outcome);
+    }
+    await this.runCommand(model, action, changed);
+    return true;
   }
 
   /**
@@ -194,16 +282,47 @@ export class QuickFixes {
     const opened: boolean = this.injector
       .get(EditorContextMenu)
       .openAtCaret(editor, buildQuickFixMenu(session.actions), (id: string): void => {
-        const index: number | null = quickFixIndexOf(id);
-        const action: QuickFixAction | undefined =
-          index === null ? undefined : session.actions[index];
-        if (action !== undefined) {
-          void this.apply(editor, action);
-        }
+        void this.choose(editor, session.actions, quickFixChoiceOf(id));
       });
     if (!opened) {
       this.log.debug('quickFix', 'No menu host is attached to the editor');
     }
+  }
+
+  /**
+   * Applies what a row of the menu chooses (#1151): an action — however deeply nested — or, for a
+   * fix-all, every occurrence in the scope chosen, its edit asked for once it is chosen.
+   * @param editor The editor the menu was opened in.
+   * @param actions The actions the menu was built from.
+   * @param choice The row's choice, or null for a row that chooses none.
+   * @returns Returns a promise that resolves once the choice is applied, or found not to apply.
+   */
+  private async choose(
+    editor: MonacoApi.editor.ICodeEditor,
+    actions: readonly QuickFixAction[],
+    choice: QuickFixChoice | null,
+  ): Promise<void> {
+    if (choice === null) {
+      return;
+    }
+    let action: QuickFixAction | undefined;
+    let level: readonly QuickFixAction[] = actions;
+    for (const index of choice.indices) {
+      action = level[index];
+      level = action?.children ?? [];
+    }
+    if (action === undefined) {
+      return;
+    }
+    if (choice.scope === null) {
+      await this.apply(editor, action);
+      return;
+    }
+    if (action.resolveFixAll === undefined) {
+      return;
+    }
+    this.log.info('quickFix', `Fix all in ${choice.scope}`, action.title);
+    await this.apply(editor, await action.resolveFixAll(choice.scope));
   }
 
   /**
@@ -224,12 +343,16 @@ export class QuickFixes {
       chosen.edit === null && chosen.resolve !== null ? await chosen.resolve() : chosen;
     const edit: WorkspaceTextEdits | null = action.edit;
     let changed: boolean = false;
-    if (edit !== null && (edit.files.length > 0 || edit.refused.length > 0)) {
+    // A file to create can be the whole of it: rust-analyzer's Create Module.
+    if (
+      edit !== null &&
+      (edit.files.length > 0 || edit.refused.length > 0 || (edit.creates?.length ?? 0) > 0)
+    ) {
       if (edit.files.length > 1) {
         const confirmed: boolean = await this.confirmation.ask({
           oldName: action.title,
           newName: '',
-          title: `Apply “${action.title}”?`,
+          title: `Apply ${action.title}?`,
           confirmLabel: 'Apply',
           files: confirmationFiles(edit.files, monaco, this.editors),
         });
@@ -325,8 +448,18 @@ export class QuickFixes {
       automatic,
     );
     if (served !== null) {
+      // Some servers keep source actions back unless they are asked for by kind: tsserver's organise
+      // imports answers for any line, so it is only offered on request (#1207). Asked for only as the
+      // menu opens, never for the fix icon.
+      const asked: boolean = only === undefined && !automatic;
+      const isSource: (action: LspCodeAction) => boolean = (action: LspCodeAction): boolean =>
+        isSourceKind(action.kind);
+      const sources: readonly LspCodeAction[] =
+        asked && !served.some(isSource)
+          ? ((await features.codeActions(model, range, [SOURCE_KIND])) ?? []).filter(isSource)
+          : [];
       return {
-        actions: served.map((action: LspCodeAction): QuickFixAction =>
+        actions: [...served, ...sources].map((action: LspCodeAction): QuickFixAction =>
           this.fromServer(model, action, features),
         ),
         dispose: (): void => undefined,
@@ -375,6 +508,28 @@ export class QuickFixes {
       origin: 'server',
       resolve: async (): Promise<QuickFixAction> =>
         this.fromServer(model, await features.resolveCodeAction(model, action), features),
+      ...(action.path === undefined ? {} : { path: action.path }),
+      ...(action.fixAllScopes === undefined
+        ? {}
+        : {
+            fixAllScopes: action.fixAllScopes,
+            // The scope's edit is the whole answer: there is nothing further to resolve or run.
+            resolveFixAll: async (scope: string): Promise<QuickFixAction> => ({
+              ...this.fromServer(
+                model,
+                await features.resolveFixAll(model, action, scope),
+                features,
+              ),
+              resolve: null,
+            }),
+          }),
+      ...(action.children === undefined
+        ? {}
+        : {
+            children: action.children.map((child: LspCodeAction): QuickFixAction =>
+              this.fromServer(model, child, features),
+            ),
+          }),
     };
   }
 

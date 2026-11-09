@@ -6,8 +6,8 @@
   flex-direction: column;
 }
 
-// The first setting row in a group needs no top divider (the shared section rule would otherwise add
-// one to every non-first-child row).
-.ai-group app-setting-row:first-of-type {
-  border-block-start: none;
+// The default provider beside its model, each a dropdown.
+.ai-default-model {
+  display: flex;
+  gap: 8px;
 }

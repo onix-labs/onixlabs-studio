@@ -142,6 +142,27 @@
     </div>
   }
 
+  @if (compactOffered()) {
+    <!-- Auto-Compact, At Threshold = Ask: the context window is filling, so offer the summary that
+         would make room. Dismissed, it stays away until the context next fills. -->
+    <div class="agent__compact-banner" role="status">
+      <app-icon [icon]="Icon.ARROWS_IN" aria-hidden="true" />
+      <span class="agent__edit-text">
+        This conversation has used {{ contextPercent() }}% of its context. Compacting replaces it
+        with a summary.
+      </span>
+      <app-button size="small" variant="solid" label="Compact" (click)="compactNow()" />
+      <app-button
+        variant="none"
+        size="small"
+        [icon]="Icon.CLOSE"
+        ariaLabel="Not now"
+        tooltip="Not now"
+        (click)="dismissCompactOffer()"
+      />
+    </div>
+  }
+
   @if (suggestions().length > 0) {
     <!-- The `/` command and `@` mention popup: keyboard-navigable (arrows + Enter/Tab), rows
          accept on click without stealing the textarea's focus. -->
@@ -239,12 +260,13 @@
 <app-modal
   [open]="managePromptsOpen()"
   [width]="36"
+  [frameless]="true"
   ariaLabel="Manage prompts"
   (dismiss)="closeManagePrompts()"
 >
   <ng-template appModalContent>
     <div class="agent__prompts">
-      <h2 class="agent__md-title">Reusable prompts</h2>
+      <h2 class="agent__md-title">Reusable Prompts</h2>
       @if (libraryPrompts().length === 0) {
         <p class="agent__prompts-empty">No prompts yet. Save one below and invoke it with /name.</p>
       } @else {
@@ -264,30 +286,28 @@
           }
         </ul>
       }
-      <input
-        class="agent__prompts-field"
-        type="text"
-        placeholder="Name (invoked as /name)"
-        aria-label="Prompt name"
+      <app-text-field
+        variant="floating"
+        label="Name"
+        placeholder="Invoked as /name"
         [value]="newPromptName()"
-        (input)="newPromptName.set($any($event.target).value)"
+        (valueChange)="newPromptName.set($event)"
       />
-      <textarea
-        class="agent__prompts-field agent__prompts-area"
-        rows="4"
-        placeholder="Prompt text…"
-        aria-label="Prompt text"
+      <app-textarea
+        variant="floating"
+        label="Prompt"
+        [rows]="4"
         [value]="newPromptText()"
-        (input)="newPromptText.set($any($event.target).value)"
-      ></textarea>
+        (valueChange)="newPromptText.set($event)"
+      />
       <app-button-row>
         <app-button
           variant="solid"
-          label="Save prompt"
+          label="Save Prompt"
           [disabled]="newPromptName().trim().length === 0 || newPromptText().trim().length === 0"
           (click)="savePrompt()"
         />
-        <app-button label="Close" (click)="closeManagePrompts()" />
+        <app-button variant="none" label="Close" (click)="closeManagePrompts()" />
       </app-button-row>
     </div>
   </ng-template>
@@ -301,6 +321,7 @@
   [width]="50"
   [height]="37.5"
   [expandable]="true"
+  [frameless]="true"
   ariaLabel="Markdown Prompt Editor"
   (dismiss)="cancelMarkdown()"
 >
@@ -320,12 +341,11 @@
       <app-button-row>
         <app-button
           variant="solid"
-          [icon]="Icon.SEND"
           label="Send"
           [disabled]="isRunning() || markdownValue().trim().length === 0"
           (click)="submitMarkdown()"
         />
-        <app-button label="Cancel" (click)="cancelMarkdown()" />
+        <app-button variant="none" label="Cancel" (click)="cancelMarkdown()" />
       </app-button-row>
     </div>
   </ng-template>

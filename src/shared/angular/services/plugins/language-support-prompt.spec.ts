@@ -5,7 +5,9 @@ import {
   NotificationRequest,
   Notifications,
 } from '@shared/angular/services/notifications/notifications';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { LanguageSupportPrompt } from './language-support-prompt';
+import { PluginSuggestions } from './plugin-suggestions';
 import { Plugins } from './plugins';
 
 /**
@@ -86,7 +88,11 @@ describe('LanguageSupportPrompt', () => {
   it('offerFor_offersOnlyOnePluginEvenWhenSeveralProvideTheLanguage', () => {
     build().offerFor('python');
 
-    expect(raised[0]?.actions).toHaveLength(1);
+    // One install, and the offer's own Don't Suggest This Again.
+    expect(raised[0]?.actions?.map((action) => action.label)).toEqual([
+      expect.stringMatching(/^Install /) as unknown as string,
+      "Don't Suggest This Again",
+    ]);
   });
 
   it('offerFor_actionInstallsTheOfferedPlugin_throughConsent', () => {
@@ -96,6 +102,33 @@ describe('LanguageSupportPrompt', () => {
     raised[0]?.actions?.[0]?.run();
 
     expect(installed).toEqual(['pyright']);
+  });
+
+  it('offerFor_whenSuggestionsAreOff_saysNothing', () => {
+    try {
+      const prompt: LanguageSupportPrompt = build();
+      TestBed.inject(Settings).set('plugins.suggestPlugins', false);
+      prompt.offerFor('python');
+
+      expect(raised).toHaveLength(0);
+    } finally {
+      localStorage.removeItem('settings');
+    }
+  });
+
+  it('offerFor_dontSuggestThisAgain_remembersThatLanguage', () => {
+    try {
+      build().offerFor('python');
+      raised[0]?.actions?.[1]?.run();
+
+      // Remembered as a setting, so no later session offers Python again.
+      expect(TestBed.inject(Settings).get('plugins.dismissedSuggestions')).toEqual([
+        'language-support:python',
+      ]);
+      expect(TestBed.inject(PluginSuggestions).allows('language-support:python')).toBe(false);
+    } finally {
+      localStorage.removeItem('settings');
+    }
   });
 
   it('offerFor_languageAlreadySupported_saysNothing', () => {

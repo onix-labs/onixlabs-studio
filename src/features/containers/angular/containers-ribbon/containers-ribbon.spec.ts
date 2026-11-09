@@ -1,9 +1,12 @@
-import { signal, WritableSignal } from '@angular/core';
+import { computed, signal, WritableSignal } from '@angular/core';
 import { ContainersClient } from '../client/containers-client';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
-import { ContainersCommands } from '@features/containers/angular/containers-commands/containers-commands';
+import {
+  ContainerGroup,
+  ContainersCommands,
+} from '@features/containers/angular/containers-commands/containers-commands';
 import { ContainersRibbon } from './containers-ribbon';
 
 describe('ContainersRibbon', () => {
@@ -37,9 +40,24 @@ describe('ContainersRibbon', () => {
     const commandsStub: Partial<ContainersCommands> = {
       hasSelection,
       selectionRunning,
-      selectionPaused: signal<boolean>(false),
+      hasTargets: hasSelection,
+      canStart: computed((): boolean => hasSelection() && !selectionRunning()),
+      canStop: computed((): boolean => hasSelection() && selectionRunning()),
+      canPause: computed((): boolean => hasSelection() && selectionRunning()),
+      canResume: signal<boolean>(false),
+      showingContainers: signal<boolean>(true),
+      engineReady: signal<boolean>(true),
+      pullImage: (): void => void calls.push('pullImage'),
+      runImage: (): void => void calls.push('runImage'),
+      shownGroups: signal<ReadonlySet<ContainerGroup>>(new Set<ContainerGroup>(['running'])),
+      listedGroups: signal<ReadonlySet<ContainerGroup>>(new Set<ContainerGroup>(['running'])),
+      selectedGroups: signal<ReadonlySet<ContainerGroup>>(new Set<ContainerGroup>()),
+      canClear: signal<boolean>(false),
+      showAll: (): void => void calls.push('showAll'),
+      clear: (): void => void calls.push('clear'),
       restart: (): void => void calls.push('restart'),
-      togglePause: (): void => void calls.push('togglePause'),
+      pause: (): void => void calls.push('pause'),
+      resume: (): void => void calls.push('resume'),
       start: (): void => void calls.push('start'),
       stop: (): void => void calls.push('stop'),
       remove: (): void => void calls.push('remove'),
@@ -92,6 +110,37 @@ describe('ContainersRibbon', () => {
     expect(button('Start').disabled).toBe(false);
     button('Start').click();
     expect(calls).toEqual(['start']);
+  });
+
+  it('restart_staysReachable_underADisabledStart', () => {
+    const start: Element | null | undefined = button('Start').closest('.ribbon-menu-button');
+
+    expect(button('Start').disabled).toBe(true);
+    expect(start?.querySelector<HTMLButtonElement>('.ribbon-menu-button__menu')?.disabled).toBe(
+      false,
+    );
+  });
+
+  it('theGroups_runContainerViewTerminalAgent', () => {
+    const text: string = host.textContent ?? '';
+
+    expect(text.indexOf('Remove')).toBeLessThan(text.indexOf('Refresh'));
+    expect(text.indexOf('Refresh')).toBeLessThan(text.indexOf('Logs'));
+    expect(text.indexOf('Logs')).toBeLessThan(text.indexOf('Agent'));
+  });
+
+  it('pullImageAndRun_goToTheView', () => {
+    button('Pull Image').click();
+    button('Run').click();
+
+    expect(calls).toEqual(['pullImage', 'runImage']);
+  });
+
+  it('showAll_showsEverything_andClearWaitsForATick', () => {
+    button('Show All').click();
+
+    expect(calls).toEqual(['showAll']);
+    expect(button('Clear').disabled).toBe(true);
   });
 
   it('stop_whenTheSelectionIsNotRunning_isDisabled', () => {

@@ -1,0 +1,114 @@
+@if (graph().nodes.length === 0) {
+  <p class="graph__empty">This result holds no nodes or relationships to draw.</p>
+} @else {
+  <svg
+    class="graph"
+    [attr.viewBox]="viewBox()"
+    preserveAspectRatio="xMidYMid meet"
+    role="img"
+    aria-label="Graph of the result"
+    (pointerdown)="onPointerDown($event)"
+    (pointermove)="onPointerMove($event)"
+    (pointerup)="onPointerUp()"
+    (pointercancel)="onPointerUp()"
+    (wheel)="onWheel($event)"
+  >
+    <defs>
+      <marker
+        id="graph-arrow"
+        viewBox="0 0 10 10"
+        refX="9"
+        refY="5"
+        markerWidth="7"
+        markerHeight="7"
+        orient="auto-start-reverse"
+      >
+        <path d="M 0 0 L 10 5 L 0 10 z" class="graph__arrow" />
+      </marker>
+      <!-- The same tip in the accent, for the relationship picked: a marker cannot take its
+           colour from the line it ends, so it is a marker of its own. -->
+      <marker
+        id="graph-arrow-picked"
+        viewBox="0 0 10 10"
+        refX="9"
+        refY="5"
+        markerWidth="7"
+        markerHeight="7"
+        orient="auto-start-reverse"
+      >
+        <path d="M 0 0 L 10 5 L 0 10 z" class="graph__arrow graph__arrow--picked" />
+      </marker>
+    </defs>
+    <g [attr.transform]="transform()">
+      @for (relationship of graph().relationships; track relationship.value.id) {
+        @let geometry = edge(relationship);
+        <g
+          class="graph__relationship"
+          [class.graph__relationship--picked]="pickedId() === relationship.value.id"
+          (pointerdown)="onPointerDown($event, undefined, relationship)"
+        >
+          <!-- Relationships sharing two nodes are bowed into lanes, and one from a node to itself is
+               a loop on its rim, so none is drawn over another. -->
+          <path
+            [attr.d]="geometry.path"
+            [attr.marker-end]="
+              pickedId() === relationship.value.id
+                ? 'url(#graph-arrow-picked)'
+                : 'url(#graph-arrow)'
+            "
+          />
+          <!-- A wider, invisible stroke along the same path, so a thin line is easy to pick. -->
+          <path class="graph__relationship-hit" [attr.d]="geometry.path" />
+          <text
+            [attr.x]="geometry.label.x"
+            [attr.y]="geometry.label.y"
+            text-anchor="middle"
+            dy="-4"
+          >
+            {{ relationship.value.relationshipType }}
+          </text>
+        </g>
+      }
+      @for (node of graph().nodes; track node.value.id) {
+        @let point = at(node.value.id);
+        <g
+          class="graph__node"
+          [class.graph__node--picked]="pickedId() === node.value.id"
+          [attr.transform]="'translate(' + point.x + ' ' + point.y + ')'"
+          (pointerdown)="onPointerDown($event, node.value.id)"
+          (pointerup)="$event.stopPropagation(); onPointerUp(node)"
+          (pointercancel)="$event.stopPropagation(); onPointerUp()"
+        >
+          <circle r="22" />
+          <text text-anchor="middle" dy="4">{{ node.caption }}</text>
+        </g>
+      }
+    </g>
+  </svg>
+  @if (labels().length > 0) {
+    <div class="graph__labels" role="group" aria-label="Captions">
+      @for (label of labels(); track label.name) {
+        <button
+          type="button"
+          class="graph__label"
+          title="Choose what this label's nodes are captioned with"
+          [cdkMenuTriggerFor]="captionMenu.panel() ?? null"
+          [cdkMenuPosition]="captionMenu.position()"
+        >
+          {{ label.name }}
+        </button>
+        <app-menu
+          #captionMenu
+          [items]="label.items"
+          placement="down-start"
+          (selected)="chooseCaption(label.name, $event)"
+        />
+      }
+    </div>
+  }
+  @if (graph().truncated) {
+    <p class="graph__note">
+      Showing the first {{ maxNodes() }} nodes. Narrow the query to see the rest.
+    </p>
+  }
+}

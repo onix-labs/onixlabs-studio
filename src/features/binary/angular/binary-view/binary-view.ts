@@ -1,3 +1,4 @@
+import { Settings } from '@shared/angular/services/settings/settings';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -130,6 +131,11 @@ export class BinaryView implements OnInit, OnDestroy, FindHost {
    * Holds the structured logger for the binary view.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the settings, which say what a double-click selects.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds this tab's Find, over the disassembly listing ⌘F was pressed in. The listing is read-only,
@@ -369,7 +375,8 @@ export class BinaryView implements OnInit, OnDestroy, FindHost {
 
   /**
    * Snaps the selection to the whole instruction containing a double-clicked byte, so a double-click
-   * selects an instruction. Falls back to the single byte when no instruction covers the offset.
+   * selects an instruction, or to the byte alone when Double-Click Selects says so. Falls back to the
+   * single byte when no instruction covers the offset.
    * @param offset The double-clicked byte offset.
    */
   protected onUnitSelect(offset: number): void {
@@ -377,7 +384,10 @@ export class BinaryView implements OnInit, OnDestroy, FindHost {
     if (document === undefined) {
       return;
     }
-    const range: BinarySelection | null = document.instructionRangeAt(offset);
+    const range: BinarySelection | null =
+      this.settings.get('binaryEditor.doubleClickSelects') === 'instruction'
+        ? document.instructionRangeAt(offset)
+        : { start: offset, end: offset + 1 };
     if (range !== null) {
       document.selection.set(range);
       document.cursor.set(range.start);

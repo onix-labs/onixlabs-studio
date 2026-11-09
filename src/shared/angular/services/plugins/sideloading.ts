@@ -60,6 +60,24 @@ export class Sideloading {
   );
 
   /**
+   * Gets the folder sideloaded plugins are placed in, or null before main has said.
+   */
+  public readonly directory: Signal<string | null> = computed(
+    (): string | null => this.current().directory ?? null,
+  );
+
+  /**
+   * Opens the plugins folder in the system's file manager, creating it first when it is missing.
+   * @returns Resolves once main has handed the folder to the file manager.
+   */
+  public async openFolder(): Promise<void> {
+    const failure: string | undefined = await this.bridge?.invoke<string>(PluginChannel.OpenFolder);
+    if (failure !== undefined && failure.length > 0) {
+      this.log.warn('Sideloading', 'The plugins folder could not be opened', failure);
+    }
+  }
+
+  /**
    * Initialises the service, loading the state from the main process.
    */
   public constructor() {

@@ -1,3 +1,7 @@
+import type {
+  BinaryCopyFormat,
+  BinaryHexCase,
+} from '@shared/angular/services/settings/settings-registry';
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
 import { MENU_SEPARATOR, MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
@@ -14,6 +18,9 @@ import {
   RibbonStripMenuButton,
 } from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
+import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import {
   BinaryDocumentEntry,
@@ -64,6 +71,21 @@ export class BinaryRibbon {
   private readonly binaryPanels: BinaryPanels = inject(BinaryPanels);
 
   /**
+   * Holds the file opener, which opens the active file as text in the code editor.
+   */
+  private readonly fileOpener: FileOpener = inject(FileOpener);
+
+  /**
+   * Holds the settings, read for Large File Size Limit before a file opens as text.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the notifications, which say why a file too large for the text editor stays binary.
+   */
+  private readonly notifications: Notifications = inject(Notifications);
+
+  /**
    * Holds the structured logger for ribbon actions.
    */
   private readonly log: Log = inject(Log);
@@ -112,11 +134,29 @@ export class BinaryRibbon {
   );
 
   /**
+   * Gets whether the active document is locked against typing.
+   */
+  protected readonly readOnly: Signal<boolean> = computed(
+    (): boolean => this.activeDocument()?.readOnly() ?? false,
+  );
+
+  /**
    * Gets whether the active document is in insert (rather than overwrite) typing mode.
    */
   protected readonly insertMode: Signal<boolean> = computed(
     (): boolean => this.activeDocument()?.insertMode() ?? false,
   );
+
+  /**
+   * Locks the active document against typing, or unlocks it.
+   */
+  protected onToggleReadOnly(): void {
+    const document: BinaryDocumentEntry | undefined = this.activeDocument();
+    if (document !== undefined) {
+      this.log.info('binary.ribbon', `Editing ${document.readOnly() ? 'unlocked' : 'locked'}`);
+      document.readOnly.set(!document.readOnly());
+    }
+  }
 
   /**
    * Saves the active document's edits.
@@ -238,6 +278,28 @@ export class BinaryRibbon {
   });
 
   /**
+   * Opens the active file as text in the code editor, beside its binary tab — unless it is larger
+   * than Large File Size Limit, which the text editor does not open.
+   */
+  protected onOpenAsText(): void {
+    const document: BinaryDocumentEntry | undefined = this.activeDocument();
+    if (document === undefined) {
+      return;
+    }
+    const limitMb: number = this.settings.get('textEditor.largeFileSizeMb');
+    if (document.size() > limitMb * 1024 * 1024) {
+      this.notifications.notify({
+        severity: 'warning',
+        title: `${document.fileName} is too large to open as text`,
+        detail: `It is over the Large File Size Limit of ${limitMb} MB, set on Code › General.`,
+      });
+      return;
+    }
+    this.log.info('BinaryRibbon', 'Opening as text', document.path);
+    void this.fileOpener.openAsText(document.path);
+  }
+
+  /**
    * Toggles the disassembly panel for the active binary tab.
    */
   protected onToggleDisassembly(): void {
@@ -339,10 +401,10 @@ export class BinaryRibbon {
   ];
 
   /**
-   * Copies the selection as hex (the primary Copy action).
+   * Copies the selection in the Copy Format (the primary Copy action).
    */
   protected async onCopy(): Promise<void> {
-    await this.copySelection('hex');
+    await this.copySelection(this.settings.get('binaryEditor.copyFormat'));
   }
 
   /**
@@ -350,7 +412,7 @@ export class BinaryRibbon {
    * @param id The chosen variant identifier (`hex` or `ascii`).
    */
   protected async onCopyVariant(id: string): Promise<void> {
-    await this.copySelection(id === 'ascii' ? 'ascii' : 'hex');
+    await this.copySelection(id === 'ascii' ? 'text' : 'hex');
   }
 
   /**
@@ -365,14 +427,14 @@ export class BinaryRibbon {
    * @param id The chosen variant identifier (`hex` or `ascii`).
    */
   protected async onCutVariant(id: string): Promise<void> {
-    await this.cutSelection(id === 'ascii' ? 'ascii' : 'hex');
+    await this.cutSelection(id === 'ascii' ? 'text' : 'hex');
   }
 
   /**
    * Copies the selected bytes to the clipboard, formatted as hex pairs or printable ASCII.
    * @param kind Whether to copy the bytes as hex or as ASCII text.
    */
-  private async copySelection(kind: 'hex' | 'ascii'): Promise<void> {
+  private async copySelection(kind: BinaryCopyFormat): Promise<void> {
     const bytes: number[] = this.activeDocument()?.selectedBytes() ?? [];
     if (bytes.length > 0) {
       this.log.info('binary.ribbon', `Copy ${bytes.length} byte(s) as ${kind}`);
@@ -385,12 +447,13 @@ export class BinaryRibbon {
    * insert mode (deleting shortens the file), so the Cut button is disabled in overwrite mode.
    * @param kind Whether to copy the bytes as hex or as ASCII text.
    */
-  private async cutSelection(kind: 'hex' | 'ascii'): Promise<void> {
+  private async cutSelection(kind: BinaryCopyFormat): Promise<void> {
     const document: BinaryDocumentEntry | undefined = this.activeDocument();
     const selection: BinarySelection | null | undefined = document?.selection();
     if (
       document === undefined ||
       !document.insertMode() ||
+      document.readOnly() ||
       selection === null ||
       selection === undefined
     ) {
@@ -406,19 +469,46 @@ export class BinaryRibbon {
   }
 
   /**
-   * Formats bytes as space-separated hex pairs or as printable ASCII (`.` for non-printable bytes).
+   * Formats bytes as the setting's case asks, for a copy.
    * @param bytes The bytes to format.
    * @param kind The desired format.
    * @returns Returns the formatted string.
    */
-  private format(bytes: readonly number[], kind: 'hex' | 'ascii'): string {
-    if (kind === 'hex') {
-      return bytes.map((byte: number): string => byte.toString(16).padStart(2, '0')).join(' ');
-    }
-    return bytes
-      .map((byte: number): string =>
-        byte >= 0x20 && byte <= 0x7e ? String.fromCharCode(byte) : '.',
-      )
-      .join('');
+  private format(bytes: readonly number[], kind: BinaryCopyFormat): string {
+    return formatBytes(bytes, kind, this.settings.get('binaryEditor.hexCase'));
+  }
+}
+
+/**
+ * Writes bytes in a Copy Format.
+ * @param bytes The bytes to write.
+ * @param kind The format.
+ * @param hexCase The case hex is written in.
+ * @returns Returns the formatted text.
+ */
+export function formatBytes(
+  bytes: readonly number[],
+  kind: BinaryCopyFormat,
+  hexCase: BinaryHexCase,
+): string {
+  const hex: readonly string[] = bytes.map((byte: number): string => {
+    const digits: string = byte.toString(16).padStart(2, '0');
+    return hexCase === 'upper' ? digits.toUpperCase() : digits;
+  });
+  switch (kind) {
+    case 'hex':
+      return hex.join(' ');
+    case '0x':
+      return hex.map((digits: string): string => `0x${digits}`).join(', ');
+    case 'c-array':
+      return `{ ${hex.map((digits: string): string => `0x${digits}`).join(', ')} }`;
+    case 'base64':
+      return btoa(String.fromCharCode(...bytes));
+    case 'text':
+      return bytes
+        .map((byte: number): string =>
+          byte >= 0x20 && byte <= 0x7e ? String.fromCharCode(byte) : '.',
+        )
+        .join('');
   }
 }

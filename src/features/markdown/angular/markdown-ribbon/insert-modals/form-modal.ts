@@ -6,6 +6,8 @@ import {
   output,
   OutputEmitterRef,
 } from '@angular/core';
+import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 
@@ -20,7 +22,7 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
  */
 @Component({
   selector: 'app-form-modal',
-  imports: [Modal, ModalContent],
+  imports: [Button, ButtonRow, Modal, ModalContent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './insert-modal.scss',
   template: `
@@ -28,6 +30,7 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
       [open]="open()"
       [width]="width()"
       [ariaLabel]="heading()"
+      [frameless]="true"
       (dismiss)="cancelled.emit()"
     >
       <ng-template appModalContent>
@@ -35,19 +38,15 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
 
         <ng-content />
 
-        <div class="insert-modal__actions">
-          <button type="button" class="insert-modal__button" (click)="cancelled.emit()">
-            Cancel
-          </button>
-          <button
-            type="button"
-            class="insert-modal__button insert-modal__button--primary"
+        <app-button-row class="insert-modal__actions">
+          <app-button
+            variant="solid"
+            [label]="submitLabel()"
             [disabled]="!canSubmit()"
             (click)="confirmed.emit()"
-          >
-            {{ submitLabel() }}
-          </button>
-        </div>
+          />
+          <app-button variant="none" label="Cancel" (click)="cancelled.emit()" />
+        </app-button-row>
       </ng-template>
     </app-modal>
   `,

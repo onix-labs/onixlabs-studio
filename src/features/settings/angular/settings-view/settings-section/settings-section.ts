@@ -12,7 +12,14 @@ import { SettingRow } from '@shared/angular/components/forms/setting-row/setting
 import { SettingDescriptions } from '@features/settings/angular/setting-descriptions';
 import { SettingBinding, SettingBindings } from '@features/settings/angular/setting-bindings';
 import { findSection, SETTINGS_BY_KEY } from '@shared/angular/services/settings/settings-registry';
-import { SettingDef, VisibilityDef } from '@shared/angular/services/settings/settings-schema';
+import { installedContributions, PluginContribution } from '@shared/api/plugin-channels';
+import { Plugins } from '@shared/angular/services/plugins/plugins';
+import {
+  appliesToPlatform,
+  ContributionRequirement,
+  SettingDef,
+  VisibilityDef,
+} from '@shared/angular/services/settings/settings-schema';
 
 /**
  * Renders a settings section entirely from the registry: every setting in the section becomes a
@@ -40,6 +47,11 @@ export class SettingsSection {
    * whichever service owns it.
    */
   private readonly bindings: SettingBindings = inject(SettingBindings);
+
+  /**
+   * Holds the plugins, which decide whether a setting that needs one is shown.
+   */
+  private readonly plugins: Plugins = inject(Plugins);
 
   /**
    * Gets the identifier of the section to render.
@@ -71,6 +83,17 @@ export class SettingsSection {
    * @returns Returns true when the setting should be rendered.
    */
   private isVisible(setting: SettingDef): boolean {
+    if (!appliesToPlatform(setting)) return false;
+    const required: ContributionRequirement | undefined = setting.requiresContribution;
+    if (
+      required !== undefined &&
+      !installedContributions(this.plugins.plugins(), required.slot).some(
+        (contribution: PluginContribution): boolean =>
+          required.id === undefined || contribution.id === required.id,
+      )
+    ) {
+      return false;
+    }
     const condition: VisibilityDef | undefined = setting.visibleWhen;
     if (condition === undefined) return true;
 

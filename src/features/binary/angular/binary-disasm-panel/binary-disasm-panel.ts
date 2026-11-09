@@ -98,7 +98,6 @@ export class BinaryDisasmPanel implements OnDestroy {
     glyphMargin: false,
     lineDecorationsWidth: 0,
     renderLineHighlight: 'none',
-    scrollBeyondLastLine: false,
     contextmenu: false,
     wordWrap: 'off',
     padding: { top: 4 },
@@ -128,6 +127,9 @@ export class BinaryDisasmPanel implements OnDestroy {
     // resolved independently, and reporting "no decoder" over a visible listing would be absurd.
     if (document.listing() !== null) {
       return null;
+    }
+    if (document.decodeSkipped() !== null) {
+      return 'This file is over the Decode Limit, so it was not decoded. Settings › Binary raises it.';
     }
     const key: string | null = formatKey(document.format());
     if (key === null) {

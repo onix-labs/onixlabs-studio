@@ -1,30 +1,5 @@
 <app-ribbon-overflow>
-  <!-- The ribbon chooses the sub-view (#948): one is shown at a time, each with its own side panel,
-       so these are toggles that always show which is pressed. -->
-  <app-ribbon-strip-group title="View">
-    <app-ribbon-strip-button
-      [icon]="Icon.AI_MODELS"
-      label="Local Models"
-      [toggle]="true"
-      [pressed]="section() === 'models'"
-      (action)="onShow('models')"
-    />
-    <app-ribbon-strip-button
-      [icon]="Icon.AI_PROFILES"
-      label="Prompt Profiles"
-      [toggle]="true"
-      [pressed]="section() === 'profiles'"
-      (action)="onShow('profiles')"
-    />
-    <app-ribbon-strip-button
-      [icon]="Icon.AI_SKILLS"
-      label="Skills"
-      [toggle]="true"
-      [pressed]="section() === 'skills'"
-      (action)="onShow('skills')"
-    />
-  </app-ribbon-strip-group>
-
+  <!-- The sub-view is chosen in the sidebar; the ribbon follows it with that sub-view's groups. -->
   @switch (section()) {
     @case ('models') {
       <app-ribbon-strip-group title="Runtime">
@@ -51,7 +26,7 @@
           />
         }
         <app-ribbon-strip-button
-          [icon]="Icon.REFRESH"
+          [icon]="Icon.REFRESH_DUOTONE"
           label="Refresh"
           [disabled]="busy()"
           (action)="onRefresh()"
@@ -59,42 +34,73 @@
       </app-ribbon-strip-group>
     }
     @case ('profiles') {
-      <app-ribbon-strip-group title="Prompt Profiles">
+      <app-ribbon-strip-group title="Library">
         <app-ribbon-strip-button
-          [icon]="Icon.PLUS"
+          [icon]="Icon.PLUS_CIRCLE"
           label="New Profile"
           [disabled]="!registered().has('profiles')"
           (action)="onAdd('profiles')"
         />
+        <app-ribbon-strip-button
+          [icon]="Icon.REFRESH_DUOTONE"
+          label="Refresh"
+          [disabled]="false"
+          (action)="onRefreshProfiles()"
+        />
+        <app-ribbon-strip-column>
+          <app-ribbon-strip-button-small
+            [icon]="Icon.DOWNLOAD"
+            label="Import"
+            [disabled]="!registered().has('profiles') || !canTransfer"
+            (action)="onImportProfiles()"
+          />
+          <app-ribbon-strip-button-small
+            [icon]="Icon.UPLOAD_SIMPLE"
+            label="Export"
+            [disabled]="!canTransfer"
+            (action)="onExportLibrary()"
+          />
+          <app-ribbon-strip-button-small
+            [icon]="Icon.FOLDER_OPEN"
+            label="Open Folder"
+            (action)="onOpenProfileFolder()"
+          />
+        </app-ribbon-strip-column>
       </app-ribbon-strip-group>
     }
     @case ('skills') {
-      <app-ribbon-strip-group title="Skills">
+      <app-ribbon-strip-group title="Library">
         <app-ribbon-strip-button
-          [icon]="Icon.PLUS"
+          [icon]="Icon.PLUS_CIRCLE"
           label="New Skill"
           [disabled]="!registered().has('skills')"
           (action)="onAdd('skills')"
         />
         <app-ribbon-strip-button
-          [icon]="Icon.DOWNLOAD"
-          label="Import"
-          [disabled]="!registered().has('skills')"
-          (action)="onImportSkill()"
-        />
-      </app-ribbon-strip-group>
-      <app-ribbon-strip-group title="Library">
-        <app-ribbon-strip-button
-          [icon]="Icon.FOLDER_OPEN"
-          label="Open Folder"
-          (action)="onOpenSkillFolder()"
-        />
-        <app-ribbon-strip-button
-          [icon]="Icon.REFRESH"
+          [icon]="Icon.REFRESH_DUOTONE"
           label="Refresh"
           [disabled]="skillsLoading()"
           (action)="onRefreshSkills()"
         />
+        <app-ribbon-strip-column>
+          <app-ribbon-strip-button-small
+            [icon]="Icon.DOWNLOAD"
+            label="Import"
+            [disabled]="!registered().has('skills') || !canTransfer"
+            (action)="onImportSkill()"
+          />
+          <app-ribbon-strip-button-small
+            [icon]="Icon.UPLOAD_SIMPLE"
+            label="Export"
+            [disabled]="!canTransfer"
+            (action)="onExportLibrary()"
+          />
+          <app-ribbon-strip-button-small
+            [icon]="Icon.FOLDER_OPEN"
+            label="Open Folder"
+            (action)="onOpenSkillFolder()"
+          />
+        </app-ribbon-strip-column>
       </app-ribbon-strip-group>
     }
   }

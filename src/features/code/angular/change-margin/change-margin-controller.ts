@@ -1,4 +1,5 @@
 import type * as MonacoApi from 'monaco-editor';
+import type { ChangeMarginMode } from '@shared/angular/services/settings/settings';
 import { computeLineChanges, LineChangeSet, splitLines } from './line-diff';
 
 /**
@@ -37,6 +38,11 @@ export interface ChangeMarginOptions {
    * Gets the overview-ruler colours for the change marks.
    */
   readonly colors: ChangeMarginColors;
+
+  /**
+   * Gets what the margin marks.
+   */
+  readonly mode: ChangeMarginMode;
 }
 
 /**
@@ -47,6 +53,7 @@ export const DEFAULT_CHANGE_MARGIN_OPTIONS: ChangeMarginOptions = {
   debounceMs: 200,
   maxLineCount: 20000,
   colors: { unsaved: '#d7a824', saved: '#2ea043' },
+  mode: 'all',
 };
 
 /**
@@ -168,6 +175,15 @@ export class ChangeMarginController {
   }
 
   /**
+   * Updates what the margin marks, used when the Change Margin setting changes, and redraws.
+   * @param mode What to mark.
+   */
+  public setMode(mode: ChangeMarginMode): void {
+    this.options = { ...this.options, mode };
+    this.refresh();
+  }
+
+  /**
    * Disposes the decorations, listeners and any pending debounce timer.
    */
   public dispose(): void {
@@ -214,11 +230,16 @@ export class ChangeMarginController {
 
   /**
    * Recomputes the change marks from the current content and writes them to the decorations
-   * collection. Clears the margin when there is no model or the file exceeds the line-count guard.
+   * collection. Clears the margin when it is off, there is no model or the file exceeds the
+   * line-count guard.
    */
   private refresh(): void {
     const model: MonacoApi.editor.ITextModel | null = this.editor.getModel();
-    if (model === null || model.getLineCount() > this.options.maxLineCount) {
+    if (
+      this.options.mode === 'off' ||
+      model === null ||
+      model.getLineCount() > this.options.maxLineCount
+    ) {
       this.decorations.clear();
       return;
     }
@@ -231,7 +252,7 @@ export class ChangeMarginController {
       const line: number = index + 1;
       if (changes.changedLines.has(line)) {
         next.push(this.lineDecoration(line, UNSAVED_CLASS, this.options.colors.unsaved));
-      } else {
+      } else if (this.options.mode === 'all') {
         next.push(this.lineDecoration(line, SAVED_CLASS, null));
       }
     }

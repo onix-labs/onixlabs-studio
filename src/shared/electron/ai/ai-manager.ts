@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { app, BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import { logger } from '@shared/electron/logger';
 import { liveSessionBusyReason, trackTaskEvent } from './live-session-activity';
+import { proposedOriginal } from './proposed-original';
 import type {
   AiProposedChange,
   AgentContextRef,
@@ -22,9 +23,11 @@ import type {
   AiRemoteControlMode,
   AiInputReply,
   AiModelInfo,
+  AiPermissionGrant,
   AiPermissionPosture,
   AiPermissionReply,
   AiProviderInfo,
+  AiRevokePermissionGrant,
   AiRunRequest,
   AiToolPolicy,
   AiRunState,
@@ -84,6 +87,8 @@ import {
   PermissionRuleStore,
   permissionRuleKey,
   permissionRuleScope,
+  permissionRuleTool,
+  permissionSessionKey,
 } from './permission-rule-store';
 import { RendererBridge } from './renderer-bridge';
 import { sanitizeLanguage, sanitizePromptExtra } from './prompt-guard';
@@ -116,6 +121,11 @@ interface PendingPermission {
    * remembered for the session (#979).
    */
   readonly ruleKey: string | null;
+
+  /**
+   * Gets the key a session grant for this prompt is held under.
+   */
+  readonly sessionKey: string;
 }
 
 /**
@@ -146,12 +156,23 @@ const MAX_RUN_TIMEOUT_MS: number = 7_200_000;
 const MAX_SESSION_LIFETIME_MS: number = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * The most live-harness sessions kept open at once (#328). Beyond this the least-recently-used session
- * is reaped — a memory-pressure safety valve that applies even under an "indefinite" lifetime, so a
- * held-open session can never exhaust the machine. A reaped session reopens transparently on its next
- * turn.
+ * The most live-harness sessions kept open at once (#328) until a run says otherwise — the Maximum Live
+ * Agent Sessions setting's default. Beyond this the least-recently-used session is reaped, a
+ * memory-pressure safety valve that applies even under an "indefinite" lifetime. A reaped session
+ * reopens transparently on its next turn.
  */
-const MAX_LIVE_SESSIONS: number = 8;
+const DEFAULT_MAX_LIVE_SESSIONS: number = 16;
+
+/**
+ * The largest cap a run request may set, bounding untrusted input (the largest offered setting is 64).
+ */
+const MAX_LIVE_SESSIONS_CEILING: number = 64;
+
+/**
+ * The steps a turn may take when its request names no limit — the Maximum Agent Steps per Turn
+ * setting's default.
+ */
+const DEFAULT_MAX_STEPS: number = 16;
 
 /**
  * The window streamed deltas merge over before the renderer sees them (see `emit`). Matches the
@@ -279,6 +300,15 @@ interface RunClock {
 }
 
 /**
+ * What the transcript says about why a command was let out of the sandbox.
+ */
+const UNSANDBOXED_REASONS: Readonly<Record<AuditGrantSource, string>> = {
+  policy: 'Ran outside the sandbox: its permission is set to Allowed.',
+  posture: 'Ran outside the sandbox: Allow All is on.',
+  'gated-or-auto': 'Ran outside the sandbox: you allowed it.',
+};
+
+/**
  * Coordinates the agent subsystem in the main process: authentication (delegated to
  * {@link AiAuthManager}), a registry of {@link AgentProvider}s behind one seam, and the run/abort
  * lifecycle that streams provider-agnostic events to the renderer. Mirrors the other IPC managers
@@ -311,6 +341,12 @@ export class AiManager {
    * Holds the abort controllers of in-flight runs, keyed by request id.
    */
   private readonly runs: Map<string, AbortController> = new Map<string, AbortController>();
+
+  /**
+   * Holds the most live sessions kept open at once, as the latest run request set it (Maximum Live
+   * Agent Sessions), or 0 for no limit.
+   */
+  private liveSessionCap: number = DEFAULT_MAX_LIVE_SESSIONS;
 
   /**
    * Holds the held-open live sessions of live-harness agents (#327), keyed by the renderer's stable
@@ -551,6 +587,17 @@ export class AiManager {
         this.resolvePermission(reply);
       }
     });
+    ipcMain.handle(AiChannel.ListPermissionGrants, (): readonly AiPermissionGrant[] =>
+      this.rules.list(),
+    );
+    ipcMain.handle(
+      AiChannel.RevokePermissionGrant,
+      (_event: IpcMainInvokeEvent, request: unknown): boolean =>
+        this.isGrantRevocation(request) ? this.revokeGrant(request) : false,
+    );
+    ipcMain.handle(AiChannel.TakeNarrowedGrants, (): readonly string[] =>
+      this.rules.takeNarrowed(),
+    );
     ipcMain.on(AiChannel.InputReply, (_event: IpcMainEvent, reply: unknown): void => {
       logger.trace('AiManager.register', 'InputReply received');
       if (this.isInputReply(reply)) {
@@ -587,7 +634,16 @@ export class AiManager {
     ipcMain.handle(AiChannel.Run, (_event: IpcMainInvokeEvent, request: unknown): void => {
       logger.trace('AiManager.register', 'Run invoked');
       if (this.isRunRequest(request)) {
-        void this.run(request);
+        // A run that fails before its turn is under way has nothing else to report it, and the
+        // renderer would show it Working for ever.
+        void this.run(request).catch((error: unknown): void => {
+          logger.error('AiManager', `Agent run ${request.requestId} could not start`, error);
+          this.finish(
+            request.requestId,
+            'error',
+            error instanceof Error ? error.message : String(error),
+          );
+        });
       } else {
         logger.warn('AiManager.register', 'Rejected malformed run request');
       }
@@ -743,7 +799,7 @@ export class AiManager {
     this.runs.clear();
     for (const entry of this.liveSessions.values()) {
       this.clearReap(entry);
-      void entry.session.close();
+      this.closeQuietly(entry.session);
     }
     this.liveSessions.clear();
     for (const requestId of [...this.clocks.keys()]) {
@@ -874,10 +930,23 @@ export class AiManager {
     provider: AgentProvider,
     settings: Readonly<Record<string, unknown>> = {},
   ): Promise<AiDiscoverModelsResult> {
-    const report: AgentModelReport | null = await provider.discoverModels!(
-      this.authForConnection(connection.id),
-      settings,
-    );
+    let report: AgentModelReport | null;
+    try {
+      // ⛔ The credential comes from the connection that arrived, for the reason the provider does: the
+      // cached map holds only what `listProviders` last saw, and this one may be newer than that (#697).
+      report = await provider.discoverModels!(
+        this.auth.authFor(connection.id, connection.auth),
+        settings,
+      );
+    } catch (error: unknown) {
+      logger.warn('AiManager.discoverThroughProvider', `${provider.label} failed`, error);
+      return {
+        ok: false,
+        models: connection.models,
+        added: 0,
+        detail: `${provider.label} could not list its models: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
     if (report === null) {
       return {
         ok: false,
@@ -1034,6 +1103,16 @@ export class AiManager {
       typeof request.tokenCap === 'number' && request.tokenCap > 0
         ? Math.floor(request.tokenCap)
         : 0;
+    // Maximum Agent Steps per Turn: a whole number, 0 for no limit; anything else is the default.
+    const maxSteps: number =
+      typeof request.maxSteps === 'number' &&
+      Number.isFinite(request.maxSteps) &&
+      request.maxSteps >= 0
+        ? Math.floor(request.maxSteps)
+        : DEFAULT_MAX_STEPS;
+    // Require OS Sandbox defaults to on and Auto-Allow to off: only an explicit boolean changes either.
+    const requireSandbox: boolean = request.requireSandbox !== false;
+    const autoAllowSandboxedShell: boolean = request.autoAllowSandboxedShell === true;
     const mode: AgentMode = request.mode === 'chat' ? 'chat' : 'agent';
     // Honour the requested reasoning effort only when the provider actually offers it (#330); an
     // unknown or unsupported level from the renderer falls back to the provider default.
@@ -1066,6 +1145,9 @@ export class AiManager {
     // The user's layers (#300, #301). The prompt text was resolved by the renderer, which owns the
     // profiles; the skills are resolved here, because the library is on disk and main owns it.
     const systemPromptExtra: string = sanitizePromptExtra(request.systemPromptExtra);
+    // Registered before the first wait, so a Stop arriving during it has something to reach.
+    const controller: AbortController = new AbortController();
+    this.runs.set(request.requestId, controller);
     const skills: readonly OfferedSkill[] = await this.skills.offer(surface, language);
     if (skills.length > 0) {
       logger.debug(
@@ -1086,8 +1168,11 @@ export class AiManager {
       'AiManager.run',
       `Run ${request.requestId}: model ${model}, mode ${mode}, posture ${permissionPosture}, surface ${request.surface ?? 'editor'}`,
     );
-    const controller: AbortController = new AbortController();
-    this.runs.set(request.requestId, controller);
+    if (controller.signal.aborted) {
+      logger.debug('AiManager.run', `Run ${request.requestId} was stopped before it started`);
+      this.finish(request.requestId, 'aborted', '');
+      return;
+    }
     // Arm the wall-clock budget when one is set; expiry aborts through the ordinary abort path and
     // finish() turns the stop into a structured timeout error.
     const runTimeoutMs: number =
@@ -1116,6 +1201,9 @@ export class AiManager {
       allowedNetworkLocations,
       deniedNetworkLocations,
       tokenCap,
+      maxSteps,
+      requireSandbox,
+      autoAllowSandboxedShell,
       agentShell,
       claudeExecutable,
       codexExecutable,
@@ -1185,8 +1273,18 @@ export class AiManager {
           cancel,
           change,
         ),
-      recordAudit: (name: string, detail: string, source: AuditGrantSource): void =>
-        this.recordAudit(name, detail, request.workspaceRoot, source),
+      recordAudit: (
+        name: string,
+        detail: string,
+        source: AuditGrantSource,
+        sandboxed?: boolean,
+        toolId?: string,
+      ): void => {
+        this.recordAudit(name, detail, request.workspaceRoot, source, sandboxed);
+        if (sandboxed === false) {
+          this.reportUnsandboxed(request.requestId, detail, source, toolId);
+        }
+      },
       requestInput: (
         question: string,
         choices: readonly AiInputChoice[],
@@ -1270,6 +1368,7 @@ export class AiManager {
     ) {
       return null;
     }
+    this.liveSessionCap = this.liveSessionCapFor(request);
     const existing: LiveSessionEntry | undefined = this.liveSessions.get(key);
     if (existing !== undefined) {
       // Continue the held-open session only when it is still alive AND compatible. A session whose
@@ -1322,7 +1421,7 @@ export class AiManager {
         this.endSession(key, entry, reason);
       }
     });
-    // Memory-pressure valve: keep at most MAX_LIVE_SESSIONS open, reaping the least-recently-used.
+    // Memory-pressure valve: keep at most the cap open, reaping the least-recently-used.
     this.reapOverflow(key);
     return this.runLiveTurn(key, entry, context);
   }
@@ -1345,25 +1444,52 @@ export class AiManager {
     entry.lastActivity = Date.now();
     entry.lastRequestId = context.requestId;
     entry.activeTurns += 1;
-    return this.trackLiveTurn(key, entry.session, entry.session.turn(context)).finally((): void => {
-      entry.activeTurns -= 1;
-      const current: LiveSessionEntry | undefined = this.liveSessions.get(key);
-      // Its harness was updated or removed during the turn: the turn was let finish, and now the
-      // session ends, so the next turn resumes on whatever is installed now (#881).
-      if (current === entry && entry.retiring && entry.activeTurns === 0) {
-        logger.info(
-          'AiManager',
-          `Ending live session ${key} now its turn is over: harness changed`,
-        );
-        this.endSession(key, entry, 'retired');
-        return;
-      }
-      // Idle again: re-arm the reap for whichever entry is still registered (a failed turn was evicted).
-      if (current !== undefined) {
-        current.lastActivity = Date.now();
-        this.armReap(key, current);
-      }
-    });
+    return this.trackLiveTurn(key, entry.session, this.startTurn(entry.session, context)).finally(
+      (): void => {
+        entry.activeTurns -= 1;
+        const current: LiveSessionEntry | undefined = this.liveSessions.get(key);
+        // Its harness was updated or removed during the turn: the turn was let finish, and now the
+        // session ends, so the next turn resumes on whatever is installed now (#881).
+        if (current === entry && entry.retiring && entry.activeTurns === 0) {
+          logger.info(
+            'AiManager',
+            `Ending live session ${key} now its turn is over: harness changed`,
+          );
+          this.endSession(key, entry, 'retired');
+          return;
+        }
+        // Idle again: re-arm the reap for whichever entry is still registered (a failed turn was evicted).
+        if (current !== undefined) {
+          current.lastActivity = Date.now();
+          this.armReap(key, current);
+        }
+      },
+    );
+  }
+
+  /**
+   * Starts a turn in a session, so one that throws rather than rejects is carried the same way: the
+   * caller has already counted the turn, and only a settling promise uncounts it.
+   * @param session The session.
+   * @param context The turn's context.
+   * @returns Returns the turn promise.
+   */
+  private async startTurn(session: AgentSession, context: AgentRunContext): Promise<void> {
+    await session.turn(context);
+  }
+
+  /**
+   * Reads the live-session cap a run request carries (Maximum Live Agent Sessions): 0 for no limit, a
+   * whole number up to {@link MAX_LIVE_SESSIONS_CEILING}, or the current cap when the request names none.
+   * @param request The run request.
+   * @returns Returns the cap, or 0 for no limit.
+   */
+  private liveSessionCapFor(request: AiRunRequest): number {
+    const value: number | undefined = request.maxLiveSessions;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+      return this.liveSessionCap;
+    }
+    return Math.min(Math.floor(value), MAX_LIVE_SESSIONS_CEILING);
   }
 
   /**
@@ -1479,13 +1605,13 @@ export class AiManager {
   }
 
   /**
-   * Reaps the least-recently-used live sessions until at most {@link MAX_LIVE_SESSIONS} remain — the
-   * memory-pressure safety valve (#328), applied even under an indefinite lifetime. The just-opened
-   * session (identified by key) is never the victim.
+   * Reaps the least-recently-used live sessions until at most {@link liveSessionCap} remain — the
+   * memory-pressure safety valve (#328), applied even under an indefinite lifetime; a cap of 0 (no
+   * limit) reaps nothing. The just-opened session (identified by key) is never the victim.
    * @param keepKey The key of the session that must stay open (the one just opened).
    */
   private reapOverflow(keepKey: string): void {
-    while (this.liveSessions.size > MAX_LIVE_SESSIONS) {
+    while (this.liveSessionCap > 0 && this.liveSessions.size > this.liveSessionCap) {
       let oldestKey: string | null = null;
       let oldest: LiveSessionEntry | null = null;
       for (const [entryKey, entry] of this.liveSessions) {
@@ -1509,7 +1635,7 @@ export class AiManager {
       }
       logger.debug(
         'AiManager.reapOverflow',
-        `Live session cap (${MAX_LIVE_SESSIONS}) exceeded; reaping least-recently-used session ${oldestKey}`,
+        `Live session cap (${this.liveSessionCap}) exceeded; reaping least-recently-used session ${oldestKey}`,
       );
       this.dropSession(oldestKey, oldest, 'evicted');
     }
@@ -1541,12 +1667,23 @@ export class AiManager {
     if (this.liveSessions.get(key) === entry) {
       this.liveSessions.delete(key);
     }
-    void entry.session.close();
+    this.closeQuietly(entry.session);
     this.emit({
       requestId: entry.lastRequestId,
       kind: 'session-ended',
       agentSessionId: key,
       reason,
+    });
+  }
+
+  /**
+   * Closes a session nothing is left waiting on, so a harness failing to close is a line in the log and
+   * not an unhandled rejection: the session is already gone from Studio's point of view.
+   * @param session The session.
+   */
+  private closeQuietly(session: AgentSession): void {
+    void session.close().catch((error: unknown): void => {
+      logger.warn('AiManager', 'A live session failed to close', error);
     });
   }
 
@@ -1568,7 +1705,7 @@ export class AiManager {
       if (entry?.session === session) {
         this.endSession(key, entry, 'evicted');
       } else {
-        void session.close();
+        this.closeQuietly(session);
       }
       throw error;
     });
@@ -1918,8 +2055,9 @@ export class AiManager {
   ): Promise<boolean> {
     // A command tool's rule names its exact command (#979); a session grant still covers the tool.
     const ruleKey: string | null = permissionRuleKey(name, detail);
+    const sessionKey: string = permissionSessionKey(name, detail);
     if (
-      this.sessionAllowed.has(name) ||
+      this.sessionAllowed.has(sessionKey) ||
       (ruleKey !== null && this.rules.isAllowed(ruleKey, workspaceRoot))
     ) {
       logger.debug('AiManager.requestPermission', `Auto-granted "${name}" from a remembered rule`);
@@ -1936,7 +2074,7 @@ export class AiManager {
           resolve(granted);
         }
       };
-      this.permissions.set(permissionId, { settle, name, workspaceRoot, ruleKey });
+      this.permissions.set(permissionId, { settle, name, workspaceRoot, ruleKey, sessionKey });
       if (signal.aborted) {
         settle(false);
         return;
@@ -1959,15 +2097,26 @@ export class AiManager {
         );
       }
       signal.addEventListener('abort', (): void => settle(false), { once: true });
-      this.emit({
-        requestId,
-        kind: 'permission',
-        permissionId,
-        name,
-        detail,
-        hasWorkspace: workspaceRoot !== null,
-        remembers: permissionRuleScope(name, detail),
-        ...(change === undefined ? {} : { change }),
+      const prompt: (proposed?: AiProposedChange) => void = (proposed?: AiProposedChange): void =>
+        this.emit({
+          requestId,
+          kind: 'permission',
+          permissionId,
+          name,
+          detail,
+          hasWorkspace: workspaceRoot !== null,
+          remembers: permissionRuleScope(name, detail),
+          ...(proposed === undefined ? {} : { change: proposed }),
+        });
+      if (change === undefined) {
+        prompt();
+        return;
+      }
+      void proposedOriginal(change.path, workspaceRoot).then((original: string | null): void => {
+        // The prompt may have been answered from elsewhere or aborted while the file was read.
+        if (this.permissions.has(permissionId)) {
+          prompt({ ...change, original });
+        }
       });
     });
   }
@@ -1979,12 +2128,14 @@ export class AiManager {
    * @param detail The one-line target summary.
    * @param workspaceRoot The run's workspace root, or null for none.
    * @param source The coarse reason the action was allowed.
+   * @param sandboxed Whether a shell command ran inside the OS sandbox, when it was one.
    */
   private recordAudit(
     name: string,
     detail: string,
     workspaceRoot: string | null,
     source: AuditGrantSource,
+    sandboxed?: boolean,
   ): void {
     logger.trace('AiManager.recordAudit', `Auditing executed action "${name}"`);
     this.auditLog ??= new AgentAuditLog(app.getPath('userData'));
@@ -1994,7 +2145,33 @@ export class AiManager {
       target: detail,
       workspaceRoot,
       source,
+      ...(sandboxed === undefined ? {} : { sandboxed }),
     });
+  }
+
+  /**
+   * Reports a command that ran outside the sandbox (#1160): a line in `studio.log` for whoever reads it
+   * later, and the transcript's mark on the call, each saying why it was allowed.
+   * @param requestId The run that ran it.
+   * @param detail The command's summary.
+   * @param source The coarse reason it was allowed.
+   * @param toolId The tool use, when the harness says.
+   */
+  private reportUnsandboxed(
+    requestId: string,
+    detail: string,
+    source: AuditGrantSource,
+    toolId?: string,
+  ): void {
+    logger.info('AiManager', `Ran outside the sandbox (${source}): ${detail}`);
+    if (toolId !== undefined) {
+      this.emit({
+        requestId,
+        kind: 'tool-unsandboxed',
+        toolId,
+        reason: UNSANDBOXED_REASONS[source],
+      });
+    }
   }
 
   /**
@@ -2013,7 +2190,7 @@ export class AiManager {
         `Remembering grant for "${pending.name}" (scope ${reply.remember})`,
       );
       if (reply.remember === 'session') {
-        this.sessionAllowed.add(pending.name);
+        this.sessionAllowed.add(pending.sessionKey);
       } else if (pending.ruleKey === null) {
         // The prompt only offered the session; a longer scope cannot name the whole command.
         logger.warn(
@@ -2025,6 +2202,18 @@ export class AiManager {
       }
     }
     pending.settle(reply.granted);
+  }
+
+  /**
+   * Revokes a remembered grant, with any session grant for its tool: a session grant covers the whole
+   * tool, so leaving one behind would let the next use through with no prompt after the user had just
+   * asked for one (#1164).
+   * @param request The grant to revoke.
+   * @returns Returns false when the revocation could not be saved.
+   */
+  private revokeGrant(request: AiRevokePermissionGrant): boolean {
+    this.sessionAllowed.delete(permissionRuleTool(request.key));
+    return this.rules.revoke(request.key, request.workspaceRoot);
   }
 
   /**
@@ -2151,6 +2340,14 @@ export class AiManager {
    * @param reply The renderer's reply.
    */
   private resolveEditDecision(reply: AiEditDecisionReply): void {
+    // ⛔ Only an answer to a decision actually open counts: a stale or forged reply must not be able to
+    // switch off every later edit prompt.
+    const settle: ((choice: EditDecisionOutcome) => void) | undefined = this.editDecisions.get(
+      reply.decisionId,
+    );
+    if (settle === undefined) {
+      return;
+    }
     if (reply.choice === 'yes-auto') {
       logger.debug(
         'AiManager.resolveEditDecision',
@@ -2158,7 +2355,7 @@ export class AiManager {
       );
       this.autoAcceptEdits = true;
     }
-    this.editDecisions.get(reply.decisionId)?.(reply.choice === 'no' ? 'no' : 'yes');
+    settle(reply.choice === 'no' ? 'no' : 'yes');
   }
 
   /**
@@ -2211,6 +2408,22 @@ export class AiManager {
   }
 
   /**
+   * Narrows an untrusted IPC payload to a {@link AiRevokePermissionGrant}.
+   * @param value The payload.
+   * @returns Returns true when it names a grant.
+   */
+  private isGrantRevocation(value: unknown): value is AiRevokePermissionGrant {
+    if (typeof value !== 'object' || value === null) {
+      return false;
+    }
+    const record: Record<string, unknown> = value as Record<string, unknown>;
+    return (
+      typeof record['key'] === 'string' &&
+      (record['workspaceRoot'] === null || typeof record['workspaceRoot'] === 'string')
+    );
+  }
+
+  /**
    * Narrows an untrusted IPC payload to a {@link AiPermissionReply}.
    * @param value The payload.
    * @returns Returns true when the payload has the required shape.
@@ -2256,6 +2469,10 @@ export class AiManager {
       (record['runTimeoutMs'] === undefined || typeof record['runTimeoutMs'] === 'number') &&
       (record['agentSessionLifetimeMs'] === undefined ||
         typeof record['agentSessionLifetimeMs'] === 'number') &&
+      (record['maxLiveSessions'] === undefined || typeof record['maxLiveSessions'] === 'number') &&
+      (record['requireSandbox'] === undefined || typeof record['requireSandbox'] === 'boolean') &&
+      (record['autoAllowSandboxedShell'] === undefined ||
+        typeof record['autoAllowSandboxedShell'] === 'boolean') &&
       (record['effort'] === undefined || typeof record['effort'] === 'string') &&
       (record['remoteControl'] === undefined || typeof record['remoteControl'] === 'string')
     );
@@ -2272,25 +2489,29 @@ export class AiManager {
       return [];
     }
     const allowedTypes: readonly string[] = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
-    // ~6 MB of base64 (~4.5 MB of image) per image; the composer enforces a smaller cap already.
-    const maxDataLength: number = 6_000_000;
-    return value
-      .filter((entry: unknown): entry is AiImageRef => {
-        if (entry === null || typeof entry !== 'object') {
-          return false;
-        }
-        const record: Record<string, unknown> = entry as Record<string, unknown>;
-        return (
-          typeof record['mediaType'] === 'string' &&
-          allowedTypes.includes(record['mediaType']) &&
-          typeof record['data'] === 'string' &&
-          record['data'].length > 0 &&
-          record['data'].length <= maxDataLength &&
-          /^[A-Za-z0-9+/=]+$/.test(record['data']) &&
-          (record['name'] === undefined || typeof record['name'] === 'string')
-        );
-      })
-      .slice(0, 6);
+    // The largest Size per Image choice (16 MB) as base64, which inflates by ~4/3, plus a little
+    // slack; the composer enforces the chosen, usually smaller, cap already.
+    const maxDataLength: number = 22_500_000;
+    return (
+      value
+        .filter((entry: unknown): entry is AiImageRef => {
+          if (entry === null || typeof entry !== 'object') {
+            return false;
+          }
+          const record: Record<string, unknown> = entry as Record<string, unknown>;
+          return (
+            typeof record['mediaType'] === 'string' &&
+            allowedTypes.includes(record['mediaType']) &&
+            typeof record['data'] === 'string' &&
+            record['data'].length > 0 &&
+            record['data'].length <= maxDataLength &&
+            /^[A-Za-z0-9+/=]+$/.test(record['data']) &&
+            (record['name'] === undefined || typeof record['name'] === 'string')
+          );
+        })
+        // The largest Images per Message choice; the composer enforces the chosen count already.
+        .slice(0, 16)
+    );
   }
 
   /**

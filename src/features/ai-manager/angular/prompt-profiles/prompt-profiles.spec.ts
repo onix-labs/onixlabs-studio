@@ -1,3 +1,4 @@
+import { By } from '@angular/platform-browser';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterAll, beforeAll, describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { AGENT_SURFACE_LABELS, AGENT_SURFACES } from '@shared/api/ai-types';
@@ -6,9 +7,14 @@ import { drainMilkdownTimers } from '@shared/angular/testing/drain-milkdown-time
 import { stubCrepeEnvironment } from '@shared/angular/testing/stub-crepe-environment';
 import { AiLibraryCommands } from '../ai-library-commands/ai-library-commands';
 import { PromptProfilesSection } from './prompt-profiles';
+import {
+  openSidebarSection,
+  ProfilesWithSidebar,
+} from '../ai-manager-sidebar/ai-manager-sidebar.testing';
+import { AiManagerNavigation } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
 
 describe('PromptProfilesSection', () => {
-  let fixture: ComponentFixture<PromptProfilesSection>;
+  let fixture: ComponentFixture<ProfilesWithSidebar>;
   let service: PromptProfiles;
 
   // A selected profile mounts a markdown field, a Crepe editor: jsdom needs the browser
@@ -23,10 +29,22 @@ describe('PromptProfilesSection', () => {
   beforeEach(async () => {
     localStorage.clear();
     await TestBed.configureTestingModule({ imports: [PromptProfilesSection] }).compileComponents();
-    fixture = TestBed.createComponent(PromptProfilesSection);
+    TestBed.inject(AiManagerNavigation).show('profiles');
+    fixture = TestBed.createComponent(ProfilesWithSidebar);
     service = TestBed.inject(PromptProfiles);
     await fixture.whenStable();
+    await openSidebarSection(fixture, 'Prompt Profiles');
   });
+
+  /**
+   * Gets the section under test, inside its host.
+   * @returns Returns the section, typed loosely so a spec can reach its protected members.
+   */
+  function section(): never {
+    return fixture.debugElement
+      .query(By.directive(PromptProfilesSection))
+      .injector.get(PromptProfilesSection) as never;
+  }
 
   /**
    * Gets the rendered root.
@@ -86,7 +104,7 @@ describe('PromptProfilesSection', () => {
     expect(entries().map((entry) => entry.textContent?.trim())).toEqual(['House style', 'Terse']);
     expect(entries()[1].classList.contains('category-list__item--muted')).toBe(true);
 
-    const search: HTMLInputElement = element().querySelector('.category-list__search input')!;
+    const search: HTMLInputElement = element().querySelector('.sidebar__search input')!;
     search.value = 'ters';
     search.dispatchEvent(new Event('input'));
     fixture.detectChanges();
@@ -115,11 +133,7 @@ describe('PromptProfilesSection', () => {
     fixture.detectChanges();
     await selectFirst();
     const dialog: { deleteTarget(): unknown; confirmDelete(): void; cancelDelete(): void } =
-      fixture.componentInstance as unknown as {
-        deleteTarget(): unknown;
-        confirmDelete(): void;
-        cancelDelete(): void;
-      };
+      section();
     // No Delete at the foot of the editor any more; it is the bin on the entry.
     expect(element().querySelector('.library__footer')).toBeNull();
 

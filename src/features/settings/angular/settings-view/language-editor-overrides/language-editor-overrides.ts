@@ -11,13 +11,20 @@ import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Dropdown } from '@shared/angular/components/forms/dropdown/dropdown';
 import { NumberField } from '@shared/angular/components/forms/number-field/number-field';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import {
   PartialTextEditorSettings,
   Settings,
   TextEditorSettings,
 } from '@shared/angular/services/settings/settings';
-import { findSection } from '@shared/angular/services/settings/settings-registry';
+import {
+  BUILT_IN_FORMATTER_LANGUAGES,
+  codeSettings,
+  findSection,
+} from '@shared/angular/services/settings/settings-registry';
+import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import type { LspServerSummary } from '@shared/api/lsp-channels';
 import {
   ChoiceOption,
   ControlDef,
@@ -30,15 +37,61 @@ import {
 type EditorField = keyof TextEditorSettings;
 
 /**
- * Edits one language's overrides of the global text editor settings: the Editor half of a Language
- * Providers page. Rows are driven by the same registry metadata as the global editor settings — every
+ * Names the code settings page whose overridable settings a block of overrides shows.
+ */
+export type CodeOverrideSection = 'code-appearance' | 'code-editing';
+
+/**
+ * Names each block's code settings pages as the user sees them, for the line saying where the global
+ * values live.
+ */
+const SECTION_NAMES: Readonly<Record<CodeOverrideSection, string>> = {
+  'code-appearance': 'Code › Appearance, Code › Guides and Highlights and Code › Code Lenses',
+  'code-editing': 'Code › Editing, Code › Saving and Code › Suggestions and Hover',
+};
+
+/**
+ * Lists the registry sections each block of overrides draws from. A language's Appearance section
+ * covers how its code looks, which the global settings spread over two pages.
+ */
+const SECTION_IDS: Readonly<Record<CodeOverrideSection, readonly string[]>> = {
+  'code-appearance': ['code-appearance', 'code-highlighting', 'code-lens'],
+  'code-editing': ['code-editing', 'code-saving', 'code-suggestions'],
+};
+
+/**
+ * The key of the brace-style setting, which only a language server that takes it can honour.
+ */
+const BRACE_STYLE_KEY: string = 'textEditor.global.braceStyle';
+
+/**
+ * The key of the formatter choice, which means something only for a language with a built-in formatter.
+ */
+const DEFAULT_FORMATTER_KEY: string = 'textEditor.global.defaultFormatter';
+
+/**
+ * The keys of the per-language settings a project's `.editorconfig` can decide.
+ */
+const EDITOR_CONFIG_KEYS: ReadonlySet<string> = new Set<string>([
+  'textEditor.global.tabSize',
+  'textEditor.global.insertSpaces',
+  'textEditor.global.detectIndentation',
+  'textEditor.global.rulers',
+  'textEditor.global.trimTrailingWhitespace',
+  'textEditor.global.insertFinalNewline',
+  'textEditor.global.addByteOrderMark',
+]);
+
+/**
+ * Edits one language's overrides of the code settings: the Appearance or Editing section of a
+ * language's page under Code › Languages. Rows are driven by the same registry metadata as the global editor settings — every
  * setting marked `profileOverridable` gets a row with an Override tick and the setting's own control,
  * disabled until the override is on. An overridden setting falls back to the global value the moment
  * its override is cleared, so nothing here can strand a language on a stale value.
  */
 @Component({
   selector: 'app-language-editor-overrides',
-  imports: [Checkbox, Dropdown, NumberField, SettingRow, Toggle],
+  imports: [Checkbox, Dropdown, NumberField, SettingRow, TextField, Toggle],
   templateUrl: './language-editor-overrides.html',
   styleUrl: './language-editor-overrides.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -55,16 +108,82 @@ export class LanguageEditorOverrides {
   public readonly languageName: InputSignal<string> = input.required<string>();
 
   /**
+   * Gets the code settings page whose overridable settings are shown, or undefined for all of them.
+   */
+  public readonly section: InputSignal<CodeOverrideSection | undefined> = input<
+    CodeOverrideSection | undefined
+  >(undefined);
+
+  /**
    * Holds the settings service the overrides are read from and written to.
    */
   private readonly settings: Settings = inject(Settings);
 
   /**
-   * Gets the editor settings that may be overridden per language, from the registry.
+   * Holds the language-server settings, read for whether this language's server takes a brace style.
    */
-  protected readonly overridable: readonly SettingDef[] = (
-    findSection('text-editor')?.settings ?? []
-  ).filter((setting: SettingDef): boolean => setting.profileOverridable === true);
+  private readonly lspSettings: LspSettings = inject(LspSettings);
+
+  /**
+   * Gets the settings that may be overridden per language, from the registry: those of the chosen
+   * page, or every code setting.
+   */
+  protected readonly overridable: Signal<readonly SettingDef[]> = computed(
+    (): readonly SettingDef[] => {
+      const section: CodeOverrideSection | undefined = this.section();
+      const settings: readonly SettingDef[] =
+        section === undefined
+          ? codeSettings()
+          : SECTION_IDS[section].flatMap(
+              (id: string): readonly SettingDef[] => findSection(id)?.settings ?? [],
+            );
+      const hasBuiltInFormatter: boolean = BUILT_IN_FORMATTER_LANGUAGES.has(this.language());
+      return settings.filter(
+        (setting: SettingDef): boolean =>
+          setting.profileOverridable === true &&
+          (setting.key !== DEFAULT_FORMATTER_KEY || hasBuiltInFormatter),
+      );
+    },
+  );
+
+  /**
+   * Gets where the global values of the shown settings live, for the line explaining the Override
+   * tick; undefined when every code setting is shown.
+   */
+  protected readonly globalPage: Signal<string | undefined> = computed((): string | undefined => {
+    const section: CodeOverrideSection | undefined = this.section();
+    return section === undefined ? undefined : SECTION_NAMES[section];
+  });
+
+  /**
+   * Gets a value indicating whether the server serving this language honours a brace style. Only some
+   * do yet; the setting stays overridable everywhere, but says so where it would do nothing.
+   */
+  private readonly takesBraceStyle: Signal<boolean> = computed((): boolean => {
+    const server: string | null = this.lspSettings.serverForLanguage(this.language());
+    return this.lspSettings
+      .catalogue()
+      .some(
+        (summary: LspServerSummary): boolean =>
+          summary.id === server && summary.takesBraceStyle === true,
+      );
+  });
+
+  /**
+   * Gets the description shown for a setting: its own, plus a note where this language's server
+   * cannot honour it yet.
+   * @param setting The setting.
+   * @returns Returns the description.
+   */
+  protected describe(setting: SettingDef): string {
+    const note: string =
+      EDITOR_CONFIG_KEYS.has(setting.key) && this.settings.get('textEditor.honourEditorConfig')
+        ? ' Set by .editorconfig for the files one covers.'
+        : '';
+    return setting.key === BRACE_STYLE_KEY && !this.takesBraceStyle()
+      ? `${setting.description} Not supported by this language's server yet.`
+      : `${setting.description}${note}`;
+  }
 
   /**
    * Gets this language's overrides, or an empty set when it has none.
@@ -138,6 +257,15 @@ export class LanguageEditorOverrides {
       this.fieldOf(setting),
       coerced as TextEditorSettings[EditorField],
     );
+  }
+
+  /**
+   * Gets the placeholder for a text setting's control, or an empty string for other controls.
+   * @param setting The setting definition.
+   * @returns Returns the placeholder.
+   */
+  protected textPlaceholder(setting: SettingDef): string {
+    return setting.control.kind === 'text' ? (setting.control.placeholder ?? '') : '';
   }
 
   /**

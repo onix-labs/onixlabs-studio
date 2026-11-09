@@ -18,18 +18,17 @@ import {
   FileWriteResult,
   SaveDialogChoice,
 } from '@shared/api/file-channels';
+import {
+  isTextEncoding,
+  textDecodeOptions,
+  type TextDecodeOptions,
+  type TextEncoding,
+} from '@shared/api/text-encodings';
+import { realPathOf } from '@shared/electron/ai/write-confinement';
+import { readOnlySourcePath } from '@shared/electron/lsp/toolchain-source';
 import { TrustedPaths } from '@shared/electron/trusted-paths';
-
-/**
- * Specifies the UTF-8 byte-order mark, as a string (U+FEFF). Detected and stripped on read, and
- * re-added on write, so a file's BOM is preserved across edits.
- */
-const UTF8_BOM: string = String.fromCharCode(0xfeff);
-
-/**
- * Specifies the encoding label reported for text files. Only UTF-8 is supported for now.
- */
-const UTF8_ENCODING: string = 'UTF-8';
+import { decodeText, encodeText, type DecodedText } from '@shared/electron/text-encoding';
+import { WorkspaceContext } from '@shared/electron/workspace-context';
 
 /**
  * Specifies the index of the "Save" button in the confirm-save dialog.
@@ -47,8 +46,18 @@ const DONT_SAVE_BUTTON_INDEX: number = 1;
 const CANCEL_BUTTON_INDEX: number = 2;
 
 /**
+ * Specifies the reason a write outside everything the user opened is refused, shown as the failed save.
+ */
+const OUTSIDE_THE_BOUNDARY: string =
+  'Studio can only save files in an open workspace or files you chose yourself. Use Save As to choose where it goes.';
+
+/**
  * Handles file-system operations on behalf of the renderer: reads and writes files, and shows the
  * open, save, and unsaved-changes dialogs. All paths are validated here before any disk access.
+ *
+ * The renderer is treated as hostile, so a path it names is honoured only inside an open workspace or
+ * when the user chose it themselves (#1174), with links followed first: a link planted in a workspace
+ * cannot carry a read or a write out of it.
  */
 export class FileManager {
   /**
@@ -63,14 +72,30 @@ export class FileManager {
   private readonly trusted: TrustedPaths;
 
   /**
+   * Holds the last write queued for each path, settled whether it succeeded or not.
+   */
+  private readonly writes: Map<string, Promise<void>> = new Map<string, Promise<void>>();
+
+  /**
+   * Holds the open workspace roots a path may lie within.
+   */
+  private readonly workspace: WorkspaceContext;
+
+  /**
    * Initializes a new instance of the {@link FileManager} class.
    * @param windowGetter A function that returns the window dialogs are parented to when the
    * requesting window is gone.
-   * @param trusted The store used to remember files chosen through the save dialog.
+   * @param trusted The store used to remember files chosen through a dialog.
+   * @param workspace The open workspace roots.
    */
-  public constructor(windowGetter: () => BrowserWindow | null, trusted: TrustedPaths) {
+  public constructor(
+    windowGetter: () => BrowserWindow | null,
+    trusted: TrustedPaths,
+    workspace: WorkspaceContext,
+  ) {
     this.windowGetter = windowGetter;
     this.trusted = trusted;
+    this.workspace = workspace;
   }
 
   /**
@@ -80,8 +105,8 @@ export class FileManager {
     logger.info('FileManager', 'Registering file IPC handlers');
     ipcMain.handle(
       FileChannel.Read,
-      (_event: IpcMainInvokeEvent, filePath: unknown): Promise<FileInfo | null> =>
-        this.read(filePath),
+      (_event: IpcMainInvokeEvent, filePath: unknown, decode: unknown): Promise<FileInfo | null> =>
+        this.read(filePath, textDecodeOptions(decode)),
     );
     ipcMain.handle(
       FileChannel.Write,
@@ -90,11 +115,25 @@ export class FileManager {
         filePath: unknown,
         content: unknown,
         hasBom: unknown,
-      ): Promise<FileWriteResult> => this.write(filePath, content, hasBom === true),
+        encoding: unknown,
+      ): Promise<FileWriteResult> =>
+        // An encoding not understood writes UTF-8, as every write did before encodings (#1236).
+        this.write(
+          filePath,
+          content,
+          hasBom === true,
+          isTextEncoding(encoding) ? encoding : 'utf8',
+        ),
+    );
+    ipcMain.handle(
+      FileChannel.WriteBytes,
+      (_event: IpcMainInvokeEvent, filePath: unknown, bytes: unknown): Promise<FileWriteResult> =>
+        this.writeBytes(filePath, bytes),
     );
     ipcMain.handle(
       FileChannel.OpenFileDialog,
-      (event: IpcMainInvokeEvent): Promise<readonly FileInfo[]> => this.openDialog(event.sender),
+      (event: IpcMainInvokeEvent, decode: unknown): Promise<readonly FileInfo[]> =>
+        this.openDialog(event.sender, textDecodeOptions(decode)),
     );
     ipcMain.handle(FileChannel.PickImage, (event: IpcMainInvokeEvent): Promise<string | null> =>
       this.pickImage(event.sender),
@@ -124,16 +163,21 @@ export class FileManager {
   /**
    * Reads a file from disk after validating the path.
    * @param filePath The path to read.
+   * @param decode How to decode its bytes.
    * @returns Returns the file info, or null when the path is invalid or the read fails.
    */
-  private async read(filePath: unknown): Promise<FileInfo | null> {
+  private async read(filePath: unknown, decode: TextDecodeOptions): Promise<FileInfo | null> {
     logger.trace('FileManager.read', `Read requested for ${String(filePath)}`);
     if (typeof filePath !== 'string' || filePath.length === 0) {
       logger.warn('FileManager.read', 'Rejected read for invalid path');
       return null;
     }
+    if (!this.mayWrite(filePath) && (await readOnlySourcePath(filePath)) === null) {
+      logger.warn('FileManager.read', `Refused read outside the boundary: ${filePath}`);
+      return null;
+    }
     try {
-      const info: FileInfo = await this.readFileInfo(filePath);
+      const info: FileInfo = await this.readFileInfo(filePath, decode);
       logger.trace('FileManager.read', `Read ${filePath} (${info.content.length} chars)`);
       return info;
     } catch (error: unknown) {
@@ -146,13 +190,15 @@ export class FileManager {
    * Writes contents to a file after validating the arguments.
    * @param filePath The path to write to.
    * @param content The contents to write.
-   * @param hasBom Whether to prefix the contents with a UTF-8 byte-order mark.
+   * @param hasBom Whether to prefix the contents with the encoding's byte-order mark.
+   * @param encoding The encoding to write in.
    * @returns Returns the result describing success or failure.
    */
   private async write(
     filePath: unknown,
     content: unknown,
     hasBom: boolean,
+    encoding: TextEncoding,
   ): Promise<FileWriteResult> {
     logger.trace('FileManager.write', `Write requested for ${String(filePath)} (hasBom=${hasBom})`);
     if (typeof filePath !== 'string' || filePath.length === 0) {
@@ -163,9 +209,21 @@ export class FileManager {
       logger.warn('FileManager.write', `Rejected write for ${filePath}: invalid content`);
       return { success: false, error: 'Invalid file content' };
     }
+    if (!this.mayWrite(filePath)) {
+      logger.warn('FileManager.write', `Refused write outside the boundary: ${filePath}`);
+      return { success: false, error: OUTSIDE_THE_BOUNDARY };
+    }
+    let bytes: Buffer;
     try {
       // Re-add the byte-order mark the file was read with, so a BOM is preserved across edits.
-      await fs.writeFile(filePath, hasBom ? UTF8_BOM + content : content, 'utf-8');
+      bytes = encodeText(content, encoding, hasBom);
+    } catch (error: unknown) {
+      // A character the encoding cannot hold: refused, so nothing is lost on disk.
+      logger.warn('FileManager.write', `Refused ${filePath}: not encodable in ${encoding}`);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+    try {
+      await this.inTurn(filePath, (): Promise<void> => fs.writeFile(filePath, bytes));
       logger.info('FileManager', `Saved ${filePath}`);
       return { success: true, path: filePath };
     } catch (error: unknown) {
@@ -175,13 +233,47 @@ export class FileManager {
   }
 
   /**
+   * Writes bytes to a file, as {@link write} writes text and within the same boundary.
+   * @param filePath The path to write.
+   * @param bytes The bytes.
+   * @returns Returns a promise resolving whether it was written, and why not.
+   */
+  private async writeBytes(filePath: unknown, bytes: unknown): Promise<FileWriteResult> {
+    if (typeof filePath !== 'string' || filePath.length === 0) {
+      logger.warn('FileManager.writeBytes', 'Rejected write for invalid path');
+      return { success: false, error: 'Invalid file path' };
+    }
+    if (!(bytes instanceof Uint8Array)) {
+      logger.warn('FileManager.writeBytes', `Rejected write for ${filePath}: invalid content`);
+      return { success: false, error: 'Invalid file content' };
+    }
+    if (!this.mayWrite(filePath)) {
+      logger.warn('FileManager.writeBytes', `Refused write outside the boundary: ${filePath}`);
+      return { success: false, error: OUTSIDE_THE_BOUNDARY };
+    }
+    try {
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await this.inTurn(filePath, (): Promise<void> => fs.writeFile(filePath, bytes));
+      logger.info('FileManager', `Wrote ${bytes.byteLength} bytes to ${filePath}`);
+      return { success: true, path: filePath };
+    } catch (error: unknown) {
+      logger.error('FileManager', `Failed to write ${filePath}`, error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  /**
    * Shows an open-file dialog and reads every chosen file.
    * @param sender The web contents that requested the dialog.
+   * @param decode How to decode the chosen files' bytes.
    * @returns Returns the chosen files' info, empty when cancelled. A file that cannot be read is
    * skipped rather than failing the whole selection: one unreadable file among ten should not lose the
    * other nine.
    */
-  private async openDialog(sender: WebContents): Promise<readonly FileInfo[]> {
+  private async openDialog(
+    sender: WebContents,
+    decode: TextDecodeOptions,
+  ): Promise<readonly FileInfo[]> {
     logger.trace('FileManager.openDialog', 'Open-file dialog requested');
     const result: OpenDialogReturnValue = await showOpenDialog(sender, this.windowGetter, {
       properties: ['openFile', 'multiSelections'],
@@ -194,8 +286,10 @@ export class FileManager {
     logger.debug('FileManager.openDialog', `Chosen ${result.filePaths.length} file(s)`);
     const opened: FileInfo[] = [];
     for (const filePath of result.filePaths) {
+      // Remembered because the document it opens saves back through the write channel.
+      this.trusted.rememberChosen(filePath);
       try {
-        opened.push(await this.readFileInfo(filePath));
+        opened.push(await this.readFileInfo(filePath, decode));
       } catch (error: unknown) {
         logger.error('FileManager.openDialog', `Failed to read chosen file ${filePath}`, error);
       }
@@ -255,6 +349,10 @@ export class FileManager {
       return [];
     }
     logger.debug('FileManager.pickPaths', `Chosen ${result.filePaths.length} ${kind}(s)`);
+    if (kind === 'file') {
+      // Remembered because a picked file is then read by its path: an imported settings file is one.
+      result.filePaths.forEach((filePath: string): void => this.trusted.rememberChosen(filePath));
+    }
     return result.filePaths;
   }
 
@@ -279,7 +377,7 @@ export class FileManager {
     }
     // Remember the chosen path so the saved file can be re-opened from the welcome screen later.
     logger.debug('FileManager.saveDialog', `Chosen save path ${result.filePath}`);
-    this.trusted.remember(result.filePath);
+    this.trusted.rememberChosen(result.filePath);
     return result.filePath;
   }
 
@@ -344,26 +442,79 @@ export class FileManager {
   }
 
   /**
+   * Determines whether a path the renderer named is one Studio may read and write. A language server's
+   * decompiled source may be read as well, which {@link read} adds: nothing else differs by direction.
+   *
+   * The path is judged where it really is. A trusted name is honoured as it stands only outside the
+   * open workspaces, for entries recorded before links were followed, reached through a link such as
+   * macOS's `/tmp`; inside one it is what a planted link would pass for, because a file opened in a
+   * workspace is remembered under its name.
+   * @param filePath The path, untrusted.
+   * @returns Returns true when it lies within an open workspace or the user chose it.
+   */
+  private mayWrite(filePath: string): boolean {
+    const resolved: string = path.resolve(filePath);
+    const real: string = realPathOf(resolved);
+    return (
+      this.workspace.holdsRealPath(real) ||
+      this.trusted.has(real) ||
+      (this.trusted.has(resolved) && !this.workspace.isWithin(resolved))
+    );
+  }
+
+  /**
+   * Runs a write once every earlier write to the same path has finished. `fs.writeFile` truncates and
+   * then writes, so two saves of one file overlapping would otherwise leave the tail of the longer one
+   * after the whole of the shorter: a file neither save wrote.
+   * @param filePath The path being written.
+   * @param write The write to run.
+   * @returns Returns a promise settling as the write does.
+   */
+  private async inTurn(filePath: string, write: () => Promise<void>): Promise<void> {
+    const key: string = path.resolve(filePath);
+    const previous: Promise<void> = this.writes.get(key) ?? Promise.resolve();
+    const run: () => Promise<void> = async (): Promise<void> => {
+      await previous;
+      await write();
+    };
+    const current: Promise<void> = run();
+    const settled: Promise<void> = current.catch((): void => undefined);
+    this.writes.set(key, settled);
+    try {
+      await current;
+    } finally {
+      if (this.writes.get(key) === settled) {
+        this.writes.delete(key);
+      }
+    }
+  }
+
+  /**
    * Reads a file and builds its {@link FileInfo}.
    * @param filePath The path to read.
+   * @param decode How to decode its bytes; the default tells the encoding from them.
    * @returns Returns the file info.
    */
-  private async readFileInfo(filePath: string): Promise<FileInfo> {
-    const raw: string = await fs.readFile(filePath, 'utf-8');
-    // A UTF-8 BOM decodes to a leading U+FEFF; strip it from the content but record its presence so
-    // it can be written back, and so the editor never shows the mark as an invisible character.
-    const hasBom: boolean = raw.charCodeAt(0) === 0xfeff;
+  private async readFileInfo(filePath: string, decode: TextDecodeOptions = {}): Promise<FileInfo> {
+    // The byte-order mark is stripped from the content but recorded, so it is written back and the
+    // editor never shows it as an invisible character.
+    // Reading a FIFO blocks until a writer appears, pinning a thread-pool thread and leaving the
+    // caller waiting forever; a device reads without end. Only a regular file is a document.
+    if (!(await fs.stat(filePath)).isFile()) {
+      throw new Error(`Not a regular file: ${filePath}`);
+    }
+    const decoded: DecodedText = decodeText(await fs.readFile(filePath), decode);
     logger.debug(
       'FileManager.readFileInfo',
-      `Read ${filePath} (${raw.length} bytes, hasBom=${hasBom})`,
+      `Read ${filePath} (${decoded.encoding}, hasBom=${decoded.bom})`,
     );
     return {
       path: filePath,
       name: path.basename(filePath),
       extension: path.extname(filePath),
-      content: hasBom ? raw.slice(1) : raw,
-      encoding: UTF8_ENCODING,
-      hasBom,
+      content: decoded.text,
+      encoding: decoded.encoding,
+      hasBom: decoded.bom,
     };
   }
 }

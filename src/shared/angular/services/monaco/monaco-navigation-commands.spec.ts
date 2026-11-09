@@ -8,6 +8,14 @@ import {
   NavigationMode,
   STUDIO_FIND_REFERENCES_COMMAND,
   STUDIO_GO_TO_DEFINITION_COMMAND,
+  STUDIO_GO_TO_DECLARATION_COMMAND,
+  STUDIO_GO_TO_IMPLEMENTATION_COMMAND,
+  STUDIO_SWITCH_SOURCE_HEADER_COMMAND,
+  STUDIO_GO_TO_TYPE_DEFINITION_COMMAND,
+  STUDIO_CALL_HIERARCHY_COMMAND,
+  STUDIO_TYPE_HIERARCHY_COMMAND,
+  STUDIO_LOCATIONS_LENS_COMMAND,
+  STUDIO_REFERENCES_LENS_COMMAND,
 } from './monaco-navigation-commands';
 
 /**
@@ -26,6 +34,26 @@ const KEYS: { CtrlCmd: number; Shift: number; Alt: number; WinCtrl: number } = {
 const F12: number = 70;
 
 /**
+ * Monaco's `KeyCode.KeyH`, as the fake instance numbers it.
+ */
+const KEY_H: number = 38;
+
+/**
+ * Monaco's `KeyCode.KeyK` and `KeyCode.KeyO`, as the fake instance numbers them.
+ */
+const KEY_K: number = 41;
+const KEY_O: number = 45;
+
+/**
+ * Stands in for Monaco's `KeyMod.chord`, keeping both halves readable in a rule.
+ * @param first The first press.
+ * @param second The second press.
+ * @returns Returns the two as one number.
+ */
+const chord: (first: number, second: number) => number = (first: number, second: number): number =>
+  first + second * 65536;
+
+/**
  * Monaco's mouse-target types the specs click on.
  */
 const TARGET: Readonly<Record<'text' | 'gutter', number>> = { text: 6, gutter: 3 };
@@ -37,6 +65,11 @@ interface Installed {
   readonly rules: MonacoApi.editor.IKeybindingRule[];
   readonly commands: Map<string, () => void>;
   readonly navigated: { editor: MonacoApi.editor.ICodeEditor; mode: NavigationMode }[];
+  readonly listed: {
+    editor: MonacoApi.editor.ICodeEditor;
+    kind: string;
+    places: readonly unknown[];
+  }[];
   create(editor: MonacoApi.editor.ICodeEditor): void;
 }
 
@@ -75,11 +108,12 @@ function install(isMac: boolean, editors: readonly MonacoApi.editor.ICodeEditor[
     rules: [],
     commands: new Map(),
     navigated: [],
+    listed: [],
     create: (editor: MonacoApi.editor.ICodeEditor): void => onCreate?.(editor),
   };
   const fake: typeof MonacoApi = {
-    KeyMod: KEYS,
-    KeyCode: { F12 },
+    KeyMod: { ...KEYS, chord },
+    KeyCode: { F12, KeyH: KEY_H, KeyK: KEY_K, KeyO: KEY_O },
     editor: {
       getEditors: (): readonly MonacoApi.editor.ICodeEditor[] => editors,
       registerCommand: (id: string, handler: () => void): void =>
@@ -96,6 +130,8 @@ function install(isMac: boolean, editors: readonly MonacoApi.editor.ICodeEditor[
     isMac,
     (editor: MonacoApi.editor.ICodeEditor, mode: NavigationMode): void =>
       void installed.navigated.push({ editor, mode }),
+    (editor: MonacoApi.editor.ICodeEditor, kind: string, places: readonly unknown[]): void =>
+      void installed.listed.push({ editor, kind, places }),
   );
   return installed;
 }
@@ -105,13 +141,16 @@ function install(isMac: boolean, editors: readonly MonacoApi.editor.ICodeEditor[
  * @param textFocus Whether its text holds the keyboard.
  * @param contribution The ⌘-click contribution it has: Monaco's, one without the navigation Studio
  * replaces, or none.
+ * @param multiCursorModifier The modifier that adds a cursor.
  * @returns Returns the editor and its recorders.
  */
 function fakeEditor(
   textFocus: boolean = false,
   contribution: 'monaco' | 'unknown' | 'none' = 'monaco',
+  multiCursorModifier: MonacoApi.editor.IEditorOptions['multiCursorModifier'] = 'alt',
 ): FakeEditor {
   const calls: string[] = [];
+  const rawOptions: MonacoApi.editor.IEditorOptions = { multiCursorModifier };
   let down: ((event: MonacoApi.editor.IEditorMouseEvent) => void) | null = null;
   let up: ((event: MonacoApi.editor.IEditorMouseEvent) => void) | null = null;
   const link: { gotoDefinition?: unknown; disposed: boolean; dispose(): void } | null =
@@ -149,6 +188,7 @@ function fakeEditor(
   const editor: unknown = {
     hasTextFocus: (): boolean => textFocus,
     hasWidgetFocus: (): boolean => textFocus,
+    getRawOptions: (): MonacoApi.editor.IEditorOptions => rawOptions,
     updateOptions: (options: MonacoApi.editor.IEditorOptions): void =>
       void calls.push(`options ${JSON.stringify(options)}`),
     getContribution: (id: string): unknown => (id === DEFINITION_LINK_CONTRIBUTION ? link : null),
@@ -221,6 +261,55 @@ describe('installNavigationCommands (#1014)', () => {
     }
   });
 
+  it('bindsGoToImplementationToCmdF12_andLeavesTypeDefinitionUnbound_onEveryPlatform (#1142)', () => {
+    for (const isMac of [true, false]) {
+      const installed: Installed = install(isMac, []);
+
+      expect(installed.rules).toContainEqual({
+        keybinding: KEYS.CtrlCmd | F12,
+        command: STUDIO_GO_TO_IMPLEMENTATION_COMMAND,
+        when,
+      });
+      expect(
+        installed.rules.some(
+          (rule: MonacoApi.editor.IKeybindingRule): boolean =>
+            rule.command === STUDIO_GO_TO_TYPE_DEFINITION_COMMAND,
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it('bindsTheHierarchiesToTheControlKey_withAltOrShiftH_onEveryPlatform (#1153)', () => {
+    // ⌃ on a Mac is Monaco's WinCtrl; elsewhere Ctrl is its CtrlCmd.
+    for (const [isMac, control] of [
+      [true, KEYS.WinCtrl],
+      [false, KEYS.CtrlCmd],
+    ] as const) {
+      const installed: Installed = install(isMac, []);
+
+      expect(installed.rules).toContainEqual({
+        keybinding: control | KEYS.Alt | KEY_H,
+        command: STUDIO_CALL_HIERARCHY_COMMAND,
+        when,
+      });
+      expect(installed.rules).toContainEqual({
+        keybinding: control | KEYS.Shift | KEY_H,
+        command: STUDIO_TYPE_HIERARCHY_COMMAND,
+        when,
+      });
+    }
+  });
+
+  it('bindsSwitchHeaderSourceToCmdKCmdO_onEveryPlatform (#1213)', () => {
+    for (const isMac of [true, false]) {
+      expect(install(isMac, []).rules).toContainEqual({
+        keybinding: chord(KEYS.CtrlCmd | KEY_K, KEYS.CtrlCmd | KEY_O),
+        command: STUDIO_SWITCH_SOURCE_HEADER_COMMAND,
+        when,
+      });
+    }
+  });
+
   it('theCommands_handTheFocusedEditorOn_withTheirMode_andNothingWithoutFocus', () => {
     const idle: FakeEditor = fakeEditor(false);
     const focused: FakeEditor = fakeEditor(true);
@@ -228,14 +317,68 @@ describe('installNavigationCommands (#1014)', () => {
 
     installed.commands.get(STUDIO_GO_TO_DEFINITION_COMMAND)?.();
     installed.commands.get(STUDIO_FIND_REFERENCES_COMMAND)?.();
+    installed.commands.get(STUDIO_GO_TO_IMPLEMENTATION_COMMAND)?.();
+    installed.commands.get(STUDIO_GO_TO_TYPE_DEFINITION_COMMAND)?.();
+    installed.commands.get(STUDIO_CALL_HIERARCHY_COMMAND)?.();
+    installed.commands.get(STUDIO_TYPE_HIERARCHY_COMMAND)?.();
+    installed.commands.get(STUDIO_GO_TO_DECLARATION_COMMAND)?.();
+    installed.commands.get(STUDIO_SWITCH_SOURCE_HEADER_COMMAND)?.();
 
     expect(installed.navigated).toEqual([
       { editor: focused.editor, mode: 'definition' },
       { editor: focused.editor, mode: 'references' },
+      { editor: focused.editor, mode: 'implementation' },
+      { editor: focused.editor, mode: 'typeDefinition' },
+      { editor: focused.editor, mode: 'callHierarchy' },
+      { editor: focused.editor, mode: 'typeHierarchy' },
+      { editor: focused.editor, mode: 'declaration' },
+      { editor: focused.editor, mode: 'sourceHeader' },
     ]);
     const unfocused: Installed = install(false, [idle.editor]);
     unfocused.commands.get(STUDIO_GO_TO_DEFINITION_COMMAND)?.();
     expect(unfocused.navigated).toEqual([]);
+  });
+
+  it('aReferencesLens_placesItsDocumentsEditorAtTheSymbol_andListsItsReferences (#1149)', () => {
+    const placed: unknown[] = [];
+    const lensEditor: MonacoApi.editor.ICodeEditor = {
+      getModel: (): unknown => ({ uri: { toString: (): string => 'inmemory://model/3' } }),
+      setPosition: (position: unknown): void => void placed.push(position),
+    } as unknown as MonacoApi.editor.ICodeEditor;
+    const other: MonacoApi.editor.ICodeEditor = {
+      getModel: (): unknown => ({ uri: { toString: (): string => 'inmemory://model/1' } }),
+    } as unknown as MonacoApi.editor.ICodeEditor;
+    const installed: Installed = install(true, [other, lensEditor]);
+    const run: (...args: unknown[]) => void = installed.commands.get(
+      STUDIO_REFERENCES_LENS_COMMAND,
+    ) as unknown as (...args: unknown[]) => void;
+
+    run(undefined, 'inmemory://model/3', { line: 8, character: 11 });
+    run(undefined, 'inmemory://model/404', { line: 8, character: 11 });
+    run(undefined, 'inmemory://model/3', 'not a position');
+
+    expect(placed).toEqual([{ lineNumber: 9, column: 12 }]);
+    expect(installed.navigated).toEqual([{ editor: lensEditor, mode: 'references' }]);
+  });
+
+  it('aLensWithItsOwnPlaces_placesItsDocumentsEditorAtTheSymbol_andListsThem (#1207)', () => {
+    const placed: unknown[] = [];
+    const lensEditor: MonacoApi.editor.ICodeEditor = {
+      getModel: (): unknown => ({ uri: { toString: (): string => 'inmemory://model/3' } }),
+      setPosition: (position: unknown): void => void placed.push(position),
+    } as unknown as MonacoApi.editor.ICodeEditor;
+    const installed: Installed = install(true, [lensEditor]);
+    const run: (...args: unknown[]) => void = installed.commands.get(
+      STUDIO_LOCATIONS_LENS_COMMAND,
+    ) as unknown as (...args: unknown[]) => void;
+    const places: readonly unknown[] = [{ path: '/root/a.ts', range: {} }];
+
+    run(undefined, 'inmemory://model/3', { line: 2, character: 4 }, 'implementations', places);
+    run(undefined, 'inmemory://model/404', { line: 2, character: 4 }, 'references', places);
+    run(undefined, 'inmemory://model/3', 'not a position', 'references', places);
+
+    expect(placed).toEqual([{ lineNumber: 3, column: 5 }]);
+    expect(installed.listed).toEqual([{ editor: lensEditor, kind: 'implementations', places }]);
   });
 
   it('everyEditorCreated_neverPeeks_soSeveralAnswersGoToTheFirst', () => {
@@ -273,6 +416,20 @@ describe('installNavigationCommands (#1014)', () => {
     fake.press({ ctrl: true });
     fake.release({ ctrl: true });
     expect(installed.navigated.length).toBe(1);
+  });
+
+  it('whenTheMultiCursorModifierTakesCmd_optionClickGoesToDefinition_andCmdClickDoesNot', () => {
+    const installed: Installed = install(true, []);
+    const fake: FakeEditor = fakeEditor(false, 'monaco', 'ctrlCmd');
+    installed.create(fake.editor);
+
+    fake.press({ meta: true });
+    fake.release({ meta: true });
+    expect(installed.navigated).toEqual([]);
+
+    fake.press({ alt: true });
+    fake.release({ alt: true });
+    expect(installed.navigated).toEqual([{ editor: fake.editor, mode: 'definition' }]);
   });
 
   it('ctrlClick_onWindowsAndLinux_runsStudiosGoToDefinition', () => {

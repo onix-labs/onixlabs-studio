@@ -9,6 +9,11 @@
       <span class="agent__permission-detail">{{ item().permissionDetail }}</span>
     }
   </p>
+  @if (leavesSandbox()) {
+    <p class="agent__permission-warning">
+      This command will run without the sandbox, so it can reach any file you can and any host.
+    </p>
+  }
   <!-- The change itself, while it waits for an answer (#891); afterwards it folds away behind its
        counts, so a long conversation is not a wall of diffs. -->
   @if (item().permissionDiff; as diff) {
@@ -34,7 +39,7 @@
       />
       <app-button-row class="agent__permission-buttons">
         <app-button variant="solid" label="Allow" (click)="answer(true)" />
-        <app-button label="Deny" tone="danger" (click)="answer(false)" />
+        <app-button variant="ghost" tone="danger" label="Deny" (click)="answer(false)" />
       </app-button-row>
     </div>
   } @else {

@@ -113,7 +113,7 @@ describe('IssueAgentConfirm', () => {
   it('render_namesTheIssueTheNewConversationWouldBeAbout', () => {
     issueAgent.open(ISSUE);
 
-    expect(shown()).toContain('Start a new conversation?');
+    expect(shown()).toContain('Start a New Conversation?');
     expect(windows.openWindows).toBe(1);
     expect(shown()).toContain('#12');
     expect(shown()).toContain('Something is broken');
@@ -122,7 +122,7 @@ describe('IssueAgentConfirm', () => {
   it('yes_endsTheOldConversationAndStartsTheNewOne', () => {
     issueAgent.open(ISSUE);
 
-    click('Yes');
+    click('Start New');
 
     expect(conversation.newChats).toBe(1);
     expect(agent.sent.length).toBe(1);
@@ -133,7 +133,7 @@ describe('IssueAgentConfirm', () => {
   it('no_leavesTheConversationAlone', () => {
     issueAgent.open(ISSUE);
 
-    click('No');
+    click('Cancel');
 
     expect(conversation.newChats).toBe(0);
     expect(agent.sent).toEqual([]);

@@ -77,6 +77,15 @@ describe('DocumentConflictModal', () => {
     expect(host?.textContent).toContain('File Changed on Disk');
   });
 
+  it('render_forAnUneditedFile_offersToReloadWithoutWarningOfLostEdits', async () => {
+    activeConflict.set({ ...conflict, unedited: true });
+    const host: HTMLElement | null = await present();
+
+    expect(host?.textContent).toContain('main.ts');
+    expect(host?.textContent).not.toContain('unsaved changes');
+    expect(host?.textContent).toContain('Keep the open copy');
+  });
+
   it('render_asksForAWindowThatCannotBeDismissed', async () => {
     activeConflict.set(conflict);
     await present();
@@ -84,6 +93,13 @@ describe('DocumentConflictModal', () => {
     // Both answers destroy something, so there is no third answer meaning "neither". A prompt that
     // could be waved away would leave the document in a state nothing later resolves.
     expect(windows.requests[0]?.closable).toBe(false);
+  });
+
+  it('render_asksForAFramelessWindow', async () => {
+    activeConflict.set(conflict);
+    await present();
+
+    expect(windows.requests[0]?.frameless).toBe(true);
   });
 
   it('keepButton_resolvesTheConflictKeepingTheEditorVersion', async () => {

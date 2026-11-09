@@ -1,5 +1,14 @@
 import { LspSemanticTokensLegend } from '@shared/api/lsp-channels';
-import type { LspCodeActionSupport, LspRenameSupport } from './lsp-features';
+import { globToRegExp } from '@shared/api/lsp-glob';
+import type {
+  LspCodeActionSupport,
+  LspFormattingSupport,
+  LspCodeLensSupport,
+  LspInlayHintSupport,
+  LspStructureSupport,
+  LspNavigationSupport,
+  LspRenameSupport,
+} from './lsp-features';
 
 /**
  * Extracts the semantic token legend from a server's initialize capabilities, or null when the server
@@ -92,6 +101,204 @@ export function codeActionSupportOf(capabilities: unknown): LspCodeActionSupport
   return (provider as { resolveProvider?: unknown }).resolveProvider === true
     ? 'resolve'
     : 'actions';
+}
+
+/**
+ * Reads which renamed paths a server wants to be asked about (#1207) from its
+ * `workspace.fileOperations.willRename` filters. A filter's `matches` (file or folder) is not read: a
+ * server asked about one it did not want answers with nothing.
+ * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+ * @returns Returns the compiled patterns, over a forward-slashed absolute path; empty when it wants none.
+ */
+export function fileRenameFiltersOf(capabilities: unknown): readonly RegExp[] {
+  const filters: unknown = (
+    capabilities as
+      { workspace?: { fileOperations?: { willRename?: { filters?: unknown } } } } | undefined
+  )?.workspace?.fileOperations?.willRename?.filters;
+  if (!Array.isArray(filters)) {
+    return [];
+  }
+  const patterns: RegExp[] = [];
+  for (const filter of filters as readonly {
+    scheme?: unknown;
+    pattern?: { glob?: unknown };
+  }[]) {
+    if ((filter?.scheme ?? 'file') === 'file' && typeof filter?.pattern?.glob === 'string') {
+      patterns.push(globToRegExp(filter.pattern.glob));
+    }
+  }
+  return patterns;
+}
+
+/**
+ * Determines whether a server capability is offered: `true`, or an options object.
+ * @param provider The capability, untrusted.
+ * @returns Returns true when it is offered.
+ */
+function isOffered(provider: unknown): boolean {
+  return provider === true || (typeof provider === 'object' && provider !== null);
+}
+
+/**
+ * Reads which of the navigations beyond Go to Definition a server answers (#1142): from a symbol to
+ * its declaration (`declarationProvider`, #1213), to the code that implements it
+ * (`implementationProvider`), to the declaration of its type (`typeDefinitionProvider`), up and down
+ * its call and type hierarchies (`callHierarchyProvider`, `typeHierarchyProvider`, #1153), from a file
+ * to its header or source, and rust-analyzer's own, from a file to its parent module and to its
+ * `Cargo.toml` (`experimental`, #1210). The header or source request is clangd's own, which it
+ * advertises nowhere, so it is known by the capability only clangd has: `compilationDatabase`. Also
+ * the views of the code a server alone gives (#1210, #1213): rust-analyzer's macro expansion, HIR and
+ * MIR, and clangd's syntax tree and memory use.
+ * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+ * @returns Returns which it answers.
+ */
+export function navigationSupportOf(capabilities: unknown): LspNavigationSupport {
+  const caps:
+    | {
+        declarationProvider?: unknown;
+        implementationProvider?: unknown;
+        typeDefinitionProvider?: unknown;
+        callHierarchyProvider?: unknown;
+        typeHierarchyProvider?: unknown;
+        compilationDatabase?: unknown;
+        astProvider?: unknown;
+        memoryUsageProvider?: unknown;
+        experimental?: { parentModule?: unknown; openCargoToml?: unknown };
+      }
+    | undefined = capabilities as typeof caps;
+  return {
+    declaration: isOffered(caps?.declarationProvider),
+    implementation: isOffered(caps?.implementationProvider),
+    typeDefinition: isOffered(caps?.typeDefinitionProvider),
+    callHierarchy: isOffered(caps?.callHierarchyProvider),
+    typeHierarchy: isOffered(caps?.typeHierarchyProvider),
+    sourceHeader: isOffered(caps?.compilationDatabase),
+    ...(caps?.experimental?.parentModule === true ? { parentModule: true } : {}),
+    ...(caps?.experimental?.openCargoToml === true ? { cargoManifest: true } : {}),
+    // rust-analyzer advertises none of its views (#1210); `openCargoToml` is its alone, so it stands
+    // for the server that answers them.
+    ...(caps?.experimental?.openCargoToml === true
+      ? { expandMacro: true, hir: true, mir: true }
+      : {}),
+    // clangd says so (#1213).
+    ...(caps?.astProvider === true ? { syntaxTree: true } : {}),
+    ...(caps?.memoryUsageProvider === true ? { memoryUsage: true } : {}),
+  };
+}
+
+/**
+ * Reads how a server formats code (#1141): a whole document (`documentFormattingProvider`), a range
+ * (`documentRangeFormattingProvider`), and as the user types (`documentOnTypeFormattingProvider`, on
+ * the characters it names — Roslyn's are `}`, `;` and a newline).
+ * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+ * @returns Returns how the server formats.
+ */
+export function formattingSupportOf(capabilities: unknown): LspFormattingSupport {
+  const caps:
+    | {
+        documentFormattingProvider?: unknown;
+        documentRangeFormattingProvider?: unknown;
+        documentOnTypeFormattingProvider?: unknown;
+      }
+    | undefined = capabilities as typeof caps;
+  const onType: unknown = caps?.documentOnTypeFormattingProvider;
+  const first: unknown = (onType as { firstTriggerCharacter?: unknown } | undefined)
+    ?.firstTriggerCharacter;
+  const more: unknown = (onType as { moreTriggerCharacter?: unknown } | undefined)
+    ?.moreTriggerCharacter;
+  const candidates: readonly unknown[] = [
+    first,
+    ...(Array.isArray(more) ? (more as unknown[]) : []),
+  ];
+  const triggers: string[] = [];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.length === 1 && !triggers.includes(candidate)) {
+      triggers.push(candidate);
+    }
+  }
+  return {
+    document: isOffered(caps?.documentFormattingProvider),
+    range: isOffered(caps?.documentRangeFormattingProvider),
+    onTypeTriggers: triggers,
+  };
+}
+
+/**
+ * Reads which of the compiler's views of a document's structure a server gives (#1147): folds
+ * (`foldingRangeProvider`), occurrences (`documentHighlightProvider`), a range's semantic tokens
+ * (`semanticTokensProvider.range`), and the syntax nodes around a position (`selectionRangeProvider`,
+ * #1155).
+ * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+ * @returns Returns which it gives.
+ */
+export function structureSupportOf(capabilities: unknown): LspStructureSupport {
+  const caps:
+    | {
+        foldingRangeProvider?: unknown;
+        documentHighlightProvider?: unknown;
+        linkedEditingRangeProvider?: unknown;
+        selectionRangeProvider?: unknown;
+        semanticTokensProvider?: { range?: unknown; legend?: unknown };
+      }
+    | undefined = capabilities as typeof caps;
+  const range: unknown = caps?.semanticTokensProvider?.range;
+  return {
+    folding: isOffered(caps?.foldingRangeProvider),
+    highlights: isOffered(caps?.documentHighlightProvider),
+    linkedEditing: isOffered(caps?.linkedEditingRangeProvider),
+    rangeTokens:
+      semanticLegendOf(capabilities) !== null &&
+      (range === true || (typeof range === 'object' && range !== null)),
+    selectionRanges: isOffered(caps?.selectionRangeProvider),
+  };
+}
+
+/**
+ * Reads how a server shows facts above a document's types and members (#1149) from its
+ * `codeLensProvider`.
+ * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+ * @returns Returns how it does, or undefined when it does not.
+ */
+export function codeLensSupportOf(capabilities: unknown): LspCodeLensSupport | undefined {
+  const provider: unknown = (capabilities as { codeLensProvider?: unknown } | undefined)
+    ?.codeLensProvider;
+  if (!isOffered(provider)) {
+    return undefined;
+  }
+  return { resolve: (provider as { resolveProvider?: unknown }).resolveProvider === true };
+}
+
+/**
+ * Reads the characters whose typing a server answers by inserting text (#1148): Roslyn's
+ * `_vs_onAutoInsertProvider`, as the Visual Studio clients know it.
+ * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+ * @returns Returns the characters, or undefined when the server inserts nothing.
+ */
+export function autoInsertTriggersOf(capabilities: unknown): readonly string[] | undefined {
+  const triggers: unknown = (
+    capabilities as { _vs_onAutoInsertProvider?: { _vs_triggerCharacters?: unknown } } | undefined
+  )?._vs_onAutoInsertProvider?._vs_triggerCharacters;
+  if (!Array.isArray(triggers)) {
+    return undefined;
+  }
+  const characters: string[] = (triggers as unknown[]).filter(
+    (ch: unknown): ch is string => typeof ch === 'string' && [...ch].length === 1,
+  );
+  return characters.length === 0 ? undefined : characters;
+}
+
+/**
+ * Reads how a server sets hints into the code (#1145) from its `inlayHintProvider`.
+ * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+ * @returns Returns how it does, or undefined when it does not.
+ */
+export function inlayHintSupportOf(capabilities: unknown): LspInlayHintSupport | undefined {
+  const provider: unknown = (capabilities as { inlayHintProvider?: unknown } | undefined)
+    ?.inlayHintProvider;
+  if (!isOffered(provider)) {
+    return undefined;
+  }
+  return { resolve: (provider as { resolveProvider?: unknown }).resolveProvider === true };
 }
 
 /**

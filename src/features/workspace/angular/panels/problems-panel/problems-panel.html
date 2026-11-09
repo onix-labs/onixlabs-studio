@@ -1,13 +1,23 @@
 <app-panel-toolbar role="group" aria-label="Filter by severity">
+  <!-- One toggle per severity (#1182), each in its colour with how many there are, when any. -->
   @for (option of severityOptions; track option.value) {
     <app-button
       variant="none"
+      [class]="'problems-filter problems-filter--' + option.value"
+      [tone]="option.tone"
       [icon]="option.icon"
       [label]="option.label"
       [pressed]="severity() === option.value"
       [tooltip]="option.label"
       (click)="selectSeverity(option.value)"
-    />
+    >
+      <!-- A count only where there is something to count. -->
+      @if (counts()[option.value] > 0) {
+        <app-chip class="problems-filter__count" [tone]="option.tone">{{
+          counts()[option.value]
+        }}</app-chip>
+      }
+    </app-button>
   }
   @if (sourceOptions().length > 2) {
     <app-dropdown
@@ -18,24 +28,103 @@
     />
   }
   <span class="panel-toolbar__spacer"></span>
-  <span class="problems-count problems-count--error">
-    <app-icon [icon]="Icon.ERROR" />
-    {{ diagnostics.errorCount() }}
-  </span>
-  <span class="problems-count problems-count--warning">
-    <app-icon [icon]="Icon.WARNING" />
-    {{ diagnostics.warningCount() }}
-  </span>
+  @if (grouped()) {
+    <app-button
+      variant="none"
+      [icon]="Icon.PLUS_SQUARE_DUOTONE"
+      ariaLabel="Expand All"
+      tooltip="Expand All"
+      [disabled]="filtered().length === 0"
+      (click)="expandAll()"
+    />
+    <app-button
+      variant="none"
+      [icon]="Icon.MINUS_SQUARE_DUOTONE"
+      ariaLabel="Collapse All"
+      tooltip="Collapse All"
+      [disabled]="filtered().length === 0"
+      (click)="collapseAll()"
+    />
+  }
+  <app-button
+    variant="none"
+    [icon]="Icon.DOTS_THREE_BOLD"
+    ariaLabel="More Actions"
+    tooltip="More Actions"
+    [cdkMenuTriggerFor]="moreMenu.panel() ?? null"
+    [cdkMenuPosition]="moreMenu.position()"
+  />
 </app-panel-toolbar>
+<app-menu #moreMenu [items]="menuItems()" placement="down-end" (selected)="onMenu($event)" />
 
-@if (filtered().length > 0) {
+@if (filtered().length > 0 && grouped()) {
+  <div class="problems-tree">
+    <app-tree-view
+      [rows]="treeRows()"
+      [selectedId]="selectedId()"
+      [virtual]="true"
+      (rowClick)="onRowClick($event)"
+    >
+      <ng-template let-row>
+        @let entry = rowOf(row);
+        @switch (entry.kind) {
+          @case ('project') {
+            <app-icon class="tree-icon tree-icon--project" [icon]="Icon.PROJECT" />
+            <span class="tree-name">{{ entry.project.name }}</span>
+            @if (entry.project.counts.error > 0) {
+              <span class="problems-count problems-count--error">
+                <app-icon [icon]="Icon.ERROR" />
+                {{ entry.project.counts.error }}
+              </span>
+            }
+            @if (entry.project.counts.warning > 0) {
+              <span class="problems-count problems-count--warning">
+                <app-icon [icon]="Icon.WARNING" />
+                {{ entry.project.counts.warning }}
+              </span>
+            }
+            @if (entry.project.counts.info + entry.project.counts.hint > 0) {
+              <span class="problems-count problems-count--info">
+                <app-icon [icon]="Icon.INFO" />
+                {{ entry.project.counts.info + entry.project.counts.hint }}
+              </span>
+            }
+          }
+          @case ('file') {
+            <app-icon class="tree-icon" [icon]="fileIcon(entry.file)" />
+            <span class="tree-name">{{ entry.file.label }}</span>
+            <app-chip class="tree-count">{{ entry.file.problems.length }}</app-chip>
+          }
+          @case ('problem') {
+            <app-icon
+              [class]="'problems-icon problems-icon--' + entry.problem.severity"
+              [icon]="iconFor(entry.problem.severity)"
+            />
+            <span class="tree-name problems-message">{{ entry.problem.message }}</span>
+            <span class="problems-location">
+              @if (entry.problem.source) {
+                <app-chip class="problems-source">{{ entry.problem.source }}</app-chip>
+              }
+              {{ entry.problem.line }}:{{ entry.problem.column }}
+            </span>
+          }
+        }
+      </ng-template>
+    </app-tree-view>
+    @if (overflowCount() > 0) {
+      <div class="problems-overflow">
+        …and {{ overflowCount() }} more — narrow the filters to see them.
+      </div>
+    }
+  </div>
+} @else if (filtered().length > 0) {
   <ul class="problems-list" role="list">
     @for (diagnostic of visible(); track trackBy($index, diagnostic)) {
       <li>
         <button
           type="button"
           [class]="'problems-row problems-row--' + diagnostic.severity"
-          [disabled]="diagnostic.documentId === null"
+          [disabled]="!revealable(diagnostic)"
           (click)="reveal(diagnostic)"
         >
           <app-icon class="problems-icon" [icon]="iconFor(diagnostic.severity)" />
@@ -55,14 +144,16 @@
       </li>
     }
   </ul>
-} @else if (diagnostics.all().length > 0) {
-  <div class="problems-empty">
-    <app-icon [icon]="Icon.SEARCH" />
-    <p>No problems match the filter.</p>
+} @else if (analyzing()) {
+  <!-- A language server still loading the workspace has not looked yet: nothing found is not yet
+       nothing wrong. -->
+  <div class="problems-empty problems-empty--analyzing" role="status">
+    <app-icon class="problems-empty__spinner" [icon]="Icon.SPINNER" />
+    <p>Analyzing {{ scopeNoun() === 'solution' ? 'Solution' : 'Workspace' }}</p>
   </div>
 } @else {
-  <div class="problems-empty">
-    <app-icon [icon]="Icon.SUCCESS" />
-    <p>No problems detected.</p>
+  <div class="problems-empty" role="status">
+    <app-icon class="problems-empty__ok" [icon]="Icon.SUCCESS_DUOTONE" />
+    <p>{{ emptyMessage() }}</p>
   </div>
 }

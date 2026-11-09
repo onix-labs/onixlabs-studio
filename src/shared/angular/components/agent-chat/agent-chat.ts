@@ -397,6 +397,23 @@ export class AgentChat implements OnInit {
   private readonly settings: Settings = inject(Settings);
 
   /**
+   * Gets a value indicating whether tool calls render open (Expand Tool Calls).
+   */
+  protected readonly expandToolCalls: Signal<boolean> = this.settings.value('ai.expandToolCalls');
+
+  /**
+   * Gets a value indicating whether the agent's reasoning renders open (Expand Thinking).
+   */
+  protected readonly expandThinking: Signal<boolean> = this.settings.value('ai.expandThinking');
+
+  /**
+   * Holds the ids of the sub-agent lanes the user has opened.
+   */
+  private readonly openLanes: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
+    new Set<string>(),
+  );
+
+  /**
    * Holds the transcript-performance probe (GitHub #408 instrumentation): times each rows rebuild and
    * counts how many transcript views are mounted at once (the Mission Control multiplier).
    */
@@ -650,6 +667,33 @@ export class AgentChat implements OnInit {
   protected readonly hasNoProviders: Signal<boolean> = this.engine.hasNoProviders;
 
   /**
+   * Gets whether a sub-agent lane's activity is on screen, and so needs building.
+   * @param id The lane's row id.
+   * @returns Returns true when the lane is open.
+   */
+  protected laneShown(id: string): boolean {
+    return this.expandToolCalls() || this.openLanes().has(id);
+  }
+
+  /**
+   * Records a sub-agent lane opening or closing.
+   * @param id The lane's row id.
+   * @param event The disclosure's toggle event.
+   */
+  protected onLaneToggle(id: string, event: Event): void {
+    const open: boolean = (event.target as HTMLDetailsElement).open;
+    this.openLanes.update((lanes: ReadonlySet<string>): ReadonlySet<string> => {
+      const next: Set<string> = new Set<string>(lanes);
+      if (open) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  /**
    * Opens the Plugin Manager, so the empty state is a way out rather than only an explanation.
    *
    * 🔑 It opens the manager rather than a connection editor, and that order is the doctrine: install a
@@ -861,7 +905,9 @@ export class AgentChat implements OnInit {
           title: item.agentType ?? 'Sub-agent',
           status,
           meta: meta.join(', '),
-          rows: build(kids.map((kid: AgentItem): RailEntry => ({ item: kid, kind: kid.kind }))),
+          rows: this.laneShown(item.id)
+            ? build(kids.map((kid: AgentItem): RailEntry => ({ item: kid, kind: kid.kind })))
+            : [],
         };
       };
 

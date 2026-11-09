@@ -4,7 +4,8 @@
 #
 # The procedure (also on the wiki, Releases):
 #   1. PR to `main`: `chore(release): 2026.1.0` bumping package.json `version`.
-#   2. PR `main → release`. CI runs on it like any PR; merge it.
+#   2. PR `main → release`. CI runs on it like any PR, and so does this workflow as a dry run: every
+#      target is built and verified, but nothing is tagged or drafted. Merge it once both are green.
 #   3. This workflow runs on the push to `release`. When it is green there is a draft release —
 #      read the notes, then Publish.
 #
@@ -15,10 +16,15 @@ name: Release
 on:
   push:
     branches: [release]
+  # The dry run: a broken Windows or macOS package is found on the PR, not after the merge.
+  pull_request:
+    branches: [release]
 
+# A real release is never cancelled and never runs beside another; a dry run belongs to its PR, and a
+# new push to the PR supersedes it.
 concurrency:
-  group: release
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'push' && 'release' || format('release-dry-run-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 permissions:
   contents: read
@@ -215,6 +221,8 @@ jobs:
   release:
     name: Tag and draft the release
     needs: [build, plugin-index]
+    # Only the push to `release` publishes; a PR's dry run stops once every target has built.
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

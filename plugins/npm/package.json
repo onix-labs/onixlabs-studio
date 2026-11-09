@@ -1,0 +1,11 @@
+{
+  "name": "@onixlabs/npm",
+  "version": "0.1.1",
+  "private": true,
+  "description": "npm package-manager plugin for ONIXLabs Studio.",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

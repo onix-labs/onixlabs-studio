@@ -21,9 +21,8 @@
   min-height: 0;
   background: var(--body-background-color);
   color: var(--body-foreground-color);
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.85rem;
-  line-height: 22px;
+  // The font is the Code font, bound on the host.
+  line-height: 1.5;
 }
 
 :host-context([data-theme-mode='dark']) {
@@ -56,9 +55,23 @@
   position: relative;
   width: calc(
     var(--addr-width) + var(--column-gap) + var(--bpr) * var(--hexcell-width) + (var(--bpr) - 1) *
-      var(--hex-gap) + var(--column-gap) + var(--bpr) * var(--ascii-width) + 2rem
+      var(--hex-gap) + var(--group-gaps) + var(--column-gap) + var(--bpr) * var(--ascii-width) +
+      2rem
   );
   margin-inline: auto;
+}
+
+// With the text column off, the grid is only as wide as what is left.
+.binary-editor__content--no-text {
+  width: calc(
+    var(--addr-width) + var(--column-gap) + var(--bpr) * var(--hexcell-width) + (var(--bpr) - 1) *
+      var(--hex-gap) + var(--group-gaps) + 2rem
+  );
+}
+
+// The gap that ends a byte group.
+.binary-editor__hexcell--group-end {
+  margin-inline-end: 0.75ch;
 }
 
 // The header and every row share this column layout, guaranteeing the labels align with the columns.

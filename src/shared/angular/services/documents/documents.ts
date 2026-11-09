@@ -1,9 +1,34 @@
-import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import { FileInfo } from '@shared/api/file-channels';
+import {
+  computed,
+  DestroyRef,
+  effect,
+  inject,
+  Service,
+  signal,
+  Signal,
+  WritableSignal,
+} from '@angular/core';
+import { FileInfo, FileWriteResult } from '@shared/api/file-channels';
+import type {
+  EditorConfigCharset,
+  EditorConfigProperties,
+  EditorConfigResolution,
+} from '@shared/api/editor-config-channels';
+import type { TextEncoding } from '@shared/api/text-encodings';
+import { EditorConfigs } from '@shared/angular/services/editor-config/editor-configs';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
+import { Settings, type TextEditorSettings } from '@shared/angular/services/settings/settings';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { Log } from '@shared/angular/services/log/log';
+import {
+  applySaveRules,
+  DocumentSavePreparer,
+  DocumentSaveRules,
+  resolveSaveRules,
+  saveRulesWhileTyping,
+} from './document-save-rules';
 import { FileConflicts } from '../file-conflicts/file-conflicts';
 import { FileSystem } from '../file-system/file-system';
 import { FileWatch } from '../file-watch/file-watch';
@@ -22,14 +47,73 @@ import {
 const UNTITLED_NAME: string = 'Untitled';
 
 /**
- * Holds the default language used for a new, unsaved document.
+ * Holds the encoding assumed for a file read without saying which (synthesised file infos).
  */
-const DEFAULT_LANGUAGE: string = 'plaintext';
+const ASSUMED_ENCODING: TextEncoding = 'utf8';
 
 /**
- * Holds the encoding label assumed for a new, unsaved document.
+ * Holds the encoding each `.editorconfig` charset names.
  */
-const DEFAULT_ENCODING: string = 'UTF-8';
+const CHARSET_ENCODINGS: Readonly<Record<EditorConfigCharset, TextEncoding>> = {
+  latin1: 'iso88591',
+  'utf-8': 'utf8',
+  'utf-8-bom': 'utf8',
+  'utf-16be': 'utf16be',
+  'utf-16le': 'utf16le',
+};
+
+/**
+ * Holds how long after typing stops an edited document saves itself when Auto Save is After a Delay,
+ * in milliseconds.
+ */
+export const AUTO_SAVE_DELAY_MS: number = 1000;
+
+/**
+ * Holds how long a save waits for the editor to format a document, in milliseconds, before saving the
+ * text as it stands.
+ */
+export const SAVE_PREPARATION_TIMEOUT_MS: number = 3000;
+
+/**
+ * The view toggles a code tab may set for itself — word wrap, the minimap, line numbers — each unset
+ * until the user flips it in that tab. An unset toggle follows the setting as it applies to the file
+ * (the global value, or the language's override); a set one holds for that tab only, and goes with
+ * it. Flipping one never changes a setting.
+ */
+export interface CodeViewToggles {
+  /**
+   * Gets whether long lines wrap in this tab, when the user has chosen.
+   */
+  readonly wordWrap?: boolean;
+
+  /**
+   * Gets whether this tab shows the minimap, when the user has chosen.
+   */
+  readonly minimap?: boolean;
+
+  /**
+   * Gets whether this tab shows line numbers, when the user has chosen.
+   */
+  readonly lineNumbers?: boolean;
+}
+
+/**
+ * Resolves the view toggles in force in a code tab: each one the tab set for itself, otherwise the
+ * setting as it applies to the file.
+ * @param view The toggles the tab set.
+ * @param settings The editor settings resolved for the file's language.
+ * @returns Returns every toggle's value in the tab.
+ */
+export function effectiveViewToggles(
+  view: CodeViewToggles,
+  settings: Pick<TextEditorSettings, 'wordWrap' | 'showMinimap' | 'showLineNumbers'>,
+): Required<CodeViewToggles> {
+  return {
+    wordWrap: view.wordWrap ?? settings.wordWrap,
+    minimap: view.minimap ?? settings.showMinimap,
+    lineNumbers: view.lineNumbers ?? settings.showLineNumbers,
+  };
+}
 
 /**
  * Represents the reactive state of a code document backing a code tab.
@@ -72,14 +156,32 @@ export interface CodeDocument {
   readonly dirty: Signal<boolean>;
 
   /**
-   * Gets the text encoding label (for example "UTF-8").
+   * Gets the text encoding the document is read and saved in.
    */
-  readonly encoding: Signal<string>;
+  readonly encoding: Signal<TextEncoding>;
 
   /**
-   * Gets a value indicating whether the file is, or will be saved, with a UTF-8 byte-order mark.
+   * Gets a value indicating whether the file is, or will be saved, with its encoding's byte-order
+   * mark.
    */
   readonly hasBom: Signal<boolean>;
+
+  /**
+   * Gets what EditorConfig says about the file, or null when it says nothing.
+   */
+  readonly editorConfig: Signal<EditorConfigProperties | null>;
+
+  /**
+   * Gets a value indicating whether the document can only be read: its editor refuses changes, it is
+   * never dirty, and it is never saved — a language server's decompiled source (#1133).
+   */
+  readonly readOnly: Signal<boolean>;
+
+  /**
+   * Gets the view toggles this tab has set for itself. Writable by the ribbon and the document's
+   * tool strip; it is view state of the open tab, never saved and never part of the file.
+   */
+  readonly view: WritableSignal<CodeViewToggles>;
 }
 
 /**
@@ -117,9 +219,9 @@ interface DocumentEntry {
   readonly original: WritableSignal<string>;
 
   /**
-   * Gets the writable text encoding label.
+   * Gets the writable text encoding.
    */
-  readonly encoding: WritableSignal<string>;
+  readonly encoding: WritableSignal<TextEncoding>;
 
   /**
    * Gets the writable byte-order-mark flag.
@@ -127,9 +229,36 @@ interface DocumentEntry {
   readonly hasBom: WritableSignal<boolean>;
 
   /**
+   * Gets the writable read-only flag.
+   */
+  readonly readOnly: WritableSignal<boolean>;
+
+  /**
    * Holds the disposer that stops watching this document's file on disk, or null when not watched.
    */
   watchDisposer: (() => void) | null;
+
+  /**
+   * Gets or sets the function stopping the watch on the `.editorconfig` files covering the file.
+   */
+  editorConfigDisposer: (() => void) | null;
+
+  /**
+   * Gets what EditorConfig says about the file, or null when it says nothing.
+   */
+  readonly editorConfig: WritableSignal<EditorConfigProperties | null>;
+
+  /**
+   * Gets or sets the encoding the file had before an `.editorconfig` chose another, so taking that
+   * charset away restores it.
+   */
+  encodingBeforeEditorConfig: { readonly encoding: TextEncoding; readonly hasBom: boolean } | null;
+
+  /**
+   * Gets or sets the text last written where it differs from the document's, so the file changing
+   * to it is not mistaken for someone else's edit.
+   */
+  lastWritten: string | null;
 }
 
 /**
@@ -162,6 +291,11 @@ export class Documents implements UnsavedWorkSource {
   private readonly fileWatch: FileWatch = inject(FileWatch);
 
   /**
+   * Holds the EditorConfig resolver, whose answers override the settings for a document's file.
+   */
+  private readonly editorConfigs: EditorConfigs = inject(EditorConfigs);
+
+  /**
    * Holds the conflict registry used to prompt when a watched file changes under unsaved edits.
    */
   private readonly fileConflicts: FileConflicts = inject(FileConflicts);
@@ -182,6 +316,16 @@ export class Documents implements UnsavedWorkSource {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the settings, read for the language a new document starts in and for auto save.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the notifications, which say why a save failed.
+   */
+  private readonly notifications: Notifications = inject(Notifications);
 
   /**
    * Holds the top-level tab that hosts this document model's documents (a workspace tab for well
@@ -220,6 +364,59 @@ export class Documents implements UnsavedWorkSource {
   public readonly activeDocumentId: Signal<string | null> = this.activeDocument.asReadonly();
 
   /**
+   * Holds each document's pending Auto Save, while typing has not yet paused for the delay.
+   */
+  private readonly autoSaveTimers: Map<string, ReturnType<typeof setTimeout>> = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+
+  /**
+   * Holds the documents an Auto Save is writing now, so a second is not started over it.
+   */
+  private readonly autoSaving: Set<string> = new Set<string>();
+
+  /**
+   * Holds what readies each document open in an editor for saving.
+   */
+  private readonly savePreparers: Map<string, DocumentSavePreparer> = new Map<
+    string,
+    DocumentSavePreparer
+  >();
+
+  /**
+   * Initializes a new instance of the {@link Documents} class, saving edited documents when the
+   * window loses focus and Auto Save is When Focus Changes.
+   */
+  public constructor() {
+    const onBlur: () => void = (): void => {
+      if (this.settings.get('textEditor.autoSave') === 'focus') {
+        for (const id of [...this.entries.keys()]) {
+          void this.autoSave(id, false);
+        }
+      }
+    };
+    window.addEventListener('blur', onBlur);
+    let honoured: boolean | undefined;
+    effect((): void => {
+      const honour: boolean = this.settings.value('textEditor.honourEditorConfig')();
+      if (honoured !== undefined) {
+        for (const id of [...this.entries.keys()]) {
+          void this.refreshEditorConfig(id);
+        }
+      }
+      honoured = honour;
+    });
+    inject(DestroyRef).onDestroy((): void => {
+      window.removeEventListener('blur', onBlur);
+      for (const timer of this.autoSaveTimers.values()) {
+        clearTimeout(timer);
+      }
+      this.autoSaveTimers.clear();
+    });
+  }
+
+  /**
    * Returns the document for a tab, creating an empty document when none exists yet.
    * @param id The owning tab identifier.
    * @param defaultName The display name given to a freshly created document; defaults to `Untitled`.
@@ -249,6 +446,58 @@ export class Documents implements UnsavedWorkSource {
     }
     entry.content.set(content);
     this.syncTab(id);
+    this.scheduleAutoSave(id);
+  }
+
+  /**
+   * Starts, or restarts, a document's Auto Save when Auto Save is After a Delay: it saves once typing
+   * has paused for {@link AUTO_SAVE_DELAY_MS}.
+   * @param id The document identifier.
+   */
+  private scheduleAutoSave(id: string): void {
+    const pending: ReturnType<typeof setTimeout> | undefined = this.autoSaveTimers.get(id);
+    if (pending !== undefined) {
+      clearTimeout(pending);
+      this.autoSaveTimers.delete(id);
+    }
+    if (this.settings.get('textEditor.autoSave') !== 'delay') {
+      return;
+    }
+    this.autoSaveTimers.set(
+      id,
+      setTimeout((): void => {
+        this.autoSaveTimers.delete(id);
+        void this.autoSave(id, true);
+      }, AUTO_SAVE_DELAY_MS),
+    );
+  }
+
+  /**
+   * Saves a document on its own, for Auto Save: only one with a file to go to, edits to save and no
+   * save of its own already writing. Never asks anything — a document never saved yet is left for
+   * the user to save.
+   * @param id The document identifier.
+   * @param whileTyping Whether the user may still be typing, as an Auto Save after a delay assumes.
+   * @returns Resolves once the save, if any, has finished.
+   */
+  private async autoSave(id: string, whileTyping: boolean): Promise<void> {
+    const entry: DocumentEntry | undefined = this.entries.get(id);
+    if (
+      entry === undefined ||
+      entry.filePath() === null ||
+      entry.readOnly() ||
+      !entry.document.dirty() ||
+      this.autoSaving.has(id)
+    ) {
+      return;
+    }
+    this.autoSaving.add(id);
+    try {
+      this.log.debug('Documents', `Auto-saving '${entry.fileName()}'`, id);
+      await this.save(id, whileTyping);
+    } finally {
+      this.autoSaving.delete(id);
+    }
   }
 
   /**
@@ -265,7 +514,13 @@ export class Documents implements UnsavedWorkSource {
   }
 
   public remove(id: string): void {
+    const pending: ReturnType<typeof setTimeout> | undefined = this.autoSaveTimers.get(id);
+    if (pending !== undefined) {
+      clearTimeout(pending);
+      this.autoSaveTimers.delete(id);
+    }
     this.entries.get(id)?.watchDisposer?.();
+    this.entries.get(id)?.editorConfigDisposer?.();
     this.fileConflicts.clear(id);
     this.entries.delete(id);
     this.markEntriesChanged();
@@ -395,7 +650,7 @@ export class Documents implements UnsavedWorkSource {
     entry.language.set(this.monaco.getLanguageForFileName(fileInfo.name));
     entry.content.set(fileInfo.content);
     entry.original.set(fileInfo.content);
-    entry.encoding.set(fileInfo.encoding ?? DEFAULT_ENCODING);
+    entry.encoding.set(fileInfo.encoding ?? ASSUMED_ENCODING);
     entry.hasBom.set(fileInfo.hasBom ?? false);
     this.syncTab(id);
     this.watchEntry(id);
@@ -425,7 +680,7 @@ export class Documents implements UnsavedWorkSource {
     entry.language.set(this.monaco.getLanguageForFileName(fileInfo.name));
     entry.content.set(fileInfo.content);
     entry.original.set(fileInfo.content);
-    entry.encoding.set(fileInfo.encoding ?? DEFAULT_ENCODING);
+    entry.encoding.set(fileInfo.encoding ?? ASSUMED_ENCODING);
     entry.hasBom.set(fileInfo.hasBom ?? false);
     this.syncTab(tab.id);
     this.watchEntry(tab.id);
@@ -467,10 +722,16 @@ export class Documents implements UnsavedWorkSource {
     entry.language.set(this.monaco.getLanguageForFileName(fileInfo.name));
     entry.content.set(fileInfo.content);
     entry.original.set(fileInfo.content);
-    entry.encoding.set(fileInfo.encoding ?? DEFAULT_ENCODING);
+    entry.encoding.set(fileInfo.encoding ?? ASSUMED_ENCODING);
     entry.hasBom.set(fileInfo.hasBom ?? false);
+    entry.readOnly.set(fileInfo.readOnly === true);
     this.watchEntry(id);
-    this.log.info('Documents', `Opened well document '${fileInfo.name}'`, id, fileInfo.path);
+    this.log.info(
+      'Documents',
+      `Opened well document '${fileInfo.name}'${fileInfo.readOnly === true ? ' (read-only)' : ''}`,
+      id,
+      fileInfo.path,
+    );
     return id;
   }
 
@@ -550,7 +811,16 @@ export class Documents implements UnsavedWorkSource {
    * @param id The focused document id, or null.
    */
   public setActiveDocument(id: string | null): void {
+    const previous: string | null = this.activeDocument();
     this.activeDocument.set(id);
+    // Moving to another document, or away from every one, is a focus change for Auto Save.
+    if (
+      previous !== null &&
+      previous !== id &&
+      this.settings.get('textEditor.autoSave') === 'focus'
+    ) {
+      void this.autoSave(previous, false);
+    }
   }
 
   /**
@@ -614,31 +884,50 @@ export class Documents implements UnsavedWorkSource {
   }
 
   /**
+   * Registers what readies a document open in an editor for saving.
+   * @param id The document identifier.
+   * @param preparer What readies it.
+   * @returns Returns a function that removes it.
+   */
+  public registerSavePreparer(id: string, preparer: DocumentSavePreparer): () => void {
+    this.savePreparers.set(id, preparer);
+    return (): void => {
+      if (this.savePreparers.get(id) === preparer) {
+        this.savePreparers.delete(id);
+      }
+    };
+  }
+
+  /**
    * Saves a tab's document, prompting for a path when it has never been saved.
    * @param id The owning tab identifier.
+   * @param whileTyping Whether the user may still be typing, so the text must stay as it is.
    * @returns Returns true when the document was saved.
    */
-  public async save(id: string): Promise<boolean> {
+  public async save(id: string, whileTyping: boolean = false): Promise<boolean> {
     const entry: DocumentEntry | undefined = this.entries.get(id);
     if (entry === undefined) {
+      return false;
+    }
+    if (entry.readOnly()) {
+      this.log.debug('Documents', `Not saving read-only '${entry.fileName()}'`, id);
       return false;
     }
     const filePath: string | null = entry.filePath();
     if (filePath === null) {
       return this.saveAs(id);
     }
-    const content: string = entry.content();
-    const success: boolean = (await this.fileSystem.write(filePath, content, entry.hasBom()))
-      .success;
-    if (success) {
+    if (!whileTyping) {
+      await this.prepareForSave(id, entry);
+    }
+    const content: string | null = await this.writeApplyingRules(entry, filePath, whileTyping);
+    if (content !== null) {
       entry.original.set(content);
       this.syncTab(id);
       this.recordRecent(entry);
       this.log.info('Documents', `Saved '${entry.fileName()}'`, id, filePath);
-    } else {
-      this.log.warn('Documents', `Save failed for '${entry.fileName()}'`, id, filePath);
     }
-    return success;
+    return content !== null;
   }
 
   /**
@@ -648,7 +937,7 @@ export class Documents implements UnsavedWorkSource {
    */
   public async saveAs(id: string): Promise<boolean> {
     const entry: DocumentEntry | undefined = this.entries.get(id);
-    if (entry === undefined) {
+    if (entry === undefined || entry.readOnly()) {
       return false;
     }
     const suggested: string = entry.filePath() ?? this.suggestedFileName(entry);
@@ -656,22 +945,220 @@ export class Documents implements UnsavedWorkSource {
     if (targetPath === null) {
       return false;
     }
-    const content: string = entry.content();
-    const success: boolean = (await this.fileSystem.write(targetPath, content, entry.hasBom()))
-      .success;
-    if (success) {
+    // The new path may sit under a different `.editorconfig`, whose rules this write must follow.
+    await this.refreshEditorConfig(id, targetPath);
+    await this.prepareForSave(id, entry);
+    const language: string = this.monaco.getLanguageForExtension(this.extname(targetPath));
+    const hadBom: boolean = entry.hasBom();
+    if (this.startsWithBom(entry, language)) {
+      entry.hasBom.set(true);
+    }
+    const content: string | null = await this.writeApplyingRules(
+      entry,
+      targetPath,
+      false,
+      language,
+    );
+    const success: boolean = content !== null;
+    if (content !== null) {
       entry.filePath.set(targetPath);
       entry.fileName.set(this.basename(targetPath));
-      entry.language.set(this.monaco.getLanguageForExtension(this.extname(targetPath)));
+      entry.language.set(language);
       entry.original.set(content);
       this.syncTab(id);
       this.watchEntry(id);
       this.recordRecent(entry);
       this.log.info('Documents', `Saved as '${entry.fileName()}'`, id, targetPath);
     } else {
+      entry.hasBom.set(hadBom);
+      await this.refreshEditorConfig(id);
       this.log.warn('Documents', 'Save-as failed', id, targetPath);
     }
     return success;
+  }
+
+  /**
+   * Saves a document in another encoding: converts it and writes it in that one from now on. When the
+   * text holds a character the encoding cannot, nothing is written and the document keeps its own.
+   * @param id The owning tab identifier.
+   * @param encoding The encoding to save in.
+   * @returns Returns true when the document was saved.
+   */
+  public async saveWithEncoding(id: string, encoding: TextEncoding): Promise<boolean> {
+    const entry: DocumentEntry | undefined = this.entries.get(id);
+    if (entry === undefined || entry.readOnly()) {
+      return false;
+    }
+    const previous: { encoding: TextEncoding; hasBom: boolean } = {
+      encoding: entry.encoding(),
+      hasBom: entry.hasBom(),
+    };
+    entry.encoding.set(encoding);
+    // UTF-16 is written with its byte-order mark, so it reads back as UTF-16; UTF-8 keeps the file's
+    // choice; a single-byte encoding has none.
+    entry.hasBom.set(
+      encoding === 'utf8'
+        ? previous.encoding === 'utf8' && previous.hasBom
+        : encoding === 'utf16le' || encoding === 'utf16be',
+    );
+    this.log.info('Documents', `Saving '${entry.fileName()}' as ${encoding}`, id);
+    if (await this.save(id)) {
+      return true;
+    }
+    entry.encoding.set(previous.encoding);
+    entry.hasBom.set(previous.hasBom);
+    return false;
+  }
+
+  /**
+   * Reopens a document's file decoded in an encoding, whatever its bytes suggest: for a file read in
+   * the wrong one. Unsaved edits are given up, so a caller asks first.
+   * @param id The owning tab identifier.
+   * @param encoding The encoding to read it in.
+   * @returns Returns true when the file was read again.
+   */
+  public async reopenWithEncoding(id: string, encoding: TextEncoding): Promise<boolean> {
+    const entry: DocumentEntry | undefined = this.entries.get(id);
+    const filePath: string | null | undefined = entry?.filePath();
+    if (entry === undefined || filePath === null || filePath === undefined) {
+      return false;
+    }
+    const info: FileInfo | null = await this.fileSystem.read(filePath, encoding);
+    if (info === null) {
+      this.log.warn('Documents', `Could not reopen '${entry.fileName()}' as ${encoding}`, id);
+      return false;
+    }
+    entry.encoding.set(info.encoding ?? encoding);
+    entry.hasBom.set(info.hasBom ?? false);
+    entry.content.set(info.content);
+    entry.original.set(info.content);
+    this.syncTab(id);
+    this.log.info('Documents', `Reopened '${entry.fileName()}' as ${encoding}`, id);
+    return true;
+  }
+
+  /**
+   * Determines whether a document saved for the first time starts with a byte-order mark: Add
+   * Byte-Order Mark to New Files, unless an `.editorconfig` decides its charset.
+   * @param entry The document.
+   * @param language The language it is being saved as.
+   * @returns Returns true when the mark should be added.
+   */
+  private startsWithBom(entry: DocumentEntry, language: string): boolean {
+    return (
+      entry.filePath() === null &&
+      entry.encoding() === 'utf8' &&
+      entry.editorConfig()?.charset === undefined &&
+      this.settings.resolveSettingsForLanguage(language).addByteOrderMark
+    );
+  }
+
+  /**
+   * Runs what the document's editor does before a save, when a setting asks for any of it. A save is
+   * never lost to this: a formatter that fails or takes too long is logged, and the text saved as it
+   * stands.
+   * @param id The document identifier.
+   * @param entry The document.
+   * @returns Resolves once the document is ready, or the wait is over.
+   */
+  private async prepareForSave(id: string, entry: DocumentEntry): Promise<void> {
+    const preparer: DocumentSavePreparer | undefined = this.savePreparers.get(id);
+    const settings: TextEditorSettings = this.settings.resolveSettingsForLanguage(entry.language());
+    if (
+      preparer === undefined ||
+      (settings.formatOnSave === 'off' && !settings.organiseImportsOnSave)
+    ) {
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut: Promise<boolean> = new Promise<boolean>(
+      (resolve: (value: boolean) => void): void => {
+        timer = setTimeout((): void => resolve(true), SAVE_PREPARATION_TIMEOUT_MS);
+      },
+    );
+    try {
+      const finished: Promise<boolean> = preparer(settings, entry.original()).then(
+        (): boolean => false,
+      );
+      if (await Promise.race([finished, timedOut])) {
+        this.log.warn('Documents', `Saving '${entry.fileName()}' without waiting to format`, id);
+      }
+    } catch (error: unknown) {
+      this.log.warn('Documents', `Could not format '${entry.fileName()}' on save`, id, error);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Gets the rules a document's text is saved under.
+   * @param entry The document.
+   * @param language The language it is saved as.
+   * @param whileTyping Whether the user may still be typing.
+   * @returns Returns the rules.
+   */
+  private saveRules(
+    entry: DocumentEntry,
+    language: string,
+    whileTyping: boolean,
+  ): DocumentSaveRules {
+    const rules: DocumentSaveRules = resolveSaveRules(
+      entry.editorConfig(),
+      this.settings.resolveSettingsForLanguage(language),
+    );
+    return whileTyping ? saveRulesWhileTyping(rules) : rules;
+  }
+
+  /**
+   * Writes a document's text with the save rules applied. A code editor shows what was written; a
+   * Markdown document keeps its text, as replacing it would rebuild the editor under the caret, and
+   * the file differing from it only in what the rules changed is not a change on disk.
+   * @param entry The document.
+   * @param path Where to write.
+   * @param whileTyping Whether the user may still be typing.
+   * @param language The language it is saved as.
+   * @returns Returns the document's text as now saved, or null when it could not be written.
+   */
+  private async writeApplyingRules(
+    entry: DocumentEntry,
+    path: string,
+    whileTyping: boolean,
+    language: string = entry.language(),
+  ): Promise<string | null> {
+    const content: string = entry.content();
+    const written: string = applySaveRules(content, this.saveRules(entry, language, whileTyping));
+    const kept: string = entry.language() === 'markdown' ? content : written;
+    entry.lastWritten = written === kept ? null : written;
+    if (kept !== content) {
+      entry.content.set(kept);
+    }
+    return (await this.write(entry, path, written)) ? kept : null;
+  }
+
+  /**
+   * Writes a document's text in its encoding, saying why when it cannot be: a character the encoding
+   * has no byte for is the failure a user can act on.
+   * @param entry The document.
+   * @param path Where to write.
+   * @param content The text.
+   * @returns Returns true when it was written.
+   */
+  private async write(entry: DocumentEntry, path: string, content: string): Promise<boolean> {
+    const result: FileWriteResult = await this.fileSystem.write(
+      path,
+      content,
+      entry.hasBom(),
+      entry.encoding(),
+    );
+    if (!result.success) {
+      this.log.warn('Documents', `Save failed for '${entry.fileName()}'`, path, result.error);
+      this.notifications.notify({
+        severity: 'error',
+        title: `${entry.fileName()} wasn't saved`,
+        detail: result.error ?? 'The file could not be written.',
+      });
+    }
+    return result.success;
   }
 
   /**
@@ -701,12 +1188,22 @@ export class Documents implements UnsavedWorkSource {
   private createEntry(id: string, defaultName: string = UNTITLED_NAME): DocumentEntry {
     const filePath: WritableSignal<string | null> = signal<string | null>(null);
     const fileName: WritableSignal<string> = signal<string>(defaultName);
-    const language: WritableSignal<string> = signal<string>(DEFAULT_LANGUAGE);
+    // A new document starts in Default Language for New Documents; opening a file sets its own.
+    const language: WritableSignal<string> = signal<string>(
+      this.settings.get('textEditor.defaultLanguage'),
+    );
     const content: WritableSignal<string> = signal<string>('');
     const original: WritableSignal<string> = signal<string>('');
-    const encoding: WritableSignal<string> = signal<string>(DEFAULT_ENCODING);
-    const hasBom: WritableSignal<boolean> = signal<boolean>(false);
-    const dirty: Signal<boolean> = computed((): boolean => content() !== original());
+    // And is saved in Default Encoding — a UTF-16 one with its byte-order mark, which tells the
+    // encoding to whoever reads it next; opening a file sets its own.
+    const defaultEncoding: TextEncoding = this.settings.get('textEditor.defaultEncoding');
+    const encoding: WritableSignal<TextEncoding> = signal<TextEncoding>(defaultEncoding);
+    const hasBom: WritableSignal<boolean> = signal<boolean>(defaultEncoding.startsWith('utf16'));
+    const readOnly: WritableSignal<boolean> = signal<boolean>(false);
+    const editorConfig: WritableSignal<EditorConfigProperties | null> =
+      signal<EditorConfigProperties | null>(null);
+    // A read-only document is never dirty, so it never asks to be saved on close or by Save All.
+    const dirty: Signal<boolean> = computed((): boolean => !readOnly() && content() !== original());
     const document: CodeDocument = {
       id,
       filePath: filePath.asReadonly(),
@@ -717,6 +1214,9 @@ export class Documents implements UnsavedWorkSource {
       dirty,
       encoding: encoding.asReadonly(),
       hasBom: hasBom.asReadonly(),
+      editorConfig: editorConfig.asReadonly(),
+      readOnly: readOnly.asReadonly(),
+      view: signal<CodeViewToggles>({}),
     };
     return {
       document,
@@ -727,7 +1227,12 @@ export class Documents implements UnsavedWorkSource {
       original,
       encoding,
       hasBom,
+      readOnly,
       watchDisposer: null,
+      editorConfigDisposer: null,
+      editorConfig,
+      encodingBeforeEditorConfig: null,
+      lastWritten: null,
     };
   }
 
@@ -749,21 +1254,95 @@ export class Documents implements UnsavedWorkSource {
         this.onDiskChange(id, info),
       );
     }
+    void this.refreshEditorConfig(id);
   }
 
   /**
-   * Handles a watched document's file changing on disk. Reloads the document when it has no unsaved
-   * edits; when it is dirty, raises a keep/reload conflict for the user to resolve.
+   * Asks EditorConfig about a document's file again, and keeps watching what decides the answer.
+   * @param id The document identifier.
+   * @param path The path to ask about; defaults to the document's own.
+   * @returns Returns a promise that resolves once the answer is applied.
+   */
+  private async refreshEditorConfig(id: string, path?: string): Promise<void> {
+    const entry: DocumentEntry | undefined = this.entries.get(id);
+    const filePath: string | null = path ?? entry?.filePath() ?? null;
+    if (entry === undefined) {
+      return;
+    }
+    const resolution: EditorConfigResolution | null =
+      filePath === null ? null : await this.editorConfigs.resolve(filePath);
+    if (this.entries.get(id) !== entry) {
+      return;
+    }
+    entry.editorConfigDisposer?.();
+    entry.editorConfigDisposer =
+      resolution === null
+        ? null
+        : this.editorConfigs.watch(resolution.candidates, (): void => {
+            void this.refreshEditorConfig(id);
+          });
+    const properties: EditorConfigProperties | null =
+      resolution === null || Object.keys(resolution.properties).length === 0
+        ? null
+        : resolution.properties;
+    entry.editorConfig.set(properties);
+    this.applyEditorConfigCharset(entry, properties);
+  }
+
+  /**
+   * Puts a document in the encoding its `.editorconfig` asks for, or back in its own when none does.
+   * It takes effect on the next save. Markdown documents follow only the whitespace and newline
+   * properties.
+   * @param entry The document.
+   * @param properties The properties in force.
+   */
+  private applyEditorConfigCharset(
+    entry: DocumentEntry,
+    properties: EditorConfigProperties | null,
+  ): void {
+    const charset: EditorConfigCharset | undefined =
+      entry.language() === 'markdown' ? undefined : properties?.charset;
+    if (charset !== undefined) {
+      entry.encodingBeforeEditorConfig ??= { encoding: entry.encoding(), hasBom: entry.hasBom() };
+      entry.encoding.set(CHARSET_ENCODINGS[charset]);
+      entry.hasBom.set(charset === 'utf-8-bom' || charset.startsWith('utf-16'));
+    } else if (entry.encodingBeforeEditorConfig !== null) {
+      entry.encoding.set(entry.encodingBeforeEditorConfig.encoding);
+      entry.hasBom.set(entry.encodingBeforeEditorConfig.hasBom);
+      entry.encodingBeforeEditorConfig = null;
+    }
+  }
+
+  /**
+   * Handles a watched document's file changing on disk. With no unsaved edits it does what Reload
+   * Files Changed on Disk says; when it is dirty, raises a keep/reload conflict for the user to resolve.
    * @param id The document identifier.
    * @param info The freshly-read file.
    */
   private onDiskChange(id: string, info: FileInfo): void {
     const entry: DocumentEntry | undefined = this.entries.get(id);
-    if (entry === undefined || entry.content() === info.content) {
+    if (entry === undefined) {
+      return;
+    }
+    // The watcher tells the encoding from the bytes; a document reopened in another reads its file in
+    // that one, or every change would look like new text.
+    const encoding: TextEncoding = entry.encoding();
+    if ((info.encoding ?? ASSUMED_ENCODING) !== encoding) {
+      void this.fileSystem.read(info.path, encoding).then((reread: FileInfo | null): void => {
+        if (reread !== null && reread.encoding === encoding) {
+          this.onDiskChange(id, reread);
+        }
+      });
+      return;
+    }
+    if (entry.content() === info.content || entry.lastWritten === info.content) {
       return;
     }
     if (!entry.document.dirty()) {
-      this.reloadFromDisk(id, info.content);
+      this.fileConflicts.changedOnDisk(
+        { documentId: id, tabId: this.owningTabId ?? id, name: entry.fileName() },
+        (): void => this.reloadFromDisk(id, info.content),
+      );
       return;
     }
     // Unsaved edits diverge from a new on-disk version: prompt the user to keep or reload.

@@ -8,6 +8,9 @@ import {
   FileWriteResult,
   SaveDialogChoice,
 } from '@shared/api/file-channels';
+import type { TextEncoding } from '@shared/api/text-encodings';
+import { textDecodeOptionsFrom } from '@shared/angular/services/documents/document-defaults';
+import { Settings } from '@shared/angular/services/settings/settings';
 
 /**
  * Holds the result returned when a write is attempted outside Electron.
@@ -43,25 +46,60 @@ export class FileSystem {
   private readonly log: Log = inject(Log);
 
   /**
-   * Reads a file from disk.
+   * Holds the settings, read for how files decode.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Reads a file from disk, its encoding told from its bytes as Default Encoding and Auto-Detect
+   * Encoding say, unless one is named.
    * @param path The absolute path of the file to read.
+   * @param encoding An encoding to read it in whatever its bytes suggest, or undefined to tell it.
    * @returns Returns the file info, or null when unavailable or unreadable.
    */
-  public read(path: string): Promise<FileInfo | null> {
-    return this.bridge?.invoke<FileInfo | null>(FileChannel.Read, path) ?? Promise.resolve(null);
+  public read(path: string, encoding?: TextEncoding): Promise<FileInfo | null> {
+    return (
+      this.bridge?.invoke<FileInfo | null>(
+        FileChannel.Read,
+        path,
+        textDecodeOptionsFrom(this.settings, encoding),
+      ) ?? Promise.resolve(null)
+    );
+  }
+
+  /**
+   * Writes bytes to a file, replacing what was there — a file Studio produces, such as an export.
+   * @param path The absolute path, as a save dialog chose it.
+   * @param bytes The bytes.
+   * @returns Returns a promise resolving whether it was written.
+   */
+  public writeBytes(path: string, bytes: Uint8Array): Promise<FileWriteResult> {
+    this.log.trace('FileSystem', 'Writing bytes', path);
+    return (
+      this.bridge?.invoke<FileWriteResult>(FileChannel.WriteBytes, path, bytes) ??
+      Promise.resolve(UNAVAILABLE_WRITE)
+    );
   }
 
   /**
    * Writes contents to a file on disk.
    * @param path The absolute path to write to.
    * @param content The contents to write.
-   * @param hasBom Whether to prefix the contents with a UTF-8 byte-order mark. Defaults to false.
-   * @returns Returns the result describing success or failure.
+   * @param hasBom Whether to prefix the contents with the encoding's byte-order mark. Defaults to
+   * false.
+   * @param encoding The encoding to write in. Defaults to UTF-8.
+   * @returns Returns the result describing success or failure; a character the encoding cannot hold
+   * fails the write, saying which.
    */
-  public write(path: string, content: string, hasBom: boolean = false): Promise<FileWriteResult> {
-    this.log.trace('FileSystem', 'Writing file', path);
+  public write(
+    path: string,
+    content: string,
+    hasBom: boolean = false,
+    encoding: TextEncoding = 'utf8',
+  ): Promise<FileWriteResult> {
+    this.log.trace('FileSystem', 'Writing file', path, encoding);
     return (
-      this.bridge?.invoke<FileWriteResult>(FileChannel.Write, path, content, hasBom) ??
+      this.bridge?.invoke<FileWriteResult>(FileChannel.Write, path, content, hasBom, encoding) ??
       Promise.resolve(UNAVAILABLE_WRITE)
     );
   }
@@ -73,7 +111,10 @@ export class FileSystem {
    */
   public openDialog(): Promise<readonly FileInfo[]> {
     return (
-      this.bridge?.invoke<readonly FileInfo[]>(FileChannel.OpenFileDialog) ?? Promise.resolve([])
+      this.bridge?.invoke<readonly FileInfo[]>(
+        FileChannel.OpenFileDialog,
+        textDecodeOptionsFrom(this.settings),
+      ) ?? Promise.resolve([])
     );
   }
 

@@ -30,6 +30,7 @@ import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { SETTINGS_BY_KEY } from '@shared/angular/services/settings/settings-registry';
 import { SettingDef } from '@shared/angular/services/settings/settings-schema';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import { Studio } from '@shared/angular/services/studio/studio';
 
@@ -218,6 +219,25 @@ const SLOT_STEPS: Readonly<Record<PluginSlot, { icon: Icon; title: string; summa
       'Studio runs agents through provider plugins, so the stack is yours to choose. Each provider ' +
       'a plugin offers gets a step of its own below once it is installed.',
   },
+  'database-engine': {
+    icon: Icon.SETUP_DATABASE_ENGINES,
+    title: 'Database engines',
+    summary:
+      'The databases the Database Explorer can connect to, one engine each. Without one installed ' +
+      'there is nothing to connect with.',
+  },
+  'package-manager': {
+    icon: Icon.SETUP_PACKAGE_MANAGERS,
+    title: 'Package managers',
+    summary:
+      'What the Packages panel reads and searches, one plugin for each ecosystem you work in.',
+  },
+  'test-adapter': {
+    icon: Icon.SETUP_TEST_ADAPTERS,
+    title: 'Test frameworks',
+    summary:
+      'What the Tests panel finds and runs, one plugin for each ecosystem whose tests you run.',
+  },
 };
 
 /**
@@ -373,6 +393,11 @@ export class SetupWizard {
    * Holds the running build's version, or null when the renderer runs outside Electron.
    */
   private readonly version: string | null = window.host?.versions.studio ?? null;
+
+  /**
+   * Holds the settings, read for Run Setup After Updates.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the version the user last completed setup on, or null on a first run. Read once at
@@ -567,6 +592,13 @@ export class SetupWizard {
       this.log.debug('SetupWizard', `Setup already completed for ${this.version}`);
       return;
     }
+    // After an update the wizard opens only when it has something new to show, and not at all when
+    // Run Setup After Updates says never. Either way the version is recorded, as finishing would.
+    if (this.mode === 'upgrade' && !this.opensAfterUpdate()) {
+      this.log.info('SetupWizard', `Not running setup for ${this.version}; recording it as seen`);
+      this.store.set<string>(LAST_SEEN_KEY, this.version);
+      return;
+    }
     this.log.info(
       'SetupWizard',
       `Running setup for ${this.version} (${this.mode}, last seen ${this.lastSeen ?? 'never'})`,
@@ -638,6 +670,24 @@ export class SetupWizard {
       return true;
     }
     return this.hasNewSettings(step, this.lastSeen);
+  }
+
+  /**
+   * Determines whether the wizard opens after an update: when Run Setup After Updates allows it and
+   * the update brings something new to it — release highlights, or a step with a setting newer than
+   * the version last set up.
+   * @returns Returns true when the wizard should open.
+   */
+  private opensAfterUpdate(): boolean {
+    if (this.settings.get('application.runSetupAfterUpdates') === 'never') {
+      return false;
+    }
+    const since: string | null = this.lastSeen;
+    return (
+      this.highlights.length > 0 ||
+      (since !== null &&
+        SETUP_STEPS.some((step: SetupStep): boolean => this.hasNewSettings(step, since)))
+    );
   }
 
   /**

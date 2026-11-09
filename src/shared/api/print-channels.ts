@@ -11,6 +11,68 @@ export enum PrintChannel {
    * (renderer→main, invoke).
    */
   ExportPdf = 'print:export-pdf',
+
+  /**
+   * Prints the current document through the system print dialog, with the page header and footer
+   * the request asks for (renderer→main, invoke).
+   */
+  Print = 'print:print',
+}
+
+/**
+ * Names a paper size the print path understands, as Chromium names it.
+ */
+export type PrintPageSize = 'A4' | 'Letter' | 'Legal' | 'A3';
+
+/**
+ * Describes the page a document is printed or exported on.
+ */
+export interface PrintPage {
+  /**
+   * Gets the paper size.
+   */
+  readonly pageSize: PrintPageSize;
+
+  /**
+   * Gets a value indicating whether the page is laid out landscape rather than portrait.
+   */
+  readonly landscape: boolean;
+
+  /**
+   * Gets a value indicating whether background colours and shading are printed.
+   */
+  readonly printBackground: boolean;
+
+  /**
+   * Gets the document name printed in the page header, or undefined to print no header and footer.
+   */
+  readonly headerTitle?: string;
+}
+
+/**
+ * Describes a request to print the current document through the system print dialog.
+ */
+export interface PrintRequest {
+  /**
+   * Gets the page the document is printed on.
+   */
+  readonly page: PrintPage;
+}
+
+/**
+ * Describes the outcome of a print.
+ */
+export interface PrintResult {
+  /**
+   * Gets a value indicating whether the document was sent to the printer.
+   */
+  readonly success: boolean;
+
+  /**
+   * Gets the reason the print did not happen, when it did not; `cancelled` when the user dismissed
+   * the print dialog.
+   */
+  readonly error?: string;
 }
 
 /**
@@ -22,6 +84,18 @@ export interface ExportPdfRequest {
    * `notes.pdf`).
    */
   readonly defaultFileName: string;
+
+  /**
+   * Gets the page the document is exported on. Absent, the export is portrait A4 with no
+   * backgrounds, header or footer.
+   */
+  readonly page?: PrintPage;
+
+  /**
+   * Gets a value indicating whether the finished PDF is opened in the default PDF viewer. Absent, it
+   * is.
+   */
+  readonly openAfterExport?: boolean;
 }
 
 /**

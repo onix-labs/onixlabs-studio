@@ -394,3 +394,17 @@
   border-radius: calc(0.55rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
 }
+
+// The ticks under a new repository's file choices.
+.step__checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+}
+
+.step__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}

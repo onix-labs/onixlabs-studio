@@ -10,6 +10,7 @@ import { EditorNavigation } from '@shared/angular/services/references/editor-nav
 import { QuickFixes } from '@shared/angular/services/quick-fix/quick-fixes';
 import { RenameSymbol } from '@shared/angular/services/rename/rename-symbol';
 import { Studio } from '@shared/angular/services/studio/studio';
+import type { LspGeneratedViewKind } from '@shared/api/lsp-channels';
 
 /**
  * Identifies the source label passed to Monaco when the menu runs an editor action.
@@ -21,7 +22,22 @@ const COMMAND_SOURCE: string = 'app-editor-context-menu';
  */
 export type EditorContextMenuCommand =
   | 'definition'
+  | 'declaration'
+  | 'typeDefinition'
+  | 'sourceDefinition'
+  | 'parentModule'
+  | 'cargoManifest'
+  | 'projectConfiguration'
+  | 'implementation'
   | 'references'
+  | 'callHierarchy'
+  | 'typeHierarchy'
+  | 'sourceHeader'
+  | 'expandMacro'
+  | 'hir'
+  | 'mir'
+  | 'syntaxTree'
+  | 'memoryUsage'
   | 'symbol'
   | 'line'
   | 'rename'
@@ -82,7 +98,27 @@ interface ShortcutHints {
  */
 const SHORTCUTS: Readonly<Record<EditorContextMenuCommand, ShortcutHints>> = {
   definition: { mac: 'F12', windows: 'F12' },
+  // No chord: Visual Studio's, ⌃F12, is Go to Implementation here (#1213).
+  declaration: { mac: '', windows: '' },
+  // No chord: neither Visual Studio nor VS Code gives Go to Type Definition one (#1142).
+  typeDefinition: { mac: '', windows: '' },
+  sourceDefinition: { mac: '', windows: '' },
+  parentModule: { mac: '', windows: '' },
+  cargoManifest: { mac: '', windows: '' },
+  projectConfiguration: { mac: '', windows: '' },
+  implementation: { mac: '⌘F12', windows: 'Ctrl+F12' },
   references: { mac: '⇧F12', windows: 'Shift+F12' },
+  // Rider's call hierarchy chord; its type hierarchy chord (⌃H) is delete-left in a Mac editor (#1153).
+  callHierarchy: { mac: '⌃⌥H', windows: 'Ctrl+Alt+H' },
+  typeHierarchy: { mac: '⌃⇧H', windows: 'Ctrl+Shift+H' },
+  // Visual Studio's chord (#1213).
+  sourceHeader: { mac: '⌘K ⌘O', windows: 'Ctrl+K Ctrl+O' },
+  // The views of the code a server alone gives (#1210, #1213) have no chord anywhere.
+  expandMacro: { mac: '', windows: '' },
+  hir: { mac: '', windows: '' },
+  mir: { mac: '', windows: '' },
+  syntaxTree: { mac: '', windows: '' },
+  memoryUsage: { mac: '', windows: '' },
   symbol: { mac: '⌘⇧O', windows: 'Ctrl+Shift+O' },
   line: { mac: '⌃G', windows: 'Ctrl+G' },
   rename: { mac: 'F2', windows: 'F2' },
@@ -287,6 +323,28 @@ export class EditorContextMenu {
     if (this.navigation.offersDefinitions(editor)) {
       navigation.push(this.item('definition', 'Go to Definition'));
     }
+    // Offered only where the language server answers them (#1142).
+    if (this.navigation.offersDeclarations(editor)) {
+      navigation.push(this.item('declaration', 'Go to Declaration'));
+    }
+    if (this.navigation.offersTypeDefinitions(editor)) {
+      navigation.push(this.item('typeDefinition', 'Go to Type Definition'));
+    }
+    if (this.navigation.offersSourceDefinitions(editor)) {
+      navigation.push(this.item('sourceDefinition', 'Go to Source Definition'));
+    }
+    if (this.navigation.offersParentModule(editor)) {
+      navigation.push(this.item('parentModule', 'Go to Parent Module'));
+    }
+    if (this.navigation.offersCargoManifest(editor)) {
+      navigation.push(this.item('cargoManifest', 'Open Cargo.toml'));
+    }
+    if (this.navigation.offersProjectConfiguration(editor)) {
+      navigation.push(this.item('projectConfiguration', 'Go to Project Configuration'));
+    }
+    if (this.navigation.offersImplementations(editor)) {
+      navigation.push(this.item('implementation', 'Go to Implementation'));
+    }
     // Shown where the language can answer, but inert where no References panel would list the
     // answer — as Find is where no find panel answers.
     if (this.navigation.offersReferences(editor)) {
@@ -294,7 +352,34 @@ export class EditorContextMenu {
         this.item('references', 'Find All References', !this.navigation.listsReferences(editor)),
       );
     }
+    // Offered where the language server gives them and a workspace's Hierarchy panel shows them (#1153).
+    if (this.navigation.offersHierarchy(editor, 'calls')) {
+      navigation.push(this.item('callHierarchy', 'Show Call Hierarchy'));
+    }
+    if (this.navigation.offersHierarchy(editor, 'types')) {
+      navigation.push(this.item('typeHierarchy', 'Show Type Hierarchy'));
+    }
+    if (this.navigation.offersSourceHeader(editor)) {
+      navigation.push(this.item('sourceHeader', 'Switch Header/Source'));
+    }
     navigation.push(this.item('symbol', 'Go to Symbol'), this.item('line', 'Go to Line'));
+
+    // What the server alone can show of the code, each opened as a read-only document (#1210, #1213).
+    const views: MenuItem[] = (
+      [
+        ['expandMacro', 'Expand Macro'],
+        ['hir', 'View HIR'],
+        ['mir', 'View MIR'],
+        ['syntaxTree', 'Show Syntax Tree'],
+        ['memoryUsage', 'Show Server Memory Usage'],
+      ] as const
+    )
+      .filter(([kind]: readonly [LspGeneratedViewKind, string]): boolean =>
+        this.navigation.offersGeneratedView(editor, kind),
+      )
+      .map(([kind, label]: readonly [LspGeneratedViewKind, string]): MenuItem =>
+        this.item(kind, label),
+      );
 
     const find: MenuItem[] = [this.item('find', 'Find', !this.findRouter.answers(editor))];
 
@@ -325,7 +410,7 @@ export class EditorContextMenu {
         ]
       : [this.item('copy', 'Copy'), this.item('selectAll', 'Select All')];
 
-    return [navigation, find, editing, clipboard]
+    return [navigation, views, find, editing, clipboard]
       .filter((group: readonly MenuItem[]): boolean => group.length > 0)
       .flatMap((group: readonly MenuItem[], index: number): readonly MenuItem[] =>
         index === 0 ? group : [{ id: `separator-${index}`, label: '', separator: true }, ...group],
@@ -343,8 +428,45 @@ export class EditorContextMenu {
       case 'definition':
         void this.goToDefinition(editor);
         return;
+      case 'declaration':
+        void this.navigation.goToDeclaration(editor);
+        return;
+      case 'typeDefinition':
+        void this.navigation.goToTypeDefinition(editor);
+        return;
+      case 'sourceDefinition':
+        void this.navigation.goToSourceDefinition(editor);
+        return;
+      case 'parentModule':
+        void this.navigation.goToParentModule(editor);
+        return;
+      case 'cargoManifest':
+        void this.navigation.openCargoManifest(editor);
+        return;
+      case 'projectConfiguration':
+        void this.navigation.openProjectConfiguration(editor);
+        return;
+      case 'implementation':
+        void this.navigation.goToImplementation(editor);
+        return;
       case 'references':
         void this.navigation.findReferences(editor);
+        return;
+      case 'callHierarchy':
+        void this.navigation.showHierarchy(editor, 'calls');
+        return;
+      case 'typeHierarchy':
+        void this.navigation.showHierarchy(editor, 'types');
+        return;
+      case 'sourceHeader':
+        void this.navigation.switchSourceHeader(editor);
+        return;
+      case 'expandMacro':
+      case 'hir':
+      case 'mir':
+      case 'syntaxTree':
+      case 'memoryUsage':
+        void this.navigation.showGeneratedView(editor, command as LspGeneratedViewKind);
         return;
       case 'symbol':
         this.goToRouter.open(editor, 'symbol');
@@ -446,7 +568,10 @@ export class EditorContextMenu {
         : platform === 'linux'
           ? (hints.linux ?? hints.windows)
           : hints.windows;
-    return disabled ? { id: command, label, shortcut, disabled } : { id: command, label, shortcut };
+    // A command with no chord shows none, rather than an empty hint.
+    const item: MenuItem =
+      shortcut === '' ? { id: command, label } : { id: command, label, shortcut };
+    return disabled ? { ...item, disabled } : item;
   }
 
   /**

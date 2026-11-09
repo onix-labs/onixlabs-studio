@@ -1,23 +1,16 @@
 <app-modal
   [open]="isOpen()"
   [width]="58"
-  [height]="34"
+  [height]="38"
   [expandable]="true"
+  [frameless]="true"
   ariaLabel="Run Configurations"
   (dismiss)="onCancel()"
 >
   <ng-template appModalContent>
     <div class="configure">
-      <!-- Title and Auto-configure share the header line: the dialog says what it is, and the one
-           action that authors configurations rather than editing them sits opposite. -->
       <header class="configure__header">
         <h2 class="configure__title">Run Configurations</h2>
-        <app-button
-          [icon]="Icon.AGENT"
-          label="Auto-configure"
-          tooltip="Let the agent set up this project's run configurations"
-          (click)="onAutoConfigure()"
-        />
       </header>
 
       <div class="configure__body">
@@ -76,9 +69,66 @@
 
         <div class="configure__detail">
           @if (selected(); as configuration) {
-            <app-setting-row label="Name">
-              <app-text-field [value]="configuration.name" (valueChange)="onName($event)" />
-            </app-setting-row>
+            <app-text-field
+              variant="floating"
+              label="Name"
+              [value]="configuration.name"
+              (valueChange)="onName($event)"
+            />
+
+            @if (hasBuildConfigs()) {
+              <app-dropdown
+                label="Configuration"
+                [options]="buildConfigOptions()"
+                [value]="configuration.buildConfiguration ?? ''"
+                [fullWidth]="true"
+                (valueChange)="onBuildConfiguration($event)"
+              />
+            }
+
+            @if (hasTarget()) {
+              <app-dropdown
+                [label]="targetLabel()"
+                [options]="targetOptions()"
+                [value]="configuration.target ?? ''"
+                [fullWidth]="true"
+                (valueChange)="onTarget($event)"
+              />
+            }
+
+            <app-text-field
+              variant="floating"
+              label="Program"
+              [value]="configuration.program ?? ''"
+              placeholder="Resolved by the provider when empty"
+              (valueChange)="onProgram($event)"
+            />
+
+            <app-text-field
+              variant="floating"
+              label="Arguments"
+              [value]="argsText()"
+              (valueChange)="onArgs($event)"
+            />
+
+            <app-text-field
+              variant="floating"
+              label="Working Directory"
+              [value]="configuration.cwd ?? ''"
+              placeholder="Workspace root when empty"
+              (valueChange)="onCwd($event)"
+            />
+
+            <app-textarea
+              #env
+              class="configure__env"
+              variant="floating"
+              label="Environment"
+              placeholder="One KEY=value per line"
+              [rows]="3"
+              [value]="envText()"
+              (blurred)="onEnv(env.value())"
+            />
 
             <app-setting-row
               label="Default"
@@ -87,62 +137,25 @@
               <app-toggle [checked]="isDefault()" (checkedChange)="onDefaultChange($event)" />
             </app-setting-row>
 
-            @if (hasBuildConfigs()) {
-              <app-setting-row label="Configuration">
-                <app-dropdown
-                  [options]="buildConfigOptions()"
-                  [value]="configuration.buildConfiguration ?? ''"
-                  [fullWidth]="true"
-                  (valueChange)="onBuildConfiguration($event)"
-                />
-              </app-setting-row>
+            @if (hasBuildStep()) {
+              <app-dropdown
+                label="Before Run"
+                [options]="beforeRunOptions"
+                [value]="configuration.beforeRun ?? 'build'"
+                [fullWidth]="true"
+                (valueChange)="onBeforeRun($event)"
+              />
             }
 
-            @if (hasTarget()) {
-              <app-setting-row [label]="targetLabel()">
-                <app-dropdown
-                  [options]="targetOptions()"
-                  [value]="configuration.target ?? ''"
-                  [fullWidth]="true"
-                  (valueChange)="onTarget($event)"
-                />
-              </app-setting-row>
+            @if (isCmake()) {
+              <app-text-field
+                variant="floating"
+                label="CMake Build Folder"
+                [value]="configuration.cmakeBuildFolder ?? ''"
+                placeholder="build"
+                (valueChange)="onCmakeBuildFolder($event)"
+              />
             }
-
-            <app-setting-row label="Program">
-              <app-text-field
-                [value]="configuration.program ?? ''"
-                placeholder="Resolved by the provider when empty"
-                (valueChange)="onProgram($event)"
-              />
-            </app-setting-row>
-
-            <app-setting-row label="Arguments">
-              <app-text-field [value]="argsText()" (valueChange)="onArgs($event)" />
-            </app-setting-row>
-
-            <app-setting-row label="Working Directory">
-              <app-text-field
-                [value]="configuration.cwd ?? ''"
-                placeholder="Workspace root when empty"
-                (valueChange)="onCwd($event)"
-              />
-            </app-setting-row>
-
-            <app-setting-row label="Environment" description="One KEY=value per line">
-              <app-textarea
-                #env
-                class="configure__env"
-                ariaLabel="Environment variables"
-                [rows]="3"
-                [value]="envText()"
-                (blurred)="onEnv(env.value())"
-              />
-            </app-setting-row>
-
-            <app-setting-row label="Debug" description="Run under the debugger">
-              <app-toggle [checked]="isDebug()" (checkedChange)="onModeChange($event)" />
-            </app-setting-row>
 
             <app-setting-row
               label="New Window"
@@ -153,35 +166,84 @@
                 (checkedChange)="onPresentationChange($event)"
               />
             </app-setting-row>
+
+            <app-setting-row label="Debug" description="Run under the debugger">
+              <app-toggle [checked]="isDebug()" (checkedChange)="onModeChange($event)" />
+            </app-setting-row>
+
+            @if (isDebug()) {
+              <app-setting-row label="Stop at Entry" description="Stop on the program's first line">
+                <app-toggle
+                  [checked]="configuration.stopAtEntry === true"
+                  (checkedChange)="onStopAtEntry($event)"
+                />
+              </app-setting-row>
+            }
+
+            @if (hasDebugConsoleChoice()) {
+              <app-dropdown
+                label="Debug Console"
+                [options]="debugConsoleOptions"
+                [value]="configuration.debugConsole ?? 'integrated-terminal'"
+                [fullWidth]="true"
+                (valueChange)="onDebugConsole($event)"
+              />
+            }
           } @else {
             <p class="configure__empty">Select or create a configuration to edit.</p>
           }
         </div>
       </div>
 
-      <app-button-row class="configure__actions">
-        <app-button variant="solid" label="Save" (click)="onSave()" />
-        <app-button label="Cancel" (click)="onCancel()" />
-      </app-button-row>
+      <!-- Two columns matching the body's, so Auto-Configure stands directly under the list it fills
+           and Save and Cancel stay under the form. -->
+      <div class="configure__footer">
+        <app-button-row align="fill">
+          <app-button
+            variant="ghost"
+            label="Auto-Configure"
+            tooltip="Let a new agent set up this workspace's run configurations"
+            (click)="onAutoConfigure()"
+          />
+        </app-button-row>
+        <app-button-row class="configure__actions">
+          <app-button variant="solid" label="Save" (click)="onSave()" />
+          <app-button variant="none" label="Cancel" (click)="onCancel()" />
+        </app-button-row>
+      </div>
     </div>
 
     <!-- Declared INSIDE this dialog's content so it is raised from the Run Configurations window: it
-         parents to that window and dims it, rather than reaching past it to the main window. Its
-         content is still to be designed. -->
+         parents to that window and dims it, rather than reaching past it to the main window. -->
     <app-modal
       [open]="autoConfigureOpen()"
-      [width]="34"
-      [height]="22"
-      ariaLabel="Auto-configure run configurations"
+      [width]="26"
+      [frameless]="true"
+      ariaLabel="Auto-Configure"
       (dismiss)="onAutoConfigureClose()"
     >
       <ng-template appModalContent>
-        <div class="configure-auto">
-          <h2 class="configure__title">Auto-configure</h2>
-          <app-button-row class="configure__actions">
-            <app-button label="Close" (click)="onAutoConfigureClose()" />
-          </app-button-row>
-        </div>
+        <h2 class="configure__title configure-auto__title">Auto-Configure</h2>
+        @if (autoConfiguring()) {
+          <p class="configure-auto__message" role="status">
+            <app-icon class="configure-auto__spinner" [icon]="Icon.SPINNER" aria-hidden="true" />
+            Configuring this workspace…
+          </p>
+        } @else if (autoConfigureProblem(); as problem) {
+          <app-alert class="configure-auto__alert" [tone]="problem.tone">
+            {{ problem.message }}
+          </app-alert>
+        } @else {
+          <p class="configure-auto__message">
+            Auto-Configure will use a new agent to configure this workspace.
+          </p>
+        }
+        <app-button-row>
+          @if (!autoConfiguring()) {
+            <app-button variant="solid" label="Configure" (click)="onStartAutoConfigure()" />
+          }
+          <app-button variant="none" label="Cancel" (click)="onAutoConfigureClose()" />
+        </app-button-row>
       </ng-template>
     </app-modal>
   </ng-template>

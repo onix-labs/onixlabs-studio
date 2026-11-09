@@ -7,6 +7,7 @@ import {
   STUDIO_PARAMETER_HINTS_HIDE_COMMAND,
   STUDIO_PARAMETER_HINTS_NEXT_COMMAND,
   STUDIO_PARAMETER_HINTS_PREVIOUS_COMMAND,
+  followWordSuggestions,
   STUDIO_SUGGEST_ACCEPT_COMMAND,
   STUDIO_SUGGEST_HIDE_COMMAND,
   STUDIO_SUGGEST_NEXT_COMMAND,
@@ -22,6 +23,7 @@ import {
   SuggestMove,
   SuggestPresenter,
   WORD_BASED_PROVIDER_NAME,
+  WordSuggestionsOption,
 } from './monaco-suggest-commands';
 
 /**
@@ -313,6 +315,7 @@ function fakeEditor(focused: boolean = true): FakeEditor {
     hasTextFocus: (): boolean => focused,
     hasWidgetFocus: (): boolean => focused,
     getModel: (): unknown => model,
+    onDidFocusEditorText: (): void => undefined,
     getContribution: (id: string): unknown =>
       id === SUGGEST_CONTRIBUTION ? suggest : id === PARAMETER_HINTS_CONTRIBUTION ? hints : null,
   } as unknown as MonacoApi.editor.ICodeEditor;
@@ -476,8 +479,16 @@ describe('installSuggestCommands (#1021)', () => {
       { keybinding: UP, command: STUDIO_SUGGEST_PREVIOUS_COMMAND, when: list },
       { keybinding: PAGE_DOWN, command: STUDIO_SUGGEST_NEXT_PAGE_COMMAND, when: list },
       { keybinding: PAGE_UP, command: STUDIO_SUGGEST_PREVIOUS_PAGE_COMMAND, when: list },
-      { keybinding: ENTER, command: STUDIO_SUGGEST_ACCEPT_COMMAND, when: accept },
-      { keybinding: TAB, command: STUDIO_SUGGEST_ACCEPT_COMMAND, when: accept },
+      {
+        keybinding: ENTER,
+        command: STUDIO_SUGGEST_ACCEPT_COMMAND,
+        when: `${accept} && studioSuggestEnterAccepts`,
+      },
+      {
+        keybinding: TAB,
+        command: STUDIO_SUGGEST_ACCEPT_COMMAND,
+        when: `${accept} && studioSuggestTabAccepts`,
+      },
       { keybinding: ESCAPE, command: STUDIO_SUGGEST_HIDE_COMMAND, when: list },
       { keybinding: SHIFT | ESCAPE, command: STUDIO_SUGGEST_HIDE_COMMAND, when: list },
       { keybinding: DOWN, command: STUDIO_PARAMETER_HINTS_NEXT_COMMAND, when: overloads },
@@ -700,8 +711,30 @@ describe('installSuggestCommands (#1021)', () => {
     const installed: Installed = install([]);
     const editor: MonacoApi.editor.ICodeEditor = {
       getContribution: (): null => null,
+      onDidFocusEditorText: (): void => undefined,
     } as unknown as MonacoApi.editor.ICodeEditor;
 
     expect((): void => installed.create(editor)).not.toThrow();
+  });
+
+  it('followWordSuggestions_writesTheLanguagesChoiceAsTheEditorTakesFocus', () => {
+    let focus: () => void = (): void => undefined;
+    const written: unknown[] = [];
+    const editor: MonacoApi.editor.ICodeEditor = {
+      getModel: (): unknown => ({ getLanguageId: (): string => 'rust' }),
+      onDidFocusEditorText: (listener: () => void): void => {
+        focus = listener;
+      },
+      updateOptions: (options: unknown): void => void written.push(options),
+    } as unknown as MonacoApi.editor.ICodeEditor;
+
+    followWordSuggestions(editor, (language: string): WordSuggestionsOption =>
+      language === 'rust' ? 'off' : 'allDocuments',
+    );
+    expect(written).toEqual([]);
+
+    focus();
+
+    expect(written).toEqual([{ wordBasedSuggestions: 'off' }]);
   });
 });

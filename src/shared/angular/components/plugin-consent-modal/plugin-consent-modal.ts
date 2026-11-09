@@ -31,10 +31,26 @@ import { ButtonRow } from '@shared/angular/components/forms/button-row/button-ro
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (plugin(); as pending) {
-      <app-modal [open]="true" [width]="32" [ariaLabel]="title()" (dismiss)="declined.emit()">
+      <app-modal
+        [open]="true"
+        [width]="32"
+        [frameless]="true"
+        [ariaLabel]="title()"
+        (dismiss)="declined.emit()"
+      >
         <ng-template appModalContent>
           <div class="consent">
             <h2 class="consent__title">{{ title() }}?</h2>
+
+            <p class="consent__body">
+              This is third-party software. Studio verifies that what it downloads is exactly what
+              was pinned, and refuses it otherwise — but Studio does not review what the code does,
+              and does not vet everyone who wrote it.
+            </p>
+            <p class="consent__body">
+              Once installed it runs on this machine as you, and reads the projects you open with
+              it.
+            </p>
 
             <dl class="consent__facts">
               @if (pending.installedVersion; as installed) {
@@ -52,19 +68,9 @@ import { ButtonRow } from '@shared/angular/components/forms/button-row/button-ro
               }
             </dl>
 
-            <p class="consent__body">
-              This is third-party software. Studio verifies that what it downloads is exactly what
-              was pinned, and refuses it otherwise — but Studio does not review what the code does,
-              and does not vet everyone who wrote it.
-            </p>
-            <p class="consent__body">
-              Once installed it runs on this machine as you, and reads the projects you open with
-              it.
-            </p>
-
             <app-button-row class="consent__actions">
               <app-button variant="solid" [label]="confirmLabel()" (click)="accepted.emit()" />
-              <app-button label="Cancel" (click)="declined.emit()" />
+              <app-button variant="none" label="Cancel" (click)="declined.emit()" />
             </app-button-row>
           </div>
         </ng-template>
@@ -90,10 +96,7 @@ import { ButtonRow } from '@shared/angular/components/forms/button-row/button-ro
         gap: 0.3rem 0.9rem;
         margin: 0;
         font-size: 0.85rem;
-
-        dt {
-          color: var(--muted-foreground-color, var(--body-foreground-color));
-        }
+        color: var(--form-muted-foreground-color);
 
         dd {
           margin: 0;
@@ -148,7 +151,7 @@ export class PluginConsentModal {
    * Gets the confirming action's label.
    */
   protected readonly confirmLabel: Signal<string> = computed((): string =>
-    this.updating() ? 'Accept and update' : 'Accept and install',
+    this.updating() ? 'Update' : 'Install',
   );
 
   /**

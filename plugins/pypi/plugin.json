@@ -1,0 +1,38 @@
+{
+  "id": "onixlabs.pypi",
+  "name": "PyPI",
+  "description": "Python packages: the projects in a folder, what each declares, what is locked or installed, what is newer on PyPI or your own index, and exact-name lookup.",
+  "version": "0.1.0",
+  "apiVersion": "1.27.0",
+  "detail": "Reads pyproject.toml, requirements files, Pipfile, setup.cfg, your lockfile or virtual environment, and pip.conf. Never runs Python. Changes run through the uv, Poetry, Pipenv or pip on your machine, in a terminal you can see.",
+  "provision": {
+    "kind": "npm",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.pypi.lock.json",
+    "sha256": "f12516d725be0e4ec33b824e90d7335ab216c113174d3f19972e894ec3c34c86",
+    "executablePath": "node_modules/@onixlabs/pypi/main.js"
+  },
+  "contributes": {
+    "packageManagers": [
+      {
+        "id": "onixlabs.pypi",
+        "displayName": "PyPI",
+        "ecosystem": "pypi",
+        "priority": 300,
+        "markers": ["pyproject.toml", "requirements*.txt", "setup.cfg", "setup.py", "Pipfile"],
+        "capabilities": [
+          "sources",
+          "search",
+          "searchExactName",
+          "install",
+          "update",
+          "remove",
+          "restore"
+        ],
+        "command": {
+          "kind": "node"
+        },
+        "entryPoint": "node_modules/@onixlabs/pypi/main.js"
+      }
+    ]
+  }
+}

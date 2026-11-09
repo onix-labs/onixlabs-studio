@@ -243,7 +243,8 @@
 }
 
 // The composer's edit-mode banner: sending now rewinds the conversation to the message under edit.
-.agent__edit-banner {
+.agent__edit-banner,
+.agent__compact-banner {
   display: flex;
   align-items: center;
   gap: 0.4rem;
@@ -327,8 +328,8 @@
 
 .agent__prompts-empty {
   margin: 0;
-  font-size: 0.85rem;
-  color: var(--form-muted-foreground-color);
+  font-size: 1rem;
+  color: var(--body-foreground-color);
 }
 
 .agent__prompts-list {
@@ -346,10 +347,8 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.3rem 0.5rem;
-  font-size: 0.82rem;
-  background: var(--agent-view-surface-color);
-  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  padding-block: 0.15rem;
+  font-size: 1rem;
 }
 
 .agent__prompts-name {
@@ -362,28 +361,9 @@
   flex: 1;
   min-inline-size: 0;
   overflow: hidden;
-  color: var(--form-muted-foreground-color);
+  color: var(--body-foreground-color);
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-.agent__prompts-field {
-  padding: 0.45rem 0.6rem;
-  font: inherit;
-  font-size: 0.85rem;
-  color: var(--body-foreground-color);
-  background: var(--body-background-color);
-  border: 0.0625rem solid var(--agent-view-border-color);
-  border-radius: calc(0.4rem * var(--border-radius-multiplier));
-
-  &:focus-visible {
-    border-color: var(--accent-color);
-    outline: none;
-  }
-}
-
-.agent__prompts-area {
-  resize: vertical;
 }
 
 .agent__input {
@@ -502,8 +482,6 @@
 .agent__image-thumb,
 .agent__suggest,
 .agent__suggest-item,
-.agent__prompts-item,
-.agent__prompts-field,
 .agent__md-editor {
   corner-shape: var(--app-corner-shape, squircle);
 }

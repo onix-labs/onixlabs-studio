@@ -1,6 +1,8 @@
 import { app } from 'electron';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import type { AiPermissionGrant } from '@shared/api/ai/ai-bridge-types';
+import { RUN_UNSANDBOXED } from '@shared/api/ai/ai-tool-policy';
 import { logger } from '@shared/electron/logger';
 
 /**
@@ -37,10 +39,12 @@ const COMMAND_SEPARATOR: string = '\u0000';
 
 /**
  * How long a grant for a tool can be remembered: `tool` for any use of it, `command` for the exact
- * command it was asked to run, or `session` when only the session can remember it — a command tool
- * whose summary is empty or clamped, so the prompt cannot name the whole command.
+ * command it was asked to run, `session` when only the session can remember it — a command tool
+ * whose summary is empty or clamped, so the prompt cannot name the whole command — or `session-command`
+ * for the exact command and only the session, which is all a run outside the sandbox can be: the one
+ * permanent grant is excluding the command in the workspace's settings (D2, #1158).
  */
-export type PermissionRuleScope = 'tool' | 'command' | 'session';
+export type PermissionRuleScope = 'tool' | 'command' | 'session' | 'session-command';
 
 /**
  * Determines how a grant for a tool's use can be remembered (#979).
@@ -49,6 +53,9 @@ export type PermissionRuleScope = 'tool' | 'command' | 'session';
  * @returns Returns the scope a remembered grant takes.
  */
 export function permissionRuleScope(tool: string, detail: string): PermissionRuleScope {
+  if (tool === RUN_UNSANDBOXED) {
+    return 'session-command';
+  }
   if (!COMMAND_TOOLS.has(tool)) {
     return 'tool';
   }
@@ -75,12 +82,50 @@ export function permissionRuleKey(tool: string, detail: string): string | null {
 }
 
 /**
+ * Gets the key a session grant is held under: the tool's name, which covers every use of it for the
+ * session, or the exact command for a grant that must not.
+ * @param tool The tool's display name.
+ * @param detail The summary the prompt showed.
+ * @returns Returns the key.
+ */
+export function permissionSessionKey(tool: string, detail: string): string {
+  return permissionRuleScope(tool, detail) === 'session-command'
+    ? `${tool}${COMMAND_SEPARATOR}${detail}`
+    : tool;
+}
+
+/**
+ * Gets the tool a rule key names.
+ * @param key The rule key ({@link permissionRuleKey}).
+ * @returns Returns the tool's display name.
+ */
+export function permissionRuleTool(key: string): string {
+  return key.split(COMMAND_SEPARATOR, 1)[0];
+}
+
+/**
  * The persisted shape: tools allowed everywhere, and tools allowed per workspace root. Only grants
  * are ever stored — denials are never remembered, so a mis-click cannot silently brick a tool.
+ *
+ * The other two fields are optional, and only ever read defensively, because a file from before them
+ * must keep its grants: `grantedAt` is when each grant was made, by {@link grantId}, and `narrowed` is
+ * the command tools whose tool-wide grants were dropped, until the user has been told.
  */
 interface StoredRules {
   readonly always: readonly string[];
   readonly workspaces: Readonly<Record<string, readonly string[]>>;
+  readonly grantedAt?: unknown;
+  readonly narrowed?: unknown;
+}
+
+/**
+ * Gets what a grant's date is held under: its rule key, and the workspace it applies to.
+ * @param key The rule key.
+ * @param workspaceRoot The workspace, or null for a grant that applies everywhere.
+ * @returns Returns the id.
+ */
+function grantId(key: string, workspaceRoot: string | null): string {
+  return `${workspaceRoot ?? ''}${COMMAND_SEPARATOR}${key}`;
 }
 
 /**
@@ -102,6 +147,16 @@ export class PermissionRuleStore {
    * Holds the tools allowed per workspace root.
    */
   private workspaces: Map<string, Set<string>> = new Map<string, Set<string>>();
+
+  /**
+   * Holds when each grant was made, by {@link grantId}. A grant from before this was kept has no entry.
+   */
+  private grantedAt: Map<string, string> = new Map<string, string>();
+
+  /**
+   * Holds the command tools whose tool-wide grants were dropped and the user has not yet been told of.
+   */
+  private narrowed: Set<string> = new Set<string>();
 
   /**
    * Tracks whether the persisted rules have been loaded.
@@ -138,8 +193,10 @@ export class PermissionRuleStore {
    */
   public remember(tool: string, scope: 'workspace' | 'always', workspaceRoot: string | null): void {
     this.ensureLoaded();
+    const grantedAt: string = new Date().toISOString();
     if (scope === 'always') {
       this.always.add(tool);
+      this.grantedAt.set(grantId(tool, null), grantedAt);
     } else {
       if (workspaceRoot === null) {
         logger.warn(
@@ -151,12 +208,77 @@ export class PermissionRuleStore {
       const tools: Set<string> = this.workspaces.get(workspaceRoot) ?? new Set<string>();
       tools.add(tool);
       this.workspaces.set(workspaceRoot, tools);
+      this.grantedAt.set(grantId(tool, workspaceRoot), grantedAt);
     }
     logger.info(
       'PermissionRuleStore',
       `Remembered permission grant for '${tool}' (scope=${scope}${scope === 'workspace' ? `, root=${workspaceRoot}` : ''})`,
     );
     this.persist();
+  }
+
+  /**
+   * Lists the remembered grants, those that apply everywhere first.
+   * @returns Returns the grants.
+   */
+  public list(): readonly AiPermissionGrant[] {
+    this.ensureLoaded();
+    const scopes: readonly (readonly [string | null, ReadonlySet<string>])[] = [
+      [null, this.always],
+      ...this.workspaces.entries(),
+    ];
+    return scopes.flatMap(
+      ([root, keys]: readonly [string | null, ReadonlySet<string>]): AiPermissionGrant[] =>
+        [...keys].map((key: string): AiPermissionGrant => {
+          const separator: number = key.indexOf(COMMAND_SEPARATOR);
+          return {
+            key,
+            tool: permissionRuleTool(key),
+            command: separator < 0 ? null : key.slice(separator + 1),
+            workspaceRoot: root,
+            grantedAt: this.grantedAt.get(grantId(key, root)) ?? null,
+          };
+        }),
+    );
+  }
+
+  /**
+   * Revokes a remembered grant, which takes effect at once: the next use asks again.
+   * @param key The rule key.
+   * @param workspaceRoot The workspace the grant applies to, or null for one that applies everywhere.
+   * @returns Returns false when the revocation could not be saved, so it would come back at the next
+   * launch. A grant that isn't there has nothing to save.
+   */
+  public revoke(key: string, workspaceRoot: string | null): boolean {
+    this.ensureLoaded();
+    const keys: Set<string> | undefined =
+      workspaceRoot === null ? this.always : this.workspaces.get(workspaceRoot);
+    if (keys?.delete(key) !== true) {
+      return true;
+    }
+    if (workspaceRoot !== null && keys.size === 0) {
+      this.workspaces.delete(workspaceRoot);
+    }
+    this.grantedAt.delete(grantId(key, workspaceRoot));
+    logger.info(
+      'PermissionRuleStore',
+      `Revoked permission grant for '${permissionRuleTool(key)}' (root=${workspaceRoot ?? 'everywhere'})`,
+    );
+    return this.persist();
+  }
+
+  /**
+   * Takes the command tools whose tool-wide grants were dropped, so the user is told once.
+   * @returns Returns the tools; a later call gets none of them again.
+   */
+  public takeNarrowed(): readonly string[] {
+    this.ensureLoaded();
+    const tools: readonly string[] = [...this.narrowed];
+    if (tools.length > 0) {
+      this.narrowed.clear();
+      this.persist();
+    }
+    return tools;
   }
 
   /**
@@ -182,21 +304,18 @@ export class PermissionRuleStore {
           ],
         ),
       );
-      const stored: number = [parsed.always, ...Object.values(parsed.workspaces)].reduce(
-        (sum: number, keys: readonly string[]): number => sum + new Set<string>(keys).size,
-        0,
-      );
-      const kept: number = [this.always, ...this.workspaces.values()].reduce(
-        (sum: number, keys: Set<string>): number => sum + keys.size,
-        0,
-      );
-      const dropped: number = stored - kept;
-      if (dropped > 0) {
+      this.grantedAt = this.storedDates(parsed.grantedAt);
+      const dropped: readonly string[] = [parsed.always, ...Object.values(parsed.workspaces)]
+        .flat()
+        .filter((key: string): boolean => COMMAND_TOOLS.has(key));
+      this.narrowed = new Set<string>([...this.storedNarrowed(parsed.narrowed), ...dropped]);
+      if (dropped.length > 0) {
         // A grant saved before #979 allowed a command tool outright. It is forgotten, so the next use
-        // asks again and can be remembered for its exact command instead.
+        // asks again and can be remembered for its exact command instead. It goes with a note, so the
+        // user is told it has gone rather than left to find out (#1164).
         logger.warn(
           'PermissionRuleStore',
-          `Forgot ${dropped} remembered grant(s) that allowed a command tool for any command`,
+          `Forgot ${dropped.length} remembered grant(s) that allowed a command tool for any command`,
         );
         this.persist();
       }
@@ -220,9 +339,40 @@ export class PermissionRuleStore {
   }
 
   /**
-   * Persists the rules. Best-effort.
+   * Reads the stored grant dates, keeping those that are dates. A bad one only loses its date.
+   * @param value The stored value.
+   * @returns Returns the dates.
    */
-  private persist(): void {
+  private storedDates(value: unknown): Map<string, string> {
+    return new Map<string, string>(
+      typeof value === 'object' && value !== null
+        ? Object.entries(value).filter(
+            (entry: [string, unknown]): entry is [string, string] =>
+              typeof entry[1] === 'string' && !Number.isNaN(Date.parse(entry[1])),
+          )
+        : [],
+    );
+  }
+
+  /**
+   * Reads the stored list of narrowed tools, keeping only command tools: it names what a notice says.
+   * @param value The stored value.
+   * @returns Returns the tools.
+   */
+  private storedNarrowed(value: unknown): readonly string[] {
+    return Array.isArray(value)
+      ? value.filter(
+          (entry: unknown): entry is string =>
+            typeof entry === 'string' && COMMAND_TOOLS.has(entry),
+        )
+      : [];
+  }
+
+  /**
+   * Persists the rules. Best-effort.
+   * @returns Returns false when they could not be saved.
+   */
+  private persist(): boolean {
     const value: StoredRules = {
       always: [...this.always],
       workspaces: Object.fromEntries(
@@ -230,14 +380,18 @@ export class PermissionRuleStore {
           ([root, tools]: [string, Set<string>]): [string, readonly string[]] => [root, [...tools]],
         ),
       ),
+      ...(this.grantedAt.size > 0 ? { grantedAt: Object.fromEntries(this.grantedAt) } : {}),
+      ...(this.narrowed.size > 0 ? { narrowed: [...this.narrowed] } : {}),
     };
     try {
       mkdirSync(dirname(this.file()), { recursive: true });
       writeFileSync(this.file(), JSON.stringify(value), { encoding: 'utf8', mode: 0o600 });
       logger.debug('PermissionRuleStore', `Saved permission rules to ${this.file()}`);
+      return true;
     } catch (error: unknown) {
       // Persistence is best-effort; the grant still applies for this session.
       logger.error('PermissionRuleStore', 'Failed to persist permission rules', error);
+      return false;
     }
   }
 

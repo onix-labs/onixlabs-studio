@@ -453,6 +453,32 @@ class FakeForgeRepository {
 
   public readonly pullRequests: Signal<ForgeSection<ForgePullRequest>> = this.section.asReadonly();
   public readonly issues: Signal<ForgeSection<ForgeIssue>> = this.issueSection.asReadonly();
+
+  /**
+   * Holds which pull requests and issues are listed, and records the lists Load More was asked for.
+   */
+  public readonly listState: WritableSignal<'open' | 'all'> = signal<'open' | 'all'>('open');
+
+  public readonly loadedMore: string[] = [];
+
+  /**
+   * Holds whether each list offers Load More.
+   */
+  public moreAvailable: ReadonlySet<string> = new Set<string>();
+
+  public canLoadMore(kind: string): boolean {
+    return this.moreAvailable.has(kind);
+  }
+
+  public loadMore(kind: string): Promise<void> {
+    this.loadedMore.push(kind);
+    return Promise.resolve();
+  }
+
+  public setListState(state: 'open' | 'all'): Promise<void> {
+    this.listState.set(state);
+    return Promise.resolve();
+  }
   public readonly workflowRuns: Signal<ForgeSection<ForgeWorkflowRun>> =
     this.runSection.asReadonly();
 
@@ -1808,6 +1834,7 @@ describe('SourceControlSidebar', () => {
     confirmDropStash(): void;
     cancelDropStash(): void;
     pendingDrop(): GitStash | null;
+    pendingDropName(): string;
     openBranchDialog(): void;
     branchDialogOpen(): boolean;
     branchName: WritableSignal<string>;
@@ -1917,6 +1944,19 @@ describe('SourceControlSidebar', () => {
       expect(provider.calls).toContain('popStash:0');
     });
 
+    it('drop_namesTheStash_withoutTheBranchGitPrefixesItWith', async () => {
+      const stash: GitStash = await withStash();
+
+      for (const [message, name] of [
+        ['On main: tighten the sample', 'tighten the sample'],
+        ['WIP on feature/a: 1a2b3c fix: the thing', '1a2b3c fix: the thing'],
+        ['a message of its own', 'a message of its own'],
+      ]) {
+        internals().requestDropStash({ ...stash, message });
+        expect(internals().pendingDropName()).toBe(name);
+      }
+    });
+
     it('drop_asksFirst_andOnlyDropsOnConfirmation', async () => {
       const stash: GitStash = await withStash();
 
@@ -1932,7 +1972,7 @@ describe('SourceControlSidebar', () => {
       internals().requestDropStash(stash);
       TestBed.inject(ApplicationRef).tick();
       expect(windows.openWindows).toBe(1);
-      expect(windows.contentHost?.textContent).toContain('Drop this stash?');
+      expect(windows.contentHost?.textContent).toContain('Drop This Stash?');
 
       internals().confirmDropStash();
       await fixture.whenStable();
@@ -1973,7 +2013,7 @@ describe('SourceControlSidebar', () => {
 
       expect(windows.openWindows).toBe(1);
       const host: HTMLElement | null = windows.contentHost;
-      expect(host?.querySelector('.rail__dialog-title')?.textContent).toContain('New branch');
+      expect(host?.querySelector('.rail__dialog-title')?.textContent).toContain('New Branch');
       expect(host?.querySelector('.rail__dialog-input')).not.toBeNull();
 
       internals().cancelBranch();
@@ -3021,8 +3061,13 @@ describe('SourceControlSidebar', () => {
       expect(sectionLabels('remote')).toEqual(['Add Remote', 'Fetch All']);
       expect(sectionLabels('tags')[0]).toBe('New Tag');
       expect(sectionLabels('stashes')).toEqual(['Stash Changes']);
-      expect(sectionLabels('pullRequests')).toEqual(['Refresh']);
-      expect(sectionLabels('issues')).toEqual(['Refresh']);
+      // Open or all is the session switch beside Refresh (PR and Issue States).
+      expect(sectionLabels('pullRequests')).toEqual([
+        'Refresh',
+        'Show Open Only',
+        'Show All States',
+      ]);
+      expect(sectionLabels('issues')).toEqual(['Refresh', 'Show Open Only', 'Show All States']);
       expect(sectionLabels('actions')).toEqual(['Refresh']);
     });
 
@@ -3321,7 +3366,7 @@ describe('SourceControlSidebar', () => {
         pendingForceDeleteBranch(): { name: string } | null;
         confirmDeleteBranch(): Promise<void>;
         confirmForceDeleteBranch(): void;
-        deletionPlace(deletion: unknown): string;
+        deletionPlace(deletion: unknown): { before: string; name: string; after: string };
       } = mounted.componentInstance as unknown as typeof internals;
 
       internals.onContextAction({
@@ -3329,9 +3374,11 @@ describe('SourceControlSidebar', () => {
         row: row(mounted, 'worktree:w2:branch:old'),
       });
       expect(internals.pendingDeleteBranch()?.name).toBe('old');
-      expect(internals.deletionPlace(internals.pendingDeleteBranch())).toBe(
-        'the “review” worktree',
-      );
+      expect(internals.deletionPlace(internals.pendingDeleteBranch())).toEqual({
+        before: 'the ',
+        name: 'review',
+        after: ' worktree',
+      });
 
       await internals.confirmDeleteBranch();
       expect(internals.pendingForceDeleteBranch()?.name).toBe('old');

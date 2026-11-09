@@ -9,6 +9,7 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
+import { Alert } from '@shared/angular/components/alert/alert';
 import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
 import {
   MENU_SEPARATOR,
@@ -20,11 +21,19 @@ import {
   DockPanelState,
 } from '@shared/angular/services/dock-panel-commands/dock-panel-commands';
 import { Log } from '@shared/angular/services/log/log';
+import { WorkspaceSymbolRouter } from '@shared/angular/services/go-to/workspace-symbol-router';
+import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
+import type { HierarchyKind } from '@shared/angular/services/hierarchy/hierarchy';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { WorkspaceDocumentCommands } from '@features/workspace/angular/workspace-document-commands/workspace-document-commands';
 import { WorkspaceSourceControlCommands } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
 import { SourceControlCommands } from '@shared/angular/services/source-control-commands/source-control-commands';
-import { ActiveRun, Builds } from '@shared/angular/services/tasks/builds';
+import { ActiveRun, BuildActionOptions, Builds } from '@shared/angular/services/tasks/builds';
+import { Settings } from '@shared/angular/services/settings/settings';
+import type {
+  WhenBuildRunning,
+  WhenConfigurationRunning,
+} from '@shared/angular/services/settings/settings-registry';
 import { Debugger } from '@shared/angular/services/debug/debugger';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { StudioConfig } from '@shared/angular/services/studio/studio-config';
@@ -39,7 +48,8 @@ import {
 } from '@shared/api/studio';
 import { Icon } from '@shared/angular/icons/icon';
 import { LayoutInfo, Layouts } from '@shared/angular/services/layouts/layouts';
-import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
+import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
+import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Modal } from '@shared/angular/components/modal/modal';
@@ -94,6 +104,7 @@ const COMMIT_STASH: string = 'stash';
 @Component({
   selector: 'app-directory-ribbon',
   imports: [
+    Alert,
     Radio,
     TextField,
     Button,
@@ -106,7 +117,8 @@ const COMMIT_STASH: string = 'stash';
     RibbonStripButton,
     RibbonStripButtonSmall,
     RibbonStripMenuButton,
-    Checkbox,
+    SettingRow,
+    Toggle,
     Modal,
     ModalContent,
   ],
@@ -130,7 +142,7 @@ export class DirectoryRibbon {
           {
             id: 'directory.save',
             label: 'Save',
-            accelerator: 'CmdOrCtrl+S',
+            binding: 'workspace.saveAll',
             run: (): void => this.onSave(),
           },
         ],
@@ -151,8 +163,27 @@ export class DirectoryRibbon {
           {
             id: 'directory.find',
             label: 'Find',
-            accelerator: 'CmdOrCtrl+F',
+            binding: 'workspace.find',
             run: (): void => this.onFind(),
+          },
+          // No accelerator: ⌘T / Ctrl+T is the workspace's own keybinding (#1146), which the user can
+          // change in Settings; a native accelerator would take the chord whatever they set.
+          {
+            id: 'directory.goToWorkspaceSymbol',
+            label: 'Go to Symbol in Workspace',
+            run: (): void => this.onGoToWorkspaceSymbol(),
+          },
+          // No accelerators: ⌃⌥H and ⌃⇧H are the editor's own (#1153); a native accelerator would
+          // take the chord from every control.
+          {
+            id: 'directory.showCallHierarchy',
+            label: 'Show Call Hierarchy',
+            run: (): void => this.onShowHierarchy('calls'),
+          },
+          {
+            id: 'directory.showTypeHierarchy',
+            label: 'Show Type Hierarchy',
+            run: (): void => this.onShowHierarchy('types'),
           },
         ],
       },
@@ -226,6 +257,26 @@ export class DirectoryRibbon {
    * Holds the find router the Find command opens the workspace's Search panel through (#1007).
    */
   private readonly findRouter: FindRouter = inject(FindRouter);
+
+  /**
+   * Holds the router Go to Symbol in Workspace opens through, in the workspace in front (#1146).
+   */
+  private readonly symbolRouter: WorkspaceSymbolRouter = inject(WorkspaceSymbolRouter);
+
+  /**
+   * Holds the navigation that shows a symbol's call or type hierarchy (#1153).
+   */
+  private readonly navigation: EditorNavigation = inject(EditorNavigation);
+
+  /**
+   * Holds the settings, for what Run and Build do with a busy terminal.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Gets whether to ask about saving before a run or build.
+   */
+  protected readonly askingToSave: Signal<boolean> = inject(WorkspaceDocumentCommands).askingToSave;
 
   /**
    * Holds the workspace document seam the File group's Save and Save All dispatch through.
@@ -551,6 +602,24 @@ export class DirectoryRibbon {
   }
 
   /**
+   * Opens Go to Symbol in Workspace in the workspace in front (#1146), from the Edit menu.
+   */
+  protected onGoToWorkspaceSymbol(): void {
+    this.log.info('workspace.ribbon', 'Go to Symbol in Workspace invoked');
+    this.symbolRouter.open();
+  }
+
+  /**
+   * Shows the call or type hierarchy of the symbol at the caret in the editor in front (#1153), from
+   * the Edit menu.
+   * @param kind Which hierarchy.
+   */
+  protected onShowHierarchy(kind: HierarchyKind): void {
+    this.log.info('workspace.ribbon', 'Show hierarchy invoked', kind);
+    void this.navigation.showHierarchyInActiveEditor(kind);
+  }
+
+  /**
    * Runs the active workspace's default build task.
    */
   protected onBuild(): void {
@@ -581,10 +650,33 @@ export class DirectoryRibbon {
       return;
     }
     if (this.isConfigurationRunning(configuration)) {
-      this.pendingRunConfiguration.set(configuration);
+      this.runAgain(configuration);
       return;
     }
-    this.start(configuration);
+    this.workspaceDocuments.afterSaving((): void => this.start(configuration));
+  }
+
+  /**
+   * Does what When a Configuration Is Already Running says with one that is. Only one debug session
+   * runs at a time, so a Debug configuration asks rather than running another.
+   * @param configuration The running configuration.
+   */
+  private runAgain(configuration: RunConfiguration): void {
+    const choice: WhenConfigurationRunning = this.settings.get(
+      'workspaces.whenConfigurationRunning',
+    );
+    if (choice === 'restart') {
+      this.workspaceDocuments.afterSaving((): void => this.restartRun(configuration));
+    } else if (choice === 'run-another' && configuration.mode !== 'debug') {
+      this.log.info('workspace.run', 'Further run started', configuration.name);
+      this.workspaceDocuments.afterSaving((): void =>
+        this.builds.runConfiguration(configuration, this.studio.runConfigurations(), {
+          another: true,
+        }),
+      );
+    } else {
+      this.pendingRunConfiguration.set(configuration);
+    }
   }
 
   /**
@@ -595,11 +687,33 @@ export class DirectoryRibbon {
     const configuration: RunConfiguration | null = this.pendingRunConfiguration();
     this.pendingRunConfiguration.set(null);
     if (configuration !== null) {
-      this.log.info('workspace.run', 'Run configuration restarted', configuration.name);
-      this.builds.runConfiguration(configuration, this.studio.runConfigurations(), {
-        restart: true,
-      });
+      this.workspaceDocuments.afterSaving((): void => this.restartRun(configuration));
     }
+  }
+
+  /**
+   * Stops a running configuration and starts it again. A Debug configuration goes back through the
+   * debugger, as its first start did.
+   * @param configuration The configuration.
+   */
+  private restartRun(configuration: RunConfiguration): void {
+    this.log.info('workspace.run', 'Run configuration restarted', configuration.name);
+    if (configuration.mode === 'debug' && !isCompoundConfiguration(configuration)) {
+      this.debugger.stop();
+      this.start(configuration);
+      return;
+    }
+    this.builds.runConfiguration(configuration, this.studio.runConfigurations(), {
+      restart: true,
+    });
+  }
+
+  /**
+   * Answers the question about saving before a run or build.
+   * @param answer Save and go on, go on without saving, or stop.
+   */
+  protected answerSaveQuestion(answer: 'save' | 'skip' | 'cancel'): void {
+    this.workspaceDocuments.answerSaveQuestion(answer);
   }
 
   /**
@@ -630,16 +744,25 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Dispatches a build action, or — when the Build terminal is busy — asks whether to stop the
-   * running build and start this one instead (a busy build is never killed silently).
+   * Dispatches a build action, or — when the Build terminal is busy — does what When a Build Is
+   * Already Running says: asks whether to stop the running build and start this one instead (a busy
+   * build is never killed silently, and only Restart, chosen in the settings, skips asking), stops it,
+   * or queues this one behind it.
    * @param action The requested build action.
    */
   private requestBuildAction(action: 'build' | 'rebuild' | 'clean'): void {
     if (this.builds.buildBusy()) {
-      this.pendingBuildAction.set(action);
+      const choice: WhenBuildRunning = this.settings.get('workspaces.whenBuildRunning');
+      if (choice === 'ask') {
+        this.pendingBuildAction.set(action);
+        return;
+      }
+      this.workspaceDocuments.afterSaving((): void =>
+        this.dispatchBuildAction(action, choice === 'restart', choice === 'queue'),
+      );
       return;
     }
-    this.dispatchBuildAction(action, false);
+    this.workspaceDocuments.afterSaving((): void => this.dispatchBuildAction(action, false));
   }
 
   /**
@@ -650,7 +773,7 @@ export class DirectoryRibbon {
     const action: 'build' | 'rebuild' | 'clean' | null = this.pendingBuildAction();
     this.pendingBuildAction.set(null);
     if (action !== null) {
-      this.dispatchBuildAction(action, true);
+      this.workspaceDocuments.afterSaving((): void => this.dispatchBuildAction(action, true));
     }
   }
 
@@ -669,13 +792,19 @@ export class DirectoryRibbon {
    * ecosystems with no capability provider at all.
    * @param action The build action.
    * @param restart Whether a busy build may be stopped and replaced.
+   * @param queue Whether a busy build is to run this one when it ends.
    */
-  private dispatchBuildAction(action: 'build' | 'rebuild' | 'clean', restart: boolean): void {
-    this.log.info('workspace.run', 'Build action dispatched', action, { restart });
+  private dispatchBuildAction(
+    action: 'build' | 'rebuild' | 'clean',
+    restart: boolean,
+    queue: boolean = false,
+  ): void {
+    this.log.info('workspace.run', 'Build action dispatched', action, { restart, queue });
+    const options: BuildActionOptions = queue ? { restart, queue } : { restart };
     if (this.capabilities()?.actions.includes(action) === true) {
-      this.builds.runAction(action, { restart });
+      this.builds.runAction(action, options);
     } else if (action === 'build') {
-      this.builds.build({ restart });
+      this.builds.build(options);
     }
   }
 

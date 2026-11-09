@@ -1,0 +1,18 @@
+// Minimum Diagnostic Severity: Monaco draws every marker, and the markers are shared with the Problems
+// panel, so an editor hides the underlines below its minimum rather than the markers being withheld.
+// Monaco draws them into its own DOM, outside Angular's view encapsulation, so this lives here.
+.monaco-editor.minimum-severity-info .squiggly-hint,
+.monaco-editor.minimum-severity-warning .squiggly-hint,
+.monaco-editor.minimum-severity-warning .squiggly-info,
+.monaco-editor.minimum-severity-error .squiggly-hint,
+.monaco-editor.minimum-severity-error .squiggly-info,
+.monaco-editor.minimum-severity-error .squiggly-warning {
+  display: none;
+}
+
+// Code the preprocessor leaves out, an `#if 0` block or the branch of an `#ifdef` not taken (#1213),
+// as clangd reports it. Faded as the clangd extension for VS Code fades it, a little further than code a
+// diagnostic marks unnecessary, since none of it is compiled.
+.monaco-editor .lsp-inactive-region {
+  opacity: 0.55;
+}

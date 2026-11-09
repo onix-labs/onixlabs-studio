@@ -9,11 +9,18 @@
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Edit">
+    <app-ribbon-strip-button
+      [icon]="Icon.PENCIL"
+      label="Edit"
+      [toggle]="true"
+      [pressed]="!readOnly()"
+      (action)="onToggleReadOnly()"
+    />
     <app-ribbon-strip-menu-button
       [icon]="Icon.CUT"
       label="Cut"
       [items]="cutItems"
-      [disabled]="!insertMode()"
+      [disabled]="!insertMode() || readOnly()"
       (action)="onCut()"
       (selected)="onCutVariant($event)"
     />
@@ -86,6 +93,18 @@
       [toggle]="true"
       [pressed]="agentShown()"
       (action)="onToggleAgent()"
+    />
+  </app-ribbon-strip-group>
+
+  <!-- A file read as binary may be text after all — a log with a stray NUL, an unusual encoding — so
+       it can be opened as text, as an image tab offers its bytes in the binary editor. -->
+  <app-ribbon-strip-group title="Open">
+    <app-ribbon-strip-button
+      [icon]="Icon.OPEN_SOURCE"
+      label="Text Editor"
+      [disabled]="activeDocument() === undefined"
+      data-testid="binary-open-as-text"
+      (action)="onOpenAsText()"
     />
   </app-ribbon-strip-group>
 </app-ribbon-overflow>

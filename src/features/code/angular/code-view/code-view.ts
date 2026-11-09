@@ -1,3 +1,5 @@
+import { Accessibility } from '@shared/angular/services/accessibility/accessibility';
+import { governedByEditorConfig } from '@shared/angular/services/document-status/document-status';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -71,6 +73,9 @@ import { CodeAgentPanel } from './code-agent-panel/code-agent-panel';
 import { CodeGeneratedPanel } from './code-generated-panel/code-generated-panel';
 import { CodeGeneratedPanels } from '@features/code/angular/generated-code/code-generated-panels';
 import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
+import { encodingLabel } from '@shared/api/text-encodings';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { codeDocumentActions } from '@shared/angular/services/document-status/document-encoding-actions';
 
 /**
  * Represents the code editor view: the document-bound {@link CodeDocumentEditor} core (the shared
@@ -128,6 +133,12 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
    * Holds the documents service the ribbon's save commands target.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the file system, whose native dialog asks before Reopen with Encoding gives up unsaved
+   * edits.
+   */
+  private readonly fileSystem: FileSystem = inject(FileSystem);
 
   /**
    * Holds the root editor registry this view registers its model with, so diagnostics resolve to a
@@ -235,6 +246,11 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
   private readonly changeMargins: ChangeMargins = inject(ChangeMargins);
 
   /**
+   * Holds the accessibility choices, one of which changes the change margin's colours.
+   */
+  private readonly accessibility: Accessibility = inject(Accessibility);
+
+  /**
    * Holds the document-bound code editor core this view drives, or undefined before the view
    * initialises.
    */
@@ -253,6 +269,11 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
    * Holds the document's end-of-line sequence, projected to the status strip.
    */
   private readonly eol: WritableSignal<EndOfLine> = signal<EndOfLine>('LF');
+
+  /**
+   * Holds the label of the indentation in force, for the status strip.
+   */
+  protected readonly indent: WritableSignal<string> = signal<string>('');
 
   /**
    * Gets the identifier of the owning tab, used to resolve the backing document.
@@ -321,6 +342,7 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
     // themselves follow CSS automatically, but the ruler is a canvas colour).
     effect((): void => {
       this.theme.resolvedMode();
+      this.accessibility.colourBlindSafe();
       if (!this.paneReady()) {
         return;
       }
@@ -367,13 +389,20 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
         this.codeStatus.clear();
         return;
       }
-      const encoding: string = document.encoding();
       this.codeStatus.publish({
         path: document.filePath(),
         line: caret.line,
         column: caret.column,
         eol: this.eol(),
-        encoding: document.hasBom() ? `${encoding} with BOM` : encoding,
+        encoding: encodingLabel(document.encoding(), document.hasBom()),
+        indent: this.indent(),
+        editorConfig: governedByEditorConfig(document.editorConfig()),
+        actions: codeDocumentActions({
+          document,
+          documents: this.documents,
+          fileSystem: this.fileSystem,
+          pane: (): TextEditor | undefined => this.pane(),
+        }),
       });
     });
 
@@ -705,7 +734,7 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
       codeCleanup: async (): Promise<void> => {
         // Sequenced, not fired together: organising imports rewrites the very lines the formatter
         // would otherwise lay out, so formatting has to see the tidied text.
-        await pane.runAction('editor.action.organizeImports');
+        await pane.organizeImports();
         await pane.runAction('editor.action.formatDocument');
       },
       save: (): void => void this.documents.saveActive(),

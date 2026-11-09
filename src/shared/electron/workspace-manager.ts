@@ -8,6 +8,7 @@ import {
 } from 'electron';
 import { showOpenDialog } from './dialog-parent';
 import { logger } from './logger';
+import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import type { Dirent, Stats } from 'node:fs';
 import * as path from 'node:path';
@@ -17,16 +18,9 @@ import {
   ProjectModel,
   ProjectOperationResult,
 } from '@shared/api/project-system';
-import {
-  PackageManagerModel,
-  PackageSearchOptions,
-  PackageSearchResult,
-  PackageSourceInfo,
-} from '@shared/api/package-management';
 import { FileInfo } from '@shared/api/file-channels';
 import { imageMimeTypeOf } from '@shared/api/image-formats';
 import { ProjectChannel } from '@shared/api/project-channels';
-import { PackageChannel } from '@shared/api/package-channels';
 import {
   BinaryChunk,
   BinaryPatch,
@@ -40,11 +34,12 @@ import {
 import type { FileHandle } from 'node:fs/promises';
 import { projectSystems } from './project-system/default-project-systems';
 import { ProjectSystem } from './project-system/project-system';
-import { packageManagers } from './package-management/default-package-managers';
-import { HttpFetch, PackageManager } from './package-management/package-manager';
+import { readOnlySourcePath } from './lsp/toolchain-source';
 import { TrustedPaths } from './trusted-paths';
 import { trashOrRemove } from './trash-or-remove';
 import { WorkspaceContext } from './workspace-context';
+import { decodeText, hasUtf16ByteOrderMark, type DecodedText } from './text-encoding';
+import { textReadPolicy, type TextReadPolicy } from './text-file-limit';
 
 /**
  * Specifies the sort order placing directories before files.
@@ -63,13 +58,6 @@ const FILE_ORDER: number = 1;
 const BINARY_SNIFF_LENGTH: number = 8000;
 
 /**
- * The largest file opened as editable text (50 MB). Bigger files — huge logs, generated SQL, data
- * dumps — open in the binary/hex editor, which windows its reads, instead of being decoded whole
- * into one IPC payload and a Monaco model.
- */
-const MAX_TEXT_FILE_BYTES: number = 50 * 1024 * 1024;
-
-/**
  * Specifies the byte value (NUL) whose presence marks a file as binary.
  */
 const NUL_BYTE: number = 0;
@@ -79,6 +67,11 @@ const NUL_BYTE: number = 0;
  * bounding the IPC payload however large a viewport the renderer asks for.
  */
 const MAX_READ_BYTES: number = 1024 * 1024;
+
+/**
+ * Specifies the bits of a file's mode that hold its permissions.
+ */
+const PERMISSION_BITS: number = 0o7777;
 
 /**
  * Handles workspace (open folder) and directory IPC on behalf of the renderer: opening a folder as
@@ -104,15 +97,6 @@ export class WorkspaceManager {
   private readonly trusted: TrustedPaths;
 
   /**
-   * Holds the HTTP fetch used for package-registry queries (the main-process global fetch), referenced
-   * through `globalThis` so this module carries no ambient fetch-type dependency.
-   */
-  private readonly httpFetch: HttpFetch = (
-    url: string,
-    init?: { headers?: Record<string, string> },
-  ): ReturnType<HttpFetch> => (globalThis as unknown as { fetch: HttpFetch }).fetch(url, init);
-
-  /**
    * Initializes a new instance of the {@link WorkspaceManager} class.
    * @param windowGetter A function that returns the window dialogs are parented to when the
    * requesting window is gone.
@@ -135,16 +119,25 @@ export class WorkspaceManager {
   public register(): void {
     ipcMain.handle(
       WorkspaceChannel.Open,
-      (event: IpcMainInvokeEvent): Promise<OpenSelection | null> => {
+      (
+        event: IpcMainInvokeEvent,
+        limitMb: unknown,
+        decode: unknown,
+      ): Promise<OpenSelection | null> => {
         logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.Open}`);
-        return this.open(event.sender);
+        return this.open(event.sender, textReadPolicy(limitMb, decode));
       },
     );
     ipcMain.handle(
       WorkspaceChannel.OpenFile,
-      (_event: IpcMainInvokeEvent, filePath: unknown): Promise<OpenSelection | null> => {
+      (
+        _event: IpcMainInvokeEvent,
+        filePath: unknown,
+        limitMb: unknown,
+        decode: unknown,
+      ): Promise<OpenSelection | null> => {
         logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.OpenFile}`);
-        return this.openFile(filePath);
+        return this.openFile(filePath, textReadPolicy(limitMb, decode));
       },
     );
     ipcMain.handle(
@@ -210,9 +203,14 @@ export class WorkspaceManager {
     );
     ipcMain.handle(
       WorkspaceChannel.ReopenFile,
-      (_event: IpcMainInvokeEvent, filePath: unknown): Promise<OpenSelection | null> => {
+      (
+        _event: IpcMainInvokeEvent,
+        filePath: unknown,
+        limitMb: unknown,
+        decode: unknown,
+      ): Promise<OpenSelection | null> => {
         logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.ReopenFile}`);
-        return this.reopenFile(filePath);
+        return this.reopenFile(filePath, textReadPolicy(limitMb, decode));
       },
     );
     ipcMain.handle(
@@ -250,9 +248,13 @@ export class WorkspaceManager {
     );
     ipcMain.handle(
       WorkspaceChannel.Delete,
-      (_event: IpcMainInvokeEvent, targetPath: unknown): Promise<FileOperationResult> => {
+      (
+        _event: IpcMainInvokeEvent,
+        targetPath: unknown,
+        permanent: unknown,
+      ): Promise<FileOperationResult> => {
         logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.Delete}`);
-        return this.delete(targetPath);
+        return this.delete(targetPath, permanent === true);
       },
     );
     ipcMain.handle(
@@ -292,119 +294,7 @@ export class WorkspaceManager {
         return this.renameSolutionFolder(root, folderPath, name);
       },
     );
-    ipcMain.handle(
-      PackageChannel.ModelLoad,
-      (_event: IpcMainInvokeEvent, root: unknown): Promise<PackageManagerModel | null> => {
-        logger.trace('WorkspaceManager.register', `IPC ${PackageChannel.ModelLoad}`);
-        return this.loadPackageModel(root);
-      },
-    );
-    ipcMain.handle(
-      PackageChannel.Sources,
-      (_event: IpcMainInvokeEvent, root: unknown): Promise<readonly PackageSourceInfo[]> => {
-        logger.trace('WorkspaceManager.register', `IPC ${PackageChannel.Sources}`);
-        return this.loadPackageSources(root);
-      },
-    );
-    ipcMain.handle(
-      PackageChannel.Search,
-      (
-        _event: IpcMainInvokeEvent,
-        root: unknown,
-        sourceName: unknown,
-        query: unknown,
-        options: unknown,
-      ): Promise<PackageSearchResult> => {
-        logger.trace('WorkspaceManager.register', `IPC ${PackageChannel.Search}`);
-        return this.searchPackages(root, sourceName, query, options);
-      },
-    );
     logger.info('WorkspaceManager', 'Registered workspace IPC handlers');
-  }
-
-  /**
-   * Loads the package model for an open workspace root, resolving the package manager that applies to
-   * it. Confined to open roots so the renderer cannot drive a filesystem scan (or registry queries) of
-   * arbitrary locations.
-   * @param root The candidate workspace root.
-   * @returns Returns the model, or null when the root is not open or no package manager applies.
-   */
-  private async loadPackageModel(root: unknown): Promise<PackageManagerModel | null> {
-    if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
-      logger.warn('WorkspaceManager.loadPackageModel', 'Rejected non-open root');
-      return null;
-    }
-    const manager: PackageManager | null = await packageManagers.match(root);
-    if (manager === null) {
-      logger.debug('WorkspaceManager.loadPackageModel', `No package manager for ${root}`);
-      return null;
-    }
-    logger.debug('WorkspaceManager.loadPackageModel', `Loading package model for ${root}`);
-    return manager.load(root, this.httpFetch);
-  }
-
-  /**
-   * Lists the package sources available to browse for an open workspace root. Confined to open roots.
-   * @param root The candidate workspace root.
-   * @returns Returns the sources, or an empty list when the root is not open or has no searchable manager.
-   */
-  private async loadPackageSources(root: unknown): Promise<readonly PackageSourceInfo[]> {
-    if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
-      return [];
-    }
-    const manager: PackageManager | null = await packageManagers.match(root);
-    return (await manager?.listSources?.(root)) ?? [];
-  }
-
-  /**
-   * Searches (or browses) a source's packages for an open workspace root. Confined to open roots; the
-   * paging options are clamped so the renderer cannot request an unbounded page.
-   * @param root The candidate workspace root.
-   * @param sourceName The source to search.
-   * @param query The search text.
-   * @param options The paging and prerelease options.
-   * @returns Returns a page of results, empty when the root is not open or the manager cannot search.
-   */
-  private async searchPackages(
-    root: unknown,
-    sourceName: unknown,
-    query: unknown,
-    options: unknown,
-  ): Promise<PackageSearchResult> {
-    const empty: PackageSearchResult = { items: [], total: 0, hasMore: false };
-    if (
-      typeof root !== 'string' ||
-      !this.workspace.isRoot(root) ||
-      typeof sourceName !== 'string' ||
-      typeof query !== 'string'
-    ) {
-      return empty;
-    }
-    const manager: PackageManager | null = await packageManagers.match(root);
-    if (manager?.search === undefined) {
-      logger.debug('WorkspaceManager.searchPackages', `No searchable package manager for ${root}`);
-      return empty;
-    }
-    logger.debug('WorkspaceManager.searchPackages', `Searching ${sourceName} for "${query}"`);
-    return manager.search(root, sourceName, query, this.searchOptions(options), this.httpFetch);
-  }
-
-  /**
-   * Sanitises the renderer-supplied search options: a non-negative skip and a positive take bounded to
-   * a sane page size, with prerelease defaulting off.
-   * @param options The candidate options.
-   * @returns Returns the clamped options.
-   */
-  private searchOptions(options: unknown): PackageSearchOptions {
-    const record: { skip?: unknown; take?: unknown; prerelease?: unknown } =
-      typeof options === 'object' && options !== null ? options : {};
-    const skip: number =
-      typeof record.skip === 'number' && record.skip > 0 ? Math.floor(record.skip) : 0;
-    const take: number =
-      typeof record.take === 'number' && record.take > 0
-        ? Math.min(Math.floor(record.take), 100)
-        : 50;
-    return { skip, take, prerelease: record.prerelease === true };
   }
 
   /**
@@ -538,9 +428,10 @@ export class WorkspaceManager {
    * the workspace root; a file is returned as text content, or as a binary marker when it is not
    * decodable text.
    * @param sender The web contents that requested the dialog.
+   * @param policy How large a file opens as text, and how its bytes decode.
    * @returns Returns the selection, or null when the dialog was cancelled or unreadable.
    */
-  private async open(sender: WebContents): Promise<OpenSelection | null> {
+  private async open(sender: WebContents, policy: TextReadPolicy): Promise<OpenSelection | null> {
     const result: OpenDialogReturnValue = await showOpenDialog(sender, this.windowGetter, {
       properties: ['openFile', 'openDirectory'],
     });
@@ -552,13 +443,13 @@ export class WorkspaceManager {
       const stats: Stats = await fs.stat(selectedPath);
       if (stats.isDirectory()) {
         this.workspace.addRoot(selectedPath);
-        this.trusted.remember(selectedPath);
+        this.trusted.rememberChosen(selectedPath);
         logger.info('WorkspaceManager.open', `Opened directory ${selectedPath}`);
         return { kind: 'directory', directory: await this.readListing(selectedPath) };
       }
-      this.trusted.remember(selectedPath);
+      this.trusted.rememberChosen(selectedPath);
       logger.debug('WorkspaceManager.open', `Opening file ${selectedPath}`);
-      return await this.readFileSelection(selectedPath);
+      return await this.readFileSelection(selectedPath, policy);
     } catch (error: unknown) {
       logger.debug('WorkspaceManager', `Failed to open ${selectedPath}`, error);
       return null;
@@ -568,21 +459,54 @@ export class WorkspaceManager {
   /**
    * Reads a single file within the workspace for opening in an editor.
    * @param filePath The absolute path of the file to read.
+   * @param policy How large a file opens as text, and how its bytes decode.
    * @returns Returns the file selection (text or binary), or null when invalid or outside the workspace.
    */
-  private async openFile(filePath: unknown): Promise<OpenSelection | null> {
+  private async openFile(filePath: unknown, policy: TextReadPolicy): Promise<OpenSelection | null> {
     if (!this.workspace.isWithin(filePath)) {
+      // The one exception: source a language server navigates to, for a framework or package symbol:
+      // its decompiled source (#1133), or the Rust toolchain's (#1210). Opened to read only, and not
+      // remembered as a recent file — it is not something the user opened.
+      // Checked on its real path, but opened under the path asked for: that is the one the server
+      // knows it by and the one navigation waits for an editor to show (on macOS the two differ —
+      // `/var/…` is a link to `/private/var/…`).
+      if ((await readOnlySourcePath(filePath)) !== null) {
+        return this.readReadOnlySource(path.resolve(filePath as string), policy);
+      }
       logger.warn('WorkspaceManager.openFile', 'Rejected file outside the workspace');
       return null;
     }
     try {
       const resolved: string = path.resolve(filePath as string);
-      const selection: OpenSelection = await this.readFileSelection(resolved);
+      const selection: OpenSelection = await this.readFileSelection(resolved, policy);
       // Remember the file so it can be re-opened from the welcome screen once its workspace is closed.
       this.trusted.remember(resolved);
       return selection;
     } catch (error: unknown) {
       logger.debug('WorkspaceManager', 'Failed to open file', error);
+      return null;
+    }
+  }
+
+  /**
+   * Reads source a language server navigated to outside the workspace, for opening read-only.
+   * @param filePath The file's absolute path, already known to be such a source.
+   * @param policy How large a file opens as text, and how its bytes decode.
+   * @returns Returns the file selection marked read-only, or null when it cannot be read as text.
+   */
+  private async readReadOnlySource(
+    filePath: string,
+    policy: TextReadPolicy,
+  ): Promise<OpenSelection | null> {
+    try {
+      const selection: OpenSelection = await this.readFileSelection(filePath, policy);
+      if (selection.kind !== 'file') {
+        return null;
+      }
+      logger.info('WorkspaceManager.openFile', `Opening source ${filePath} read-only`);
+      return { kind: 'file', file: { ...selection.file, readOnly: true } };
+    } catch (error: unknown) {
+      logger.debug('WorkspaceManager', 'Failed to open read-only source', error);
       return null;
     }
   }
@@ -660,16 +584,20 @@ export class WorkspaceManager {
     try {
       handle = await fs.open(resolved, 'r+');
       const size: number = (await handle.stat()).size;
+      // Every patch is judged before any is written: a save the caller is told failed must not have
+      // changed the file, so one bad run cannot leave the runs before it on disk.
+      const valid: boolean = runs.every(
+        (run: BinaryPatch): boolean =>
+          typeof run?.offset === 'number' &&
+          Number.isInteger(run.offset) &&
+          run.offset >= 0 &&
+          Array.isArray(run.bytes) &&
+          run.offset + run.bytes.length <= size,
+      );
+      if (!valid) {
+        return false;
+      }
       for (const run of runs) {
-        if (
-          typeof run.offset !== 'number' ||
-          !Number.isInteger(run.offset) ||
-          run.offset < 0 ||
-          !Array.isArray(run.bytes) ||
-          run.offset + run.bytes.length > size
-        ) {
-          return false;
-        }
         if (run.bytes.length > 0) {
           await handle.write(Buffer.from(run.bytes), 0, run.bytes.length, run.offset);
         }
@@ -714,14 +642,16 @@ export class WorkspaceManager {
     const runs: BinarySpan[] = spans as BinarySpan[];
     const addedBuffer: Buffer = Buffer.from(added);
     const resolved: string = path.resolve(filePath);
-    const tempPath: string = `${resolved}.onix-save`;
+    // Unique per save, so two saves of one file never share a temporary, and nothing already sitting
+    // beside the file can be overwritten or written through.
+    const tempPath: string = `${resolved}.${randomUUID()}.onix-save`;
     let source: FileHandle | undefined;
     let temp: FileHandle | undefined;
     try {
       if (runs.some((run: BinarySpan): boolean => run.source === 'original')) {
         source = await fs.open(resolved, 'r');
       }
-      temp = await fs.open(tempPath, 'w');
+      temp = await fs.open(tempPath, 'wx');
       const chunk: Buffer = Buffer.alloc(64 * 1024);
       for (const run of runs) {
         if (
@@ -762,6 +692,12 @@ export class WorkspaceManager {
             remaining -= bytesRead;
           }
         }
+      }
+      // The rename swaps in a new inode, so the rewritten file takes the old one's permissions by hand
+      // or a script edited in the hex editor stops being executable.
+      const existing: Stats | undefined = await fs.stat(resolved).catch((): undefined => undefined);
+      if (existing !== undefined) {
+        await temp.chmod(existing.mode & PERMISSION_BITS);
       }
       await temp.close();
       temp = undefined;
@@ -826,15 +762,19 @@ export class WorkspaceManager {
    * dialog before, or files already within an open workspace, so the renderer cannot read arbitrary
    * files.
    * @param filePath The absolute file path to re-open.
+   * @param policy How large a file opens as text, and how its bytes decode.
    * @returns Returns the file selection (text or binary), or null when untrusted or unreadable.
    */
-  private async reopenFile(filePath: unknown): Promise<OpenSelection | null> {
+  private async reopenFile(
+    filePath: unknown,
+    policy: TextReadPolicy,
+  ): Promise<OpenSelection | null> {
     if (!this.trusted.has(filePath) && !this.workspace.isWithin(filePath)) {
       logger.warn('WorkspaceManager.reopenFile', 'Rejected untrusted file path');
       return null;
     }
     try {
-      return await this.readFileSelection(path.resolve(filePath as string));
+      return await this.readFileSelection(path.resolve(filePath as string), policy);
     } catch (error: unknown) {
       logger.debug('WorkspaceManager', 'Failed to read file selection', error);
       return null;
@@ -898,6 +838,10 @@ export class WorkspaceManager {
     }
     const destination: string = path.join(path.dirname(resolved), newName as string);
     try {
+      if (await this.isDifferentEntry(resolved, destination)) {
+        logger.warn('WorkspaceManager.rename', `Rejected rename over ${destination}`);
+        return { success: false, error: `${newName as string} already exists` };
+      }
       await fs.rename(resolved, destination);
       logger.info('WorkspaceManager', `Renamed ${resolved} to ${destination}`);
       return { success: true, path: destination };
@@ -905,6 +849,25 @@ export class WorkspaceManager {
       logger.error('WorkspaceManager', `Failed to rename ${resolved}`, error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
+  }
+
+  /**
+   * Determines whether a rename's destination is an existing entry other than its source. `fs.rename`
+   * replaces what it lands on without a word, which would lose that file. The comparison is by identity
+   * rather than by name because on a case-insensitive volume `readme` → `README` lands on itself.
+   * @param source The entry being renamed.
+   * @param destination The path it would take.
+   * @returns Returns true when the rename would replace a different entry.
+   */
+  private async isDifferentEntry(source: string, destination: string): Promise<boolean> {
+    const existing: Stats | undefined = await fs
+      .lstat(destination)
+      .catch((): undefined => undefined);
+    if (existing === undefined) {
+      return false;
+    }
+    const entry: Stats = await fs.lstat(source);
+    return entry.ino !== existing.ino || entry.dev !== existing.dev;
   }
 
   /**
@@ -916,10 +879,13 @@ export class WorkspaceManager {
    * (network volumes, some containers), and a delete the user asked for should still happen — so the
    * fallback removes permanently and says so in the result, letting the caller word its confirmation
    * for what actually occurred rather than for what it hoped would.
+   * Move to Trash turned off asks for the permanent removal outright, and the renderer's confirmation
+   * says so.
    * @param targetPath The absolute path of the entry to delete.
+   * @param permanent Whether to skip the trash.
    * @returns Returns the result describing success or failure, and whether the entry was trashed.
    */
-  private async delete(targetPath: unknown): Promise<FileOperationResult> {
+  private async delete(targetPath: unknown, permanent: boolean): Promise<FileOperationResult> {
     if (!this.workspace.isWithin(targetPath)) {
       logger.warn('WorkspaceManager.delete', 'Rejected target outside the workspace');
       return { success: false, error: 'Target is outside the workspace' };
@@ -931,7 +897,8 @@ export class WorkspaceManager {
     }
     const result: FileOperationResult = await trashOrRemove(
       resolved,
-      (target: string): Promise<void> => shell.trashItem(target),
+      (target: string): Promise<void> =>
+        permanent ? Promise.reject(new Error('Permanent')) : shell.trashItem(target),
       (target: string): Promise<void> => fs.rm(target, { recursive: true, force: false }),
     );
     if (!result.success) {
@@ -946,10 +913,19 @@ export class WorkspaceManager {
    * Reads a file and classifies it as an image, text or binary. Images and binary files are
    * recognised but not decoded, so the renderer can route them to the image viewer or the hex editor.
    * @param filePath The absolute path of the file to read.
+   * @param policy How large a file opens as text (Large File Size Limit), and how its bytes decode.
    * @returns Returns an image, text-file or binary selection.
    */
-  private async readFileSelection(filePath: string): Promise<OpenSelection> {
+  private async readFileSelection(
+    filePath: string,
+    policy: TextReadPolicy,
+  ): Promise<OpenSelection> {
     const stats: Stats = await fs.stat(filePath);
+    // Opening a FIFO blocks until a writer appears, which pins a thread-pool thread and leaves the
+    // caller waiting forever; a device reads without end. Only a regular file is a document.
+    if (!stats.isFile()) {
+      throw new Error(`Not a regular file: ${filePath}`);
+    }
     // An image is recognised by its extension before its contents are sniffed: a PNG would otherwise
     // sniff as binary and an SVG as text, and both belong in the image viewer. The extension list is
     // the one the media protocol serves, so every file classified here is one the viewer can display.
@@ -960,19 +936,19 @@ export class WorkspaceManager {
     // A text file past the cap opens in the binary/hex editor, which reads it in windows on demand:
     // decoding a multi-hundred-megabyte log into one string, shipping it over IPC, and mounting it
     // in Monaco would stall the whole application.
-    if (stats.size > MAX_TEXT_FILE_BYTES || (await this.isBinaryFile(filePath))) {
+    if (stats.size > policy.limit || (await this.isBinaryFile(filePath))) {
       logger.debug(
         'WorkspaceManager.readFileSelection',
         `${filePath} classified binary (${stats.size} bytes)`,
       );
       return { kind: 'binary', path: filePath };
     }
-    const content: string = await fs.readFile(filePath, 'utf-8');
+    const decoded: DecodedText = decodeText(await fs.readFile(filePath), policy.decode);
     logger.trace(
       'WorkspaceManager.readFileSelection',
-      `Read text file ${filePath} (${stats.size} bytes)`,
+      `Read text file ${filePath} (${stats.size} bytes, ${decoded.encoding})`,
     );
-    return { kind: 'file', file: this.readFileInfo(filePath, content) };
+    return { kind: 'file', file: this.readFileInfo(filePath, decoded) };
   }
 
   /**
@@ -1001,15 +977,17 @@ export class WorkspaceManager {
   /**
    * Builds a {@link FileInfo} from a file's path and decoded content.
    * @param filePath The absolute path of the file.
-   * @param content The decoded textual content.
+   * @param decoded The decoded text, the encoding it was read in and whether it had a byte-order mark.
    * @returns Returns the file info.
    */
-  private readFileInfo(filePath: string, content: string): FileInfo {
+  private readFileInfo(filePath: string, decoded: DecodedText): FileInfo {
     return {
       path: filePath,
       name: path.basename(filePath),
       extension: path.extname(filePath),
-      content,
+      content: decoded.text,
+      encoding: decoded.encoding,
+      hasBom: decoded.bom,
     };
   }
 
@@ -1020,6 +998,10 @@ export class WorkspaceManager {
    * @returns Returns true when a NUL byte is found within the sniffed range.
    */
   private isBinary(buffer: Buffer): boolean {
+    // UTF-16 text is half NULs; its byte-order mark says it is text.
+    if (hasUtf16ByteOrderMark(buffer)) {
+      return false;
+    }
     const length: number = Math.min(buffer.length, BINARY_SNIFF_LENGTH);
     for (let index: number = 0; index < length; index += 1) {
       if (buffer[index] === NUL_BYTE) {

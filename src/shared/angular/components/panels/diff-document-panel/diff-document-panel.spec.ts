@@ -1,4 +1,8 @@
 import { DebugElement, signal, Signal } from '@angular/core';
+import {
+  SETTINGS_DEFAULTS,
+  SettingsKey,
+} from '@shared/angular/services/settings/settings-registry';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { Icon } from '@shared/angular/icons/icon';
@@ -22,17 +26,20 @@ import { DiffView } from '../diff-view/diff-view';
 import { DiffDocumentPanel } from './diff-document-panel';
 import { Repository } from '@shared/angular/services/repository/repository';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { TEXT_EDITOR_SETTINGS as DEFAULT_SETTINGS } from '@shared/angular/services/settings/text-editor-settings.fixture';
 
 /**
  * The text-editor settings the stubbed {@link Settings} hands out.
  */
 const TEXT_EDITOR_SETTINGS: TextEditorSettings = {
+  ...DEFAULT_SETTINGS,
   showLineNumbers: true,
   showMinimap: false,
   currentLineHighlight: 'outline',
   colorBrackets: false,
   wordWrap: false,
   stickyScroll: false,
+  formatOnType: true,
   cursorBlinking: 'blink',
   cursorSmoothCaretAnimation: 'off',
   insertSpaces: true,
@@ -91,6 +98,7 @@ function renderProviders(): unknown[] {
         ensureLoaded: (): Promise<void> => Promise.resolve(),
         getMonaco: (): undefined => undefined,
         getDiffEditorOptions: (): Record<string, unknown> => ({}),
+        getDiffLiveOptions: (): Record<string, unknown> => ({}),
         getThemeName: (): string => 'studio-dark',
         // Autocomplete (#1021) registers itself with the Monaco service as it starts.
         useAssist: (): void => undefined,
@@ -103,9 +111,8 @@ function renderProviders(): unknown[] {
         globalTextEditor: signal<TextEditorSettings>(TEXT_EDITOR_SETTINGS),
         // The tool strip's button names itself through a tooltip, which reads this.
         value: (): Signal<boolean> => signal<boolean>(true),
-        // The panel asks the real DockState whether it is the active tab, and DockState bounds
-        // its undo history from here.
-        undoStackSize: signal<number>(50),
+        // Everything else reads its default (the notifications service, for one).
+        get: (key: SettingsKey): unknown => SETTINGS_DEFAULTS[key],
       },
     },
   ];
@@ -241,6 +248,20 @@ describe('DiffDocumentPanel', () => {
       fixture.detectChanges();
 
       expect(diffs.inlineDiff()).toBe(true);
+    });
+
+    it('theWhitespaceSwitch_saysWhetherItIsOn_andFlipsEveryOpenDiff', async () => {
+      fixture.componentRef.setInput('panel', makePanel('diff:src/app/main.ts'));
+      fixture.detectChanges();
+      await fixture.whenStable();
+      const before: boolean = diffs.ignoreWhitespace();
+      expect(tool('Ignore Whitespace').getAttribute('aria-pressed')).toBe(String(before));
+
+      tool('Ignore Whitespace').click();
+      fixture.detectChanges();
+
+      expect(diffs.ignoreWhitespace()).toBe(!before);
+      expect(tool('Ignore Whitespace').getAttribute('aria-pressed')).toBe(String(!before));
     });
 
     it('theNavigationArrowsAreInert_untilThereIsAComparison', async () => {

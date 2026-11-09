@@ -62,6 +62,8 @@
   --ribbon-control-border-color--hover: var(--gray-500);
 
   --form-control-background-color: var(--gray-100);
+  // Key caps (a shortcut's keys): white, so they stand proud of every light surface, settings included.
+  --key-cap-background-color: #ffffff;
   --form-control-background-color--hover: var(--gray-300);
   --form-control-border-color: var(--gray-500);
   --form-control-border-color--hover: var(--gray-600);
@@ -83,6 +85,8 @@
   --dropdown-menu-item-foreground-color--hover: var(--form-on-accent-color);
 
   --settings-background-color: var(--gray-400);
+  // A settings row under the pointer: one shade brighter than the page.
+  --settings-row-background-color--hover: var(--gray-350);
   --settings-nav-background-color: var(--gray-500);
   --settings-border-color: var(--gray-600);
   --settings-muted-foreground-color: var(--gray-800);
@@ -137,6 +141,14 @@
   );
   --status-strip-bevel-highlight-color: white;
 
+  // A resizable table's column splitter: one line, the darker of the groove's two — white would vanish
+  // against a light header.
+  --table-splitter-color: var(--status-strip-bevel-shadow-color);
+  // The query results grid's column splitters: a shade darker than the table splitter in dark mode.
+  --database-results-splitter-color: var(--table-splitter-color);
+  // The Graph view's nodes: a theme grey with the accent at their rim, never a colour of their own.
+  --graph-node-background-color: var(--gray-200);
+
   // The backdrop behind the docked panes (and, since splitters are transparent, the gaps between
   // them). The single knob for the dock container surface; decoupled from --root-content so it can
   // be retuned without moving the app root.
@@ -177,4 +189,11 @@
   --change-margin-unsaved: #d7a824;
   --change-margin-saved: #2ea043;
   --change-margin-deleted: #d13438;
+
+  // The same marks in an Okabe-Ito palette, which stays distinct for colour-blind eyes.
+  &[data-colour-blind-safe='true'] {
+    --change-margin-unsaved: #e69f00;
+    --change-margin-saved: #0072b2;
+    --change-margin-deleted: #d55e00;
+  }
 }

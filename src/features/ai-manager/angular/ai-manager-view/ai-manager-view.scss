@@ -20,3 +20,31 @@
     min-block-size: 0;
   }
 }
+
+// What the main area shows while every section of the sidebar is closed.
+.ai-manager__overview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  block-size: 100%;
+  padding: 2rem;
+  text-align: center;
+  color: var(--form-muted-foreground-color);
+}
+
+.ai-manager__overview-icon {
+  font-size: 2.5rem;
+}
+
+.ai-manager__overview-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.ai-manager__overview-hint {
+  margin: 0;
+}

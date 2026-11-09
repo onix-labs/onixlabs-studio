@@ -1,0 +1,39 @@
+@if (question(); as asked) {
+  <app-modal
+    [open]="true"
+    [width]="32"
+    [frameless]="true"
+    ariaLabel="Set upstream"
+    (dismiss)="answer('cancel')"
+  >
+    <ng-template appModalContent>
+      <div class="upstream">
+        <h2 class="upstream__title">Set Upstream?</h2>
+        <p class="upstream__body">
+          {{ asked.branch }} has no upstream yet. Set {{ asked.remote }}/{{ asked.branch }} as its
+          upstream while pushing, so later pulls and pushes know where to go?
+        </p>
+        <app-button-row>
+          <app-button
+            variant="solid"
+            label="Set Upstream"
+            data-testid="upstream-set"
+            (click)="answer('set')"
+          />
+          <app-button
+            variant="ghost"
+            label="Push Only"
+            data-testid="upstream-push-only"
+            (click)="answer('push-only')"
+          />
+          <app-button
+            variant="none"
+            label="Cancel"
+            data-testid="upstream-cancel"
+            (click)="answer('cancel')"
+          />
+        </app-button-row>
+      </div>
+    </ng-template>
+  </app-modal>
+}

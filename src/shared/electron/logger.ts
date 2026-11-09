@@ -1,5 +1,5 @@
 import * as path from 'node:path';
-import { app, ipcMain, IpcMainEvent, IpcMainInvokeEvent, WebContents } from 'electron';
+import { app, ipcMain, IpcMainEvent, IpcMainInvokeEvent, shell, WebContents } from 'electron';
 import {
   consoleLevelToSeverity,
   LOG_LEVELS,
@@ -31,6 +31,26 @@ const FLUSH_INTERVAL_MS: number = 250;
  * than letting the buffers grow without bound.
  */
 const MAX_PENDING_LINES: number = 512;
+
+/**
+ * The user's limits on what is logged and kept.
+ */
+export interface LogLimits {
+  /**
+   * Gets how many of the running session's records are held in memory.
+   */
+  readonly liveRecords: number;
+
+  /**
+   * Gets the size the rolling log file reaches before it rotates, in MB.
+   */
+  readonly fileSizeMb: number;
+
+  /**
+   * Gets how many rotated log files are kept.
+   */
+  readonly rotatedCopies: number;
+}
 
 /**
  * Collects application log records for the current app session and serves the log audit.
@@ -76,6 +96,11 @@ export class Logger {
    * ready.
    */
   private archiveInstance: LogArchive | null = null;
+
+  /**
+   * Holds the user's limits, once the main process has read them.
+   */
+  private limits: LogLimits | null = null;
 
   /**
    * Resolves the web-contents identifier of the main window, so renderer records can be labelled
@@ -184,11 +209,15 @@ export class Logger {
 
     ipcMain.handle(
       LogChannel.Query,
-      (_event: IpcMainInvokeEvent, query: unknown): readonly LogRecord[] =>
-        this.query((query as LogQuery | null) ?? {}),
+      (_event: IpcMainInvokeEvent, query: unknown): Promise<readonly LogRecord[]> =>
+        this.queryAnySession((query as LogQuery | null) ?? {}),
     );
 
     ipcMain.handle(LogChannel.Sessions, (): readonly LogSession[] => this.sessions());
+
+    ipcMain.handle(LogChannel.OpenFolder, async (): Promise<void> => {
+      await shell.openPath(this.logDirectory);
+    });
 
     ipcMain.on(LogChannel.Subscribe, (event: IpcMainEvent): void => {
       const sender: WebContents = event.sender;
@@ -410,6 +439,47 @@ export class Logger {
   }
 
   /**
+   * Returns records matching a query, as {@link query} does, reading a past session without blocking.
+   * @param query The filter to apply.
+   * @returns Returns the matching records, newest last.
+   */
+  private async queryAnySession(query: LogQuery): Promise<readonly LogRecord[]> {
+    if (query.sessionId === undefined || query.sessionId === this.sessionId) {
+      return this.query(query);
+    }
+    return LogStore.filter(await this.archive.readSessionFile(query.sessionId), query);
+  }
+
+  /**
+   * Applies the user's limits on what is kept, at launch and whenever they change.
+   * @param limits The limits.
+   */
+  public applyLimits(limits: LogLimits): void {
+    this.limits = limits;
+    this.store.setCap(limits.liveRecords);
+    // Before the app is ready the archive may not be made: it takes these limits when it is, and
+    // the start-up prune tidies what they leave behind.
+    if (app.isReady()) {
+      this.archive.setRotation(limits.fileSizeMb * 1024 * 1024, limits.rotatedCopies);
+    }
+  }
+
+  /**
+   * Holds the logs to what the user keeps, at start-up: rotated copies past the count, which a lowered
+   * count left behind, and the logs of past sessions older than the days.
+   * @param days The days to keep; 0 keeps them for ever.
+   */
+  public pruneSessions(days: number): void {
+    if (this.limits !== null) {
+      this.applyLimits(this.limits);
+    }
+    if (days > 0) {
+      const deleted: number = this.archive.pruneSessions(days, this.sessionId);
+      this.info('Logger', `Deleted ${deleted} session log(s) older than ${days} days`);
+    }
+  }
+
+  /**
    * Lists the known app sessions, newest first, with the current session flagged live.
    * @returns Returns the known sessions.
    */
@@ -423,7 +493,16 @@ export class Logger {
    * @returns Returns the archive.
    */
   private get archive(): LogArchive {
-    return (this.archiveInstance ??= new LogArchive(this.logDirectory));
+    this.archiveInstance ??= new LogArchive(
+      this.logDirectory,
+      this.limits === null ? undefined : this.limits.fileSizeMb * 1024 * 1024,
+      this.limits?.rotatedCopies,
+    );
+    // ⛔ Asked afresh every time. The first record is logged while modules load, before `main.ts`
+    // moves userData to a development or test profile, and an archive left on the path it was made
+    // with writes to — and prunes — the real profile's logs from a scratch one.
+    this.archiveInstance.relocate(this.logDirectory);
+    return this.archiveInstance;
   }
 
   /**

@@ -25,15 +25,21 @@ import { GoToPicker } from '../go-to-picker';
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './go-to-dialog.scss',
   template: `
-    <app-modal [open]="open()" [width]="24" ariaLabel="Go to Line" (dismiss)="dismissed.emit()">
+    <app-modal
+      [open]="open()"
+      [width]="24"
+      [frameless]="true"
+      ariaLabel="Go to Line"
+      (dismiss)="dismissed.emit()"
+    >
       <ng-template appModalContent>
         <div class="go-to-dialog">
           <h2 class="go-to-dialog__title">Go to Line</h2>
           <app-text-field
             class="go-to-dialog__field"
+            variant="floating"
+            label="Line, or line:column"
             [(value)]="picker.query"
-            placeholder="Line, or line:column"
-            ariaLabel="Line, or line:column"
             (keydown.enter)="commit($event)"
           />
           <p
@@ -50,7 +56,7 @@ import { GoToPicker } from '../go-to-picker';
               [disabled]="picker.lineEntry().kind !== 'valid'"
               (click)="commit()"
             />
-            <app-button label="Cancel" (click)="dismissed.emit()" />
+            <app-button variant="none" label="Cancel" (click)="dismissed.emit()" />
           </app-button-row>
         </div>
       </ng-template>

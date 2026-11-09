@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { describe, expect, it, beforeEach } from 'vitest';
+import { afterEach, describe, expect, it, beforeEach } from 'vitest';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { AiManagerNavigation } from './ai-manager-navigation';
 
@@ -8,12 +8,52 @@ describe('AiManagerNavigation', () => {
   let tabs: Tabs;
 
   beforeEach(() => {
+    localStorage.removeItem('settings');
     navigation = TestBed.inject(AiManagerNavigation);
     tabs = TestBed.inject(Tabs);
   });
 
-  it('section_startsOnModels', () => {
-    expect(navigation.section()).toBe('models');
+  afterEach(() => {
+    localStorage.removeItem('settings');
+  });
+
+  it('section_startsWithNothingOpen', () => {
+    expect(navigation.section()).toBeNull();
+  });
+
+  it('begin_opensWhereItWasLeft', () => {
+    navigation.show('skills');
+    navigation.collapse();
+    navigation.show('profiles');
+
+    navigation.begin();
+
+    expect(navigation.section()).toBe('profiles');
+  });
+
+  it('begin_leavesNothingOpen_whenItWasLeftThatWay', () => {
+    navigation.show('skills');
+    navigation.collapse();
+
+    navigation.begin();
+
+    expect(navigation.section()).toBeNull();
+  });
+
+  it('begin_keepsTheSectionItWasOpenedAt', () => {
+    navigation.show('skills');
+    navigation.open('profiles');
+
+    navigation.begin();
+
+    expect(navigation.section()).toBe('profiles');
+  });
+
+  it('collapse_leavesNothingOpen', () => {
+    navigation.show('models');
+    navigation.collapse();
+
+    expect(navigation.section()).toBeNull();
   });
 
   it('show_changesTheSectionWithoutOpeningTheTab', () => {

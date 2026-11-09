@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { DEFAULT_STARTUP_SETTINGS } from '@shared/api/startup-settings';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { HostEnv } from '@shared/api/host';
 import { PLUGIN_API_VERSION } from '@shared/api/plugin-manifest';
@@ -51,6 +52,8 @@ function withHost(platform: string, arch: string): void {
       hardwareAccelerationEnabled: true,
     },
     logFloor: 'trace',
+    startupSettings: DEFAULT_STARTUP_SETTINGS,
+    packaged: false,
   };
   (window as unknown as { host?: HostEnv }).host = host;
 }

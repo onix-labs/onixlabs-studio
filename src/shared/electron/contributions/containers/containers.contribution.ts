@@ -6,11 +6,94 @@ import { ContributionContext, MainContribution } from '../main-contribution';
 import { PermissionId } from '../permissions/permission';
 import { ContainerSocket } from '../permissions/brokers/container-socket';
 import { contributedContainerEngines } from '../plugins/contributed';
+import type { NodeRuntimeSpec } from '../plugins/plugin-loader';
 import { pluginNodeRuntime } from '../../plugin-node-runtime';
-import { ContainerEngineDescriptor, engineSocketPath, StreamHandle } from './container-engine';
+import {
+  ContainerEngine,
+  ContainerEngineDescriptor,
+  engineSocketPath,
+  StreamHandle,
+} from './container-engine';
 import { ContainerEngineClient } from './container-engine-client';
 import { contributedEngines } from './container-engine-registry';
 import { chooseEngine, describeEngines, selectedEngine } from './engine-selection';
+
+/**
+ * A client for one engine, which is what the contribution holds and closes.
+ */
+export type ContainerEngineConnection = ContainerEngine & Pick<ContainerEngineClient, 'dispose'>;
+
+/**
+ * What the contribution asks of the machine: which engines exist, where they listen and how to reach
+ * one. A seam because each of these reads the user's own home, settings and plugins, or starts a
+ * process, and a spec may do none of that.
+ */
+export interface ContainersHost {
+  /**
+   * Recomputes which engines installed plugins contribute (#594).
+   *
+   * Cheap and idempotent, so it is simply redone rather than invalidated on a signal: the alternative
+   * is a cross-contribution notification from the Plugin Manager, which would couple two contributions
+   * to save a directory check on a call the user made.
+   */
+  refreshEngines(): void;
+
+  /**
+   * Gets the engine in effect.
+   * @returns Returns the descriptor, or null when no engine is installed.
+   */
+  selectedEngine(): ContainerEngineDescriptor | null;
+
+  /**
+   * Gets where an engine's socket is.
+   * @param descriptor The engine.
+   * @returns Returns the socket path, or null when the engine does not run here.
+   */
+  socketPath(descriptor: ContainerEngineDescriptor): string | null;
+
+  /**
+   * Builds the client that speaks to an engine through its plugin.
+   * @param descriptor The engine.
+   * @param spawn How to run the engine's plugin.
+   * @param socketPath The socket the permission resolved.
+   * @returns Returns the client.
+   */
+  createClient(
+    descriptor: ContainerEngineDescriptor,
+    spawn: NodeRuntimeSpec,
+    socketPath: string,
+  ): ContainerEngineConnection;
+
+  /**
+   * Records the user's choice of engine.
+   * @param id The engine's id, or null to return to the automatic choice.
+   */
+  chooseEngine(id: string | null): void;
+
+  /**
+   * Describes the engines to the renderer.
+   * @returns Returns the descriptions.
+   */
+  describeEngines(): readonly ContainerEngineInfo[];
+}
+
+/**
+ * The machine itself.
+ */
+const MACHINE: ContainersHost = {
+  refreshEngines: (): void =>
+    contributedEngines.replaceAll(contributedContainerEngines(pluginNodeRuntime)),
+  selectedEngine: (): ContainerEngineDescriptor | null => selectedEngine(),
+  socketPath: (descriptor: ContainerEngineDescriptor): string | null =>
+    engineSocketPath(descriptor),
+  createClient: (
+    descriptor: ContainerEngineDescriptor,
+    spawn: NodeRuntimeSpec,
+    socketPath: string,
+  ): ContainerEngineConnection => new ContainerEngineClient(descriptor.id, spawn, socketPath),
+  chooseEngine: (id: string | null): void => chooseEngine(id),
+  describeEngines: (): readonly ContainerEngineInfo[] => describeEngines(),
+};
 
 /**
  * The container engine backend contribution — the first real {@link MainContribution}. It requests the
@@ -54,7 +137,7 @@ export class ContainersContribution implements MainContribution {
   /**
    * The engine client in use, rebuilt whenever the engine in effect or its endpoint changes.
    */
-  private engine: ContainerEngineClient | null = null;
+  private engine: ContainerEngineConnection | null = null;
 
   /**
    * Identifies the engine {@link engine} was built for, as engine identity plus resolved endpoint. Both
@@ -64,6 +147,12 @@ export class ContainersContribution implements MainContribution {
   private engineKey: string | null = null;
 
   /**
+   * Initializes a new instance of the {@link ContainersContribution} class.
+   * @param host What the contribution asks of the machine.
+   */
+  public constructor(private readonly host: ContainersHost = MACHINE) {}
+
+  /**
    * Resolves the socket permission, wires the operation channels, and starts the event push.
    * @param context The contribution context.
    */
@@ -71,7 +160,7 @@ export class ContainersContribution implements MainContribution {
     // Throws PermissionDeniedError when the broker refuses; the registry isolates that (the feature
     // simply does not activate) rather than letting it abort startup.
     this.log = context.log;
-    this.refreshContributedEngines();
+    this.host.refreshEngines();
     // Resolved now so activation says which engine it is talking to, but *not* held for the session:
     // every handler asks again, because the answer can change while Studio runs (#594).
     this.currentEngine(context);
@@ -96,8 +185,8 @@ export class ContainersContribution implements MainContribution {
     );
     context.handle(
       ContainerChannel.Remove,
-      (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> =>
-        this.currentEngine(context)?.remove(String(id)) ?? Promise.resolve(false),
+      (_event: IpcMainInvokeEvent, id: unknown, volumes: unknown): Promise<boolean> =>
+        this.currentEngine(context)?.remove(String(id), volumes === true) ?? Promise.resolve(false),
     );
     context.handle(
       ContainerChannel.Logs,
@@ -170,16 +259,16 @@ export class ContainersContribution implements MainContribution {
       // Recomputed here rather than cached from activation: this is the call the surface makes when
       // it wants to know what its choices are, so it is exactly when a plugin installed since launch
       // should start counting.
-      this.refreshContributedEngines();
-      return describeEngines();
+      this.host.refreshEngines();
+      return this.host.describeEngines();
     });
     context.handle(
       ContainerChannel.ChooseEngine,
       (_event: IpcMainInvokeEvent, id: unknown): readonly ContainerEngineInfo[] => {
-        chooseEngine(typeof id === 'string' && id.length > 0 ? id : null);
+        this.host.chooseEngine(typeof id === 'string' && id.length > 0 ? id : null);
         // The choice takes effect on the next call, not on the next launch: the engine client is
         // rebuilt when the engine in effect changes, so nothing here has to outlive the choice.
-        return describeEngines();
+        return this.host.describeEngines();
       },
     );
 
@@ -189,9 +278,9 @@ export class ContainersContribution implements MainContribution {
     // open by ref-count instead — the status-strip count holds one while the engine is reachable.
     context.handle(ContainerChannel.WatchStart, (): boolean => {
       this.watchConsumers += 1;
-      if (this.watchConsumers === 1 && this.watchHandle === null) {
-        this.log?.info('first watch consumer; opening the engine event stream');
-        this.watchHandle = this.openWatch(context);
+      if (this.watchHandle === null) {
+        this.log?.info('watch consumer with no stream; opening the engine event stream');
+        this.openWatch(context);
       }
       return true;
     });
@@ -208,17 +297,6 @@ export class ContainersContribution implements MainContribution {
   }
 
   /**
-   * Recomputes which engines installed plugins contribute (#594).
-   *
-   * Cheap and idempotent, so it is simply redone rather than invalidated on a signal: the alternative
-   * is a cross-contribution notification from the Plugin Manager, which would couple two contributions
-   * to save a directory check on a call the user made.
-   */
-  private refreshContributedEngines(): void {
-    contributedEngines.replaceAll(contributedContainerEngines(pluginNodeRuntime));
-  }
-
-  /**
    * Gets the engine client to serve a request with, rebuilding it when the engine in effect or its
    * endpoint has changed since the last one.
    *
@@ -231,8 +309,8 @@ export class ContainersContribution implements MainContribution {
    * @param context The contribution context, which is the only door to the socket permission.
    * @returns Returns the engine client, or null when no engine is installed.
    */
-  private currentEngine(context: ContributionContext): ContainerEngineClient | null {
-    const descriptor: ContainerEngineDescriptor | null = selectedEngine();
+  private currentEngine(context: ContributionContext): ContainerEngineConnection | null {
+    const descriptor: ContainerEngineDescriptor | null = this.host.selectedEngine();
     if (descriptor?.spawn == null) {
       // No engine, or one built for an older Studio that has no process to run: either way there is
       // nothing to talk to, and the surface reports the engine as not running until it is updated.
@@ -241,7 +319,7 @@ export class ContainersContribution implements MainContribution {
     }
     // The entry point is part of the key: an update installs the plugin at a new path, and the process
     // running the old one must give way to it.
-    const key: string = `${descriptor.id}@${engineSocketPath(descriptor) ?? ''}@${descriptor.spawn.args.join(' ')}`;
+    const key: string = `${descriptor.id}@${this.host.socketPath(descriptor) ?? ''}@${descriptor.spawn.args.join(' ')}`;
     if (this.engine === null || this.engineKey !== key) {
       this.adoptEngine(context, descriptor, key);
     }
@@ -284,33 +362,33 @@ export class ContainersContribution implements MainContribution {
     context.log.info(
       `using the ${descriptor.displayName} engine; socket resolved at ${socket.path}`,
     );
-    const watching: boolean = this.watchHandle !== null;
     this.watchHandle?.close();
     this.watchHandle = null;
     // The engine's own plugin speaks to it (#973); Studio hands it the socket the permission resolved,
     // so a plugin never decides for itself where it may connect.
     this.engine?.dispose();
-    this.engine = new ContainerEngineClient(descriptor.id, descriptor.spawn!, socket.path);
+    this.engine = this.host.createClient(descriptor, descriptor.spawn!, socket.path);
     this.engineKey = key;
-    if (watching && this.watchConsumers > 0) {
-      // Consumers hold a watch on *the engine*, not on one connection to it, so a stream that was open
-      // reopens against the new engine rather than leaving those consumers silently unsubscribed.
-      this.log?.info('engine changed while watched; reopening the event stream');
-      this.watchHandle = this.openWatch(context);
+    if (this.watchConsumers > 0) {
+      // Consumers hold a watch on *the engine*, not on one connection to it, so the stream follows it
+      // here — whether one was open, or there was no engine to open it on when they asked.
+      this.log?.info('engine changed while watched; opening the event stream on it');
+      this.openWatch(context);
     }
   }
 
   /**
-   * Opens the engine event stream and pushes each event to the renderer.
+   * Opens the engine event stream, pushing each event to the renderer, unless it is open already or
+   * there is no engine to watch.
+   *
+   * 🔥 The check comes after {@link currentEngine}: adopting an engine opens the stream itself, and
+   * a second one opened here would overwrite the first's handle and leak it.
    * @param context The contribution context.
-   * @returns Returns the stream handle, or null when no engine is installed to watch.
    */
-  private openWatch(context: ContributionContext): StreamHandle | null {
-    return (
-      this.currentEngine(context)?.watch((event): void =>
-        context.send(ContainerChannel.Events, event),
-      ) ?? null
-    );
+  private openWatch(context: ContributionContext): void {
+    const engine: ContainerEngineConnection | null = this.currentEngine(context);
+    this.watchHandle ??=
+      engine?.watch((event): void => context.send(ContainerChannel.Events, event)) ?? null;
   }
 
   /**

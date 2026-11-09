@@ -643,6 +643,11 @@ export class Icon {
   public static readonly REFRESH: Icon = new Icon('ph ph-arrow-clockwise');
 
   /**
+   * Gets the refresh icon in the duotone weight, for a ribbon's Refresh action.
+   */
+  public static readonly REFRESH_DUOTONE: Icon = new Icon('ph-duotone ph-arrow-clockwise');
+
+  /**
    * Gets the check icon, shown on the Review panel's primary suggestion.
    */
   public static readonly CHECK: Icon = new Icon('ph ph-check');
@@ -748,6 +753,16 @@ export class Icon {
    * Gets the References panel's icon: a list searched through (#1014).
    */
   public static readonly REFERENCES: Icon = new Icon('ph-duotone ph-list-magnifying-glass');
+
+  /**
+   * Gets the Hierarchy panel's icon (#1153), and Show Type Hierarchy's: a tree of types.
+   */
+  public static readonly HIERARCHY: Icon = new Icon('ph-duotone ph-tree-structure');
+
+  /**
+   * Gets the Error List's Group by Project and File toggle's icon (#1182): a list folded into a tree.
+   */
+  public static readonly GROUP_BY_TREE: Icon = new Icon('ph-duotone ph-tree-view');
 
   /**
    * Gets the icon of a type in Go to Symbol's list: a class or a struct (#1009).
@@ -863,6 +878,11 @@ export class Icon {
    * Gets the git-diff icon shown on the diff surface and the ribbon's compare action.
    */
   public static readonly GIT_DIFF: Icon = new Icon('ph-duotone ph-git-diff');
+
+  /**
+   * Gets the icon of a diff's Ignore Whitespace switch.
+   */
+  public static readonly DIFF_WHITESPACE: Icon = new Icon('ph-duotone ph-paragraph');
 
   /**
    * Gets the icon of the explorers' Ignore command, which adds a path to version control's ignore
@@ -1308,6 +1328,11 @@ export class Icon {
   public static readonly SUCCESS_FILL: Icon = new Icon('ph-fill ph-check-circle');
 
   /**
+   * Gets the success icon in duotone, large in an empty view that has found nothing wrong (#1182).
+   */
+  public static readonly SUCCESS_DUOTONE: Icon = new Icon('ph-duotone ph-check-circle');
+
+  /**
    * Gets the duotone Note icon used by markdown alerts.
    */
   public static readonly ALERT_NOTE: Icon = new Icon('ph-duotone ph-info');
@@ -1524,6 +1549,175 @@ export class Icon {
    * Gets the icon of the API send history.
    */
   public static readonly API_HISTORY: Icon = new Icon('ph-duotone ph-clock-counter-clockwise');
+
+  // --- Database Explorer ---
+
+  /**
+   * Gets the icon of the Database Explorer tab, and of a database in its object tree.
+   */
+  public static readonly DATABASE: Icon = new Icon('ph-duotone ph-database');
+
+  /**
+   * Gets the thin database glyph shown large in the Object Explorer's empty state, as the agent panel
+   * shows its brain.
+   */
+  public static readonly DATABASE_EMPTY: Icon = new Icon('ph-thin ph-database');
+
+  /**
+   * Gets the icon of a saved connection in the object tree, and of the ribbon's Connect.
+   */
+  public static readonly DATABASE_CONNECTION: Icon = new Icon('ph-duotone ph-hard-drives');
+
+  /**
+   * Gets the icon of the ribbon's Disconnect.
+   */
+  public static readonly DATABASE_DISCONNECT: Icon = new Icon('ph-duotone ph-link-break');
+
+  /**
+   * Gets the icon of the Database Explorer ribbon's Connect.
+   */
+  public static readonly DATABASE_CONNECT: Icon = new Icon('ph-duotone ph-plugs-connected');
+
+  /**
+   * Gets the icon of the Object Explorer panel.
+   */
+  public static readonly DATABASE_OBJECTS: Icon = new Icon('ph-duotone ph-tree-structure');
+
+  /**
+   * Gets the icon of a query document in the well.
+   */
+  public static readonly DATABASE_QUERY: Icon = new Icon('ph-duotone ph-file-sql');
+
+  /**
+   * Gets the icon of the Database Explorer ribbon's Reset Layout.
+   */
+  public static readonly DATABASE_RESET_LAYOUT: Icon = new Icon('ph-duotone ph-layout');
+
+  /**
+   * Gets the icon of the Database Explorer's Set / Change Passphrase.
+   */
+  public static readonly DATABASE_PASSPHRASE: Icon = new Icon('ph-duotone ph-key');
+
+  /**
+   * Gets the icon of the Database Explorer's Unlock Passwords.
+   */
+  public static readonly DATABASE_UNLOCK: Icon = new Icon('ph-duotone ph-lock-key-open');
+
+  /**
+   * Gets the icon of the Database Explorer's Remove Passphrase.
+   */
+  public static readonly DATABASE_REMOVE_PASSPHRASE: Icon = new Icon(
+    'ph-duotone ph-lock-simple-open',
+  );
+
+  /**
+   * Gets the icon of a schema in the object tree.
+   */
+  public static readonly DATABASE_SCHEMA: Icon = new Icon('ph-duotone ph-tree-structure');
+
+  /**
+   * Gets the icon of a table.
+   */
+  public static readonly DATABASE_TABLE: Icon = new Icon('ph-duotone ph-table');
+
+  /**
+   * Gets the icon of a view.
+   */
+  public static readonly DATABASE_VIEW: Icon = new Icon('ph-duotone ph-eye');
+
+  /**
+   * Gets the icon of a column.
+   */
+  public static readonly DATABASE_COLUMN: Icon = new Icon('ph-duotone ph-columns');
+
+  /**
+   * Gets the icon of a key: a primary-key column or a foreign key.
+   */
+  public static readonly DATABASE_KEY: Icon = new Icon('ph-duotone ph-key');
+
+  /**
+   * Gets the icon of an index.
+   */
+  public static readonly DATABASE_INDEX: Icon = new Icon('ph-duotone ph-magnifying-glass');
+
+  /**
+   * Gets the icon of a function or procedure.
+   */
+  public static readonly DATABASE_FUNCTION: Icon = new Icon('ph-duotone ph-function');
+
+  /**
+   * Gets the icon of a trigger.
+   */
+  public static readonly DATABASE_TRIGGER: Icon = new Icon('ph-duotone ph-lightning');
+
+  /**
+   * Gets the icon of a sequence.
+   */
+  public static readonly DATABASE_SEQUENCE: Icon = new Icon('ph-duotone ph-list-numbers');
+
+  /**
+   * Gets the icon of a constraint.
+   */
+  public static readonly DATABASE_CONSTRAINT: Icon = new Icon('ph-duotone ph-shield-check');
+
+  /**
+   * Gets the icon of a graph node label.
+   */
+  public static readonly DATABASE_LABEL: Icon = new Icon('ph-duotone ph-tag');
+
+  /**
+   * Gets the icon of a graph relationship type.
+   */
+  public static readonly DATABASE_RELATIONSHIP: Icon = new Icon('ph-duotone ph-flow-arrow');
+
+  /**
+   * Gets the icon of a graph property key.
+   */
+  public static readonly DATABASE_PROPERTY: Icon = new Icon('ph-duotone ph-brackets-curly');
+
+  /**
+   * Gets the icon of the Properties panel.
+   */
+  public static readonly DATABASE_PROPERTIES: Icon = new Icon('ph-duotone ph-list-bullets');
+
+  /**
+   * Gets the icon of the Graph result view.
+   */
+  public static readonly DATABASE_GRAPH: Icon = new Icon('ph-duotone ph-graph');
+
+  /**
+   * Gets the icon of the Table result view.
+   */
+  public static readonly DATABASE_GRID: Icon = new Icon('ph-duotone ph-rows');
+
+  /**
+   * Gets the icon of the Raw result view.
+   */
+  public static readonly DATABASE_RAW: Icon = new Icon('ph-duotone ph-brackets-curly');
+
+  /**
+   * Gets the icon of the Fit to View column sizing: the columns share the grid's width.
+   */
+  public static readonly DATABASE_FIT_VIEW: Icon = new Icon(
+    'ph-duotone ph-arrows-in-line-horizontal',
+  );
+
+  /**
+   * Gets the icon of the Fit to Data column sizing: each column is as wide as its values.
+   */
+  public static readonly DATABASE_FIT_DATA: Icon = new Icon(
+    'ph-duotone ph-arrows-out-line-horizontal',
+  );
+
+  /**
+   * Gets the icon of a result column that is the primary key, or part of it.
+   */
+  public static readonly DATABASE_PRIMARY_KEY: Icon = new Icon('ph-bold ph-key');
+
+  /**
+   * Gets the icon of a result column that belongs to a key other than the primary key.
+   */
+  public static readonly DATABASE_SECONDARY_KEY: Icon = new Icon('ph-duotone ph-key');
 
   /**
    * Gets the duotone Orchestration icon shown on the welcome screen.
@@ -2001,6 +2195,56 @@ export class Icon {
   public static readonly SETUP_CONTAINER_ENGINES: Icon = new Icon('ph ph-shipping-container');
 
   /**
+   * Gets the icon of the setup wizard's database engines step.
+   */
+  public static readonly SETUP_DATABASE_ENGINES: Icon = new Icon('ph ph-database');
+
+  /**
+   * Gets the setup step for package-manager plugins.
+   */
+  public static readonly SETUP_PACKAGE_MANAGERS: Icon = new Icon('ph ph-package');
+
+  /**
+   * Gets the setup step for test-adapter plugins.
+   */
+  public static readonly SETUP_TEST_ADAPTERS: Icon = new Icon('ph ph-flask');
+
+  /**
+   * Gets the Tests panel's mark for a test that passed (#1352).
+   */
+  public static readonly TEST_PASSED: Icon = new Icon('ph-fill ph-check-circle');
+
+  /**
+   * Gets the Tests panel's mark for a test that failed.
+   */
+  public static readonly TEST_FAILED: Icon = new Icon('ph-fill ph-x-circle');
+
+  /**
+   * Gets the Tests panel's mark for a test that could not run: a crash, a timeout, a broken build.
+   */
+  public static readonly TEST_ERRORED: Icon = new Icon('ph-fill ph-warning-circle');
+
+  /**
+   * Gets the Tests panel's mark for a test that was skipped.
+   */
+  public static readonly TEST_SKIPPED: Icon = new Icon('ph-duotone ph-minus-circle');
+
+  /**
+   * Gets the Tests panel's mark for a test that has not run.
+   */
+  public static readonly TEST_NOT_RUN: Icon = new Icon('ph ph-circle-dashed');
+
+  /**
+   * Gets the Tests panel's mark for a test waiting its turn in a run.
+   */
+  public static readonly TEST_QUEUED: Icon = new Icon('ph ph-clock');
+
+  /**
+   * Gets the Tests panel's Run Failed command.
+   */
+  public static readonly TEST_RUN_FAILED: Icon = new Icon('ph-duotone ph-arrow-counter-clockwise');
+
+  /**
    * Gets the icon of the setup wizard's AI providers step.
    */
   public static readonly SETUP_AI_PROVIDER: Icon = new Icon('ph ph-brain');
@@ -2098,6 +2342,11 @@ export class Icon {
    * for Remove beside it.
    */
   public static readonly DOWNLOAD_DUOTONE: Icon = new Icon('ph-duotone ph-download');
+
+  /**
+   * Gets the upload icon, for an Export action — the counterpart of {@link DOWNLOAD} on Import.
+   */
+  public static readonly UPLOAD_SIMPLE: Icon = new Icon('ph ph-upload-simple');
 
   /**
    * Gets the select-all (double check) icon.

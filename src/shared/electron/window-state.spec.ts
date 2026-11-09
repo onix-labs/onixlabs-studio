@@ -17,7 +17,7 @@ import {
  * @returns Returns the stored state.
  */
 function stored(bounds: WindowRect, maximized: boolean = false): StoredWindowState {
-  return { bounds, maximized };
+  return { bounds, maximized, fullScreen: false };
 }
 
 const PRIMARY: WindowRect = { x: 0, y: 0, width: 1920, height: 1080 };
@@ -27,6 +27,13 @@ describe('parseStoredWindowState', () => {
   it('withAValidState_roundTrips', () => {
     const state: StoredWindowState = stored({ x: 10, y: 20, width: 1280, height: 800 }, true);
     expect(parseStoredWindowState(state)).toEqual(state);
+  });
+
+  it('withAFullScreenFlag_keepsIt', () => {
+    expect(
+      parseStoredWindowState({ bounds: { x: 0, y: 0, width: 100, height: 100 }, fullScreen: true })
+        ?.fullScreen,
+    ).toBe(true);
   });
 
   it('withoutAMaximizedFlag_defaultsToFalse', () => {

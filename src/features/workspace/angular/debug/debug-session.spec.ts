@@ -231,6 +231,52 @@ describe('DebugSession', () => {
     expect(launch?.args).toMatchObject({ name: 'App', cwd: '/ws', args: ['--flag'] });
   });
 
+  describe('attaching to a running process (#1150)', () => {
+    it('startsTheAdapter_attachesToTheProcess_andSendsTheBreakpointsAgainOnceItHasOne', async () => {
+      const session: DebugSession = build();
+      TestBed.inject(Breakpoints).toggle('/ws/Tests/PersonTests.cs', 11);
+
+      const attached: boolean = await session.attachToProcess(46456, 'Tests');
+
+      expect(attached).toBe(true);
+      expect(bridge.invokesOn(DebugChannel.Resolve)).toHaveLength(0);
+      expect(bridge.invokesOn(DebugChannel.Start)[0]?.args[0]).toMatchObject({
+        adapterId: 'netcoredbg',
+        rootPath: '/ws',
+      });
+      const commands: string[] = bridge.requests().map((r) => r.command);
+      expect(commands).toEqual(['attach', 'setBreakpoints']);
+      expect(bridge.requests()[0]?.args).toEqual({ processId: 46456 });
+      expect(bridge.requests()[1]?.args).toMatchObject({
+        source: { path: '/ws/Tests/PersonTests.cs' },
+        breakpoints: [{ line: 11 }],
+      });
+      expect(session.state()).toBe('running');
+    });
+
+    it('withNoAdapter_orASessionAlreadyRunning_attachesNothing', async () => {
+      caps.set(capabilities(null));
+      const session: DebugSession = build();
+
+      expect(await session.attachToProcess(1, 'Tests')).toBe(false);
+      expect(bridge.invokesOn(DebugChannel.Start)).toHaveLength(0);
+
+      caps.set(capabilities('netcoredbg'));
+      session.launch(config());
+      await flush();
+      expect(await session.attachToProcess(1, 'Tests')).toBe(false);
+    });
+
+    it('anAttachTheAdapterRefuses_endsTheSession_andSaysSo', async () => {
+      bridge.rejects.add('attach');
+      const session: DebugSession = build();
+
+      expect(await session.attachToProcess(46456, 'Tests')).toBe(false);
+
+      expect(output.lines.some((l) => l.includes('Debug attach failed'))).toBe(true);
+    });
+  });
+
   it('launch_failure_reportsAndResetsToIdle', async () => {
     bridge.startResult = { success: false, error: 'adapter missing' };
     const session: DebugSession = build();
@@ -253,6 +299,59 @@ describe('DebugSession', () => {
     expect(bridge.invokesOn(DebugChannel.Start)).toHaveLength(0);
   });
 
+  describe('debugging a test (#1352)', () => {
+    it('launchTest_startsTheAdapterTheTestAdapterNamed_withoutResolvingOrBuilding', async () => {
+      // The workspace's own adapter is netcoredbg; the test's launch names debugpy.
+      const session: DebugSession = build();
+
+      const started: boolean = await session.launchTest({
+        adapter: 'debugpy',
+        title: 'Debug test_adds',
+        args: ['tests/test_math.py::test_adds'],
+        cwd: '/ws',
+        env: { PYTHONDONTWRITEBYTECODE: '1' },
+        configuration: { module: 'pytest', justMyCode: true },
+      });
+      await flush();
+
+      expect(started).toBe(true);
+      expect(bridge.invokesOn(DebugChannel.Resolve)).toHaveLength(0);
+      expect(bridge.invokesOn(DebugChannel.Start)[0]?.args[0]).toMatchObject({
+        adapterId: 'debugpy',
+      });
+      const launch: { command: string; args: unknown } | undefined = bridge
+        .requests()
+        .find((r) => r.command === 'launch');
+      expect(launch?.args).toMatchObject({
+        module: 'pytest',
+        justMyCode: true,
+        name: 'Debug test_adds',
+        args: ['tests/test_math.py::test_adds'],
+        cwd: '/ws',
+        env: { PYTHONDONTWRITEBYTECODE: '1' },
+      });
+      // A module launch names no program: debugpy refuses one naming both.
+      expect(launch?.args).not.toHaveProperty('program');
+    });
+
+    it('launchTest_whileASessionRuns_startsNothing', async () => {
+      const session: DebugSession = build();
+      session.launch(config());
+      await flush();
+
+      expect(
+        await session.launchTest({
+          adapter: 'js-debug',
+          title: 't',
+          program: '/ws/x.js',
+          args: [],
+          cwd: '/ws',
+        }),
+      ).toBe(false);
+      expect(bridge.invokesOn(DebugChannel.Start)).toHaveLength(1);
+    });
+  });
+
   it('launch_sendsTheResolvedProgramAndWorkingDirectory', async () => {
     bridge.resolveResult = {
       target: { program: '/ws/bin/Debug/net10.0/App.dll', cwd: '/ws/proj' },
@@ -268,6 +367,40 @@ describe('DebugSession', () => {
     expect(launch?.args).toMatchObject({
       program: '/ws/bin/Debug/net10.0/App.dll',
       cwd: '/ws/proj',
+    });
+  });
+
+  it('launch_stopAtEntry_tellsTheAdapterInBothItsSpellings', async () => {
+    const session: DebugSession = build();
+    session.launch({ ...config(), stopAtEntry: true });
+    await flush();
+
+    expect(bridge.requests().find((r) => r.command === 'launch')?.args).toMatchObject({
+      stopOnEntry: true,
+      stopAtEntry: true,
+    });
+  });
+
+  it('onInitialized_asksForTheExceptionsChosen_inTheAdaptersOwnFilterNames', async () => {
+    bridge.startResult = {
+      success: true,
+      capabilities: {
+        exceptionBreakpointFilters: [
+          { filter: 'all', label: 'All Exceptions' },
+          { filter: 'user-unhandled', label: 'User-Unhandled Exceptions' },
+        ],
+      },
+    };
+    const session: DebugSession = build();
+    session.launch(config());
+    await flush();
+    const sessionId: string = currentSessionId(bridge);
+
+    bridge.emit(DebugChannel.Event, sessionIdEvent(sessionId, 'initialized'));
+    await flush();
+
+    expect(bridge.requests().find((r) => r.command === 'setExceptionBreakpoints')?.args).toEqual({
+      filters: ['user-unhandled'],
     });
   });
 

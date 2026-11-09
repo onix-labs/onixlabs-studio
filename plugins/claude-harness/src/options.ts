@@ -5,15 +5,16 @@
 //
 //   - **structural options are frozen at open** from the turn the session opened with — the working
 //     directory, the tool set, the sandbox, the system prompt, resume. Studio's live-session router
-//     reopens the session when any of those change, which is what makes freezing them correct rather
+//     reopens the session when the working directory or the mode change, and the session reopens
+//     itself for a changed sandbox or system prompt, which is what makes freezing them correct rather
 //     than merely convenient.
 //   - **per-turn closures read the current turn.** The permission gate, the audit hook and the tool
 //     handlers all call `getTurn()` on each invocation, so across a held-open session they follow the
 //     turn actually running: its posture, its policies, its request id.
 //
 // The one exception is the model, which is structural but changed live through `Query.setModel`. The
-// system prompt is the one the session watches itself: when Studio's instructions change, it reopens
-// between turns, resuming the same conversation (#955).
+// system prompt and the sandbox are the ones the session watches itself: when either changes, it
+// reopens between turns, resuming the same conversation (#955, #1162).
 
 import { homedir } from 'node:os';
 import type {
@@ -35,10 +36,26 @@ import {
   isWriteWithinRoots,
   writeTargetPath,
 } from './confinement';
-import { resolveExecutable, runEnvironment } from './environment';
+import { resolveExecutable, runEnvironment, type SessionTemporary } from './environment';
 import { coarseGrantSource, prettyToolName, summarizeToolInput } from './format';
 import { note } from './log';
 import type { RemoteControlBridge } from './remote-control';
+import {
+  dockerSocketPaths,
+  leavesSandbox,
+  osSandboxAvailable,
+  RUN_UNSANDBOXED,
+  SANDBOX_PERMISSIONS,
+  sandboxGuidance,
+  type SandboxReach,
+  sandboxReach,
+  SHELL_TOOL,
+  shellRule,
+  ShellRuleOutcome,
+  UNSANDBOXED_DECLINED,
+  unsandboxedAllowed,
+  withoutSandboxFlag,
+} from './sandbox-rules';
 import { STUDIO_TOOL_PREFIX } from './tools';
 import type { Choice, ProposedChange, Selection, TurnRequest } from './protocol';
 
@@ -137,8 +154,17 @@ export interface GateContext {
    * @param name The tool's display name.
    * @param detail What it targeted.
    * @param source Why it was allowed.
+   * @param sandboxed Whether a shell command ran inside the OS sandbox, when it was one.
+   * @param toolId The tool use that ran.
    */
-  readonly audit: (requestId: string, name: string, detail: string, source: string) => void;
+  readonly audit: (
+    requestId: string,
+    name: string,
+    detail: string,
+    source: string,
+    sandboxed?: boolean,
+    toolId?: string,
+  ) => void;
 }
 
 /**
@@ -197,17 +223,26 @@ export function parseQuestions(input: Record<string, unknown>): readonly ParsedQ
  *
  * 🔑 This is where the confinement the permission gate **cannot reach** is expressed. The gate sees a
  * tool's arguments, so it can range-check a file write but not an arbitrary shell command; the OS
- * sandbox sees the syscalls, so it covers `Bash` and the SDK's own web access. Three things are handed
- * to it: the denied write paths (so a shell command cannot write where a file tool may not), the
- * allowed write paths (so a granted shell write to a widened root is not then blocked), and the
- * network locations, which have no gate equivalent at all.
+ * sandbox sees the syscalls, so it covers `Bash` and the SDK's own web access. Handed to it: the denied
+ * write paths (so a shell command cannot write where a file tool may not), the allowed write paths (so
+ * a granted shell write to a widened root is not then blocked), the network locations, which have no
+ * gate equivalent at all, and local ports and the Docker socket when their permissions open them
+ * (#1162).
  *
  * Every list is omitted when empty, so a user who configured nothing gets precisely the sandbox Studio
- * has always applied.
+ * has always applied, plus the session's temporary folder when it has one.
  * @param turn The opening turn.
+ * @param temporary The session's temporary folder, or null when it has none.
+ * @param reach What the sandbox may reach beyond its usual limits.
+ * @param dockerSockets The sockets the Docker client talks to.
  * @returns Returns the sandbox settings.
  */
-export function sandboxFor(turn: TurnRequest): SandboxSettings {
+export function sandboxFor(
+  turn: TurnRequest,
+  temporary: SessionTemporary | null = null,
+  reach: SandboxReach = sandboxReach(turn),
+  dockerSockets: readonly string[] = dockerSocketPaths(),
+): SandboxSettings {
   const sandbox: SandboxSettings = {
     enabled: true,
     // Sandboxed Bash is still gated: the sandbox is defence in depth on top of the prompt, not a
@@ -216,15 +251,26 @@ export function sandboxFor(turn: TurnRequest): SandboxSettings {
     // Degrade gracefully where the platform sandbox is missing: run unsandboxed rather than fail.
     failIfUnavailable: false,
   };
-  if (turn.allowedWritePaths.length > 0 || turn.deniedWritePaths.length > 0) {
+  const allowWrite: readonly string[] = [
+    ...turn.allowedWritePaths,
+    ...(temporary === null ? [] : [temporary.directory]),
+  ];
+  if (allowWrite.length > 0 || turn.deniedWritePaths.length > 0) {
     sandbox.filesystem = {
-      ...(turn.allowedWritePaths.length > 0 ? { allowWrite: [...turn.allowedWritePaths] } : {}),
+      ...(allowWrite.length > 0 ? { allowWrite: [...allowWrite] } : {}),
       ...(absolutePathsOf(turn.deniedWritePaths).length > 0
         ? { denyWrite: absolutePathsOf(turn.deniedWritePaths) }
         : {}),
     };
   }
-  if (turn.allowedNetworkLocations.length > 0 || turn.deniedNetworkLocations.length > 0) {
+  const allowLocalBinding: boolean = reach.localPorts === 'allow';
+  const allowUnixSockets: readonly string[] = reach.dockerSocket === 'allow' ? dockerSockets : [];
+  if (
+    turn.allowedNetworkLocations.length > 0 ||
+    turn.deniedNetworkLocations.length > 0 ||
+    allowLocalBinding ||
+    allowUnixSockets.length > 0
+  ) {
     // Expanded on the way out: the sandbox matches label-for-label, so `*.example.com` reaches it as
     // both itself and the apex it is taken to include. Without that, one list would allow a request
     // through Studio's API tools and block the same request in the shell.
@@ -235,9 +281,23 @@ export function sandboxFor(turn: TurnRequest): SandboxSettings {
       ...(turn.deniedNetworkLocations.length > 0
         ? { deniedDomains: [...expandNetworkLocations(turn.deniedNetworkLocations)] }
         : {}),
+      ...(allowLocalBinding ? { allowLocalBinding } : {}),
+      ...(allowUnixSockets.length > 0 ? { allowUnixSockets: [...allowUnixSockets] } : {}),
     };
   }
   return sandbox;
+}
+
+/**
+ * Sums up what a turn would open the sandbox with, so a session can tell when the one it holds no
+ * longer matches: the sandbox is fixed at open, and a permission tightened in Settings has to reach the
+ * shell. The levels are in it because Ask and Denied open the same sandbox but tell the agent different
+ * things. The temporary folder is not, because it lasts as long as the session does.
+ * @param turn The turn.
+ * @returns Returns a value that changes when the sandbox would.
+ */
+export function sandboxSignature(turn: TurnRequest): string {
+  return JSON.stringify([sandboxFor(turn), sandboxReach(turn)]);
 }
 
 /**
@@ -461,7 +521,12 @@ async function decidePermission(
  *  5. **write confinement**, checked *before* the auto-allow below so an `auto-all` posture is confined
  *     too. A deliberate hard boundary that approving cannot widen: a single yes must not be able to
  *     escape the allowed area, and widening it is a settings decision;
- *  6. the per-tool **policy**, then the **posture**, then the prompt.
+ *  6. **Require OS Sandbox**: with no OS sandbox on this machine, the shell is refused — ahead of the
+ *     policy and posture, so an Allowed or auto-all shell still cannot run unprotected;
+ *  7. the per-tool **policy** (a Deny stands), then **Auto-Allow Sandboxed Shell Commands**;
+ *  8. **a run outside the sandbox** (#1159), a permission of its own that nothing granted to the shell
+ *     covers. A Deny of it runs the command sandboxed instead, so the steps from 6 decide that;
+ *  9. the **posture**, then the prompt.
  * @param gate What the gate can reach.
  * @param open The turn the session opened with, which fixes the structural scope.
  * @returns Returns the gate.
@@ -476,8 +541,18 @@ export function buildGate(gate: GateContext, open: TurnRequest): CanUseTool {
   const confinementRoots: readonly string[] = hasWorkspace
     ? [open.workspaceRoot!, ...open.allowedWritePaths]
     : [];
-  return async (toolName: string, input: Record<string, unknown>): Promise<PermissionResult> => {
+  // Read once per session: whether a sandbox is installed does not change under a running agent.
+  const sandboxAvailable: boolean = osSandboxAvailable();
+  return async (
+    toolName: string,
+    requested: Record<string, unknown>,
+  ): Promise<PermissionResult> => {
     const turn: TurnRequest = gate.getTurn();
+    const unsandboxedPolicy: 'allow' | 'ask' | 'deny' = turn.toolPolicies[RUN_UNSANDBOXED] ?? 'ask';
+    const input: Record<string, unknown> =
+      leavesSandbox(toolName, requested) && unsandboxedPolicy === 'deny'
+        ? withoutSandboxFlag(requested)
+        : requested;
     if (toolName === ASK_USER_QUESTION_TOOL) {
       return answerQuestions(gate, turn, input);
     }
@@ -533,6 +608,10 @@ export function buildGate(gate: GateContext, open: TurnRequest): CanUseTool {
         };
       }
     }
+    const shell: ShellRuleOutcome = shellRule(toolName, input, turn, sandboxAvailable);
+    if (shell.kind === 'deny') {
+      return { behavior: 'deny', message: shell.message };
+    }
     const displayName: string = prettyToolName(toolName);
     const policy: 'allow' | 'ask' | 'deny' = turn.toolPolicies[displayName] ?? 'ask';
     if (policy === 'deny') {
@@ -540,6 +619,27 @@ export function buildGate(gate: GateContext, open: TurnRequest): CanUseTool {
         behavior: 'deny',
         message: `Blocked: the ${displayName} tool is set to Deny in your agent settings.`,
       };
+    }
+    if (shell.kind === 'allow') {
+      return { behavior: 'allow', updatedInput: input };
+    }
+    if (leavesSandbox(toolName, input)) {
+      if (unsandboxedAllowed(unsandboxedPolicy, turn.permissionPosture)) {
+        return { behavior: 'allow', updatedInput: input };
+      }
+      // The whole command, not the summary: this is the one prompt that must show what it would run,
+      // and a session grant is for exactly that command.
+      const granted: boolean = await decidePermission(
+        gate,
+        turn,
+        RUN_UNSANDBOXED,
+        toolName,
+        input,
+        typeof input['command'] === 'string' ? input['command'] : summarizeToolInput(input),
+      );
+      return granted
+        ? { behavior: 'allow', updatedInput: input }
+        : { behavior: 'deny', message: UNSANDBOXED_DECLINED };
     }
     if (
       policy === 'allow' ||
@@ -576,6 +676,21 @@ export function withholdsBuiltInTools(open: TurnRequest): boolean {
 }
 
 /**
+ * Adds the sandbox guidance to Studio's instructions, for an agent that holds the shell. One that
+ * cannot run a command has nothing to be told, and telling it would invite it to try.
+ * @param systemPrompt Studio's instructions.
+ * @param open The turn the session opens with, which fixes the sandbox.
+ * @returns Returns the instructions the session runs under.
+ */
+export function withSandboxGuidance(systemPrompt: string, open: TurnRequest): string {
+  if (open.mode === 'chat' || withholdsBuiltInTools(open)) {
+    return systemPrompt;
+  }
+  const guidance: string = sandboxGuidance(open, osSandboxAvailable(), sandboxReach(open));
+  return systemPrompt.length === 0 ? guidance : `${systemPrompt}\n\n${guidance}`;
+}
+
+/**
  * Builds the SDK options for a session.
  * @param gate What the permission gate can reach.
  * @param open The turn the session opens with, which fixes the structural options.
@@ -583,6 +698,7 @@ export function withholdsBuiltInTools(open: TurnRequest): boolean {
  * @param systemPrompt Studio's instructions for the surface and mode, as the `tools` answer gave them.
  * @param apiKey The API key to authenticate with, or null to use the local Claude login.
  * @param controller The abort controller wired to the SDK query.
+ * @param temporary The session's temporary folder, or null when it has none.
  * @returns Returns the options.
  */
 export function buildOptions(
@@ -592,6 +708,7 @@ export function buildOptions(
   systemPrompt: string,
   apiKey: string | null,
   controller: AbortController,
+  temporary: SessionTemporary | null = null,
 ): Options {
   const readOnly: boolean = open.mode === 'chat';
   const hasReadableContext: boolean = open.workspaceRoot !== null || open.contextPaths.length > 0;
@@ -603,10 +720,17 @@ export function buildOptions(
   // fixed when a session opens, so turning the setting off mid-conversation would leave them blocked.
   // The PreToolUse hook below reads the live turn instead, and fires for every Bash call — including
   // the ones the classifier auto-runs (verified in the app, 2026-10-06).
+  // A denied run outside the sandbox is not a tool to withhold: it runs sandboxed, which the gate does.
+  // Nor are the sandbox's other permissions, which `sandboxFor` applies.
   const disallowedTools: readonly string[] = Object.entries(open.toolPolicies)
-    .filter(([, value]: [string, string]): boolean => value === 'deny')
+    .filter(
+      ([tool, value]: [string, string]): boolean =>
+        value === 'deny' && !SANDBOX_PERMISSIONS.includes(tool),
+    )
     .map(([tool]: [string, string]): string => tool);
-  const env: Record<string, string> | null = runEnvironment(open.agentShell, apiKey);
+  // Read once per session, as the gate does.
+  const sandboxAvailable: boolean = osSandboxAvailable();
+  const env: Record<string, string> | null = runEnvironment(open.agentShell, apiKey, temporary);
   const executable: string | undefined = resolveExecutable(
     open.providerSettings['claudeExecutable'],
     env ?? process.env,
@@ -693,12 +817,25 @@ export function buildOptions(
                   return Promise.resolve({ continue: true });
                 }
                 const displayName: string = prettyToolName(raw);
-                const policy: 'allow' | 'ask' | 'deny' = turn.toolPolicies[displayName] ?? 'ask';
+                const ranInput: Record<string, unknown> =
+                  typeof post.tool_input === 'object' && post.tool_input !== null
+                    ? (post.tool_input as Record<string, unknown>)
+                    : {};
+                const left: boolean = leavesSandbox(raw, ranInput);
+                // A run outside the sandbox was decided by its own permission, not the shell's, and
+                // under Prompt All an Allowed level does not skip the prompt.
+                const policy: 'allow' | 'ask' | 'deny' = !left
+                  ? (turn.toolPolicies[displayName] ?? 'ask')
+                  : turn.permissionPosture === 'prompt'
+                    ? 'ask'
+                    : (turn.toolPolicies[RUN_UNSANDBOXED] ?? 'ask');
                 gate.audit(
                   turn.requestId,
                   displayName,
                   summarizeToolInput(post.tool_input),
                   coarseGrantSource(policy, turn.permissionPosture, EDIT_TOOLS.includes(raw)),
+                  raw === SHELL_TOOL ? sandboxAvailable && !left : undefined,
+                  post.tool_use_id,
                 );
               } catch {
                 // Auditing is best-effort; it must never disturb the run.
@@ -709,12 +846,17 @@ export function buildOptions(
         },
       ],
     },
-    sandbox: sandboxFor(open),
+    sandbox: sandboxFor(open, temporary),
     // ⛔ `snapshot: false` (#955): by default the CLI records a conversation's system prompt on its
     // first request and resends that record on every resume, ignoring a different `append`. Studio's
     // instructions carry the user's prompt profiles and skills, which can change mid-conversation, and
     // the session reopens to apply them — which only works if the prompt is rendered fresh.
-    systemPrompt: { type: 'preset', preset: 'claude_code', append: systemPrompt, snapshot: false },
+    systemPrompt: {
+      type: 'preset',
+      preset: 'claude_code',
+      append: withSandboxGuidance(systemPrompt, open),
+      snapshot: false,
+    },
     mcpServers: { studio },
     // Read-only project exploration is auto-allowed when there is something to read; everything else
     // reaches the gate. Studio's own tools are not listed here — the gate allows them by prefix,

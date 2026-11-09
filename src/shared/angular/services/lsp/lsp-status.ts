@@ -25,6 +25,12 @@ const READINESS_WATCHDOG_MS: number = 120_000;
 const STALLED_DETAIL: string = 'Still starting after two minutes — restart if it seems stuck.';
 
 /**
+ * How long a server's passing notice (#1154) — an information-level `window/showMessage` — stays on its
+ * row before the row goes back to saying how the server is.
+ */
+export const NOTICE_MS: number = 10_000;
+
+/**
  * Holds a tracked server's identity, current state, and the callback that restarts it. One entry
  * exists per running session; the owning {@link import('./lsp-client').LspClient} supplies the
  * restart callback so a restart re-opens that client's documents against a fresh server.
@@ -46,6 +52,11 @@ interface ServerEntry {
   readonly state: LspServerState;
 
   /**
+   * Gets the version of what the server runs, where that is not the server's own, or undefined.
+   */
+  readonly version?: string;
+
+  /**
    * Gets a reason for the state (for example why the server is unavailable), or undefined.
    */
   readonly detail?: string;
@@ -56,9 +67,35 @@ interface ServerEntry {
   readonly progress?: string;
 
   /**
+   * Gets what the server is doing with a file right now (#1213), or undefined.
+   */
+  readonly activity?: string;
+
+  /**
+   * Gets the file {@link activity} is about.
+   */
+  readonly activityUri?: string;
+
+  /**
    * Gets whether the server has been starting for longer than the watchdog allows.
    */
   readonly stalled: boolean;
+
+  /**
+   * Gets what the server last told the user in passing, while it is still showing, or undefined.
+   */
+  readonly notice?: string;
+
+  /**
+   * Gets what the server says is wrong with it for as long as that lasts (#1210), or undefined.
+   */
+  readonly problem?: string;
+
+  /**
+   * Gets how far the server's analysis of the whole workspace has got (#1182), for a server that
+   * reports the whole workspace's problems; undefined for any other.
+   */
+  readonly analysis?: LspAnalysis;
 
   /**
    * Restarts the server: tears the running session down and re-opens its documents against a new one.
@@ -96,22 +133,60 @@ export interface LspServer {
   readonly state: LspServerState;
 
   /**
+   * Gets the version of what the server runs, where that is what the user knows it by (#1207): the
+   * TypeScript typescript-language-server runs with, `5.9.3`. Undefined for a server that says nothing
+   * of it.
+   */
+  readonly version?: string;
+
+  /**
    * Gets a reason for the state (for example why the server is unavailable), or undefined.
    */
   readonly detail?: string;
 
   /**
-   * Gets what the server last reported it was doing (its work-done progress), or undefined. Only
-   * meaningful while starting: a loading server names what it is loading.
+   * Gets what the server last reported it was doing (its work-done progress), or undefined: a loading
+   * server names what it is loading, and a ready one what it still has under way, such as clangd's
+   * background index (#1213).
    */
   readonly progress?: string;
+
+  /**
+   * Gets what the server is doing with a file right now (#1213), or undefined: `Parsing includes —
+   * shapes.cpp`. Only a server that reports it (clangd) has one.
+   */
+  readonly activity?: string;
 
   /**
    * Gets whether the server has been starting for longer than the readiness watchdog allows, so the
    * menu can offer a restart for a server that may be stuck without declaring it failed.
    */
   readonly stalled: boolean;
+
+  /**
+   * Gets what the server last told the user in passing (#1154) — an information-level message — for a
+   * few seconds after it said it, or undefined.
+   */
+  readonly notice?: string;
+
+  /**
+   * Gets what the server says is wrong with it (#1210) — a workspace it could not load — for as long as
+   * that lasts, or undefined.
+   */
+  readonly problem?: string;
+
+  /**
+   * Gets how far the server's analysis of the whole workspace has got (#1182): pending until its
+   * first complete report after it loaded the workspace, then done; undefined for a server that does
+   * not report the whole workspace.
+   */
+  readonly analysis?: LspAnalysis;
 }
+
+/**
+ * Names how far a server's analysis of the whole workspace has got (#1182).
+ */
+export type LspAnalysis = 'pending' | 'done';
 
 /**
  * Maps the first-party server identifiers to the short language names the menu has always shown for
@@ -154,6 +229,14 @@ export class LspStatus {
   >();
 
   /**
+   * Holds the timer that clears each session's passing notice.
+   */
+  private readonly noticeTimers: Map<string, ReturnType<typeof setTimeout>> = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+
+  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
@@ -174,9 +257,14 @@ export class LspStatus {
         name: this.name(entry.serverId),
         rootPath: entry.rootPath,
         state: entry.state,
+        version: entry.version,
         detail: entry.detail,
         progress: entry.progress,
+        activity: entry.activity,
         stalled: entry.stalled,
+        notice: entry.notice,
+        problem: entry.problem,
+        analysis: entry.analysis,
       }))
       .sort(
         (first: LspServer, second: LspServer): number =>
@@ -224,6 +312,108 @@ export class LspStatus {
   }
 
   /**
+   * Records what a server is doing with a file (#1213). A file going idle clears only what was said
+   * about that file: the server may have moved on to another. Ignored when the session is not tracked.
+   * @param sessionId The session reporting.
+   * @param uri The file.
+   * @param activity What it is doing, or null when it has finished.
+   */
+  public setFileActivity(sessionId: string, uri: string, activity: string | null): void {
+    const current: ServerEntry | undefined = this.entries().get(sessionId);
+    if (current === undefined || (activity === null && current.activityUri !== uri)) {
+      return;
+    }
+    if (current.activity === (activity ?? undefined)) {
+      return;
+    }
+    const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
+    next.set(sessionId, {
+      ...current,
+      activity: activity ?? undefined,
+      activityUri: activity === null ? undefined : uri,
+    });
+    this.entries.set(next);
+  }
+
+  /**
+   * Shows what a server told the user in passing (#1154) on its row for {@link NOTICE_MS}, replacing
+   * any notice still showing. Ignored when the session is not tracked.
+   * @param sessionId The session the server is keyed by.
+   * @param notice The message.
+   */
+  public setNotice(sessionId: string, notice: string): void {
+    if (!this.entries().has(sessionId)) {
+      return;
+    }
+    this.updateNotice(sessionId, notice);
+    clearTimeout(this.noticeTimers.get(sessionId));
+    this.noticeTimers.set(
+      sessionId,
+      setTimeout((): void => {
+        this.noticeTimers.delete(sessionId);
+        this.updateNotice(sessionId, undefined);
+      }, NOTICE_MS),
+    );
+  }
+
+  /**
+   * Records the version of what a server runs (#1207), such as the TypeScript
+   * typescript-language-server runs with. Ignored when the session is not tracked.
+   * @param sessionId The session the server is keyed by.
+   * @param version The version.
+   */
+  public setVersion(sessionId: string, version: string): void {
+    const current: ServerEntry | undefined = this.entries().get(sessionId);
+    if (current === undefined || current.version === version) {
+      return;
+    }
+    const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
+    next.set(sessionId, { ...current, version });
+    this.entries.set(next);
+  }
+
+  /**
+   * Records what a server says is wrong with it (#1210), or clears it. It stays on the server's row
+   * until the server says otherwise, unlike a passing notice. Ignored when the session is not tracked.
+   * @param sessionId The session the server is keyed by.
+   * @param problem What is wrong, or undefined once nothing is.
+   */
+  public setProblem(sessionId: string, problem: string | undefined): void {
+    const current: ServerEntry | undefined = this.entries().get(sessionId);
+    if (current === undefined || current.problem === problem) {
+      return;
+    }
+    const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
+    next.set(sessionId, { ...current, problem });
+    this.entries.set(next);
+  }
+
+  /**
+   * Records how far a server's analysis of the whole workspace has got (#1182). Ignored when the
+   * session is not tracked.
+   * @param sessionId The session the server is keyed by.
+   * @param analysis How far it has got.
+   */
+  public setAnalysis(sessionId: string, analysis: LspAnalysis): void {
+    const current: ServerEntry | undefined = this.entries().get(sessionId);
+    if (current === undefined || current.analysis === analysis) {
+      return;
+    }
+    const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
+    next.set(sessionId, { ...current, analysis });
+    this.entries.set(next);
+  }
+
+  /**
+   * Gets how far a tracked server's analysis of the whole workspace has got.
+   * @param sessionId The session the server is keyed by.
+   * @returns Returns it, or undefined when the server does not report the whole workspace.
+   */
+  public analysisOf(sessionId: string): LspAnalysis | undefined {
+    return this.entries().get(sessionId)?.analysis;
+  }
+
+  /**
    * Updates a tracked server's state, ignored when the session is not tracked.
    * @param sessionId The session whose state changes.
    * @param state The server's new lifecycle state.
@@ -236,8 +426,17 @@ export class LspStatus {
     }
     const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
     // A settled state ends the server's loading story: its progress and any stall flag are cleared.
-    // A move into starting clears them too — a restart begins a fresh load.
-    next.set(sessionId, { ...current, state, detail, progress: undefined, stalled: false });
+    // A move into starting clears them too — a restart begins a fresh load. A server that is gone or
+    // starting again is doing nothing with any file, so what it last said about one goes too (#1213).
+    const gone: boolean = state === 'starting' || state === 'unavailable';
+    next.set(sessionId, {
+      ...current,
+      state,
+      detail,
+      progress: undefined,
+      stalled: false,
+      ...(gone ? { activity: undefined, activityUri: undefined } : {}),
+    });
     this.entries.set(next);
     this.log.debug('LspStatus', `Server '${current.serverId}' -> ${state}`, sessionId);
     // A move back into starting (a restart) re-arms the watchdog; settling to ready or unavailable
@@ -279,6 +478,23 @@ export class LspStatus {
     next.delete(sessionId);
     this.entries.set(next);
     this.clearWatchdog(sessionId);
+    clearTimeout(this.noticeTimers.get(sessionId));
+    this.noticeTimers.delete(sessionId);
+  }
+
+  /**
+   * Sets or clears a tracked server's passing notice.
+   * @param sessionId The session.
+   * @param notice The notice, or undefined to clear it.
+   */
+  private updateNotice(sessionId: string, notice: string | undefined): void {
+    const current: ServerEntry | undefined = this.entries().get(sessionId);
+    if (current === undefined || current.notice === notice) {
+      return;
+    }
+    const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
+    next.set(sessionId, { ...current, notice });
+    this.entries.set(next);
   }
 
   /**

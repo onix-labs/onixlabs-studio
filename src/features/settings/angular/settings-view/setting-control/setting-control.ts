@@ -8,11 +8,14 @@ import {
   Signal,
 } from '@angular/core';
 import { AccentPicker } from '@features/settings/angular/settings-view/accent-picker/accent-picker';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonGroup } from '@shared/angular/components/forms/button-group/button-group';
 import { Dropdown } from '@shared/angular/components/forms/dropdown/dropdown';
 import { NumberField } from '@shared/angular/components/forms/number-field/number-field';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
+import { Icon } from '@shared/angular/icons/icon';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { Log } from '@shared/angular/services/log/log';
 import { SettingBinding, SettingBindings } from '@features/settings/angular/setting-bindings';
 import { SettingOptions } from '@features/settings/angular/setting-options';
@@ -33,11 +36,22 @@ import {
  */
 @Component({
   selector: 'app-setting-control',
-  imports: [Toggle, TextField, NumberField, Dropdown, ButtonGroup, AccentPicker],
+  imports: [Button, Toggle, TextField, NumberField, Dropdown, ButtonGroup, AccentPicker],
   templateUrl: './setting-control.html',
+  styleUrl: './setting-control.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SettingControl {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Holds the file system, whose dialog chooses a folder.
+   */
+  private readonly fileSystem: FileSystem = inject(FileSystem);
+
   /**
    * Holds the binding resolver the control reads and writes through.
    */
@@ -128,7 +142,9 @@ export class SettingControl {
    */
   protected readonly placeholder: Signal<string> = computed((): string => {
     const control: ControlDef | undefined = this.control();
-    return control?.kind === 'text' ? (control.placeholder ?? '') : '';
+    return control?.kind === 'text' || control?.kind === 'folder'
+      ? (control.placeholder ?? '')
+      : '';
   });
 
   /**
@@ -168,5 +184,15 @@ export class SettingControl {
       return;
     }
     this.binding().set(value);
+  }
+
+  /**
+   * Asks for a folder in the system's dialog and writes it, leaving the setting alone when cancelled.
+   */
+  protected async chooseFolder(): Promise<void> {
+    const folder: string | null = await this.fileSystem.pickPath('folder');
+    if (folder !== null) {
+      this.onChange(folder);
+    }
   }
 }

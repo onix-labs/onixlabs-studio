@@ -150,6 +150,9 @@ describe('AgentChat', () => {
       provider: signal<AiProviderId>('claude'),
       mode: signal<AgentMode>('agent'),
       effort: signal<AiEffort | null>(null),
+      effectiveEffort: signal<AiEffort | null>(null),
+      compactOffered: signal<boolean>(false),
+      dismissCompactOffer: (): void => undefined,
       discoveredCommands,
       compact: (): void => void (compacted += 1),
       clear: (): void => void (clearedChats += 1),
@@ -469,6 +472,32 @@ describe('AgentChat', () => {
     expect(box!.querySelector('.agent__action-caret')).toBeNull();
   });
 
+  it('thinking_whenExpandThinkingIsOff_foldsBehindItsLabel', () => {
+    TestBed.inject(Settings).set('ai.expandThinking', false);
+    items.set([{ id: 'item-1', kind: 'thinking', text: 'weighing the two options carefully' }]);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const fold: HTMLDetailsElement | null = host.querySelector<HTMLDetailsElement>(
+      'details.agent__thinking-fold',
+    );
+    expect(fold).not.toBeNull();
+    expect(fold!.open).toBe(false);
+    expect(fold!.querySelector('.agent__thinking-body')?.textContent).toContain('weighing');
+  });
+
+  it('toolCalls_openWhenExpandToolCallsIsOn', () => {
+    items.set([{ id: 'item-1', kind: 'tool', text: '', toolName: 'Read', toolState: 'ok' }]);
+    fixture.detectChanges();
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector<HTMLDetailsElement>('details.agent__action')?.open).toBe(false);
+
+    TestBed.inject(Settings).set('ai.expandToolCalls', true);
+    fixture.detectChanges();
+
+    expect(host.querySelector<HTMLDetailsElement>('details.agent__action')?.open).toBe(true);
+  });
+
   it('thinking_whenTheModelKeptItToItself_isTheLabelAloneWithNothingToOpen', () => {
     // Reasoning the model did not surface arrives as an empty item: no words, no count, no caret —
     // a "0 words" expander that opened onto nothing said less than the label alone does.
@@ -686,6 +715,38 @@ describe('AgentChat', () => {
     expect(payloads[1].textContent).toContain('no such directory');
   });
 
+  it('badgesACommandThatRanOutsideTheSandbox_andSaysWhyItWasAllowed', () => {
+    items.set([
+      {
+        id: 'item-1',
+        kind: 'tool',
+        text: '',
+        toolId: 't1',
+        toolName: 'Bash',
+        toolDetail: 'ls',
+        toolState: 'ok',
+        toolUnsandboxed: 'Ran outside the sandbox: you allowed it.',
+      },
+      {
+        id: 'item-2',
+        kind: 'tool',
+        text: '',
+        toolId: 't2',
+        toolName: 'Bash',
+        toolDetail: 'pwd',
+        toolState: 'ok',
+      },
+    ]);
+    fixture.detectChanges();
+
+    const badges: NodeListOf<HTMLElement> = (
+      fixture.nativeElement as HTMLElement
+    ).querySelectorAll<HTMLElement>('.agent__action-unsandboxed');
+    expect(badges.length).toBe(1);
+    expect(badges[0].textContent?.trim()).toBe('Unsandboxed');
+    expect(badges[0].title).toBe('Ran outside the sandbox: you allowed it.');
+  });
+
   it('backgroundedTool_rendersAsLive_withASpinningNode', () => {
     items.set([
       {
@@ -737,8 +798,13 @@ describe('AgentChat', () => {
     fixture.detectChanges();
 
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
-    const lane: HTMLElement | null = host.querySelector('.agent__lane');
+    const lane: HTMLDetailsElement | null = host.querySelector('details.agent__lane');
     expect(lane).not.toBeNull();
+    // Closed, the lane has its summary and none of the activity behind it.
+    expect(lane!.querySelector('.agent__lane-rail')).toBeNull();
+    lane!.open = true;
+    lane!.dispatchEvent(new Event('toggle'));
+    fixture.detectChanges();
     expect(
       lane!.querySelector('.agent__lane-summary .agent__action-label')?.textContent?.trim(),
     ).toBe('Explore');

@@ -96,6 +96,8 @@
         @if (canSkip()) {
           <app-button
             size="small"
+            variant="ghost"
+            tone="warning"
             label="Skip"
             tooltip="Drop the commit this is stuck on and move to the next"
             (click)="skipOperation()"
@@ -103,6 +105,7 @@
         }
         <app-button
           size="small"
+          variant="ghost"
           tone="danger"
           label="Abort"
           tooltip="Abandon this and put the working tree back where it started"
@@ -275,7 +278,7 @@
         [value]="repository.commitMessage()"
         (valueChange)="onMessageValue($event)"
       />
-      <app-button-row>
+      <app-button-row [fit]="true">
         <app-button
           variant="solid"
           [icon]="Icon.GIT_COMMIT"
@@ -284,6 +287,7 @@
           (click)="commit()"
         />
         <app-button
+          variant="ghost"
           [icon]="Icon.ARROW_UP"
           label="Commit and Push"
           [disabled]="!canCommit()"

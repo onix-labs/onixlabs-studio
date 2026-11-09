@@ -4,6 +4,7 @@ import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
+  computed,
   effect,
   ElementRef,
   inject,
@@ -20,10 +21,15 @@ import {
 } from '@angular/core';
 import { FitAddon } from '@xterm/addon-fit';
 import { ISearchOptions, SearchAddon } from '@xterm/addon-search';
+import { WebglAddon } from '@xterm/addon-webgl';
 import { IBufferLine, ITheme, Terminal as Xterm } from '@xterm/xterm';
 import { Menu, MenuChoice, MenuItem } from '@shared/angular/components/menu/menu';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
+import { Display } from '@shared/angular/services/display/display';
+import { EditorZoom } from '@shared/angular/services/editor-zoom/editor-zoom';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { TerminalConfirmation } from '@shared/angular/services/terminal-confirmation/terminal-confirmation';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import {
@@ -33,6 +39,13 @@ import {
 import { Terminals } from '@shared/angular/services/terminals/terminals';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { TerminalCreateResult, TerminalKind, TerminalReplay } from '@shared/api/terminal-channels';
+import { TerminalAppearance, terminalAppearance, terminalPalette } from './terminal-appearance';
+import {
+  BELL_FLASH_MS,
+  isMultiLinePaste,
+  multiLinePasteQuestion,
+  ringBell,
+} from './terminal-input';
 import { TerminalLinkDecorator } from './terminal-link-decorator';
 import { TerminalLinkProvider, TerminalLinkTarget } from './terminal-link-provider';
 
@@ -88,10 +101,35 @@ const CWD_TTL_MS: number = 2000;
 const LINK_COLOUR_FALLBACK: string = '#0dcaec';
 
 /**
- * The shape of the context the link menu is opened with: the link right-clicked rides as `$implicit`.
+ * Describes how a terminal's process ended: the code it exited with, and the signal that ended it.
+ */
+export interface TerminalExit {
+  /**
+   * Gets the exit code. A signal-ended process often reports 0.
+   */
+  readonly code: number;
+
+  /**
+   * Gets the number of the signal that ended the process, or null when it exited on its own.
+   */
+  readonly signal: number | null;
+}
+
+/**
+ * Holds what the menu is opened for when the right-click was on the terminal rather than on a link.
+ */
+const TERMINAL_MENU: unique symbol = Symbol('terminal-menu');
+
+/**
+ * Names what the right-click menu was opened for: a link, or the terminal itself.
+ */
+type MenuSubject = TerminalLinkTarget | typeof TERMINAL_MENU;
+
+/**
+ * The shape of the context the menu is opened with: what was right-clicked rides as `$implicit`.
  */
 interface LinkMenuContext {
-  $implicit: TerminalLinkTarget | undefined;
+  $implicit: MenuSubject | undefined;
 }
 
 /**
@@ -146,6 +184,26 @@ export class Terminal implements AfterViewInit, OnDestroy {
   private readonly pathLinks: TerminalPathLinks | null = inject(TERMINAL_PATH_LINKS, {
     optional: true,
   });
+
+  /**
+   * Holds the settings the terminal's look and behaviour are read from.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the editor zoom, which the terminal's font size follows.
+   */
+  private readonly zoom: EditorZoom = inject(EditorZoom);
+
+  /**
+   * Holds the display policy, whose graphics level decides whether the GPU renderer may be used.
+   */
+  private readonly display: Display = inject(Display);
+
+  /**
+   * Holds the questions a terminal asks before it acts, such as pasting several lines.
+   */
+  private readonly confirmation: TerminalConfirmation = inject(TerminalConfirmation);
 
   /**
    * Holds the change detector, run before a link's hint opens so the hint reads the link's text.
@@ -213,9 +271,9 @@ export class Terminal implements AfterViewInit, OnDestroy {
   public readonly titleChange: OutputEmitterRef<string> = output<string>();
 
   /**
-   * Emits the exit code when the PTY process exits.
+   * Emits how the PTY process ended when it exits.
    */
-  public readonly exited: OutputEmitterRef<number> = output<number>();
+  public readonly exited: OutputEmitterRef<TerminalExit> = output<TerminalExit>();
 
   /**
    * Emits the shell executable the session actually spawned, once it is running (including after a
@@ -266,6 +324,11 @@ export class Terminal implements AfterViewInit, OnDestroy {
   private readonly linkMenuContext: LinkMenuContext = { $implicit: undefined };
 
   /**
+   * Holds how printed paths resolve to files, or null when this terminal links addresses only.
+   */
+  private resolvePath: ((path: string) => Promise<string | null>) | null = null;
+
+  /**
    * Holds the link under the pointer, or null when the pointer is on none. A right-click here opens
    * the link's menu; anywhere else it does what it always did.
    */
@@ -277,17 +340,25 @@ export class Terminal implements AfterViewInit, OnDestroy {
   private cwdCache: { readonly at: number; readonly cwd: Promise<string | null> } | null = null;
 
   /**
-   * Resolves the rows of a link's right-click menu: open, and copy what it points at. Choosing a
-   * browser for a link waits on #1060.
-   * @param data The trigger's data: the link right-clicked.
+   * Resolves the rows of the right-click menu: for a link, open it and copy what it points at
+   * (choosing a browser for a link waits on #1060); for the terminal, Copy, Paste, Clear and Find.
+   * @param data The trigger's data: what was right-clicked.
    * @returns Returns the rows.
    */
   protected readonly linkMenuItemsFor: (data: unknown) => readonly MenuItem[] = (
     data: unknown,
   ): readonly MenuItem[] => {
-    const target: TerminalLinkTarget | undefined = data as TerminalLinkTarget | undefined;
+    const target: MenuSubject | undefined = data as MenuSubject | undefined;
     if (target === undefined) {
       return [];
+    }
+    if (target === TERMINAL_MENU) {
+      return [
+        { id: 'copy', label: 'Copy', disabled: this.xterm?.hasSelection() !== true },
+        { id: 'paste', label: 'Paste', disabled: this.kind() === 'task' },
+        { id: 'clear', label: 'Clear' },
+        { id: 'find', label: 'Find' },
+      ];
     }
     return target.kind === 'url'
       ? [
@@ -304,6 +375,48 @@ export class Terminal implements AfterViewInit, OnDestroy {
    * Holds a value indicating whether the xterm instance and PTY session are initialised.
    */
   private readonly terminalReady: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets the terminal's look as its settings, Code's font, the editor zoom and the graphics level
+   * make it.
+   */
+  private readonly appearance: Signal<TerminalAppearance> = computed((): TerminalAppearance =>
+    terminalAppearance({
+      fontFamily: this.settings.value('terminal.fontFamily')(),
+      fontSize: this.settings.value('terminal.fontSize')(),
+      codeFontFamily: this.settings.value('textEditor.global.fontFamily')(),
+      codeFontSize: this.settings.value('textEditor.global.fontSize')(),
+      zoomPercent: this.zoom.percent(),
+      scrollback: this.settings.value('terminal.scrollback')(),
+      cursorStyle: this.settings.value('terminal.cursorStyle')(),
+      cursorBlink: this.settings.value('terminal.cursorBlink')(),
+      renderer: this.settings.value('terminal.renderer')(),
+      graphics: this.display.resolvedGraphicsAcceleration(),
+      readOnly: this.kind() === 'task',
+    }),
+  );
+
+  /**
+   * Holds the GPU renderer while the terminal draws with it, or null for the standard renderer.
+   */
+  private webgl: WebglAddon | null = null;
+
+  /**
+   * Gets how links in the output open: with the modifier, with a plain click, or not at all.
+   */
+  private readonly linkOpening: Signal<'modifier' | 'click' | 'off'> =
+    this.settings.value('terminal.linkOpening');
+
+  /**
+   * Gets what a right-click on the terminal does.
+   */
+  private readonly rightClick: Signal<'menu' | 'paste' | 'select-word'> =
+    this.settings.value('terminal.rightClick');
+
+  /**
+   * Holds the visual bell's pending end, or null when the terminal is not flashing.
+   */
+  private bellFlash: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * Holds the shell the next spawn should use, overriding the {@link shell} input. Set to the shell a
@@ -395,6 +508,13 @@ export class Terminal implements AfterViewInit, OnDestroy {
   private resizePending: boolean = false;
 
   /**
+   * Holds the number of the session start still allowed to finish. A restart or the pane's destruction
+   * moves it on, which is how a start waiting on the main process learns it has been overtaken: left
+   * to carry on it would spawn a PTY nobody will dispose, and re-add the listeners just removed.
+   */
+  private startGeneration: number = 0;
+
+  /**
    * Initializes a new instance of the {@link Terminal} class, wiring the activation and theme effects.
    */
   public constructor() {
@@ -422,6 +542,29 @@ export class Terminal implements AfterViewInit, OnDestroy {
         this.xterm.options.theme = theme;
       }
     });
+
+    // A changed setting reaches every open terminal at once; a font change re-fits the grid to it.
+    effect((): void => {
+      const look: TerminalAppearance = this.appearance();
+      const xterm: Xterm | null = this.terminalReady() ? this.xterm : null;
+      if (xterm === null) {
+        return;
+      }
+      untracked((): void => this.applyAppearance(xterm, look));
+    });
+
+    effect((): void => {
+      const optionAsMeta: boolean = this.settings.value('terminal.optionAsMeta')();
+      const selectWord: boolean = this.rightClick() === 'select-word';
+      const linksOn: boolean = this.linkOpening() !== 'off';
+      const xterm: Xterm | null = this.terminalReady() ? this.xterm : null;
+      if (xterm === null) {
+        return;
+      }
+      xterm.options.macOptionIsMeta = optionAsMeta;
+      xterm.options.rightClickSelectsWord = selectWord;
+      untracked((): void => this.decorateLinks(xterm, linksOn));
+    });
   }
 
   /**
@@ -444,9 +587,11 @@ export class Terminal implements AfterViewInit, OnDestroy {
       `Destroying pane '${this.terminalId()}'`,
       `persistent=${this.persistent()}`,
     );
+    this.startGeneration++;
     this.cleanupOnData?.();
     this.cleanupOnExit?.();
     this.resizeObserver?.disconnect();
+    this.container().nativeElement.removeEventListener('paste', this.onPasteEvent, true);
     if (this.resizeDebounce !== null) {
       clearTimeout(this.resizeDebounce);
       this.resizeDebounce = null;
@@ -457,6 +602,11 @@ export class Terminal implements AfterViewInit, OnDestroy {
     }
     this.linkDecorator?.dispose();
     this.linkDecorator = null;
+    this.disposeWebgl();
+    if (this.bellFlash !== null) {
+      clearTimeout(this.bellFlash);
+      this.bellFlash = null;
+    }
     this.xterm?.dispose();
     this.xterm = null;
     this.fitAddon = null;
@@ -651,7 +801,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
     const selection: string = xterm.getSelection();
     const text: string = selection.length > 0 ? selection : this.getBufferText();
     if (text.length > 0) {
-      void navigator.clipboard.writeText(text);
+      void this.writeClipboard(text);
     }
     xterm.focus();
   }
@@ -666,22 +816,71 @@ export class Terminal implements AfterViewInit, OnDestroy {
     }
     const text: string = this.getBufferText();
     if (text.length > 0) {
-      void navigator.clipboard.writeText(text);
+      void this.writeClipboard(text);
     }
     xterm.clear();
     xterm.focus();
   }
 
   /**
-   * Pastes the clipboard contents into the terminal's input stream.
+   * Pastes the clipboard contents into the terminal's input stream, asking first when they run to
+   * more than one line and Warn Before Multi-Line Paste is on.
    */
   public paste(): void {
-    const id: string = this.terminalId();
-    void navigator.clipboard.readText().then((text: string): void => {
-      if (text.length > 0) {
-        void this.bridge.write(id, text);
-      }
-    });
+    void this.pasteClipboard();
+    this.xterm?.focus();
+  }
+
+  /**
+   * Pastes what the clipboard holds. The system can refuse the read — a window without focus, a
+   * permission withdrawn — and there is then nothing to paste.
+   * @returns Resolves once the text is pasted, the user declined, or the clipboard refused.
+   */
+  private async pasteClipboard(): Promise<void> {
+    let text: string;
+    try {
+      text = await navigator.clipboard.readText();
+    } catch (error: unknown) {
+      this.log.warn('Terminal', 'The clipboard could not be read', error);
+      return;
+    }
+    await this.pasteText(text);
+  }
+
+  /**
+   * Writes text to the clipboard. The system can refuse, and copying is not worth an error over.
+   * @param text The text.
+   * @returns Resolves once the text is written, or the clipboard refused.
+   */
+  private async writeClipboard(text: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (error: unknown) {
+      this.log.warn('Terminal', 'The clipboard could not be written', error);
+    }
+  }
+
+  /**
+   * Pastes text as typed input — bracketed, when the program asked for that — asking first when it
+   * runs to more than one line and Warn Before Multi-Line Paste is on.
+   * @param text The text to paste.
+   * @returns Resolves once the text is pasted, or the user declined.
+   */
+  private async pasteText(text: string): Promise<void> {
+    const xterm: Xterm | null = this.xterm;
+    if (xterm === null || text.length === 0) {
+      return;
+    }
+    if (
+      this.settings.get('terminal.warnMultiLinePaste') &&
+      isMultiLinePaste(text) &&
+      !(await this.confirmation.ask(multiLinePasteQuestion(text)))
+    ) {
+      xterm.focus();
+      return;
+    }
+    // The terminal may have restarted while the question was open; the text goes to the one there now.
+    this.xterm?.paste(text);
     this.xterm?.focus();
   }
 
@@ -724,6 +923,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
     }
     const id: string = this.terminalId();
     this.log.info('Terminal', `Restarting session '${id}'`);
+    const generation: number = ++this.startGeneration;
 
     this.cleanupOnData?.();
     this.cleanupOnData = null;
@@ -736,6 +936,9 @@ export class Terminal implements AfterViewInit, OnDestroy {
     // Dispose even when the process has already exited: that clears the session's retained
     // scrollback, so the fresh session starts from a clean record rather than replaying the old one.
     await this.bridge.dispose(id);
+    if (generation !== this.startGeneration) {
+      return;
+    }
     this.hasExited = false;
     this.leaveLink();
     this.cwdCache = null;
@@ -744,6 +947,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
 
     this.linkDecorator?.dispose();
     this.linkDecorator = null;
+    this.disposeWebgl();
     this.xterm?.dispose();
     this.xterm = null;
     this.fitAddon = null;
@@ -763,15 +967,18 @@ export class Terminal implements AfterViewInit, OnDestroy {
 
     const id: string = this.terminalId();
     const host: HTMLDivElement = this.container().nativeElement;
+    const generation: number = this.startGeneration;
 
+    const look: TerminalAppearance = untracked((): TerminalAppearance => this.appearance());
     const xterm: Xterm = new Xterm({
-      fontFamily: '"JetBrains Mono", "Menlo", "Consolas", monospace',
-      fontSize: 13,
+      fontFamily: look.fontFamily,
+      fontSize: look.fontSize,
       theme: this.buildTheme(),
       // A read-only task console has no meaningful caret; a blinking one would suggest typing works.
-      cursorBlink: this.kind() !== 'task',
+      cursorBlink: look.cursorBlink,
+      cursorStyle: look.cursorStyle,
       allowProposedApi: true,
-      scrollback: 5000,
+      scrollback: look.scrollback,
       // Hyperlinks a program marks up itself (OSC 8) behave as the links found in its text do; left to
       // xterm, a click would ask with a confirm() and then window.open the address.
       linkHandler: {
@@ -791,21 +998,35 @@ export class Terminal implements AfterViewInit, OnDestroy {
         ? null
         : async (path: string): Promise<string | null> =>
             pathLinks.resolve(path, await this.currentCwd());
-    xterm.registerLinkProvider(
-      new TerminalLinkProvider((): Xterm['buffer']['active'] => xterm.buffer.active, {
+    const provider: TerminalLinkProvider = new TerminalLinkProvider(
+      (): Xterm['buffer']['active'] => xterm.buffer.active,
+      {
         resolvePath,
         activate: (event: MouseEvent, target: TerminalLinkTarget): void =>
           this.activateLink(event, target),
         hover: (event: MouseEvent, target: TerminalLinkTarget): void =>
           this.enterLink(event, target),
         leave: (): void => this.leaveLink(),
-      }),
+      },
     );
+    // With Link Opening Off, nothing in the output is a link: not underlined, not hinted, not opened.
+    xterm.registerLinkProvider({
+      provideLinks: (
+        line: number,
+        callback: Parameters<TerminalLinkProvider['provideLinks']>[1],
+      ) =>
+        untracked((): boolean => this.linkOpening() === 'off')
+          ? callback(undefined)
+          : provider.provideLinks(line, callback),
+    });
     // Output scrolling under a still pointer moves the link out from under its hint.
     xterm.onScroll((): void => this.leaveLink());
-    // And they are drawn in the info colour as they are printed, so they read as links unhovered.
-    this.linkDecorator = new TerminalLinkDecorator(xterm, resolvePath, (): string =>
-      this.linkColour(),
+    // And they are drawn in the info colour as they are printed, so they read as links unhovered —
+    // unless Link Opening is Off, when they are plain text.
+    this.resolvePath = resolvePath;
+    this.decorateLinks(
+      xterm,
+      untracked((): boolean => this.linkOpening() !== 'off'),
     );
 
     const fitAddon: FitAddon = new FitAddon();
@@ -821,6 +1042,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
     this.xterm = xterm;
     this.fitAddon = fitAddon;
     this.searchAddon = searchAddon;
+    this.useRenderer(xterm, look.gpu);
 
     // Intercept the find chord before xterm forwards it to the PTY so it opens the find panel instead
     // of reaching the shell. Cmd+F on macOS; Ctrl+Shift+F elsewhere (bare Ctrl+F is a shell binding).
@@ -862,56 +1084,76 @@ export class Terminal implements AfterViewInit, OnDestroy {
           return;
         }
         this.hasExited = true;
-        this.xterm?.writeln(this.exitBanner(exitCode, exitSignal));
-        this.exited.emit(exitCode);
+        const banner: string = this.exitBanner(exitCode, exitSignal);
+        if (this.pendingChunks !== null) {
+          // The output it ended is still parked: the banner waits its turn behind all of it.
+          this.pendingChunks.push({ data: `${banner}\r\n`, seq: Number.POSITIVE_INFINITY });
+        } else {
+          this.xterm?.writeln(banner);
+        }
+        this.exited.emit({ code: exitCode, signal: exitSignal });
       },
     );
 
     // Replay whatever the session produced while no pane was attached (empty for a fresh session),
     // then either surface its recorded end or (re)create the PTY — creation reuses a live session
     // under the same identifier, so re-attaching never respawns the shell.
-    const replay: TerminalReplay = await this.bridge.replay(id);
-    if (replay.data.length > 0) {
-      xterm.write(replay.data);
-    }
-
-    if (replay.exitCode !== null) {
-      // The session ended while detached: show its history and exit banner without spawning a new
-      // process in its place; the session stays closable/restartable exactly like a live exit.
-      this.hasExited = true;
-      xterm.writeln(this.exitBanner(replay.exitCode, replay.signal));
-    } else if (this.kind() === 'shell') {
-      const result: TerminalCreateResult = await this.bridge.create({
-        id,
-        cols: xterm.cols,
-        rows: xterm.rows,
-        cwd: this.cwd(),
-        shell: this.overriddenShell ?? this.shell(),
-      });
-      if (!result.success) {
-        this.pendingChunks = null;
-        this.log.error(
-          'Terminal',
-          `Failed to start session '${id}'`,
-          result.error ?? 'unknown error',
-        );
-        xterm.writeln(
-          `\x1b[31mFailed to start terminal: ${result.error ?? 'unknown error'}\x1b[0m`,
-        );
+    let replay: TerminalReplay;
+    try {
+      replay = await this.bridge.replay(id);
+      if (generation !== this.startGeneration) {
         return;
       }
-      // Remember the shell actually spawned so a plain restart reuses it, immune to a later change of
-      // the configured default; a New session explicitly resets this first.
-      this.overriddenShell = result.shell ?? this.overriddenShell;
-      if (result.shell !== undefined) {
-        this.shellChange.emit(result.shell);
+      if (replay.data.length > 0) {
+        xterm.write(replay.data);
       }
-    } else {
-      // Command-backed sessions are spawned by their owning service, never by the pane: attaching
-      // early (before the launch) is fine — the subscription is live and the output streams in —
-      // and attaching to nothing renders an empty pane rather than wrongly spawning a shell. Fit
-      // the PTY to this pane's real size in case it was spawned at the default dimensions.
-      void this.bridge.resize(id, xterm.cols, xterm.rows);
+
+      if (replay.exitCode !== null) {
+        // The session ended while detached: show its history and exit banner without spawning a new
+        // process in its place; the session stays closable/restartable exactly like a live exit. An
+        // exit that reached the pane while the snapshot was in flight has parked its banner already.
+        if (!this.hasExited) {
+          xterm.writeln(this.exitBanner(replay.exitCode, replay.signal));
+        }
+        this.hasExited = true;
+      } else if (this.kind() === 'shell') {
+        const result: TerminalCreateResult = await this.bridge.create({
+          id,
+          cols: xterm.cols,
+          rows: xterm.rows,
+          cwd: this.cwd(),
+          // Default Shell applies wherever a shell starts — a docked terminal names no shell of its own.
+          shell: this.overriddenShell ?? this.shell() ?? this.configuredShell(),
+          shellArguments: this.settings.get('terminal.shellArguments'),
+          login: this.settings.get('terminal.loginShell'),
+        });
+        if (generation !== this.startGeneration) {
+          return;
+        }
+        if (!result.success) {
+          this.reportStartFailure(xterm, id, result.error ?? 'unknown error');
+          return;
+        }
+        // Remember the shell actually spawned so a plain restart reuses it, immune to a later change of
+        // the configured default; a New session explicitly resets this first.
+        this.overriddenShell = result.shell ?? this.overriddenShell;
+        if (result.shell !== undefined) {
+          this.shellChange.emit(result.shell);
+        }
+      } else {
+        // Command-backed sessions are spawned by their owning service, never by the pane: attaching
+        // early (before the launch) is fine — the subscription is live and the output streams in —
+        // and attaching to nothing renders an empty pane rather than wrongly spawning a shell. Fit
+        // the PTY to this pane's real size in case it was spawned at the default dimensions.
+        void this.bridge.resize(id, xterm.cols, xterm.rows);
+      }
+    } catch (error: unknown) {
+      // The bridge going away mid-call (a reloading window, a handler not registered) must leave the
+      // reason on screen and the output flowing, not a blank pane parking chunks for ever.
+      if (generation === this.startGeneration) {
+        this.reportStartFailure(xterm, id, error instanceof Error ? error.message : String(error));
+      }
+      return;
     }
 
     // Go live: write the parked chunks the snapshot did not already contain, in arrival order.
@@ -920,6 +1162,9 @@ export class Terminal implements AfterViewInit, OnDestroy {
     for (const chunk of parked) {
       if (chunk.seq > replay.seq) {
         this.writeOutput(chunk.data);
+      } else {
+        // Already on screen by way of the snapshot, so it counts as parsed.
+        this.bridge.acknowledge(id, chunk.data.length);
       }
     }
 
@@ -936,6 +1181,18 @@ export class Terminal implements AfterViewInit, OnDestroy {
       this.titleChange.emit(title);
     });
 
+    xterm.onSelectionChange((): void => {
+      if (this.settings.get('terminal.copyOnSelect') && xterm.hasSelection()) {
+        void this.writeClipboard(xterm.getSelection());
+      }
+    });
+
+    xterm.onBell((): void => this.onBell());
+
+    // A paste — ⌘V, the Edit menu, a middle click — goes through the multi-line check before xterm
+    // sends it on. Caught before xterm's own listener, on the way down to its text area.
+    host.addEventListener('paste', this.onPasteEvent, true);
+
     this.resizeObserver =
       typeof ResizeObserver === 'undefined'
         ? null
@@ -946,13 +1203,34 @@ export class Terminal implements AfterViewInit, OnDestroy {
     this.terminals.register(id, { readText: (): string => this.getBufferText() });
 
     setTimeout((): void => {
-      if (!this.holdingFocus) {
+      if (!this.holdingFocus && this.xterm === xterm) {
         xterm.focus();
       }
     }, FOCUS_DELAY_MS);
     this.terminalReady.set(true);
     this.log.info('Terminal', `Session '${id}' ready`, `kind=${this.kind()}`);
     this.ready.emit();
+  }
+
+  /**
+   * Reports a session that did not start, on screen and in the log, and lets its output through.
+   * @param xterm The terminal.
+   * @param id The terminal identifier.
+   * @param reason Why it did not start.
+   */
+  private reportStartFailure(xterm: Xterm, id: string, reason: string): void {
+    this.pendingChunks = null;
+    this.log.error('Terminal', `Failed to start session '${id}'`, reason);
+    xterm.writeln(`\x1b[31mFailed to start terminal: ${reason}\x1b[0m`);
+  }
+
+  /**
+   * Reads Default Shell.
+   * @returns Returns the shell chosen, or undefined for the main process's default.
+   */
+  private configuredShell(): string | undefined {
+    const configured: string = this.settings.get('terminal.defaultShell').trim();
+    return configured.length > 0 ? configured : undefined;
   }
 
   /**
@@ -982,6 +1260,10 @@ export class Terminal implements AfterViewInit, OnDestroy {
    * @returns Returns true when the click opens the link.
    */
   private isLinkGesture(event: MouseEvent): boolean {
+    const opening: 'modifier' | 'click' | 'off' = this.linkOpening();
+    if (opening !== 'modifier') {
+      return opening === 'click';
+    }
     return window.host?.platform === 'darwin' ? event.metaKey : event.ctrlKey;
   }
 
@@ -1007,6 +1289,9 @@ export class Terminal implements AfterViewInit, OnDestroy {
    * @param target What the link points at.
    */
   private enterLink(event: MouseEvent, target: TerminalLinkTarget): void {
+    if (this.linkOpening() === 'off') {
+      return;
+    }
     this.hoveredLink = target;
     const xterm: Xterm | null = this.xterm;
     const screen: Element | null | undefined = xterm?.element?.querySelector('.xterm-screen');
@@ -1025,7 +1310,12 @@ export class Terminal implements AfterViewInit, OnDestroy {
     }px)`;
     anchor.style.blockSize = `${rowHeight}px`;
 
-    const gesture: string = window.host?.platform === 'darwin' ? '⌘-click' : 'Ctrl-click';
+    const gesture: string =
+      this.linkOpening() === 'click'
+        ? 'click'
+        : window.host?.platform === 'darwin'
+          ? '⌘-click'
+          : 'Ctrl-click';
     const shown: string =
       target.kind === 'url'
         ? target.url
@@ -1060,14 +1350,23 @@ export class Terminal implements AfterViewInit, OnDestroy {
   }
 
   /**
-   * Opens a link's menu for a right-click on a link. A right-click anywhere else is left alone.
+   * Handles a right-click: on a link, opens the link's menu; elsewhere, does what Right-Click says —
+   * opens the terminal's menu, pastes, or leaves xterm to select the word under the pointer.
    * @param event The right-click, which places the menu; the trigger consumes it.
    */
   protected onContextMenu(event: MouseEvent): void {
-    const target: TerminalLinkTarget | null = this.hoveredLink;
-    if (target === null) {
+    const link: TerminalLinkTarget | null = this.hoveredLink;
+    if (link === null && this.xterm === null) {
       return;
     }
+    if (link === null && this.rightClick() !== 'menu') {
+      if (this.rightClick() === 'paste') {
+        event.preventDefault();
+        this.paste();
+      }
+      return;
+    }
+    const target: MenuSubject = link ?? TERMINAL_MENU;
     this.linkAnchorTooltip().hide();
     this.linkMenuContext.$implicit = target;
     const trigger: CdkContextMenuTrigger = this.linkMenuTrigger();
@@ -1083,8 +1382,12 @@ export class Terminal implements AfterViewInit, OnDestroy {
    * @param choice The chosen row and the link the menu was opened for.
    */
   protected onLinkMenuChosen(choice: MenuChoice): void {
-    const target: TerminalLinkTarget | undefined = choice.data as TerminalLinkTarget | undefined;
+    const target: MenuSubject | undefined = choice.data as MenuSubject | undefined;
     if (target === undefined) {
+      return;
+    }
+    if (target === TERMINAL_MENU) {
+      queueMicrotask((): void => this.runTerminalMenu(choice.id));
       return;
     }
     queueMicrotask((): void => {
@@ -1092,9 +1395,149 @@ export class Terminal implements AfterViewInit, OnDestroy {
         this.openLink(target);
         return;
       }
-      void navigator.clipboard.writeText(target.kind === 'url' ? target.url : target.path);
+      void this.writeClipboard(target.kind === 'url' ? target.url : target.path);
       this.xterm?.focus();
     });
+  }
+
+  /**
+   * Applies a changed look to the running terminal, re-fitting the grid when the font moved.
+   * @param xterm The terminal.
+   * @param look The look to apply.
+   */
+  private applyAppearance(xterm: Xterm, look: TerminalAppearance): void {
+    const resized: boolean =
+      xterm.options.fontFamily !== look.fontFamily || xterm.options.fontSize !== look.fontSize;
+    xterm.options.fontFamily = look.fontFamily;
+    xterm.options.fontSize = look.fontSize;
+    xterm.options.scrollback = look.scrollback;
+    xterm.options.cursorStyle = look.cursorStyle;
+    xterm.options.cursorBlink = look.cursorBlink;
+    this.useRenderer(xterm, look.gpu);
+    if (resized) {
+      this.handleResize();
+    }
+  }
+
+  /**
+   * Draws the terminal on the GPU or with the standard renderer. A GPU that cannot start WebGL, or
+   * loses its context later, leaves the terminal on the standard renderer rather than blank.
+   * @param xterm The terminal.
+   * @param gpu Whether to draw on the GPU.
+   */
+  private useRenderer(xterm: Xterm, gpu: boolean): void {
+    if (!gpu) {
+      this.disposeWebgl();
+      return;
+    }
+    if (this.webgl !== null) {
+      return;
+    }
+    try {
+      const webgl: WebglAddon = new WebglAddon();
+      webgl.onContextLoss((): void => {
+        this.log.warn('Terminal', `GPU renderer lost its context for '${this.terminalId()}'`);
+        this.disposeWebgl();
+      });
+      xterm.loadAddon(webgl);
+      this.webgl = webgl;
+    } catch (error: unknown) {
+      this.log.warn('Terminal', 'GPU renderer unavailable; using the standard renderer', error);
+      this.webgl = null;
+    }
+  }
+
+  /**
+   * Stops drawing on the GPU, returning the terminal to the standard renderer.
+   */
+  private disposeWebgl(): void {
+    const webgl: WebglAddon | null = this.webgl;
+    this.webgl = null;
+    try {
+      webgl?.dispose();
+    } catch {
+      // A context already lost can fail to tear down; the standard renderer takes over regardless.
+    }
+  }
+
+  /**
+   * Runs a row of the terminal's own right-click menu.
+   * @param id The row chosen.
+   */
+  private runTerminalMenu(id: string): void {
+    switch (id) {
+      case 'copy':
+        this.copy();
+        return;
+      case 'paste':
+        this.paste();
+        return;
+      case 'clear':
+        this.clear();
+        return;
+      case 'find':
+        this.findRequested.emit();
+        return;
+      default:
+        return;
+    }
+  }
+
+  /**
+   * Catches a paste on its way to xterm, so a multi-line one is asked about first. A paste that
+   * needs no question is left to xterm.
+   * @param event The paste.
+   */
+  private readonly onPasteEvent: (event: ClipboardEvent) => void = (
+    event: ClipboardEvent,
+  ): void => {
+    const text: string = event.clipboardData?.getData('text/plain') ?? '';
+    if (!this.settings.get('terminal.warnMultiLinePaste') || !isMultiLinePaste(text)) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    void this.pasteText(text);
+  };
+
+  /**
+   * Rings the bell as Bell says: a short tone, a flash of the terminal, or nothing.
+   */
+  private onBell(): void {
+    const bell: 'none' | 'sound' | 'visual' = this.settings.get('terminal.bell');
+    if (bell === 'sound') {
+      ringBell();
+      return;
+    }
+    if (bell !== 'visual') {
+      return;
+    }
+    const host: HTMLDivElement = this.container().nativeElement;
+    host.classList.add('terminal--bell');
+    if (this.bellFlash !== null) {
+      clearTimeout(this.bellFlash);
+    }
+    this.bellFlash = setTimeout((): void => {
+      this.bellFlash = null;
+      host.classList.remove('terminal--bell');
+    }, BELL_FLASH_MS);
+  }
+
+  /**
+   * Colours the links in the output as they are printed, or stops, as Link Opening is on or Off.
+   * @param xterm The terminal.
+   * @param on Whether links are coloured.
+   */
+  private decorateLinks(xterm: Xterm, on: boolean): void {
+    if (!on) {
+      this.linkDecorator?.dispose();
+      this.linkDecorator = null;
+      this.leaveLink();
+      return;
+    }
+    this.linkDecorator ??= new TerminalLinkDecorator(xterm, this.resolvePath, (): string =>
+      this.linkColour(),
+    );
   }
 
   /**
@@ -1121,12 +1564,16 @@ export class Terminal implements AfterViewInit, OnDestroy {
     if (xterm === null) {
       return;
     }
+    const id: string = this.terminalId();
     if (!this.scrollLocked) {
-      xterm.write(data);
+      xterm.write(data, (): void => this.bridge.acknowledge(id, data.length));
       return;
     }
     const top: number = xterm.buffer.active.viewportY;
-    xterm.write(data, (): void => xterm.scrollToLine(top));
+    xterm.write(data, (): void => {
+      xterm.scrollToLine(top);
+      this.bridge.acknowledge(id, data.length);
+    });
   }
 
   /**
@@ -1163,7 +1610,8 @@ export class Terminal implements AfterViewInit, OnDestroy {
 
   /**
    * Builds the xterm theme from the application's palette primitives, keyed by the current resolved
-   * mode and accent so the terminal stays in sync with the appearance settings.
+   * mode and accent so the terminal stays in sync with the appearance settings, its sixteen ANSI
+   * colours matched to the mode: a dark screen's yellow is unreadable on a light one.
    * @returns Returns the xterm theme.
    */
   private buildTheme(): ITheme {
@@ -1174,6 +1622,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
     const light: string = read('--gray-100');
     const ink: string = read('--gray-900');
     return {
+      ...terminalPalette(dark),
       background: dark ? ink : light,
       foreground: dark ? light : ink,
       cursor: this.themeService.accentHex(),

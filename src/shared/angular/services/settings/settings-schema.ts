@@ -34,6 +34,7 @@ export interface ChoiceOption {
 export type ControlDef =
   | { readonly kind: 'toggle' }
   | { readonly kind: 'text'; readonly placeholder?: string }
+  | { readonly kind: 'folder'; readonly placeholder?: string }
   | {
       readonly kind: 'number';
       readonly min?: number;
@@ -92,6 +93,21 @@ export interface VisibilityDef {
 }
 
 /**
+ * Names the plugin contribution a setting needs installed.
+ */
+export interface ContributionRequirement {
+  /**
+   * Gets the slot it fills.
+   */
+  readonly slot: 'container-engine' | 'database-engine';
+
+  /**
+   * Gets its identifier, for a setting about one provider of the slot; absent for any of them.
+   */
+  readonly id?: string;
+}
+
+/**
  * Holds the display and control fields shared by every setting definition.
  */
 interface BaseSettingDef {
@@ -99,6 +115,12 @@ interface BaseSettingDef {
    * Gets the condition under which the setting is shown, or undefined for a setting that always is.
    */
   readonly visibleWhen?: VisibilityDef;
+
+  /**
+   * Gets the plugin contribution the setting is for, when it does nothing without one: it is shown
+   * only while such a plugin is installed, so a setting for a plugin is never offered ahead of it.
+   */
+  readonly requiresContribution?: ContributionRequirement;
 
   /**
    * Gets the label shown for the setting.
@@ -156,6 +178,12 @@ interface BaseSettingDef {
    * binding reports when a change is actually pending (see `SettingBinding.restartPending`).
    */
   readonly requiresRestart?: boolean;
+
+  /**
+   * Gets the platforms (Node `process.platform` values) the setting applies to, or undefined for one
+   * that applies on every platform. Elsewhere it is not shown.
+   */
+  readonly platforms?: readonly string[];
 }
 
 /**
@@ -236,4 +264,15 @@ export interface SectionDef {
  */
 export function isSettingsOwned(def: SettingDef): def is SettingsOwnedDef {
   return def.owner === undefined || def.owner === 'settings';
+}
+
+/**
+ * Determines whether a setting applies on the platform Studio is running on. Outside Electron, where
+ * the platform is unknown, every setting does.
+ * @param def The setting definition.
+ * @returns Returns true when the setting applies here.
+ */
+export function appliesToPlatform(def: SettingDef): boolean {
+  const platform: string | undefined = window.host?.platform;
+  return def.platforms === undefined || platform === undefined || def.platforms.includes(platform);
 }

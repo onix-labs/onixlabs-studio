@@ -16,6 +16,7 @@ import {
 } from '@shared/api/agent-conversation-channels';
 import { AgentCategory } from '@shared/api/agent-category-channels';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { AgentCategories } from '@shared/angular/services/agent-categories/agent-categories';
 import { agentTypeFromContextKind } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import { Icon } from '@shared/angular/icons/icon';
@@ -174,6 +175,11 @@ export class AgentConversationList {
    * Holds the conversation whose stored history this lists and drives.
    */
   private readonly conversation: AgentConversation = inject(AgentConversation);
+
+  /**
+   * Holds the settings store, for Confirm Before Deleting Conversations.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the shared category registry.
@@ -738,7 +744,7 @@ export class AgentConversationList {
       return;
     }
     this.checked.set(new Set<string>([target.id]));
-    this.confirmOpen.set(true);
+    this.requestDelete();
   }
 
   /**
@@ -746,7 +752,19 @@ export class AgentConversationList {
    */
   protected onRequestDelete(): void {
     if (this.hasChecked()) {
+      this.requestDelete();
+    }
+  }
+
+  /**
+   * Asks before deleting the checked conversations, or deletes them straight away when Confirm Before
+   * Deleting Conversations is off.
+   */
+  private requestDelete(): void {
+    if (this.settings.get('ai.confirmDeleteConversations')) {
       this.confirmOpen.set(true);
+    } else {
+      void this.onConfirmDelete();
     }
   }
 
@@ -877,9 +895,10 @@ export class AgentConversationList {
     }
     this.categoryEditor.set(null);
     if (editor.id === null) {
-      const created: AgentCategory | null = await this.categoriesService.create(editor.name);
+      // Taken before the wait: an editor opened meanwhile sets this for its own conversation.
       const fileId: string | null = this.categoryEditorFileId;
       this.categoryEditorFileId = null;
+      const created: AgentCategory | null = await this.categoriesService.create(editor.name);
       if (created !== null && fileId !== null) {
         await this.conversation.setCategory(fileId, created.id);
       }

@@ -1,5 +1,6 @@
 import { inject, Injector, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
+import { Documents } from '@shared/angular/services/documents/documents';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 import { Log } from '@shared/angular/services/log/log';
@@ -16,6 +17,7 @@ import {
   providedRenameLocation,
 } from '@shared/angular/services/monaco/monaco-editor-capabilities';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
+import { Settings } from '@shared/angular/services/settings/settings';
 import {
   FILE_OPERATION_REFUSED,
   FileTextEdits,
@@ -82,6 +84,11 @@ export class RenameSymbol {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the settings, read for whether a rename across files asks first and saves after.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Determines whether Rename Symbol can answer in an editor: it can be edited, and a rename provider
@@ -154,7 +161,7 @@ export class RenameSymbol {
       });
       return;
     }
-    if (edits.files.length > 1) {
+    if (edits.files.length > 1 && this.settings.get('textEditor.confirmMultiFileRename')) {
       const confirmed: boolean = await this.confirmation.ask({
         oldName: prepared.placeholder,
         newName,
@@ -167,8 +174,34 @@ export class RenameSymbol {
       }
     }
     const outcome: WorkspaceEditOutcome = await this.applier.apply(edits, monaco);
+    const saved: boolean =
+      this.settings.get('textEditor.saveAfterRename') && (await this.saveChanged(outcome));
     editor.focus();
-    this.report(prepared.placeholder, newName, edits.files.length, outcome);
+    this.report(prepared.placeholder, newName, edits.files.length, outcome, saved);
+  }
+
+  /**
+   * Saves the open documents a rename changed (Save Files After Rename). Files that were not open were
+   * written as the rename was applied; a document with no file is left for the user to save.
+   * @param outcome What applying the rename did.
+   * @returns Resolves true when every changed open document with a file saved.
+   */
+  private async saveChanged(outcome: WorkspaceEditOutcome): Promise<boolean> {
+    const documents: Documents = this.injector.get(Documents);
+    let all: boolean = true;
+    for (const file of outcome.applied) {
+      if (file.where !== 'editor') {
+        continue;
+      }
+      const id: string | undefined = documents.findIdByPath(file.path);
+      if (id === undefined) {
+        all = false;
+        continue;
+      }
+      all = (await documents.save(id)) && all;
+    }
+    this.log.debug('rename', all ? 'Saved the renamed files' : 'Some renamed files were not saved');
+    return all;
   }
 
   /**
@@ -246,12 +279,14 @@ export class RenameSymbol {
    * @param newName Its new name.
    * @param fileCount How many files the rename was to change.
    * @param outcome What applying it did.
+   * @param saved Whether the open files it changed were saved afterwards.
    */
   private report(
     oldName: string,
     newName: string,
     fileCount: number,
     outcome: WorkspaceEditOutcome,
+    saved: boolean = false,
   ): void {
     this.log.info(
       'rename',
@@ -281,11 +316,13 @@ export class RenameSymbol {
       this.notifications.notify({
         severity: 'success',
         title: `Renamed “${oldName}” to “${newName}” in ${outcome.applied.length} files`,
-        detail: outcome.applied.some(
-          (file: WorkspaceEditOutcome['applied'][number]): boolean => file.where === 'editor',
-        )
-          ? 'Open files are changed but not saved.'
-          : undefined,
+        detail:
+          !saved &&
+          outcome.applied.some(
+            (file: WorkspaceEditOutcome['applied'][number]): boolean => file.where === 'editor',
+          )
+            ? 'Open files are changed but not saved.'
+            : undefined,
         key: 'rename-symbol',
       });
     }

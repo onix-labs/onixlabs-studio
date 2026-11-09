@@ -1,6 +1,7 @@
-import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { GitFileChange } from '@shared/angular/services/repository/repository-data';
 
 /**
@@ -40,15 +41,45 @@ export class Diffs {
   >(new Map<string, GitFileChange>());
 
   /**
-   * Holds whether diffs render inline (unified) rather than side by side. Shared across every open
-   * diff so the ribbon's toggle flips them together.
+   * Holds the settings, read for the default diff layout.
    */
-  private readonly inline: WritableSignal<boolean> = signal<boolean>(false);
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the layout chosen with the diffs' own switch, or null until it is used. Shared across every
+   * open diff so the switch flips them together; until then the diffs follow the setting.
+   */
+  private readonly chosen: WritableSignal<boolean | null> = signal<boolean | null>(null);
+
+  /**
+   * Holds whether diffs render inline (unified) rather than side by side: as switched, otherwise as
+   * the Default Diff Layout setting says.
+   */
+  private readonly inline: Signal<boolean> = computed(
+    (): boolean => this.chosen() ?? this.settings.value('textEditor.diffLayout')() === 'inline',
+  );
+
+  /**
+   * Holds whether whitespace is ignored as chosen with the diffs' own switch, or null until it is
+   * used. Shared across every open diff, like {@link chosen}; until then the diffs follow the setting.
+   */
+  private readonly chosenIgnoreWhitespace: WritableSignal<boolean | null> = signal<boolean | null>(
+    null,
+  );
 
   /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Gets whether diffs leave leading and trailing whitespace changes out: as switched this session,
+   * otherwise as Ignore Whitespace in Diffs says.
+   */
+  public readonly ignoreWhitespace: Signal<boolean> = computed(
+    (): boolean =>
+      this.chosenIgnoreWhitespace() ?? this.settings.value('textEditor.diffIgnoreWhitespace')(),
+  );
 
   /**
    * Holds the editors of the diffs open now, by dock panel id.
@@ -58,7 +89,7 @@ export class Diffs {
   /**
    * Gets whether diffs render inline rather than side by side.
    */
-  public readonly inlineDiff: Signal<boolean> = this.inline.asReadonly();
+  public readonly inlineDiff: Signal<boolean> = this.inline;
 
   /**
    * Builds the stable dock panel id for a file's diff, so reopening the same file reuses its tab.
@@ -100,6 +131,14 @@ export class Diffs {
   }
 
   /**
+   * Lists the panel ids of the diffs open now.
+   * @returns Returns the ids, in the order they were opened.
+   */
+  public ids(): readonly string[] {
+    return [...this.entries().keys()];
+  }
+
+  /**
    * Toggles inline versus side-by-side rendering for every open diff.
    */
   public toggleInline(): void {
@@ -118,8 +157,18 @@ export class Diffs {
     if (this.inline() === inline) {
       return;
     }
-    this.inline.set(inline);
+    this.chosen.set(inline);
     this.log.debug('Diffs', `Diff layout set to ${inline ? 'inline' : 'side-by-side'}`);
+  }
+
+  /**
+   * Turns ignoring whitespace on or off for every open diff, for the rest of the session. The setting
+   * is left alone.
+   */
+  public toggleIgnoreWhitespace(): void {
+    const ignore: boolean = !this.ignoreWhitespace();
+    this.chosenIgnoreWhitespace.set(ignore);
+    this.log.debug('Diffs', `Diff whitespace ${ignore ? 'ignored' : 'shown'} for the session`);
   }
 
   /**

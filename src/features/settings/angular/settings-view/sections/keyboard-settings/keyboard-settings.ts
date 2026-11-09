@@ -3,6 +3,8 @@ import {
   Component,
   computed,
   inject,
+  input,
+  InputSignal,
   Signal,
   signal,
   WritableSignal,
@@ -10,6 +12,9 @@ import {
 import { Keybindings, ResolvedBinding } from '@shared/angular/services/keybindings/keybindings';
 import { Log } from '@shared/angular/services/log/log';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ChordKeys } from '@shared/angular/components/chord-keys/chord-keys';
+import { Icon } from '@shared/angular/icons/icon';
+import { ChordModal } from './chord-modal/chord-modal';
 
 /**
  * Groups the section's rows under the view that owns them.
@@ -27,18 +32,17 @@ interface BindingGroup {
 }
 
 /**
- * Represents the Keyboard section of the settings view: every catalogued command grouped by its
- * owning view, each with an editable chord.
+ * Represents a Keyboard page of the settings view: one capability's catalogued commands (its
+ * {@link view}), or the app-wide ones on Application › Keyboard, each showing its chord as key caps.
  *
- * Clicking a chord arms capture: the next key combination becomes the command's override (persisted
- * through the keybinding router into the `keyboard.overrides` setting and effective immediately),
- * Escape cancels, and Backspace or Delete restores the default. Overridden chords show a reset
- * affordance; two commands in one view resolving to the same chord are surfaced as a conflict, which
- * dispatch resolves by registration order.
+ * Set Chord opens the {@link ChordModal}, which reads the new key combination; what it accepts
+ * persists through the keybinding router into the `keyboard.overrides` setting and takes effect
+ * immediately. Overridden chords show Reset, which restores the default; two commands that can be
+ * live together resolving to the same chord are surfaced as a conflict, which dispatch resolves.
  */
 @Component({
   selector: 'app-keyboard-settings',
-  imports: [Button],
+  imports: [Button, ChordKeys, ChordModal],
   templateUrl: './keyboard-settings.html',
   styleUrls: ['../section.scss', './keyboard-settings.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -55,26 +59,36 @@ export class KeyboardSettingsSection {
   private readonly log: Log = inject(Log);
 
   /**
-   * Holds the id of the command whose chord is being captured, or null when none is.
+   * Holds the command the Set Chord dialog is open for, or undefined while it is closed.
    */
-  private readonly editing: WritableSignal<string | null> = signal<string | null>(null);
+  protected readonly picking: WritableSignal<ResolvedBinding | undefined> = signal<
+    ResolvedBinding | undefined
+  >(undefined);
 
   /**
-   * Holds the most recent rejected-override message, keyed to the command it was rejected for; null
-   * when the last interaction was accepted.
+   * Exposes the icon tokens to the template.
    */
-  private readonly rejection: WritableSignal<{ id: string; message: string } | null> = signal<{
-    id: string;
-    message: string;
-  } | null>(null);
+  protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Gets the catalogued commands grouped under their owning view, in contribution order.
+   * Gets the catalogue view whose shortcuts the page shows, or null for Application › Keyboard: the
+   * shortcuts that belong to no one capability.
+   */
+  public readonly view: InputSignal<string | null> = input.required<string | null>();
+
+  /**
+   * Gets the page's catalogued commands grouped under their owning view, in contribution order. A
+   * capability's page holds a single group; the app-wide page holds the application menu's own
+   * commands (Open File, Settings, Close Tab).
    */
   protected readonly groups: Signal<readonly BindingGroup[]> = computed(
     (): readonly BindingGroup[] => {
+      const view: string | null = this.view();
       const groups: Map<string, ResolvedBinding[]> = new Map<string, ResolvedBinding[]>();
       for (const binding of this.keybindings.resolvedCatalogue()) {
+        if (view === null ? !binding.global : binding.view !== view) {
+          continue;
+        }
         groups.set(binding.view, [...(groups.get(binding.view) ?? []), binding]);
       }
       return [...groups.entries()].map(
@@ -84,91 +98,18 @@ export class KeyboardSettingsSection {
   );
 
   /**
-   * Gets the command ids whose effective chords collide within their view.
+   * Gets the command ids whose effective chords collide within their view, or with an application-wide
+   * command.
    */
   protected readonly conflicts: Signal<ReadonlySet<string>> = this.keybindings.conflictedIds;
 
   /**
-   * Determines whether a command's chord is being captured.
-   * @param id The catalogued command identifier.
-   * @returns Returns true while the command is armed for capture.
+   * Opens the Set Chord dialog for a command.
+   * @param binding The command whose chord to set.
    */
-  protected isEditing(id: string): boolean {
-    return this.editing() === id;
-  }
-
-  /**
-   * Gets the rejection message for a command, or null when its last interaction was accepted.
-   * @param id The catalogued command identifier.
-   * @returns Returns the human-readable rejection, or null.
-   */
-  protected rejectionFor(id: string): string | null {
-    const rejection: { id: string; message: string } | null = this.rejection();
-    return rejection !== null && rejection.id === id ? rejection.message : null;
-  }
-
-  /**
-   * Formats a chord for the current platform.
-   * @param chord The normalized chord.
-   * @returns Returns the platform-formatted chord.
-   */
-  protected format(chord: string): string {
-    return this.keybindings.formatChord(chord);
-  }
-
-  /**
-   * Arms chord capture for a command.
-   * @param id The catalogued command identifier.
-   */
-  protected beginCapture(id: string): void {
-    this.log.trace('settings.keyboard', 'Chord capture armed', id);
-    this.rejection.set(null);
-    this.editing.set(id);
-  }
-
-  /**
-   * Disarms chord capture (the capture button lost focus).
-   */
-  protected cancelCapture(): void {
-    this.editing.set(null);
-  }
-
-  /**
-   * Handles a key press while a command is armed for capture: Escape cancels, Backspace or Delete
-   * restores the default, and any complete chord is validated and persisted as the override. The
-   * event never propagates, so an armed capture cannot trigger the accelerator it spells.
-   * @param event The keyboard event to capture.
-   * @param id The catalogued command identifier being captured.
-   */
-  protected onCaptureKeydown(event: KeyboardEvent, id: string): void {
-    event.preventDefault();
-    event.stopPropagation();
-    if (event.key === 'Escape') {
-      this.editing.set(null);
-      return;
-    }
-    if (event.key === 'Backspace' || event.key === 'Delete') {
-      this.log.info('settings.keyboard', 'Keybinding override cleared via capture', id);
-      this.keybindings.clearOverride(id);
-      this.editing.set(null);
-      return;
-    }
-    const chord: string | null = this.keybindings.chordFromEvent(event);
-    if (chord === null) {
-      return;
-    }
-    const error: string | null = this.keybindings.setOverride(id, chord);
-    this.log.info(
-      'settings.keyboard',
-      'Keybinding override applied',
-      id,
-      chord,
-      error ?? 'accepted',
-    );
-    if (error !== null) {
-      this.rejection.set({ id, message: error });
-    }
-    this.editing.set(null);
+  protected setChord(binding: ResolvedBinding): void {
+    this.log.trace('settings.keyboard', 'Set Chord opened', binding.id);
+    this.picking.set(binding);
   }
 
   /**
@@ -177,7 +118,6 @@ export class KeyboardSettingsSection {
    */
   protected reset(id: string): void {
     this.log.info('settings.keyboard', 'Keybinding reset to default', id);
-    this.rejection.set(null);
     this.keybindings.clearOverride(id);
   }
 }

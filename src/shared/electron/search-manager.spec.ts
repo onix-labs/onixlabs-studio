@@ -11,10 +11,16 @@ import { SearchChannel, SearchRequest, SearchResponse } from '@shared/api/search
 const captured: {
   spawns: { args: readonly string[]; cwd: string }[];
   output: string;
+  chunks: readonly Buffer[] | null;
+  hold: boolean;
+  kills: number;
   handlers: Map<string, (event: unknown, request: unknown) => Promise<unknown>>;
 } = vi.hoisted(() => ({
   spawns: [],
   output: '',
+  chunks: null,
+  hold: false,
+  kills: 0,
   handlers: new Map<string, (event: unknown, request: unknown) => Promise<unknown>>(),
 }));
 
@@ -38,11 +44,15 @@ vi.mock('node:child_process', () => {
     captured.spawns.push({ args, cwd: options.cwd });
     let onData: ((chunk: Buffer) => void) | null = null;
     const listeners: Map<string, () => void> = new Map<string, () => void>();
-    const output: string = captured.output;
-    setTimeout((): void => {
-      onData?.(Buffer.from(output));
-      listeners.get('close')?.();
-    }, 0);
+    const chunks: readonly Buffer[] = captured.chunks ?? [Buffer.from(captured.output)];
+    if (!captured.hold) {
+      setTimeout((): void => {
+        for (const chunk of chunks) {
+          onData?.(chunk);
+        }
+        listeners.get('close')?.();
+      }, 0);
+    }
     return {
       stdout: {
         on: (event: string, listener: (chunk: Buffer) => void): void => {
@@ -52,7 +62,10 @@ vi.mock('node:child_process', () => {
         },
       },
       on: (event: string, listener: () => void): void => void listeners.set(event, listener),
-      kill: (): void => undefined,
+      kill: (): void => {
+        captured.kills += 1;
+        listeners.get('close')?.();
+      },
     };
   };
   return { spawn, default: { spawn } };
@@ -79,6 +92,9 @@ describe('SearchManager (#1007 paths)', () => {
     captured.spawns.length = 0;
     captured.handlers.clear();
     captured.output = '';
+    captured.chunks = null;
+    captured.hold = false;
+    captured.kills = 0;
     const workspace: InstanceType<typeof WorkspaceContext> = new WorkspaceContext();
     workspace.addRoot(root);
     new SearchManager(workspace).register();
@@ -107,12 +123,240 @@ describe('SearchManager (#1007 paths)', () => {
     return handler!(null, request) as Promise<SearchResponse>;
   }
 
+  /**
+   * Sends a search as a window would, naming the window.
+   * @param senderId The window.
+   * @param overrides Any field to change from a plain search for "name".
+   * @returns Returns the response.
+   */
+  function searchFrom(
+    senderId: number,
+    overrides: Partial<SearchRequest>,
+  ): Promise<SearchResponse> {
+    const handler: ((event: unknown, request: unknown) => Promise<unknown>) | undefined =
+      captured.handlers.get(SearchChannel.Run);
+    const request: SearchRequest = {
+      query: 'name',
+      root,
+      caseSensitive: false,
+      wholeWord: false,
+      regexp: false,
+      ...overrides,
+    };
+    return handler!({ sender: { id: senderId } }, request) as Promise<SearchResponse>;
+  }
+
+  /**
+   * Lets the steps ahead of a spawn run.
+   * @returns Returns a promise that resolves once they have.
+   */
+  function spawned(): Promise<void> {
+    return new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 5);
+    });
+  }
+
+  it('run_withTheSameCallerAgain_stopsTheSearchBefore_andBothAnswer', async () => {
+    captured.hold = true;
+    const first: Promise<SearchResponse> = searchFrom(1, { caller: 'find', query: 'na' });
+    await spawned();
+
+    captured.hold = false;
+    const second: Promise<SearchResponse> = searchFrom(1, { caller: 'find', query: 'nam' });
+
+    expect(await first).toEqual({ files: [], total: 0, capped: false });
+    await second;
+    expect(captured.kills).toBe(1);
+    expect(captured.spawns).toHaveLength(2);
+  });
+
+  it('run_withDifferentCallersInOneWindow_leavesEachAlone', async () => {
+    captured.hold = true;
+    void searchFrom(1, { caller: 'panel' });
+    await spawned();
+
+    captured.hold = false;
+    await searchFrom(1, { caller: 'scoped' });
+
+    expect(captured.kills).toBe(0);
+  });
+
+  it('run_withTheSameCallerInAnotherWindow_leavesItAlone', async () => {
+    captured.hold = true;
+    void searchFrom(1, { caller: 'find' });
+    await spawned();
+
+    captured.hold = false;
+    await searchFrom(2, { caller: 'find' });
+
+    expect(captured.kills).toBe(0);
+  });
+
+  it('run_withoutACaller_isNeverStopped', async () => {
+    captured.hold = true;
+    void searchFrom(1, {});
+    await spawned();
+
+    captured.hold = false;
+    await searchFrom(1, {});
+
+    expect(captured.kills).toBe(0);
+  });
+
+  it('run_withAnEmptyQuery_stillStopsTheSearchBefore', async () => {
+    captured.hold = true;
+    const first: Promise<SearchResponse> = searchFrom(1, { caller: 'find' });
+    await spawned();
+
+    await searchFrom(1, { caller: 'find', query: '' });
+    await first;
+
+    expect(captured.kills).toBe(1);
+    expect(captured.spawns).toHaveLength(1);
+  });
+
+  it('run_overtakenWhileItsPathsAreConfined_neverSpawns', async () => {
+    const first: Promise<SearchResponse> = searchFrom(1, {
+      caller: 'find',
+      paths: [path.join(root, 'app')],
+    });
+    const second: Promise<SearchResponse> = searchFrom(1, { caller: 'find', query: 'nam' });
+
+    await Promise.all([first, second]);
+
+    expect(captured.spawns).toHaveLength(1);
+    expect(captured.spawns[0].args).toContain('nam');
+  });
+
+  it('run_afterACallersSearchFinished_hasNothingToStop', async () => {
+    await searchFrom(1, { caller: 'find' });
+
+    await searchFrom(1, { caller: 'find' });
+
+    expect(captured.kills).toBe(0);
+  });
+
+  it('run_withACallerThatIsNotAString_isRefusedAsMalformed', async () => {
+    await searchFrom(1, { caller: 42 as unknown as string });
+
+    expect(captured.spawns).toHaveLength(0);
+  });
+
+  /**
+   * Cuts a text's UTF-8 bytes in two, inside its first occurrence of a multi-byte character.
+   * @param text The text.
+   * @param character The character to cut through.
+   * @returns Returns the two chunks.
+   */
+  function cutInside(text: string, character: string): readonly Buffer[] {
+    const bytes: Buffer = Buffer.from(text);
+    const at: number = bytes.indexOf(Buffer.from(character)) + 1;
+    return [bytes.subarray(0, at), bytes.subarray(at)];
+  }
+
+  it('run_whenAChunkEndsInsideAMultiByteCharacter_keepsTheCharacterWhole', async () => {
+    const event: string = JSON.stringify({
+      type: 'match',
+      data: {
+        path: { text: './src/naïve.ts' },
+        lines: { text: 'const café = name;\n' },
+        line_number: 3,
+        submatches: [{ match: { text: 'name' }, start: 14, end: 18 }],
+      },
+    });
+    captured.chunks = cutInside(`${event}\n`, 'é');
+
+    const response: SearchResponse = await search();
+
+    expect(response.files[0].relativePath).toBe('src/naïve.ts');
+    expect(response.files[0].matches[0].before).toBe('const café = ');
+  });
+
+  it('listFiles_whenAChunkEndsInsideAMultiByteCharacter_keepsThePathWhole', async () => {
+    captured.chunks = cutInside('./src/日本語.ts\n./plain file.ts\r\n', '本');
+
+    const handler: ((event: unknown, request: unknown) => Promise<unknown>) | undefined =
+      captured.handlers.get(SearchChannel.ListFiles);
+    const listed: unknown = await handler!(null, root);
+
+    expect(listed).toEqual(['src/日本語.ts', 'plain file.ts']);
+  });
+
   it('run_withoutPaths_searchesTheWholeRoot', async () => {
     await search();
 
     expect(captured.spawns).toHaveLength(1);
     expect(captured.spawns[0].cwd).toBe(root);
     expect(captured.spawns[0].args.slice(-3)).toEqual(['--', 'name', '.']);
+    expect(captured.spawns[0].args).toContain('--glob=!.git');
+  });
+
+  it('run_withTheFindPanelsFilters_narrowsAndWidensTheFilesRead', async () => {
+    await search({
+      files: { include: ['*.ts'], exclude: ['*.d.ts'], ignored: true, hidden: true },
+    });
+
+    const args: readonly string[] = captured.spawns[0].args;
+    expect(args).toEqual(
+      expect.arrayContaining([
+        '--no-ignore',
+        '--hidden',
+        '--glob=*.ts',
+        '--glob=!*.d.ts',
+        '--glob=!.git',
+      ]),
+    );
+  });
+
+  it('run_searchingExcludedFiles_readsHiddenFolders_andDropsTheirExclusion', async () => {
+    await search({ files: { excluded: true } });
+
+    expect(captured.spawns[0].args).toContain('--hidden');
+    expect(captured.spawns[0].args).not.toContain('--glob=!.git');
+  });
+
+  it('run_byDefault_leavesIgnoredAndHiddenFilesOut', async () => {
+    await search();
+
+    expect(captured.spawns[0].args).not.toContain('--no-ignore');
+    expect(captured.spawns[0].args).not.toContain('--hidden');
+  });
+
+  it('run_withTheSearchSettings_passesTheirLimitsOn', async () => {
+    await search({ limits: { maxFileSizeMegabytes: 50, followSymlinks: true, timeoutSeconds: 0 } });
+
+    expect(captured.spawns[0].args).toEqual(
+      expect.arrayContaining(['--max-filesize=50M', '--follow']),
+    );
+  });
+
+  it('run_cappedAtTheSetMaximum', async () => {
+    const match: string = JSON.stringify({
+      type: 'match',
+      data: {
+        path: { text: 'a.ts' },
+        line_number: 1,
+        lines: { text: 'name\n' },
+        submatches: [
+          { start: 0, end: 4, match: { text: 'name' } },
+          { start: 5, end: 9, match: { text: 'name' } },
+        ],
+      },
+    });
+    captured.output = `${match}\n${match}\n${match}\n`;
+
+    const response: SearchResponse = await search({ limits: { maxResults: 2 } });
+
+    expect(response.total).toBe(2);
+    expect(response.capped).toBe(true);
+    expect(response.files[0].matches[0].occurrences).toBe(2);
+  });
+
+  it('run_rejectsLimitsThatCouldNotBeRun', async () => {
+    await search({ limits: { maxResults: 0 } });
+    await search({ limits: { timeoutSeconds: -1 } });
+
+    expect(captured.spawns).toHaveLength(0);
   });
 
   it('run_withAPathInsideTheRoot_searchesItRootRelative_andLabelsResultsFromTheRoot', async () => {

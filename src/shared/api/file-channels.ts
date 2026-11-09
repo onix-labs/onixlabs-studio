@@ -1,3 +1,5 @@
+import type { TextEncoding } from './text-encodings';
+
 /**
  * Names the file-system and file-dialog IPC channels, and the types their payloads carry. This is the
  * file capability's slice of the IPC contract: the shared file-system/file-watch clients and the
@@ -17,6 +19,12 @@ export enum FileChannel {
   Write = 'file:write',
 
   /**
+   * Writes bytes to a path, replacing what was there (invoke) — a file Studio produces rather than a
+   * text document it edits, such as an exported spreadsheet.
+   */
+  WriteBytes = 'file:write-bytes',
+
+  /**
    * Starts watching a file for on-disk changes (renderer→main, invoke).
    */
   Watch = 'file:watch',
@@ -30,6 +38,11 @@ export enum FileChannel {
    * Notifies the renderer that a watched file changed on disk (main→renderer, send).
    */
   Changed = 'file:changed',
+
+  /**
+   * Notifies the renderer that a watched file is gone from disk (main→renderer, send).
+   */
+  Removed = 'file:removed',
 
   /**
    * Starts watching a directory tree recursively for on-disk changes (renderer→main, invoke).
@@ -129,16 +142,24 @@ export interface FileInfo {
   readonly content: string;
 
   /**
-   * Gets the text encoding the file was read as (currently always "UTF-8"). Absent on file infos
-   * synthesised outside the read path, where the consumer assumes UTF-8.
+   * Gets the text encoding the file was read in (#1236). Absent on file infos synthesised outside the
+   * read path, where the consumer assumes UTF-8.
    */
-  readonly encoding?: string;
+  readonly encoding?: TextEncoding;
 
   /**
-   * Gets a value indicating whether the file began with a UTF-8 byte-order mark, so it can be
+   * Gets a value indicating whether the file began with its encoding's byte-order mark, so it can be
    * preserved when the file is written back. Absent (treated as false) on synthesised file infos.
    */
   readonly hasBom?: boolean;
+
+  /**
+   * Gets a value indicating whether the file may only be read: shown in an editor that cannot change
+   * it, and never saved. Set by the main process for a file it lets the editor open only to look at —
+   * a language server's decompiled source for a framework or package symbol (#1133). Absent means
+   * editable.
+   */
+  readonly readOnly?: boolean;
 }
 
 /**

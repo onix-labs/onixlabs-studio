@@ -453,8 +453,8 @@ test.describe('editor widgets (#1024)', () => {
     const dialog: Page = await app.waitForEvent('window', {
       predicate: (window: Page): boolean => isModalWindow(window) && !before.includes(window),
     });
-    await expect(dialog.getByText('Remove unusual line terminators?')).toBeVisible();
-    await dialog.getByRole('button', { name: 'Remove Them' }).click();
+    await expect(dialog.getByText('Remove Unusual Line Terminators?')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Remove' }).click();
     await expect
       .poll((): Promise<string> =>
         page.evaluate(

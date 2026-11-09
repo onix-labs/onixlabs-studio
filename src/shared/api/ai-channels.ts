@@ -15,9 +15,11 @@ import type {
   AiEditDecisionReply,
   AiEvent,
   AiInputReply,
+  AiPermissionGrant,
   AiPermissionReply,
   AiProviderInfo,
   AiRemoteControlMode,
+  AiRevokePermissionGrant,
   AiRunRequest,
   AiSetConnectionKeyRequest,
   AiSteerRequest,
@@ -158,6 +160,21 @@ export enum AiChannel {
    * Sends the user's answer to a permission request back to the main process (renderer→main, send).
    */
   PermissionReply = 'ai:permission-reply',
+
+  /**
+   * Lists the remembered permission grants (invoke).
+   */
+  ListPermissionGrants = 'ai:list-permission-grants',
+
+  /**
+   * Revokes a remembered permission grant, and returns whether that was saved (invoke).
+   */
+  RevokePermissionGrant = 'ai:revoke-permission-grant',
+
+  /**
+   * Returns the tools whose old tool-wide grants were dropped, once (invoke).
+   */
+  TakeNarrowedGrants = 'ai:take-narrowed-grants',
 
   /**
    * Sends the user's answer to an input request (an agent question) back to the main process
@@ -339,6 +356,26 @@ export interface AiClient {
    * @param reply The reply.
    */
   respondPermission(reply: AiPermissionReply): void;
+
+  /**
+   * Lists the remembered permission grants.
+   * @returns Resolves to the grants.
+   */
+  listPermissionGrants(): Promise<readonly AiPermissionGrant[]>;
+
+  /**
+   * Revokes a remembered permission grant, so the next use asks again.
+   * @param request The grant to revoke.
+   * @returns Resolves to false when the revocation could not be saved, so it would come back at the
+   * next launch.
+   */
+  revokePermissionGrant(request: AiRevokePermissionGrant): Promise<boolean>;
+
+  /**
+   * Takes the tools whose old tool-wide grants were dropped, for the one-time notice that says so.
+   * @returns Resolves to the tools; a later call gets none of them again.
+   */
+  takeNarrowedGrants(): Promise<readonly string[]>;
 
   /**
    * Sends the user's answer to an input request (an agent question) back to the main process.

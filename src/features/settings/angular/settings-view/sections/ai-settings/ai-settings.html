@@ -1,22 +1,63 @@
 <!-- General: settings that apply to every agent, whichever provider it runs through. -->
 @if (view() === 'general') {
+  <!-- What a new conversation starts with. Hidden until a provider is installed and configured:
+       there is nothing to choose before then. -->
+  @if (providerOptions().length > 0) {
+    <section class="ai-group">
+      <app-setting-row
+        label="Default Provider and Model"
+        description="The provider and model a new conversation starts with. Each conversation can still choose its own."
+      >
+        <div class="ai-default-model">
+          <app-dropdown
+            ariaLabel="Default provider"
+            [options]="providerOptions()"
+            [value]="defaultProvider()"
+            (valueChange)="onDefaultProviderChange($event)"
+          />
+          <app-dropdown
+            ariaLabel="Default model"
+            [options]="modelOptions()"
+            [value]="defaultModel()"
+            [disabled]="modelOptions().length === 0"
+            (valueChange)="onDefaultModelChange($event)"
+          />
+        </div>
+      </app-setting-row>
+
+      <app-setting-row
+        label="Default Reasoning Effort"
+        description="How hard a new conversation thinks before it answers. Where a provider lacks the level, the nearest one it offers is used. /effort changes it for one conversation."
+      >
+        <app-setting-control key="ai.defaultReasoningEffort" />
+      </app-setting-row>
+
+      <app-setting-row
+        label="Maximum Agent Steps per Turn"
+        description="How many steps, each a model reply or a tool call, one turn may take before the agent stops. Applies to OpenAI, Gemini, DeepSeek, Grok, Ollama and other compatible providers; Claude and Codex run their own loop."
+      >
+        <app-setting-control key="ai.maxStepsPerTurn" />
+      </app-setting-row>
+    </section>
+  }
+
   <section class="ai-group">
     <app-setting-row
-      label="Auto-scroll transcripts"
+      label="Auto-Scroll Transcripts"
       description="Keep agent conversations pinned to the newest message as the response streams. Scrolling up pauses the follow; scrolling back to the bottom resumes it. Applies to every agent view."
     >
       <app-setting-control key="ai.autoScroll" />
     </app-setting-row>
 
     <app-setting-row
-      label="Conversation text size"
+      label="Conversation Text Size"
       description="How large agent conversations render: the transcript, and the prompt you type into. Applies to every agent view."
     >
       <app-setting-control key="ai.conversationTextSize" />
     </app-setting-row>
 
     <app-setting-row
-      label="Report background tasks back"
+      label="Report Background Tasks Back"
       description="When a task the agent backgrounded finishes, let the agent pick the conversation back up and tell you what it found, rather than only noting that it finished. The agent resumes on its own and spends tokens to do it, so turn this off to keep an idle conversation idle."
     >
       <app-setting-control key="ai.reportBackgroundTasks" />
@@ -25,36 +66,110 @@
     <app-ai-remote-notifications />
 
     <app-setting-row
-      label="Per-request token cap"
+      label="Per-Request Token Cap"
       description="Token budget per turn. 0 means no cap (the provider default)."
     >
       <app-setting-control key="ai.tokenCap" />
     </app-setting-row>
 
     <app-setting-row
-      label="Run timeout"
+      label="Run Timeout"
       description="How long a single agent run may take before it is cancelled, in minutes."
     >
       <app-setting-control key="ai.runTimeoutMinutes" />
     </app-setting-row>
 
     <app-setting-row
-      label="Keep agent sessions alive for"
+      label="Keep Agent Sessions Alive For"
       description="How long an idle agent keeps its live session — and its background process — before it is reaped to free resources. The conversation reopens transparently on your next message, keeping its context. 'Indefinitely' never reaps on idle."
     >
       <app-setting-control key="ai.agentSessionLifetime" />
     </app-setting-row>
 
     <app-setting-row
-      label="Agent shell"
-      description="The shell whose profile the agent sources its environment (PATH, tokens) from. Choose an installed shell, or use the default login shell."
+      label="Maximum Live Agent Sessions"
+      description="How many agent conversations keep a live session, and its background process, open at once. Beyond this the least recently used is closed; it reopens on its next message."
     >
-      <app-shell-picker
-        defaultLabel="Default login shell"
-        [value]="agentShell()"
-        (valueChange)="onAgentShellChange($event)"
-      />
+      <app-setting-control key="ai.maxLiveSessions" />
     </app-setting-row>
+  </section>
+
+  <section class="ai-group">
+    <app-setting-row
+      label="Send Message With"
+      description="The key that sends a message. The other two insert a new line."
+    >
+      <app-setting-control key="ai.sendMessageWith" />
+    </app-setting-row>
+
+    <app-setting-row
+      label="Images per Message"
+      description="The most images one message can carry. A provider's own limit still applies."
+    >
+      <app-setting-control key="ai.maxImagesPerMessage" />
+    </app-setting-row>
+
+    <app-setting-row
+      label="Size per Image"
+      description="The largest image that can be attached. A provider's own limit still applies."
+    >
+      <app-setting-control key="ai.maxImageSizeMb" />
+    </app-setting-row>
+
+    <app-setting-row
+      label="Expand Tool Calls"
+      description="Show each tool call open, with its input and output, rather than folded."
+    >
+      <app-setting-control key="ai.expandToolCalls" />
+    </app-setting-row>
+
+    <app-setting-row
+      label="Expand Thinking"
+      description="Show the agent's reasoning open, rather than folded behind its label."
+    >
+      <app-setting-control key="ai.expandThinking" />
+    </app-setting-row>
+
+    <app-setting-row
+      label="Confirm Before Deleting Conversations"
+      description="Ask before conversations are deleted from the conversation list."
+    >
+      <app-setting-control key="ai.confirmDeleteConversations" />
+    </app-setting-row>
+  </section>
+
+  <section class="ai-group">
+    <app-setting-row
+      label="Auto-Compact Threshold"
+      description="How full a conversation's context window gets before it is compacted into a summary. Only where the window is known."
+    >
+      <app-setting-control key="ai.autoCompactThreshold" />
+    </app-setting-row>
+
+    @if (autoCompactThreshold() > 0) {
+      <app-setting-row
+        label="At Threshold"
+        description="Ask first, with a Compact button above the message box, or compact on its own."
+      >
+        <app-setting-control key="ai.autoCompactMode" />
+      </app-setting-row>
+    }
+
+    <app-setting-row
+      label="Delete Conversations After"
+      description="Delete saved conversations that have had no new messages for this long. Checked when Studio starts."
+    >
+      <app-setting-control key="ai.deleteConversationsAfterDays" />
+    </app-setting-row>
+
+    @if (deleteConversationsAfterDays() > 0) {
+      <app-setting-row
+        label="When Conversations Are Due"
+        description="Ask first, offering to review which go, or delete them on their own."
+      >
+        <app-setting-control key="ai.deleteConversationsMode" />
+      </app-setting-row>
+    }
   </section>
 }
 
@@ -62,14 +177,14 @@
 @if (view() === 'security') {
   <section class="ai-group">
     <app-setting-row
-      label="Permission posture"
+      label="Permission Posture"
       description="How much the agent may do before asking you."
     >
       <app-setting-control key="ai.permissionPosture" />
     </app-setting-row>
 
     <app-setting-row
-      label="Remote control posture"
+      label="Remote Control Posture"
       description="How much a remote peer may do on an agent you expose via Remote Control. Each agent chooses only whether it is exposed; this decides what that exposure means. Full Control lets a peer drive the session; Read-Only lets them watch it."
     >
       <app-setting-control key="ai.remoteControlPosture" />
@@ -78,15 +193,31 @@
     <app-ai-tool-policies />
 
     <app-setting-row
-      label="Keep agents off the code host's command-line tool"
+      label="Keep Agents off the Code Host's Command-Line Tool"
       description="While a code-hosting plugin serves the repository, agents may not run that host's own command-line tool (gh for GitHub) and go through the plugin instead, which asks before it changes anything. Enforced for Claude and for providers that run commands through Studio's terminal; Codex is only told."
     >
       <app-setting-control key="ai.blockHostCommandLine" />
     </app-setting-row>
 
+    <app-setting-row
+      label="Require OS Sandbox"
+      description="Refuse the agent's shell commands on a machine with no OS sandbox, and say why, rather than run them unprotected. macOS always has one; Linux needs bubblewrap and socat; Windows has none. Applies to Claude; Codex always runs in its own sandbox."
+    >
+      <app-setting-control key="ai.requireOsSandbox" />
+    </app-setting-row>
+
+    <app-setting-row
+      label="Auto-Allow Sandboxed Shell Commands"
+      description="Let a shell command that runs inside the OS sandbox go ahead without asking. A command that asks to leave the sandbox still asks, and a tool set to Deny stays denied. Applies to Claude."
+    >
+      <app-setting-control key="ai.autoAllowSandboxedShell" />
+    </app-setting-row>
+
     <app-ai-write-paths />
 
     <app-ai-network-locations />
+
+    <app-ai-remembered-grants />
   </section>
 }
 

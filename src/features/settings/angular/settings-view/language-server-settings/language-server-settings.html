@@ -13,7 +13,7 @@
 
   @if (hasChoice()) {
     <app-setting-row
-      label="Language server"
+      label="Language Server"
       description="Which of the installed servers serves this language."
     >
       <app-dropdown
@@ -35,6 +35,53 @@
       (checkedChange)="setEnabled($event)"
     />
   </app-setting-row>
+
+  @for (setting of declaredSettings(); track setting.descriptor.section) {
+    <ng-container
+      [ngTemplateOutlet]="declaredRow"
+      [ngTemplateOutletContext]="{ $implicit: setting }"
+    />
+  }
+
+  @if (advancedSettings().length > 0) {
+    <app-accordion heading="Advanced">
+      @for (setting of advancedSettings(); track setting.descriptor.section) {
+        <ng-container
+          [ngTemplateOutlet]="declaredRow"
+          [ngTemplateOutletContext]="{ $implicit: setting }"
+        />
+      }
+    </app-accordion>
+  }
+
+  <ng-template #declaredRow let-setting>
+    <app-setting-row
+      [label]="setting.descriptor.label"
+      [description]="setting.descriptor.description"
+    >
+      @if (setting.options.length > 0) {
+        <app-dropdown
+          [options]="setting.options"
+          [value]="setting.choice"
+          [ariaLabel]="setting.descriptor.label"
+          (valueChange)="setDeclared(setting, $event)"
+        />
+      } @else if (setting.text) {
+        <app-text-field
+          [value]="setting.choice"
+          [ariaLabel]="setting.descriptor.label"
+          [placeholder]="setting.descriptor.default"
+          (valueChange)="setDeclared(setting, $event)"
+        />
+      } @else {
+        <app-toggle
+          [checked]="setting.value === true"
+          [ariaLabel]="setting.descriptor.label"
+          (checkedChange)="setDeclared(setting, $event)"
+        />
+      }
+    </app-setting-row>
+  </ng-template>
 
   <app-setting-row
     label="Arguments"

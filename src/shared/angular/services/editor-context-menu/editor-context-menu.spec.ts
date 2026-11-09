@@ -9,6 +9,7 @@ import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { LspDefinition, LspFeatures } from '@shared/angular/services/lsp/lsp-features';
 import { captureEditorCapabilities } from '@shared/angular/services/monaco/monaco-editor-capabilities';
 import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
+import { HierarchyKind, HierarchyRouter } from '@shared/angular/services/hierarchy/hierarchy';
 import type {
   ReferenceItem,
   ReferenceList,
@@ -244,6 +245,14 @@ describe('EditorContextMenu (#1012)', () => {
     references: Mock<LspFeatures['references']>;
     servesRename: Mock<LspFeatures['servesRename']>;
     servesCodeActions: Mock<LspFeatures['servesCodeActions']>;
+    servesNavigation: Mock<LspFeatures['servesNavigation']>;
+    implementations: Mock<LspFeatures['implementations']>;
+    typeDefinitions: Mock<LspFeatures['typeDefinitions']>;
+    servesSourceDefinition: Mock<LspFeatures['servesSourceDefinition']>;
+    sourceDefinitions: Mock<LspFeatures['sourceDefinitions']>;
+    servesParentModule: Mock<LspFeatures['servesParentModule']>;
+    servesCargoManifest: Mock<LspFeatures['servesCargoManifest']>;
+    servesProjectConfiguration: Mock<LspFeatures['servesProjectConfiguration']>;
   };
   let opener: { openPath: Mock<(path: string) => Promise<boolean>> };
 
@@ -277,6 +286,22 @@ describe('EditorContextMenu (#1012)', () => {
       ),
       servesRename: vi.fn<LspFeatures['servesRename']>((): boolean => false),
       servesCodeActions: vi.fn<LspFeatures['servesCodeActions']>((): boolean => false),
+      servesNavigation: vi.fn<LspFeatures['servesNavigation']>((): boolean => false),
+      implementations: vi.fn<LspFeatures['implementations']>(
+        (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
+      typeDefinitions: vi.fn<LspFeatures['typeDefinitions']>(
+        (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
+      servesSourceDefinition: vi.fn<LspFeatures['servesSourceDefinition']>((): boolean => false),
+      sourceDefinitions: vi.fn<LspFeatures['sourceDefinitions']>(
+        (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
+      servesParentModule: vi.fn<LspFeatures['servesParentModule']>((): boolean => false),
+      servesCargoManifest: vi.fn<LspFeatures['servesCargoManifest']>((): boolean => false),
+      servesProjectConfiguration: vi.fn<LspFeatures['servesProjectConfiguration']>(
+        (): boolean => false,
+      ),
     };
     opener = {
       openPath: vi.fn<(path: string) => Promise<boolean>>((): Promise<boolean> =>
@@ -353,6 +378,175 @@ describe('EditorContextMenu (#1012)', () => {
       lsp.servesDocument.mockReturnValue(false);
       monaco.languages.registerDefinitionProvider('csharp', { provideDefinition: () => null });
       expect(rowOf(menu.itemsFor(editor), 'definition')).toBeDefined();
+    });
+
+    it('typeDefinitionAndImplementation_shownWhereTheServerAnswersThem_afterGoToDefinition (#1142)', () => {
+      const menu: EditorContextMenu = build('darwin');
+      const { editor } = fakeEditor({ language: 'csharp' });
+      lsp.servesDocument.mockReturnValue(true);
+
+      expect(rowOf(menu.itemsFor(editor), 'implementation')).toBeUndefined();
+      expect(rowOf(menu.itemsFor(editor), 'typeDefinition')).toBeUndefined();
+
+      lsp.servesNavigation.mockReturnValue(true);
+      const items: readonly MenuItem[] = menu.itemsFor(editor);
+
+      expect(idsOf(items).slice(0, 4)).toEqual([
+        'definition',
+        'declaration',
+        'typeDefinition',
+        'implementation',
+      ]);
+      expect(rowOf(items, 'declaration')).toEqual({
+        id: 'declaration',
+        label: 'Go to Declaration',
+      });
+      expect(rowOf(items, 'sourceHeader')).toMatchObject({
+        label: 'Switch Header/Source',
+        shortcut: '⌘K ⌘O',
+      });
+      expect(rowOf(items, 'implementation')).toMatchObject({
+        label: 'Go to Implementation',
+        shortcut: '⌘F12',
+      });
+      // No chord for Go to Type Definition: it shows none rather than an empty hint.
+      expect(rowOf(items, 'typeDefinition')).toEqual({
+        id: 'typeDefinition',
+        label: 'Go to Type Definition',
+      });
+    });
+
+    it('sourceDefinition_shownWhereTheServerRunsIt_afterGoToTypeDefinition (#1207)', () => {
+      const menu: EditorContextMenu = build('darwin');
+      const { editor } = fakeEditor({ language: 'typescript' });
+      lsp.servesDocument.mockReturnValue(true);
+      lsp.servesNavigation.mockReturnValue(true);
+
+      expect(rowOf(menu.itemsFor(editor), 'sourceDefinition')).toBeUndefined();
+
+      lsp.servesSourceDefinition.mockReturnValue(true);
+      const items: readonly MenuItem[] = menu.itemsFor(editor);
+
+      expect(idsOf(items).slice(0, 4)).toEqual([
+        'definition',
+        'declaration',
+        'typeDefinition',
+        'sourceDefinition',
+      ]);
+      expect(rowOf(items, 'sourceDefinition')).toEqual({
+        id: 'sourceDefinition',
+        label: 'Go to Source Definition',
+      });
+    });
+
+    it('goToProjectConfiguration_shownWhereTheServerAnswersIt (#1207)', () => {
+      const menu: EditorContextMenu = build('darwin');
+      const { editor } = fakeEditor({ language: 'typescript' });
+      lsp.servesDocument.mockReturnValue(true);
+
+      expect(rowOf(menu.itemsFor(editor), 'projectConfiguration')).toBeUndefined();
+
+      lsp.servesProjectConfiguration.mockReturnValue(true);
+
+      expect(rowOf(menu.itemsFor(editor), 'projectConfiguration')).toEqual({
+        id: 'projectConfiguration',
+        label: 'Go to Project Configuration',
+      });
+    });
+
+    it('theServersViews_eachShownWhereItGivesThem_inAGroupOfTheirOwn (#1210, #1213)', () => {
+      const menu: EditorContextMenu = build('darwin');
+      const { editor } = fakeEditor({ language: 'rust' });
+      lsp.servesDocument.mockReturnValue(true);
+
+      expect(rowOf(menu.itemsFor(editor), 'expandMacro')).toBeUndefined();
+
+      const views: readonly string[] = ['expandMacro', 'hir', 'mir'];
+      lsp.servesNavigation.mockImplementation(
+        (_model: MonacoApi.editor.ITextModel, kind: string): boolean => views.includes(kind),
+      );
+      const items: readonly MenuItem[] = menu.itemsFor(editor);
+
+      expect(rowOf(items, 'expandMacro')).toEqual({ id: 'expandMacro', label: 'Expand Macro' });
+      expect(rowOf(items, 'hir')).toEqual({ id: 'hir', label: 'View HIR' });
+      expect(rowOf(items, 'mir')).toEqual({ id: 'mir', label: 'View MIR' });
+      expect(rowOf(items, 'syntaxTree')).toBeUndefined();
+      expect(rowOf(items, 'memoryUsage')).toBeUndefined();
+      // After Go to Line, behind a separator.
+      const line: number = items.findIndex((item: MenuItem): boolean => item.id === 'line');
+      expect(items[line + 1].separator).toBe(true);
+      expect(items[line + 2].id).toBe('expandMacro');
+    });
+
+    it('clangdsViews_areShowSyntaxTree_andShowServerMemoryUsage (#1213)', () => {
+      const menu: EditorContextMenu = build('darwin');
+      const { editor } = fakeEditor({ language: 'cpp' });
+      lsp.servesDocument.mockReturnValue(true);
+      lsp.servesNavigation.mockImplementation(
+        (_model: MonacoApi.editor.ITextModel, kind: string): boolean =>
+          kind === 'syntaxTree' || kind === 'memoryUsage',
+      );
+      const items: readonly MenuItem[] = menu.itemsFor(editor);
+
+      expect(rowOf(items, 'syntaxTree')).toEqual({ id: 'syntaxTree', label: 'Show Syntax Tree' });
+      expect(rowOf(items, 'memoryUsage')).toEqual({
+        id: 'memoryUsage',
+        label: 'Show Server Memory Usage',
+      });
+    });
+
+    it('rustAnalyzersOwnNavigations_shownWhereTheServerAnswersThem_andNowhereElse (#1210)', () => {
+      const menu: EditorContextMenu = build('darwin');
+      const { editor } = fakeEditor({ language: 'rust' });
+      lsp.servesDocument.mockReturnValue(true);
+
+      expect(rowOf(menu.itemsFor(editor), 'parentModule')).toBeUndefined();
+      expect(rowOf(menu.itemsFor(editor), 'cargoManifest')).toBeUndefined();
+
+      lsp.servesParentModule.mockReturnValue(true);
+      lsp.servesCargoManifest.mockReturnValue(true);
+      const items: readonly MenuItem[] = menu.itemsFor(editor);
+
+      expect(rowOf(items, 'parentModule')).toEqual({
+        id: 'parentModule',
+        label: 'Go to Parent Module',
+      });
+      expect(rowOf(items, 'cargoManifest')).toEqual({
+        id: 'cargoManifest',
+        label: 'Open Cargo.toml',
+      });
+    });
+
+    it('hierarchies_shownWhereTheServerGivesThem_andAWorkspaceShowsThem_withRidersChords (#1153)', () => {
+      const menu: EditorContextMenu = build('darwin');
+      const { editor } = fakeEditor({ language: 'csharp' });
+      lsp.servesDocument.mockReturnValue(true);
+      lsp.servesNavigation.mockReturnValue(true);
+
+      expect(rowOf(menu.itemsFor(editor), 'callHierarchy')).toBeUndefined();
+
+      TestBed.inject(HierarchyRouter).register((): void => undefined);
+      const items: readonly MenuItem[] = menu.itemsFor(editor);
+      const shown: string[] = [];
+      vi.spyOn(TestBed.inject(EditorNavigation), 'showHierarchy').mockImplementation(
+        (_editor: unknown, kind: HierarchyKind): Promise<void> => {
+          shown.push(kind);
+          return Promise.resolve();
+        },
+      );
+      menu.run('callHierarchy', editor);
+      menu.run('typeHierarchy', editor);
+
+      expect(rowOf(items, 'callHierarchy')).toMatchObject({
+        label: 'Show Call Hierarchy',
+        shortcut: '⌃⌥H',
+      });
+      expect(rowOf(items, 'typeHierarchy')).toMatchObject({
+        label: 'Show Type Hierarchy',
+        shortcut: '⌃⇧H',
+      });
+      expect(idsOf(items).indexOf('typeHierarchy')).toBeLessThan(idsOf(items).indexOf('symbol'));
+      expect(shown).toEqual(['calls', 'types']);
     });
 
     it('find_disabledWhereNothingAnswers_andFormatSelection_withNothingSelected', () => {

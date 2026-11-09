@@ -60,13 +60,37 @@
         {{ document.language }}
       </button>
     }
+    @if (document.indent) {
+      <span
+        class="dock-status-strip__segment"
+        data-testid="status-indent"
+        [attr.title]="titleFor('indent', 'Indentation')"
+      >
+        {{ document.indent }}
+      </span>
+    }
     @if (document.eol) {
-      <button type="button" class="dock-status-strip__segment" title="Select end of line sequence">
+      <!-- Opens the line-ending menu when the document can change them; otherwise shows them. -->
+      <button
+        type="button"
+        class="dock-status-strip__segment"
+        [attr.title]="titleFor('eol', 'Select end of line sequence')"
+        data-testid="status-eol"
+        [cdkMenuTriggerFor]="document.actions?.setEol ? (eolMenu.panel() ?? null) : null"
+        [cdkMenuPosition]="eolMenu.position()"
+      >
         {{ document.eol }}
       </button>
     }
     @if (document.encoding) {
-      <button type="button" class="dock-status-strip__segment" title="Select encoding">
+      <button
+        type="button"
+        class="dock-status-strip__segment"
+        [attr.title]="titleFor('encoding', 'Select encoding')"
+        data-testid="status-encoding"
+        [cdkMenuTriggerFor]="encodingItems().length > 0 ? (encodingMenu.panel() ?? null) : null"
+        [cdkMenuPosition]="encodingMenu.position()"
+      >
         {{ document.encoding }}
       </button>
     }
@@ -101,3 +125,10 @@
 }
 
 <app-menu #zoomMenu [items]="zoomItems()" placement="up-end" (selected)="setZoom($event)" />
+<app-menu #eolMenu [items]="eolItems()" placement="up-end" (selected)="setEol($event)" />
+<app-menu
+  #encodingMenu
+  [items]="encodingItems()"
+  placement="up-end"
+  (selected)="chooseEncoding($event)"
+/>

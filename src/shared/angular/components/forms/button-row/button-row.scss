@@ -27,3 +27,14 @@
   inline-size: auto;
   margin-inline-start: 0;
 }
+
+// Each button sized to its own label, wrapping rather than leaving a narrow panel.
+:host(.button-row--fit) {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+:host(.button-row--fit.button-row--start) {
+  justify-content: flex-start;
+}

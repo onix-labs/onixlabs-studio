@@ -1,3 +1,4 @@
+import type { MenuItem } from '@shared/angular/components/menu/menu';
 import { Icon } from '@shared/angular/icons/icon';
 
 /**
@@ -32,4 +33,25 @@ export interface StatusSegment {
    * out of the strip whole rather than being cut through.
    */
   readonly shrink?: 'start' | 'end';
+
+  /**
+   * Gets a menu the segment opens when clicked, or undefined for a segment that only shows its text.
+   */
+  readonly menu?: StatusSegmentMenu;
+}
+
+/**
+ * Describes the menu a status-strip segment opens: its rows, and what choosing one does.
+ */
+export interface StatusSegmentMenu {
+  /**
+   * Gets the rows.
+   */
+  readonly items: readonly MenuItem[];
+
+  /**
+   * Runs the chosen row.
+   * @param id The chosen row's identifier.
+   */
+  readonly choose: (id: string) => void;
 }

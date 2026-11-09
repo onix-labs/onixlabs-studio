@@ -1,7 +1,10 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
+  DestroyRef,
   effect,
+  ElementRef,
   inject,
   input,
   InputSignal,
@@ -16,12 +19,22 @@ import {
 } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Log } from '@shared/angular/services/log/log';
+import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { Printing } from '@shared/angular/services/printing/printing';
+import { CodePrintToken, renderCodePrint } from './code-print';
+import { resolveDefaultEol } from '@shared/angular/services/documents/document-defaults';
+import { Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
+import { changedLineRanges } from '@features/code/angular/change-margin/changed-line-ranges';
 import {
   TextEditor,
   TextEditorCursor,
   TextEditorEol,
 } from '@shared/angular/components/text-editor/text-editor';
-import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
+import {
+  CodeDocument,
+  CodeViewToggles,
+  Documents,
+} from '@shared/angular/services/documents/documents';
 import { Breakpoint, Breakpoints } from '@shared/angular/services/debug/breakpoints';
 import { DebugLocation, Debugger } from '@shared/angular/services/debug/debugger';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
@@ -49,8 +62,7 @@ const NEW_DOCUMENT_NAME: string = 'New Document';
  * and the fold chevron (a `firstLineDecorationClassName`). Left at its narrow default they overlapped —
  * the chevron sat on top of the bar. The lane is widened to hold both side by side, and CSS pins the
  * bar to the left edge (against the line numbers) and the chevron to the right edge (against the code);
- * see `_change-margin.scss` and `_folding.scss`. The chevrons are shown always (not only on hover) so
- * the fold column reads as a stable gutter rather than appearing under the pointer.
+ * see `_change-margin.scss` and `_folding.scss`.
  */
 const CODE_EDITOR_OPTIONS: MonacoApi.editor.IEditorOptions = {
   glyphMargin: true,
@@ -58,7 +70,6 @@ const CODE_EDITOR_OPTIONS: MonacoApi.editor.IEditorOptions = {
   // Room for the change-margin bar (a 16px gap, a 4px bar, a 16px gap = 36px) plus the fold control box
   // to its right; see `_change-margin.scss` and `_folding.scss`.
   lineDecorationsWidth: 50,
-  showFoldingControls: 'always',
 };
 
 /**
@@ -86,6 +97,11 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
   private readonly documents: Documents = inject(Documents);
 
   /**
+   * Holds the settings, read for the line ending a new document starts with.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Holds the structured logger for the code document editor's lifecycle and breakpoint actions.
    */
   private readonly log: Log = inject(Log);
@@ -108,10 +124,27 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
   private readonly debugger: Debugger = inject(Debugger);
 
   /**
+   * Holds the shared Monaco loader, whose tokenizer colours the print mirror.
+   */
+  private readonly monaco: Monaco = inject(Monaco);
+
+  /**
+   * Holds the print service, which asks this document to fill its print mirror before each print.
+   */
+  private readonly printing: Printing = inject(Printing);
+
+  /**
+   * Holds the print-only mirror of the whole document, filled just before a print and emptied after.
+   */
+  private readonly printMirror: Signal<ElementRef<HTMLPreElement> | undefined> =
+    viewChild<ElementRef<HTMLPreElement>>('printMirror');
+
+  /**
    * Holds the decorations collection drawing the current-execution-line marker, or null before the
    * editor is ready.
    */
-  private stoppedDecorations: MonacoApi.editor.IEditorDecorationsCollection | null = null;
+  private readonly stoppedDecorations: WritableSignal<MonacoApi.editor.IEditorDecorationsCollection | null> =
+    signal<MonacoApi.editor.IEditorDecorationsCollection | null>(null);
 
   /**
    * Holds the breakpoint-gutter controller once the pane's editor is ready, or null before then (and
@@ -126,9 +159,32 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
   private readonly editor: Signal<TextEditor | undefined> = viewChild<TextEditor>(TextEditor);
 
   /**
-   * Holds the editor options bound to the pane, enabling the glyph margin for the breakpoint gutter.
+   * Gets the editor options bound to the pane: the glyph margin for the breakpoint gutter, and any
+   * view toggle this tab set for itself from the ribbon or tool strip. The pane merges these last, so
+   * a toggle the tab set wins over the setting; an unset one leaves the setting in force.
    */
-  protected readonly editorOptions: MonacoApi.editor.IEditorOptions = CODE_EDITOR_OPTIONS;
+  protected readonly editorOptions: Signal<MonacoApi.editor.IEditorOptions> = computed(
+    (): MonacoApi.editor.IEditorOptions => {
+      const view: CodeViewToggles = this.backingDocument()?.view() ?? {};
+      return {
+        ...CODE_EDITOR_OPTIONS,
+        ...(view.wordWrap === undefined ? {} : { wordWrap: view.wordWrap ? 'on' : 'off' }),
+        ...(view.minimap === undefined ? {} : { minimap: { enabled: view.minimap } }),
+        ...(view.lineNumbers === undefined ? {} : { lineNumbers: view.lineNumbers ? 'on' : 'off' }),
+      };
+    },
+  );
+
+  /**
+   * Gets the line ending the editor starts a new, never-saved document with (Default End of Line), or
+   * null for a file that exists, which keeps its own.
+   */
+  protected readonly newDocumentEol: Signal<TextEditorEol | null> = computed(
+    (): TextEditorEol | null =>
+      this.backingDocument()?.filePath() === null
+        ? resolveDefaultEol(this.settings.value('textEditor.defaultEol')(), window.host?.platform)
+        : null,
+  );
 
   /**
    * Holds the backing document, or null before initialisation.
@@ -200,6 +256,11 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
   public readonly eolChange: OutputEmitterRef<TextEditorEol> = output<TextEditorEol>();
 
   /**
+   * Emits the label of the indentation in force whenever it changes.
+   */
+  public readonly indentationChange: OutputEmitterRef<string> = output<string>();
+
+  /**
    * Emits whether the editor holds a selection whenever that changes, so the owning leaf can report
    * it against the tab it registered.
    */
@@ -212,6 +273,11 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
   private registeredDocumentId: string | null = null;
 
   /**
+   * Holds the function that stops readying the document for saves, or null before initialisation.
+   */
+  private removeSavePreparer: (() => void) | null = null;
+
+  /**
    * Initialises the component, wiring the effect that focuses the documents service on this document
    * while the owning leaf is active.
    */
@@ -221,6 +287,9 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
         this.documents.setActiveDocument(this.documentId());
       }
     });
+    inject(DestroyRef).onDestroy(
+      this.printing.registerPreparer((): (() => void) | void => this.preparePrint()),
+    );
     // Redraw the breakpoint gutter whenever the controller attaches, the document's path changes, or the
     // store changes. An unsaved document (no path) draws nothing.
     effect((): void => {
@@ -236,8 +305,9 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
     effect((): void => {
       const location: DebugLocation | null = this.debugger.stoppedLocation();
       const path: string | null = this.backingDocument()?.filePath() ?? null;
+      // A signal, because a step into a new file stops before that file's editor is ready.
       const collection: MonacoApi.editor.IEditorDecorationsCollection | null =
-        this.stoppedDecorations;
+        this.stoppedDecorations();
       if (collection === null) {
         return;
       }
@@ -271,6 +341,11 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
     this.registeredDocumentId = this.documentId();
     this.log.debug('code.document', 'Resolving backing document', this.documentId());
     this.backingDocument.set(this.documents.ensure(this.documentId(), NEW_DOCUMENT_NAME));
+    this.removeSavePreparer = this.documents.registerSavePreparer(
+      this.documentId(),
+      (settings: TextEditorSettings, savedContent: string): Promise<void> =>
+        this.prepareSave(settings, savedContent),
+    );
   }
 
   /**
@@ -283,6 +358,8 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
     if (id === null) {
       return;
     }
+    this.removeSavePreparer?.();
+    this.removeSavePreparer = null;
     if (this.documents.activeDocumentId() === id) {
       this.documents.setActiveDocument(null);
     }
@@ -293,6 +370,70 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
     if (controller !== null) {
       this.breakpointGutter.detach(controller);
       this.breakpointController.set(null);
+    }
+  }
+
+  /**
+   * Does in the editor what the settings ask of a save. Sequenced, not fired together: organising
+   * imports rewrites the very lines the formatter would otherwise lay out.
+   * @param settings The code settings for the document's language.
+   * @param savedContent The text last saved, which Changed Lines Only compares with.
+   * @returns Returns a promise that resolves once the document is ready.
+   */
+  private async prepareSave(settings: TextEditorSettings, savedContent: string): Promise<void> {
+    const pane: TextEditor | undefined = this.editor();
+    if (pane === undefined) {
+      return;
+    }
+    if (settings.organiseImportsOnSave) {
+      await pane.organizeImportsForSave();
+    }
+    if (settings.formatOnSave === 'whole') {
+      await pane.runActionForSave('editor.action.formatDocument');
+    } else if (settings.formatOnSave === 'changed') {
+      await pane.formatLinesForSave(changedLineRanges(savedContent, pane.getValue()));
+    }
+  }
+
+  /**
+   * Fills the print mirror with the whole document when this is the document being printed: coloured
+   * by its syntax and numbered as the Printing settings choose. Monaco virtualises its rows, so the
+   * editor itself would print only what is on screen.
+   * @returns Returns the step that empties the mirror after the print, or nothing when this document
+   * is not the one printed.
+   */
+  private preparePrint(): (() => void) | void {
+    const target: HTMLPreElement | undefined = this.printMirror()?.nativeElement;
+    const document: CodeDocument | null = this.backingDocument();
+    if (!this.isActive() || target === undefined || document === null) {
+      return;
+    }
+    const content: string = document.content();
+    renderCodePrint(target, content, {
+      tokens: this.settings.get('printing.syntaxColours')
+        ? this.tokenize(content, document.language())
+        : null,
+      lineNumbers: this.settings.get('printing.lineNumbers'),
+    });
+    return (): void => target.replaceChildren();
+  }
+
+  /**
+   * Tokenizes the document for the print palette with Monaco's grammar for its language.
+   * @param content The document's text.
+   * @param language The document's Monaco language id.
+   * @returns Returns each line's tokens, or null when Monaco is not loaded or cannot tokenize.
+   */
+  private tokenize(content: string, language: string): CodePrintToken[][] | null {
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    if (monaco === undefined) {
+      return null;
+    }
+    try {
+      return monaco.editor.tokenize(content, language);
+    } catch (error: unknown) {
+      this.log.warn('code.document', 'Could not colour the printed document', error);
+      return null;
     }
   }
 
@@ -336,7 +477,7 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
           (line: number): void => this.openBreakpointEditor(line),
         ),
       );
-      this.stoppedDecorations = editor.createDecorationsCollection([]);
+      this.stoppedDecorations.set(editor.createDecorationsCollection([]));
     }
     this.ready.emit();
   }

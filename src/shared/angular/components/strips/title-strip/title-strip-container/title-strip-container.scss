@@ -12,8 +12,8 @@
 }
 
 // macOS insets its traffic lights over the strip's leading end, so the strip's content starts clear
-// of them.
-:host-context(:root[data-platform='darwin']) {
+// of them — except in full screen, where macOS draws them in the menu bar it slides down instead.
+:host-context(:root[data-platform='darwin']:not([data-full-screen='true'])) {
   padding-inline-start: 5.5rem;
 }
 

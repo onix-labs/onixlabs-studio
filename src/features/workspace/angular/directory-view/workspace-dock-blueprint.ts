@@ -4,9 +4,11 @@ import { OutputPanel } from '@features/workspace/angular/panels/output-panel/out
 import { PackagesPanel } from '@features/workspace/angular/panels/packages-panel/packages-panel';
 import { ProblemsPanel } from '@features/workspace/angular/panels/problems-panel/problems-panel';
 import { ReferencesPanel } from '@features/workspace/angular/panels/references-panel/references-panel';
+import { HierarchyPanel } from '@features/workspace/angular/panels/hierarchy-panel/hierarchy-panel';
 import { SearchPanel } from '@features/workspace/angular/panels/search-panel/search-panel';
 import { SolutionPanel } from '@features/workspace/angular/panels/solution-panel/solution-panel';
 import { TerminalPanel } from '@shared/angular/components/panels/terminal-panel/terminal-panel';
+import { TestsPanel } from '@features/workspace/angular/panels/tests-panel/tests-panel';
 import { TreePanel } from '@features/workspace/angular/panels/tree-panel/tree-panel';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
@@ -115,6 +117,16 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       component: ProblemsPanel,
     },
     {
+      // The Tests panel (#1352): what the installed test adapters found, and how each test last ran.
+      // Catalogued for every workspace tab; the directory view adds it to the bottom group, beside the
+      // Error List, once an installed adapter applies to the folder.
+      id: 'tests',
+      title: 'Tests',
+      icon: Icon.TEST,
+      role: 'tool',
+      component: TestsPanel,
+    },
+    {
       // Find All References' list (#1014): catalogued for every workspace tab but added to the layout
       // only when a search is made, tabbed into the bottom group beside the Error List.
       id: 'references',
@@ -122,6 +134,15 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.REFERENCES,
       role: 'tool',
       component: ReferencesPanel,
+    },
+    {
+      // Show Call Hierarchy's and Show Type Hierarchy's tree (#1153): like References, added to the
+      // layout only when asked for, beside the Error List.
+      id: 'hierarchy',
+      title: 'Hierarchy',
+      icon: Icon.HIERARCHY,
+      role: 'tool',
+      component: HierarchyPanel,
     },
     {
       id: 'terminal',

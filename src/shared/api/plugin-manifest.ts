@@ -11,6 +11,8 @@ import {
   type VersionControlCapability,
   type VersionControlExecutableMode,
 } from './version-control-protocol';
+import { isPackageManagerCapability, PackageManagerCapability } from './package-manager-protocol';
+import { isTestAdapterCapability, TestAdapterCapability } from './test-adapter-protocol';
 
 // The plugin manifest: the declarative description a third-party plugin ships so Studio can install it
 // and register what it contributes, without running any of its code to find out. Keep this module
@@ -137,8 +139,53 @@ import {
  * plugin talks to its engine and Studio talks to the plugin. `cli` names the engine's own command-line
  * tool, looked for on the machine's PATH for the operations that are a terminal session. An engine
  * without a `command` — one built for an older Studio — is listed but cannot be used until updated.
+ *
+ * `1.20.0` adds the `databaseEngines` contribution point (#1095), the slot the Database Explorer is
+ * built on: a plugin process per database engine — SQLite, PostgreSQL, Neo4j — speaking the
+ * database-engine protocol. Unkeyed, and unlike the container engine not a choose-one slot: every
+ * installed engine is live at once, and each saved connection names the engine that makes it. Adds
+ * only.
+ *
+ * `1.21.0` adds a language server's optional `settings` and `settingsDelivery` (#1204): the settings
+ * Studio offers the user for it, as a first-party server declares them, and how the server takes them
+ * — asked for through `workspace/configuration`, pushed in `didChangeConfiguration`, given at start-up
+ * in `initializationOptions`, or a mix. Absent means no settings, asked for, as before. Adds only.
+ *
+ * `1.22.0` adds a hosting contribution's optional `customHosts` (#1233): whether the plugin can serve
+ * hosts the user adds in Settings, such as a GitHub Enterprise server, beside the ones it names.
+ * Absent means no, as before. Adds only.
+ *
+ * `1.23.0` moves the database-engine protocol to 1.4 (#1248), with the manifest's shape unchanged:
+ * execution, connection and tree options, the `transactions` capability and its `transaction` request.
+ * A plugin still on protocol 1.3 keeps working, and ignores what it does not know. Adds only.
+ *
+ * `1.24.0` moves the container-engine protocol to 1.2 (#1250), with the manifest's shape unchanged:
+ * `remove` may take anonymous volumes with the container, and `run` says when the image is missing.
+ * The plugin itself reaches `tcp://` and `ssh://` engine addresses. Adds only.
+ *
+ * `1.25.0` adds the `packageManagers` contribution point (#908), the slot package management moves
+ * behind: npm, NuGet and every other ecosystem become plugins, because core runs no tool of its own
+ * (#907). Keyed by the **marker** files a project carries (`package.json`, `*.csproj`), and unlike
+ * version control not a choice of one: every plugin whose marker a folder holds applies. Adds only.
+ *
+ * `1.26.0` adds a third way to give a language server its settings (#1213): `settingsDelivery.arguments`
+ * passes a setting on the server's command line, for a server like clangd with no other way in. It also
+ * adds a server's optional `initializationOptions`, fixed values for what it must be told at start-up
+ * whatever the user's settings, such as clangd's `clangdFileStatus`. Absent means none, as before. Adds
+ * only.
+ *
+ * `1.27.0` moves the package-manager protocol to 1.1 (#907), with the manifest's shape unchanged: the
+ * closed list of package-manager capabilities gains `searchExactName`, for a registry that has no
+ * search and can only look a name up (PyPI, the Go module proxy). A manifest declaring it is refused
+ * by an older build, which is why this is a version. Adds only.
+ *
+ * `1.28.0` adds the `testAdapters` contribution point (#802), the slot the Tests panel is filled through:
+ * each ecosystem's plugin finds a folder's tests by reading its source and answers a run with a command
+ * Studio runs in a visible terminal, because core knows no test framework. Keyed by **marker** files as
+ * package managers are, and likewise not a choice of one: every plugin whose marker a folder holds
+ * applies. Adds only.
  */
-export const PLUGIN_API_VERSION: string = '1.19.0';
+export const PLUGIN_API_VERSION: string = '1.28.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -474,6 +521,114 @@ export interface ManifestVersionControl {
 }
 
 /**
+ * Describes a package manager a plugin contributes (#908): npm, NuGet, Cargo and the rest.
+ *
+ * Keyed by the **marker** files a project carries rather than chosen once for the application, and
+ * unlike version control several can apply to one folder: a repository can hold a .NET solution and an
+ * npm package side by side, and each is served by its own plugin.
+ */
+export interface ManifestPackageManager {
+  /**
+   * Gets the identifier the plugin is registered under.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name, such as `npm`.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets the ecosystem the plugin serves, lowercase, such as `npm` or `nuget`. Studio shows it and
+   * groups by it, and attaches no other meaning to it.
+   */
+  readonly ecosystem: string;
+
+  /**
+   * Gets the order plugins applying to one folder are listed in, higher first. Nothing is chosen by it.
+   */
+  readonly priority: number;
+
+  /**
+   * Gets the file names that mark a project this plugin serves, such as `package.json` or `*.csproj`.
+   * A `*` matches within a name. A folder holding one, or a directory shallowly under it, applies.
+   */
+  readonly markers: readonly string[];
+
+  /**
+   * Gets the optional capabilities the plugin supports. Declared statically because the panel draws its
+   * controls before any process has started; the handshake narrows them to what the running plugin
+   * confirms.
+   */
+  readonly capabilities: readonly PackageManagerCapability[];
+
+  /**
+   * Gets how to start the plugin.
+   */
+  readonly command: ManifestCommand;
+
+  /**
+   * Gets this contribution's own entry point within the installed payload, or undefined to use the
+   * provision's. See {@link ManifestLanguageServer.entryPoint}.
+   */
+  readonly entryPoint?: string;
+}
+
+/**
+ * Describes a test adapter a plugin contributes (#802): the frameworks of one ecosystem, such as xUnit,
+ * NUnit and MSTest for .NET.
+ *
+ * Keyed by the **marker** files a project carries, as a package manager is, and several can apply to
+ * one folder: a repository can hold a .NET solution and a JavaScript package, each with its own tests.
+ */
+export interface ManifestTestAdapter {
+  /**
+   * Gets the identifier the plugin is registered under.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name, such as `.NET Tests`.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets the frameworks the adapter serves, as names the user knows (`xUnit`, `Vitest`). Shown, and
+   * given no other meaning.
+   */
+  readonly frameworks: readonly string[];
+
+  /**
+   * Gets the order adapters applying to one folder are listed in, higher first. Nothing is chosen by it.
+   */
+  readonly priority: number;
+
+  /**
+   * Gets the file names that mark a project this adapter may find tests in, such as `*.csproj`. A `*`
+   * matches within a name. A folder holding one, or a directory shallowly under it, applies.
+   */
+  readonly markers: readonly string[];
+
+  /**
+   * Gets the optional capabilities the adapter supports. Declared statically because the panel draws its
+   * controls before any process has started; the handshake narrows them to what the running plugin
+   * confirms.
+   */
+  readonly capabilities: readonly TestAdapterCapability[];
+
+  /**
+   * Gets how to start the plugin.
+   */
+  readonly command: ManifestCommand;
+
+  /**
+   * Gets this contribution's own entry point within the installed payload, or undefined to use the
+   * provision's. See {@link ManifestLanguageServer.entryPoint}.
+   */
+  readonly entryPoint?: string;
+}
+
+/**
  * Describes a code host a plugin contributes (#819): GitHub, GitLab, Bitbucket, a self-hosted forge.
  *
  * Keyed by the **host names** it serves rather than chosen once for the application: a machine can hold
@@ -515,6 +670,12 @@ export interface ManifestHosting {
    * empty when there is no choice to make.
    */
   readonly authModes: readonly HostingAuthMode[];
+
+  /**
+   * Gets whether the plugin can serve hosts the user adds in Settings — a GitHub Enterprise server
+   * beside github.com — as well as the ones named in {@link hosts}. Optional; absent means no.
+   */
+  readonly customHosts?: boolean;
 
   /**
    * Gets the host's own command-line tools — `gh` for GitHub — by command name, or empty when it has
@@ -621,6 +782,45 @@ export interface ManifestContainerEngine {
   /**
    * Gets this contribution's own entry point within the installed payload — the plugin process — or
    * undefined to use the provision's. See {@link ManifestLanguageServer.entryPoint}.
+   */
+  readonly entryPoint?: string;
+}
+
+/**
+ * Describes a database engine a plugin contributes (#1095).
+ *
+ * The payload is a plugin process speaking the database-engine protocol: it connects to the database
+ * itself, with the driver it bundles, and Studio talks to it. What the engine is — its query language,
+ * its capabilities, the fields a connection needs — the process says for itself at `initialize`, so
+ * the manifest carries only what Studio needs before it starts it.
+ *
+ * Unkeyed: every installed engine is live at once, and which one serves a query is a property of the
+ * connection the query runs against.
+ */
+export interface ManifestDatabaseEngine {
+  /**
+   * Gets the identifier the engine is registered under, which saved connections name.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name, such as `SQLite`.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets the priority used to order the engines offered for a new connection, higher first.
+   */
+  readonly priority: number;
+
+  /**
+   * Gets how the plugin process is run.
+   */
+  readonly command: ManifestCommand;
+
+  /**
+   * Gets this contribution's own entry point within the installed payload, or undefined to use the
+   * provision's. See {@link ManifestLanguageServer.entryPoint}.
    */
   readonly entryPoint?: string;
 }
@@ -835,6 +1035,136 @@ export interface ManifestLanguageServer {
    * contribution says which part of it to run.
    */
   readonly entryPoint?: string;
+
+  /**
+   * Gets the `initializationOptions` the server is always started with (1.26.0), or undefined for
+   * none. Settings the server takes in the same place merge over them.
+   */
+  readonly initializationOptions?: Readonly<Record<string, unknown>>;
+
+  /**
+   * Gets the settings the server reads that Studio offers the user, on its language's page in
+   * Settings (1.21.0), or undefined for none.
+   */
+  readonly settings?: readonly ManifestServerSetting[];
+
+  /**
+   * Gets how the server takes its {@link settings} (1.21.0), or undefined for a server that asks for
+   * them through `workspace/configuration` and nothing else.
+   */
+  readonly settingsDelivery?: ManifestSettingsDelivery;
+}
+
+/**
+ * Describes one choice of a {@link ManifestServerSetting} offered as a choice.
+ */
+export interface ManifestServerSettingOption {
+  /**
+   * Gets the value the server is given when this choice is made.
+   */
+  readonly value: boolean | string;
+
+  /**
+   * Gets the choice as the user reads it.
+   */
+  readonly label: string;
+}
+
+/**
+ * Describes a setting a contributed language server reads, offered to the user in Settings.
+ */
+export interface ManifestServerSetting {
+  /**
+   * Gets the dotted configuration section the server reads, such as `yaml.validate`.
+   */
+  readonly section: string;
+
+  /**
+   * Gets the setting's name, as the user reads it.
+   */
+  readonly label: string;
+
+  /**
+   * Gets what the setting does, in a sentence — saying so when changing it restarts the server.
+   */
+  readonly description: string;
+
+  /**
+   * Gets the server's own default, shown while the user has set nothing.
+   */
+  readonly default: boolean | string;
+
+  /**
+   * Gets the choices, for a setting offered as a choice; undefined for a switch.
+   */
+  readonly options?: readonly ManifestServerSettingOption[];
+
+  /**
+   * Gets whether the setting is a finer one, offered folded away under "Advanced".
+   */
+  readonly advanced?: boolean;
+
+  /**
+   * Gets whether the server reads the setting only when it starts, so a change restarts it.
+   */
+  readonly startupOnly?: boolean;
+}
+
+/**
+ * Describes where a contributed server is given its settings in `initializationOptions`.
+ */
+export interface ManifestStartupSettings {
+  /**
+   * Gets the section whose settings are sent, without it, such as `yaml`.
+   */
+  readonly section: string;
+
+  /**
+   * Gets the dotted key of `initializationOptions` they are placed at, or undefined for its root.
+   */
+  readonly key?: string;
+}
+
+/**
+ * Describes a setting a contributed server is given on its command line (1.26.0).
+ */
+export interface ManifestSettingArgument {
+  /**
+   * Gets the section of the setting, one the server declares.
+   */
+  readonly section: string;
+
+  /**
+   * Gets the option it is passed as, such as `--clang-tidy`: the server starts with
+   * `--clang-tidy=false`. Passed only while the setting differs from its default.
+   */
+  readonly flag: string;
+}
+
+/**
+ * Describes how a contributed server takes its settings: asked for, pushed, at start-up, or a mix.
+ */
+export interface ManifestSettingsDelivery {
+  /**
+   * Gets whether the server asks for its settings through `workspace/configuration`. Defaults to true.
+   */
+  readonly pull?: boolean;
+
+  /**
+   * Gets the sections whose settings are pushed in `didChangeConfiguration`, nested under each, or
+   * undefined for a server that is never pushed them.
+   */
+  readonly push?: readonly string[];
+
+  /**
+   * Gets where the server is given its settings at start-up, or undefined for nowhere.
+   */
+  readonly startup?: ManifestStartupSettings;
+
+  /**
+   * Gets the settings the server is given on its command line (1.26.0), or undefined for none.
+   */
+  readonly arguments?: readonly ManifestSettingArgument[];
 }
 
 /**
@@ -945,6 +1275,21 @@ export interface ManifestContributions {
    * Gets the code hosts contributed.
    */
   readonly hosting?: readonly ManifestHosting[];
+
+  /**
+   * Gets the database engines contributed (1.20.0).
+   */
+  readonly databaseEngines?: readonly ManifestDatabaseEngine[];
+
+  /**
+   * Gets the package managers contributed (1.25.0).
+   */
+  readonly packageManagers?: readonly ManifestPackageManager[];
+
+  /**
+   * Gets the test adapters contributed (1.28.0).
+   */
+  readonly testAdapters?: readonly ManifestTestAdapter[];
 }
 
 /**
@@ -1425,6 +1770,8 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
         priority: readPriority(entry, path, errors),
         command: command ?? { kind: 'executable' },
         entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
+        ...readInitializationOptions(entry, path, errors),
+        ...readServerSettings(entry, path, errors),
       });
     },
   );
@@ -1520,6 +1867,26 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
       });
     },
   );
+  const databaseEngines: ManifestDatabaseEngine[] = [];
+  readContributionList(
+    source['databaseEngines'],
+    'contributes.databaseEngines',
+    errors,
+    (entry: Record<string, unknown>, path: string): void => {
+      const command: ManifestCommand | null = readCommand(
+        entry['command'],
+        `${path}.command`,
+        errors,
+      );
+      databaseEngines.push({
+        id: readId(entry, 'id', `${path}.`, errors),
+        displayName: readString(entry, 'displayName', `${path}.`, errors),
+        priority: readPriority(entry, path, errors),
+        command: command ?? { kind: 'executable' },
+        entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
+      });
+    },
+  );
   const versionControl: ManifestVersionControl[] = [];
   readContributionList(
     source['versionControl'],
@@ -1576,9 +1943,64 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
           errors,
         ),
         authModes: readAuthModes(entry['authModes'], `${path}.authModes`, errors),
+        ...(entry['customHosts'] === true ? { customHosts: true } : {}),
         commandLineTools: readCommandLineTools(
           entry['commandLineTools'],
           `${path}.commandLineTools`,
+          errors,
+        ),
+        command: command ?? { kind: 'executable' },
+        entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
+      });
+    },
+  );
+  const packageManagers: ManifestPackageManager[] = [];
+  readContributionList(
+    source['packageManagers'],
+    'contributes.packageManagers',
+    errors,
+    (entry: Record<string, unknown>, path: string): void => {
+      const command: ManifestCommand | null = readCommand(
+        entry['command'],
+        `${path}.command`,
+        errors,
+      );
+      packageManagers.push({
+        id: readId(entry, 'id', `${path}.`, errors),
+        displayName: readString(entry, 'displayName', `${path}.`, errors),
+        ecosystem: readEcosystem(entry['ecosystem'], `${path}.ecosystem`, errors),
+        priority: readPriority(entry, path, errors),
+        markers: readMarkers(entry['markers'], `${path}.markers`, errors),
+        capabilities: readPackageManagerCapabilities(
+          entry['capabilities'],
+          `${path}.capabilities`,
+          errors,
+        ),
+        command: command ?? { kind: 'executable' },
+        entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
+      });
+    },
+  );
+  const testAdapters: ManifestTestAdapter[] = [];
+  readContributionList(
+    source['testAdapters'],
+    'contributes.testAdapters',
+    errors,
+    (entry: Record<string, unknown>, path: string): void => {
+      const command: ManifestCommand | null = readCommand(
+        entry['command'],
+        `${path}.command`,
+        errors,
+      );
+      testAdapters.push({
+        id: readId(entry, 'id', `${path}.`, errors),
+        displayName: readString(entry, 'displayName', `${path}.`, errors),
+        frameworks: readFrameworks(entry['frameworks'], `${path}.frameworks`, errors),
+        priority: readPriority(entry, path, errors),
+        markers: readMarkers(entry['markers'], `${path}.markers`, errors),
+        capabilities: readTestAdapterCapabilities(
+          entry['capabilities'],
+          `${path}.capabilities`,
           errors,
         ),
         command: command ?? { kind: 'executable' },
@@ -1593,11 +2015,14 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
     containerEngines.length === 0 &&
     agentHarnesses.length === 0 &&
     versionControl.length === 0 &&
-    hosting.length === 0
+    hosting.length === 0 &&
+    databaseEngines.length === 0 &&
+    packageManagers.length === 0 &&
+    testAdapters.length === 0
   ) {
     errors.add(
       'contributes',
-      'must contribute at least one language server, debug adapter, decoder, container engine, agent harness, version-control system or code host',
+      'must contribute at least one language server, debug adapter, decoder, container engine, agent harness, version-control system, code host, database engine, package manager or test adapter',
     );
   }
   return {
@@ -1608,6 +2033,9 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
     agentHarnesses,
     versionControl,
     hosting,
+    databaseEngines,
+    packageManagers,
+    testAdapters,
   };
 }
 
@@ -1945,6 +2373,123 @@ function readHosts(value: unknown, path: string, errors: Errors): readonly strin
 }
 
 /**
+ * Matches an ecosystem name: a lowercase word, so two plugins for one ecosystem cannot differ by case.
+ */
+const ECOSYSTEM_PATTERN: RegExp = /^[a-z0-9][a-z0-9-]*$/;
+
+/**
+ * Validates the ecosystem a package manager serves.
+ * @param value The candidate.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the ecosystem, or an empty string when invalid.
+ */
+function readEcosystem(value: unknown, path: string, errors: Errors): string {
+  if (typeof value !== 'string' || !ECOSYSTEM_PATTERN.test(value)) {
+    errors.add(path, 'must be a lowercase word, such as "npm"');
+    return '';
+  }
+  return value;
+}
+
+/**
+ * Validates the markers of a package manager: single file names, each of which may hold `*`. A marker
+ * needs something besides the wildcard, since one that matches every file marks nothing.
+ * @param value The candidate array.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the markers, or an empty array when invalid.
+ */
+function readMarkers(value: unknown, path: string, errors: Errors): readonly string[] {
+  const names: readonly string[] = readEntryNames(value, path, true, errors);
+  if (names.some((name: string): boolean => name.replaceAll('*', '').length === 0)) {
+    errors.add(path, 'must name something besides a wildcard');
+    return [];
+  }
+  return names;
+}
+
+/**
+ * Validates a package manager's optional capabilities against the closed list.
+ * @param value The candidate array, or undefined for none.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the capabilities, or an empty array when absent or invalid.
+ */
+function readPackageManagerCapabilities(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): readonly PackageManagerCapability[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    errors.add(path, 'must be an array of capabilities');
+    return [];
+  }
+  const unknown: readonly unknown[] = value.filter(
+    (entry: unknown): boolean => !isPackageManagerCapability(entry),
+  );
+  if (unknown.length > 0) {
+    errors.add(path, `has unknown capabilities: ${unknown.map(String).join(', ')}`);
+    return [];
+  }
+  return value as readonly PackageManagerCapability[];
+}
+
+/**
+ * Validates the frameworks a test adapter serves: at least one, each a short non-empty name.
+ * @param value The candidate array.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the frameworks, or an empty array when invalid.
+ */
+function readFrameworks(value: unknown, path: string, errors: Errors): readonly string[] {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    !value.every(
+      (entry: unknown): boolean =>
+        typeof entry === 'string' && entry.trim().length > 0 && entry.length <= 64,
+    )
+  ) {
+    errors.add(path, 'must be a non-empty array of framework names, such as "xUnit"');
+    return [];
+  }
+  return value as readonly string[];
+}
+
+/**
+ * Validates a test adapter's optional capabilities against the closed list.
+ * @param value The candidate array, or undefined for none.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the capabilities, or an empty array when absent or invalid.
+ */
+function readTestAdapterCapabilities(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): readonly TestAdapterCapability[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    errors.add(path, 'must be an array of capabilities');
+    return [];
+  }
+  const unknown: readonly unknown[] = value.filter(
+    (entry: unknown): boolean => !isTestAdapterCapability(entry),
+  );
+  if (unknown.length > 0) {
+    errors.add(path, `has unknown capabilities: ${unknown.map(String).join(', ')}`);
+    return [];
+  }
+  return value as readonly TestAdapterCapability[];
+}
+
+/**
  * Validates a hosting plugin's optional capabilities against the closed list.
  * @param value The candidate array, or undefined for none.
  * @param path The dotted path for failures.
@@ -2160,6 +2705,241 @@ function readPriority(entry: Record<string, unknown>, path: string, errors: Erro
     return 100;
   }
   return value;
+}
+
+/**
+ * Reads the `initializationOptions` a language server is always started with (1.26.0).
+ * @param entry The server entry.
+ * @param path The dotted path of the entry, for failures.
+ * @param errors The failure collector.
+ * @returns Returns the field when present, to spread into the server.
+ */
+function readInitializationOptions(
+  entry: Record<string, unknown>,
+  path: string,
+  errors: Errors,
+): Pick<ManifestLanguageServer, 'initializationOptions'> {
+  if (entry['initializationOptions'] === undefined) {
+    return {};
+  }
+  const options: Record<string, unknown> | null = readObject(
+    entry['initializationOptions'],
+    `${path}.initializationOptions`,
+    errors,
+  );
+  return options === null ? {} : { initializationOptions: options };
+}
+
+/**
+ * Reads a language server's optional settings and how it takes them (1.21.0).
+ * @param entry The server entry.
+ * @param path The dotted path of the entry, for failures.
+ * @param errors The failure collector.
+ * @returns Returns the fields present, to spread into the server.
+ */
+function readServerSettings(
+  entry: Record<string, unknown>,
+  path: string,
+  errors: Errors,
+): Pick<ManifestLanguageServer, 'settings' | 'settingsDelivery'> {
+  const result: {
+    settings?: ManifestServerSetting[];
+    settingsDelivery?: ManifestSettingsDelivery;
+  } = {};
+  if (entry['settings'] !== undefined) {
+    const settings: ManifestServerSetting[] = [];
+    readContributionList(
+      entry['settings'],
+      `${path}.settings`,
+      errors,
+      (setting: Record<string, unknown>, at: string): void => {
+        const parsed: ManifestServerSetting | null = readServerSetting(setting, at, errors);
+        if (parsed !== null) {
+          settings.push(parsed);
+        }
+      },
+    );
+    result.settings = settings;
+  }
+  if (entry['settingsDelivery'] !== undefined) {
+    const delivery: ManifestSettingsDelivery | null = readSettingsDelivery(
+      entry['settingsDelivery'],
+      `${path}.settingsDelivery`,
+      errors,
+    );
+    if (delivery !== null) {
+      result.settingsDelivery = delivery;
+    }
+  }
+  return result;
+}
+
+/**
+ * Determines whether a value is a setting's value: a switch, or a choice's string.
+ * @param value The candidate.
+ * @returns Returns true when it is.
+ */
+function isSettingValue(value: unknown): value is boolean | string {
+  return typeof value === 'boolean' || typeof value === 'string';
+}
+
+/**
+ * Validates a dotted configuration section: non-empty names joined by dots.
+ * @param value The candidate.
+ * @returns Returns true when it is one.
+ */
+function isSection(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.split('.').every((name: string): boolean => name.length > 0)
+  );
+}
+
+/**
+ * Validates one setting a contributed server declares.
+ * @param source The setting entry.
+ * @param path The dotted path, for failures.
+ * @param errors The failure collector.
+ * @returns Returns the setting, or null when invalid.
+ */
+function readServerSetting(
+  source: Record<string, unknown>,
+  path: string,
+  errors: Errors,
+): ManifestServerSetting | null {
+  const before: number = errors.items.length;
+  if (!isSection(source['section'])) {
+    errors.add(`${path}.section`, 'must be a dotted configuration section');
+  }
+  const label: string = readString(source, 'label', `${path}.`, errors);
+  const description: string = readString(source, 'description', `${path}.`, errors);
+  const fallback: unknown = source['default'];
+  if (!isSettingValue(fallback)) {
+    errors.add(`${path}.default`, 'must be a boolean or a string');
+  }
+  let options: ManifestServerSettingOption[] | undefined;
+  if (source['options'] !== undefined) {
+    if (!Array.isArray(source['options']) || source['options'].length === 0) {
+      errors.add(`${path}.options`, 'must be a non-empty array of choices');
+    } else {
+      options = [];
+      for (const option of source['options'] as unknown[]) {
+        const choice: Record<string, unknown> | null = readObject(
+          option,
+          `${path}.options`,
+          errors,
+        );
+        if (choice === null) {
+          continue;
+        }
+        if (!isSettingValue(choice['value'])) {
+          errors.add(`${path}.options`, 'must give each choice a boolean or string value');
+          continue;
+        }
+        options.push({
+          value: choice['value'],
+          label: readString(choice, 'label', `${path}.options.`, errors),
+        });
+      }
+    }
+  }
+  const advanced: boolean = readFlag(source['advanced'], `${path}.advanced`, errors);
+  const startupOnly: boolean = readFlag(source['startupOnly'], `${path}.startupOnly`, errors);
+  if (errors.items.length > before) {
+    return null;
+  }
+  return {
+    section: source['section'] as string,
+    label,
+    description,
+    default: fallback as boolean | string,
+    ...(options === undefined ? {} : { options }),
+    ...(advanced ? { advanced } : {}),
+    ...(startupOnly ? { startupOnly } : {}),
+  };
+}
+
+/**
+ * Matches a command-line option a setting is passed as: a name, with no value of its own.
+ */
+const OPTION_PATTERN: RegExp = /^--?[A-Za-z0-9][A-Za-z0-9-]*$/;
+
+/**
+ * Validates how a contributed server takes its settings.
+ * @param value The candidate.
+ * @param path The dotted path, for failures.
+ * @param errors The failure collector.
+ * @returns Returns the delivery, or null when invalid.
+ */
+function readSettingsDelivery(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): ManifestSettingsDelivery | null {
+  const source: Record<string, unknown> | null = readObject(value, path, errors);
+  if (source === null) {
+    return null;
+  }
+  const before: number = errors.items.length;
+  const pull: unknown = source['pull'];
+  if (pull !== undefined && typeof pull !== 'boolean') {
+    errors.add(`${path}.pull`, 'must be a boolean');
+  }
+  const push: unknown = source['push'];
+  if (push !== undefined && (!Array.isArray(push) || !push.every(isSection))) {
+    errors.add(`${path}.push`, 'must be an array of dotted configuration sections');
+  }
+  let startup: ManifestStartupSettings | undefined;
+  if (source['startup'] !== undefined) {
+    const table: Record<string, unknown> | null = readObject(
+      source['startup'],
+      `${path}.startup`,
+      errors,
+    );
+    if (table !== null) {
+      if (!isSection(table['section'])) {
+        errors.add(`${path}.startup.section`, 'must be a dotted configuration section');
+      }
+      if (table['key'] !== undefined && !isSection(table['key'])) {
+        errors.add(`${path}.startup.key`, 'must be a dotted key when present');
+      }
+      startup = {
+        section: table['section'] as string,
+        ...(table['key'] === undefined ? {} : { key: table['key'] as string }),
+      };
+    }
+  }
+  let settingArguments: ManifestSettingArgument[] | undefined;
+  if (source['arguments'] !== undefined) {
+    settingArguments = [];
+    readContributionList(
+      source['arguments'],
+      `${path}.arguments`,
+      errors,
+      (entry: Record<string, unknown>, at: string): void => {
+        if (!isSection(entry['section'])) {
+          errors.add(`${at}.section`, 'must be a dotted configuration section');
+        }
+        if (typeof entry['flag'] !== 'string' || !OPTION_PATTERN.test(entry['flag'])) {
+          errors.add(`${at}.flag`, 'must be a command-line option, such as --clang-tidy');
+        }
+        settingArguments?.push({
+          section: entry['section'] as string,
+          flag: entry['flag'] as string,
+        });
+      },
+    );
+  }
+  if (errors.items.length > before) {
+    return null;
+  }
+  return {
+    ...(pull === undefined ? {} : { pull: pull as boolean }),
+    ...(push === undefined ? {} : { push: push as readonly string[] }),
+    ...(startup === undefined ? {} : { startup }),
+    ...(settingArguments === undefined ? {} : { arguments: settingArguments }),
+  };
 }
 
 /**

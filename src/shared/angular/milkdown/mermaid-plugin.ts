@@ -24,6 +24,7 @@ import type { MarkdownNode, NodeSchema, ParserState, SerializerState } from '@mi
 import type { Root, RootContent, Code, Parent } from 'mdast';
 import { visit } from 'unist-util-visit';
 import type { Mermaid, MermaidConfig } from 'mermaid';
+import type { MarkdownMermaidTheme } from '@shared/angular/services/settings/settings-registry';
 
 /**
  * Custom mdast node type for mermaid diagram blocks.
@@ -79,6 +80,35 @@ const MERMAID_FONT: string =
   '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 
 /**
+ * Holds the theme and font Markdown's settings ask diagrams to be drawn in.
+ */
+export interface MermaidAppearance {
+  /**
+   * Gets the theme, automatic following Studio's light or dark theme.
+   */
+  readonly theme: MarkdownMermaidTheme;
+
+  /**
+   * Gets the font stack for a diagram's labels, or null for the system's.
+   */
+  readonly fontFamily: string | null;
+}
+
+/**
+ * Holds the appearance diagrams are drawn in. A diagram draws from the document's schema, far from any
+ * service, so the editor sets this before it builds.
+ */
+let appearance: MermaidAppearance = { theme: 'automatic', fontFamily: null };
+
+/**
+ * Sets the appearance the next diagrams are drawn in.
+ * @param next The appearance.
+ */
+export function setMermaidAppearance(next: MermaidAppearance): void {
+  appearance = next;
+}
+
+/**
  * CSS injected into mermaid diagrams.
  * The foreignObject element has a calculated size that can be slightly too small.
  * Setting overflow:visible allows the text to display fully.
@@ -98,12 +128,12 @@ const MERMAID_THEME_CSS: string = `
 function getMermaidConfig(isDark: boolean): MermaidConfig {
   return {
     startOnLoad: false,
-    theme: isDark ? 'dark' : 'default',
+    theme: appearance.theme === 'automatic' ? (isDark ? 'dark' : 'default') : appearance.theme,
     // Strict: labels are sanitised and link targets checked. `loose` returned the SVG unsanitised with
     // `javascript:` links intact, and bought nothing — its one feature, `click` callbacks, needs
     // `bindFunctions`, which nothing here calls (audit S5).
     securityLevel: 'strict',
-    fontFamily: MERMAID_FONT,
+    fontFamily: appearance.fontFamily ?? MERMAID_FONT,
     // Inject CSS to ensure text sizing consistency
     themeCSS: MERMAID_THEME_CSS,
     // Flowchart configuration

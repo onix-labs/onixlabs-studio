@@ -34,6 +34,13 @@ export {
   UPDATE_API_REQUEST,
   SEND_API_REQUEST,
   SET_API_VARIABLE,
+  LIST_DATABASE_CONNECTIONS,
+  LIST_DATABASE_OBJECTS,
+  SCRIPT_DATABASE_OBJECT,
+  LIST_DATABASE_QUERIES,
+  CREATE_DATABASE_QUERY,
+  UPDATE_DATABASE_QUERY,
+  RUN_DATABASE_QUERY,
   OPEN_DOCUMENT,
   SAVE_DOCUMENT,
   READ_DOCUMENT,
@@ -161,7 +168,13 @@ export type {
   AgentContextRef,
 } from './ai/ai-run-types';
 export type { GateableTool } from './ai/ai-tool-policy';
-export { GATEABLE_TOOLS, DEFAULT_TOOL_POLICY } from './ai/ai-tool-policy';
+export {
+  GATEABLE_TOOLS,
+  DEFAULT_TOOL_POLICY,
+  DOCKER_SOCKET,
+  LOCAL_NETWORK,
+  RUN_UNSANDBOXED,
+} from './ai/ai-tool-policy';
 export type {
   AiRunState,
   AiEventBase,
@@ -192,8 +205,10 @@ export type {
   AiBridgeRequest,
   AiBridgeScope,
   AiBridgeReply,
+  AiPermissionGrant,
   AiPermissionReply,
   AiPermissionRemember,
+  AiRevokePermissionGrant,
   AiInputReply,
   AiEditDecision,
   AiEditDecisionReply,

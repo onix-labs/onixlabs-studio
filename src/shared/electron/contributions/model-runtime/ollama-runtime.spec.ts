@@ -527,3 +527,41 @@ describe('readContextLength', () => {
     expect(readContextLength({ 'llama.context_length': 'lots' })).toBeUndefined();
   });
 });
+
+describe('OllamaRuntime keep_alive', () => {
+  /**
+   * Makes a runtime over a server whose one loaded model expires as the test says.
+   * @param expiry Reads the expiry.
+   * @param posted Where the POSTed bodies go.
+   * @returns Returns the runtime.
+   */
+  function runtimeWith(expiry: () => string, posted: unknown[]): OllamaRuntime {
+    const transport: OllamaTransport = {
+      request: (method: string, _path: string, body?: unknown): Promise<OllamaResponse> => {
+        if (method === 'POST') {
+          posted.push(body);
+          return Promise.resolve({ statusCode: 200, body: '{}' });
+        }
+        return Promise.resolve({
+          statusCode: 200,
+          body: JSON.stringify({ models: [{ name: 'llama3', expires_at: expiry() }] }),
+        });
+      },
+    } as unknown as OllamaTransport;
+    return new OllamaRuntime(undefined, transport, undefined, undefined, (): string => '30m');
+  }
+
+  it('tellsAModelOnce_andAgainOnlyWhenARequestResetsIt', async () => {
+    let expiry: string = 'one';
+    const posted: unknown[] = [];
+    const runtime: OllamaRuntime = runtimeWith((): string => expiry, posted);
+
+    await runtime.running();
+    await runtime.running();
+    expect(posted).toEqual([{ model: 'llama3', keep_alive: '30m', stream: false }]);
+
+    expiry = 'two';
+    await runtime.running();
+    expect(posted).toHaveLength(2);
+  });
+});

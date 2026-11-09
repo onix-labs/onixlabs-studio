@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { CloneOutcome } from '@shared/api/clone-channels';
+import type { CloneOutcome, CloneRequest } from '@shared/api/clone-channels';
 import type { VcsParams, VersionControlResponse } from '@shared/api/version-control-protocol';
 import { parseWorktreeConfig } from '@shared/api/worktree';
 import type { TrustedPaths } from '../trusted-paths';
@@ -84,6 +84,17 @@ describe('parseRequest', () => {
     expect(typeof parseRequest({ ...valid, layout: 'bare' })).toBe('string');
     expect(parseRequest({ ...valid, branch: 'main' })).toEqual({ ...valid, branch: 'main' });
   });
+
+  it('keepsSubmodulesAndShallowWhenOn_dropsThemWhenOff_andRefusesAnythingElse', () => {
+    expect(parseRequest({ ...valid, submodules: true, shallow: true })).toEqual({
+      ...valid,
+      submodules: true,
+      shallow: true,
+    });
+    expect(parseRequest({ ...valid, submodules: false, shallow: false })).toEqual(valid);
+    expect(typeof parseRequest({ ...valid, submodules: 'yes' })).toBe('string');
+    expect(typeof parseRequest({ ...valid, shallow: 1 })).toBe('string');
+  });
 });
 
 describe('CloneManager', () => {
@@ -145,6 +156,36 @@ describe('CloneManager', () => {
       { url: 'https://github.com/a/b.git', directory: destination, branch: 'develop' },
     ]);
     expect(trusted).toEqual([destination]);
+  });
+
+  it('passesSubmodulesAndAShallowDepth_toThePlugin_inEitherLayout', async () => {
+    const cloner: CloneManager = manager();
+    const options: Pick<CloneRequest, 'submodules' | 'shallow'> = {
+      submodules: true,
+      shallow: true,
+    };
+
+    await cloner.clone({
+      url: 'https://github.com/a/b.git',
+      name: 'b',
+      layout: 'flat',
+      ...options,
+    });
+    await cloner.clone({
+      url: 'https://github.com/a/c.git',
+      name: 'c',
+      layout: 'worktree',
+      ...options,
+    });
+
+    expect(host.clones).toEqual([
+      expect.objectContaining({
+        directory: path.join(parent, 'b'),
+        recurseSubmodules: true,
+        depth: 1,
+      }),
+      expect.objectContaining({ recurseSubmodules: true, depth: 1 }),
+    ]);
   });
 
   it('refusesAFolderThatAlreadyExists', async () => {

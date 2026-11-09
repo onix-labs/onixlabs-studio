@@ -15,6 +15,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import type { AiSignInProgress, AiSignInRequest } from '@shared/api/ai-types';
+import { Alert } from '@shared/angular/components/alert/alert';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { Log } from '@shared/angular/services/log/log';
@@ -40,38 +41,46 @@ type LoginPhase = 'idle' | 'starting' | 'browser' | 'success' | 'error';
  */
 @Component({
   selector: 'app-agent-login-modal',
-  imports: [Modal, ModalContent, Button, ButtonRow],
+  imports: [Alert, Modal, ModalContent, Button, ButtonRow],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <app-modal
       [open]="open()"
       [width]="30"
+      [frameless]="true"
       [ariaLabel]="'Sign in to ' + providerName()"
       (dismiss)="close()"
     >
       <ng-template appModalContent>
         <div class="login-modal">
-          <h2 class="login-modal__title">You're not signed in to {{ providerName() }}</h2>
-          <p class="login-modal__body">
-            @switch (phase()) {
-              @case ('starting') {
-                Starting sign-in…
-              }
-              @case ('browser') {
-                Complete the sign-in in your browser, then come back here.
-              }
-              @case ('success') {
-                You're signed in. You can retry your message now.
-              }
-              @case ('error') {
-                Sign-in didn't complete. {{ errorMessage() }}
-              }
-              @default {
-                Your {{ providerName() }} session has expired or you're signed out. Sign in to carry
-                on using the agent.
-              }
+          <h2 class="login-modal__title">
+            @if (phase() === 'success') {
+              Signed In to {{ providerName() }}
+            } @else {
+              You're Not Signed In to {{ providerName() }}
             }
-          </p>
+          </h2>
+          @if (phase() === 'error') {
+            <app-alert tone="danger">Sign-in didn't complete. {{ errorMessage() }}</app-alert>
+          } @else {
+            <p class="login-modal__body">
+              @switch (phase()) {
+                @case ('starting') {
+                  Starting sign-in…
+                }
+                @case ('browser') {
+                  Complete the sign-in in your browser, then come back here.
+                }
+                @case ('success') {
+                  You're signed in. You can retry your message now.
+                }
+                @default {
+                  Your {{ providerName() }} session has expired or you're signed out. Sign in to
+                  carry on using the agent.
+                }
+              }
+            </p>
+          }
 
           @if (phase() === 'browser' && url(); as link) {
             <p class="login-modal__hint">
@@ -89,11 +98,11 @@ type LoginPhase = 'idle' | 'starting' | 'browser' | 'success' | 'error';
               <app-button
                 variant="solid"
                 [loading]="busy()"
-                [label]="phase() === 'error' ? 'Try again' : 'Log in to ' + providerName()"
+                [label]="phase() === 'error' ? 'Try Again' : 'Log In to ' + providerName()"
                 (click)="startLogin()"
               />
             }
-            <app-button label="Dismiss" (click)="close()" />
+            <app-button variant="none" label="Dismiss" (click)="close()" />
           </app-button-row>
         </div>
       </ng-template>
@@ -119,8 +128,8 @@ type LoginPhase = 'idle' | 'starting' | 'browser' | 'success' | 'error';
 
       .login-modal__hint {
         margin: 0;
-        font-size: 0.85rem;
-        color: var(--muted-foreground-color, var(--body-foreground-color));
+        font-size: 1rem;
+        color: var(--body-foreground-color);
       }
 
       .login-modal__link {

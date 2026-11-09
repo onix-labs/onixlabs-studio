@@ -162,6 +162,25 @@ describe('ReferencesView (#1014)', () => {
       headingFor({ kind: 'definitions', symbol: 'Foo', status: 'done', items: ITEMS.slice(0, 3) }),
     ).toEqual({ lead: '3 definitions of ', symbol: 'Foo', tail: ' in 2 files' });
   });
+
+  it('heading_forImplementations (#1142)', () => {
+    expect(
+      headingFor({
+        kind: 'implementations',
+        symbol: 'Greet',
+        status: 'done',
+        items: ITEMS.slice(0, 1),
+      }),
+    ).toEqual({ lead: '1 implementation of ', symbol: 'Greet', tail: ' in 1 file' });
+    expect(
+      headingFor({
+        kind: 'implementations',
+        symbol: 'Greet',
+        status: 'done',
+        items: ITEMS.slice(0, 3),
+      }),
+    ).toEqual({ lead: '3 implementations of ', symbol: 'Greet', tail: ' in 2 files' });
+  });
 });
 
 describe('EditorReferencesPanel (#1014)', () => {

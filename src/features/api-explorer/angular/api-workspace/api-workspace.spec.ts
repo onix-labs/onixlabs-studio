@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import {
   ApiDocument,
@@ -66,6 +66,10 @@ class FakeHttp {
 }
 
 describe('ApiWorkspace', () => {
+  afterEach(() => {
+    localStorage.removeItem('settings');
+  });
+
   let workspace: ApiWorkspace;
   let http: FakeHttp;
   let written: { path: string; content: string }[];
@@ -96,6 +100,7 @@ describe('ApiWorkspace', () => {
         { provide: FileSystem, useValue: fileSystem },
       ],
     });
+    TestBed.inject(Settings).set('apiExplorer.sampleContent', true);
     workspace = TestBed.inject(ApiWorkspace);
   });
 
@@ -105,6 +110,16 @@ describe('ApiWorkspace', () => {
   function request(values: Partial<ApiRequest>): ApiRequest {
     return workspace.addRequest(workspace.addCollection('Tests').id, values);
   }
+
+  it('constructor_whenSampleContentIsOff_startsEmpty', () => {
+    TestBed.inject(Settings).set('apiExplorer.sampleContent', false);
+
+    const empty: ApiWorkspace = TestBed.runInInjectionContext(
+      (): ApiWorkspace => new ApiWorkspace(),
+    );
+
+    expect(empty.folders()).toEqual([]);
+  });
 
   it('constructor_onFirstRun_seedsACollectionAnEnvironmentAndASendableRequest', () => {
     // The first-run seed is what makes the view openable-and-usable rather than an empty tree.
@@ -264,6 +279,17 @@ describe('ApiWorkspace', () => {
     expect(workspace.outcome(saved.id)).not.toBeNull();
     expect(workspace.history()[0].requestId).toBe(saved.id);
     expect(http.sent[0].url).toBe('https://api.test');
+  });
+
+  it('send_whenTheBridgeFails_reportsItAsTheOutcome_ratherThanRejecting', async () => {
+    const saved: ApiRequest = request({ url: 'https://api.test' });
+    vi.spyOn(http, 'send').mockRejectedValue(new Error('main process stalled'));
+
+    const outcome: HttpOutcome | null = await workspace.send(saved.id);
+
+    expect(outcome).toMatchObject({ kind: 'failure', message: 'main process stalled' });
+    expect(workspace.outcome(saved.id)).toBe(outcome);
+    expect(workspace.inFlight().has(saved.id)).toBe(false);
   });
 
   it('send_whileInFlight_reportsTheRequestAsInFlightAndClearsItAfterwards', async () => {
@@ -462,6 +488,16 @@ describe('ApiWorkspace', () => {
 
       expect(workspace.filePath()).toBeNull();
       expect(written).toHaveLength(0);
+    });
+
+    it('save_whenTheBridgeFails_reportsAFailedSave_ratherThanRejecting', async () => {
+      vi.spyOn(TestBed.inject(FileSystem), 'write').mockRejectedValue(new Error('gone'));
+      workspace.load(emptyDocument(), '/tmp/orders.api.json');
+      workspace.addCollection('Added');
+
+      await expect(workspace.save()).resolves.toBe(false);
+
+      expect(workspace.dirty()).toBe(true);
     });
 
     it('save_whenTheWriteFails_keepsTheDocumentDirty', async () => {

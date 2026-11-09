@@ -16,6 +16,7 @@ import {
   signal,
   Signal,
   SimpleChanges,
+  untracked,
   viewChild,
   WritableSignal,
 } from '@angular/core';
@@ -30,9 +31,20 @@ import type { ListenerManager } from '@milkdown/plugin-listener';
 import type { Parser } from '@milkdown/transformer';
 import { createStudioCrepe } from '@shared/angular/milkdown/create-studio-crepe';
 import { installImageResolver } from '@shared/angular/milkdown/media-source';
-import { renderMermaidDiagram } from '@shared/angular/milkdown/mermaid-plugin';
+import {
+  renderMermaidDiagram,
+  setMermaidAppearance,
+} from '@shared/angular/milkdown/mermaid-plugin';
+import {
+  pastedImageFileName,
+  pastedImagePath,
+  styleImagePath,
+} from '@shared/angular/milkdown/markdown-image-path';
+import { fileToDataUrl } from '@shared/angular/milkdown/media-source';
 import { sanitizeHtmlBlock } from '@shared/angular/milkdown/html-block-sanitizer';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { Log } from '@shared/angular/services/log/log';
+import { Shell } from '@shared/angular/services/shell/shell';
 import { Milkdown } from '@shared/angular/services/milkdown/milkdown';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { MonacoHighlighter } from '@shared/angular/services/monaco/monaco-highlighter';
@@ -43,6 +55,8 @@ import {
   MarginSize,
   Settings,
 } from '@shared/angular/services/settings/settings';
+import type { MarkdownPastedImageStorage } from '@shared/angular/services/settings/settings-registry';
+import type { FileWriteResult } from '@shared/api/file-channels';
 import { selectAllTargetsDocument } from './select-all-scope';
 
 /**
@@ -99,6 +113,16 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
    * Holds the settings service supplying the markdown editor preferences, watched to re-apply styles.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the file system, which pasted images are saved through.
+   */
+  private readonly fileSystem: FileSystem = inject(FileSystem);
+
+  /**
+   * Holds the shell, which opens a document's links.
+   */
+  private readonly shell: Shell = inject(Shell);
 
   /**
    * Holds the Monaco loader/theme service, threaded into the Monaco code-block node view.
@@ -213,6 +237,22 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
    * Gets the image alignment, bound to a class that horizontally aligns rendered images.
    */
   protected readonly imageAlignment: Signal<ImageAlignment> = this.milkdown.imageAlignment;
+
+  /**
+   * Gets whether the Slash Menu is on, bound to a class that takes the add button off a block handle.
+   */
+  protected readonly slashMenu: Signal<boolean> = this.settings.value('markdownEditor.slashMenu');
+
+  /**
+   * Holds the build signature the mounted editor honours, or null before the first build.
+   */
+  private builtSignature: string | null = null;
+
+  /**
+   * Holds the markdown a rebuilt editor starts from when it has been edited, or null to start from
+   * {@link content}.
+   */
+  private rebuildContent: string | null = null;
 
   /**
    * Holds the Crepe editor instance, or null before creation and after destruction.
@@ -330,8 +370,18 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
   public constructor() {
     effect((): void => {
       this.settings.markdownEditor();
+      this.milkdown.getCssCustomProperties();
+      this.settings.get('markdownEditor.checkSpelling');
       if (this.isEditorReady()) {
         this.applyEditorStyles();
+      }
+    });
+
+    // Some settings shape the editor as it is built, so honouring a change means building it again.
+    effect((): void => {
+      const signature: string = this.milkdown.buildSignature();
+      if (this.isEditorReady() && signature !== this.builtSignature) {
+        untracked((): void => void this.rebuildEditor());
       }
     });
 
@@ -342,6 +392,11 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
       }
     });
   }
+
+  /**
+   * Holds whether the pane has been torn down, which an editor still building has to find out.
+   */
+  private paneDestroyed: boolean = false;
 
   /**
    * Creates the editor once the view's elements are available, and captures the scroll container.
@@ -382,6 +437,7 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
    */
   public ngOnDestroy(): void {
     this.log.info('MarkdownEditor', 'Destroying editor pane');
+    this.paneDestroyed = true;
     void this.destroyEditor();
     this.scrollContainer = null;
   }
@@ -486,14 +542,27 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
    * @returns Returns a promise that resolves once the editor has been created.
    */
   private async createEditor(): Promise<void> {
+    // The editor this replaces took a moment to go, and the pane may have gone in that moment.
+    if (this.paneDestroyed) {
+      return;
+    }
     const container: HTMLDivElement = this.editorContainer().nativeElement;
     const imageSizing: ImageSizing = this.milkdown.imageSizing();
+    this.builtSignature = untracked(this.milkdown.buildSignature);
+    setMermaidAppearance(untracked(this.milkdown.mermaidAppearance));
+    const initial: string = this.rebuildContent ?? this.content();
+    this.rebuildContent = null;
 
     await this.zone.runOutsideAngular(async (): Promise<void> => {
       const crepe: Crepe = createStudioCrepe({
         root: container,
-        defaultValue: this.content(),
+        defaultValue: initial,
         resizableImages: imageSizing === 'sizable',
+        behaviour: untracked(this.milkdown.behaviour),
+        openLink: (href: string): void => void this.shell.openExternal(href),
+        storeImage: (file: File): Promise<string> => this.storeImage(file),
+        imageFailed: (file: File, cause: unknown): void =>
+          this.log.warn('MarkdownEditor', `Could not place pasted image ${file.name}`, cause),
         monaco: this.monaco,
         highlighter: this.highlighter,
         assist: {
@@ -547,6 +616,10 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
 
       this.crepe = crepe;
       await crepe.create();
+      // Torn down while it built: teardown has been and gone, so nothing past here would be undone.
+      if (this.paneDestroyed) {
+        return;
+      }
       this.isCreatingEditor = false;
       this.postCreateMarkdown = crepe.getMarkdown();
 
@@ -586,6 +659,64 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
   }
 
   /**
+   * Builds the editor again for a settings change, in place: the document and the scroll position
+   * stay, the undo history does not.
+   * @returns Returns a promise that resolves once the new editor is ready.
+   */
+  private async rebuildEditor(): Promise<void> {
+    // Unedited, the file's own text is parsed again, so that a conversion turned off really is off.
+    this.rebuildContent = this.postCreateMarkdown === null ? this.getMarkdown() : null;
+    const scrollTop: number = this.scrollContainer?.scrollTop ?? 0;
+    await this.destroyEditor();
+    await this.createEditor();
+    if (this.scrollContainer !== null) {
+      this.scrollContainer.scrollTop = scrollTop;
+    }
+  }
+
+  /**
+   * Stores a pasted or dropped image as Pasted Image Storage says. A document with no folder yet, or a
+   * file that can't be written, embeds it rather than losing it.
+   * @param file The image.
+   * @returns Returns a promise resolving to the image's source.
+   */
+  private async storeImage(file: File): Promise<string> {
+    const storage: MarkdownPastedImageStorage = this.settings.get(
+      'markdownEditor.pastedImageStorage',
+    );
+    const directory: string = this.baseDirectory();
+    if (storage === 'embed' || directory.length === 0) {
+      return fileToDataUrl(file);
+    }
+    const path: string = pastedImagePath(
+      directory,
+      storage,
+      this.settings.get('markdownEditor.pastedImageFolder'),
+      pastedImageFileName(file, Date.now()),
+    );
+    let failure: unknown;
+    try {
+      const written: FileWriteResult = await this.fileSystem.writeBytes(
+        path,
+        new Uint8Array(await file.arrayBuffer()),
+      );
+      if (written.success) {
+        return styleImagePath(
+          path,
+          directory,
+          this.settings.get('markdownEditor.insertedImagePaths'),
+        );
+      }
+      failure = written.error;
+    } catch (error: unknown) {
+      // A bridge that fails outright is as much "can't be written" as a refused write.
+      failure = error;
+    }
+    this.log.warn('MarkdownEditor', 'Could not save pasted image, embedding it', failure);
+    return fileToDataUrl(file);
+  }
+
+  /**
    * Destroys the Crepe editor, removing listeners and the image resolver.
    * @returns Returns a promise that resolves once the editor has been destroyed.
    */
@@ -608,9 +739,11 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
     this.closeMermaidEditor();
 
     if (this.crepe !== null) {
+      // Before the wait, so a second change arriving meanwhile cannot start a second replacement; the
+      // one under way reads the content when it builds, so the latest still lands.
+      this.isEditorReady.set(false);
       await this.crepe.destroy();
       this.crepe = null;
-      this.isEditorReady.set(false);
     }
 
     this.editorView = null;
@@ -632,6 +765,10 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
     for (const [name, value] of Object.entries(properties)) {
       milkdownElement.style.setProperty(name, value);
     }
+    this.editorView?.dom.setAttribute(
+      'spellcheck',
+      String(this.settings.get('markdownEditor.checkSpelling')),
+    );
   }
 
   /**

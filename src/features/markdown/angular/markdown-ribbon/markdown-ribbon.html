@@ -185,6 +185,11 @@
     (submitted)="onImageSubmit($event)"
     (closed)="imageOpen.set(false)"
   />
+  <app-markdown-table-modal
+    [open]="tableOpen()"
+    (submitted)="onTableSubmit($event)"
+    (closed)="tableOpen.set(false)"
+  />
   <app-markdown-link-modal
     [open]="linkOpen()"
     (submitted)="onLinkSubmit($event)"

@@ -5,7 +5,12 @@ import { CodeGeneratedPanels } from '@features/code/angular/generated-code/code-
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { CodeRunner } from '@features/code/angular/code-runner/code-runner';
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
-import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
+import {
+  CodeDocument,
+  CodeViewToggles,
+  Documents,
+  effectiveViewToggles,
+} from '@shared/angular/services/documents/documents';
 import { LanguageInfo, Monaco } from '@shared/angular/services/monaco/monaco';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Printing } from '@shared/angular/services/printing/printing';
@@ -187,24 +192,38 @@ export class CodeRibbon {
   );
 
   /**
-   * Gets a value indicating whether long lines are wrapped.
+   * Gets the view toggles in force in the active tab: those it set for itself, otherwise the settings
+   * as they apply to its file. With no document they are the global settings.
+   */
+  private readonly viewToggles: Signal<Required<CodeViewToggles>> = computed(
+    (): Required<CodeViewToggles> => {
+      const document: CodeDocument | undefined = this.activeDocument();
+      return effectiveViewToggles(
+        document?.view() ?? {},
+        document === undefined
+          ? this.settings.globalTextEditor()
+          : this.settings.resolveSettingsForLanguage(document.language()),
+      );
+    },
+  );
+
+  /**
+   * Gets a value indicating whether long lines are wrapped in the active tab.
    */
   protected readonly wordWrap: Signal<boolean> = computed(
-    (): boolean => this.settings.globalTextEditor().wordWrap,
+    (): boolean => this.viewToggles().wordWrap,
   );
 
   /**
-   * Gets a value indicating whether the minimap is shown.
+   * Gets a value indicating whether the active tab shows the minimap.
    */
-  protected readonly minimap: Signal<boolean> = computed(
-    (): boolean => this.settings.globalTextEditor().showMinimap,
-  );
+  protected readonly minimap: Signal<boolean> = computed((): boolean => this.viewToggles().minimap);
 
   /**
-   * Gets a value indicating whether line numbers are shown.
+   * Gets a value indicating whether the active tab shows line numbers.
    */
   protected readonly lineNumbers: Signal<boolean> = computed(
-    (): boolean => this.settings.globalTextEditor().showLineNumbers,
+    (): boolean => this.viewToggles().lineNumbers,
   );
 
   /**
@@ -219,20 +238,20 @@ export class CodeRibbon {
         {
           id: 'code.save',
           label: 'Save',
-          accelerator: 'CmdOrCtrl+S',
+          binding: 'code.save',
           run: (): void => this.onSave(),
         },
         {
           id: 'code.saveAs',
           label: 'Save As',
-          accelerator: 'CmdOrCtrl+Shift+S',
+          binding: 'code.saveAs',
           run: (): void => this.onSaveVariant(VARIANT_SAVE_AS),
         },
         MENU_SEPARATOR,
         {
           id: 'code.print',
           label: 'Print',
-          accelerator: 'CmdOrCtrl+P',
+          binding: 'code.print',
           run: (): void => this.onPrint(),
         },
         { id: 'code.exportPdf', label: 'Export to PDF', run: (): void => this.onExportPdf() },
@@ -305,7 +324,7 @@ export class CodeRibbon {
         {
           id: 'code.run',
           label: 'Start',
-          accelerator: 'CmdOrCtrl+R',
+          binding: 'code.run',
           enabled: this.canRun(),
           run: (): void => this.onRun(),
         },
@@ -356,7 +375,10 @@ export class CodeRibbon {
    */
   protected onPrint(): void {
     this.log.info('code.ribbon', 'Print requested');
-    this.printing.print();
+    void this.printing.print(
+      this.activeDocument()?.fileName() ?? '',
+      this.settings.get('textEditor.printMargin'),
+    );
   }
 
   /**
@@ -380,7 +402,10 @@ export class CodeRibbon {
       'Export to PDF requested',
       this.activeDocument()?.fileName() ?? '',
     );
-    void this.printing.exportPdf(this.activeDocument()?.fileName() ?? '');
+    void this.printing.exportPdf(
+      this.activeDocument()?.fileName() ?? '',
+      this.settings.get('textEditor.printMargin'),
+    );
   }
 
   /**
@@ -509,26 +534,37 @@ export class CodeRibbon {
   }
 
   /**
-   * Toggles word wrap.
+   * Toggles word wrap in the active tab only; the setting is left alone.
    * @param value The new word-wrap state.
    */
   protected onWordWrap(value: boolean): void {
-    this.settings.updateTextEditorSettings({ wordWrap: value });
+    this.setViewToggle({ wordWrap: value });
   }
 
   /**
-   * Toggles the minimap.
+   * Toggles the minimap in the active tab only; the setting is left alone.
    * @param value The new minimap state.
    */
   protected onMinimap(value: boolean): void {
-    this.settings.updateTextEditorSettings({ showMinimap: value });
+    this.setViewToggle({ minimap: value });
   }
 
   /**
-   * Toggles line numbers.
+   * Toggles line numbers in the active tab only; the setting is left alone.
    * @param value The new line-numbers state.
    */
   protected onLineNumbers(value: boolean): void {
-    this.settings.updateTextEditorSettings({ showLineNumbers: value });
+    this.setViewToggle({ lineNumbers: value });
+  }
+
+  /**
+   * Records a view toggle on the active tab, for as long as the tab is open.
+   * @param toggle The toggle and its new state.
+   */
+  private setViewToggle(toggle: CodeViewToggles): void {
+    this.activeDocument()?.view.update((current: CodeViewToggles): CodeViewToggles => ({
+      ...current,
+      ...toggle,
+    }));
   }
 }

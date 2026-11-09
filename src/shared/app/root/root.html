@@ -35,6 +35,17 @@
      dialog when the user's Go to style is Dialogs. -->
 <app-go-to-dialog-host />
 
+<!-- The Set Upstream question, asked before a new branch's first push when Set Upstream
+     Automatically on Push is Ask. -->
+<app-upstream-confirm-modal />
+
+<!-- A terminal's questions: pasting several lines, closing while a program is still running. -->
+<app-terminal-confirm-modal />
+
+<!-- The Delete Conversations After question, asked once at start-up when old conversations are due
+     and the setting's mode is Ask. -->
+<app-conversation-retention-prompt />
+
 <!-- The About dialog, mounted once here because the Help menu entry that opens it lives in the
      native menu bar and can only call back into the renderer. -->
 <app-about-host />

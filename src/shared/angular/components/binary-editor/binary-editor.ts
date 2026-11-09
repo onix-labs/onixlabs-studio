@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   effect,
   ElementRef,
   inject,
@@ -12,16 +13,33 @@ import {
   OutputEmitterRef,
   signal,
   Signal,
+  untracked,
   viewChild,
   WritableSignal,
 } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
+import type {
+  BinaryAddressFormat,
+  BinaryHexCase,
+  BinaryTextEncoding,
+} from '@shared/angular/services/settings/settings-registry';
 
 /**
  * Specifies the fixed height, in pixels, of one byte-row. Fixed so the total scroll height is the row
  * count times this, and the visible window maps directly to a scroll offset.
  */
 const ROW_HEIGHT: number = 26;
+
+/**
+ * Specifies how tall a row grows with a font too large for {@link ROW_HEIGHT}.
+ */
+const ROW_HEIGHT_PER_FONT_SIZE: number = 1.6;
+
+/**
+ * Specifies the gap between a row's byte groups.
+ */
+const GROUP_GAP: string = '0.75ch';
 
 /**
  * Caps the scroll sizer's height. Browsers clamp element heights around 33.5 million pixels, so a
@@ -103,6 +121,11 @@ interface BinaryCell {
   readonly ascii: string;
 
   /**
+   * Gets whether a group gap follows the cell.
+   */
+  readonly groupEnd: boolean;
+
+  /**
    * Gets a value indicating whether the cell falls within the current selection.
    */
   readonly selected: boolean;
@@ -144,6 +167,8 @@ interface BinaryEditorRow {
   styleUrl: './binary-editor.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
+    '[style.font-family]': 'fontFamily()',
+    '[style.font-size.px]': 'fontSize()',
     '(window:pointerup)': 'onPointerUp()',
   },
 })
@@ -152,6 +177,11 @@ export class BinaryEditor {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the component's destroy hook, which releases the viewport observer.
+   */
+  private readonly destroyRef: DestroyRef = inject(DestroyRef);
 
   /**
    * Gets the total number of bytes in the file.
@@ -195,6 +225,57 @@ export class BinaryEditor {
    * Gets whether typing inserts bytes (true) or overwrites them (false, the default).
    */
   public readonly insertMode: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets whether the bytes are locked against typing. The caret and selection still move.
+   */
+  public readonly readOnly: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Holds the Binary settings the grid draws itself by.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Gets how many bytes sit between group gaps, or zero for none.
+   */
+  protected readonly grouping: Signal<number> = this.settings.value('binaryEditor.byteGrouping');
+
+  /**
+   * Gets whether the text column is shown.
+   */
+  protected readonly showText: Signal<boolean> = this.settings.value('binaryEditor.showTextColumn');
+
+  /**
+   * Gets the gaps a row's groups add, for the grid's width.
+   */
+  protected readonly groupGaps: Signal<string> = computed((): string => {
+    const grouping: number = this.grouping();
+    const gaps: number = grouping === 0 ? 0 : Math.floor((this.bytesPerRow() - 1) / grouping);
+    return `calc(${gaps} * ${GROUP_GAP})`;
+  });
+
+  /**
+   * Gets the text column's heading.
+   */
+  protected readonly textHeading: Signal<string> = computed(
+    (): string => TEXT_HEADINGS[this.settings.get('binaryEditor.textEncoding')],
+  );
+
+  /**
+   * Gets the Code font's size, which the grid is set in.
+   */
+  protected readonly fontSize: Signal<number> = computed(
+    (): number => this.settings.globalTextEditor().fontSize,
+  );
+
+  /**
+   * Gets the Code font as a CSS stack, which the grid is set in.
+   */
+  protected readonly fontFamily: Signal<string> = computed(
+    (): string =>
+      `"${this.settings.globalTextEditor().fontFamily}", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`,
+  );
 
   /**
    * Emits the byte window the editor needs loaded whenever the visible range changes.
@@ -287,14 +368,16 @@ export class BinaryEditor {
   /**
    * Gets the fixed row height, exposed for the template's inline sizing.
    */
-  protected readonly rowHeight: number = ROW_HEIGHT;
+  protected readonly rowHeight: Signal<number> = computed((): number =>
+    Math.max(ROW_HEIGHT, Math.round(this.fontSize() * ROW_HEIGHT_PER_FONT_SIZE)),
+  );
 
   /**
    * Holds the column header labels (byte index within a row, as hex).
    */
   protected readonly columnLabels: Signal<readonly string[]> = computed((): readonly string[] =>
     Array.from({ length: this.bytesPerRow() }, (_unused: unknown, index: number): string =>
-      index.toString(16).padStart(2, '0').toUpperCase(),
+      formatHex(index, this.settings.get('binaryEditor.hexCase')),
     ),
   );
 
@@ -310,7 +393,7 @@ export class BinaryEditor {
    * cap above it (the compressed mapping takes over).
    */
   protected readonly totalHeight: Signal<number> = computed((): number =>
-    Math.min(this.rowCount() * ROW_HEIGHT, MAX_SIZER_HEIGHT),
+    Math.min(this.rowCount() * this.rowHeight(), MAX_SIZER_HEIGHT),
   );
 
   /**
@@ -318,7 +401,7 @@ export class BinaryEditor {
    * proportionally onto rows instead of one row per {@link ROW_HEIGHT} pixels.
    */
   private readonly compressed: Signal<boolean> = computed(
-    (): boolean => this.rowCount() * ROW_HEIGHT > MAX_SIZER_HEIGHT,
+    (): boolean => this.rowCount() * this.rowHeight() > MAX_SIZER_HEIGHT,
   );
 
   /**
@@ -326,7 +409,7 @@ export class BinaryEditor {
    * rows begins.
    */
   private readonly maxAnchorRow: Signal<number> = computed((): number =>
-    Math.max(0, this.rowCount() - this.viewportHeight() / ROW_HEIGHT),
+    Math.max(0, this.rowCount() - this.viewportHeight() / this.rowHeight()),
   );
 
   /**
@@ -340,7 +423,7 @@ export class BinaryEditor {
    * Holds the index one past the last rendered row.
    */
   private readonly lastRow: Signal<number> = computed((): number => {
-    const visible: number = Math.ceil(this.viewportHeight() / ROW_HEIGHT) + OVERSCAN * 2;
+    const visible: number = Math.ceil(this.viewportHeight() / this.rowHeight()) + OVERSCAN * 2;
     return Math.min(this.rowCount(), this.firstRow() + visible);
   });
 
@@ -350,7 +433,7 @@ export class BinaryEditor {
    * it; below the sizer cap this reduces to the classic `firstRow × ROW_HEIGHT`.
    */
   protected readonly offsetY: Signal<number> = computed(
-    (): number => this.scrollTop() - (this.anchorRow() - this.firstRow()) * ROW_HEIGHT,
+    (): number => this.scrollTop() - (this.anchorRow() - this.firstRow()) * this.rowHeight(),
   );
 
   /**
@@ -366,6 +449,10 @@ export class BinaryEditor {
       const byteAt: (offset: number) => number | null = this.byteAt();
       const first: number = this.firstRow();
       const last: number = this.lastRow();
+      const hexCase: BinaryHexCase = this.settings.get('binaryEditor.hexCase');
+      const encoding: BinaryTextEncoding = this.settings.get('binaryEditor.textEncoding');
+      const addresses: BinaryAddressFormat = this.settings.get('binaryEditor.addressFormat');
+      const grouping: number = this.grouping();
       const rows: BinaryEditorRow[] = [];
       for (let row: number = first; row < last; row += 1) {
         const base: number = row * bytesPerRow;
@@ -380,12 +467,13 @@ export class BinaryEditor {
             selection !== null && offset >= selection.start && offset < selection.end;
           cells.push({
             offset,
-            hex: value === null ? '··' : value.toString(16).padStart(2, '0').toUpperCase(),
-            ascii: value === null ? '·' : printable(value),
+            hex: value === null ? '··' : formatHex(value, hexCase),
+            ascii: value === null ? '·' : textOf(offset, value, encoding, byteAt),
             selected,
+            groupEnd: endsGroup(column, grouping, bytesPerRow),
           });
         }
-        rows.push({ index: row, address: formatAddress(base), cells });
+        rows.push({ index: row, address: formatAddress(base, addresses, hexCase), cells });
       }
       return rows;
     },
@@ -407,6 +495,7 @@ export class BinaryEditor {
         this.viewportHeight.set(element.clientHeight);
       });
       observer.observe(element);
+      this.destroyRef.onDestroy((): void => observer.disconnect());
     });
 
     // Report the visible byte window whenever it moves, so the host loads exactly those bytes.
@@ -428,6 +517,11 @@ export class BinaryEditor {
     effect((): void => {
       const selection: BinaryRange | null = this.selection();
       if (selection !== null) {
+        // A half-typed byte belongs to where it was started: the next digit there must not land on
+        // whatever the selection moved to.
+        if (selection.start !== untracked(this.caret)) {
+          this.nibbleLow = false;
+        }
         this.caret.set(selection.start);
       }
     });
@@ -440,8 +534,11 @@ export class BinaryEditor {
       if (target === null || element === undefined) {
         return;
       }
-      const targetRow: number = Math.floor(target / this.bytesPerRow());
-      this.scrollToRow(targetRow - element.clientHeight / ROW_HEIGHT / 2, element);
+      // Untracked: a reveal happens when asked for, not again each time the viewport or file resizes.
+      untracked((): void => {
+        const targetRow: number = Math.floor(target / this.bytesPerRow());
+        this.scrollToRow(targetRow - element.clientHeight / this.rowHeight() / 2, element);
+      });
     });
   }
 
@@ -460,7 +557,7 @@ export class BinaryEditor {
       return;
     }
     if (!this.compressed()) {
-      this.anchorRow.set(element.scrollTop / ROW_HEIGHT);
+      this.anchorRow.set(element.scrollTop / this.rowHeight());
       return;
     }
     const scrollable: number = Math.max(1, element.scrollHeight - element.clientHeight);
@@ -482,7 +579,7 @@ export class BinaryEditor {
       return;
     }
     event.preventDefault();
-    this.scrollToRow(this.anchorRow() + event.deltaY / ROW_HEIGHT, element);
+    this.scrollToRow(this.anchorRow() + event.deltaY / this.rowHeight(), element);
   }
 
   /**
@@ -495,7 +592,7 @@ export class BinaryEditor {
     const clamped: number = Math.min(Math.max(0, row), this.maxAnchorRow());
     if (!this.compressed()) {
       // The scroll event derives the anchor back from this exact pixel position.
-      element.scrollTop = clamped * ROW_HEIGHT;
+      element.scrollTop = clamped * this.rowHeight();
       return;
     }
     this.anchorRow.set(clamped);
@@ -565,15 +662,17 @@ export class BinaryEditor {
       this.moveCaret(caret - (caret % bytesPerRow) + bytesPerRow - 1, maxCaret);
     } else if (key === 'Insert') {
       this.toggleInsertMode.emit();
-    } else if (key === 'Backspace') {
+    } else if (key === 'Backspace' && !this.readOnly()) {
       this.deleteAt(caret - 1, maxCaret);
-    } else if (key === 'Delete') {
+    } else if (key === 'Delete' && !this.readOnly()) {
       this.deleteAt(caret, maxCaret);
     } else if (key === 'Tab') {
       this.activeColumn.update((column: BinaryColumn): BinaryColumn =>
         column === 'hex' ? 'ascii' : 'hex',
       );
       this.nibbleLow = false;
+    } else if (this.readOnly() || isChord(event)) {
+      handled = false;
     } else if (this.activeColumn() === 'hex' && /^[0-9a-fA-F]$/.test(key)) {
       this.applyHexDigit(parseInt(key, 16), maxCaret, insertMode);
     } else if (
@@ -685,7 +784,7 @@ export class BinaryEditor {
       return;
     }
     const row: number = Math.floor(this.caret() / this.bytesPerRow());
-    const viewportRows: number = element.clientHeight / ROW_HEIGHT;
+    const viewportRows: number = element.clientHeight / this.rowHeight();
     if (row < this.anchorRow()) {
       this.scrollToRow(row, element);
     } else if (row + 1 > this.anchorRow() + viewportRows) {
@@ -701,10 +800,127 @@ export class BinaryEditor {
  * @param offset The byte offset.
  * @returns Returns the formatted address.
  */
-export function formatAddress(offset: number): string {
-  const hex: string = offset.toString(16).padStart(8, '0').toUpperCase();
-  return `${hex.slice(0, -4)}:${hex.slice(-4)}`;
+export function formatAddress(
+  offset: number,
+  format: BinaryAddressFormat = 'hex-split',
+  hexCase: BinaryHexCase = 'upper',
+): string {
+  if (format === 'decimal') {
+    return offset.toString(10).padStart(DECIMAL_ADDRESS_WIDTH, '0');
+  }
+  const hex: string = formatHex(offset, hexCase, HEX_ADDRESS_WIDTH);
+  return format === 'hex' ? hex : `${hex.slice(0, -4)}:${hex.slice(-4)}`;
 }
+
+/**
+ * Determines whether a key press is a shortcut rather than a typed character: ⌘C is a copy, not the
+ * hex digit C. AltGr reports itself as Ctrl+Alt, and does type.
+ * @param event The key press.
+ * @returns Returns true for a chord.
+ */
+function isChord(event: KeyboardEvent): boolean {
+  return event.metaKey || ((event.ctrlKey || event.altKey) && !event.getModifierState('AltGraph'));
+}
+
+/**
+ * Writes a number as hex.
+ * @param value The number.
+ * @param hexCase The case to write it in.
+ * @param width The digits to pad to.
+ * @returns Returns the hex.
+ */
+function formatHex(value: number, hexCase: BinaryHexCase, width: number = 2): string {
+  const hex: string = value.toString(16).padStart(width, '0');
+  return hexCase === 'upper' ? hex.toUpperCase() : hex;
+}
+
+/**
+ * Determines whether a group gap follows a column.
+ * @param column The column's index in its row.
+ * @param grouping The bytes in a group, or zero for none.
+ * @param bytesPerRow The bytes in a row.
+ * @returns Returns true when a gap follows it.
+ */
+function endsGroup(column: number, grouping: number, bytesPerRow: number): boolean {
+  return grouping > 0 && (column + 1) % grouping === 0 && column + 1 < bytesPerRow;
+}
+
+/**
+ * Finds the character a byte shows in the text column. In UTF-8 a sequence shows on its first byte,
+ * and the rest of it shows the placeholder.
+ * @param offset The byte's offset.
+ * @param value The byte's value.
+ * @param encoding The Text Column Encoding setting.
+ * @param byteAt Reads a neighbouring byte.
+ * @returns Returns the character, or `·`.
+ */
+export function textOf(
+  offset: number,
+  value: number,
+  encoding: BinaryTextEncoding,
+  byteAt: (offset: number) => number | null,
+): string {
+  if (encoding === 'latin1' && value >= LATIN1_PRINTABLE) {
+    return String.fromCharCode(value);
+  }
+  if (encoding === 'utf8' && value >= UTF8_LEAD_2) {
+    const length: number = value >= UTF8_LEAD_4 ? 4 : value >= UTF8_LEAD_3 ? 3 : 2;
+    const bytes: number[] = [value];
+    for (let next: number = 1; next < length; next += 1) {
+      bytes.push(byteAt(offset + next) ?? 0);
+    }
+    return (
+      UTF8.decode(new Uint8Array(bytes))
+        .replace(/\uFFFD/g, '·')
+        .slice(0, 2) || '·'
+    );
+  }
+  return printable(value);
+}
+
+/**
+ * Holds the first printable byte of Latin-1 above the control range.
+ */
+const LATIN1_PRINTABLE: number = 0xa1;
+
+/**
+ * Holds the lowest lead byte of a two-byte UTF-8 sequence.
+ */
+const UTF8_LEAD_2: number = 0xc2;
+
+/**
+ * Holds the lowest lead byte of a three-byte UTF-8 sequence.
+ */
+const UTF8_LEAD_3: number = 0xe0;
+
+/**
+ * Holds the lowest lead byte of a four-byte UTF-8 sequence.
+ */
+const UTF8_LEAD_4: number = 0xf0;
+
+/**
+ * Holds the decoder the text column reads UTF-8 with.
+ */
+const UTF8: TextDecoder = new TextDecoder('utf-8');
+
+/**
+ * Holds the digits a hex address is padded to.
+ */
+const HEX_ADDRESS_WIDTH: number = 8;
+
+/**
+ * Holds the digits a decimal address is padded to, which fit the same column.
+ */
+const DECIMAL_ADDRESS_WIDTH: number = 9;
+
+/**
+ * Holds the text column's heading for each encoding.
+ */
+const TEXT_HEADINGS: Readonly<Record<BinaryTextEncoding, string>> = {
+  ascii: 'ASCII',
+  latin1: 'Latin-1',
+  utf8: 'UTF-8',
+};
 
 /**
  * Maps a byte to its printable ASCII character, or `·` for control and non-ASCII bytes.

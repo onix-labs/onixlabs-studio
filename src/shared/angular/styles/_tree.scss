@@ -57,6 +57,31 @@ app-tree-view {
   }
 }
 
+// A heading row labelling a group of rows (for example a group of roots). The same height as a row,
+// so a virtual tree's fixed row size holds, with its text sitting low to read as belonging to the
+// rows beneath it rather than the ones above.
+.tree-heading {
+  display: flex;
+  align-items: flex-end;
+  inline-size: 100%;
+  block-size: 1.75rem;
+  padding-inline: 0.75rem;
+  padding-block-end: 0.25rem;
+  cursor: default;
+  user-select: none;
+}
+
+.tree-heading__label {
+  overflow: hidden;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
+}
+
 // A trailing per-row control (e.g. a checkout button) projected into a row's content. Hidden until the
 // row is hovered or something inside it takes focus, so the action only appears when it is reachable.
 // This lives globally because the row is the TreeView component's element while the action is the
@@ -202,6 +227,21 @@ app-tree-view {
   to {
     transform: rotate(360deg);
   }
+}
+
+// A row whose subject has an error, or leads to one (the explorers, after #1182): its name carries the
+// red squiggle an editor draws under an error, whatever colour version control gives it. The name's
+// box clips its overflow (for the ellipsis), which cut the wave down to a row of dots; padding gives the
+// wave room inside the box, and the negative margin gives the row its height back.
+.tree-row--squiggle .tree-name {
+  padding-block-end: 4px;
+  margin-block-end: -4px;
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: var(--error-color);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  text-decoration-skip-ink: none;
 }
 
 // Empty state shown when a tree has no content (no folder, or no solution detected).

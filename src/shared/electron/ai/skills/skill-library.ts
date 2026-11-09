@@ -15,7 +15,7 @@ import {
   serializeSkillFile,
   skillProblem,
   type ParsedSkillFile,
-} from './skill-file';
+} from '@shared/api/skill-file';
 
 /**
  * Folders never listed as bundled files: version control and editor litter that a user who keeps

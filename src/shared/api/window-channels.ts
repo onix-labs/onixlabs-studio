@@ -63,6 +63,13 @@ export enum WindowChannel {
    * and never above the screen it is on.
    */
   SetMinimumSize = 'window:set-minimum-size',
+
+  /**
+   * Tells the main window whether it is in full screen (main→renderer, send; a boolean), on every
+   * change and after each load. macOS draws no traffic lights over a full-screen window's title
+   * strip, so the strip stops leaving room for them.
+   */
+  FullScreenChanged = 'window:full-screen-changed',
 }
 
 /**
@@ -89,6 +96,11 @@ export const MODAL_WINDOW_URL: string = 'about:blank#studio-modal';
  * hidden parent would not be displayed at all on macOS.
  */
 export const MODAL_UNPARENTED_FEATURE: string = 'studio-unparented';
+
+/**
+ * Names the `window.open` feature that asks for a modal window with no platform window controls.
+ */
+export const MODAL_FRAMELESS_FEATURE: string = 'studio-frameless';
 
 /**
  * Matches the name a pop-out or modal window is opened with: `studio-window-` and a UUID. The name is

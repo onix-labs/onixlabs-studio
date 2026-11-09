@@ -1,9 +1,17 @@
-import { effect, inject, OnDestroy, Service, untracked } from '@angular/core';
+import { DestroyRef, effect, inject, Injector, OnDestroy, Service, untracked } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Bridge } from '@shared/api/bridge';
 import { Log } from '@shared/angular/services/log/log';
 import {
   LspApplyEditReply,
+  LspAttachDebuggerReply,
+  LspAttachDebuggerRequest,
+  LspIndentationReply,
+  LspIndentationRequest,
+  LspShowDocumentRequest,
+  LspShowMessageReply,
+  LspShowMessageRequest,
+  LspBraceStyle,
   LspApplyEditRequest,
   LspChannel,
   LspExit,
@@ -11,10 +19,13 @@ import {
   LspSemanticTokensLegend,
   LspServerSummary,
   LspStartResult,
+  REFRESH_WORKSPACE_DIAGNOSTICS_METHOD,
+  WORKSPACE_DIAGNOSTICS_METHOD,
 } from '@shared/api/lsp-channels';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { Diagnostic, Diagnostics } from '../diagnostics/diagnostics';
-import { Output } from '../output/output';
+import { Output, OutputChannel } from '../output/output';
+import { Icon } from '@shared/angular/icons/icon';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
@@ -22,6 +33,11 @@ import {
   LspCodeActionSupport,
   LspDocumentRef,
   LspFeatures,
+  LspFormattingSupport,
+  LspCodeLensSupport,
+  LspInlayHintSupport,
+  LspStructureSupport,
+  LspNavigationSupport,
   LspRenameSupport,
   LspSessionSupport,
 } from './lsp-features';
@@ -29,25 +45,379 @@ import {
   fromLspWorkspaceEdit,
   SkippedEdit,
   WorkspaceEditOutcome,
+  WorkspaceTextEdits,
 } from '@shared/angular/services/workspace-edit/workspace-edit';
 import { WorkspaceEditApplier } from '@shared/angular/services/workspace-edit/workspace-edit-applier';
 import { LSP_MARKER_OWNER } from './lsp-marker-owner';
-import { isWithin, normalise, parentDir, pathToUri, uriToPath } from './lsp-paths';
-import { toDiagnostic, toMarkerData } from './lsp-diagnostic-mapper';
+import {
+  basename,
+  isGeneratedView,
+  isMetadataAsSource,
+  isToolchainSource,
+  isWithin,
+  normalise,
+  parentDir,
+  pathToUri,
+  uriToPath,
+} from './lsp-paths';
+import {
+  isErrorListDiagnostic,
+  mergeDiagnostics,
+  toDiagnostic,
+  toMarkerData,
+} from './lsp-diagnostic-mapper';
 import { LspContentEdit, minimalReplaceEdit } from './lsp-text-sync';
 import {
   codeActionSupportOf,
+  fileRenameFiltersOf,
   executeCommandsOf,
+  formattingSupportOf,
+  inlayHintSupportOf,
+  structureSupportOf,
+  autoInsertTriggersOf,
+  codeLensSupportOf,
+  navigationSupportOf,
   renameSupportOf,
   saveIncludesText,
   semanticLegendOf,
   supportsPullDiagnostics,
 } from './lsp-capabilities';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import { EditorConfigs } from '@shared/angular/services/editor-config/editor-configs';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { DebugAttachRouter } from '@shared/angular/services/debug-attach/debug-attach-router';
+import {
+  NotificationAction,
+  Notifications,
+} from '@shared/angular/services/notifications/notifications';
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
+import { Shell } from '@shared/angular/services/shell/shell';
+import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
+import { CodeLensServerSync } from './code-lens-server-sync';
 import { LspStatus } from './lsp-status';
 import { completionSupportOf, signatureHelpSupportOf } from './lsp-completion';
 
+/**
+ * The configuration section of the setting that chooses whether a server restores packages by itself
+ * or asks first (#1143) — Roslyn's, the server that declares it.
+ */
+const AUTOMATIC_RESTORE_SECTION: string = 'projects.dotnet_enable_automatic_restore';
+
+/**
+ * Matches the warning Roslyn logs for a project whose packages are not restored, capturing its path —
+ * with automatic restore off, the only word it gives (#1143).
+ */
+const UNRESOLVED_PROJECT: RegExp = /Project (.+?\.[a-z]+proj) has unresolved dependencies/;
+
+/**
+ * The notification in which clangd says what it is doing with a file (#1213).
+ */
+const FILE_STATUS_METHOD: string = 'textDocument/clangd.fileStatus';
+
+/**
+ * The notification in which clangd says which lines of a file the preprocessor leaves out (#1213): an
+ * `#if 0` block, or the branch of an `#ifdef` not taken.
+ */
+const INACTIVE_REGIONS_METHOD: string = 'textDocument/inactiveRegions';
+
+/**
+ * The class that fades code the preprocessor leaves out (#1213), styled in `_diagnostics.scss`.
+ */
+const INACTIVE_REGION_CLASS: string = 'lsp-inactive-region';
+
+/**
+ * The request that asks Roslyn to restore projects' packages.
+ */
+const RESTORE_METHOD: string = 'workspace/_roslyn_restore';
+
+/**
+ * How long to gather projects a load reports as needing a restore before offering to restore them.
+ */
+const UNRESTORED_GATHER_MS: number = 1_500;
+
+/**
+ * The most symbols a workspace search lists (#1146): enough to scroll through, never a solution's
+ * worth.
+ */
+const MAX_WORKSPACE_SYMBOLS: number = 200;
+
+/**
+ * How long a rename waits for a language server to say what else it changes (#1207). A rename the user
+ * asked for must happen: a server that takes longer simply has nothing followed.
+ */
+const FILE_RENAME_TIMEOUT_MS: number = 5_000;
+
+/**
+ * A symbol found by name across the workspace (#1146).
+ */
+export interface WorkspaceSymbolMatch {
+  /**
+   * Gets its name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets its kind, as the protocol numbers it (`SymbolKind`).
+   */
+  readonly kind: number;
+
+  /**
+   * Gets what it is declared in, as the server names it, or an empty string.
+   */
+  readonly container: string;
+
+  /**
+   * Gets the absolute path of its file.
+   */
+  readonly path: string;
+
+  /**
+   * Gets its name's span, one-based; the file's first line for a server that did not say where.
+   */
+  readonly range: MonacoApi.IRange;
+}
+
+/**
+ * Determines whether a server finds symbols by name across its workspace.
+ * @param capabilities The server's capabilities.
+ * @returns Returns true when it offers `workspaceSymbolProvider`.
+ */
+function workspaceSymbolsOffered(capabilities: unknown): boolean {
+  const provider: unknown = (capabilities as { workspaceSymbolProvider?: unknown } | undefined)
+    ?.workspaceSymbolProvider;
+  return provider === true || (typeof provider === 'object' && provider !== null);
+}
+
+/**
+ * Works out the key a document a server named is tracked under. Servers are untrusted: the name may
+ * not be a string, and a stray `%` makes it impossible to decode.
+ * @param uri The document's URI, as the server gave it.
+ * @returns Returns the key, or null when the URI cannot be read.
+ */
+function documentKeyOf(uri: unknown): string | null {
+  if (typeof uri !== 'string') {
+    return null;
+  }
+  try {
+    return normalise(uriToPath(uri));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reads a `workspace/symbol` answer — `SymbolInformation` or `WorkspaceSymbol`, whose location may
+ * name only the file — dropping what names no file.
+ * @param result The answer, untrusted.
+ * @returns Returns the symbols.
+ */
+function toWorkspaceSymbols(result: unknown): WorkspaceSymbolMatch[] {
+  if (!Array.isArray(result)) {
+    return [];
+  }
+  const symbols: WorkspaceSymbolMatch[] = [];
+  for (const candidate of result as readonly {
+    name?: unknown;
+    kind?: unknown;
+    containerName?: unknown;
+    location?: { uri?: unknown; range?: LspRange };
+  }[]) {
+    const uri: unknown = candidate?.location?.uri;
+    if (
+      typeof candidate?.name !== 'string' ||
+      typeof uri !== 'string' ||
+      !uri.startsWith('file:')
+    ) {
+      continue;
+    }
+    const range: LspRange | undefined = candidate.location?.range;
+    symbols.push({
+      name: candidate.name,
+      kind: typeof candidate.kind === 'number' ? candidate.kind : 0,
+      container: typeof candidate.containerName === 'string' ? candidate.containerName : '',
+      path: uriToPath(uri),
+      range:
+        range === undefined
+          ? { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 }
+          : {
+              startLineNumber: range.start.line + 1,
+              startColumn: range.start.character + 1,
+              endLineNumber: range.end.line + 1,
+              endColumn: range.end.character + 1,
+            },
+    });
+  }
+  return symbols;
+}
+
+/**
+ * The Output channel a test run's log streams into (#1150), shown in the Logs panel as "Tests".
+ */
+const TESTS_CHANNEL: string = 'lsp-tests';
+
+/**
+ * The request that asks Roslyn to build, find and run the tests a lens names (#1150).
+ */
+const RUN_TESTS_METHOD: string = 'textDocument/runTests';
+
+/**
+ * Matches the line Roslyn reports a test's outcome with — `[Failed] Namespace.Class.Method` —
+ * capturing the outcome and the test's fully qualified name.
+ */
+const TEST_OUTCOME: RegExp = /^\[(Passed|Failed|Skipped)\] (\S+)/;
+
+/**
+ * A test's outcome.
+ */
+export type TestOutcome = 'passed' | 'failed' | 'skipped';
+
+/**
+ * A test run under way (#1150).
+ */
+interface TestRun {
+  /**
+   * Gets the session running it.
+   */
+  readonly sessionId: string;
+
+  /**
+   * Gets the channel its log streams into.
+   */
+  readonly channel: OutputChannel;
+
+  /**
+   * Gets each test's outcome, by fully qualified name.
+   */
+  readonly outcomes: Map<string, TestOutcome>;
+
+  /**
+   * Gets the failures, in the order reported, each with the first line of what went wrong.
+   */
+  readonly failures: { readonly name: string; readonly summary: string }[];
+}
+
+/**
+ * Finds the line of each test a run reported (#1150): a document's test lenses (`dotnet.test.run`)
+ * each sit on a test's name — the text their range covers — so a test reported by its fully qualified
+ * name is placed on its lens's line. Skipped tests are left unmarked.
+ * @param lenses The document's code lenses, untrusted.
+ * @param lineAt Reads a one-based line of the document.
+ * @param outcomes Each test's outcome, by fully qualified name.
+ * @returns Returns each test's outcome, by one-based line.
+ */
+export function testLines(
+  lenses: unknown,
+  lineAt: (line: number) => string,
+  outcomes: ReadonlyMap<string, TestOutcome>,
+): Map<number, TestOutcome> {
+  const byName: Map<string, TestOutcome> = new Map<string, TestOutcome>();
+  for (const [name, outcome] of outcomes) {
+    byName.set(testName(name), outcome);
+  }
+  const lines: Map<number, TestOutcome> = new Map<number, TestOutcome>();
+  for (const lens of Array.isArray(lenses)
+    ? (lenses as readonly { range?: LspRange; command?: { command?: unknown } }[])
+    : []) {
+    if (lens?.command?.command !== 'dotnet.test.run' || lens.range === undefined) {
+      continue;
+    }
+    const { start, end } = lens.range;
+    if (start.line !== end.line) {
+      continue;
+    }
+    const outcome: TestOutcome | undefined = byName.get(
+      lineAt(start.line + 1).slice(start.character, end.character),
+    );
+    if (outcome !== undefined && outcome !== 'skipped') {
+      lines.set(start.line + 1, outcome);
+    }
+  }
+  return lines;
+}
+
+/**
+ * Reads a test's own name from its fully qualified name: `Namespace.Class.Method(args)` → `Method`.
+ * @param name The fully qualified name.
+ * @returns Returns the method's name.
+ */
+function testName(name: string): string {
+  return name.replace(/\(.*$/, '').split('.').pop() ?? name;
+}
+
+/**
+ * Reads one of clangd's inactive regions (#1213) as the lines it covers, whole: clangd reports the lines
+ * between the directives, and fading part of a line would read as a highlight rather than as code that
+ * is not compiled. A region past the end of the document (the file changed since) is cut at the end.
+ * @param region The region, an LSP `Range`, untrusted.
+ * @param model The document it is in.
+ * @returns Returns the one-based range, or null when it is not a range in the document.
+ */
+export function toInactiveRange(
+  region: unknown,
+  model: Pick<MonacoApi.editor.ITextModel, 'getLineCount' | 'getLineMaxColumn'>,
+): MonacoApi.IRange | null {
+  const candidate: { start?: { line?: unknown }; end?: { line?: unknown } } | null =
+    typeof region === 'object' && region !== null ? region : null;
+  const start: unknown = candidate?.start?.line;
+  const end: unknown = candidate?.end?.line;
+  if (
+    typeof start !== 'number' ||
+    typeof end !== 'number' ||
+    !Number.isInteger(start) ||
+    !Number.isInteger(end) ||
+    start < 0 ||
+    end < start
+  ) {
+    return null;
+  }
+  const lines: number = model.getLineCount();
+  if (start + 1 > lines) {
+    return null;
+  }
+  const last: number = Math.min(end + 1, lines);
+  return {
+    startLineNumber: start + 1,
+    startColumn: 1,
+    endLineNumber: last,
+    endColumn: model.getLineMaxColumn(last),
+  };
+}
+
+/**
+ * The time within which a server's errors and warnings count as one burst, updating one toast with a
+ * count rather than raising another (#1134).
+ */
+const SERVER_PROBLEM_BURST_MS: number = 60_000;
+
+/**
+ * The parameters a session was started with, kept so a restart can bring its server back up.
+ */
+interface LspSessionInfo {
+  /**
+   * Gets the server's identifier.
+   */
+  readonly serverId: string;
+
+  /**
+   * Gets the root the session is rooted at.
+   */
+  readonly rootPath: string;
+
+  /**
+   * Gets the standalone file the session vouches for, if any.
+   */
+  readonly standaloneFile?: string;
+
+  /**
+   * Gets the language of the document the session was started for, if known.
+   */
+  readonly languageId?: string;
+
+  /**
+   * Gets the brace style the server was started with (#1177), for a server that takes one.
+   */
+  readonly braceStyle?: LspBraceStyle;
+}
 /**
  * Describes the state of an open document the client keeps a server in sync with.
  */
@@ -134,6 +504,11 @@ export interface LspDiagnostic {
   readonly code?: number | string;
 
   /**
+   * Gets what the server says about the code itself (1 unnecessary, 2 deprecated), or undefined.
+   */
+  readonly tags?: readonly number[];
+
+  /**
    * Gets whatever the server attached to the diagnostic for itself, or undefined. Never read here, but
    * kept and sent back with a code-action request (#1016): servers such as Roslyn resolve their fixes
    * from it.
@@ -203,6 +578,16 @@ interface TrackedDocument {
   opened: boolean;
 
   /**
+   * Holds the document's diagnostics from its last push.
+   */
+  pushed: readonly LspDiagnostic[];
+
+  /**
+   * Holds the document's diagnostics from its last pull.
+   */
+  pulled: readonly LspDiagnostic[];
+
+  /**
    * Holds the text the document last had on disk as far as this client has been told, so a save is
    * recognised as the saved text changing rather than re-announced on every re-render. Null until the
    * first saved text is reported.
@@ -231,11 +616,139 @@ const PROVIDER_ID: string = 'lsp';
 
 /**
  * How many unsolicited exits a session may accumulate before the automatic restart stops for good
- * (until a manual restart clears the count). Cumulative, not windowed: a server that OOM-crashes
- * every minute under a too-large workspace never trips a rolling window, yet each respawn re-runs
- * the whole workspace load — a treadmill that once kept a machine saturated indefinitely.
+ * (until a manual restart clears the count), when Restart Crashed Language Servers is not read.
+ * Cumulative, not windowed: a server that OOM-crashes every minute under a too-large workspace never
+ * trips a rolling window, yet each respawn re-runs the whole workspace load — a treadmill that once
+ * kept a machine saturated indefinitely.
  */
 const MAX_AUTO_RESTARTS: number = 5;
+
+/**
+ * How long a server may take, once it has loaded the workspace, to report the whole workspace's
+ * problems before the Error List stops saying it is analysing (#1182). Roslyn takes a second or two on
+ * a small solution; a server that never reports its pull complete must not leave a spinner forever.
+ */
+const ANALYSIS_TIMEOUT_MS: number = 60_000;
+
+/**
+ * Describes a session's crash bookkeeping.
+ */
+export interface LspCrashRecord {
+  /**
+   * Gets how many unsolicited exits the session has accumulated.
+   */
+  readonly count: number;
+
+  /**
+   * Gets when the last one happened.
+   */
+  readonly lastAt: number;
+
+  /**
+   * Gets the reason the server gave for the last one, when it gave one.
+   */
+  readonly reason?: string;
+
+  /**
+   * Gets whether the last one was a clean exit (code 0, no signal) that nothing asked for.
+   */
+  readonly clean: boolean;
+
+  /**
+   * Gets whether the last one repeated the one before it (#1136) — see {@link repeatsPreviousExit}.
+   * A repeat is deterministic: the server will do the same on every respawn, so the automatic restart
+   * stops at the second occurrence instead of re-loading the workspace five times to learn that.
+   */
+  readonly repeated: boolean;
+}
+
+/**
+ * Determines whether an exit repeats the one before it (#1136): both were clean exits nothing asked
+ * for, or the server gave the same reason for both. An exit by signal never repeats — an OOM kill
+ * depends on load, not on the server — and keeps the ordinary backoff.
+ * @param exit The exit.
+ * @param previous The session's crash record before it, if any.
+ * @returns Returns true when the exit repeats the previous one.
+ */
+export function repeatsPreviousExit(exit: LspExit, previous: LspCrashRecord | undefined): boolean {
+  if (exit.signal !== null || previous === undefined) {
+    return false;
+  }
+  return (
+    (exit.code === 0 && previous.clean) ||
+    (exit.reason !== undefined && exit.reason === previous.reason)
+  );
+}
+
+/**
+ * Records an unsolicited exit against a session's crash bookkeeping.
+ * @param exit The exit.
+ * @param previous The session's crash record before it, if any.
+ * @param now The time of the exit.
+ * @returns Returns the new record.
+ */
+export function recordCrash(
+  exit: LspExit,
+  previous: LspCrashRecord | undefined,
+  now: number,
+): LspCrashRecord {
+  return {
+    count: (previous?.count ?? 0) + 1,
+    lastAt: now,
+    ...(exit.reason === undefined ? {} : { reason: exit.reason }),
+    clean: exit.code === 0 && exit.signal === null,
+    repeated: repeatsPreviousExit(exit, previous),
+  };
+}
+
+/**
+ * Determines whether a session's crashes have stopped its automatic restart: it repeated itself, or
+ * it has crashed as many times as Restart Crashed Language Servers allows. With restarts off, the
+ * first crash is the last.
+ * @param crash The session's crash record.
+ * @param maxRestarts How many crashes are restarted automatically.
+ * @returns Returns true when the automatic restart has given up.
+ */
+export function crashesExhausted(
+  crash: LspCrashRecord | undefined,
+  maxRestarts: number = MAX_AUTO_RESTARTS,
+): boolean {
+  return crash !== undefined && (crash.repeated || crash.count >= Math.max(0, maxRestarts));
+}
+
+/**
+ * Says why the automatic restart gave up, with the server's last reason when it gave one.
+ * @param crash The session's crash record.
+ * @param maxRestarts How many crashes are restarted automatically.
+ * @returns Returns the status line.
+ */
+export function givenUpReason(
+  crash: LspCrashRecord | undefined,
+  maxRestarts: number = MAX_AUTO_RESTARTS,
+): string {
+  const stopped: string =
+    crash?.repeated === true
+      ? 'The server stopped the same way twice, so it was not restarted again'
+      : maxRestarts <= 0
+        ? 'The server stopped, and Restart Crashed Language Servers is off'
+        : 'The server crashed repeatedly and was stopped';
+  return crash?.reason === undefined
+    ? `${stopped}. Restart it to try again.`
+    : `${stopped}: ${crash.reason} Restart it to try again.`;
+}
+
+/**
+ * Says that a server stopped when nobody asked it to, with its last reason when it gave one. Used
+ * alike for a crash while running and a crash during start-up, so the user reads one plain line
+ * however far the server got.
+ * @param reason The server's own last words, when it left any.
+ * @returns Returns the status line.
+ */
+export function stoppedUnexpectedlyReason(reason: string | undefined): string {
+  return reason === undefined
+    ? 'The server stopped unexpectedly. Restart it to try again.'
+    : `The server stopped unexpectedly: ${reason} Restart it to try again.`;
+}
 
 /**
  * The base delay before a crashed session may be restarted automatically. Each further crash doubles
@@ -268,6 +781,14 @@ const MAX_START_ATTEMPTS: number = 3;
 const FROZEN_TOKEN_SERVERS: ReadonlySet<string> = new Set<string>(['csharp']);
 
 /**
+ * The servers whose pushed diagnostics reach the Error List for files that are not open as well
+ * (#1210): `cargo check` reports whole crates, so an error a change causes in another file would
+ * otherwise show nowhere. So does typescript-language-server once the main process has tsserver check
+ * the open documents' projects (#1207). The other servers' pushes are left to their open documents.
+ */
+const WHOLE_WORKSPACE_PUSH_SERVERS: ReadonlySet<string> = new Set<string>(['rust', 'typescript']);
+
+/**
  * How long a session's refresh signals must stay quiet before its recolour pass runs. A loading
  * server emits several `workspace/semanticTokens/refresh` requests as projects land; only a pull
  * issued after the burst settles reliably sees the fully-loaded compilation.
@@ -281,13 +802,13 @@ const RECOLOR_QUIET_MS: number = 750;
 const DIAGNOSTIC_QUIET_MS: number = 400;
 
 /**
- * The delays (in milliseconds) at which a pull-based server's open documents are re-pulled after it
- * signals initialization is complete. Roslyn only answers pull diagnostics for a document whose
- * `didOpen` arrived after the solution finished loading, and then only once it has analysed it; a few
- * spaced pulls catch that result whatever the analysis latency. Each full report replaces the
- * document's set, so redundant pulls (for example on a clean file) are harmless.
+ * The delays (in milliseconds) at which a pull-based server's open documents are pulled again after
+ * it signals initialization is complete. A document opened during the load was analysed as a loose
+ * file; once the solution is in, the server re-analyses it in its project, at a latency of its own —
+ * a few spaced pulls catch that result whenever it lands. Each full report replaces the document's
+ * set, so redundant pulls (for example on a clean file) are harmless.
  */
-const REASSOCIATE_PULL_DELAYS_MS: readonly number[] = [500, 1500, 3500];
+const POST_LOAD_PULL_DELAYS_MS: readonly number[] = [500, 1500, 3500];
 
 /**
  * How many documents a recolour pass pulls diagnostics for concurrently. Each pull makes the server
@@ -297,21 +818,38 @@ const REASSOCIATE_PULL_DELAYS_MS: readonly number[] = [500, 1500, 3500];
 const RECOLOR_PULL_CONCURRENCY: number = 3;
 
 /**
- * How far apart, per document, the reassociation pulls are staggered, so re-associating many open
- * documents does not pull for all of them at the same instants.
+ * How far apart, per document, the post-load pulls are staggered, so many open documents do not all
+ * pull at the same instants against a server that has only just finished loading.
  */
-const REASSOCIATE_STAGGER_MS: number = 200;
+const POST_LOAD_PULL_STAGGER_MS: number = 200;
 
 /**
- * How long a standalone file's server session may sit with no documents before it is stopped. A
- * standalone session is rooted at the file's own directory, so nothing else will ever join it: once
- * its last document closes it serves nothing, yet it used to live until the whole client suspended
- * or was destroyed — one leaked server process per one-off file the user glanced at. Workspace
- * sessions are deliberately NOT reaped this way: a workspace prestarts its servers so the first open
- * is warm, and the hidden-view reap already covers workspaces nobody is looking at. The grace period
- * exists so close-then-reopen (the common way people flick through files) never pays a cold start.
+ * How long a standalone file's server session may sit with no documents before it is stopped, when
+ * Stop Idle Language Servers After does not say. A standalone session is rooted at the file's own
+ * directory, so nothing else will ever join it: once its last document closes it serves nothing, yet
+ * it used to live until the whole client suspended or was destroyed — one leaked server process per
+ * one-off file the user glanced at. Workspace sessions are deliberately NOT reaped this way: a
+ * workspace prestarts its servers so the first open is warm, and the hidden-view reap already covers
+ * workspaces nobody is looking at. The grace period exists so close-then-reopen (the common way
+ * people flick through files) never pays a cold start.
  */
-const STANDALONE_DOCUMENTLESS_REAP_MS: number = 5 * 60_000;
+const STANDALONE_DOCUMENTLESS_REAP_MS: number = 10 * 60_000;
+
+/**
+ * Converts Stop Idle Language Servers After to a delay: the workspace hidden-view reap and the
+ * standalone documentless reap both wait this long.
+ * @param minutes The setting's minutes, or 0 for Never.
+ * @returns Returns the delay in milliseconds, or null for Never. A value that is not a positive
+ * number of minutes reads as the default, {@link STANDALONE_DOCUMENTLESS_REAP_MS}.
+ */
+export function idleStopMs(minutes: number): number | null {
+  if (minutes === 0) {
+    return null;
+  }
+  return Number.isFinite(minutes) && minutes > 0
+    ? minutes * 60_000
+    : STANDALONE_DOCUMENTLESS_REAP_MS;
+}
 
 /**
  * Drives language-server document synchronisation and diagnostics. It lazily starts a server the
@@ -374,6 +912,73 @@ export class LspClient implements OnDestroy {
   private readonly lspSettings: LspSettings = inject(LspSettings);
 
   /**
+   * Holds the user's settings, read for the brace style a server is told when it starts (#1177).
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the EditorConfig resolver, which says when an `.editorconfig` changes.
+   */
+  private readonly editorConfigs: EditorConfigs = inject(EditorConfigs);
+
+  /**
+   * Holds the notification store a server's errors and warnings are raised in (#1134).
+   */
+  private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Holds the test runs under way (#1150), keyed by their progress token.
+   */
+  private readonly testRuns: Map<string, TestRun> = new Map<string, TestRun>();
+
+  /**
+   * Counts the test runs Studio has asked for, naming each one's progress token.
+   */
+  private testRunCount: number = 0;
+
+  /**
+   * Holds each document's test markers (#1150), keyed by its Monaco model URI: the decorations shown,
+   * and each test's last outcome by line.
+   */
+  private readonly testMarkers: Map<string, { ids: string[]; outcomes: Map<number, TestOutcome> }> =
+    new Map<string, { ids: string[]; outcomes: Map<number, TestOutcome> }>();
+
+  /**
+   * Holds the faded code the preprocessor leaves out of each document (#1213), keyed by its Monaco
+   * model URI: the session that said so, and the decorations shown.
+   */
+  private readonly inactiveRegions: Map<string, { sessionId: string; ids: string[] }> = new Map<
+    string,
+    { sessionId: string; ids: string[] }
+  >();
+
+  /**
+   * Counts the restores Studio has asked for, naming each one's progress token.
+   */
+  private restores: number = 0;
+
+  /**
+   * Holds, per session, the projects reported as needing a restore while the user asks to be asked
+   * first, gathered into one offer (#1143).
+   */
+  private readonly unrestored: Map<string, Set<string>> = new Map<string, Set<string>>();
+
+  /**
+   * Holds, per session, the timer that raises the gathered offer to restore.
+   */
+  private readonly unrestoredTimers: Map<string, ReturnType<typeof setTimeout>> = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+
+  /**
+   * Holds, per session, the distinct errors and warnings its server has raised in the current burst
+   * and when the last arrived, so a burst updates one toast with a count (#1134).
+   */
+  private readonly serverProblems: Map<string, { messages: ReadonlySet<string>; at: number }> =
+    new Map<string, { messages: ReadonlySet<string>; at: number }>();
+
+  /**
    * Holds the prompt that offers to install language support when a document finds none.
    */
   private readonly languageSupport: LanguageSupportPrompt = inject(LanguageSupportPrompt);
@@ -408,10 +1013,7 @@ export class LspClient implements OnDestroy {
    * Holds the parameters each session was started with, keyed by session id, so a restart can bring a
    * server back up even when it currently serves no open documents.
    */
-  private readonly sessionInfo: Map<
-    string,
-    { serverId: string; rootPath: string; standaloneFile?: string }
-  > = new Map<string, { serverId: string; rootPath: string; standaloneFile?: string }>();
+  private readonly sessionInfo: Map<string, LspSessionInfo> = new Map<string, LspSessionInfo>();
 
   /**
    * Holds the pending documentless reaps of standalone sessions, keyed by session id (see
@@ -448,6 +1050,71 @@ export class LspClient implements OnDestroy {
   >();
 
   /**
+   * Holds which navigations beyond Go to Definition each started session's server answers (#1142).
+   */
+  private readonly navigationSupport: Map<string, LspNavigationSupport> = new Map<
+    string,
+    LspNavigationSupport
+  >();
+
+  /**
+   * Holds how each started session's server formats code (#1141).
+   */
+  private readonly formattingSupport: Map<string, LspFormattingSupport> = new Map<
+    string,
+    LspFormattingSupport
+  >();
+
+  /**
+   * Holds how each session's server sets hints into the code (#1145), keyed by session id; a session
+   * whose server sets none has no entry.
+   */
+  private readonly inlayHintSupport: Map<string, LspInlayHintSupport> = new Map<
+    string,
+    LspInlayHintSupport
+  >();
+
+  /**
+   * Holds the sessions whose servers find symbols by name across their workspace (#1146).
+   */
+  private readonly workspaceSymbolSessions: Set<string> = new Set<string>();
+
+  /**
+   * Holds, by session, the patterns of the paths its server wants to be asked about before a rename
+   * (#1207); a session whose server wants none has no entry.
+   */
+  private readonly fileRenameFilters: Map<string, readonly RegExp[]> = new Map<
+    string,
+    readonly RegExp[]
+  >();
+
+  /**
+   * Holds which of the compiler's views of a document's structure each session's server gives
+   * (#1147), keyed by session id.
+   */
+  private readonly structureSupport: Map<string, LspStructureSupport> = new Map<
+    string,
+    LspStructureSupport
+  >();
+
+  /**
+   * Holds the characters whose typing each session's server answers by inserting text (#1148).
+   */
+  private readonly autoInsertTriggers: Map<string, readonly string[]> = new Map<
+    string,
+    readonly string[]
+  >();
+
+  /**
+   * Holds how each session's server shows facts above types and members (#1149), keyed by session id;
+   * a session whose server shows none has no entry.
+   */
+  private readonly codeLensSupport: Map<string, LspCodeLensSupport> = new Map<
+    string,
+    LspCodeLensSupport
+  >();
+
+  /**
    * Holds how each started session's server completes and answers signature help (#1021).
    */
   private readonly assistSupport: Map<string, LspSessionSupport> = new Map<
@@ -480,6 +1147,15 @@ export class LspClient implements OnDestroy {
   private readonly diagnosticTimers: Map<string, ReturnType<typeof setTimeout>> = new Map<
     string,
     ReturnType<typeof setTimeout>
+  >();
+
+  /**
+   * Holds each session's diagnostics for the files of its workspace (#1144), keyed by session and
+   * then by normalised path — open or not; {@link publish} lists those of files that are not open.
+   */
+  private readonly workspaceDiagnostics: Map<string, Map<string, readonly Diagnostic[]>> = new Map<
+    string,
+    Map<string, readonly Diagnostic[]>
   >();
 
   /**
@@ -527,6 +1203,49 @@ export class LspClient implements OnDestroy {
   private applyEditDisposer: (() => void) | null = null;
 
   /**
+   * Holds the unsubscribe function for the main process's requests to attach the debugger (#1150).
+   */
+  private attachDebuggerDisposer: (() => void) | null = null;
+
+  /**
+   * Holds the unsubscribe function for the main process's questions of how a document is indented
+   * (#1208).
+   */
+  private indentationDisposer: (() => void) | null = null;
+
+  /**
+   * Holds the unsubscribe function for the main process's requests to put a server's question to the
+   * user (#1154).
+   */
+  private showMessageDisposer: (() => void) | null = null;
+
+  /**
+   * Disposes the subscription to a server's pages and files to show (#1211), or null when not subscribed.
+   */
+  private showDocumentDisposer: (() => void) | null = null;
+
+  /**
+   * Holds the opener of a server's web pages, which asks first when the user's settings say to.
+   */
+  private readonly shell: Shell = inject(Shell);
+
+  /**
+   * Holds the injector the editor navigation is resolved from as it is needed: it reaches the language
+   * features, which reach back here.
+   */
+  private readonly injector: Injector = inject(Injector);
+
+  /**
+   * Holds the toast key of each server question waiting for the user (#1154), by request identifier.
+   */
+  private readonly questions: Map<string, string> = new Map<string, string>();
+
+  /**
+   * Holds the router the workspace in front attaches its debugger through (#1150).
+   */
+  private readonly debugAttach: DebugAttachRouter = inject(DebugAttachRouter);
+
+  /**
    * Holds the disposer for the served-listener subscription, or null when not subscribed.
    */
   private servedDisposer: (() => void) | null = null;
@@ -535,16 +1254,22 @@ export class LspClient implements OnDestroy {
    * Holds the crash bookkeeping per session — how many unsolicited exits it has accumulated and when
    * the last one happened — driving the exponential restart backoff and the cumulative cap.
    */
-  private readonly crashes: Map<string, { count: number; lastAt: number }> = new Map<
+  private readonly crashes: Map<string, LspCrashRecord> = new Map<string, LspCrashRecord>();
+
+  /**
+   * Holds the timer that ends each session's analysis of the workspace should its server never
+   * report it complete (#1182).
+   */
+  private readonly analysisTimers: Map<string, ReturnType<typeof setTimeout>> = new Map<
     string,
-    { count: number; lastAt: number }
+    ReturnType<typeof setTimeout>
   >();
 
   /**
-   * Holds the pending reassociation-pull timers per session, cancellable when the session exits or
-   * this client is destroyed.
+   * Holds the pending post-load pull timers per session, cancellable when the session exits or this
+   * client is destroyed.
    */
-  private readonly reassociateTimers: Map<string, Set<ReturnType<typeof setTimeout>>> = new Map<
+  private readonly postLoadPullTimers: Map<string, Set<ReturnType<typeof setTimeout>>> = new Map<
     string,
     Set<ReturnType<typeof setTimeout>>
   >();
@@ -594,10 +1319,28 @@ export class LspClient implements OnDestroy {
   private readonly settledSessions: Set<string> = new Set<string>();
 
   /**
+   * Holds the sessions whose server has said it is still loading the workspace
+   * (`experimental/serverStatus`, #1210). A server that says so is taken at its word: answering a
+   * request meanwhile, as rust-analyzer does, is not it having finished.
+   */
+  private readonly loadingSessions: Set<string> = new Set<string>();
+
+  /**
+   * Holds the whole of what each session's server last said was wrong with it (#1210), so its log has
+   * it once, not once for every change of its status.
+   */
+  private readonly serverProblemTexts: Map<string, string> = new Map<string, string>();
+
+  /**
    * Initializes a new instance of the {@link LspClient} class, registering its diagnostics provider
    * and subscribing to server notifications when the bridge is available.
    */
   public constructor() {
+    // The servers' own lens switches follow the code-lens settings wherever a server runs (#1215).
+    inject(CodeLensServerSync);
+    inject(DestroyRef).onDestroy(
+      this.editorConfigs.onChanged((path: string): void => this.restartForEditorConfig(path)),
+    );
     // Stop any session whose server has stopped being installed. Uninstalling a language server should
     // stop it, not leave it serving until the window is next reopened — and a plugin removed from the
     // sideload directory is the same situation arriving a different way.
@@ -611,6 +1354,14 @@ export class LspClient implements OnDestroy {
         return;
       }
       untracked((): void => this.stopUninstalledSessions(installed));
+    });
+    // A server told the brace style only when it starts is restarted when the style for its
+    // language changes, so the setting takes effect without the user restarting it (#1177).
+    effect((): void => {
+      this.lspSettings.catalogue();
+      this.settings.globalTextEditor();
+      this.settings.languageOverrides();
+      untracked((): void => this.restartForBraceStyle());
     });
     if (this.bridge === undefined) {
       return;
@@ -634,6 +1385,20 @@ export class LspClient implements OnDestroy {
     this.applyEditDisposer = this.bridge.on(LspChannel.ApplyEdit, (...args: unknown[]): void => {
       void this.onApplyEdit(args[0] as LspApplyEditRequest);
     });
+    this.attachDebuggerDisposer = this.bridge.on(
+      LspChannel.AttachDebugger,
+      (...args: unknown[]): void => void this.onAttachDebugger(args[0] as LspAttachDebuggerRequest),
+    );
+    this.showMessageDisposer = this.bridge.on(LspChannel.ShowMessage, (...args: unknown[]): void =>
+      this.onShowMessage(args[0] as LspShowMessageRequest),
+    );
+    this.indentationDisposer = this.bridge.on(LspChannel.Indentation, (...args: unknown[]): void =>
+      this.onIndentation(args[0] as LspIndentationRequest),
+    );
+    this.showDocumentDisposer = this.bridge.on(
+      LspChannel.ShowDocument,
+      (...args: unknown[]): void => this.onShowDocument(args[0] as LspShowDocumentRequest),
+    );
     this.featuresDisposer = this.features.registerDocuments((path: string): LspDocumentRef | null =>
       this.resolveDocument(path),
     );
@@ -654,11 +1419,31 @@ export class LspClient implements OnDestroy {
    * @param sessionId The session that has proven ready.
    */
   private markReady(sessionId: string): void {
-    if (this.status.stateOf(sessionId) === 'ready') {
+    if (this.status.stateOf(sessionId) === 'ready' || this.loadingSessions.has(sessionId)) {
       return;
     }
     this.status.setState(sessionId, 'ready');
     this.features.refreshSemanticTokens(this.sessionLanguages(sessionId));
+    // A server whose analysis of the workspace never reports complete is not left analysing forever.
+    if (this.status.analysisOf(sessionId) === 'pending') {
+      clearTimeout(this.analysisTimers.get(sessionId));
+      this.analysisTimers.set(
+        sessionId,
+        setTimeout((): void => this.finishAnalysis(sessionId), ANALYSIS_TIMEOUT_MS),
+      );
+    }
+  }
+
+  /**
+   * Marks a server's analysis of the whole workspace done (#1182).
+   * @param sessionId The session.
+   */
+  private finishAnalysis(sessionId: string): void {
+    clearTimeout(this.analysisTimers.get(sessionId));
+    this.analysisTimers.delete(sessionId);
+    if (this.status.analysisOf(sessionId) === 'pending') {
+      this.status.setAnalysis(sessionId, 'done');
+    }
   }
 
   /**
@@ -753,6 +1538,11 @@ export class LspClient implements OnDestroy {
       // Best-effort: the server either lacks pull-diagnostic support or is not ready yet.
       return;
     }
+    // The answer can outlast what it was about. Taken for a closed document it would sit in the Error
+    // List with nothing left to clear it, and taken from a server that has gone it would call it ready.
+    if (!tracked.opened || this.tracked.get(normalise(uriToPath(tracked.uri))) !== tracked) {
+      return;
+    }
     // A full report carries the document's current diagnostics; an unchanged report (or a server that
     // answers with neither) leaves the existing set in place.
     const report: { kind?: string; items?: readonly LspDiagnostic[] } | null =
@@ -760,23 +1550,29 @@ export class LspClient implements OnDestroy {
     if (report === null || report.kind === 'unchanged' || !Array.isArray(report.items)) {
       return;
     }
-    this.ingestDiagnostics(tracked, report.items);
+    tracked.pulled = report.items;
+    this.ingestDiagnostics(tracked);
     this.markReady(sessionId);
   }
 
   /**
-   * Re-associates a pull-based server's open documents once it signals initialization is complete.
+   * Pulls a pull-based server's open documents again once it signals initialization is complete.
    *
-   * Roslyn only answers `textDocument/diagnostic` for a document whose `didOpen` arrived *after* the
-   * solution finished loading; the client's original open — sent while the user navigated in, before
-   * `workspace/projectInitializationComplete` — is never picked up, so the pull returns an empty report
-   * forever and no errors surface. Re-sending `didOpen` here (with the document's last-synced text, not
-   * a live-model read, so a backgrounded document still re-associates) makes Roslyn analyse it against
-   * the loaded solution; a few spaced pulls then collect the result. Gated to pull-capable sessions so
-   * push-based servers, which report through `publishDiagnostics`, are left untouched.
-   * @param sessionId The session whose open documents to re-associate.
+   * A document opened while the solution was still loading sat in the server's miscellaneous-files
+   * project; once the load completes the server moves it into its real project, and the diagnostics
+   * pulled before then are stale. A few spaced pulls collect the real ones as the server analyses.
+   * Gated to pull-capable sessions so push-based servers, which report through `publishDiagnostics`,
+   * are left untouched.
+   *
+   * ⛔ This must NOT re-send `textDocument/didOpen`. It used to (#306), on the belief that Roslyn would
+   * not otherwise pick the document up — which is no longer so, and the protocol forbids a second
+   * open without a close. Roslyn 5.4 treats it as a fatal error: it logs `didOpen received for … which
+   * is already open`, then `Error occurred processing queue`, and exits with code 0 — about twelve
+   * seconds after every start of a large solution, which was every "crash" in a week of logs. The
+   * probe that proved it is `.cache/roslyn-probe/probe.mjs`.
+   * @param sessionId The session whose open documents to pull again.
    */
-  private reassociateOnInit(sessionId: string): void {
+  private pullAfterLoad(sessionId: string): void {
     if (this.bridge === undefined || !this.pullCapable.has(sessionId)) {
       return;
     }
@@ -785,24 +1581,13 @@ export class LspClient implements OnDestroy {
       if (`${tracked.rootPath}::${tracked.serverId}` !== sessionId || !tracked.opened) {
         continue;
       }
-      // Re-send didOpen with the document's last-synced text so the server associates it with the
-      // now-loaded solution, then pull a few times as it analyses. The pulls are staggered per
-      // document and cancellable (see {@link clearReassociateTimers}): a burst of open documents
-      // must not hit the just-loaded server at the same instants, and a document that closes or a
-      // server that exits meanwhile must not still be pulled for.
-      tracked.version += 1;
-      this.bridge.send(LspChannel.Notify, sessionId, 'textDocument/didOpen', {
-        textDocument: {
-          uri: tracked.uri,
-          languageId: tracked.languageId,
-          version: tracked.version,
-          text: tracked.text,
-        },
-      });
-      for (const delay of REASSOCIATE_PULL_DELAYS_MS) {
+      // The pulls are staggered per document and cancellable (see {@link clearPostLoadPulls}): a
+      // burst of open documents must not hit the just-loaded server at the same instants, and a
+      // document that closes or a server that exits meanwhile must not still be pulled for.
+      for (const delay of POST_LOAD_PULL_DELAYS_MS) {
         const timers: Set<ReturnType<typeof setTimeout>> =
-          this.reassociateTimers.get(sessionId) ?? new Set<ReturnType<typeof setTimeout>>();
-        this.reassociateTimers.set(sessionId, timers);
+          this.postLoadPullTimers.get(sessionId) ?? new Set<ReturnType<typeof setTimeout>>();
+        this.postLoadPullTimers.set(sessionId, timers);
         const timer: ReturnType<typeof setTimeout> = setTimeout(
           (): void => {
             timers.delete(timer);
@@ -810,7 +1595,7 @@ export class LspClient implements OnDestroy {
               void this.pullDiagnostics(sessionId, tracked);
             }
           },
-          delay + index * REASSOCIATE_STAGGER_MS,
+          delay + index * POST_LOAD_PULL_STAGGER_MS,
         );
         timers.add(timer);
       }
@@ -819,29 +1604,57 @@ export class LspClient implements OnDestroy {
   }
 
   /**
-   * Cancels a session's pending reassociation pulls: the server exited (or this client is being
+   * Cancels a session's pending post-load pulls: the server exited (or this client is being
    * destroyed), so the timers would only pull against a gone or restarted session.
    * @param sessionId The session whose pulls to cancel.
    */
-  private clearReassociateTimers(sessionId: string): void {
+  private clearPostLoadPulls(sessionId: string): void {
     const timers: Set<ReturnType<typeof setTimeout>> | undefined =
-      this.reassociateTimers.get(sessionId);
+      this.postLoadPullTimers.get(sessionId);
     if (timers === undefined) {
       return;
     }
-    this.reassociateTimers.delete(sessionId);
+    this.postLoadPullTimers.delete(sessionId);
     for (const timer of timers) {
       clearTimeout(timer);
     }
   }
 
   /**
-   * Records a document's diagnostics (from a push or a pull), sets them as editor markers, and
-   * republishes the aggregate.
-   * @param tracked The document the diagnostics belong to.
-   * @param diagnostics The server's current diagnostics for the document (empty clears them).
+   * Cancels a session's pending recolour pass. Run against the server that replaced this one, it would
+   * trust tokens that server is still degrading while it loads, and show it ready too soon.
+   * @param sessionId The session whose pass to cancel.
    */
-  private ingestDiagnostics(tracked: TrackedDocument, diagnostics: readonly LspDiagnostic[]): void {
+  private clearRecolor(sessionId: string): void {
+    clearTimeout(this.recolorTimers.get(sessionId));
+    this.recolorTimers.delete(sessionId);
+  }
+
+  /**
+   * Forgets what a session's server said about itself: its token legend, whether it pulls, whether it
+   * has settled or is loading, its problem, the progress it had begun, and its pending pulls and
+   * recolours. Called whenever the server goes, so its replacement starts from nothing (#1213): a
+   * progress title left behind would name work the new server is not doing.
+   * @param sessionId The session.
+   */
+  private forgetServerState(sessionId: string): void {
+    this.legends.delete(sessionId);
+    this.pullCapable.delete(sessionId);
+    this.settledSessions.delete(sessionId);
+    this.loadingSessions.delete(sessionId);
+    this.serverProblemTexts.delete(sessionId);
+    this.progressTitles.delete(sessionId);
+    this.clearPostLoadPulls(sessionId);
+    this.clearRecolor(sessionId);
+  }
+
+  /**
+   * Records a document's diagnostics, what was pushed and what was pulled together, sets them as editor
+   * markers, and republishes the aggregate.
+   * @param tracked The document the diagnostics belong to.
+   */
+  private ingestDiagnostics(tracked: TrackedDocument): void {
+    const diagnostics: readonly LspDiagnostic[] = mergeDiagnostics(tracked.pulled, tracked.pushed);
     this.log.info(
       'LspClient',
       `Received ${diagnostics.length} diagnostic(s) for ${tracked.uri}`,
@@ -849,9 +1662,11 @@ export class LspClient implements OnDestroy {
     );
     this.diagnosticsByDocument.set(
       tracked.documentId,
-      diagnostics.map((diagnostic: LspDiagnostic): Diagnostic =>
-        toDiagnostic(diagnostic, { uri: tracked.uri, documentId: tracked.documentId }),
-      ),
+      diagnostics
+        .filter(isErrorListDiagnostic)
+        .map((diagnostic: LspDiagnostic): Diagnostic =>
+          toDiagnostic(diagnostic, { uri: tracked.uri, documentId: tracked.documentId }),
+        ),
     );
     this.serverDiagnostics.set(tracked.documentId, diagnostics);
     this.setMarkers(tracked, diagnostics);
@@ -920,6 +1735,13 @@ export class LspClient implements OnDestroy {
       rename: this.renameSupport.get(sessionId) ?? 'none',
       codeActions: this.codeActionSupport.get(sessionId) ?? 'none',
       commands: this.executeCommands.get(sessionId) ?? [],
+      formatting: this.formattingSupport.get(sessionId),
+      inlayHints: this.inlayHintSupport.get(sessionId),
+      structure: this.structureSupport.get(sessionId),
+      autoInsertTriggers: this.autoInsertTriggers.get(sessionId),
+      codeLens: this.codeLensSupport.get(sessionId),
+      runTests: (lens: unknown): void => void this.runTests(sessionId, tracked, lens),
+      navigation: this.navigationSupport.get(sessionId),
       completion: this.assistSupport.get(sessionId)?.completion ?? null,
       signatureHelp: this.assistSupport.get(sessionId)?.signatureHelp ?? null,
       diagnostics: this.serverDiagnostics.get(tracked.documentId) ?? [],
@@ -981,11 +1803,18 @@ export class LspClient implements OnDestroy {
         languageId: state.languageId,
         version: 1,
         opened: false,
+        pushed: [],
+        pulled: [],
         savedText: null,
         text: '',
         queue: Promise.resolve(),
       };
       this.tracked.set(key, tracked);
+      // An opened file's errors now come from its own pull: its workspace report leaves the list at
+      // once rather than lingering until something else republishes (#1144).
+      if ([...this.workspaceDiagnostics.values()].some((files) => files.has(key))) {
+        this.publish();
+      }
       this.enqueue(tracked, (): Promise<void> => this.open(tracked, state.content));
     } else {
       existing.languageId = state.languageId;
@@ -1028,6 +1857,8 @@ export class LspClient implements OnDestroy {
         continue;
       }
       this.tracked.delete(key);
+      clearTimeout(this.diagnosticTimers.get(documentId));
+      this.diagnosticTimers.delete(documentId);
       this.diagnosticsByDocument.delete(documentId);
       this.serverDiagnostics.delete(documentId);
       this.setMarkers(tracked, []);
@@ -1049,6 +1880,11 @@ export class LspClient implements OnDestroy {
     if (!this.sessions.has(sessionId) || this.hasDocumentsFor(sessionId)) {
       return;
     }
+    // Stop Idle Language Servers After governs this grace period too; Never keeps the server.
+    const idleMs: number | null = idleStopMs(this.settings.get('lsp.idleStopMinutes'));
+    if (idleMs === null) {
+      return;
+    }
     this.clearStandaloneReap(sessionId);
     this.standaloneReapTimers.set(
       sessionId,
@@ -1061,12 +1897,14 @@ export class LspClient implements OnDestroy {
         this.log.info('LspClient', `Stopping documentless standalone session`, sessionId);
         void this.bridge?.invoke(LspChannel.Stop, sessionId);
         this.status.remove(sessionId);
-        this.legends.delete(sessionId);
-        this.pullCapable.delete(sessionId);
-        this.settledSessions.delete(sessionId);
-        this.clearReassociateTimers(sessionId);
+        this.clearInactiveRegions(sessionId);
+        this.forgetServerState(sessionId);
         this.sessions.delete(sessionId);
-      }, STANDALONE_DOCUMENTLESS_REAP_MS),
+        // Left in place it would answer to a restart, starting a server for nothing, and its workspace
+        // problems would stay listed.
+        this.sessionInfo.delete(sessionId);
+        this.publish();
+      }, idleMs),
     );
   }
 
@@ -1098,6 +1936,106 @@ export class LspClient implements OnDestroy {
   }
 
   /**
+   * Finds symbols by name across the workspace (#1146): asks every running session whose server
+   * finds them (`workspace/symbol`) — not only C#'s — and gathers what they answer. Each server
+   * matches the name its own way (Roslyn: by the starts of words, `FoGr` for `FormalGreeter`).
+   * @param query What was typed.
+   * @returns Returns the symbols found, at most {@link MAX_WORKSPACE_SYMBOLS}.
+   */
+  public async workspaceSymbols(query: string): Promise<readonly WorkspaceSymbolMatch[]> {
+    const trimmed: string = query.trim();
+    if (this.bridge === undefined || trimmed.length === 0) {
+      return [];
+    }
+    const sessions: string[] = [...this.workspaceSymbolSessions].filter(
+      (sessionId: string): boolean => this.sessionInfo.has(sessionId),
+    );
+    const answers: (readonly WorkspaceSymbolMatch[])[] = await Promise.all(
+      sessions.map(async (sessionId: string): Promise<readonly WorkspaceSymbolMatch[]> => {
+        try {
+          const result: unknown = await this.bridge?.invoke(
+            LspChannel.Request,
+            sessionId,
+            'workspace/symbol',
+            { query: trimmed },
+          );
+          return toWorkspaceSymbols(result);
+        } catch {
+          return [];
+        }
+      }),
+    );
+    return answers.flat().slice(0, MAX_WORKSPACE_SYMBOLS);
+  }
+
+  /**
+   * Asks every running session whose server wants to know what else has to change for a file or
+   * folder to be renamed (#1207): the imports of it, for TypeScript. Nothing is applied here. A server
+   * that does not answer in time gives nothing, as a rename must not wait on it.
+   * @param oldPath The entry's absolute path.
+   * @param newPath The absolute path it is about to have.
+   * @returns Returns the edits, keyed by the paths as they stand before the rename.
+   */
+  public async fileRenameEdits(oldPath: string, newPath: string): Promise<WorkspaceTextEdits> {
+    const asked: string = normalise(oldPath);
+    const sessions: string[] = [...this.fileRenameFilters.entries()]
+      .filter(([sessionId, filters]: [string, readonly RegExp[]]): boolean => {
+        const info: LspSessionInfo | undefined = this.sessionInfo.get(sessionId);
+        return (
+          info !== undefined &&
+          isWithin(oldPath, info.rootPath) &&
+          filters.some((filter: RegExp): boolean => filter.test(asked))
+        );
+      })
+      .map(([sessionId]: [string, readonly RegExp[]]): string => sessionId);
+    const answers: readonly WorkspaceTextEdits[] = await Promise.all(
+      sessions.map((sessionId: string): Promise<WorkspaceTextEdits> =>
+        this.askFileRename(sessionId, pathToUri(oldPath), pathToUri(newPath)),
+      ),
+    );
+    return {
+      files: answers.flatMap(
+        (answer: WorkspaceTextEdits): WorkspaceTextEdits['files'] => answer.files,
+      ),
+      refused: answers.flatMap(
+        (answer: WorkspaceTextEdits): WorkspaceTextEdits['refused'] => answer.refused,
+      ),
+    };
+  }
+
+  /**
+   * Asks one session what a rename changes, for as long as a rename can wait.
+   * @param sessionId The session.
+   * @param oldUri The entry's URI.
+   * @param newUri The URI it is about to have.
+   * @returns Returns the edits, empty when it gave none in time.
+   */
+  private async askFileRename(
+    sessionId: string,
+    oldUri: string,
+    newUri: string,
+  ): Promise<WorkspaceTextEdits> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late: Promise<null> = new Promise<null>((resolve: (value: null) => void): void => {
+      timer = setTimeout((): void => resolve(null), FILE_RENAME_TIMEOUT_MS);
+    });
+    try {
+      const result: unknown = await Promise.race([
+        this.bridge?.invoke(LspChannel.Request, sessionId, 'workspace/willRenameFiles', {
+          files: [{ oldUri, newUri }],
+        }),
+        late,
+      ]);
+      return fromLspWorkspaceEdit(result, uriToPath);
+    } catch (error: unknown) {
+      this.log.debug('LspClient', 'Asking what a rename changes failed', error);
+      return { files: [], refused: [] };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
    * Restarts a server. The main process owns the restart: it tears the server down whatever its
    * reference count, respawns it under the same session id, and tells every client holding it — this
    * one included — through an exit flagged `restarted`, on which {@link onExit} re-opens the client's
@@ -1105,12 +2043,12 @@ export class LspClient implements OnDestroy {
    * failed, or the server crashed and was torn down), the client simply starts afresh itself. The
    * status indicator is held in its starting state for the whole cycle.
    * @param sessionId The session to restart.
+   * @param braceStyle The brace style to start the new server with, when it changed (#1177).
    * @returns Returns a promise that resolves once the restart has been requested (and, when the client
    * starts afresh itself, once its documents have been queued against the new server).
    */
-  public async restart(sessionId: string): Promise<void> {
-    const info: { serverId: string; rootPath: string; standaloneFile?: string } | undefined =
-      this.sessionInfo.get(sessionId);
+  public async restart(sessionId: string, braceStyle?: LspBraceStyle): Promise<void> {
+    const info: LspSessionInfo | undefined = this.sessionInfo.get(sessionId);
     if (this.bridge === undefined || info === undefined) {
       return;
     }
@@ -1122,12 +2060,18 @@ export class LspClient implements OnDestroy {
     this.log.info('LspClient', `Restarting server '${info.serverId}'`, sessionId);
     let result: LspStartResult;
     try {
-      result = await this.bridge.invoke<LspStartResult>(LspChannel.Restart, sessionId);
+      result =
+        braceStyle === undefined
+          ? await this.bridge.invoke<LspStartResult>(LspChannel.Restart, sessionId)
+          : await this.bridge.invoke<LspStartResult>(LspChannel.Restart, sessionId, braceStyle);
     } catch (error: unknown) {
-      result = {
-        success: false,
-        error: error instanceof Error ? error.message : 'The language server failed to restart.',
-      };
+      // The bridge failed, so no exit will ever come to end the "starting" this has just set.
+      this.status.setState(
+        sessionId,
+        'unavailable',
+        error instanceof Error ? error.message : 'The language server failed to restart.',
+      );
+      return;
     }
     if (result.success || result.error !== 'No such session') {
       // The main process restarted (or failed to restart) a running session; its `restarted` exit
@@ -1148,8 +2092,7 @@ export class LspClient implements OnDestroy {
    * has started).
    */
   private async reattach(sessionId: string): Promise<void> {
-    const info: { serverId: string; rootPath: string; standaloneFile?: string } | undefined =
-      this.sessionInfo.get(sessionId);
+    const info: LspSessionInfo | undefined = this.sessionInfo.get(sessionId);
     if (info === undefined) {
       return;
     }
@@ -1167,6 +2110,7 @@ export class LspClient implements OnDestroy {
         info.serverId,
         info.rootPath,
         info.standaloneFile,
+        info.languageId,
       );
       if (started) {
         this.status.setState(sessionId, 'ready');
@@ -1186,6 +2130,66 @@ export class LspClient implements OnDestroy {
    * @param serverId The identifier of the server to start.
    * @param rootPath The root the server is rooted at.
    */
+  /**
+   * Gets the brace style a server is told when it starts a session for a language (#1177): the user's
+   * Brace style for the language — its override, or the global setting — for a server that takes it.
+   * @param serverId The server.
+   * @param languageId The language the session is started for.
+   * @returns Returns the brace style, or undefined for a server that does not take one.
+   */
+  private braceStyleFor(serverId: string, languageId: string): LspBraceStyle | undefined {
+    const takes: boolean = this.lspSettings
+      .catalogue()
+      .some(
+        (server: LspServerSummary): boolean =>
+          server.id === serverId && server.takesBraceStyle === true,
+      );
+    return takes ? this.settings.resolveSettingsForLanguage(languageId).braceStyle : undefined;
+  }
+
+  /**
+   * Restarts each session whose server takes the brace style at start, where the style for its
+   * language is no longer the one it was started with (#1177).
+   */
+  private restartForBraceStyle(): void {
+    for (const [sessionId, info] of [...this.sessionInfo.entries()]) {
+      if (info.languageId === undefined) {
+        continue;
+      }
+      const braceStyle: LspBraceStyle | undefined = this.braceStyleFor(
+        info.serverId,
+        info.languageId,
+      );
+      if (braceStyle === undefined || braceStyle === info.braceStyle) {
+        continue;
+      }
+      this.log.info('LspClient', `Brace style is now '${braceStyle}'; restarting`, sessionId);
+      this.sessionInfo.set(sessionId, { ...info, braceStyle });
+      void this.restart(sessionId, braceStyle);
+    }
+  }
+
+  /**
+   * Restarts each session whose server reads `.editorconfig` only as it starts, where the changed
+   * file reaches its files: from above its root, at it, or from a folder within (#1177).
+   * @param path The changed `.editorconfig`.
+   */
+  private restartForEditorConfig(path: string): void {
+    const folder: string = parentDir(path);
+    for (const [sessionId, info] of [...this.sessionInfo.entries()]) {
+      const reads: boolean = this.lspSettings
+        .catalogue()
+        .some(
+          (server: LspServerSummary): boolean =>
+            server.id === info.serverId && server.readsEditorConfigAtStart === true,
+        );
+      if (reads && (isWithin(info.rootPath, folder) || isWithin(folder, info.rootPath))) {
+        this.log.info('LspClient', `${path} changed; restarting`, sessionId);
+        void this.restart(sessionId);
+      }
+    }
+  }
+
   /**
    * Stops the running sessions whose server is no longer installed, and forgets the documents that were
    * being served by them so a later install starts cleanly.
@@ -1208,18 +2212,21 @@ export class LspClient implements OnDestroy {
       this.sessions.delete(sessionId);
       this.sessionInfo.delete(sessionId);
       this.status.remove(sessionId);
-      this.legends.delete(sessionId);
-      this.pullCapable.delete(sessionId);
-      this.settledSessions.delete(sessionId);
-      this.clearReassociateTimers(sessionId);
+      this.clearInactiveRegions(sessionId);
+      this.forgetServerState(sessionId);
     }
     const orphaned: Set<string> = new Set<string>();
     for (const [key, tracked] of [...this.tracked.entries()]) {
       if (!installed.has(tracked.serverId)) {
         this.tracked.delete(key);
+        // Nothing can clear them later: a close finds no tracked document, and no server is coming.
+        this.diagnosticsByDocument.delete(tracked.documentId);
+        this.serverDiagnostics.delete(tracked.documentId);
+        this.setMarkers(tracked, []);
         orphaned.add(tracked.languageId);
       }
     }
+    this.publish();
     // The documents just left unserved would otherwise sit silent until their next edit; offer the
     // support back right away, the way a fresh open would.
     for (const language of orphaned) {
@@ -1242,10 +2249,8 @@ export class LspClient implements OnDestroy {
     for (const sessionId of [...this.sessions.keys()]) {
       void this.bridge?.invoke(LspChannel.Stop, sessionId);
       this.status.remove(sessionId);
-      this.legends.delete(sessionId);
-      this.pullCapable.delete(sessionId);
-      this.settledSessions.delete(sessionId);
-      this.clearReassociateTimers(sessionId);
+      this.clearInactiveRegions(sessionId);
+      this.forgetServerState(sessionId);
       this.clearStandaloneReap(sessionId);
     }
     this.sessions.clear();
@@ -1302,11 +2307,24 @@ export class LspClient implements OnDestroy {
     this.notificationDisposer?.();
     this.exitDisposer?.();
     this.applyEditDisposer?.();
+    this.attachDebuggerDisposer?.();
+    this.showMessageDisposer?.();
+    this.indentationDisposer?.();
+    this.showDocumentDisposer?.();
+    for (const timer of this.analysisTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.analysisTimers.clear();
+    for (const [requestId, key] of [...this.questions]) {
+      this.answerQuestion(requestId, null);
+      this.notifications.dismissByKey(key);
+    }
     this.featuresDisposer?.();
     this.servedDisposer?.();
     for (const sessionId of this.sessions.keys()) {
       void this.bridge?.invoke(LspChannel.Stop, sessionId);
       this.status.remove(sessionId);
+      this.clearInactiveRegions(sessionId);
     }
     for (const timer of this.diagnosticTimers.values()) {
       clearTimeout(timer);
@@ -1316,8 +2334,13 @@ export class LspClient implements OnDestroy {
       clearTimeout(timer);
     }
     this.standaloneReapTimers.clear();
-    for (const sessionId of [...this.reassociateTimers.keys()]) {
-      this.clearReassociateTimers(sessionId);
+    for (const timer of this.unrestoredTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.unrestoredTimers.clear();
+    this.unrestored.clear();
+    for (const sessionId of [...this.postLoadPullTimers.keys()]) {
+      this.clearPostLoadPulls(sessionId);
     }
     for (const timer of this.recolorTimers.values()) {
       clearTimeout(timer);
@@ -1327,6 +2350,14 @@ export class LspClient implements OnDestroy {
     this.legends.clear();
     this.renameSupport.clear();
     this.codeActionSupport.clear();
+    this.formattingSupport.clear();
+    this.inlayHintSupport.clear();
+    this.workspaceSymbolSessions.clear();
+    this.fileRenameFilters.clear();
+    this.structureSupport.clear();
+    this.autoInsertTriggers.clear();
+    this.codeLensSupport.clear();
+    this.navigationSupport.clear();
     for (const sessionId of this.assistSupport.keys()) {
       this.features.setSessionSupport(sessionId, null);
     }
@@ -1334,6 +2365,8 @@ export class LspClient implements OnDestroy {
     this.executeCommands.clear();
     this.serverDiagnostics.clear();
     this.pullCapable.clear();
+    this.loadingSessions.clear();
+    this.serverProblemTexts.clear();
     this.sessionInfo.clear();
     this.tracked.clear();
   }
@@ -1362,6 +2395,26 @@ export class LspClient implements OnDestroy {
     // diagnostics so its (project-blind) errors no longer compete with the server's. Done only on a
     // successful start, so a server that fails to launch leaves Monaco's diagnostics as a fallback.
     this.suppressBuiltInDiagnostics(tracked.languageId);
+    // Format Document, Format Selection and format-on-type for the language, when this server formats
+    // (#1141). Registered on demand so the commands are offered only where something will answer.
+    const formatting: LspFormattingSupport | undefined = this.formattingSupport.get(sessionId);
+    if (formatting !== undefined) {
+      this.features.enableFormatting(tracked.languageId, formatting);
+    }
+    // Parameter names and inferred types set into the code, when this server sets them (#1145).
+    if (this.inlayHintSupport.has(sessionId)) {
+      this.features.enableInlayHints(tracked.languageId);
+    }
+    // The compiler's folds, occurrences and a range's semantic tokens, where this server gives them
+    // (#1147).
+    const structure: LspStructureSupport | undefined = this.structureSupport.get(sessionId);
+    if (structure !== undefined) {
+      this.features.enableStructure(tracked.languageId, structure);
+    }
+    // Facts above types and members — Roslyn's reference counts — where this server shows them (#1149).
+    if (this.codeLensSupport.has(sessionId)) {
+      this.features.enableCodeLens(tracked.languageId);
+    }
     tracked.opened = true;
     tracked.text = content;
     this.bridge.send(LspChannel.Notify, sessionId, 'textDocument/didOpen', {
@@ -1385,33 +2438,38 @@ export class LspClient implements OnDestroy {
 
   /**
    * Re-opens a document against a freshly restarted server, using the latest text from its live editor
-   * model (the client does not retain content, so it reads it back from Monaco).
+   * model when it has one.
    * @param tracked The document to re-open.
    * @returns Returns a promise that resolves once the open notification has been sent.
    */
   private async reopen(tracked: TrackedDocument): Promise<void> {
+    // An edit may have got in first and opened it. A second open without a close is a protocol error
+    // that Roslyn treats as fatal, so the one that arrives second must not be sent.
+    if (tracked.opened) {
+      return;
+    }
     await this.open(tracked, this.currentContent(tracked));
   }
 
   /**
-   * Reads a tracked document's current text from its live Monaco model, or an empty string when Monaco
-   * is unavailable or the document has no live model.
+   * Reads a tracked document's current text from its live Monaco model. Without one, the text last
+   * sent stands: a server told the document is empty answers for nothing and reports nothing in it.
    * @param tracked The document whose text is read.
-   * @returns Returns the current text, or an empty string.
+   * @returns Returns the current text.
    */
   private currentContent(tracked: TrackedDocument): string {
     const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
     if (monaco === undefined) {
-      return '';
+      return tracked.text;
     }
     const modelUri: string | undefined = this.editors.modelUriForPath(uriToPath(tracked.uri));
     if (modelUri === undefined) {
-      return '';
+      return tracked.text;
     }
     const model: MonacoApi.editor.ITextModel | null = monaco.editor.getModel(
       monaco.Uri.parse(modelUri),
     );
-    return model?.getValue() ?? '';
+    return model?.getValue() ?? tracked.text;
   }
 
   /**
@@ -1484,12 +2542,19 @@ export class LspClient implements OnDestroy {
     if (!tracked.opened || this.bridge === undefined) {
       return;
     }
-    const sessionId: string | null = await this.ensureSession(tracked);
-    if (sessionId === null) {
+    // Not through ensureSession: a closing document is not joining the session, and joining withdraws
+    // the documentless reap closeDocument has just armed, so a standalone server would never stop.
+    const sessionId: string = `${tracked.rootPath}::${tracked.serverId}`;
+    if ((await this.sessions.get(sessionId)) !== true) {
       return;
     }
     this.bridge.send(LspChannel.Notify, sessionId, 'textDocument/didClose', {
       textDocument: { uri: tracked.uri },
+    });
+    // A closed file's diagnostics are the workspace's to report now, but the server lets its open
+    // workspace request wait through a close: have it pulled afresh (#1144).
+    this.bridge.send(LspChannel.Notify, sessionId, REFRESH_WORKSPACE_DIAGNOSTICS_METHOD, {
+      uri: tracked.uri,
     });
   }
 
@@ -1514,6 +2579,7 @@ export class LspClient implements OnDestroy {
         tracked.serverId,
         tracked.rootPath,
         tracked.standalone ? uriToPath(tracked.uri) : undefined,
+        tracked.languageId,
       );
     const started: boolean = await pending;
     return started ? sessionId : null;
@@ -1529,6 +2595,8 @@ export class LspClient implements OnDestroy {
    * @param serverId The identifier of the server to start.
    * @param rootPath The root the session is rooted at.
    * @param standaloneFile The standalone file the session vouches for, or undefined.
+   * @param languageId The language of the document the session is started for, or undefined for a
+   * session pre-started before any document, which takes its server's language.
    * @returns Returns the in-flight start promise, resolving true when the server started.
    */
   private startSession(
@@ -1536,11 +2604,26 @@ export class LspClient implements OnDestroy {
     serverId: string,
     rootPath: string,
     standaloneFile?: string,
+    languageId?: string,
   ): Promise<boolean> {
     if (this.bridge === undefined) {
       return Promise.resolve(false);
     }
-    this.sessionInfo.set(sessionId, { serverId, rootPath, standaloneFile });
+    // A session pre-started for a workspace has no document yet: it serves its server's language.
+    const language: string | undefined =
+      languageId ??
+      this.lspSettings
+        .catalogue()
+        .find((server: LspServerSummary): boolean => server.id === serverId)?.languages[0];
+    const braceStyle: LspBraceStyle | undefined =
+      language === undefined ? undefined : this.braceStyleFor(serverId, language);
+    this.sessionInfo.set(sessionId, {
+      serverId,
+      rootPath,
+      standaloneFile,
+      languageId: language,
+      braceStyle,
+    });
     const entry: { serverId: string; rootPath: string; restart: () => void } = {
       serverId,
       rootPath,
@@ -1571,10 +2654,16 @@ export class LspClient implements OnDestroy {
     this.status.register(sessionId, entry);
     this.log.info('LspClient', `Starting server '${serverId}'`, rootPath);
     const pending: Promise<boolean> = this.bridge
-      .invoke<LspStartResult>(LspChannel.Start, { sessionId, serverId, rootPath, standaloneFile })
+      .invoke<LspStartResult>(LspChannel.Start, {
+        sessionId,
+        serverId,
+        rootPath,
+        standaloneFile,
+        ...(braceStyle === undefined ? {} : { braceStyle }),
+      })
       .then((result: LspStartResult): boolean => {
         if (!result.success) {
-          this.status.setState(sessionId, 'unavailable', result.error);
+          this.reportFailedStart(sessionId, result);
           this.log.error('LspClient', `Server '${serverId}' failed to start`, result.error);
           this.recordStartFailure(sessionId);
           // Forget the failed session so a sync after the cooldown can try again; the attempt cap in
@@ -1583,9 +2672,37 @@ export class LspClient implements OnDestroy {
         }
         if (result.success) {
           this.startFailures.delete(sessionId);
+          // Its whole-workspace problems are still to come until its first complete pull (#1182).
+          if (result.pullsWorkspaceDiagnostics === true) {
+            this.status.setAnalysis(sessionId, 'pending');
+          }
           this.legends.set(sessionId, semanticLegendOf(result.capabilities));
           this.renameSupport.set(sessionId, renameSupportOf(result.capabilities));
           this.codeActionSupport.set(sessionId, codeActionSupportOf(result.capabilities));
+          this.formattingSupport.set(sessionId, formattingSupportOf(result.capabilities));
+          this.structureSupport.set(sessionId, structureSupportOf(result.capabilities));
+          const codeLens: LspCodeLensSupport | undefined = codeLensSupportOf(result.capabilities);
+          if (codeLens !== undefined) {
+            this.codeLensSupport.set(sessionId, codeLens);
+          }
+          const triggers: readonly string[] | undefined = autoInsertTriggersOf(result.capabilities);
+          if (triggers !== undefined) {
+            this.autoInsertTriggers.set(sessionId, triggers);
+          }
+          if (workspaceSymbolsOffered(result.capabilities)) {
+            this.workspaceSymbolSessions.add(sessionId);
+          }
+          const renames: readonly RegExp[] = fileRenameFiltersOf(result.capabilities);
+          if (renames.length > 0) {
+            this.fileRenameFilters.set(sessionId, renames);
+          }
+          const inlayHints: LspInlayHintSupport | undefined = inlayHintSupportOf(
+            result.capabilities,
+          );
+          if (inlayHints !== undefined) {
+            this.inlayHintSupport.set(sessionId, inlayHints);
+          }
+          this.navigationSupport.set(sessionId, navigationSupportOf(result.capabilities));
           this.executeCommands.set(sessionId, executeCommandsOf(result.capabilities));
           const assist: LspSessionSupport = {
             completion: completionSupportOf(result.capabilities),
@@ -1632,6 +2749,26 @@ export class LspClient implements OnDestroy {
   }
 
   /**
+   * Puts a failed start on the session's status row. A server that died during its handshake is a
+   * crash like any other: the start fails with the connection's own wording ("Pending response
+   * rejected since connection got disposed"), which means nothing to the user, so the row says the
+   * server stopped unexpectedly instead — and when the exit report got there first, its line (which
+   * may already say the restarts gave up) is kept. The original error is still logged by the caller.
+   * @param sessionId The session that failed to start.
+   * @param result The failed start's result.
+   */
+  private reportFailedStart(sessionId: string, result: LspStartResult): void {
+    if (result.exited !== true) {
+      this.status.setState(sessionId, 'unavailable', result.error);
+      return;
+    }
+    if (this.status.stateOf(sessionId) === 'unavailable') {
+      return;
+    }
+    this.status.setState(sessionId, 'unavailable', stoppedUnexpectedlyReason(result.reason));
+  }
+
+  /**
    * Determines why a session must not be started automatically, or null when a start is allowed. A
    * session is blocked once its server has crashed repeatedly within the crash window, or once it has
    * exhausted its automatic start attempts; a manual restart clears both.
@@ -1639,9 +2776,10 @@ export class LspClient implements OnDestroy {
    * @returns Returns the human-readable block reason, or null when the start may proceed.
    */
   private startBlockReason(sessionId: string): string | null {
-    const crash: { count: number; lastAt: number } | undefined = this.crashes.get(sessionId);
-    if (crash !== undefined && crash.count >= MAX_AUTO_RESTARTS) {
-      return 'The server crashed repeatedly and was stopped. Restart it to try again.';
+    const crash: LspCrashRecord | undefined = this.crashes.get(sessionId);
+    const tries: number = this.settings.get('lsp.restartTries');
+    if (crashesExhausted(crash, tries)) {
+      return givenUpReason(crash, tries);
     }
     const failure: { attempts: number; lastAt: number } | undefined =
       this.startFailures.get(sessionId);
@@ -1665,7 +2803,7 @@ export class LspClient implements OnDestroy {
     if (failure !== undefined && Date.now() - failure.lastAt < START_RETRY_COOLDOWN_MS) {
       return true;
     }
-    const crash: { count: number; lastAt: number } | undefined = this.crashes.get(sessionId);
+    const crash: LspCrashRecord | undefined = this.crashes.get(sessionId);
     if (crash === undefined) {
       return false;
     }
@@ -1703,12 +2841,55 @@ export class LspClient implements OnDestroy {
     // semantic tokens. Diagnostics below remain the readiness signal for servers that do not send it.
     if (message.method === 'workspace/projectInitializationComplete') {
       this.markReady(message.sessionId);
-      this.reassociateOnInit(message.sessionId);
+      this.pullAfterLoad(message.sessionId);
       this.scheduleRecolor(message.sessionId);
+      return;
+    }
+    // rust-analyzer says how it is rather than sending the notification above.
+    if (message.method === 'experimental/serverStatus') {
+      this.onServerStatus(message.sessionId, message.params);
       return;
     }
     // The server's semantic classification improved after it last served tokens (its project or a
     // standalone file's virtual project finished loading): recompute and repaint.
+    // A batch of the server's diagnostics for the whole workspace, files not open included (#1144).
+    if (message.method === WORKSPACE_DIAGNOSTICS_METHOD) {
+      this.ingestWorkspaceDiagnostics(message.sessionId, message.params);
+      // A pull that ran to its end once the server had loaded the workspace has reported all of it:
+      // the workspace is analysed (#1182). One that ends before then reported a workspace not yet
+      // loaded, and says nothing.
+      if (
+        (message.params as { complete?: unknown } | null)?.complete === true &&
+        this.status.stateOf(message.sessionId) === 'ready'
+      ) {
+        this.finishAnalysis(message.sessionId);
+      }
+      return;
+    }
+    // The server's hints are stale (a setting changed, a project finished loading): every editor
+    // showing them asks again (#1145).
+    // The server's diagnostics are stale and it has no workspace pull to report them through: its open
+    // documents are pulled again (#1210), once a burst of refreshes has settled.
+    if (message.method === 'workspace/diagnostic/refresh') {
+      if (this.pullCapable.has(message.sessionId)) {
+        for (const tracked of this.tracked.values()) {
+          if (tracked.opened && `${tracked.rootPath}::${tracked.serverId}` === message.sessionId) {
+            this.scheduleDiagnostics(message.sessionId, tracked);
+          }
+        }
+      }
+      return;
+    }
+    // The server's code lenses are stale (a reference added elsewhere, a setting changed): every
+    // editor showing them asks again (#1149).
+    if (message.method === 'workspace/codeLens/refresh') {
+      this.features.refreshCodeLenses();
+      return;
+    }
+    if (message.method === 'workspace/inlayHint/refresh') {
+      this.features.refreshInlayHints();
+      return;
+    }
     if (message.method === 'workspace/semanticTokens/refresh') {
       this.scheduleRecolor(message.sessionId);
       return;
@@ -1720,27 +2901,195 @@ export class LspClient implements OnDestroy {
       this.onProgress(message.sessionId, message.params);
       return;
     }
+    // typescript-language-server says which TypeScript it runs with (#1207), once, as it starts.
+    if (message.method === '$/typescriptVersion') {
+      const version: unknown = (message.params as { version?: unknown } | null)?.version;
+      if (typeof version === 'string' && version.length > 0) {
+        this.status.setVersion(message.sessionId, version);
+      }
+      return;
+    }
+    // clangd says what it is doing with each file (#1213): parsing, building the preamble, or idle.
+    if (message.method === FILE_STATUS_METHOD) {
+      this.onFileStatus(message.sessionId, message.params);
+      return;
+    }
+    // clangd says which lines the preprocessor leaves out, each time it rebuilds a file (#1213).
+    if (message.method === INACTIVE_REGIONS_METHOD) {
+      this.onInactiveRegions(message.sessionId, message.params);
+      return;
+    }
     // Route the server's own logs into a per-server Output channel (created lazily on first log, so a
     // silent server adds no channel). Not revealed — logs must not steal the panel from a running build.
     if (message.method === 'window/logMessage' || message.method === 'window/showMessage') {
       this.appendServerLog(message.sessionId, message.params);
+      if (message.method === 'window/logMessage') {
+        this.noteUnrestoredProject(message.sessionId, message.params);
+      }
+      if (message.method === 'window/showMessage') {
+        this.raiseServerProblem(message.sessionId, message.params);
+      }
+      return;
+    }
+    // Roslyn says what the user must see (a project that failed to load or restore) through a toast
+    // of its own rather than `window/showMessage` (#1134).
+    if (message.method === 'window/_roslyn_showToast') {
+      this.appendServerLog(message.sessionId, message.params);
+      this.raiseServerProblem(message.sessionId, message.params);
       return;
     }
     if (message.method !== 'textDocument/publishDiagnostics') {
       return;
     }
-    const params: PublishDiagnosticsParams = message.params as PublishDiagnosticsParams;
-    const key: string = normalise(uriToPath(params.uri));
+    const params: PublishDiagnosticsParams | null =
+      message.params as PublishDiagnosticsParams | null;
+    const key: string | null = documentKeyOf(params?.uri);
+    if (key === null || params === null || !Array.isArray(params.diagnostics)) {
+      return;
+    }
+    // Kept for an open document too, so what it reported is still listed once the document closes: the
+    // server has no reason to say it again until it next runs.
+    if (WHOLE_WORKSPACE_PUSH_SERVERS.has(this.sessionInfo.get(message.sessionId)?.serverId ?? '')) {
+      this.ingestWorkspaceDiagnostics(message.sessionId, {
+        reports: [{ uri: params.uri, kind: 'full', items: params.diagnostics }],
+      });
+    }
     const tracked: TrackedDocument | undefined = this.tracked.get(key);
     if (tracked === undefined) {
       return;
     }
-    this.ingestDiagnostics(tracked, params.diagnostics);
+    tracked.pushed = params.diagnostics;
+    this.ingestDiagnostics(tracked);
     // Diagnostics arriving mean the server has finished loading the workspace and analysed the
     // document: flip the indicator from starting to ready and re-request semantic tokens — but only
     // on the transition. A loading server (Roslyn analysing a solution) streams diagnostics for many
     // files; refreshing on every push would fan token requests out continuously.
     this.markReady(message.sessionId);
+  }
+
+  /**
+   * Takes what a server says of how it is (`experimental/serverStatus`, #1210). A server starting up
+   * stays starting while it is loading, its progress showing; once it is done it is ready, and its open
+   * documents are pulled again. Its health is kept on its row for as long as it is not good: a server
+   * that could not load the workspace still answers what it can, so "Ready" alone would hide that it is
+   * working from nothing. The first line goes on the row; the rest, which can be Cargo's whole error,
+   * in its log.
+   * @param sessionId The session.
+   * @param params The notification parameters (`health`, `quiescent` and `message`).
+   */
+  private onServerStatus(sessionId: string, params: unknown): void {
+    const report: { health?: unknown; quiescent?: unknown; message?: unknown } | null =
+      (params as typeof report) ?? null;
+    if (report === null) {
+      return;
+    }
+    const text: string | undefined =
+      report.health !== 'ok' && typeof report.message === 'string' && report.message.length > 0
+        ? report.message
+        : undefined;
+    if (text === undefined) {
+      this.serverProblemTexts.delete(sessionId);
+    } else if (text !== this.serverProblemTexts.get(sessionId)) {
+      this.serverProblemTexts.set(sessionId, text);
+      this.appendServerLog(sessionId, { message: text });
+    }
+    this.status.setProblem(sessionId, text?.split('\n')[0]);
+    if (report.quiescent === false) {
+      this.loadingSessions.add(sessionId);
+      return;
+    }
+    // Its finishing a load, the first or a later one (a changed `Cargo.toml`), or a window attaching
+    // to a server that finished before it did.
+    const finished: boolean = this.loadingSessions.delete(sessionId);
+    if (report.quiescent === true && (finished || this.status.stateOf(sessionId) === 'starting')) {
+      this.markReady(sessionId);
+      this.pullAfterLoad(sessionId);
+    }
+  }
+
+  /**
+   * Shows on the session's status row what clangd says it is doing with a file (#1213). Its state reads
+   * `parsing includes, running Update`: what the file is at, then what is running behind it, of which
+   * only the first means anything to the user. `idle` clears it.
+   * @param sessionId The session the file belongs to.
+   * @param params The notification parameters (`uri` and `state`).
+   */
+  private onFileStatus(sessionId: string, params: unknown): void {
+    const { uri, state } = (params ?? {}) as { uri?: unknown; state?: unknown };
+    if (typeof uri !== 'string' || typeof state !== 'string') {
+      return;
+    }
+    const doing: string = state.split(',')[0].trim();
+    this.status.setFileActivity(
+      sessionId,
+      uri,
+      doing === 'idle' || doing.length === 0
+        ? null
+        : `${doing[0].toUpperCase()}${doing.slice(1)} — ${basename(uriToPath(uri))}`,
+    );
+  }
+
+  /**
+   * Fades the code the preprocessor leaves out of a document (#1213), as clangd reports it: an `#if 0`
+   * block, or the branch of an `#ifdef` not taken. Each report is the whole set for the file, so it
+   * replaces the last; an empty one clears it. A file with no editor is skipped: clangd reports again
+   * when it next builds the file, which opening it does.
+   * @param sessionId The session reporting.
+   * @param params The notification parameters (`textDocument.uri` and `regions`, a list of ranges).
+   */
+  private onInactiveRegions(sessionId: string, params: unknown): void {
+    const { textDocument, regions } = (params ?? {}) as {
+      textDocument?: { uri?: unknown };
+      regions?: unknown;
+    };
+    if (typeof textDocument?.uri !== 'string' || !Array.isArray(regions)) {
+      return;
+    }
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    const modelUri: string | undefined = this.editors.modelUriForPath(uriToPath(textDocument.uri));
+    const model: MonacoApi.editor.ITextModel | null =
+      monaco === undefined || modelUri === undefined
+        ? null
+        : monaco.editor.getModel(monaco.Uri.parse(modelUri));
+    if (monaco === undefined || model === null || modelUri === undefined) {
+      return;
+    }
+    const decorations: MonacoApi.editor.IModelDeltaDecoration[] = regions
+      .map((region: unknown): MonacoApi.IRange | null => toInactiveRange(region, model))
+      .filter((range: MonacoApi.IRange | null): range is MonacoApi.IRange => range !== null)
+      .map((range: MonacoApi.IRange): MonacoApi.editor.IModelDeltaDecoration => ({
+        range,
+        options: {
+          inlineClassName: INACTIVE_REGION_CLASS,
+          stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+        },
+      }));
+    const shown: { sessionId: string; ids: string[] } | undefined =
+      this.inactiveRegions.get(modelUri);
+    const ids: string[] = model.deltaDecorations(shown?.ids ?? [], decorations);
+    if (ids.length === 0) {
+      this.inactiveRegions.delete(modelUri);
+    } else {
+      this.inactiveRegions.set(modelUri, { sessionId, ids });
+    }
+  }
+
+  /**
+   * Stops fading the code a session's server said was left out (#1213): the server has gone, and what
+   * it said may not hold for the one that replaces it, which says it again.
+   * @param sessionId The session.
+   */
+  private clearInactiveRegions(sessionId: string): void {
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    for (const [modelUri, shown] of [...this.inactiveRegions.entries()]) {
+      if (shown.sessionId !== sessionId) {
+        continue;
+      }
+      this.inactiveRegions.delete(modelUri);
+      const model: MonacoApi.editor.ITextModel | null =
+        monaco?.editor.getModel(monaco.Uri.parse(modelUri)) ?? null;
+      model?.deltaDecorations(shown.ids, []);
+    }
   }
 
   /**
@@ -1751,6 +3100,14 @@ export class LspClient implements OnDestroy {
    * @param params The notification parameters (`token` and `value`).
    */
   private onProgress(sessionId: string, params: unknown): void {
+    // A test run's own progress: its log, its counts, each test's outcome (#1150).
+    const run: TestRun | undefined = this.testRuns.get(
+      String((params as { token?: unknown } | null)?.token),
+    );
+    if (run !== undefined) {
+      this.onTestProgress(run, (params as { value?: unknown }).value);
+      return;
+    }
     const candidate: {
       token?: unknown;
       value?: { kind?: unknown; title?: unknown; message?: unknown; percentage?: unknown };
@@ -1785,8 +3142,13 @@ export class LspClient implements OnDestroy {
       return;
     }
     const parts: string[] = [title];
-    if (typeof value.message === 'string' && value.message.length > 0) {
-      parts.push(value.message);
+    // A request's partial results arrive on its token as an array (a restore Studio asked for, #1143,
+    // reports each step that way): the latest entry says what is happening.
+    const message: unknown = Array.isArray(candidate.value)
+      ? (candidate.value.at(-1) as { message?: unknown } | undefined)?.message
+      : value.message;
+    if (typeof message === 'string' && message.length > 0) {
+      parts.push(message);
     }
     if (typeof value.percentage === 'number') {
       parts.push(`${Math.round(value.percentage)}%`);
@@ -1841,15 +3203,19 @@ export class LspClient implements OnDestroy {
     if (!this.sessions.delete(exit.sessionId)) {
       return;
     }
+    // What the server said of the whole workspace went with it: its replacement says it again.
+    if (this.workspaceDiagnostics.delete(exit.sessionId)) {
+      this.publish();
+    }
+    clearTimeout(this.analysisTimers.get(exit.sessionId));
+    this.analysisTimers.delete(exit.sessionId);
+    this.clearInactiveRegions(exit.sessionId);
     if (exit.restarted === true) {
       // A deliberate restart, with a fresh server already running under the same id: not a crash, so
       // no backoff bookkeeping — just forget the old session's negotiated state and re-open every
       // document against the new one (which re-attaches this client to it).
       this.log.info('LspClient', 'Server restarted; re-opening its documents', exit.sessionId);
-      this.legends.delete(exit.sessionId);
-      this.pullCapable.delete(exit.sessionId);
-      this.settledSessions.delete(exit.sessionId);
-      this.clearReassociateTimers(exit.sessionId);
+      this.forgetServerState(exit.sessionId);
       this.status.setState(exit.sessionId, 'starting');
       for (const tracked of this.tracked.values()) {
         if (`${tracked.rootPath}::${tracked.serverId}` === exit.sessionId) {
@@ -1861,40 +3227,179 @@ export class LspClient implements OnDestroy {
     }
     // Remember the crash (cumulatively — no rolling window a slow crash cycle could slip through),
     // so restarts back off exponentially and eventually stop instead of respawning forever.
-    const crash: { count: number; lastAt: number } | undefined = this.crashes.get(exit.sessionId);
-    this.crashes.set(exit.sessionId, { count: (crash?.count ?? 0) + 1, lastAt: Date.now() });
+    const crash: LspCrashRecord = recordCrash(exit, this.crashes.get(exit.sessionId), Date.now());
+    this.crashes.set(exit.sessionId, crash);
     this.log.warn(
       'LspClient',
-      `Server session exited unexpectedly (crash #${(crash?.count ?? 0) + 1})`,
+      `Server session exited unexpectedly (crash #${crash.count}${crash.repeated ? ', repeated' : ''})`,
       exit.sessionId,
     );
-    this.legends.delete(exit.sessionId);
     // Keep the crashed server listed as unavailable — with its restart affordance — rather than
     // removing it from the status strip. Removing it made the whole status-strip control vanish (its
     // trigger is mounted only while a server is listed for the workspace), stranding the user with no
     // way to bring the server back until an incidental document sync happened to re-register it. A
     // later sync still auto-restarts it (startSession re-registers it in the starting state); until
     // then the row's Restart button lets the user recover it by hand.
+    // The server's own last words, when it left any, are the one thing that tells a protocol error
+    // from a deliberate stop — say them, rather than only that it stopped.
+    const tries: number = this.settings.get('lsp.restartTries');
+    const exhausted: boolean = crashesExhausted(crash, tries);
     this.status.setState(
       exit.sessionId,
       'unavailable',
-      'The server stopped unexpectedly. Restart it to try again.',
+      exhausted ? givenUpReason(crash, tries) : stoppedUnexpectedlyReason(exit.reason),
     );
-    // The restarted server loads from scratch, so its tokens are degraded again until it re-settles.
-    this.settledSessions.delete(exit.sessionId);
-    this.clearReassociateTimers(exit.sessionId);
-    const recolorTimer: ReturnType<typeof setTimeout> | undefined = this.recolorTimers.get(
-      exit.sessionId,
-    );
-    if (recolorTimer !== undefined) {
-      clearTimeout(recolorTimer);
-      this.recolorTimers.delete(exit.sessionId);
+    if (exhausted) {
+      this.raiseGivenUp(exit.sessionId, crash, tries);
     }
+    // The restarted server loads from scratch, so its tokens are degraded again until it re-settles.
+    this.forgetServerState(exit.sessionId);
     for (const tracked of this.tracked.values()) {
       if (`${tracked.rootPath}::${tracked.serverId}` === exit.sessionId) {
         tracked.opened = false;
       }
     }
+  }
+
+  /**
+   * Tells one of this client's servers how a document is indented (#1208), from the document's
+   * editor, which has already weighed the file's `.editorconfig`, the user's settings and what the
+   * file itself uses. A document no editor holds is answered with nothing, leaving the server its
+   * default. A question for a session this client does not hold is another window's to answer.
+   * @param request The request, as the main process forwards it.
+   */
+  private onIndentation(request: LspIndentationRequest): void {
+    if (!this.ownsSession(request.sessionId)) {
+      return;
+    }
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    const modelUri: string | undefined = this.editors.modelUriForPath(uriToPath(request.uri));
+    const model: MonacoApi.editor.ITextModel | null =
+      monaco === undefined || modelUri === undefined
+        ? null
+        : monaco.editor.getModel(monaco.Uri.parse(modelUri));
+    const options: MonacoApi.editor.TextModelResolvedOptions | undefined = model?.getOptions();
+    const reply: LspIndentationReply = {
+      requestId: request.requestId,
+      tabSize: options?.tabSize ?? null,
+      insertSpaces: options?.insertSpaces ?? null,
+    };
+    this.bridge?.send(LspChannel.IndentationReply, reply);
+  }
+
+  /**
+   * Attaches the workspace's debugger to a process one of this client's servers started (#1150) —
+   * Roslyn's test host, waiting for a debugger for Debug Test — and tells the server whether it did.
+   * A request for a session this client does not hold is another window's to answer.
+   * @param request The request, as the main process forwards it.
+   * @returns Returns a promise that resolves once the server is answered.
+   */
+  private async onAttachDebugger(request: LspAttachDebuggerRequest): Promise<void> {
+    if (!this.ownsSession(request.sessionId)) {
+      return;
+    }
+    this.log.info('LspClient', `Attaching the debugger to process ${request.processId}`);
+    const run: TestRun | undefined = [...this.testRuns.values()].find(
+      (candidate: TestRun): boolean => candidate.sessionId === request.sessionId,
+    );
+    run?.channel.appendLine(
+      `Attaching the debugger to the test host (process ${request.processId}).`,
+    );
+    let didAttach: boolean;
+    try {
+      didAttach = await this.debugAttach.attach(request.processId, 'Tests');
+    } catch {
+      didAttach = false;
+    }
+    if (!didAttach) {
+      run?.channel.appendLine('The debugger could not attach; the tests run without it.');
+    }
+    const reply: LspAttachDebuggerReply = { requestId: request.requestId, didAttach };
+    this.bridge?.send(LspChannel.AttachDebuggerReply, reply);
+  }
+
+  /**
+   * Puts one of this client's servers' questions to the user (#1154) — `window/showMessageRequest` —
+   * as a toast whose buttons are its actions, kept until it is answered. Choosing one answers the
+   * server with it; the toast going without an answer (or never showing, while muted) answers null. A question for a session this
+   * client does not hold is another window's to ask.
+   * @param request The question, as the main process forwards it.
+   */
+  private onShowMessage(request: LspShowMessageRequest): void {
+    if (!this.ownsSession(request.sessionId)) {
+      return;
+    }
+    const serverId: string | undefined = this.sessionInfo.get(request.sessionId)?.serverId;
+    const server: string =
+      serverId === undefined
+        ? 'Language server'
+        : (this.lspSettings.displayNameOf(serverId) ?? serverId);
+    const key: string = `lsp-question:${request.requestId}`;
+    this.questions.set(request.requestId, key);
+    this.log.info('LspClient', `Server asked: ${request.message}`, request.sessionId);
+    this.notifications.notify({
+      severity: request.type === 1 ? 'error' : request.type === 2 ? 'warning' : 'info',
+      title: request.message,
+      detail: server,
+      actions: request.actions.map((label: string, index: number): NotificationAction => ({
+        label,
+        run: (): void => this.answerQuestion(request.requestId, index),
+      })),
+      key,
+      sticky: true,
+      // Toast-only: the question is answered from its toast or not at all, so a dismissed one is not
+      // left in the notification centre with buttons that no longer answer anything.
+      route: 'toast-only',
+      onDismiss: (): void => this.answerQuestion(request.requestId, null),
+    });
+  }
+
+  /**
+   * Shows what a server asked to (#1211): a web page in the browser — gopls's Browse Documentation
+   * serves one of its own — through the same opener as any link from content, so it asks first when
+   * the user's settings say to; a file in an editor, its range selected. A session another client owns
+   * is left to it.
+   * @param request The server's request, from the main process.
+   */
+  private onShowDocument(request: LspShowDocumentRequest): void {
+    if (!this.ownsSession(request.sessionId)) {
+      return;
+    }
+    if (request.external) {
+      void this.shell.openExternal(request.uri, 'content');
+      return;
+    }
+    const start: { line: number; character: number } = request.selection?.start ?? {
+      line: 0,
+      character: 0,
+    };
+    const end: { line: number; character: number } = request.selection?.end ?? start;
+    void this.injector.get(EditorNavigation).goTo(
+      null,
+      {
+        path: uriToPath(request.uri),
+        range: {
+          startLineNumber: start.line + 1,
+          startColumn: start.character + 1,
+          endLineNumber: end.line + 1,
+          endColumn: end.character + 1,
+        },
+      },
+      request.selection !== undefined,
+    );
+  }
+
+  /**
+   * Answers a server's question, once.
+   * @param requestId The question.
+   * @param action The index of the action chosen, or null when it was dismissed.
+   */
+  private answerQuestion(requestId: string, action: number | null): void {
+    if (!this.questions.delete(requestId)) {
+      return;
+    }
+    const reply: LspShowMessageReply = { requestId, action };
+    this.bridge?.send(LspChannel.ShowMessageReply, reply);
   }
 
   /**
@@ -1961,6 +3466,359 @@ export class LspClient implements OnDestroy {
   }
 
   /**
+   * Notes a project the server could not resolve the packages of, when the user has asked to be asked
+   * before restoring (#1143): Roslyn then restores nothing and says only, in a warning, that a project
+   * "has unresolved dependencies". The projects a load reports together are gathered into one toast
+   * offering to restore them.
+   * @param sessionId The session the log line came from.
+   * @param params The log message.
+   */
+  private noteUnrestoredProject(sessionId: string, params: unknown): void {
+    const serverId: string | undefined = this.sessionInfo.get(sessionId)?.serverId;
+    if (
+      serverId === undefined ||
+      this.lspSettings.serverSetting(serverId, AUTOMATIC_RESTORE_SECTION) !== false
+    ) {
+      return;
+    }
+    const text: unknown = (params as { message?: unknown } | null)?.message;
+    const project: string | undefined =
+      typeof text === 'string' ? UNRESOLVED_PROJECT.exec(text)?.[1] : undefined;
+    if (project === undefined) {
+      return;
+    }
+    const projects: Set<string> = this.unrestored.get(sessionId) ?? new Set<string>();
+    projects.add(project);
+    this.unrestored.set(sessionId, projects);
+    clearTimeout(this.unrestoredTimers.get(sessionId));
+    this.unrestoredTimers.set(
+      sessionId,
+      setTimeout((): void => this.offerRestore(sessionId, serverId), UNRESTORED_GATHER_MS),
+    );
+  }
+
+  /**
+   * Offers to restore the projects gathered for a session, in one toast.
+   * @param sessionId The session.
+   * @param serverId Its server.
+   */
+  private offerRestore(sessionId: string, serverId: string): void {
+    this.unrestoredTimers.delete(sessionId);
+    const projects: readonly string[] = [...(this.unrestored.get(sessionId) ?? [])];
+    this.unrestored.delete(sessionId);
+    if (projects.length === 0) {
+      return;
+    }
+    const first: string = projects[0].split(/[\\/]/).pop() ?? projects[0];
+    this.notifications.notify({
+      severity: 'warning',
+      title:
+        projects.length === 1
+          ? `${first} needs its packages restored`
+          : `${projects.length} projects need their packages restored`,
+      detail: this.lspSettings.displayNameOf(serverId) ?? serverId,
+      actions: [
+        {
+          label: 'Restore',
+          run: (): void => void this.restoreProjects(sessionId, serverId, projects),
+        },
+      ],
+      key: `lsp-restore:${sessionId}`,
+      sticky: true,
+    });
+  }
+
+  /**
+   * Asks a session's server to restore projects' packages (#1143); its progress shows in the server's
+   * status row, and a failure is raised with the server's log a click away.
+   * @param sessionId The session.
+   * @param serverId Its server.
+   * @param projects The project files to restore.
+   * @returns Returns a promise that resolves once the server has answered.
+   */
+  private async restoreProjects(
+    sessionId: string,
+    serverId: string,
+    projects: readonly string[],
+  ): Promise<void> {
+    this.log.info('LspClient', `Restoring ${projects.length} project(s)`, sessionId);
+    // The server reports a restore it was asked for as partial results on this token, which the
+    // server's status row shows as it does the server's own progress.
+    const token: string = `studio-restore-${++this.restores}`;
+    const tokens: Map<string, string> =
+      this.progressTitles.get(sessionId) ?? new Map<string, string>();
+    tokens.set(token, 'Restore');
+    this.progressTitles.set(sessionId, tokens);
+    this.status.setProgress(sessionId, 'Restore');
+    let result: unknown;
+    try {
+      result = await this.bridge?.invoke(LspChannel.Request, sessionId, RESTORE_METHOD, {
+        projectFilePaths: projects,
+        partialResultToken: token,
+      });
+    } catch {
+      result = null;
+    }
+    this.onProgress(sessionId, { token, value: { kind: 'end' } });
+    if ((result as { success?: unknown } | null)?.success === true) {
+      return;
+    }
+    this.notifications.notify({
+      severity: 'error',
+      title: 'Restoring packages failed',
+      detail: this.lspSettings.displayNameOf(serverId) ?? serverId,
+      actions: [{ label: 'Show log', run: (): void => this.output.show(`lsp:${serverId}`) }],
+      key: `lsp-restore:${sessionId}`,
+    });
+  }
+
+  /**
+   * Runs the tests a Run Test or Debug Test lens names (#1150): the server builds the project, finds
+   * the tests and runs them, reporting as it goes — for Debug Test, first asking for the debugger to
+   * attach to the test host (see {@link onAttachDebugger}). Its log streams into the Tests channel of the Logs panel, brought
+   * forward; its counts into the server's status row; each test's outcome, once the run ends, into a
+   * marker on the test's line; and a run with failures raises a toast with the log a click away.
+   * @param sessionId The session serving the lens's document.
+   * @param tracked The lens's document.
+   * @param lens The lens's argument, as the server gave it: the document, the range of the test or
+   * class, and whether to attach a debugger.
+   * @returns Returns a promise that resolves once the run has ended.
+   */
+  private async runTests(
+    sessionId: string,
+    tracked: TrackedDocument,
+    lens: unknown,
+  ): Promise<void> {
+    const argument: { range?: unknown; attachDebugger?: unknown } | null =
+      (lens as { range?: unknown; attachDebugger?: unknown } | null) ?? null;
+    const serverId: string | undefined = this.sessionInfo.get(sessionId)?.serverId;
+    if (this.bridge === undefined || argument?.range === undefined || serverId === undefined) {
+      return;
+    }
+    const channel: OutputChannel = this.output.channel(TESTS_CHANNEL, 'Tests');
+    channel.clear();
+    this.output.show(TESTS_CHANNEL);
+    const token: string = `studio-tests-${++this.testRunCount}`;
+    const run: TestRun = {
+      sessionId,
+      channel,
+      outcomes: new Map<string, TestOutcome>(),
+      failures: [],
+    };
+    this.testRuns.set(token, run);
+    this.status.setProgress(sessionId, 'Tests');
+    this.log.info('LspClient', 'Running tests', sessionId);
+    try {
+      await this.bridge.invoke(LspChannel.Request, sessionId, RUN_TESTS_METHOD, {
+        ...argument,
+        attachDebugger: argument.attachDebugger === true,
+        partialResultToken: token,
+      });
+    } catch (error: unknown) {
+      channel.appendLine(
+        `The tests could not be run: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      this.testRuns.delete(token);
+      this.status.setProgress(sessionId, null);
+    }
+    await this.markTestOutcomes(sessionId, tracked, run.outcomes);
+    if (run.failures.length > 0) {
+      const [first] = run.failures;
+      this.notifications.notify({
+        severity: 'error',
+        title:
+          run.failures.length === 1
+            ? `${testName(first.name)} failed`
+            : `${run.failures.length} tests failed`,
+        detail: first.summary,
+        actions: [{ label: 'Show log', run: (): void => this.output.show(TESTS_CHANNEL) }],
+        key: `lsp-tests:${sessionId}`,
+      });
+    }
+  }
+
+  /**
+   * Takes a test run's progress: its log lines, its counts, and each test's outcome as it is reported.
+   * @param run The run.
+   * @param value The progress — a report, or several.
+   */
+  private onTestProgress(run: TestRun, value: unknown): void {
+    for (const report of (Array.isArray(value) ? value : [value]) as readonly {
+      stage?: unknown;
+      message?: unknown;
+      progress?: { testsPassed?: unknown; testsFailed?: unknown; totalTests?: unknown };
+    }[]) {
+      if (typeof report?.message === 'string' && report.message.length > 0) {
+        run.channel.appendLine(report.message);
+        const outcome: RegExpExecArray | null = TEST_OUTCOME.exec(report.message);
+        if (outcome !== null) {
+          const result: TestOutcome = outcome[1].toLowerCase() as TestOutcome;
+          run.outcomes.set(outcome[2], result);
+          if (result === 'failed') {
+            const detail: string | undefined = report.message
+              .split('\n')
+              .slice(1)
+              .map((line: string): string => line.trim())
+              .find((line: string): boolean => line.length > 0 && line !== 'Message:');
+            run.failures.push({ name: outcome[2], summary: detail ?? '' });
+          }
+        }
+      }
+      const counts:
+        { testsPassed?: unknown; testsFailed?: unknown; totalTests?: unknown } | undefined =
+        report?.progress;
+      if (typeof counts?.totalTests === 'number') {
+        this.status.setProgress(
+          run.sessionId,
+          `Tests — ${String(counts.testsPassed)} passed, ${String(counts.testsFailed)} failed of ${counts.totalTests}`,
+        );
+      } else if (typeof report?.stage === 'string') {
+        this.status.setProgress(run.sessionId, `Tests — ${report.stage.replace(/\.+$/, '')}`);
+      }
+    }
+  }
+
+  /**
+   * Marks each test's line with its outcome (#1150): the document's test lenses say where each test
+   * is — the name their range covers — and a test the run reported is marked on its lens's line, in
+   * the gutter's right lane. A test the run did not report keeps the mark it had.
+   * @param sessionId The session serving the document.
+   * @param tracked The document.
+   * @param outcomes Each test's outcome, by fully qualified name.
+   * @returns Returns a promise that resolves once the marks are drawn.
+   */
+  private async markTestOutcomes(
+    sessionId: string,
+    tracked: TrackedDocument,
+    outcomes: ReadonlyMap<string, TestOutcome>,
+  ): Promise<void> {
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    const modelUri: string | undefined = this.editors.modelUriForPath(uriToPath(tracked.uri));
+    const model: MonacoApi.editor.ITextModel | null =
+      monaco === undefined || modelUri === undefined
+        ? null
+        : monaco.editor.getModel(monaco.Uri.parse(modelUri));
+    if (monaco === undefined || model === null || modelUri === undefined || outcomes.size === 0) {
+      return;
+    }
+    let lenses: unknown;
+    try {
+      lenses = await this.bridge?.invoke(LspChannel.Request, sessionId, 'textDocument/codeLens', {
+        textDocument: { uri: tracked.uri },
+      });
+    } catch {
+      return;
+    }
+    const marks: { ids: string[]; outcomes: Map<number, TestOutcome> } = this.testMarkers.get(
+      modelUri,
+    ) ?? { ids: [], outcomes: new Map<number, TestOutcome>() };
+    for (const [line, outcome] of testLines(
+      lenses,
+      (line: number): string => (line <= model.getLineCount() ? model.getLineContent(line) : ''),
+      outcomes,
+    )) {
+      marks.outcomes.set(line, outcome);
+    }
+    marks.ids = model.deltaDecorations(
+      marks.ids,
+      [...marks.outcomes].map(
+        ([line, outcome]: [number, TestOutcome]): MonacoApi.editor.IModelDeltaDecoration => ({
+          range: { startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1 },
+          options: {
+            glyphMarginClassName: `${(outcome === 'passed' ? Icon.SUCCESS_FILL : Icon.ERROR_FILL).classList} test-result-glyph test-result-glyph--${outcome}`,
+            glyphMarginHoverMessage: {
+              value: outcome === 'passed' ? 'Passed' : 'Failed — see the Tests log',
+            },
+            glyphMargin: { position: monaco.editor.GlyphMarginLane.Right },
+            stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+          },
+        }),
+      ),
+    );
+    this.testMarkers.set(modelUri, marks);
+  }
+
+  /**
+   * Raises a server's error or warning for the user as a toast (#1134), with "Show log" opening its
+   * Output channel. One toast per session: a burst (a solution whose projects fail to load one after
+   * another) updates the toast with a count rather than stacking a toast per project. Information shows
+   * for a few seconds on the server's status row (#1154); log-level messages stay in the Output channel.
+   * @param sessionId The session the message came from.
+   * @param params The message: `{ type, message }` for `window/showMessage`, `{ messageType, message }`
+   * for Roslyn's toast.
+   */
+  private raiseServerProblem(sessionId: string, params: unknown): void {
+    const serverId: string | undefined = this.sessionInfo.get(sessionId)?.serverId;
+    const candidate: { type?: unknown; messageType?: unknown; message?: unknown } | null =
+      (params as typeof candidate) ?? null;
+    const type: unknown = candidate?.type ?? candidate?.messageType;
+    const text: unknown = candidate?.message;
+    // Information is said in passing on the server's status row (#1154), not raised as a toast.
+    if (type === 3 && typeof text === 'string' && text.trim().length > 0) {
+      this.status.setNotice(sessionId, text.trim());
+      return;
+    }
+    if (serverId === undefined || (type !== 1 && type !== 2) || typeof text !== 'string') {
+      return;
+    }
+    const message: string = text.replace(/\s*See (the )?logs? for details\.?\s*$/i, '').trim();
+    if (message.length === 0) {
+      return;
+    }
+    // Roslyn reports one failed project more than once; a repeat is the same problem, not another.
+    const now: number = Date.now();
+    const previous: { messages: ReadonlySet<string>; at: number } | undefined =
+      this.serverProblems.get(sessionId);
+    const messages: Set<string> = new Set<string>(
+      previous !== undefined && now - previous.at < SERVER_PROBLEM_BURST_MS
+        ? previous.messages
+        : [],
+    );
+    messages.add(message);
+    this.serverProblems.set(sessionId, { messages, at: now });
+    const count: number = messages.size;
+    const server: string = this.lspSettings.displayNameOf(serverId) ?? serverId;
+    this.notifications.notify({
+      severity: type === 1 ? 'error' : 'warning',
+      title: count === 1 ? message : `${server} reported ${count} problems`,
+      detail: count === 1 ? server : `Latest: ${message}`,
+      actions: [{ label: 'Show log', run: (): void => this.output.show(`lsp:${serverId}`) }],
+      key: `lsp-problem:${sessionId}`,
+    });
+  }
+
+  /**
+   * Tells the user a server's automatic restart has given up (#1136) — a status row alone goes
+   * unnoticed, and a server that stays down takes every language feature with it — with Restart and
+   * Show log.
+   * @param sessionId The session.
+   * @param crash Its crash record.
+   * @param tries How many crashes Restart Crashed Language Servers restarts.
+   */
+  private raiseGivenUp(sessionId: string, crash: LspCrashRecord, tries: number): void {
+    const serverId: string | undefined = this.sessionInfo.get(sessionId)?.serverId;
+    if (serverId === undefined) {
+      return;
+    }
+    const server: string = this.lspSettings.displayNameOf(serverId) ?? serverId;
+    this.notifications.notify({
+      severity: 'error',
+      title: crash.repeated
+        ? `${server} stopped the same way twice and was not restarted`
+        : tries <= 0
+          ? `${server} stopped and was not restarted`
+          : `${server} crashed repeatedly and was stopped`,
+      detail: crash.reason ?? 'It gave no reason. The log may say more.',
+      actions: [
+        { label: 'Restart', run: (): void => void this.restart(sessionId) },
+        { label: 'Show log', run: (): void => this.output.show(`lsp:${serverId}`) },
+      ],
+      key: `lsp-given-up:${sessionId}`,
+    });
+  }
+
+  /**
    * Pushes the merged diagnostics across every tracked document into the aggregate.
    */
   private publish(): void {
@@ -1971,7 +3829,72 @@ export class LspClient implements OnDestroy {
     for (const diagnostics of this.diagnosticsByDocument.values()) {
       merged.push(...diagnostics);
     }
+    // A file's workspace report stands in for it only while it is not open: an open document's own
+    // pull is fresher (it sees unsaved edits). A session no longer running reports nothing.
+    for (const [sessionId, files] of this.workspaceDiagnostics) {
+      if (!this.sessionInfo.has(sessionId)) {
+        continue;
+      }
+      for (const [key, diagnostics] of files) {
+        if (!this.tracked.has(key)) {
+          merged.push(...diagnostics);
+        }
+      }
+    }
     this.emit(merged);
+  }
+
+  /**
+   * Takes a batch of a server's diagnostics for the whole workspace (#1144): each file's full report
+   * replaces what it had (an empty one clears it), and an unchanged report keeps it. They reach the
+   * Error List as workspace diagnostics, located by path, so a file that is not open still lists its
+   * errors and opens at them.
+   * @param sessionId The session the reports came from.
+   * @param params The batch: `{ reports }`, with `reset` when the pull is starting over.
+   */
+  private ingestWorkspaceDiagnostics(sessionId: string, params: unknown): void {
+    const batch: { reports?: unknown; reset?: unknown } | null = (params as typeof batch) ?? null;
+    const reports: unknown = batch?.reports;
+    if (!Array.isArray(reports)) {
+      return;
+    }
+    const files: Map<string, readonly Diagnostic[]> =
+      this.workspaceDiagnostics.get(sessionId) ?? new Map<string, readonly Diagnostic[]>();
+    this.workspaceDiagnostics.set(sessionId, files);
+    // The pull is starting over: what it reported before is dropped, and reported again if it holds.
+    let changed: boolean = batch?.reset === true && files.size > 0;
+    if (batch?.reset === true) {
+      files.clear();
+    }
+    for (const report of reports as readonly ({
+      uri?: unknown;
+      kind?: unknown;
+      items?: unknown;
+    } | null)[]) {
+      const key: string | null = documentKeyOf(report?.uri);
+      if (key === null || typeof report?.uri !== 'string' || report.kind !== 'full') {
+        continue;
+      }
+      const uri: string = report.uri;
+      const items: readonly LspDiagnostic[] = Array.isArray(report.items)
+        ? (report.items as readonly LspDiagnostic[]).filter(isErrorListDiagnostic)
+        : [];
+      if (items.length === 0) {
+        changed = files.delete(key) || changed;
+        continue;
+      }
+      files.set(
+        key,
+        items.map((diagnostic: LspDiagnostic): Diagnostic => ({
+          ...toDiagnostic(diagnostic, { uri, documentId: null }),
+          scope: 'workspace',
+        })),
+      );
+      changed = true;
+    }
+    if (changed) {
+      this.publish();
+    }
   }
 
   /**
@@ -1983,9 +3906,25 @@ export class LspClient implements OnDestroy {
    * @returns Returns the root and whether it is standalone, or null when the document is not handled.
    */
   private documentRoot(filePath: string): { root: string; standalone: boolean } | null {
+    // A view Studio wrote from a server's answer (#1210, #1213) is for reading, and no server's business.
+    if (isGeneratedView(filePath)) {
+      return null;
+    }
     const listing: DirectoryListing | null = this.workspace.root();
     if (listing !== null) {
-      return isWithin(filePath, listing.path) ? { root: listing.path, standalone: false } : null;
+      // A language server's decompiled source (#1133) lives in the temporary directory, outside the
+      // workspace, but belongs to the workspace's session: the server generated it for a symbol the
+      // workspace references, and answers hover and Go to Definition inside it only when it is opened
+      // against that session. So does the Rust toolchain's source (#1210), which rust-analyzer loaded
+      // with the workspace. (The main process decides which such files may be opened at all.)
+      if (
+        isWithin(filePath, listing.path) ||
+        isMetadataAsSource(filePath) ||
+        isToolchainSource(filePath)
+      ) {
+        return { root: listing.path, standalone: false };
+      }
+      return null;
     }
     return { root: parentDir(filePath), standalone: true };
   }

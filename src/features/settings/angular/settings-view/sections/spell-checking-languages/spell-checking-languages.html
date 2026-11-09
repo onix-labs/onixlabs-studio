@@ -1,0 +1,22 @@
+@if (spelling.languagesChoosable) {
+  <app-setting-row
+    label="Spell Checking Languages"
+    description="The languages checked together, such as English (UK) and English (US). None chosen checks the system language."
+  >
+    <app-multi-select
+      [searchable]="true"
+      searchPlaceholder="Search languages…"
+      placeholder="System Language"
+      ariaLabel="Spell checking languages"
+      [options]="options()"
+      [value]="spelling.languages()"
+      [disabled]="!spelling.enabled()"
+      (valueChange)="choose($event)"
+    />
+  </app-setting-row>
+} @else {
+  <app-setting-row
+    label="Spell Checking Languages"
+    description="On macOS, spelling is checked in the system language only (the first language in System Settings › General › Language & Region), even when more spelling languages are enabled there."
+  />
+}

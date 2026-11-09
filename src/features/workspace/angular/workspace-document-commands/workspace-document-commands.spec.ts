@@ -1,3 +1,4 @@
+import { Settings } from '@shared/angular/services/settings/settings';
 import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
@@ -21,6 +22,18 @@ class FakeHandler implements WorkspaceDocumentCommandHandler {
   public saveAll(): void {
     this.saveAllCalls++;
   }
+
+  public unsavedFiles: boolean = false;
+  public saveFilesCalls: number = 0;
+
+  public hasUnsavedFiles(): boolean {
+    return this.unsavedFiles;
+  }
+
+  public saveFiles(): Promise<void> {
+    this.saveFilesCalls++;
+    return Promise.resolve();
+  }
 }
 
 describe('WorkspaceDocumentCommands', () => {
@@ -39,6 +52,76 @@ describe('WorkspaceDocumentCommands', () => {
 
     expect((): void => commands.save()).not.toThrow();
     expect((): void => commands.saveAll()).not.toThrow();
+  });
+
+  describe('afterSaving (#1245)', () => {
+    let ran: number;
+
+    /**
+     * Counts a run starting.
+     */
+    function run(): void {
+      ran++;
+    }
+
+    beforeEach((): void => {
+      ran = 0;
+      commands.register(handler);
+      handler.unsavedFiles = true;
+    });
+
+    afterEach((): void => {
+      localStorage.removeItem('settings');
+    });
+
+    it('always_savesFirst_thenRuns', async (): Promise<void> => {
+      commands.afterSaving(run);
+      expect(ran).toBe(0);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(handler.saveFilesCalls).toBe(1);
+      expect(ran).toBe(1);
+    });
+
+    it('never_runsAtOnce_withoutSaving', (): void => {
+      TestBed.inject(Settings).set('workspaces.saveBeforeRun', 'never');
+
+      commands.afterSaving(run);
+
+      expect(handler.saveFilesCalls).toBe(0);
+      expect(ran).toBe(1);
+    });
+
+    it('nothingToSave_runsAtOnce', (): void => {
+      handler.unsavedFiles = false;
+
+      commands.afterSaving(run);
+
+      expect(ran).toBe(1);
+    });
+
+    it('ask_waitsForTheAnswer_andCancelRunsNothing', (): void => {
+      TestBed.inject(Settings).set('workspaces.saveBeforeRun', 'ask');
+
+      commands.afterSaving(run);
+      expect(commands.askingToSave()).toBe(true);
+      expect(ran).toBe(0);
+
+      commands.answerSaveQuestion('cancel');
+      expect(commands.askingToSave()).toBe(false);
+      expect(ran).toBe(0);
+    });
+
+    it('ask_dontSave_runsWithoutSaving', (): void => {
+      TestBed.inject(Settings).set('workspaces.saveBeforeRun', 'ask');
+
+      commands.afterSaving(run);
+      commands.answerSaveQuestion('skip');
+
+      expect(handler.saveFilesCalls).toBe(0);
+      expect(ran).toBe(1);
+    });
   });
 
   it('register_forwardsTheCommandsAndMirrorsTheHandlersState', (): void => {

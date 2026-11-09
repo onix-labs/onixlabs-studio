@@ -26,6 +26,7 @@ function settingsData(): LspSettingsData {
     serverPaths: { clangd: '/usr/bin/clangd' },
     serverArgs: {},
     languageServers: {},
+    serverSettings: {},
   };
 }
 
@@ -34,6 +35,7 @@ describe('LanguageServerSettings', () => {
   let selection: Record<string, string>;
   let disabled: Set<string>;
   let calls: string[];
+  let stored: Record<string, boolean | string>;
 
   /**
    * Renders the page for a language with a fake settings service.
@@ -70,6 +72,16 @@ describe('LanguageServerSettings', () => {
               calls.push(`serverPath:${id}:${value}`);
               return Promise.resolve();
             },
+            serverSetting: (_id: string, section: string): boolean | string | undefined =>
+              stored[section],
+            setServerSetting: (
+              id: string,
+              section: string,
+              value: boolean | string | null,
+            ): Promise<void> => {
+              calls.push(`setting:${id}:${section}:${String(value)}`);
+              return Promise.resolve();
+            },
           },
         },
       ],
@@ -89,6 +101,7 @@ describe('LanguageServerSettings', () => {
     selection = {};
     disabled = new Set<string>();
     calls = [];
+    stored = {};
   });
 
   it('oneServer_offersNoChoice', async () => {
@@ -137,7 +150,7 @@ describe('LanguageServerSettings', () => {
     selection = { cpp: 'clangd' };
     const element: HTMLElement = await render('cpp', 'C++');
 
-    expect(element.textContent).toContain('Custom clangd path');
+    expect(element.textContent).toContain('Custom clangd Path');
     const fields: NodeListOf<HTMLInputElement> = element.querySelectorAll('app-text-field input');
     expect([...fields].some((f: HTMLInputElement): boolean => f.value === '/usr/bin/clangd')).toBe(
       true,
@@ -162,5 +175,172 @@ describe('LanguageServerSettings', () => {
     field.dispatchEvent(new Event('change'));
 
     expect(calls.some((c: string): boolean => c.startsWith('args:rust:'))).toBe(true);
+  });
+
+  describe('settings the server declares (#1143)', () => {
+    const ROSLYN: LspServerSummary = {
+      ...server('csharp', ['csharp']),
+      settings: [
+        {
+          section: 'projects.dotnet_enable_automatic_restore',
+          label: 'Restore Packages',
+          description: 'Restore or ask first.',
+          default: true,
+          options: [
+            { value: true, label: 'Automatically' },
+            { value: false, label: 'Ask first' },
+          ],
+        },
+        {
+          section: 'projects.dotnet_enable_file_based_programs',
+          label: 'File-based programs',
+          description: 'Support for a file of its own.',
+          default: true,
+        },
+      ],
+    };
+
+    /**
+     * Finds the row a setting is shown in.
+     * @param element The page.
+     * @param label The setting's label.
+     * @returns Returns the row.
+     */
+    function row(element: HTMLElement, label: string): HTMLElement {
+      return [...element.querySelectorAll<HTMLElement>('app-setting-row')].find(
+        (candidate: HTMLElement): boolean => candidate.textContent?.includes(label) ?? false,
+      )!;
+    }
+
+    it('areShown_withTheServersDefaults_whileTheUserHasSetNothing', async () => {
+      installed = { csharp: [ROSLYN] };
+      selection = { csharp: 'csharp' };
+      const element: HTMLElement = await render('csharp', 'C#');
+
+      expect(row(element, 'Restore Packages').querySelector('select')?.value).toBe('true');
+      expect(
+        row(element, 'File-based programs').querySelector<HTMLInputElement>('app-toggle input')
+          ?.checked,
+      ).toBe(true);
+    });
+
+    it('showTheUsersValue_andStoreAChange_clearingItWhenItIsTheDefaultAgain', async () => {
+      installed = { csharp: [ROSLYN] };
+      selection = { csharp: 'csharp' };
+      stored = { 'projects.dotnet_enable_automatic_restore': false };
+      const element: HTMLElement = await render('csharp', 'C#');
+      const select: HTMLSelectElement = row(element, 'Restore Packages').querySelector('select')!;
+      expect(select.value).toBe('false');
+
+      select.value = 'true';
+      select.dispatchEvent(new Event('change'));
+      row(element, 'File-based programs')
+        .querySelector<HTMLInputElement>('app-toggle input')!
+        .click();
+
+      expect(calls).toEqual([
+        'setting:csharp:projects.dotnet_enable_automatic_restore:null',
+        'setting:csharp:projects.dotnet_enable_file_based_programs:false',
+      ]);
+    });
+
+    it('finerSettings_areFoldedAwayUnderAdvanced (#1145)', async () => {
+      installed = {
+        csharp: [
+          {
+            ...ROSLYN,
+            settings: [
+              ...(ROSLYN.settings ?? []),
+              {
+                section: 'csharp|inlay_hints.dotnet_enable_inlay_hints_for_other_parameters',
+                label: 'Names for Other Arguments',
+                description: 'Every other argument.',
+                default: false,
+                advanced: true,
+              },
+            ],
+          },
+        ],
+      };
+      selection = { csharp: 'csharp' };
+      const element: HTMLElement = await render('csharp', 'C#');
+      const accordion: HTMLElement | null = element.querySelector('app-accordion');
+
+      expect(accordion?.textContent).toContain('Advanced');
+      expect(row(element, 'Restore Packages').closest('app-accordion')).toBeNull();
+      expect(element.textContent).not.toContain('Names for Other Arguments');
+
+      accordion?.querySelector<HTMLElement>('button')?.click();
+      await new Promise((resolve: (value: unknown) => void): unknown => setTimeout(resolve));
+      TestBed.tick();
+
+      expect(row(element, 'Names for Other Arguments').closest('app-accordion')).toBe(accordion);
+    });
+
+    it('aTextSetting_isATextField_storingWhatIsTyped_andClearingToTheDefault (#1212)', async () => {
+      installed = {
+        python: [
+          {
+            ...server('pyright', ['python']),
+            settings: [
+              {
+                section: 'python.pythonPath',
+                label: 'Python Interpreter',
+                description: 'The interpreter.',
+                default: '${workspaceFolder}/.venv/bin/python',
+              },
+            ],
+          },
+        ],
+      };
+      selection = { python: 'pyright' };
+      const element: HTMLElement = await render('python', 'Python');
+      const field: HTMLInputElement = row(element, 'Python Interpreter').querySelector(
+        'app-text-field input',
+      )!;
+      expect(field.value).toBe('${workspaceFolder}/.venv/bin/python');
+
+      field.value = '/usr/bin/python3';
+      field.dispatchEvent(new Event('input'));
+      field.value = '';
+      field.dispatchEvent(new Event('input'));
+
+      expect(calls).toEqual([
+        'setting:pyright:python.pythonPath:/usr/bin/python3',
+        'setting:pyright:python.pythonPath:null',
+      ]);
+    });
+
+    it('aServersOwnLensSwitch_isLeftToCodeLenses (#1215)', async () => {
+      installed = {
+        csharp: [
+          {
+            ...ROSLYN,
+            settings: [
+              ...(ROSLYN.settings ?? []),
+              {
+                section: 'csharp|code_lens.dotnet_enable_references_code_lens',
+                label: 'Reference Counts',
+                description: 'Counts above members.',
+                default: true,
+              },
+            ],
+          },
+        ],
+      };
+      selection = { csharp: 'csharp' };
+      const element: HTMLElement = await render('csharp', 'C#');
+
+      expect(element.textContent).toContain('Restore Packages');
+      expect(element.textContent).not.toContain('Reference Counts');
+    });
+
+    it('aServerThatDeclaresNone_showsNone', async () => {
+      installed = { python: [server('pyright', ['python'])] };
+      selection = { python: 'pyright' };
+      const element: HTMLElement = await render('python', 'Python');
+
+      expect(element.textContent).not.toContain('Restore Packages');
+    });
   });
 });

@@ -2,6 +2,7 @@ import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type * as MonacoApi from 'monaco-editor';
 import type { FindRange, FindRequest } from '@shared/angular/components/find-panel/find-request';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { FindHost, FindWorkspace } from './find-host';
 import { FindRouter } from './find-router';
@@ -57,6 +58,18 @@ function editorOver(
       range.startLineNumber === range.endLineNumber
         ? lines[range.startLineNumber - 1].slice(range.startColumn - 1, range.endColumn - 1)
         : 'multi-line',
+    // Monaco's word at a position: the run of word characters the column falls in or just after.
+    getWordAtPosition: (position: MonacoApi.IPosition): MonacoApi.editor.IWordAtPosition | null => {
+      const line: string = lines[position.lineNumber - 1] ?? '';
+      for (const match of line.matchAll(/\w+/g)) {
+        const start: number = (match.index ?? 0) + 1;
+        const end: number = start + match[0].length;
+        if (position.column >= start && position.column <= end) {
+          return { word: match[0], startColumn: start, endColumn: end };
+        }
+      }
+      return null;
+    },
   };
   const caret: FindRange = { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 };
   const current: FindRange = selection ?? caret;
@@ -141,7 +154,8 @@ describe('FindRouter', () => {
           request: {
             mode: 'replace',
             scope: 'file',
-            seed: undefined,
+            // Nothing selected: the word at the caret seeds it, as Seed Find From asks by default.
+            seed: 'alpha',
             filePath: null,
             selection: null,
           },
@@ -201,12 +215,29 @@ describe('FindRouter', () => {
       expect(request.selection).toEqual(selection);
     });
 
-    it('nothingSelected_seedsNothing_andSnapshotsNoSelection', () => {
-      const request: FindRequest = router.requestFrom(editorOver(['one'], null), 'replace');
+    it('nothingSelected_withSeedFromSelectionOnly_seedsNothing_andSnapshotsNoSelection', () => {
+      TestBed.inject(Settings).set('textEditor.seedFindFrom', 'selection');
+      try {
+        const request: FindRequest = router.requestFrom(editorOver(['one'], null), 'replace');
 
-      expect(request.seed).toBeUndefined();
+        expect(request.seed).toBeUndefined();
+        expect(request.selection).toBeNull();
+        expect(request.mode).toBe('replace');
+      } finally {
+        localStorage.removeItem('settings');
+      }
+    });
+
+    it('nothingSelected_byDefault_seedsTheWordAtTheCaret', () => {
+      const request: FindRequest = router.requestFrom(editorOver(['one two'], null), 'find');
+
+      // The fake's caret is at the start of line 1, in "one".
+      expect(request.seed).toBe('one');
       expect(request.selection).toBeNull();
-      expect(request.mode).toBe('replace');
+    });
+
+    it('nothingSelected_onNoWord_seedsNothing', () => {
+      expect(router.requestFrom(editorOver(['  x'], null), 'find').seed).toBeUndefined();
     });
 
     it('takesTheFilePath_fromTheEditorRegistry', () => {

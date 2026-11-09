@@ -15,7 +15,15 @@ import { EditorZoom } from '@shared/angular/services/editor-zoom/editor-zoom';
 import {
   DocumentStatus,
   DocumentStatusInfo,
+  EditorConfigSegment,
+  SET_BY_EDITOR_CONFIG,
 } from '@shared/angular/services/document-status/document-status';
+import {
+  chooseEncoding,
+  chooseEol,
+  encodingMenuItems,
+  eolMenuItems,
+} from '@shared/angular/services/document-status/document-status-menus';
 
 /**
  * Represents the status strip shown along the bottom of a document well. It summarises the active
@@ -112,5 +120,47 @@ export class DockStatusStrip {
    */
   protected setZoom(id: string): void {
     this.editorZoom.set(Number(id));
+  }
+
+  /**
+   * Gets the line endings a document can be converted to, the current one marked.
+   */
+  protected readonly eolItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] =>
+    eolMenuItems(this.status()?.eol),
+  );
+
+  /**
+   * Gets a segment's tooltip, which says so when an `.editorconfig` decided its value.
+   * @param segment The segment.
+   * @param otherwise The tooltip it has otherwise.
+   * @returns Returns the tooltip.
+   */
+  protected titleFor(segment: EditorConfigSegment, otherwise: string): string {
+    return this.status()?.editorConfig?.includes(segment) === true
+      ? SET_BY_EDITOR_CONFIG
+      : otherwise;
+  }
+
+  /**
+   * Converts the active document's line endings.
+   * @param id The chosen line ending.
+   */
+  protected setEol(id: string): void {
+    chooseEol(id, this.status()?.actions);
+  }
+
+  /**
+   * Gets the encoding menu, as far as the active document can reopen or save in another encoding.
+   */
+  protected readonly encodingItems: Signal<readonly MenuItem[]> = computed(
+    (): readonly MenuItem[] => encodingMenuItems(this.status()?.actions),
+  );
+
+  /**
+   * Reopens or saves the active document in the chosen encoding.
+   * @param id The chosen row.
+   */
+  protected chooseEncoding(id: string): void {
+    chooseEncoding(id, this.status()?.actions);
   }
 }

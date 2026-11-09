@@ -1,3 +1,5 @@
+import { Settings } from '@shared/angular/services/settings/settings';
+import { RUN_IN_TERMINAL_ADAPTERS } from '@features/workspace/angular/debug/debug-session';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -13,7 +15,7 @@ import { StudioConfig } from '@shared/angular/services/studio/studio-config';
 import { Log } from '@shared/angular/services/log/log';
 import { ConfigureDialog } from '@shared/angular/services/configure-dialog/configure-dialog';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
-import { RunConfiguration } from '@shared/api/studio';
+import { RunBeforeRun, RunConfiguration, RunDebugConsole } from '@shared/api/studio';
 import { Icon } from '@shared/angular/icons/icon';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
@@ -21,10 +23,16 @@ import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropd
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
+import { Alert, AlertTone } from '@shared/angular/components/alert/alert';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
+import {
+  AutoConfigureOutcome,
+  RunConfigurationAgent,
+} from '@features/workspace/angular/run-configuration-agent/run-configuration-agent';
 import { runConfigurationKindLabel } from './run-configuration-kinds';
 
 /**
@@ -65,6 +73,11 @@ export interface ConfigurationRow {
 }
 
 /**
+ * The kinds of project whose run command can skip or force its build.
+ */
+const BUILD_STEP_KINDS: ReadonlySet<string> = new Set<string>(['dotnet', 'cpp', 'rust']);
+
+/**
  * Prefixes distinguishing the two row kinds in the tree's flat id space, which has to be unique
  * across both: a group keyed by its provider kind, a configuration by its own id.
  */
@@ -89,6 +102,8 @@ const CONFIGURATION_PREFIX: string = 'config:';
 @Component({
   selector: 'app-configure-dialog',
   imports: [
+    Alert,
+    AppIcon,
     Textarea,
     Button,
     ButtonRow,
@@ -126,6 +141,11 @@ export class ConfigureDialogPanel {
   private readonly studio: StudioConfig = inject(StudioConfig);
 
   /**
+   * Holds the settings, for what a new configuration starts with.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Holds the active workspace's capabilities and kind, gating the build-configuration and target
    * selectors and binding a new configuration to the active ecosystem.
    */
@@ -149,6 +169,24 @@ export class ConfigureDialogPanel {
    * so it parents to this window and dims it, rather than reaching past it to the main window.
    */
   protected readonly autoConfigureOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the agent that Auto-Configure starts.
+   */
+  private readonly autoConfigureAgent: RunConfigurationAgent = inject(RunConfigurationAgent);
+
+  /**
+   * Gets whether Auto-Configure's agent is at work.
+   */
+  protected readonly autoConfiguring: Signal<boolean> = this.autoConfigureAgent.running;
+
+  /**
+   * Holds what Auto-Configure has to report instead of closing, or null when it has nothing.
+   */
+  protected readonly autoConfigureProblem: WritableSignal<{
+    readonly tone: AlertTone;
+    readonly message: string;
+  } | null> = signal<{ readonly tone: AlertTone; readonly message: string } | null>(null);
 
   /**
    * Holds the provider kinds whose groups are collapsed. Collapsed rather than expanded is tracked so
@@ -321,7 +359,54 @@ export class ConfigureDialogPanel {
   );
 
   /**
-   * Gets whether the selected configuration presents its terminal in its own OS window.
+   * Gets whether the selected configuration's run has a build step to choose for: it runs through its
+   * toolchain, rather than launching a named program, and that toolchain can skip or force the build.
+   */
+  protected readonly hasBuildStep: Signal<boolean> = computed((): boolean => {
+    const configuration: RunConfiguration | null = this.selected();
+    return (
+      configuration !== null &&
+      configuration.mode === 'run' &&
+      configuration.program === undefined &&
+      BUILD_STEP_KINDS.has(configuration.providerKind)
+    );
+  });
+
+  /**
+   * Gets whether the workspace's debugger offers both places for a debuggee's console.
+   */
+  protected readonly hasDebugConsoleChoice: Signal<boolean> = computed(
+    (): boolean =>
+      this.isDebug() &&
+      RUN_IN_TERMINAL_ADAPTERS.has(this.workspaceCapabilities.capabilities()?.debug?.adapter ?? ''),
+  );
+
+  /**
+   * Gets whether the selected configuration is a CMake project's.
+   */
+  protected readonly isCmake: Signal<boolean> = computed(
+    (): boolean => this.selected()?.providerKind === 'cpp',
+  );
+
+  /**
+   * Lists the Before Run choices.
+   */
+  protected readonly beforeRunOptions: readonly DropdownOption[] = [
+    { value: 'last-build', label: 'Use Last Build (Builds if None)' },
+    { value: 'build', label: 'Build' },
+    { value: 'rebuild', label: 'Rebuild' },
+  ];
+
+  /**
+   * Lists the Debug Console choices.
+   */
+  protected readonly debugConsoleOptions: readonly DropdownOption[] = [
+    { value: 'integrated-terminal', label: 'Integrated Terminal' },
+    { value: 'debug-console', label: 'Debug Console' },
+  ];
+
+  /**
+   * Gets whether the selected configuration presents its terminal in its own window.
    */
   protected readonly isWindowPresentation: Signal<boolean> = computed(
     (): boolean => this.selected()?.presentation === 'window',
@@ -338,7 +423,7 @@ export class ConfigureDialogPanel {
     // configuration the user is reading does not jump under them as new ones land.
     effect((): void => {
       if (!this.dialog.isOpen()) {
-        this.autoConfigureOpen.set(false);
+        untracked((): void => this.onAutoConfigureClose());
         return;
       }
       const configurations: RunConfiguration[] = this.studio
@@ -360,13 +445,37 @@ export class ConfigureDialogPanel {
    */
   protected onAutoConfigure(): void {
     this.log.info('workspace.run', 'Auto-configure modal opened');
+    this.autoConfigureProblem.set(null);
     this.autoConfigureOpen.set(true);
   }
 
   /**
-   * Closes the Auto-configure modal.
+   * Starts Auto-Configure's agent. Its configurations land in the list as it writes them, so the
+   * modal closes once it is done, unless there is something to say.
+   */
+  protected async onStartAutoConfigure(): Promise<void> {
+    this.autoConfigureProblem.set(null);
+    const outcome: AutoConfigureOutcome = await this.autoConfigureAgent.configure();
+    if (!this.autoConfigureOpen()) {
+      return;
+    }
+    if (outcome.status === 'failed') {
+      this.autoConfigureProblem.set({ tone: 'danger', message: outcome.message });
+    } else if (outcome.status === 'completed' && this.studio.runConfigurations().length === 0) {
+      this.autoConfigureProblem.set({
+        tone: 'info',
+        message: 'The agent found nothing to run in this workspace.',
+      });
+    } else {
+      this.autoConfigureOpen.set(false);
+    }
+  }
+
+  /**
+   * Closes the Auto-Configure modal, stopping its agent if it is still at work.
    */
   protected onAutoConfigureClose(): void {
+    this.autoConfigureAgent.cancel();
     this.autoConfigureOpen.set(false);
   }
 
@@ -408,6 +517,9 @@ export class ConfigureDialogPanel {
       name: 'New Configuration',
       providerKind: this.workspaceCapabilities.kind() ?? 'dotnet',
       mode: 'run',
+      ...(this.settings.get('workspaces.newConfigurationsShowOutputIn') === 'window'
+        ? { presentation: 'window' as const }
+        : {}),
     };
     this.log.debug(
       'workspace.run',
@@ -558,6 +670,38 @@ export class ConfigureDialogPanel {
           : configuration;
       }),
     );
+  }
+
+  /**
+   * Applies the Before Run choice.
+   * @param beforeRun The choice.
+   */
+  protected onBeforeRun(beforeRun: string): void {
+    this.patch({ beforeRun: beforeRun === 'build' ? undefined : (beforeRun as RunBeforeRun) });
+  }
+
+  /**
+   * Applies the Stop at Entry tick.
+   * @param stopAtEntry Whether the debugger stops on the first line.
+   */
+  protected onStopAtEntry(stopAtEntry: boolean): void {
+    this.patch({ stopAtEntry: stopAtEntry ? true : undefined });
+  }
+
+  /**
+   * Applies the Debug Console choice.
+   * @param debugConsole The choice.
+   */
+  protected onDebugConsole(debugConsole: string): void {
+    this.patch({ debugConsole: debugConsole as RunDebugConsole });
+  }
+
+  /**
+   * Applies the CMake Build Folder field.
+   * @param folder The folder.
+   */
+  protected onCmakeBuildFolder(folder: string): void {
+    this.patch({ cmakeBuildFolder: folder.length > 0 ? folder : undefined });
   }
 
   /**

@@ -62,6 +62,8 @@ test.describe('setup wizard', () => {
       'Container Engines',
       'Version Control',
       'Code Hosting',
+      'Database Engines',
+      'Package Managers',
       'Security',
       'Terminal',
       'Summary',

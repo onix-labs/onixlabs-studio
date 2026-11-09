@@ -45,10 +45,10 @@ describe('Button', () => {
     expect(fixture.componentInstance).toBeTruthy();
   });
 
-  it('variant_whenUnstated_isOutline_theStandardButton', () => {
+  it('variant_whenUnstated_isGhost_theStandardButton', () => {
     render();
 
-    expect(host.classList.contains('button--outline')).toBe(true);
+    expect(host.classList.contains('button--ghost')).toBe(true);
   });
 
   it('variant_whenStated_marksTheHost_soTheStylesheetDrawsIt', () => {
@@ -58,6 +58,14 @@ describe('Button', () => {
     render({ variant: 'none' });
     expect(host.classList.contains('button--none')).toBe(true);
     expect(host.classList.contains('button--solid')).toBe(false);
+  });
+
+  it('variant_whenGhost_marksTheHost_andNoOtherVariant', () => {
+    render({ variant: 'ghost' });
+
+    expect(host.classList.contains('button--ghost')).toBe(true);
+    expect(host.classList.contains('button--solid')).toBe(false);
+    expect(host.classList.contains('button--none')).toBe(false);
   });
 
   it('label_whenGiven_isRendered_andTheButtonIsNotIconOnly', () => {

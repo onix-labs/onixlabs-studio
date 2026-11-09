@@ -28,10 +28,11 @@ export interface ReferenceItem extends CodeLocation {
 }
 
 /**
- * Names what a references list lists: every reference to a symbol (Find All References), or the
- * several places a symbol is defined (Go to Definition with more than one answer).
+ * Names what a references list lists: every reference to a symbol (Find All References), the several
+ * places a symbol is defined (Go to Definition or Go to Type Definition with more than one answer), or
+ * the several places it is implemented (Go to Implementation, #1142).
  */
-export type ReferenceListKind = 'references' | 'definitions';
+export type ReferenceListKind = 'references' | 'definitions' | 'implementations';
 
 /**
  * Names where a references search stands: under way, answered, or impossible because nothing serves

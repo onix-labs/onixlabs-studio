@@ -2,6 +2,7 @@ import {
   afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
+  computed,
   DestroyRef,
   effect,
   ElementRef,
@@ -15,32 +16,28 @@ import {
   WritableSignal,
 } from '@angular/core';
 import type { ContainerLogs } from '@shared/api/container-engine-protocol';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { ContainersClient } from '../client/containers-client';
 
 /**
- * How many of the most recent lines are shown.
+ * The timestamp the engine starts each line with.
  */
-const TAIL: number = 1_000;
-
-/**
- * How often the lines are read again while the tab is showing.
- */
-const REFRESH_MS: number = 2_000;
+const LINE_TIMESTAMP: RegExp = /^\d{4}-\d{2}-\d{2}T\S+\s/;
 
 /**
  * A container's logs, read through the engine's plugin and drawn by Studio (#973) — no terminal and no
- * engine CLI needed. The most recent lines are read again every couple of seconds while the tab is
- * showing, so it follows the container as `logs -f` did; it stays at the bottom unless the user has
- * scrolled up to read.
+ * engine CLI needed. The most recent lines are read again every Log Refresh while the tab is showing,
+ * so it follows the container as `logs -f` did; it stays at the bottom unless the user has scrolled up
+ * to read.
  */
 @Component({
   selector: 'app-container-logs',
   template: `
     <div #scroller class="container-logs" role="log" aria-live="off">
-      @if (lines().length === 0) {
+      @if (shown().length === 0) {
         <p class="container-logs__empty">{{ loaded() ? 'No log output yet.' : 'Reading logs…' }}</p>
       } @else {
-        <pre class="container-logs__lines">{{ lines().join('\\n') }}</pre>
+        <pre class="container-logs__lines">{{ shown().join('\\n') }}</pre>
       }
     </div>
   `,
@@ -92,6 +89,20 @@ export class ContainerLogsPane {
   protected readonly lines: WritableSignal<readonly string[]> = signal<readonly string[]>([]);
 
   /**
+   * Holds the settings, which decide how much is read, how often, and how it is shown.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Gets the lines as they are shown: with the engine's timestamps, or without them.
+   */
+  protected readonly shown: Signal<readonly string[]> = computed((): readonly string[] =>
+    this.settings.value('containers.logTimestamps')()
+      ? this.lines()
+      : this.lines().map((line: string): string => line.replace(LINE_TIMESTAMP, '')),
+  );
+
+  /**
    * Holds whether a read has finished, so an empty log reads as empty rather than as loading.
    */
   protected readonly loaded: WritableSignal<boolean> = signal<boolean>(false);
@@ -125,17 +136,19 @@ export class ContainerLogsPane {
     };
     effect((): void => {
       const active: boolean = this.isActive();
+      const seconds: number = this.settings.value('containers.logRefreshSeconds')();
+      this.settings.value('containers.logLines')();
       untracked((): void => {
         stop();
         if (active) {
           void this.read();
-          timer = setInterval((): void => void this.read(), REFRESH_MS);
+          timer = setInterval((): void => void this.read(), seconds * 1000);
         }
       });
     });
     inject(DestroyRef).onDestroy(stop);
     afterRenderEffect((): void => {
-      this.lines();
+      this.shown();
       const element: HTMLElement | undefined = this.scroller()?.nativeElement;
       if (element !== undefined && this.pinned) {
         element.scrollTop = element.scrollHeight;
@@ -151,7 +164,10 @@ export class ContainerLogsPane {
     const element: HTMLElement | undefined = this.scroller()?.nativeElement;
     this.pinned =
       element === undefined || element.scrollHeight - element.scrollTop - element.clientHeight < 24;
-    const logs: ContainerLogs = await this.client.logs(this.containerId(), TAIL);
+    const logs: ContainerLogs = await this.client.logs(
+      this.containerId(),
+      this.settings.get('containers.logLines'),
+    );
     this.lines.set(logs.lines);
     this.loaded.set(true);
   }

@@ -144,13 +144,13 @@ export class AgentRibbon {
         {
           id: 'agent.newChat',
           label: 'New Chat',
-          accelerator: 'CmdOrCtrl+Shift+N',
+          binding: 'agent.newChat',
           run: (): void => this.newChat(),
         },
         {
           id: 'agent.stop',
           label: 'Stop',
-          accelerator: 'CmdOrCtrl+.',
+          binding: 'agent.stop',
           enabled: this.isRunning(),
           run: (): void => this.stop(),
         },

@@ -3,6 +3,7 @@ import { signal, WritableSignal } from '@angular/core';
 import type { PluginSummary } from '@shared/api/plugin-channels';
 import { Icon } from '@shared/angular/icons/icon';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
+import { Settings } from '@shared/angular/services/settings/settings';
 import {
   ALL_PLUGINS,
   AVAILABLE_PLUGINS,
@@ -65,6 +66,24 @@ describe('PluginBrowse', () => {
       providers: [{ provide: Plugins, useValue: { plugins: catalogue } }],
     });
     browse = TestBed.inject(PluginBrowse);
+  });
+
+  it('showUnsupportedPluginsOff_hidesThePluginsThisComputerCannotRun', () => {
+    catalogue.update((plugins: readonly PluginSummary[]): readonly PluginSummary[] => [
+      ...plugins,
+      plugin({ id: 'mac-only', name: 'Mac Only', state: 'unavailable' }),
+    ]);
+    expect(browse.all().map((item: PluginSummary): string => item.id)).toContain('mac-only');
+
+    try {
+      TestBed.inject(Settings).set('plugins.showUnsupported', false);
+      expect(browse.all().map((item: PluginSummary): string => item.id)).not.toContain('mac-only');
+      expect(browse.visible().map((item: PluginSummary): string => item.id)).not.toContain(
+        'mac-only',
+      );
+    } finally {
+      localStorage.removeItem('settings');
+    }
   });
 
   it('visible_whenNothingIsNarrowed_isEverythingByName', () => {
@@ -137,6 +156,42 @@ describe('PluginBrowse', () => {
       'Mystery',
       'Claude',
     ]);
+  });
+
+  it('visible_pinsPluginsWithAnUpdateToTheTop_underEveryFilterAndSort', () => {
+    catalogue.set([
+      plugin({ id: 'alpha', name: 'Alpha', state: 'installed', installedVersion: '1.0.0' }),
+      plugin({ id: 'beta', name: 'Beta', state: 'available' }),
+      plugin({
+        id: 'yak',
+        name: 'Yak',
+        state: 'installed',
+        version: '2.0.0',
+        installedVersion: '1.0.0',
+      }),
+      plugin({
+        id: 'zed',
+        name: 'Zed',
+        state: 'installed',
+        version: '2.0.0',
+        installedVersion: '1.0.0',
+      }),
+    ]);
+    const ids: () => readonly string[] = (): readonly string[] =>
+      browse.visible().map((p: PluginSummary): string => p.id);
+
+    expect(ids()).toEqual(['yak', 'zed', 'alpha', 'beta']);
+
+    browse.filter.set(INSTALLED_PLUGINS);
+    expect(ids()).toEqual(['yak', 'zed', 'alpha']);
+
+    browse.filter.set('Other');
+    expect(ids()).toEqual(['yak', 'zed', 'alpha', 'beta']);
+
+    // The column sort still orders the updates among themselves, and everything beneath them.
+    browse.filter.set(ALL_PLUGINS);
+    browse.sort.set({ columnId: 'plugin', direction: 'desc' });
+    expect(ids()).toEqual(['zed', 'yak', 'beta', 'alpha']);
   });
 
   it('counts_areOfTheCatalogueRatherThanTheFilteredList', () => {

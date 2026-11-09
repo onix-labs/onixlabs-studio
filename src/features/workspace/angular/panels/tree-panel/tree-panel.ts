@@ -29,18 +29,22 @@ import {
   ExplorerVcsTarget,
 } from '@features/workspace/angular/workspace-git/explorer-vcs-menu';
 import { Log } from '@shared/angular/services/log/log';
+import { ExplorerFilterKind } from '@shared/angular/services/explorer-filter/explorer-filter';
+import { WorkspaceProblems } from '@features/workspace/angular/workspace-problems/workspace-problems';
+import { EntryRename } from '@shared/angular/services/rename/entry-rename';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { Icon } from '@shared/angular/icons/icon';
 import { fileIconFor } from '@shared/angular/icons/file-icon';
 import {
-  ExplorerChangesOnly,
+  ExplorerFilterState,
   ExplorerToolbar,
 } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { MenuItem } from '@shared/angular/components/menu/menu';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { RowEditSelection } from '@shared/angular/components/row-edit-field/row-edit-field';
@@ -62,6 +66,7 @@ import { ButtonRow } from '@shared/angular/components/forms/button-row/button-ro
  * Identifies the row context-menu actions the panel offers.
  */
 const ACTION_OPEN: string = 'open';
+const ACTION_OPEN_AS_CODE: string = 'open-as-code';
 const ACTION_NEW_FILE: string = 'new-file';
 const ACTION_NEW_FOLDER: string = 'new-folder';
 const ACTION_COPY_PATH: string = 'copy-path';
@@ -77,6 +82,7 @@ const ACTION_DELETE: string = 'delete';
 const ACTION_OPTIONS: string = 'options';
 const ACTION_FOLLOW: string = 'follow-active';
 const ACTION_GIT_STATUS: string = 'git-status';
+const ACTION_COLLAPSE_EMPTY_FOLDERS: string = 'collapse-empty-folders';
 const ACTION_OPEN_ROOT: string = 'open-root';
 const ACTION_COPY_ROOT: string = 'copy-workspace-path';
 const ACTION_REFRESH: string = 'refresh';
@@ -171,9 +177,31 @@ export class TreePanel {
   public readonly workspace: Workspace = inject(Workspace);
 
   /**
+   * Holds the rename an edited row commits through, which brings what refers to the entry along.
+   */
+  private readonly entryRename: EntryRename = inject(EntryRename);
+
+  /**
    * Holds the workspace git status the rows are decorated from.
    */
   private readonly git: WorkspaceGit = inject(WorkspaceGit);
+
+  /**
+   * Holds where the workspace's problems are, for the error squiggles and the filter (#1182 follow-up).
+   */
+  private readonly problems: WorkspaceProblems = inject(WorkspaceProblems);
+
+  /**
+   * Holds the settings that decide how a file opens and how a delete goes.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Gets whether a delete is permanent: Move to Trash is off.
+   */
+  protected readonly deletesPermanently: Signal<boolean> = computed(
+    (): boolean => !this.settings.value('workspaces.moveToTrash')(),
+  );
 
   /**
    * Holds the opener used to open a file into the right editor tab.
@@ -244,6 +272,11 @@ export class TreePanel {
       expanded: row.expanded,
       // How version control sees the path, in colour (#860) — unless the colours are switched off.
       ...(this.workspace.showsGitStatus() ? scmRowFields(this.git.stateFor(row.node.path)) : {}),
+      // An error in the file, or beneath the folder, squiggles its name as an editor would.
+      ...(this.settings.value('workspaces.showErrorSquiggles')() &&
+      this.problems.has(row.node.path, 'error')
+        ? { squiggle: true }
+        : {}),
       data: row.node,
     }));
     const edit: NameEdit | null = this.editing();
@@ -254,70 +287,109 @@ export class TreePanel {
   });
 
   /**
-   * Gets whether the tree shows only what changed (#1053): the switch is on, and the folder is a
-   * repository, without which nothing is changed and the switch stands for nothing.
+   * Gets the kinds the tree is narrowed to that can narrow it here (#1182 follow-up): those ticked,
+   * less Show Differences outside a repository, where nothing is changed.
    */
-  protected readonly changesOnly: Signal<boolean> = computed(
-    (): boolean => this.workspace.showsChangesOnly() && this.git.isRepository(),
-  );
-
-  /**
-   * Gets the state of the tool strip's Show Changed Files Only toggle: on while the tree is narrowed,
-   * and pressable only when there is something to narrow it to — a repository with changes in it.
-   */
-  protected readonly changesOnlyToggle: Signal<ExplorerChangesOnly> = computed(
-    (): ExplorerChangesOnly => ({
-      on: this.changesOnly(),
-      unavailable: !this.git.isRepository()
-        ? 'not a repository'
-        : !this.git.hasChanges()
-          ? 'no changes'
-          : null,
-    }),
-  );
-
-  /**
-   * Turns the filter off once nothing is changed — after a commit, say — so the tree goes back to
-   * showing everything rather than standing empty. Waits for the repository's status to be read, so a
-   * repository that has only just opened is not taken for a clean one.
-   */
-  private readonly leaveWhenClean: unknown = effect((): void => {
-    if (this.changesOnly() && this.git.statusRead() && !this.git.hasChanges()) {
-      untracked((): void => this.workspace.toggleChangesOnly());
-    }
-  });
-
-  /**
-   * Gets the workspace's rows the tree shows: all of them, or only the changes and the folders on the
-   * way to them (#1053).
-   */
-  private readonly shownRows: Signal<readonly WorkspaceTreeRow[]> = computed(
-    (): readonly WorkspaceTreeRow[] => {
-      const rows: readonly WorkspaceTreeRow[] = this.workspace.rows();
-      return this.changesOnly()
-        ? rows.filter((row: WorkspaceTreeRow): boolean =>
-            isChangedState(this.git.stateFor(row.node.path)),
-          )
-        : rows;
+  private readonly filterKinds: Signal<ReadonlySet<ExplorerFilterKind>> = computed(
+    (): ReadonlySet<ExplorerFilterKind> => {
+      const selected: ReadonlySet<ExplorerFilterKind> = this.workspace.filter.selected();
+      if (!selected.has('changes') || this.git.isRepository()) {
+        return selected;
+      }
+      const usable: Set<ExplorerFilterKind> = new Set<ExplorerFilterKind>(selected);
+      usable.delete('changes');
+      return usable;
     },
   );
 
   /**
-   * Holds the folders the filter opened to lead to changes, so turning it off closes exactly those and
-   * leaves the tree as it was — and so a folder the user closes is not opened again behind their back.
+   * Gets whether the tree is narrowed at all: something it can be narrowed to is ticked.
    */
-  private readonly openedForChanges: Set<string> = new Set<string>();
+  protected readonly filtering: Signal<boolean> = computed(
+    (): boolean => this.filterKinds().size > 0,
+  );
 
   /**
-   * Opens the folders that lead to changes while the filter is on — level by level, as each opened
-   * folder's entries arrive — and closes them again when it is turned off.
+   * Gets the tool strip's filter: what is ticked, Show Differences not offered at all outside a
+   * repository, and inert in one with nothing changed.
    */
-  private readonly followChanges: unknown = effect((): void => {
-    const on: boolean = this.changesOnly();
+  protected readonly filterState: Signal<ExplorerFilterState> = computed(
+    (): ExplorerFilterState => ({
+      selected: this.workspace.filter.selected(),
+      unavailable:
+        this.git.isRepository() && !this.git.hasChanges() ? { changes: 'no changes' } : {},
+      ...(this.git.isRepository() ? {} : { hidden: ['changes'] }),
+    }),
+  );
+
+  /**
+   * Unticks Show Differences once nothing is changed — after a commit, say — so the tree goes back to
+   * showing everything else rather than standing empty (#1053). Waits for the repository's status to
+   * be read, so a repository that has only just opened is not taken for a clean one.
+   */
+  private readonly leaveWhenClean: unknown = effect((): void => {
+    if (
+      this.workspace.filter.selected().has('changes') &&
+      this.git.isRepository() &&
+      this.git.statusRead() &&
+      !this.git.hasChanges()
+    ) {
+      untracked((): void => this.workspace.filter.clear('changes'));
+    }
+  });
+
+  /**
+   * Gets the names Collapse Empty Folders gave rows, by path.
+   */
+  private readonly chainLabels: Signal<ReadonlyMap<string, string>> = computed(
+    (): ReadonlyMap<string, string> =>
+      new Map<string, string>(
+        this.shownRows().flatMap((row: WorkspaceTreeRow): [string, string][] =>
+          row.label === undefined ? [] : [[row.node.path, row.label]],
+        ),
+      ),
+  );
+
+  /**
+   * Gets the name a node's row shows.
+   * @param node The node.
+   * @returns Returns its chain of folders when collapsed into one row, or else its own name.
+   */
+  protected labelOf(node: WorkspaceTreeNode): string {
+    return this.chainLabels().get(node.path) ?? node.name;
+  }
+
+  /**
+   * Gets the workspace's rows the tree shows: all of them, or — narrowed — the files matching any kind
+   * ticked and the folders on the way to them.
+   */
+  private readonly shownRows: Signal<readonly WorkspaceTreeRow[]> = computed(
+    (): readonly WorkspaceTreeRow[] => {
+      const rows: readonly WorkspaceTreeRow[] = this.workspace.rows();
+      const kinds: ReadonlySet<ExplorerFilterKind> = this.filterKinds();
+      return kinds.size === 0
+        ? rows
+        : rows.filter((row: WorkspaceTreeRow): boolean => this.matches(row.node.path, kinds));
+    },
+  );
+
+  /**
+   * Holds the folders the filter opened to lead to what it shows, so clearing it closes exactly those
+   * and leaves the tree as it was — and so a folder the user closes is not opened again behind their
+   * back.
+   */
+  private readonly openedForFilter: Set<string> = new Set<string>();
+
+  /**
+   * Opens the folders that lead to what the filter shows while it narrows the tree — level by level,
+   * as each opened folder's entries arrive — and closes them again when it is cleared.
+   */
+  private readonly followFilter: unknown = effect((): void => {
+    const kinds: ReadonlySet<ExplorerFilterKind> = this.filterKinds();
     const rows: readonly WorkspaceTreeRow[] = this.workspace.rows();
     untracked((): void => {
-      if (!on) {
-        for (const path of this.openedForChanges) {
+      if (kinds.size === 0) {
+        for (const path of this.openedForFilter) {
           const row: WorkspaceTreeRow | undefined = rows.find(
             (candidate: WorkspaceTreeRow): boolean => candidate.node.path === path,
           );
@@ -325,7 +397,7 @@ export class TreePanel {
             void this.workspace.toggleDirectory(path);
           }
         }
-        this.openedForChanges.clear();
+        this.openedForFilter.clear();
         return;
       }
       for (const row of rows) {
@@ -333,15 +405,33 @@ export class TreePanel {
         if (
           row.node.type === 'directory' &&
           !row.expanded &&
-          !this.openedForChanges.has(path) &&
-          this.git.stateFor(path) === 'contains'
+          !this.openedForFilter.has(path) &&
+          this.matches(path, kinds)
         ) {
-          this.openedForChanges.add(path);
+          this.openedForFilter.add(path);
           void this.workspace.toggleDirectory(path);
         }
       }
     });
   });
+
+  /**
+   * Determines whether a path matches any kind the tree is narrowed to: a file changed, or with
+   * problems of a ticked severity — or a folder leading to one.
+   * @param path The file's or folder's absolute path.
+   * @param kinds The kinds.
+   * @returns Returns true when it does.
+   */
+  private matches(path: string, kinds: ReadonlySet<ExplorerFilterKind>): boolean {
+    for (const kind of kinds) {
+      if (
+        kind === 'changes' ? isChangedState(this.git.stateFor(path)) : this.problems.has(path, kind)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   /**
    * Gets where the selection is, for the status strip: the folder holding the selected row, from the
@@ -410,6 +500,11 @@ export class TreePanel {
           label: 'Show Git Status',
           checked: this.workspace.showsGitStatus(),
         },
+        {
+          id: ACTION_COLLAPSE_EMPTY_FOLDERS,
+          label: 'Collapse Empty Folders',
+          checked: this.workspace.collapsesEmptyFolders(),
+        },
       ],
     },
     { id: 'tree-more.sep-create', label: '', separator: true },
@@ -433,6 +528,9 @@ export class TreePanel {
         return;
       case ACTION_GIT_STATUS:
         this.workspace.toggleGitStatus();
+        return;
+      case ACTION_COLLAPSE_EMPTY_FOLDERS:
+        this.workspace.toggleCollapseEmptyFolders();
         return;
       case ACTION_NEW_FILE:
       case ACTION_NEW_FOLDER:
@@ -507,6 +605,8 @@ export class TreePanel {
     if (node.type === 'directory') {
       this.log.debug('workspace.tree', 'Toggle directory', node.path);
       void this.workspace.toggleDirectory(node.path);
+    } else if (this.settings.get('workspaces.openFilesWith') === 'single') {
+      this.onRowOpen(row);
     }
   }
 
@@ -613,6 +713,9 @@ export class TreePanel {
 
     if (node.type === 'file') {
       items.push({ id: ACTION_OPEN, label: 'Open', icon: Icon.FILE });
+      if (node.path.toLowerCase().endsWith('.svg')) {
+        items.push({ id: ACTION_OPEN_AS_CODE, label: 'Open as Code', icon: Icon.CODE });
+      }
     }
     items.push(
       { id: ACTION_NEW_FILE, label: 'New File', icon: Icon.FILE },
@@ -689,6 +792,10 @@ export class TreePanel {
         this.workspace.select(node.path);
         void this.fileOpener.openPath(node.path);
         return;
+      case ACTION_OPEN_AS_CODE:
+        this.workspace.select(node.path);
+        void this.fileOpener.openAsText(node.path);
+        return;
       case ACTION_NEW_FILE:
         void this.beginCreate('new-file', this.directoryFor(node));
         return;
@@ -716,7 +823,7 @@ export class TreePanel {
         });
         return;
       case ACTION_DELETE:
-        this.deleteTargets.set([node]);
+        this.requestDelete([node]);
         return;
       default:
         return;
@@ -750,7 +857,7 @@ export class TreePanel {
           .catch((): void => undefined);
         return;
       case ACTION_DELETE:
-        this.deleteTargets.set(targets);
+        this.requestDelete(targets);
         return;
       default:
         return;
@@ -845,7 +952,7 @@ export class TreePanel {
     const name: string = commit.value;
     const result: FileOperationResult =
       edit.kind === 'rename'
-        ? await this.workspace.rename(edit.target, name)
+        ? await this.entryRename.rename(edit.target, name)
         : edit.kind === 'new-folder'
           ? await this.workspace.createFolder(edit.target, name)
           : await this.workspace.createFile(edit.target, name);
@@ -885,10 +992,21 @@ export class TreePanel {
    */
   protected readonly deleteTitle: Signal<string> = computed((): string => {
     const targets: readonly WorkspaceTreeNode[] = this.deleteTargets() ?? [];
-    return targets.length === 1
-      ? `Delete “${targets[0].name}”?`
-      : `Delete ${targets.length} items?`;
+    const named: string = targets.length === 1 ? targets[0].name : `${targets.length} items`;
+    return this.deletesPermanently() ? `Delete ${named} Permanently?` : `Delete ${named}?`;
   });
+
+  /**
+   * Asks to delete entries: with the confirmation, unless Confirm Before Deleting is off and they are
+   * only going to the Trash. A permanent delete always asks.
+   * @param targets The entries.
+   */
+  private requestDelete(targets: readonly WorkspaceTreeNode[]): void {
+    this.deleteTargets.set(targets);
+    if (!this.deletesPermanently() && !this.settings.get('workspaces.confirmBeforeDeleting')) {
+      void this.confirmDelete();
+    }
+  }
 
   /**
    * Closes the delete confirmation without deleting anything.
@@ -912,10 +1030,13 @@ export class TreePanel {
     const permanent: WorkspaceTreeNode[] = [];
     for (const node of targets) {
       this.log.info('workspace.tree', 'Delete requested', node.path);
-      const result: FileOperationResult = await this.workspace.delete(node.path);
+      const result: FileOperationResult = await this.workspace.delete(
+        node.path,
+        this.deletesPermanently(),
+      );
       if (!result.success) {
         failed.push({ node, error: result.error });
-      } else if (result.trashed === false) {
+      } else if (result.trashed === false && !this.deletesPermanently()) {
         permanent.push(node);
       }
     }

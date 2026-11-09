@@ -22,10 +22,10 @@
   <button
     type="button"
     class="ribbon-menu-button__menu"
-    [disabled]="disabled()"
+    [disabled]="chevronDisabled()"
     [attr.aria-label]="menuName()"
     [appTooltip]="menuName()"
-    [appTooltipDisabled]="disabled()"
+    [appTooltipDisabled]="chevronDisabled()"
     [cdkMenuTriggerFor]="menu.panel() ?? null"
     [cdkMenuPosition]="menu.position()"
   >

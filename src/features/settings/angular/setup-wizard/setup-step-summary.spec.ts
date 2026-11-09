@@ -265,7 +265,7 @@ describe('SetupStepSummary', () => {
   it('render_statesSecurityChoicesInTheWordsTheStepOffered', async () => {
     await render();
 
-    expect(row('Permission posture')?.querySelector('.env__detail')?.textContent?.trim()).toBe(
+    expect(row('Permission Posture')?.querySelector('.env__detail')?.textContent?.trim()).toBe(
       'Ask every time',
     );
   });

@@ -67,7 +67,7 @@ export class LogStore {
    */
   public constructor(
     private readonly sessionId: string,
-    private readonly max: number = 5000,
+    private max: number = 5000,
     private readonly now: () => string = (): string => new Date().toISOString(),
   ) {}
 
@@ -100,6 +100,17 @@ export class LogStore {
       this.records.shift();
     }
     return record;
+  }
+
+  /**
+   * Changes how many records are held, dropping the oldest when the cap falls below what is held.
+   * @param max The maximum number of records held.
+   */
+  public setCap(max: number): void {
+    this.max = max;
+    if (this.records.length > max) {
+      this.records.splice(0, this.records.length - max);
+    }
   }
 
   /**

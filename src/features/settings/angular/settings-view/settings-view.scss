@@ -8,6 +8,10 @@
 
 // Splits the view into a left section navigation and a right content pane.
 .settings {
+  // Rows light on hover, one shade brighter than the page, in place of dividers between them.
+  --setting-row-hover-background: var(--settings-row-background-color--hover);
+  --setting-row-inset: 0.6rem;
+
   display: flex;
   gap: 1rem;
   block-size: 100%;
@@ -31,6 +35,60 @@
   background: var(--settings-nav-background-color);
 }
 
+// The search box and the More Actions button sit above the first tree node, across the nav. The
+// field's own default width is cleared so it takes the row beside the button; both take the shared
+// control height, so they stand level with each other.
+.settings__search-row {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  // The same as the inset around the row, so the button sits as far from the box as both sit from
+  // the nav's edges.
+  gap: 0.5rem;
+  margin: 0 0.5rem 0.5rem;
+}
+
+.settings__search {
+  flex: 1 1 auto;
+  inline-size: auto;
+  min-inline-size: 0;
+}
+
+.settings__no-matches {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--settings-muted-foreground-color);
+}
+
+// The import question: what happens to the settings the file does not mention.
+.settings-import {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.settings-import__title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.settings-import__body {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.settings-import__actions {
+  margin-block-start: 0.4rem;
+}
+
+// A language's page: its collapsible sections, spaced apart.
+.settings__language {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
 // The right pane shows the selected section's controls, with the restart banner pinned beneath them.
 .settings__content {
   display: flex;
@@ -43,6 +101,8 @@
 .settings__section {
   flex: 1;
   min-block-size: 0;
+  // Room for a row's hover highlight, which reaches this far past the text on either side.
+  padding-inline: var(--setting-row-inset);
   overflow: auto;
 }
 

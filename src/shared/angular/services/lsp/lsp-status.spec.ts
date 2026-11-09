@@ -157,6 +157,38 @@ describe('LspStatus', () => {
     expect(server.detail).toBeUndefined();
   });
 
+  it('setFileActivity_clearsOnlyForTheFileItWasAbout', () => {
+    register('/root::clangd', 'clangd', '/root');
+    status.setFileActivity('/root::clangd', 'file:///a.cpp', 'Parsing includes — a.cpp');
+
+    status.setFileActivity('/root::clangd', 'file:///b.cpp', null);
+    expect(status.servers()[0].activity).toBe('Parsing includes — a.cpp');
+
+    status.setFileActivity('/root::clangd', 'file:///a.cpp', null);
+    expect(status.servers()[0].activity).toBeUndefined();
+
+    status.setFileActivity('/gone::clangd', 'file:///a.cpp', 'Parsing includes — a.cpp');
+    expect(status.servers()).toHaveLength(1);
+  });
+
+  it('setState_startingOrUnavailable_clearsFileActivity_butReadyKeepsIt', () => {
+    register('/root::clangd', 'clangd', '/root');
+    status.setFileActivity('/root::clangd', 'file:///a.cpp', 'Parsing includes — a.cpp');
+
+    status.setState('/root::clangd', 'ready');
+    expect(status.servers()[0].activity).toBe('Parsing includes — a.cpp');
+
+    status.setState('/root::clangd', 'unavailable', 'Stopped.');
+    expect(status.servers()[0].activity).toBeUndefined();
+
+    status.setFileActivity('/root::clangd', 'file:///a.cpp', 'Building preamble — a.cpp');
+    status.setState('/root::clangd', 'starting');
+    expect(status.servers()[0].activity).toBeUndefined();
+    // Going idle afterwards finds nothing to clear, and leaves nothing behind.
+    status.setFileActivity('/root::clangd', 'file:///a.cpp', null);
+    expect(status.servers()[0].activity).toBeUndefined();
+  });
+
   it('setProgress_showsWhatAStartingServerIsDoing_andClearsOnSettle', () => {
     register('/root::csharp', 'csharp', '/root');
     status.setProgress('/root::csharp', 'Loading solution — 40%');
@@ -166,6 +198,42 @@ describe('LspStatus', () => {
     status.setState('/root::csharp', 'ready');
 
     expect(status.servers()[0].progress).toBeUndefined();
+  });
+
+  it('setProblem_staysOnTheServer_untilCleared_throughAChangeOfState (#1210)', () => {
+    status.register('/root::rust', { serverId: 'rust', rootPath: '/root', restart: vi.fn() });
+
+    status.setProblem('/root::rust', 'Failed to load workspaces.');
+    status.setState('/root::rust', 'ready');
+    expect(status.servers()[0].problem).toBe('Failed to load workspaces.');
+
+    status.setProblem('/root::rust', undefined);
+    expect(status.servers()[0].problem).toBeUndefined();
+  });
+
+  it('setVersion_isShownOnTheServer_throughAChangeOfState (#1207)', () => {
+    status.register('/root::typescript', {
+      serverId: 'typescript',
+      rootPath: '/root',
+      restart: vi.fn(),
+    });
+
+    status.setVersion('/root::typescript', '5.9.3');
+    status.setState('/root::typescript', 'ready');
+
+    expect(status.servers()[0].version).toBe('5.9.3');
+  });
+
+  it('setVersion_whenSessionUnknown_isIgnored', () => {
+    status.setVersion('/nowhere::typescript', '5.9.3');
+
+    expect(status.servers()).toEqual([]);
+  });
+
+  it('setProblem_whenSessionUnknown_isIgnored', () => {
+    status.setProblem('/nowhere::rust', 'Failed');
+
+    expect(status.servers()).toEqual([]);
   });
 
   it('setProgress_whenSessionUnknown_isIgnored', () => {

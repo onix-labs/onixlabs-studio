@@ -258,7 +258,7 @@
 
 .history__modal-body {
   margin: 0 0 1rem;
-  font-size: 0.875rem;
+  font-size: 1rem;
   color: var(--body-foreground-color);
 }
 // Layout only: how the field is DRAWN belongs to the atom, and a border here would box it twice.
@@ -292,13 +292,13 @@
 .history__manage-name {
   flex: 1 1 auto;
   min-inline-size: 0;
-  font-size: 0.85rem;
+  font-size: 1rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .history__manage-empty {
   margin: 0 0 1rem;
-  font-size: 0.8rem;
-  color: var(--form-muted-foreground-color);
+  font-size: 1rem;
+  color: var(--body-foreground-color);
 }

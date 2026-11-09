@@ -26,7 +26,8 @@
 // Held open is not frozen, though. Studio's instructions — the prompt profiles, the skills listing —
 // go into the system prompt, which only an open can set, so each turn compares them with the ones the
 // query opened with. A change reopens the query between turns, resuming the same session, and the new
-// instructions apply from that message on (#955).
+// instructions apply from that message on (#955). The sandbox is the same: only an open can set it, so
+// a permission changed in Settings reopens the query too, and that is what reaches the shell (#1162).
 
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
@@ -59,9 +60,14 @@ import {
   type StreamState,
   type UsageState,
 } from './events';
-import { hasLocalLogin } from './environment';
+import {
+  closeSessionTemporary,
+  hasLocalLogin,
+  openSessionTemporary,
+  type SessionTemporary,
+} from './environment';
 import { note } from './log';
-import { buildOptions, type GateContext } from './options';
+import { buildOptions, type GateContext, sandboxSignature } from './options';
 import type {
   Answer,
   HarnessMessage,
@@ -254,6 +260,11 @@ export class Session {
   private settle: (() => void) | null = null;
 
   /**
+   * Settles when every turn started so far has, so the next one can follow it. Never rejects.
+   */
+  private lastTurn: Promise<void> = Promise.resolve();
+
+  /**
    * Fails the turn Studio is awaiting, or null when nothing is.
    */
   private fail: ((error: string) => void) | null = null;
@@ -310,6 +321,17 @@ export class Session {
    * reopen can carry it into the conversation (#955).
    */
   private openedInstructions: string | null = null;
+
+  /**
+   * Holds what the live query's sandbox was opened with ({@link sandboxSignature}), or null before it
+   * has opened.
+   */
+  private openedSandbox: string | null = null;
+
+  /**
+   * Holds the temporary folder this session's commands share (#1165), or null until it first opens.
+   */
+  private temporary: SessionTemporary | null = null;
 
   /**
    * Counts the queries this session has opened, so a retired query's prompt stream and pump can tell
@@ -386,10 +408,27 @@ export class Session {
   }
 
   /**
-   * Runs one turn, settling when the SDK reports its result.
+   * Runs one turn, settling when the SDK reports its result. A turn that arrives while another is
+   * awaited waits its go: `main` starts every `turn.start` as it reads it, and a session has one slot
+   * for the awaited turn, so running both at once would leave the first with no terminal status and
+   * its run in Studio "Working" forever.
+   * @param turn The turn envelope.
+   * @returns Returns a promise that settles with the turn.
+   */
+  public run(turn: TurnRequest): Promise<void> {
+    const running: Promise<void> = this.lastTurn.then((): Promise<void> => this.runTurn(turn));
+    // The caller hears about a failure from `running`; the next turn must not.
+    this.lastTurn = running.catch((error: unknown): void => {
+      note(`session: a turn ended in an unexpected failure: ${String(error)}`);
+    });
+    return running;
+  }
+
+  /**
+   * Runs a turn now that it is this turn's go.
    * @param turn The turn envelope.
    */
-  public async run(turn: TurnRequest): Promise<void> {
+  private async runTurn(turn: TurnRequest): Promise<void> {
     // Read before the reset below, which would otherwise hide a turn the CLI is still running.
     const busy: boolean = this.isBusy();
     this.current = turn;
@@ -409,12 +448,16 @@ export class Session {
       if (this.query === null) {
         await this.open(turn, await this.describeOffer());
         this.appliedModel = turn.model;
-      } else if (!(await this.reopenForInstructions(turn, busy))) {
+      } else if (!(await this.reopenWhenChanged(turn, busy))) {
         if (turn.model !== this.appliedModel) {
           // The query's model was bound at open, so a later turn applies the change live rather than
           // forcing a reopen for it.
           this.appliedModel = turn.model;
-          void this.query.setModel(turn.model);
+          // A model the CLI refuses leaves the turn on the one it has; nothing awaits this, so an
+          // unhandled refusal would take the whole process with it.
+          void this.query.setModel(turn.model).catch((error: unknown): void => {
+            note(`session: changing the model to ${turn.model} failed: ${String(error)}`);
+          });
         }
         // The offer depends on the turn, so ask the CLI to re-read it.
         this.refreshTools();
@@ -559,6 +602,8 @@ export class Session {
     this.controller?.abort();
     this.wake?.();
     await this.pumpDone?.catch((): undefined => undefined);
+    closeSessionTemporary(this.temporary);
+    this.temporary = null;
   }
 
   /**
@@ -586,22 +631,25 @@ export class Session {
   }
 
   /**
-   * Reopens the query when Studio's instructions have changed since it opened (#955), resuming the
-   * same session so the conversation carries on under the new system prompt.
+   * Reopens the query when Studio's instructions (#955) or the turn's sandbox (#1162) have changed
+   * since it opened, resuming the same session so the conversation carries on under the new ones.
    *
    * Called only at the start of a turn, before its message is queued, so a reopen always falls
    * between turns. When the session is busy the change waits: the comparison runs again at the next
-   * turn, and the instructions land then.
+   * turn, and the change lands then.
    * @param turn The turn about to run.
    * @param busy Whether the session was mid-turn when this turn arrived.
    * @returns Returns true when the query was reopened, so the live updates are already applied.
    */
-  private async reopenForInstructions(turn: TurnRequest, busy: boolean): Promise<boolean> {
+  private async reopenWhenChanged(turn: TurnRequest, busy: boolean): Promise<boolean> {
     const offer: { tools: readonly StudioTool[]; systemPrompt: string } =
       await this.describeOffer();
     // Compared as text — exactly what is appended to the system prompt — so an offer rebuilt with the
     // same words is no change at all.
-    if (offer.systemPrompt === this.openedInstructions) {
+    if (
+      offer.systemPrompt === this.openedInstructions &&
+      sandboxSignature(turn) === this.openedSandbox
+    ) {
       return false;
     }
     const sessionId: string | null = this.reportedSessionId;
@@ -609,12 +657,12 @@ export class Session {
       // Nothing to resume yet, or a turn the CLI is still running: reopening now would lose one or
       // the other, so the old instructions stand until a later turn can carry the new ones.
       note(
-        `session: instructions changed but the session is ${busy ? 'busy' : 'not yet identified'}, ` +
+        `session: instructions or sandbox changed but the session is ${busy ? 'busy' : 'not yet identified'}, ` +
           'so they wait for a later turn',
       );
       return false;
     }
-    note(`session: instructions changed, reopening session ${sessionId} to apply them`);
+    note(`session: instructions or sandbox changed, reopening session ${sessionId} to apply them`);
     await this.retire();
     // The reopen resumes the session as it stands now: never a branch point, never a fork, which
     // would carry the conversation to a new id and leave this one behind.
@@ -648,6 +696,7 @@ export class Session {
     this.pumpDone = null;
     this.options = null;
     this.openedInstructions = null;
+    this.openedSandbox = null;
     // The retired prompt stream sees the generation move on and returns, ending the old input.
     this.wake?.();
     controller?.abort();
@@ -707,8 +756,23 @@ export class Session {
           withdraw: asked.withdraw,
         };
       },
-      audit: (requestId: string, name: string, detail: string, source: string): void =>
-        this.host.send({ type: 'audit', requestId, name, detail, source }),
+      audit: (
+        requestId: string,
+        name: string,
+        detail: string,
+        source: string,
+        sandboxed?: boolean,
+        toolId?: string,
+      ): void =>
+        this.host.send({
+          type: 'audit',
+          requestId,
+          name,
+          detail,
+          source,
+          ...(sandboxed === undefined ? {} : { sandboxed }),
+          ...(toolId === undefined ? {} : { toolId }),
+        }),
     };
     const apiKey: string | null = await this.credential(turn);
     if (this.closed) {
@@ -716,6 +780,8 @@ export class Session {
       throw new Error('The Claude session has ended.');
     }
     this.controller = controller;
+    // Kept across a reopen between turns: the conversation goes on, so what it left there must too.
+    this.temporary ??= openSessionTemporary();
     this.options = buildOptions(
       gate,
       turn,
@@ -723,8 +789,10 @@ export class Session {
       offer.systemPrompt,
       apiKey,
       controller,
+      this.temporary,
     );
     this.openedInstructions = offer.systemPrompt;
+    this.openedSandbox = sandboxSignature(turn);
     const generation: number = this.generation;
     this.query = query({ prompt: this.promptStream(generation), options: this.options });
     this.pumpDone = this.pump(generation, this.query);

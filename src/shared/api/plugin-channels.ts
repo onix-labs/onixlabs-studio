@@ -46,6 +46,12 @@ export enum PluginChannel {
   SetSideloading = 'plugins:set-sideloading',
 
   /**
+   * Opens the folder sideloaded plugins are placed in, in the system's file manager, creating it when
+   * it does not exist yet (invoke).
+   */
+  OpenFolder = 'plugins:open-folder',
+
+  /**
    * Notifies the renderer that a plugin's install state changed (main→renderer, send).
    */
   Changed = 'plugins:changed',
@@ -63,11 +69,17 @@ export type PluginSlot =
   | 'container-engine'
   | 'version-control'
   | 'hosting'
-  | 'agent-harness';
+  | 'agent-harness'
+  | 'database-engine'
+  | 'package-manager'
+  | 'test-adapter';
 
 /**
  * The slots in the order the application presents them — the Plugin Manager's categories and the
  * setup wizard's plugin steps both walk this list, so the two surfaces agree on what comes first.
+ *
+ * `test-adapter` is not listed yet: the curated index offers no test adapter until the first one is
+ * released (#802), and listing it would put an empty step in the wizard.
  */
 export const PLUGIN_SLOTS: readonly PluginSlot[] = [
   'language-server',
@@ -77,6 +89,8 @@ export const PLUGIN_SLOTS: readonly PluginSlot[] = [
   'version-control',
   'hosting',
   'agent-harness',
+  'database-engine',
+  'package-manager',
 ];
 
 /**
@@ -97,6 +111,9 @@ export const PLUGIN_SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
   'version-control': 'Version Control',
   hosting: 'Code Hosting',
   'agent-harness': 'AI Providers',
+  'database-engine': 'Database Engines',
+  'package-manager': 'Package Managers',
+  'test-adapter': 'Test Frameworks',
 };
 
 /**
@@ -144,7 +161,14 @@ export interface UnkeyedPluginContribution extends SlotEntry {
   /**
    * Gets the unkeyed slot this implementation fills.
    */
-  readonly slot: 'container-engine' | 'version-control' | 'hosting' | 'agent-harness';
+  readonly slot:
+    | 'container-engine'
+    | 'version-control'
+    | 'hosting'
+    | 'agent-harness'
+    | 'database-engine'
+    | 'package-manager'
+    | 'test-adapter';
 
   /**
    * Gets the AI providers an agent harness offers, or undefined when it offers none.
@@ -409,6 +433,12 @@ export interface SideloadingState {
    * Gets how many sideloaded plugins were found on disk and not loaded this launch.
    */
   readonly skipped: number;
+
+  /**
+   * Gets the absolute path of the folder sideloaded plugins are placed in, or undefined when main did
+   * not say.
+   */
+  readonly directory?: string;
 }
 
 /**
@@ -429,7 +459,14 @@ export function installedContributions(
 ): readonly FormatPluginContribution[];
 export function installedContributions(
   plugins: readonly PluginSummary[],
-  slot: 'container-engine' | 'version-control' | 'hosting' | 'agent-harness',
+  slot:
+    | 'container-engine'
+    | 'version-control'
+    | 'hosting'
+    | 'agent-harness'
+    | 'database-engine'
+    | 'package-manager'
+    | 'test-adapter',
 ): readonly UnkeyedPluginContribution[];
 export function installedContributions(
   plugins: readonly PluginSummary[],

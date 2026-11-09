@@ -1,6 +1,7 @@
-import { LspServerId } from '@shared/api/lsp-channels';
+import { LspBraceStyle, LspServerId, LspServerSettingDescriptor } from '@shared/api/lsp-channels';
 import { ArchiveProvision } from '../provisioning/archive-provision';
 import { logger } from '../logger';
+import type { LspIndentationSections } from './lsp-indentation';
 import { LspProvisioner } from './lsp-provisioner';
 import { LspSettingsManager } from './lsp-settings';
 
@@ -19,6 +20,74 @@ export interface LspPostInitialize {
    * Gets the notification parameters.
    */
   readonly params: unknown;
+}
+
+/**
+ * Describes where a server is given its settings in `initializationOptions` (#1204): the settings
+ * under one section, without it, placed at one key.
+ */
+export interface LspStartupSettings {
+  /**
+   * Gets the section the settings sent at start-up are under, such as `java` or `preferences`; only
+   * the settings under it are sent, and without it.
+   */
+  readonly section: string;
+
+  /**
+   * Gets the dotted key of `initializationOptions` they are placed at — `settings.java` for jdtls,
+   * which reads `initializationOptions.settings.java.*` — or undefined to merge them into its root.
+   */
+  readonly key?: string;
+}
+
+/**
+ * Describes a setting a server is given on its command line (#1213), for one with no other way in:
+ * clangd reads its options from there or from a project's own `.clangd`, and never from the protocol.
+ */
+export interface LspSettingArgument {
+  /**
+   * Gets the section of the setting.
+   */
+  readonly section: string;
+
+  /**
+   * Gets the option it is passed as, such as `--clang-tidy`: the server starts with `--clang-tidy=false`.
+   */
+  readonly flag: string;
+}
+
+/**
+ * Describes how a server takes the settings it declares (#1204). Servers differ: Roslyn, gopls and
+ * rust-analyzer ask for them through `workspace/configuration`, and only need telling that they
+ * changed; typescript-language-server and jdtls never ask, and read what they are sent in
+ * `workspace/didChangeConfiguration` and in `initializationOptions`. A server may do any mix.
+ */
+export interface LspSettingsDelivery {
+  /**
+   * Gets whether the server asks for its settings through `workspace/configuration`, so a change is
+   * announced with a bare `didChangeConfiguration` for it to ask again. Defaults to true.
+   */
+  readonly pull?: boolean;
+
+  /**
+   * Gets the sections whose settings are pushed to the server in `didChangeConfiguration` — once it has
+   * started, and on every change — nested under each, as VS Code's `configurationSection` does: `java`
+   * sends `{ settings: { java: { … } } }`. Undefined for a server that is never pushed them.
+   */
+  readonly push?: readonly string[];
+
+  /**
+   * Gets where the server is given its settings in `initializationOptions`, or undefined when it is
+   * given none at start-up.
+   */
+  readonly startup?: LspStartupSettings;
+
+  /**
+   * Gets the settings the server is given on its command line (#1213), or undefined for none. Each is
+   * passed only while it differs from its default, so a server left alone keeps its own default and
+   * starts as it always did.
+   */
+  readonly arguments?: readonly LspSettingArgument[];
 }
 
 /**
@@ -111,6 +180,12 @@ export interface LanguageServerContext {
   readonly rootPath: string;
 
   /**
+   * Gets the brace style the user's settings give the language the session was started for (#1177),
+   * for a server that can only be told it at launch — or undefined, leaving the server its default.
+   */
+  readonly braceStyle?: LspBraceStyle;
+
+  /**
    * Gets the user's language-server settings (runtime path overrides and the like).
    */
   readonly settings: LspSettingsManager;
@@ -167,6 +242,51 @@ export interface LanguageServerDescriptor {
    * Ties break on catalogue order, so a deterministic default always exists.
    */
   readonly priority: number;
+
+  /**
+   * Gets whether the server reads {@link LanguageServerContext.braceStyle} when it starts (#1177), so a
+   * change to the setting must restart it.
+   */
+  readonly takesBraceStyle?: boolean;
+
+  /**
+   * Gets a value indicating whether the server reads `.editorconfig` only as it starts, so one
+   * changing needs a restart to reach it (#1177).
+   */
+  readonly readsEditorConfigAtStart?: boolean;
+
+  /**
+   * Gets whether the server answers `workspace/diagnostic` — diagnostics for every file, open or not
+   * (#1144) — whatever its static capabilities say.
+   */
+  readonly servesWorkspaceDiagnostics?: boolean;
+
+  /**
+   * Gets how the server is asked to report every file of the projects its open documents are in
+   * (#1207), for a server that pushes diagnostics for open files only and offers no
+   * `workspace/diagnostic`: `tsserver` for typescript-language-server's `geterrForProject`. Undefined
+   * for a server that is not asked.
+   */
+  readonly projectDiagnostics?: 'tsserver';
+
+  /**
+   * Gets the settings the server reads that the user is offered (#1143), on its language's page in
+   * Settings. Only settings a user would recognise.
+   */
+  readonly settings?: readonly LspServerSettingDescriptor[];
+
+  /**
+   * Gets how the server takes its {@link settings} (#1204), or undefined for a server that asks for
+   * them through `workspace/configuration` and nothing else.
+   */
+  readonly settingsDelivery?: LspSettingsDelivery;
+
+  /**
+   * Gets the settings the server asks for, per document, that are the document's indentation
+   * (#1208), answered from the document's editor rather than from the user's server settings — or
+   * undefined for a server that asks for none.
+   */
+  readonly indentationSections?: LspIndentationSections;
 
   /**
    * Resolves the server into a spawn specification, provisioning it and detecting its runtime when

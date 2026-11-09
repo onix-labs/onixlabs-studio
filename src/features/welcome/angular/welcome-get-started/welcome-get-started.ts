@@ -141,7 +141,7 @@ export class WelcomeGetStarted {
     { label: 'New Terminal', icon: Icon.WELCOME_TERMINAL, run: 'terminal' },
     { label: 'New Agent', icon: Icon.WELCOME_AGENT, run: 'agent' },
     { label: 'New API Explorer', icon: Icon.WELCOME_API_EXPLORER, run: 'api-explorer' },
-    { label: 'New Database Explorer', icon: Icon.WELCOME_DATABASE, run: 'unavailable' },
+    { label: 'New Database Explorer', icon: Icon.WELCOME_DATABASE, run: 'database-explorer' },
   ];
 
   /**
@@ -155,6 +155,7 @@ export class WelcomeGetStarted {
     { id: 'images', label: 'Images', kind: 'image' },
     { id: 'binary', label: 'Binary', kind: 'binary' },
     { id: 'api', label: 'APIs', kind: 'api' },
+    { id: 'database', label: 'Databases', kind: 'database' },
   ];
 
   /**
@@ -286,6 +287,8 @@ export class WelcomeGetStarted {
         return Icon.IMAGE_FILE;
       case 'api':
         return Icon.API_EXPLORER;
+      case 'database':
+        return Icon.DATABASE;
     }
   }
 
@@ -480,6 +483,7 @@ export class WelcomeGetStarted {
       case 'binary':
       case 'image':
       case 'api':
+      case 'database':
         // Every file kind re-opens through the same door: the opener routes it by name, so an API
         // document lands in an API Explorer tab exactly as it did when it was first opened.
         return this.fileOpener.reopenFile(item.path);

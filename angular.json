@@ -80,7 +80,7 @@
                 {
                   "type": "initial",
                   "maximumWarning": "4.5MB",
-                  "maximumError": "6MB"
+                  "maximumError": "6.5MB"
                 },
                 {
                   "type": "anyComponentStyle",
@@ -121,15 +121,20 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
-            "include": ["**/*.spec.ts", "../plugins/*/src/**/*.spec.ts"],
+            "include": [
+              "**/*.spec.ts",
+              "../plugins/*/src/**/*.spec.ts",
+              "../plugins/protocol/**/*.spec.ts"
+            ],
             "runnerConfig": "vitest.config.mjs",
             "isolate": true,
             "coverageReporters": ["text-summary", "html", "lcovonly"],
+            "coverageInclude": ["src/**/*.ts", "../plugins/**/*.ts"],
             "coverageThresholds": {
-              "statements": 71.3,
-              "branches": 67.6,
-              "functions": 67.0,
-              "lines": 72.4
+              "statements": 86,
+              "branches": 80.3,
+              "functions": 83.4,
+              "lines": 86
             }
           }
         }

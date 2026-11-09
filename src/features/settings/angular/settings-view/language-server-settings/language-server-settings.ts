@@ -7,12 +7,20 @@ import {
   InputSignal,
   Signal,
 } from '@angular/core';
-import { LspServerSummary } from '@shared/api/lsp-channels';
+import {
+  LspServerSettingDescriptor,
+  LspServerSettingOption,
+  LspServerSettingValue,
+  LspServerSummary,
+} from '@shared/api/lsp-channels';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
+import { NgTemplateOutlet } from '@angular/common';
+import { Accordion } from '@shared/angular/components/forms/accordion/accordion';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import { isCodeLensServerSwitch } from '@shared/angular/services/lsp/code-lens-kinds';
 
 /**
  * Names the tool-path override a language's server needs, where one applies. These are the runtimes a
@@ -40,25 +48,56 @@ const PATH_OVERRIDES: Readonly<Record<string, PathOverride>> = {
  */
 const PATH_LABELS: Readonly<Record<PathOverride, { label: string; description: string }>> = {
   typescriptServer: {
-    label: 'Custom server path',
+    label: 'Custom Server Path',
     description:
       'Path to a custom typescript-language-server CLI module (its JavaScript entry point). Leave empty to use the copy installed under Plugins.',
   },
   java: {
-    label: 'Java runtime path',
+    label: 'Java Runtime Path',
     description:
       'The Java 21+ executable this language server runs on. Leave empty to detect it automatically.',
   },
   dotnet: {
-    label: '.NET SDK path',
+    label: '.NET SDK Path',
     description:
       'The .NET 10+ executable the language server runs on. Leave empty to detect it automatically.',
   },
   clangd: {
-    label: 'Custom clangd path',
+    label: 'Custom clangd Path',
     description: 'Your own clangd executable. Leave empty to use the copy installed under Plugins.',
   },
 };
+
+/**
+ * A setting a language server declares, as its page shows it (#1143).
+ */
+interface DeclaredSetting {
+  /**
+   * Gets what the server declares.
+   */
+  readonly descriptor: LspServerSettingDescriptor;
+
+  /**
+   * Gets the value it has now: the user's, or the server's default.
+   */
+  readonly value: LspServerSettingValue;
+
+  /**
+   * Gets the value as the dropdown names it, for a choice.
+   */
+  readonly choice: string;
+
+  /**
+   * Gets the choices as dropdown options; empty for a switch or text.
+   */
+  readonly options: readonly DropdownOption[];
+
+  /**
+   * Gets whether the setting is text the user types, such as a path (#1212): a string default and no
+   * choices.
+   */
+  readonly text: boolean;
+}
 
 /**
  * The settings for one language's tooling: which installed server serves it, whether it runs, the
@@ -71,7 +110,7 @@ const PATH_LABELS: Readonly<Record<PathOverride, { label: string; description: s
  */
 @Component({
   selector: 'app-language-server-settings',
-  imports: [Dropdown, SettingRow, TextField, Toggle],
+  imports: [Accordion, Dropdown, NgTemplateOutlet, SettingRow, TextField, Toggle],
   templateUrl: './language-server-settings.html',
   styleUrl: './language-server-settings.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -191,6 +230,84 @@ export class LanguageServerSettings {
         return '';
     }
   });
+
+  /**
+   * Gets the settings the active server declares (#1143), each with the value it has now — the user's,
+   * or the server's default while they have set none — but for the finer ones under "Advanced".
+   */
+  protected readonly declaredSettings: Signal<readonly DeclaredSetting[]> = computed(
+    (): readonly DeclaredSetting[] =>
+      this.allDeclared().filter(
+        (setting: DeclaredSetting): boolean => !setting.descriptor.advanced,
+      ),
+  );
+
+  /**
+   * Gets the finer settings the active server declares, folded away under "Advanced" (#1145).
+   */
+  protected readonly advancedSettings: Signal<readonly DeclaredSetting[]> = computed(
+    (): readonly DeclaredSetting[] =>
+      this.allDeclared().filter(
+        (setting: DeclaredSetting): boolean => setting.descriptor.advanced === true,
+      ),
+  );
+
+  /**
+   * Gets every setting the active server declares, each with the value it has now.
+   */
+  private readonly allDeclared: Signal<readonly DeclaredSetting[]> = computed(
+    (): readonly DeclaredSetting[] => {
+      const serverId: string = this.activeServer();
+      this.lspSettings.settings();
+      const server: LspServerSummary | undefined = this.servers().find(
+        (candidate: LspServerSummary): boolean => candidate.id === serverId,
+      );
+      // A server's own lens switches are answered from Code › Code Lenses (#1215), not set here.
+      return (server?.settings ?? [])
+        .filter(
+          (descriptor: LspServerSettingDescriptor): boolean =>
+            !isCodeLensServerSwitch(serverId, descriptor.section),
+        )
+        .map((descriptor: LspServerSettingDescriptor): DeclaredSetting => {
+          const value: LspServerSettingValue =
+            this.lspSettings.serverSetting(serverId, descriptor.section) ?? descriptor.default;
+          return {
+            descriptor,
+            value,
+            choice: String(value),
+            options: (descriptor.options ?? []).map(
+              (option: LspServerSettingOption): DropdownOption => ({
+                value: String(option.value),
+                label: option.label,
+              }),
+            ),
+            text: typeof descriptor.default === 'string' && descriptor.options === undefined,
+          };
+        });
+    },
+  );
+
+  /**
+   * Sets a setting the active server declares: storing the value, or clearing it when it is the
+   * server's own default, so a default the server later changes is followed.
+   * @param setting The setting.
+   * @param value The new value — a switch's state, or the chosen option's value as the dropdown
+   * names it.
+   */
+  protected setDeclared(setting: DeclaredSetting, value: boolean | string): void {
+    const chosen: LspServerSettingValue =
+      typeof value === 'boolean'
+        ? value
+        : ((setting.descriptor.options ?? []).find(
+            (option: LspServerSettingOption): boolean => String(option.value) === value,
+          )?.value ?? value);
+    // Text cleared is the default again, rather than an empty value the server would read as one.
+    void this.lspSettings.setServerSetting(
+      this.activeServer(),
+      setting.descriptor.section,
+      chosen === setting.descriptor.default || (setting.text && chosen === '') ? null : chosen,
+    );
+  }
 
   /**
    * Chooses which installed server serves this language.

@@ -139,7 +139,7 @@ export interface MarkdownCommandHandler {
   /**
    * Inserts a table at the cursor.
    */
-  insertTable(): void;
+  insertTable(rows: number, columns: number): void;
 
   /**
    * Inserts a horizontal rule (thematic break) at the cursor.
@@ -561,8 +561,8 @@ export class MarkdownCommands {
   /**
    * Invokes the insert table command on the active editor.
    */
-  public insertTable(): void {
-    this.handler()?.insertTable();
+  public insertTable(rows: number, columns: number): void {
+    this.handler()?.insertTable(rows, columns);
   }
 
   /**

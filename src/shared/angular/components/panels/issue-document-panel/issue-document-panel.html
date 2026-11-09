@@ -117,16 +117,16 @@
             [disabled]="busy()"
             ariaLabel="Comment"
             (valueChange)="draft.set($event)"
-          >
+          />
+          <app-button-row>
             <app-button
-              markdownFieldAction
               variant="solid"
               label="Comment"
               [loading]="busy()"
               [disabled]="busy() || !hasDraft()"
               (click)="postComment()"
             />
-          </app-markdown-field>
+          </app-button-row>
         </div>
       }
     </section>

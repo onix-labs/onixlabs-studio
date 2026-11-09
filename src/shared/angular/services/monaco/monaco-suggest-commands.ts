@@ -81,6 +81,18 @@ export const SUGGEST_VISIBLE_CONTEXT_KEY: string = 'studioSuggestVisible';
 export const SUGGEST_FOCUSED_CONTEXT_KEY: string = 'studioSuggestFocused';
 
 /**
+ * Names the editor context key that is true while Enter accepts the focused row (Accept Suggestion
+ * With); otherwise Enter reaches the editor and the list closes as the line changes.
+ */
+export const SUGGEST_ENTER_ACCEPTS_CONTEXT_KEY: string = 'studioSuggestEnterAccepts';
+
+/**
+ * Names the editor context key that is true while Tab accepts the focused row (Accept Suggestion
+ * With); otherwise Tab reaches the editor.
+ */
+export const SUGGEST_TAB_ACCEPTS_CONTEXT_KEY: string = 'studioSuggestTabAccepts';
+
+/**
  * Names the editor context key that is true while an input method is composing in the editor: none of
  * the list's or the card's keys act then, so Enter, Tab, the arrows and Escape reach the input method.
  */
@@ -96,6 +108,13 @@ export const PARAMETER_HINTS_VISIBLE_CONTEXT_KEY: string = 'studioParameterHints
  * step through.
  */
 export const PARAMETER_HINTS_MULTIPLE_CONTEXT_KEY: string = 'studioParameterHintsMultiple';
+
+/**
+ * Monaco's `wordBasedSuggestions` value.
+ */
+export type WordSuggestionsOption = NonNullable<
+  MonacoApi.editor.IGlobalEditorOptions['wordBasedSuggestions']
+>;
 
 /**
  * Names the editor contribution behind Monaco's autocomplete: it owns the suggest model (triggering,
@@ -958,6 +977,8 @@ export class StudioParameterHintsWidget {
  * @param suggest Resolves the completion list's presenter as it is needed.
  * @param hints Resolves the signature card's presenter as it is needed.
  * @param suppressed Determines whether a document's word-based suggestions are left out of the list.
+ * @param wordSuggestions Reads a language's Monaco `wordBasedSuggestions`, written as an editor of it
+ * takes focus.
  */
 export function installSuggestCommands(
   monaco: typeof MonacoApi,
@@ -965,6 +986,8 @@ export function installSuggestCommands(
   suggest: () => SuggestPresenter,
   hints: () => ParameterHintsPresenter,
   suppressed: WordSuggestionsSuppressed = (): boolean => false,
+  wordSuggestions: (language: string) => WordSuggestionsOption = (): WordSuggestionsOption =>
+    'currentDocument',
 ): void {
   const focused: (run: (editor: MonacoApi.editor.ICodeEditor) => void) => () => void =
     (run: (editor: MonacoApi.editor.ICodeEditor) => void): (() => void) =>
@@ -1026,6 +1049,28 @@ export function installSuggestCommands(
   monaco.editor.onDidCreateEditor((editor: MonacoApi.editor.ICodeEditor): void => {
     takeOverSuggestWidget(editor, suggest, suppressed);
     takeOverParameterHintsWidget(editor, hints);
+    followWordSuggestions(editor, wordSuggestions);
+  });
+}
+
+/**
+ * Writes an editor's language's Word-Based Suggestions as it takes focus. Monaco reads the option from
+ * the configuration an instance shares, and only the focused editor asks for suggestions, so this
+ * keeps one language's choice from reaching another's editor.
+ * @param editor The editor.
+ * @param wordSuggestions Reads the option's value for a language.
+ */
+export function followWordSuggestions(
+  editor: MonacoApi.editor.ICodeEditor,
+  wordSuggestions: (language: string) => WordSuggestionsOption,
+): void {
+  editor.onDidFocusEditorText((): void => {
+    const language: string | undefined = editor.getModel()?.getLanguageId();
+    if (language !== undefined) {
+      (editor as MonacoApi.editor.IStandaloneCodeEditor).updateOptions({
+        wordBasedSuggestions: wordSuggestions(language),
+      });
+    }
   });
 }
 
@@ -1073,8 +1118,16 @@ export function suggestKeybindingRules(
     rule(KeyCode.UpArrow, STUDIO_SUGGEST_PREVIOUS_COMMAND, listKeys),
     rule(KeyCode.PageDown, STUDIO_SUGGEST_NEXT_PAGE_COMMAND, listKeys),
     rule(KeyCode.PageUp, STUDIO_SUGGEST_PREVIOUS_PAGE_COMMAND, listKeys),
-    rule(KeyCode.Enter, STUDIO_SUGGEST_ACCEPT_COMMAND, acceptKeys),
-    rule(KeyCode.Tab, STUDIO_SUGGEST_ACCEPT_COMMAND, acceptKeys),
+    rule(
+      KeyCode.Enter,
+      STUDIO_SUGGEST_ACCEPT_COMMAND,
+      `${acceptKeys} && ${SUGGEST_ENTER_ACCEPTS_CONTEXT_KEY}`,
+    ),
+    rule(
+      KeyCode.Tab,
+      STUDIO_SUGGEST_ACCEPT_COMMAND,
+      `${acceptKeys} && ${SUGGEST_TAB_ACCEPTS_CONTEXT_KEY}`,
+    ),
     rule(KeyCode.Escape, STUDIO_SUGGEST_HIDE_COMMAND, listKeys),
     rule(KeyMod.Shift | KeyCode.Escape, STUDIO_SUGGEST_HIDE_COMMAND, listKeys),
     rule(KeyCode.DownArrow, STUDIO_PARAMETER_HINTS_NEXT_COMMAND, overloadKeys),

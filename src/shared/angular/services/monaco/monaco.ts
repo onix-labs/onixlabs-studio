@@ -1,10 +1,12 @@
-import { inject, Injector, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { effect, inject, Injector, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import {
   CurrentLineHighlightStyle,
+  FoldingProvider,
   Settings,
   TextEditorSettings,
 } from '@shared/angular/services/settings/settings';
+import { Accessibility } from '@shared/angular/services/accessibility/accessibility';
 import { ResolvedThemeMode, Theme } from '@shared/angular/services/theme/theme';
 import { Log } from '@shared/angular/services/log/log';
 import type { FindMode } from '@shared/angular/components/find-panel/find-request';
@@ -21,8 +23,13 @@ import {
   HEURISTIC_SEMANTIC_TOKEN_LEGEND,
 } from './monaco-heuristic-tokens';
 import { defineThemes } from './monaco-themes';
+import { editorAppearanceOptions } from './editor-appearance-options';
+import { editorSuggestOptions, wordSuggestionsOption } from './editor-suggest-options';
+import { editorTypingOptions } from './editor-typing-options';
 import { registerAsmLanguage } from './monaco-asm-language';
 import { registerScssLanguage } from './monaco-scss-language';
+import { registerCypherLanguage } from './monaco-cypher-language';
+import { registerDocCommentRules } from './monaco-doc-comment-rules';
 import { registerBraceFolding } from './monaco-folding';
 import { installFindCommands } from './monaco-find-commands';
 import { installGoToCommands } from './monaco-goto-commands';
@@ -32,6 +39,7 @@ import {
   NavigationMode,
 } from './monaco-navigation-commands';
 import { installRenameCommands } from './monaco-rename-commands';
+import { AutoInsertHandler, installAutoInsert } from './monaco-auto-insert';
 import { installQuickFixCommands, QUICK_FIX_EDITOR_OPTIONS } from './monaco-quick-fix-commands';
 import {
   HOVER_EDITOR_OPTIONS,
@@ -44,6 +52,7 @@ import {
   installSuggestCommands,
   ParameterHintsPresenter,
   SuggestPresenter,
+  WordSuggestionsOption,
 } from './monaco-suggest-commands';
 import {
   DIFF_GUARD_EDITOR_OPTIONS,
@@ -57,6 +66,10 @@ import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
 import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
+import type {
+  CodeLocation,
+  ReferenceListKind,
+} from '@shared/angular/services/references/reference-list';
 import { RenameSymbol } from '@shared/angular/services/rename/rename-symbol';
 import { QuickFixes } from '@shared/angular/services/quick-fix/quick-fixes';
 import { HoverCards } from '@shared/angular/services/hover/hover-cards';
@@ -199,6 +212,11 @@ export class Monaco {
   private readonly theme: Theme = inject(Theme);
 
   /**
+   * Holds the accessibility settings, read for Reduce Motion.
+   */
+  private readonly accessibility: Accessibility = inject(Accessibility);
+
+  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
@@ -254,8 +272,55 @@ export class Monaco {
    * server registers one (via {@link suppressHeuristicTokensWhen}) so its accurate tokens are never
    * second-guessed by the heuristic for documents it serves.
    */
+  /**
+   * Holds the predicates that leave a document's folding to its language server (#1147).
+   */
+  private readonly braceFoldingSuppressors: Set<(model: MonacoApi.editor.ITextModel) => boolean> =
+    new Set<(model: MonacoApi.editor.ITextModel) => boolean>();
+
+  /**
+   * Reads Large File Feature Threshold: the line count above which a file loses the heavier editor
+   * features, folding among them.
+   * @returns Returns the threshold.
+   */
+  public readonly largeFileLines: () => number = (): number =>
+    this.settings.get('textEditor.largeFileLineThreshold');
+
+  /**
+   * Determines whether a document's folding is left to its language server, for the brace folding.
+   * @param model The document.
+   * @returns Returns true when a server folds it.
+   */
+  private readonly braceFoldingSuppressed: (model: MonacoApi.editor.ITextModel) => boolean = (
+    model: MonacoApi.editor.ITextModel,
+  ): boolean =>
+    [...this.braceFoldingSuppressors].some(
+      (predicate: (model: MonacoApi.editor.ITextModel) => boolean): boolean => predicate(model),
+    );
+
+  /**
+   * Reads a document's Folding Provider setting.
+   * @param model The document.
+   * @returns Returns what folds its language.
+   */
+  private readonly foldingProvider: (model: MonacoApi.editor.ITextModel) => FoldingProvider = (
+    model: MonacoApi.editor.ITextModel,
+  ): FoldingProvider =>
+    this.settings.resolveSettingsForLanguage(model.getLanguageId()).foldingProvider;
+
+  /**
+   * Holds the functions that fold open documents again, one per loaded Monaco.
+   */
+  private readonly foldingRefreshers: (() => void)[] = [];
+
   private readonly heuristicTokenSuppressors: Set<(model: MonacoApi.editor.ITextModel) => boolean> =
     new Set<(model: MonacoApi.editor.ITextModel) => boolean>();
+
+  /**
+   * Holds the emitter asking Monaco for the heuristic semantic tokens again, or null before Monaco
+   * loads.
+   */
+  private heuristicTokensChanged: MonacoApi.Emitter<void> | null = null;
 
   /**
    * Holds predicates that leave Monaco's word-based suggestions out of the completion list for the
@@ -274,9 +339,29 @@ export class Monaco {
   private assist: (SuggestPresenter & ParameterHintsPresenter) | null = null;
 
   /**
+   * Holds what is told of each character typed, for a language server's auto-insert (#1148), or null
+   * until the language-server features hand theirs over.
+   */
+  private autoInsert: AutoInsertHandler | null = null;
+
+  /**
    * Gets a value indicating whether Monaco has finished loading.
    */
   public readonly isLoaded: Signal<boolean> = this.loadedSignal.asReadonly();
+
+  /**
+   * Initialises the service, asking for the heuristic tokens again when Semantic Highlighting changes.
+   */
+  public constructor() {
+    effect((): void => {
+      this.settings.semanticHighlightingChoices();
+      this.heuristicTokensChanged?.fire();
+    });
+    effect((): void => {
+      this.settings.foldingProviderChoices();
+      this.foldingRefreshers.forEach((refresh: () => void): void => refresh());
+    });
+  }
 
   /**
    * Ensures Monaco is loaded, configuring the worker environment and registering themes on first
@@ -284,8 +369,22 @@ export class Monaco {
    * @returns Returns a promise that resolves once Monaco is ready.
    */
   public ensureLoaded(): Promise<void> {
-    this.loadPromise ??= this.load();
+    this.loadPromise ??= this.loadForgettingFailure();
     return this.loadPromise;
+  }
+
+  /**
+   * Loads Monaco into the main window, forgetting a load that fails. Kept, a failure would answer
+   * every later editor for the rest of the session, when the file it wanted may be back by then.
+   * @returns Returns a promise that resolves once Monaco is ready.
+   */
+  private async loadForgettingFailure(): Promise<void> {
+    try {
+      await this.load();
+    } catch (error: unknown) {
+      this.loadPromise = null;
+      throw error;
+    }
   }
 
   /**
@@ -319,10 +418,25 @@ export class Monaco {
     }
     let load: Promise<typeof MonacoApi> | undefined = this.childLoads.get(target);
     if (load === undefined) {
-      load = this.loadIntoChild(target);
+      load = this.loadIntoChildForgettingFailure(target);
       this.childLoads.set(target, load);
     }
     return load;
+  }
+
+  /**
+   * Loads Monaco into a child window, forgetting a load that fails (see
+   * {@link loadForgettingFailure}).
+   * @param target The child window.
+   * @returns Returns a promise that resolves to the window's Monaco namespace.
+   */
+  private async loadIntoChildForgettingFailure(target: Window): Promise<typeof MonacoApi> {
+    try {
+      return await this.loadIntoChild(target);
+    } catch (error: unknown) {
+      this.childLoads.delete(target);
+      throw error;
+    }
   }
 
   /**
@@ -465,17 +579,20 @@ export class Monaco {
       lineDecorationsWidth: 16,
       wordWrap: resolved.wordWrap ? 'on' : 'off',
       stickyScroll: { enabled: resolved.stickyScroll },
+      formatOnType: resolved.formatOnType,
+      formatOnPaste: resolved.formatOnPaste,
       renderLineHighlight: resolved.currentLineHighlight === 'filled' ? 'all' : 'line',
-      scrollBeyondLastLine: false,
-      renderWhitespace: 'selection',
+      ...editorAppearanceOptions(resolved),
+      ...editorSuggestOptions(resolved),
+      ...editorTypingOptions(resolved),
       tabSize: resolved.tabSize,
       insertSpaces: resolved.insertSpaces,
       // Honour the configured indent verbatim rather than inferring it from file contents, so the
       // tab-size and tabs/spaces settings are authoritative.
       detectIndentation: false,
       cursorBlinking: resolved.cursorBlinking,
-      cursorSmoothCaretAnimation: resolved.cursorSmoothCaretAnimation,
-      smoothScrolling: true,
+      ...this.motionOptions(resolved),
+      inlayHints: { enabled: resolved.inlayHints === 'on' ? 'on' : 'off' },
       padding: { top: 16 },
       // Colour language-server semantic tokens (types, members, parameters) for every theme, not only
       // the languages with a built-in Monaco worker.
@@ -495,10 +612,28 @@ export class Monaco {
   }
 
   /**
+   * Builds the editor options Reduce Motion governs: the smooth scrolling and smooth caret the code
+   * settings choose, both off while motion is reduced. Reads the setting reactively, so an effect
+   * that applies these follows it.
+   * @param resolved The code settings in force.
+   * @returns Returns the motion options.
+   */
+  public motionOptions(
+    resolved: TextEditorSettings,
+  ): Pick<MonacoApi.editor.IEditorOptions, 'smoothScrolling' | 'cursorSmoothCaretAnimation'> {
+    const reduced: boolean = this.accessibility.reducedMotion();
+    return {
+      smoothScrolling: resolved.smoothScrolling && !reduced,
+      cursorSmoothCaretAnimation: reduced ? 'off' : resolved.cursorSmoothCaretAnimation,
+    };
+  }
+
+  /**
    * Builds the Monaco diff-editor construction options from the current global settings. Shared by
    * every diff surface so the read-only, side-by-side comparison view resolves the same theme and font
    * as the single-editor pages. The caller supplies the `renderSideBySide` flag, which is a per-view
-   * (inline vs side-by-side) choice rather than a global setting.
+   * (inline vs side-by-side) choice rather than a global setting, and may override whether whitespace
+   * is ignored, which the diff's own switch can change for the session.
    * @returns Returns the diff-editor construction options.
    */
   public getDiffEditorOptions(): MonacoApi.editor.IStandaloneDiffEditorConstructionOptions {
@@ -509,14 +644,12 @@ export class Monaco {
       readOnly: true,
       originalEditable: false,
       renderOverviewRuler: true,
-      ignoreTrimWhitespace: false,
       enableSplitViewResizing: true,
-      minimap: { enabled: false },
       scrollBeyondLastLine: false,
       fontSize: resolved.fontSize,
       fontFamily: `"${resolved.fontFamily}", monospace`,
-      lineNumbers: 'on',
       padding: { top: 12 },
+      ...this.getDiffLiveOptions(this.settings.get('textEditor.diffIgnoreWhitespace')),
       // Off in every editor until Studio draws its own right-click menu (#946, #1009).
       contextmenu: false,
       // None of Monaco's go-to navigations ever peeks (#1014).
@@ -529,6 +662,35 @@ export class Monaco {
       ...WIDGET_GUARD_EDITOR_OPTIONS,
       // No toolbar or revert arrows in the gutter between the sides (#1024).
       ...DIFF_GUARD_EDITOR_OPTIONS,
+    };
+  }
+
+  /**
+   * Builds the diff options that follow the settings while a diff is open: how changes are found and
+   * shown, and the Code settings a diff shares with the editor.
+   * Applied when a diff is created and again whenever one of them changes.
+   * @param ignoreWhitespace Whether leading and trailing whitespace changes are left out.
+   * @returns Returns the options.
+   */
+  public getDiffLiveOptions(ignoreWhitespace: boolean): MonacoApi.editor.IDiffEditorOptions {
+    const resolved: TextEditorSettings = this.settings.globalTextEditor();
+    return {
+      ignoreTrimWhitespace: ignoreWhitespace,
+      // The advanced comparison follows code that moved rather than reading it as a deletion and an
+      // unrelated addition, and marks where it went.
+      diffAlgorithm: 'advanced',
+      experimental: { showMoves: true },
+      hideUnchangedRegions: {
+        enabled: this.settings.get('textEditor.diffCollapseUnchanged'),
+        contextLineCount: 3,
+        minimumLineCount: 3,
+        revealLineCount: 20,
+      },
+      wordWrap: resolved.wordWrap ? 'on' : 'off',
+      minimap: { enabled: resolved.showMinimap },
+      lineNumbers: resolved.showLineNumbers ? 'on' : 'off',
+      renderWhitespace: resolved.renderWhitespace,
+      fontLigatures: resolved.fontLigatures,
     };
   }
 
@@ -550,11 +712,23 @@ export class Monaco {
     defineThemes(window.monaco, this.settings.textEditorAccentSelection());
     registerAsmLanguage(window.monaco);
     registerScssLanguage(window.monaco);
-    registerBraceFolding(window.monaco);
+    registerCypherLanguage(window.monaco);
+    registerDocCommentRules(window.monaco);
+    this.foldingRefreshers.push(
+      registerBraceFolding(
+        window.monaco,
+        this.braceFoldingSuppressed,
+        this.largeFileLines,
+        this.foldingProvider,
+      ),
+    );
     this.installFindCommands(window.monaco);
     this.installGoToCommands(window.monaco);
     this.installNavigationCommands(window.monaco);
     this.installRenameCommands(window.monaco);
+    if (window.monaco !== undefined) {
+      installAutoInsert(window.monaco, this.typed);
+    }
     this.installQuickFixCommands(window.monaco);
     this.installHoverCommands(window.monaco);
     this.installSuggestCommands(window.monaco);
@@ -621,9 +795,40 @@ export class Monaco {
       (editor: MonacoApi.editor.ICodeEditor, mode: NavigationMode): void => {
         this.log.info('Monaco', 'Studio navigation command', mode);
         const navigation: EditorNavigation = this.injector.get(EditorNavigation);
-        void (mode === 'definition'
-          ? navigation.goToDefinition(editor)
-          : navigation.findReferences(editor));
+        switch (mode) {
+          case 'definition':
+            void navigation.goToDefinition(editor);
+            return;
+          case 'implementation':
+            void navigation.goToImplementation(editor);
+            return;
+          case 'declaration':
+            void navigation.goToDeclaration(editor);
+            return;
+          case 'typeDefinition':
+            void navigation.goToTypeDefinition(editor);
+            return;
+          case 'references':
+            void navigation.findReferences(editor);
+            return;
+          case 'callHierarchy':
+            void navigation.showHierarchy(editor, 'calls');
+            return;
+          case 'typeHierarchy':
+            void navigation.showHierarchy(editor, 'types');
+            return;
+          case 'sourceHeader':
+            void navigation.switchSourceHeader(editor);
+            return;
+        }
+      },
+      (
+        editor: MonacoApi.editor.ICodeEditor,
+        kind: ReferenceListKind,
+        places: readonly CodeLocation[],
+      ): void => {
+        this.log.info('Monaco', 'A lens lists its places', kind);
+        void this.injector.get(EditorNavigation).listPlaces(editor, kind, places);
       },
     );
   }
@@ -704,6 +909,8 @@ export class Monaco {
       (): SuggestPresenter => this.assist ?? IDLE_SUGGEST_PRESENTER,
       (): ParameterHintsPresenter => this.assist ?? IDLE_PARAMETER_HINTS_PRESENTER,
       (model: MonacoApi.editor.ITextModel): boolean => this.isWordSuggestionSuppressed(model),
+      (language: string): WordSuggestionsOption =>
+        wordSuggestionsOption(this.settings.resolveSettingsForLanguage(language)),
     );
   }
 
@@ -787,11 +994,21 @@ export class Monaco {
       defineThemes(monaco, this.settings.textEditorAccentSelection());
       registerAsmLanguage(monaco, target);
       registerScssLanguage(monaco, target);
-      registerBraceFolding(monaco);
+      registerCypherLanguage(monaco, target);
+      registerDocCommentRules(monaco);
+      this.foldingRefreshers.push(
+        registerBraceFolding(
+          monaco,
+          this.braceFoldingSuppressed,
+          this.largeFileLines,
+          this.foldingProvider,
+        ),
+      );
       this.installFindCommands(monaco);
       this.installGoToCommands(monaco);
       this.installNavigationCommands(monaco);
       this.installRenameCommands(monaco);
+      installAutoInsert(monaco, this.typed);
       this.installQuickFixCommands(monaco);
       this.installHoverCommands(monaco);
       this.installSuggestCommands(monaco);
@@ -832,14 +1049,20 @@ export class Monaco {
         script.onload = (): void => {
           const loader: {
             config: (config: { paths: { vs: string } }) => void;
-            (modules: readonly string[], callback: (monaco: typeof MonacoApi) => void): void;
+            (
+              modules: readonly string[],
+              callback: (monaco: typeof MonacoApi) => void,
+              errorCallback: (reason: Error) => void,
+            ): void;
           } = (target as unknown as { require: typeof loader }).require;
           loader.config({ paths: { vs: assetUrl('./vs') } });
-          loader(['vs/editor/editor.main'], resolve);
+          // Without the error callback a module that will not load leaves this waiting for ever.
+          loader(['vs/editor/editor.main'], resolve, reject);
         };
         script.onerror = (): void => {
           const error: Error = new Error('Failed to load the Monaco editor loader.');
           this.log.error('Monaco', 'Failed to load the Monaco editor loader', error);
+          script.remove();
           reject(error);
         };
         targetDocument.head.appendChild(script);
@@ -863,6 +1086,40 @@ export class Monaco {
       this.heuristicTokenSuppressors.delete(predicate);
     };
   }
+
+  /**
+   * Registers a predicate that leaves the folding of the documents it owns to their language server
+   * (#1147): the Visual-Studio-style brace folding steps aside for them, so the compiler's folds —
+   * members, regions, usings, comments — are not merged with its guesses. Predicates accumulate, as
+   * {@link suppressHeuristicTokensWhen} does.
+   * @param predicate Returns true for a model whose server folds it.
+   * @returns Returns a function that removes the predicate.
+   */
+  public suppressBraceFoldingWhen(
+    predicate: (model: MonacoApi.editor.ITextModel) => boolean,
+  ): () => void {
+    this.braceFoldingSuppressors.add(predicate);
+    return (): void => {
+      this.braceFoldingSuppressors.delete(predicate);
+    };
+  }
+
+  /**
+   * Takes what answers a character typed in any editor (#1148): the language-server features hand
+   * theirs over, so a server's doc-comment skeleton follows `///`.
+   * @param handler Receives the editor and the character typed.
+   */
+  public useAutoInsert(handler: AutoInsertHandler): void {
+    this.autoInsert = handler;
+  }
+
+  /**
+   * Hands a typed character on to the auto-insert, once one has been handed over.
+   */
+  private readonly typed: AutoInsertHandler = (
+    editor: MonacoApi.editor.ICodeEditor,
+    ch: string,
+  ): void => this.autoInsert?.(editor, ch);
 
   /**
    * Takes what draws the completion list and the signature card in every editor (#1021): the
@@ -917,14 +1174,16 @@ export class Monaco {
       return;
     }
 
+    this.heuristicTokensChanged = new monaco.Emitter<void>();
     for (const languageId of HEURISTIC_SEMANTIC_TOKEN_LANGUAGES) {
       monaco.languages.registerDocumentSemanticTokensProvider(languageId, {
+        onDidChange: this.heuristicTokensChanged.event,
         getLegend: (): MonacoApi.languages.SemanticTokensLegend => HEURISTIC_SEMANTIC_TOKEN_LEGEND,
         releaseDocumentSemanticTokens: (): void => undefined,
         provideDocumentSemanticTokens: (
           model: MonacoApi.editor.ITextModel,
         ): MonacoApi.languages.SemanticTokens | null => {
-          if (this.isHeuristicTokensSuppressed(model)) {
+          if (!this.semanticHighlightingEnabled(model) || this.isHeuristicTokensSuppressed(model)) {
             return null;
           }
           const source: string = model.getValue();
@@ -933,6 +1192,18 @@ export class Monaco {
         },
       });
     }
+  }
+
+  /**
+   * Gets whether Semantic Highlighting is on for a model's language. Token providers ask this rather
+   * than the editors being told through `semanticHighlighting.enabled`: `updateOptions` writes that
+   * key to the configuration one Monaco instance shares across its editors, so a per-language value
+   * would be whichever editor updated last.
+   * @param model The model a token request is for.
+   * @returns Returns true when the model's code is coloured by semantic tokens.
+   */
+  public semanticHighlightingEnabled(model: MonacoApi.editor.ITextModel): boolean {
+    return this.settings.resolveSettingsForLanguage(model.getLanguageId()).semanticHighlighting;
   }
 
   /**

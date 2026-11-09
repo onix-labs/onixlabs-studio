@@ -6,6 +6,7 @@ import {
   inject,
   Signal,
 } from '@angular/core';
+import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
 import { EditingChords } from '@shared/angular/services/editing-chords/editing-chords';
 import { FeatureChrome, FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
@@ -16,6 +17,9 @@ import { WorkbenchAgentCapabilities } from '@shared/angular/services/workbench-a
 import { ContentHost } from '@shared/angular/components/content-host/content-host';
 import { ModalBackdropView } from '@shared/angular/components/modal-backdrop/modal-backdrop-view';
 import { AboutHost } from '@shared/angular/components/about-modal/about-host';
+import { UpstreamConfirmModal } from '@shared/angular/components/upstream-confirm-modal/upstream-confirm-modal';
+import { TerminalConfirmModal } from '@shared/angular/components/terminal-confirm-modal/terminal-confirm-modal';
+import { ConversationRetentionPrompt } from '@shared/angular/components/conversation-retention-prompt/conversation-retention-prompt';
 import { PluginConsentHost } from '@shared/angular/components/plugin-consent-modal/plugin-consent-host';
 import { RepositoryTrustHost } from '@shared/angular/components/repository-trust-modal/repository-trust-host';
 import { GoToDialogHost } from '@shared/angular/components/go-to/go-to-dialogs/go-to-dialog-host';
@@ -43,6 +47,9 @@ import { ConfigureDialogPanel } from '@features/workspace/angular/configure-dial
     RepositoryTrustHost,
     GoToDialogHost,
     AboutHost,
+    ConversationRetentionPrompt,
+    UpstreamConfirmModal,
+    TerminalConfirmModal,
     SetupWizardHost,
     WelcomeScreen,
     ConfigureDialogPanel,
@@ -68,6 +75,11 @@ export class Root {
    * registered.
    */
   private readonly keybindings: Keybindings = inject(Keybindings);
+
+  /**
+   * Holds the application menu, whose catalogued shortcuts serve the chords no view registers.
+   */
+  private readonly menu: AppMenu = inject(AppMenu);
 
   /**
    * Holds the editing chords the application menu cannot carry, which serve the focused text box.
@@ -120,6 +132,10 @@ export class Root {
    * browser default when one handles it. Listening at the window (bubble phase) lets an embedded
    * editor consume the keys it owns first — only chords it leaves unhandled reach the router.
    *
+   * A chord no view handles then falls to the application menu, which runs the command showing that
+   * shortcut — Open File, Close Tab, or the active tab's Print — so the menu's shortcuts work on
+   * Windows and Linux too, where there is no native menu bar to bind them.
+   *
    * Select All is offered the event first, because it is not an accelerator any view registers: it
    * serves the focused text box, which the application menu cannot do without taking ⌘A from the
    * editors that bind it to their own selection model.
@@ -128,7 +144,11 @@ export class Root {
    */
   @HostListener('window:keydown', ['$event'])
   protected onWindowKeydown(event: KeyboardEvent): void {
-    if (this.editingChords.handleSelectAll(event) || this.keybindings.dispatch(event)) {
+    if (
+      this.editingChords.handleSelectAll(event) ||
+      this.keybindings.dispatch(event) ||
+      this.menu.dispatchChord(event)
+    ) {
       event.preventDefault();
     }
   }

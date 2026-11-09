@@ -1,5 +1,33 @@
 import type * as MonacoApi from 'monaco-editor';
-import { computeFoldingRanges } from './monaco-folding';
+import { computeFoldingRanges, registerBraceFolding } from './monaco-folding';
+import type { FoldingProvider } from '@shared/angular/services/settings/settings';
+
+/**
+ * Stands in for Monaco's event emitter.
+ */
+class FakeEmitter {
+  /**
+   * Holds the listeners.
+   */
+  private readonly listeners: ((value: unknown) => void)[] = [];
+
+  /**
+   * Gets the event listeners subscribe through.
+   */
+  public readonly event: (listener: (value: unknown) => void) => void = (
+    listener: (value: unknown) => void,
+  ): void => {
+    this.listeners.push(listener);
+  };
+
+  /**
+   * Notifies the listeners.
+   * @param value The value.
+   */
+  public fire(value: unknown): void {
+    this.listeners.forEach((listener: (value: unknown) => void): void => listener(value));
+  }
+}
 
 /**
  * The stand-in fold kinds the fake Monaco returns, compared by reference in the assertions.
@@ -69,6 +97,14 @@ function fold(
 }
 
 describe('computeFoldingRanges', () => {
+  it('foldsNothing_pastLargeFileFeatureThreshold', () => {
+    const lines: readonly string[] = ['void f() {', '    x();', '}'];
+    const monaco: typeof MonacoApi = fakeMonaco(defaultTokens(lines));
+
+    expect(computeFoldingRanges(monaco, fakeModel(lines), 2)).toEqual([]);
+    expect(computeFoldingRanges(monaco, fakeModel(lines), 3)).toEqual([{ start: 1, end: 3 }]);
+  });
+
   it('foldsAnAllmanBraceBlockFromItsSignatureLine', () => {
     expect(fold(['class Program', '{', '    int x;', '}'])).toEqual([{ start: 1, end: 4 }]);
   });
@@ -135,5 +171,102 @@ describe('computeFoldingRanges', () => {
     expect(fold(['//region A', '// b', '//endregion'])).toEqual([
       { start: 1, end: 3, kind: REGION_KIND },
     ]);
+  });
+});
+
+/**
+ * Builds a Monaco that captures the folding providers registered, by language.
+ * @param lines The lines the tokenizer works from.
+ * @param providers Receives the providers.
+ * @returns Returns the Monaco.
+ */
+function registeringMonaco(
+  lines: readonly string[],
+  providers: Map<string, MonacoApi.languages.FoldingRangeProvider>,
+): typeof MonacoApi {
+  return {
+    ...fakeMonaco(defaultTokens(lines)),
+    Emitter: FakeEmitter,
+    languages: {
+      FoldingRangeKind: { Region: REGION_KIND, Comment: COMMENT_KIND },
+      registerFoldingRangeProvider: (
+        language: string,
+        provider: MonacoApi.languages.FoldingRangeProvider,
+      ): void => void providers.set(language, provider),
+    },
+  } as unknown as typeof MonacoApi;
+}
+
+describe('registerBraceFolding (#1147)', () => {
+  it('leavesADocumentWhoseServerFoldsIt_toTheServer', () => {
+    const lines: readonly string[] = ['class Program', '{', '    int x;', '}'];
+    const providers: Map<string, MonacoApi.languages.FoldingRangeProvider> = new Map<
+      string,
+      MonacoApi.languages.FoldingRangeProvider
+    >();
+    const monaco: typeof MonacoApi = registeringMonaco(lines, providers);
+    const served: MonacoApi.editor.ITextModel = fakeModel(lines);
+    const unserved: MonacoApi.editor.ITextModel = fakeModel(lines);
+
+    registerBraceFolding(monaco, (model: MonacoApi.editor.ITextModel): boolean => model === served);
+    const provider: MonacoApi.languages.FoldingRangeProvider | undefined = providers.get('*');
+    const token: MonacoApi.CancellationToken = {} as MonacoApi.CancellationToken;
+    const context: MonacoApi.languages.FoldingContext = {};
+
+    expect(provider?.provideFoldingRanges(served, context, token)).toEqual([]);
+    expect(provider?.provideFoldingRanges(unserved, context, token)).toEqual([
+      { start: 1, end: 4 },
+    ]);
+  });
+
+  it('foldingProvider_decidesWhatTheHeuristicAnswers', () => {
+    const lines: readonly string[] = ['class Program', '{', '    int x;', '}'];
+    const providers: Map<string, MonacoApi.languages.FoldingRangeProvider> = new Map<
+      string,
+      MonacoApi.languages.FoldingRangeProvider
+    >();
+    const monaco: typeof MonacoApi = registeringMonaco(lines, providers);
+    const brace: MonacoApi.editor.ITextModel = {
+      ...fakeModel(lines),
+      getLanguageId: (): string => 'csharp',
+    };
+    const other: MonacoApi.editor.ITextModel = {
+      ...fakeModel(lines),
+      getLanguageId: (): string => 'python',
+    };
+    let choice: FoldingProvider = 'automatic';
+
+    registerBraceFolding(monaco, undefined, undefined, (): FoldingProvider => choice);
+    const provider: MonacoApi.languages.FoldingRangeProvider | undefined = providers.get('*');
+    const fold: (model: MonacoApi.editor.ITextModel) => unknown = (
+      model: MonacoApi.editor.ITextModel,
+    ): unknown => provider?.provideFoldingRanges(model, {}, {} as MonacoApi.CancellationToken);
+
+    expect(fold(brace)).toEqual([{ start: 1, end: 4 }]);
+    // Under Automatic a language without braces keeps Monaco's indentation folding.
+    expect(fold(other)).toBeUndefined();
+    choice = 'braces';
+    expect(fold(other)).toEqual([{ start: 1, end: 4 }]);
+    choice = 'language-server';
+    expect(fold(brace)).toBeUndefined();
+    choice = 'indentation';
+    expect(fold(brace)).toBeUndefined();
+  });
+
+  it('foldsOpenDocumentsAgain_onRequest', () => {
+    const lines: readonly string[] = ['class Program', '{', '}'];
+    const providers: Map<string, MonacoApi.languages.FoldingRangeProvider> = new Map<
+      string,
+      MonacoApi.languages.FoldingRangeProvider
+    >();
+    const refresh: () => void = registerBraceFolding(registeringMonaco(lines, providers));
+    let fired: number = 0;
+    providers.get('*')?.onDidChange?.((): void => {
+      fired += 1;
+    });
+
+    refresh();
+
+    expect(fired).toBe(1);
   });
 });

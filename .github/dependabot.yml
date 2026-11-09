@@ -43,6 +43,11 @@ updates:
         update-types: ['version-update:semver-major']
       - dependency-name: '@vitest/*'
         update-types: ['version-update:semver-major']
+      # The root copy of the Claude Agent SDK only type-checks and tests the Claude harness plugin, so
+      # it must be exactly the version that plugin ships (#1078). A bump of it alone can never pass;
+      # the SDK moves with a plugin release, which updates the plugin, this copy and the shipped
+      # lockfile together (#1127). Security updates still arrive.
+      - dependency-name: '@anthropic-ai/claude-agent-sdk'
 
   - package-ecosystem: github-actions
     directory: /

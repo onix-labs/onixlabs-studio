@@ -10,11 +10,15 @@ import {
   OutputEmitterRef,
   signal,
   Signal,
+  viewChild,
   WritableSignal,
 } from '@angular/core';
 import { gemoji } from 'gemoji';
 import { Log } from '@shared/angular/services/log/log';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
+import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 
@@ -188,7 +192,7 @@ const RECENT_KEY: string = 'markdown.recent-emoji';
  */
 @Component({
   selector: 'app-markdown-emoji-modal',
-  imports: [Modal, ModalContent],
+  imports: [Button, ButtonRow, Modal, ModalContent, TextField],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './insert-modal.scss',
   styles: [
@@ -248,7 +252,7 @@ const RECENT_KEY: string = 'markdown.recent-emoji';
         text-transform: uppercase;
         letter-spacing: 0.05em;
         color: var(--welcome-muted-foreground-color);
-        background: var(--body-background-color);
+        background: var(--modal-panel-background-color);
       }
 
       .emoji-grid {
@@ -288,20 +292,24 @@ const RECENT_KEY: string = 'markdown.recent-emoji';
     `,
   ],
   template: `
-    <app-modal [open]="open()" [width]="32" ariaLabel="Insert Emoji" (dismiss)="cancel()">
+    <app-modal
+      [open]="open()"
+      [width]="32"
+      ariaLabel="Insert Emoji"
+      [frameless]="true"
+      (dismiss)="cancel()"
+    >
       <ng-template appModalContent>
         <h2 class="insert-modal__title">Insert Emoji</h2>
 
         <div class="insert-modal__field">
-          <label class="insert-modal__label" for="emoji-search">Search</label>
-          <input
-            #searchInput
-            id="emoji-search"
-            class="insert-modal__input"
-            type="text"
+          <app-text-field
+            class="insert-modal__search"
+            kind="search"
+            variant="floating"
+            label="Search"
             placeholder="smile, heart, rocket…"
-            [value]="query()"
-            (input)="query.set(searchInput.value)"
+            [(value)]="query"
           />
         </div>
 
@@ -322,7 +330,7 @@ const RECENT_KEY: string = 'markdown.recent-emoji';
           </div>
         }
 
-        <div class="emoji-scroll" (scroll)="onScroll()">
+        <div #scroller class="emoji-scroll" (scroll)="onScroll()">
           @if (query().length > 0) {
             @if (searchResults().length > 0) {
               <div class="emoji-grid">
@@ -339,7 +347,10 @@ const RECENT_KEY: string = 'markdown.recent-emoji';
                 }
               </div>
             } @else {
-              <p class="emoji-empty">No emoji match “{{ query() }}”.</p>
+              <p class="emoji-empty">
+                No emoji match <strong>{{ query() }}</strong
+                >.
+              </p>
             }
           } @else {
             @if (recentEntries().length > 0) {
@@ -381,6 +392,10 @@ const RECENT_KEY: string = 'markdown.recent-emoji';
             }
           }
         </div>
+
+        <app-button-row class="insert-modal__actions">
+          <app-button variant="none" label="Cancel" (click)="cancel()" />
+        </app-button-row>
       </ng-template>
     </app-modal>
   `,
@@ -397,9 +412,11 @@ export class MarkdownEmojiModal {
   private readonly log: Log = inject(Log);
 
   /**
-   * Holds this component's host element, used to find the scroll container and its sections.
+   * Holds the scroll container. A query rather than a lookup under the host: the modal's content
+   * renders in the modal's own window, so nothing of it sits beneath this component's host element.
    */
-  private readonly host: ElementRef<HTMLElement> = inject(ElementRef) as ElementRef<HTMLElement>;
+  private readonly scroller: Signal<ElementRef<HTMLElement> | undefined> =
+    viewChild<ElementRef<HTMLElement>>('scroller');
 
   /**
    * Holds the category whose section is currently at the top of the scroll area, driving the active
@@ -511,12 +528,11 @@ export class MarkdownEmojiModal {
    * @param category The category to scroll to.
    */
   protected scrollTo(category: string): void {
-    const root: HTMLElement = this.host.nativeElement;
-    const container: HTMLElement | null = root.querySelector<HTMLElement>('.emoji-scroll');
-    const section: HTMLElement | null = root.querySelector<HTMLElement>(
+    const container: HTMLElement | undefined = this.scroller()?.nativeElement;
+    const section: HTMLElement | null | undefined = container?.querySelector<HTMLElement>(
       `[data-category="${category}"]`,
     );
-    if (container !== null && section !== null) {
+    if (container !== undefined && section !== null && section !== undefined) {
       container.scrollTop = section.offsetTop;
     }
     this.activeCategory.set(category);
@@ -527,9 +543,8 @@ export class MarkdownEmojiModal {
    * highlighted.
    */
   protected onScroll(): void {
-    const container: HTMLElement | null =
-      this.host.nativeElement.querySelector<HTMLElement>('.emoji-scroll');
-    if (container === null) {
+    const container: HTMLElement | undefined = this.scroller()?.nativeElement;
+    if (container === undefined) {
       return;
     }
     const sections: HTMLElement[] = Array.from(

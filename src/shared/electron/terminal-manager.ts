@@ -16,8 +16,15 @@ import {
   TerminalKind,
   TerminalReplay,
 } from '@shared/api/terminal-channels';
+import { TerminalFlowControl } from './terminal-flow-control';
 import { TerminalScrollback } from './terminal-scrollback';
-import { allowsInput, buildSpawnSpec, SpawnSpec } from './terminal-spawn';
+import {
+  allowsInput,
+  buildSpawnSpec,
+  interactiveShellArgs,
+  sameProgram,
+  SpawnSpec,
+} from './terminal-spawn';
 
 /**
  * Specifies the default terminal column count when none is provided.
@@ -84,6 +91,12 @@ export class TerminalManager {
   private readonly kinds: Map<string, TerminalKind> = new Map<string, TerminalKind>();
 
   /**
+   * Holds the executable each live session spawned, so a foreground program can be told from the
+   * shell it runs in.
+   */
+  private readonly spawned: Map<string, string> = new Map<string, string>();
+
+  /**
    * Holds the pending SIGKILL escalation timers of terminating sessions, cleared when the process
    * exits within the grace period (or the session is disposed).
    */
@@ -95,6 +108,11 @@ export class TerminalManager {
    */
   private readonly pendingData: Map<string, { data: string; timer: NodeJS.Timeout | null }> =
     new Map<string, { data: string; timer: NodeJS.Timeout | null }>();
+
+  /**
+   * Holds the backpressure on each session's output.
+   */
+  private readonly flow: TerminalFlowControl = new TerminalFlowControl();
 
   /**
    * Initializes a new instance of the {@link TerminalManager} class.
@@ -119,6 +137,14 @@ export class TerminalManager {
         typeof id === 'string' && typeof data === 'string' ? this.write(id, data) : false,
     );
     ipcMain.handle(
+      TerminalChannel.Acknowledge,
+      (_event: IpcMainInvokeEvent, id: unknown, length: unknown): void => {
+        if (typeof id === 'string' && typeof length === 'number' && Number.isFinite(length)) {
+          this.flow.acknowledge(id, Math.max(0, length));
+        }
+      },
+    );
+    ipcMain.handle(
       TerminalChannel.Resize,
       (_event: IpcMainInvokeEvent, id: unknown, cols: unknown, rows: unknown): boolean =>
         typeof id === 'string' && this.isDimension(cols) && this.isDimension(rows)
@@ -128,13 +154,20 @@ export class TerminalManager {
     ipcMain.handle(TerminalChannel.Dispose, (_event: IpcMainInvokeEvent, id: unknown): boolean =>
       typeof id === 'string' ? this.dispose(id) : false,
     );
-    ipcMain.handle(TerminalChannel.Terminate, (_event: IpcMainInvokeEvent, id: unknown): boolean =>
-      typeof id === 'string' ? this.terminate(id) : false,
+    ipcMain.handle(
+      TerminalChannel.Terminate,
+      (_event: IpcMainInvokeEvent, id: unknown, grace: unknown): boolean =>
+        typeof id === 'string' ? this.terminate(id, grace) : false,
     );
     ipcMain.handle(
       TerminalChannel.GetCwd,
       (_event: IpcMainInvokeEvent, id: unknown): Promise<string | null> =>
         typeof id === 'string' ? this.getCwd(id) : Promise.resolve(null),
+    );
+    ipcMain.handle(
+      TerminalChannel.GetForeground,
+      (_event: IpcMainInvokeEvent, id: unknown): string | null =>
+        typeof id === 'string' ? this.foreground(id) : null,
     );
     ipcMain.handle(TerminalChannel.ListShells, (): readonly ShellInfo[] => this.listShells());
     ipcMain.handle(
@@ -160,6 +193,7 @@ export class TerminalManager {
     this.terminals.clear();
     this.scrollback.clear();
     this.kinds.clear();
+    this.spawned.clear();
     for (const timer of this.killTimers.values()) {
       clearTimeout(timer);
     }
@@ -190,12 +224,15 @@ export class TerminalManager {
       return { success: false, error: 'Invalid terminal options' };
     }
     const candidate: {
+      earlierOutput?: unknown;
       id?: unknown;
       kind?: unknown;
       cols?: unknown;
       rows?: unknown;
       cwd?: unknown;
       shell?: unknown;
+      shellArguments?: unknown;
+      login?: unknown;
       command?: unknown;
       args?: unknown;
       env?: unknown;
@@ -248,10 +285,21 @@ export class TerminalManager {
     const rows: number = this.isDimension(candidate.rows) ? candidate.rows : DEFAULT_ROWS;
     const cwd: string =
       typeof candidate.cwd === 'string' && candidate.cwd.length > 0 ? candidate.cwd : os.homedir();
-    const spec: SpawnSpec = buildSpawnSpec(process.platform, shell, command, args);
+    const shellArgs: readonly string[] | null = interactiveShellArgs(
+      process.platform,
+      typeof candidate.shellArguments === 'string' ? candidate.shellArguments : undefined,
+      candidate.login === true,
+    );
+    if (shellArgs === null) {
+      return {
+        success: false,
+        error: 'Shell Arguments could not be read: check for an unclosed quote.',
+      };
+    }
+    const spec: SpawnSpec = buildSpawnSpec(process.platform, shell, command, args, shellArgs);
     logger.debug(
       'TerminalManager.create',
-      `Spawning ${kind} session ${id}: file ${spec.file}, cwd ${cwd}, ${cols}x${rows}`,
+      `Spawning ${kind} session ${id}: file ${spec.file}, ${spec.args.length} args, cwd ${cwd}, ${cols}x${rows}`,
     );
 
     try {
@@ -266,6 +314,9 @@ export class TerminalManager {
       // A fresh spawn starts a fresh scrollback record, so a session re-created under a reused
       // identifier never replays its predecessor's output.
       this.scrollback.reset(id);
+      if (typeof candidate.earlierOutput === 'string' && candidate.earlierOutput.length > 0) {
+        this.scrollback.append(id, `${candidate.earlierOutput}\r\n`);
+      }
 
       if (command !== undefined) {
         // Echo what the session runs, like a prompt would: without it, a command that fails before
@@ -277,7 +328,17 @@ export class TerminalManager {
         this.sendToWindow(TerminalChannel.Data, id, header, headerSeq);
       }
 
-      terminal.onData((data: string): void => this.emitData(id, data));
+      this.flow.track(id, terminal);
+      terminal.onData((data: string): void => {
+        // A disposed session was removed (and possibly replaced under the same id): its last output
+        // must not land in the successor's scrollback, nor bring a dead session's record back. An
+        // exited one keeps its kind until disposed, so what a process printed last still lands.
+        const current: pty.IPty | undefined = this.terminals.get(id);
+        if (current === undefined ? !this.kinds.has(id) : current !== terminal) {
+          return;
+        }
+        this.emitData(id, data);
+      });
 
       terminal.onExit((event: { exitCode: number; signal?: number }): void => {
         pidJournal()?.unregister(terminal.pid);
@@ -304,6 +365,7 @@ export class TerminalManager {
         this.scrollback.markExited(id, event.exitCode, endedBy);
         this.sendToWindow(TerminalChannel.Exit, id, event.exitCode, endedBy);
         this.terminals.delete(id);
+        this.flow.forget(id);
         logger.info(
           'TerminalManager',
           `Terminal ${id} exited (code ${event.exitCode}${endedBy !== null ? `, signal ${endedBy}` : ''})`,
@@ -312,6 +374,7 @@ export class TerminalManager {
 
       this.terminals.set(id, terminal);
       this.kinds.set(id, kind);
+      this.spawned.set(id, spec.file);
       pidJournal()?.register(terminal.pid, 'terminal', spec.file);
       logger.info(
         'TerminalManager',
@@ -363,8 +426,14 @@ export class TerminalManager {
     if (!allowsInput(this.kinds.get(id) ?? 'shell', data)) {
       return false;
     }
-    terminal.write(data);
-    return true;
+    try {
+      terminal.write(data);
+      return true;
+    } catch (error: unknown) {
+      // The process can die between the lookup and the write; the exit event reports that.
+      logger.debug('TerminalManager.write', `Write to ${id} failed`, error);
+      return false;
+    }
   }
 
   /**
@@ -374,9 +443,10 @@ export class TerminalManager {
    * a session leader, so signalling its negated pid reaches the whole group a non-interactive shell
    * runs its children in.
    * @param id The terminal identifier.
+   * @param grace How many milliseconds the process has to end, or the default when not a usable number.
    * @returns Returns true when the session exists and was signalled.
    */
-  private terminate(id: string): boolean {
+  private terminate(id: string, grace?: unknown): boolean {
     const terminal: pty.IPty | undefined = this.terminals.get(id);
     if (terminal === undefined) {
       return false;
@@ -400,7 +470,7 @@ export class TerminalManager {
             );
             signalProcessTree(pid, 'SIGKILL');
           }
-        }, TERMINATE_GRACE_MS),
+        }, graceOf(grace)),
       );
     }
     return true;
@@ -442,6 +512,7 @@ export class TerminalManager {
     this.pendingData.delete(id);
     const hadScrollback: boolean = this.scrollback.delete(id);
     this.kinds.delete(id);
+    this.spawned.delete(id);
     const pendingKill: NodeJS.Timeout | undefined = this.killTimers.get(id);
     if (pendingKill !== undefined) {
       clearTimeout(pendingKill);
@@ -456,6 +527,7 @@ export class TerminalManager {
     pidJournal()?.unregister(terminal.pid);
     killProcessTree(terminal.pid, TERMINATE_GRACE_MS);
     this.terminals.delete(id);
+    this.flow.forget(id);
     logger.info('TerminalManager', `Disposed terminal ${id} (pid ${terminal.pid})`);
     return true;
   }
@@ -486,6 +558,26 @@ export class TerminalManager {
     }
 
     return null;
+  }
+
+  /**
+   * Gets the program a session runs in the foreground, when it is not the shell itself: what closing
+   * the session would stop. A run or task session's command counts as such a program while it runs.
+   * @param id The terminal identifier.
+   * @returns Returns the program's name, or null when only the shell runs or the session has ended.
+   */
+  public foreground(id: string): string | null {
+    const terminal: pty.IPty | undefined = this.terminals.get(id);
+    if (terminal === undefined) {
+      return null;
+    }
+    const running: string = path.basename(terminal.process);
+    if ((this.kinds.get(id) ?? 'shell') !== 'shell') {
+      return running.length > 0 ? running : 'a program';
+    }
+    const shell: string = path.basename(this.spawned.get(id) ?? '');
+    // Windows reports the shell as the process whatever runs in it, so nothing reads as running there.
+    return running.length === 0 || sameProgram(running, shell) ? null : running;
   }
 
   /**
@@ -643,6 +735,7 @@ export class TerminalManager {
       // Leading edge: send now, open the window.
       const seq: number = this.scrollback.append(id, data);
       this.sendToWindow(TerminalChannel.Data, id, data, seq);
+      this.flow.sent(id, data.length);
       const entry: { data: string; timer: NodeJS.Timeout | null } = pending ?? {
         data: '',
         timer: null,
@@ -676,6 +769,7 @@ export class TerminalManager {
       pending.data = '';
       const seq: number = this.scrollback.append(id, chunk);
       this.sendToWindow(TerminalChannel.Data, id, chunk, seq);
+      this.flow.sent(id, chunk.length);
     }
   }
 
@@ -685,4 +779,15 @@ export class TerminalManager {
       window.webContents.send(channel, ...args);
     }
   }
+}
+
+/**
+ * Reads a stop's grace period from an untrusted value.
+ * @param grace The value the renderer sent.
+ * @returns Returns the milliseconds to wait, or the default when it is not a usable number.
+ */
+function graceOf(grace: unknown): number {
+  return typeof grace === 'number' && Number.isFinite(grace) && grace > 0
+    ? grace
+    : TERMINATE_GRACE_MS;
 }

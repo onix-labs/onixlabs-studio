@@ -8,7 +8,7 @@
   [class.multi-select--open]="open()"
   [class.multi-select--empty]="value().length === 0"
   [disabled]="disabled()"
-  [attr.aria-label]="ariaLabel()"
+  [attr.aria-label]="ariaLabel() ?? label()"
   [cdkMenuTriggerFor]="panel"
   [cdkMenuPosition]="menuPosition"
   (cdkMenuOpened)="onOpened()"
@@ -17,6 +17,9 @@
   <span class="multi-select__label">{{ faceLabel() }}</span>
   <app-icon class="multi-select__caret" [icon]="Icon.CARET_DOWN_FILL" [size]="0.8" />
 </button>
+@if (label(); as caption) {
+  <span class="multi-select__floating-label" aria-hidden="true">{{ caption }}</span>
+}
 
 <!-- `cdkMenu` must be this template's root node: on an inner element the CDK silently falls back to
      an inline menu, which never dismisses. Rows are the atom's own keep-open checkbox items, so a

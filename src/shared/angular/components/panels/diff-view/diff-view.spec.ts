@@ -1,20 +1,27 @@
-import { signal } from '@angular/core';
+import { Signal, signal } from '@angular/core';
+import {
+  SETTINGS_DEFAULTS,
+  SettingsKey,
+} from '@shared/angular/services/settings/settings-registry';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
 import { ResolvedThemeMode, Theme } from '@shared/angular/services/theme/theme';
 import { DiffView } from './diff-view';
+import { TEXT_EDITOR_SETTINGS as DEFAULT_SETTINGS } from '@shared/angular/services/settings/text-editor-settings.fixture';
 
 /**
  * The text-editor settings the stubbed {@link Settings} hands out.
  */
 const TEXT_EDITOR_SETTINGS: TextEditorSettings = {
+  ...DEFAULT_SETTINGS,
   showLineNumbers: true,
   showMinimap: false,
   currentLineHighlight: 'outline',
   colorBrackets: false,
   wordWrap: false,
   stickyScroll: false,
+  formatOnType: true,
   cursorBlinking: 'blink',
   cursorSmoothCaretAnimation: 'off',
   insertSpaces: true,
@@ -41,6 +48,7 @@ describe('DiffView', () => {
             ensureLoaded: (): Promise<void> => Promise.resolve(),
             getMonaco: (): undefined => undefined,
             getDiffEditorOptions: (): Record<string, unknown> => ({}),
+            getDiffLiveOptions: (): Record<string, unknown> => ({}),
             getThemeName: (): string => 'studio-dark',
             // Autocomplete (#1021) registers itself with the Monaco service as it starts.
             useAssist: (): void => undefined,
@@ -49,7 +57,12 @@ describe('DiffView', () => {
         { provide: Theme, useValue: { resolvedMode: signal<ResolvedThemeMode>('dark') } },
         {
           provide: Settings,
-          useValue: { globalTextEditor: signal<TextEditorSettings>(TEXT_EDITOR_SETTINGS) },
+          useValue: {
+            globalTextEditor: signal<TextEditorSettings>(TEXT_EDITOR_SETTINGS),
+            // Everything else reads its default (the notifications service, for one).
+            get: (key: SettingsKey): unknown => SETTINGS_DEFAULTS[key],
+            value: (key: SettingsKey): Signal<unknown> => signal<unknown>(SETTINGS_DEFAULTS[key]),
+          },
         },
       ],
     }).compileComponents();

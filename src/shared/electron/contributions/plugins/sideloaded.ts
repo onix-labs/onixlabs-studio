@@ -116,6 +116,7 @@ export function sideloadingState(): SideloadingState {
     inForce: sideloadingInForce(),
     locked,
     skipped,
+    directory: sideloadDirectory(),
   };
 }
 

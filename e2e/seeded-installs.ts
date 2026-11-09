@@ -188,6 +188,31 @@ export const FAKE_HARNESS_ID: string = 'e2e.live-harness';
 const FAKE_HARNESS_VERSION: string = '1.0.0';
 
 /**
+ * Gets the directory the fake harness is installed in.
+ * @param userDataDir The isolated userData directory.
+ * @returns Returns the install directory.
+ */
+function fakeHarnessDirectory(userDataDir: string): string {
+  return path.join(
+    userDataDir,
+    'lsp-servers',
+    FAKE_HARNESS_ID,
+    FAKE_HARNESS_VERSION,
+    `${process.platform}-${process.arch}`,
+  );
+}
+
+/**
+ * Gets the file whose presence keeps the fake harness in its handshake. Create it to hold the harness
+ * in start-up; remove it to let the harness finish starting.
+ * @param userDataDir The isolated userData directory.
+ * @returns Returns the file's path.
+ */
+export function fakeHarnessReadyGate(userDataDir: string): string {
+  return path.join(fakeHarnessDirectory(userDataDir), 'hold-ready');
+}
+
+/**
  * Seeds the fake live-session harness (`fake-live-harness.mjs`) as an installed plugin Studio manages.
  *
  * Its manifest is sideloaded so the catalogue knows it, but its payload is deliberately **not** beside
@@ -229,13 +254,7 @@ export function seedFakeHarness(userDataDir: string): void {
       requires: [],
     }),
   );
-  const installDir: string = path.join(
-    userDataDir,
-    'lsp-servers',
-    FAKE_HARNESS_ID,
-    FAKE_HARNESS_VERSION,
-    `${process.platform}-${process.arch}`,
-  );
+  const installDir: string = fakeHarnessDirectory(userDataDir);
   const entryPoint: string = path.join(installDir, 'harness.mjs');
   fs.mkdirSync(installDir, { recursive: true });
   fs.copyFileSync(path.join(__dirname, 'fake-live-harness.mjs'), entryPoint);
@@ -246,6 +265,99 @@ export function seedFakeHarness(userDataDir: string): void {
       { id: FAKE_HARNESS_ID, version: FAKE_HARNESS_VERSION, installedPath: entryPoint },
     ]),
   );
+}
+
+/**
+ * Holds the fake language server's plugin identifier.
+ */
+export const FAKE_LANGUAGE_SERVER_ID: string = 'e2e.language-server';
+
+/**
+ * Seeds the fake language server (`fake-language-server.mjs`) as an installed plugin serving Python.
+ * Its record and payload are written the way {@link seedFakeHarness} writes the harness's.
+ * @param userDataDir The isolated userData directory.
+ */
+export function seedFakeLanguageServer(userDataDir: string): void {
+  const manifestDir: string = path.join(userDataDir, 'plugins', FAKE_LANGUAGE_SERVER_ID);
+  fs.mkdirSync(manifestDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(manifestDir, 'plugin.json'),
+    JSON.stringify({
+      id: FAKE_LANGUAGE_SERVER_ID,
+      name: 'E2E Language Server',
+      description: 'A language server to kill, for end-to-end tests.',
+      version: '1.0.0',
+      apiVersion: '1.17.0',
+      provision: {
+        kind: 'npm',
+        lockfileUrl: 'https://example.invalid/never-published.lock.json',
+        sha256: '0'.repeat(64),
+        executablePath: 'server.mjs',
+      },
+      contributes: {
+        languageServers: [
+          {
+            id: FAKE_LANGUAGE_SERVER_ID,
+            displayName: 'E2E Language Server',
+            languages: ['python'],
+            priority: 1000,
+            command: { kind: 'node' },
+            entryPoint: 'server.mjs',
+          },
+        ],
+      },
+      requires: [],
+    }),
+  );
+  const installDir: string = path.join(
+    userDataDir,
+    'lsp-servers',
+    FAKE_LANGUAGE_SERVER_ID,
+    '1.0.0',
+    `${process.platform}-${process.arch}`,
+  );
+  const entryPoint: string = path.join(installDir, 'server.mjs');
+  fs.mkdirSync(installDir, { recursive: true });
+  fs.copyFileSync(path.join(__dirname, 'fake-language-server.mjs'), entryPoint);
+  fs.writeFileSync(path.join(installDir, '.studio-install-complete'), new Date(0).toISOString());
+  fs.writeFileSync(
+    path.join(userDataDir, 'plugins.json'),
+    JSON.stringify([{ id: FAKE_LANGUAGE_SERVER_ID, version: '1.0.0', installedPath: entryPoint }]),
+  );
+}
+
+/**
+ * Holds a credential-free connection pointed at the fake harness, as the user's settings store it.
+ */
+export const FAKE_HARNESS_CONNECTION: Readonly<Record<string, unknown>> = {
+  id: 'e2e-connection',
+  kind: 'e2e',
+  label: 'E2E',
+  auth: 'none',
+  harnessId: FAKE_HARNESS_ID,
+  models: [{ id: 'e2e-model', label: 'E2E Model', contextWindow: 100_000 }],
+  defaultModelId: 'e2e-model',
+};
+
+/**
+ * Makes the fake harness's connection the user's own, so the agent surfaces find it the way they find
+ * any other. Settings live in local storage, so there is no file to seed. Written from the welcome window
+ * because the main window follows a change another window makes; reloading the main window instead
+ * would take the welcome window with it, which reads as the user closing Studio and leaves the next quit
+ * ignored for as long as that close is being confirmed.
+ * @param welcome The welcome window.
+ */
+export async function adoptFakeHarnessConnection(welcome: Page): Promise<void> {
+  await welcome.evaluate((connection: Readonly<Record<string, unknown>>): void => {
+    localStorage.setItem(
+      'settings',
+      JSON.stringify({
+        'ai.connections': [connection],
+        'ai.activeConnectionId': connection['id'],
+        'ai.connectionsFormat': 2,
+      }),
+    );
+  }, FAKE_HARNESS_CONNECTION);
 }
 
 /**

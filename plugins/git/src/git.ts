@@ -458,10 +458,15 @@ export class GitVersionControl {
         );
       case 'commit':
         return typeof params['message'] === 'string' && params['message'].trim().length > 0
-          ? this.mutate(root, ['commit', '-m', params['message']])
+          ? this.mutate(root, ['commit', ...commitOptions(params), '-m', params['message']])
           : Promise.resolve(fail('A commit message is required'));
       case 'stash':
-        return this.mutate(root, ['stash', 'push']);
+        return this.mutate(
+          root,
+          params['includeUntracked'] === true
+            ? ['stash', 'push', '--include-untracked']
+            : ['stash', 'push'],
+        );
       case 'stashApply':
         return this.stashCommand(root, 'apply', params['index']);
       case 'stashPop':
@@ -483,13 +488,18 @@ export class GitVersionControl {
       case 'setUpstream':
         return this.setUpstream(root, params['branch'], params['upstream']);
       case 'fetch':
-        return this.network(root, ['fetch', '--all', '--prune']);
+        // Prune on Fetch; a host that says nothing keeps the old always-prune.
+        return this.network(
+          root,
+          params['prune'] === false ? ['fetch', '--all'] : ['fetch', '--all', '--prune'],
+          networkTimeout(params),
+        );
       case 'fetchRef':
         return this.fetchRef(root, params['remote'], params['sourceRef'], params['localBranch']);
       case 'pull':
-        return this.network(root, ['pull']);
+        return this.network(root, ['pull', ...pullOptions(params['mode'])], networkTimeout(params));
       case 'push':
-        return this.push(root, params['target']);
+        return this.push(root, params['target'], networkTimeout(params));
       case 'fetchRemote':
         return isSafeOperand(params['remote'])
           ? this.network(root, ['fetch', params['remote']])
@@ -695,24 +705,22 @@ export class GitVersionControl {
     if (confined === null || confined.length === 0) {
       return fail('Invalid path');
     }
-    const tracked: Set<string> = await this.listed(root, ['ls-files'], confined);
-    const untracked: Set<string> = await this.listed(
+    const tracked: Set<string> = await this.listed(root, ['ls-files', '-z'], confined);
+    const toDelete: Set<string> = await this.listed(
       root,
-      ['ls-files', '--others', '--exclude-standard'],
+      ['ls-files', '--others', '--exclude-standard', '-z'],
       confined,
     );
-    const toRestore: string[] = confined.filter((candidate: string): boolean =>
-      tracked.has(candidate),
-    );
-    // An untracked directory is discarded by deleting it; ls-files lists the files inside it, so a
-    // candidate counts as untracked when it is listed itself or is a listed file's ancestor.
-    const toDelete: string[] = confined.filter(
-      (candidate: string): boolean =>
-        !tracked.has(candidate) &&
-        [...untracked].some(
-          (listed: string): boolean => listed === candidate || listed.startsWith(`${candidate}/`),
-        ),
-    );
+    // A folder is discarded by what git lists under it, never by removing the folder: that takes its
+    // tracked files and its ignored ones (a `.env`, a `node_modules`) with it, and neither is the
+    // user's to lose here.
+    const toRestore: string[] = confined.filter((candidate: string): boolean => {
+      const relative: string = path.relative(root, path.resolve(root, candidate));
+      return [...tracked].some(
+        (listed: string): boolean =>
+          relative.length === 0 || listed === relative || listed.startsWith(`${relative}/`),
+      );
+    });
     for (const relative of toDelete) {
       try {
         await rm(path.resolve(root, relative), { recursive: true, force: true });
@@ -842,7 +850,9 @@ export class GitVersionControl {
   ): Promise<Set<string>> {
     const run: GitRun = await this.git(root, [...listing, '--', ...confined]);
     return new Set<string>(
-      run.success ? run.stdout.split('\n').filter((line: string): boolean => line.length > 0) : [],
+      run.success
+        ? run.stdout.split('\0').filter((entry: string): boolean => entry.length > 0)
+        : [],
     );
   }
 
@@ -988,9 +998,9 @@ export class GitVersionControl {
    * @param target Where to push, or null for the upstream.
    * @returns Returns the outcome.
    */
-  private push(root: string, target: unknown): Promise<Outcome> {
+  private push(root: string, target: unknown, timeoutMs: number): Promise<Outcome> {
     if (target === null || target === undefined) {
-      return this.network(root, ['push']);
+      return this.network(root, ['push'], timeoutMs);
     }
     const where: Record<string, unknown> =
       typeof target === 'object' ? (target as Record<string, unknown>) : {};
@@ -1002,6 +1012,7 @@ export class GitVersionControl {
       where['setUpstream'] === false
         ? ['push', where['remote'], where['branch']]
         : ['push', '--set-upstream', where['remote'], where['branch']],
+      timeoutMs,
     );
   }
 
@@ -1162,8 +1173,15 @@ export class GitVersionControl {
       return fail('Invalid directory');
     }
     const target: string = path.resolve(directory);
+    // Default Branch Name for New Repositories; without one, git's own init.defaultBranch applies.
+    const branch: unknown = params['defaultBranch'];
+    const named: readonly string[] =
+      typeof branch === 'string' && branch.trim().length > 0 && isSafeOperand(branch.trim())
+        ? ['--initial-branch', branch.trim()]
+        : [];
     const made: GitRun = await this.git(path.dirname(target), [
       'init',
+      ...named,
       '--',
       path.basename(target),
     ]);
@@ -1171,8 +1189,9 @@ export class GitVersionControl {
   }
 
   /**
-   * Copies a repository into a new directory, then checks out a branch when one is named — creating
-   * it from the default branch when asked to.
+   * Copies a repository into a new directory — with its submodules, and with only the latest commit
+   * of each branch, when asked — then checks out a branch when one is named, creating it from the
+   * default branch when asked to.
    * @param params The clone's parameters, untrusted.
    * @returns Returns the outcome.
    */
@@ -1186,10 +1205,26 @@ export class GitVersionControl {
     if (branch !== undefined && !isSafeOperand(branch)) {
       return fail('Invalid branch name');
     }
+    const depth: unknown = params['depth'];
+    if (
+      depth !== undefined &&
+      !(typeof depth === 'number' && Number.isInteger(depth) && depth > 0)
+    ) {
+      return fail('Invalid clone depth');
+    }
     const target: string = path.resolve(directory);
     const cloned: GitRun = await this.git(
       path.dirname(target),
-      ['clone', '--', url, path.basename(target)],
+      [
+        'clone',
+        ...(params['recurseSubmodules'] === true ? ['--recurse-submodules'] : []),
+        // A shallow clone otherwise fetches the default branch alone, and the branch checked out next
+        // would not be found; every branch's latest commit is fetched instead.
+        ...(depth === undefined ? [] : ['--depth', String(depth), '--no-single-branch']),
+        '--',
+        url,
+        path.basename(target),
+      ],
       GIT_CLONE_TIMEOUT_MS,
       GIT_NETWORK_ENV,
     );
@@ -1283,8 +1318,12 @@ export class GitVersionControl {
    * @param args The git arguments.
    * @returns Returns the outcome.
    */
-  private async network(root: string, args: readonly string[]): Promise<Outcome> {
-    const run: GitRun = await this.git(root, args, GIT_NETWORK_TIMEOUT_MS, GIT_NETWORK_ENV);
+  private async network(
+    root: string,
+    args: readonly string[],
+    timeoutMs: number = GIT_NETWORK_TIMEOUT_MS,
+  ): Promise<Outcome> {
+    const run: GitRun = await this.git(root, args, timeoutMs, GIT_NETWORK_ENV);
     if (!run.success) {
       debug('GitVersionControl', `Network git ${args[0]} failed`);
     }
@@ -1416,4 +1455,57 @@ function ok(result: unknown): Outcome {
  */
 function fail(error: string, code?: VcsErrorCode): Outcome {
   return { ok: false, error, ...(code === undefined ? {} : { code }) };
+}
+
+/**
+ * Reads the network timeout a request carries (Git Network Timeout): a whole number of milliseconds,
+ * 0 for no limit, or the plugin's own default when the host sends none.
+ * @param params The request's parameters, untrusted.
+ * @returns Returns the timeout in milliseconds; 0 runs without one.
+ */
+export function networkTimeout(params: Record<string, unknown>): number {
+  const value: unknown = params['timeoutMs'];
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : GIT_NETWORK_TIMEOUT_MS;
+}
+
+/**
+ * Builds the flags a pull takes for its mode (Pull Mode). Following git's configuration takes none.
+ * @param mode The requested mode, untrusted.
+ * @returns Returns the flags.
+ */
+export function pullOptions(mode: unknown): readonly string[] {
+  switch (mode) {
+    case 'merge':
+      return ['--no-rebase'];
+    case 'rebase':
+      return ['--rebase'];
+    case 'ff-only':
+      return ['--ff-only'];
+    default:
+      return [];
+  }
+}
+
+/**
+ * Builds the flags a commit takes for Sign Commits, Add Signed-off-by and Run Commit Hooks. Anything
+ * absent leaves git's configuration and the repository's hooks in charge.
+ * @param params The request's parameters, untrusted.
+ * @returns Returns the flags.
+ */
+export function commitOptions(params: Record<string, unknown>): readonly string[] {
+  const flags: string[] = [];
+  if (params['sign'] === 'always') {
+    flags.push('--gpg-sign');
+  } else if (params['sign'] === 'never') {
+    flags.push('--no-gpg-sign');
+  }
+  if (params['signoff'] === true) {
+    flags.push('--signoff');
+  }
+  if (params['hooks'] === false) {
+    flags.push('--no-verify');
+  }
+  return flags;
 }

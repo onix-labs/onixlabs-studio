@@ -46,6 +46,8 @@ describe('DiffOpener', () => {
   let loadedFiles: GitFileChange[];
   let bound: WritableSignal<boolean>;
   let unstaged: WritableSignal<readonly GitFileChange[]>;
+  let staged: WritableSignal<readonly GitFileChange[]>;
+  let content: FileDiff;
   let afterRefresh: readonly GitFileChange[] | null;
   let refreshes: number;
 
@@ -66,6 +68,8 @@ describe('DiffOpener', () => {
     loadedFiles = [];
     bound = signal<boolean>(true);
     unstaged = signal<readonly GitFileChange[]>([]);
+    staged = signal<readonly GitFileChange[]>([]);
+    content = { original: 'before', modified: 'after' };
     afterRefresh = null;
     refreshes = 0;
     const repositoryStub: Pick<
@@ -74,12 +78,12 @@ describe('DiffOpener', () => {
     > = {
       loadDiff: (file: GitFileChange): Promise<FileDiff> => {
         loadedFiles.push(file);
-        return Promise.resolve({ original: 'before', modified: 'after' });
+        return Promise.resolve(content);
       },
       isBound: bound,
       info: signal<RepositoryInfo | null>({ root: '/repo', name: 'repo', trust: 'trusted' }),
       unstaged,
-      staged: signal<readonly GitFileChange[]>([]),
+      staged,
       conflicted: signal<readonly GitFileChange[]>([]),
       refreshStatus: (): Promise<void> => {
         refreshes += 1;
@@ -162,6 +166,76 @@ describe('DiffOpener', () => {
     const stored: GitFileChange | null = diffs.get(diffs.idForPath('src/app.ts'));
     expect(stored?.original).toBe('before');
     expect(stored?.modified).toBe('after');
+  });
+
+  describe('following the repository', () => {
+    /**
+     * Lets the fresh contents a reload asked for land.
+     */
+    async function settle(): Promise<void> {
+      TestBed.tick();
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+
+    it('closesTheDiff_onceTheFileIsCommitted', async () => {
+      unstaged.set([change('src/app.ts')]);
+      await settle();
+      opener.open(change('src/app.ts'));
+      await settle();
+
+      unstaged.set([]);
+      await settle();
+
+      expect(well().panels).not.toContain(diffs.idForPath('src/app.ts'));
+    });
+
+    it('readsTheContentsAfresh_whenTheFileChangesAgain', async () => {
+      unstaged.set([change('src/app.ts')]);
+      await settle();
+      opener.open(change('src/app.ts'));
+      await settle();
+
+      content = { original: 'before', modified: 'after, and then some' };
+      unstaged.set([{ ...change('src/app.ts'), additions: 2 }]);
+      await settle();
+
+      const stored: GitFileChange | null = diffs.get(diffs.idForPath('src/app.ts'));
+      expect(stored?.modified).toBe('after, and then some');
+      expect(stored?.additions).toBe(2);
+    });
+
+    it('showsTheStagedSide_onceTheWholeChangeIsStaged', async () => {
+      unstaged.set([change('src/app.ts')]);
+      await settle();
+      opener.open(change('src/app.ts'));
+      await settle();
+
+      unstaged.set([]);
+      staged.set([{ ...change('src/app.ts'), target: { kind: 'working', staged: true } }]);
+      await settle();
+
+      expect(diffs.get(diffs.idForPath('src/app.ts'))?.target).toEqual({
+        kind: 'working',
+        staged: true,
+      });
+      expect(well().panels).toContain(diffs.idForPath('src/app.ts'));
+    });
+
+    it('leavesACommitsDiffAlone', async () => {
+      const committed: GitFileChange = {
+        ...change('src/app.ts'),
+        target: { kind: 'commit', hash: 'abc123', parent: null },
+      };
+      opener.open(committed);
+      await settle();
+
+      unstaged.set([change('src/other.ts')]);
+      await settle();
+
+      expect(well().panels).toContain(diffs.idForPath('src/app.ts'));
+      expect(loadedFiles).toHaveLength(1);
+    });
   });
 
   describe('openPath', () => {

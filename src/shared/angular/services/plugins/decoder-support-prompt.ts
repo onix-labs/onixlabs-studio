@@ -9,6 +9,7 @@ import { installedContributions } from '@shared/api/plugin-channels';
 import { Log } from '@shared/angular/services/log/log';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Plugins } from './plugins';
+import { PluginSuggestions } from './plugin-suggestions';
 
 /**
  * Offers to install a decoder at the moment one is missed.
@@ -35,6 +36,11 @@ export class DecoderSupportPrompt {
    * Holds the notification surface the offer is raised on.
    */
   private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Holds whether plugin offers may be made, and which were turned down for good.
+   */
+  private readonly suggestions: PluginSuggestions = inject(PluginSuggestions);
 
   /**
    * Holds the structured logger.
@@ -117,6 +123,11 @@ export class DecoderSupportPrompt {
     // a choice here would be asking the user to compare two things they have not installed; choosing
     // between decoders belongs in Settings, once both are installed.
     const plugin: PluginSummary = candidates[0];
+    // Suggest Plugins for Missing Support off, or this offer turned down for good: say nothing.
+    const suggestion: string = `decoder-support:${format}`;
+    if (!this.suggestions.allows(suggestion)) {
+      return;
+    }
     this.offered.add(format);
     this.log.info('DecoderSupportPrompt', `Offering ${plugin.id} for '${format}'`);
     this.notifications.notify({
@@ -136,6 +147,7 @@ export class DecoderSupportPrompt {
             void this.plugins.installWithConsent(plugin.id);
           },
         },
+        this.suggestions.dontSuggestAgain(suggestion),
       ],
     });
   }

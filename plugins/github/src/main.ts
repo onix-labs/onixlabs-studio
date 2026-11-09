@@ -6,7 +6,7 @@
 // time — a slow listing must not hold up another panel's — and Studio correlates answers by `id`.
 import { createInterface, Interface } from 'node:readline';
 import { GitHubAuth, readGhToken } from './auth';
-import { GitHubHosting, Http, HttpResponse, Outcome } from './github';
+import { GitHubHosting, Http, HttpResponse, listOptions, Outcome } from './github';
 import { note } from './log';
 import {
   HOSTING_PROTOCOL_VERSION,
@@ -194,9 +194,9 @@ async function answer(op: string, params: unknown): Promise<Outcome<unknown>> {
     case 'describeRepository':
       return github.describeRepository(repository);
     case 'listPullRequests':
-      return github.listPullRequests(repository);
+      return github.listPullRequests(repository, listOptions(params));
     case 'listIssues':
-      return github.listIssues(repository);
+      return github.listIssues(repository, listOptions(params));
     case 'listIssueComments':
       return typeof issue === 'number'
         ? github.listIssueComments(repository, issue)
@@ -204,7 +204,7 @@ async function answer(op: string, params: unknown): Promise<Outcome<unknown>> {
     case 'listSubIssues':
       return typeof issue === 'number' ? github.listSubIssues(repository, issue) : malformed(op);
     case 'listCiRuns':
-      return github.listCiRuns(repository);
+      return github.listCiRuns(repository, listOptions(params));
     case 'rerunCiRun':
       return typeof runId === 'string'
         ? github.runCommand(repository, runId, 'rerun')

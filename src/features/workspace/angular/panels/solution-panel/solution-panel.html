@@ -3,8 +3,8 @@
     [query]="query()"
     searchPlaceholder="Search solution"
     [moreItems]="moreItems()"
-    [changesOnly]="changesOnlyToggle()"
-    (changesOnlyToggle)="toggleChangesOnly()"
+    [filter]="filterState()"
+    (filterToggle)="toggleFilter($event)"
     (queryChange)="onSearch($event)"
     (expandAll)="expandAll()"
     (collapseAll)="collapseAll()"
@@ -20,6 +20,7 @@
     [contextMenuFor]="contextMenuFor"
     [editingId]="renameTarget()?.key ?? null"
     [editValue]="renameTarget()?.label ?? ''"
+    [editSelection]="renameSelection()"
     (rowClick)="onRowClick($event)"
     (rowDoubleClick)="onRowOpen($event)"
     (rowActivate)="onRowOpen($event)"
@@ -30,7 +31,7 @@
     (editCommit)="commitRename($event)"
     (editCancel)="cancelRename()"
   >
-    <!-- A solution folder being renamed keeps its icon; the tree's field takes the place of the rest. -->
+    <!-- A row being renamed keeps its icon; the tree's field takes the place of the rest. -->
     <ng-template let-row let-editing="editing">
       @let r = rowOf(row);
       <app-icon
@@ -78,19 +79,47 @@
 <app-modal
   [open]="pendingAction() !== null"
   [width]="26"
+  [frameless]="true"
   ariaLabel="A build is already running"
   (dismiss)="cancelProjectActionRestart()"
 >
   <ng-template appModalContent>
-    <h2 class="solution-panel__confirm-title">A build is already running</h2>
+    <h2 class="solution-panel__confirm-title">A Build Is Already Running</h2>
     <p class="solution-panel__confirm-message">
-      Stop the running build and {{ pendingAction()?.label?.toLowerCase() }} “{{
-        pendingAction()?.project?.name
-      }}” instead? Its output stays in the Build terminal until the new build replaces it.
+      Stop the running build and {{ pendingAction()?.label?.toLowerCase() }}
+      <strong>{{ pendingAction()?.project?.name }}</strong> instead? Its output stays in the Build
+      terminal until the new build replaces it.
     </p>
     <app-button-row>
       <app-button variant="solid" label="Stop & Restart" (click)="confirmProjectActionRestart()" />
-      <app-button label="Cancel" (click)="cancelProjectActionRestart()" />
+      <app-button variant="none" label="Cancel" (click)="cancelProjectActionRestart()" />
+    </app-button-row>
+  </ng-template>
+</app-modal>
+
+<!-- Deleting a file or a folder on disk asks first, as in the File Explorer: the entries go to the
+     Trash where the platform has one, and what could not go there is reported afterwards. -->
+<app-modal
+  [open]="deleteTargets() !== null"
+  [width]="26"
+  [frameless]="true"
+  ariaLabel="Delete"
+  (dismiss)="cancelDelete()"
+>
+  <ng-template appModalContent>
+    <h2 class="solution-panel__confirm-title">{{ deleteTitle() }}</h2>
+    <p class="solution-panel__confirm-message">
+      @if (deletesPermanently()) {
+        This skips the Trash and cannot be undone.
+      } @else if ((deleteTargets()?.length ?? 0) > 1) {
+        They move to the Trash, so you can put them back from there if you need them.
+      } @else {
+        It moves to the Trash, so you can put it back from there if you need it.
+      }
+    </p>
+    <app-button-row>
+      <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDelete()" />
+      <app-button variant="none" label="Cancel" (click)="cancelDelete()" />
     </app-button-row>
   </ng-template>
 </app-modal>

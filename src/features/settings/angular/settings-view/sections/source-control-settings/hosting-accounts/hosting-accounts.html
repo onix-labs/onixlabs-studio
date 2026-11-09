@@ -27,28 +27,94 @@
             [disabled]="!canSave(row)"
             (click)="onSave(row)"
           />
-          <app-button label="Clear" [disabled]="!canClear(row)" (click)="onClear(row)" />
         }
-        <app-button label="Recheck" [disabled]="busy() !== null" (click)="refresh()" />
+        <app-button
+          variant="ghost"
+          label="Recheck"
+          [disabled]="busy() !== null"
+          (click)="refresh()"
+        />
+        @if (offersToken(row)) {
+          <app-button
+            variant="ghost"
+            tone="danger"
+            label="Clear"
+            [disabled]="!canClear(row)"
+            (click)="onClear(row)"
+          />
+        }
+        @if (row.account.custom === true) {
+          <app-button
+            variant="none"
+            label="Remove"
+            [ariaLabel]="'Remove ' + row.account.host"
+            [disabled]="busy() !== null"
+            (click)="removeHost(row)"
+          />
+        }
       </app-button-row>
     </span>
   </app-setting-row>
 } @empty {
   @if (loaded() && isAvailable) {
     <app-setting-row
-      label="Code hosting"
+      label="Code Hosting"
       description="No code-hosting plugin is installed, so pull requests, issues and workflow runs are unavailable. Install GitHub from the Plugin Manager."
     />
   }
 }
 
+<!-- Enterprise servers: offered only for plugins that can serve hosts beyond their own. -->
+@if (hostPlugins().length > 0) {
+  <app-setting-row
+    label="Enterprise Hosts"
+    description="Add a self-hosted server, such as GitHub Enterprise, to sign in to and work with like any other host."
+  >
+    @if (addingHost() === null) {
+      <app-button variant="ghost" label="Add Host" data-testid="add-host" (click)="openAddHost()" />
+    } @else {
+      <span class="hosting-accounts__controls">
+        <app-text-field
+          placeholder="github.example.com"
+          ariaLabel="Server address"
+          data-testid="add-host-address"
+          [value]="addingHost() ?? ''"
+          (valueChange)="addingHost.set($event)"
+          (enter)="addHost()"
+        />
+        @if (hostPlugins().length > 1) {
+          <app-dropdown
+            ariaLabel="Served by"
+            [options]="hostPlugins()"
+            [value]="addingPlugin()"
+            (valueChange)="addingPlugin.set($event)"
+          />
+        }
+        <app-button-row align="start">
+          <app-button
+            variant="solid"
+            label="Add"
+            data-testid="add-host-confirm"
+            [disabled]="(addingHost() ?? '').trim() === '' || busy() !== null"
+            (click)="addHost()"
+          />
+          <app-button variant="none" label="Cancel" (click)="addingHost.set(null)" />
+        </app-button-row>
+      </span>
+    }
+  </app-setting-row>
+  @if (addError(); as error) {
+    <p class="hosting-accounts__error" role="alert">{{ error }}</p>
+  }
+}
+
 @if (rows().length > 0) {
   <app-setting-row
-    label="How tokens are stored"
+    label="How Tokens Are Stored"
     description="A token you save is encrypted with your operating system's secure storage and kept in the main process. Studio hands it only to the plugin that serves its host, and it is never readable from this page once saved."
   />
   <app-setting-row
-    label="Signing in"
+    label="Signing In"
     description="Automatic uses the host's command-line login when you are signed in with it, and the token saved here otherwise. Choose one to use only that."
   />
 }

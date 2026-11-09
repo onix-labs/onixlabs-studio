@@ -1,37 +1,68 @@
 <app-ribbon-overflow>
   <app-ribbon-strip-group title="Container">
-    <app-ribbon-strip-button
+    <app-ribbon-strip-menu-button
       [icon]="Icon.PLAY"
       label="Start"
       tone="success"
-      [disabled]="!hasSelection() || selectionRunning()"
+      [disabled]="!canStart()"
+      [menuDisabled]="!hasTargets()"
+      [items]="startItems()"
       (action)="onStart()"
+      (selected)="onMenuItem($event)"
     />
-    <app-ribbon-strip-button
+    <app-ribbon-strip-menu-button
       [icon]="Icon.STOP"
       label="Stop"
       tone="warning"
-      [disabled]="!hasSelection() || !selectionRunning()"
+      [disabled]="!canStop()"
+      [menuDisabled]="!canPause()"
+      [items]="stopItems()"
       (action)="onStop()"
-    />
-    <app-ribbon-strip-button
-      [icon]="Icon.RESTART"
-      label="Restart"
-      [disabled]="!hasSelection()"
-      (action)="onRestart()"
-    />
-    <app-ribbon-strip-button
-      [icon]="selectionPaused() ? Icon.PLAY : Icon.PAUSE"
-      [label]="selectionPaused() ? 'Resume' : 'Pause'"
-      [disabled]="!hasSelection() || (!selectionRunning() && !selectionPaused())"
-      (action)="onTogglePause()"
+      (selected)="onMenuItem($event)"
     />
     <app-ribbon-strip-button
       [icon]="Icon.TRASH"
       label="Remove"
       tone="danger"
-      [disabled]="!hasSelection()"
+      [disabled]="!hasTargets()"
       (action)="onRemove()"
+    />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="View">
+    <app-ribbon-strip-button [icon]="Icon.REFRESH" label="Refresh" (action)="onRefresh()" />
+    <app-ribbon-strip-menu-button
+      [icon]="Icon.FILTER"
+      label="Show All"
+      [disabled]="!canShowAll()"
+      [menuDisabled]="!showingContainers()"
+      [items]="showItems()"
+      (action)="onShowAll()"
+      (selected)="onShowItem($event)"
+    />
+    <app-ribbon-strip-menu-button
+      [icon]="Icon.CLOSE"
+      label="Clear"
+      [disabled]="!canClear()"
+      [menuDisabled]="!showingContainers()"
+      [items]="selectItems()"
+      (action)="onClear()"
+      (selected)="onSelectItem($event)"
+    />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Image">
+    <app-ribbon-strip-button
+      [icon]="Icon.DOWNLOAD"
+      label="Pull Image"
+      [disabled]="!engineReady()"
+      (action)="onPullImage()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.PLAY"
+      label="Run"
+      [disabled]="!engineReady()"
+      (action)="onRunImage()"
     />
   </app-ribbon-strip-group>
 
@@ -50,10 +81,6 @@
         (action)="onShell()"
       />
     }
-  </app-ribbon-strip-group>
-
-  <app-ribbon-strip-group title="View">
-    <app-ribbon-strip-button [icon]="Icon.REFRESH" label="Refresh" (action)="onRefresh()" />
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Agent">

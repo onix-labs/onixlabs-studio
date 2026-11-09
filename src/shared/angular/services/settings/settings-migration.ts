@@ -141,7 +141,69 @@ function migrateAiConnections(overrides: SettingsOverrides): SettingsOverrides {
   // Showing notifications over the ribbon was retired; the stack always sits bottom right.
   delete result['notifications.position'];
 
+  // "Undo history" read as the app's undo depth but bounded only the window-layout stack, which
+  // nothing offers to undo; it goes until undo is designed per capability.
+  delete result['application.undoStackSize'];
+
+  // The print margin moved from Application to each capability that prints. Both inherit the one
+  // margin the user had chosen, so nothing prints differently after the upgrade.
+  moveKey(result, 'application.printMargin', [
+    'textEditor.printMargin',
+    'markdownEditor.printMargin',
+  ]);
+
+  // The log level moved to System Monitor, beside the logs it governs.
+  moveKey(result, 'application.logLevel', ['systemMonitor.logLevel']);
+
+  // Line height stopped being something a language can override: it is a multiple of the font size,
+  // and the font is global. A stored override would sit there unseen, so it goes.
+  dropLanguageOverride(result, 'lineHeight');
+
   return dropGuessedContextWindows(result);
+}
+
+/**
+ * Moves a stored value from a retired key to the keys that replaced it, filling each only where the
+ * user has no value of its own, then removes the retired key.
+ * @param overrides The override map, updated in place.
+ * @param from The retired key.
+ * @param to The keys that replaced it.
+ */
+function moveKey(overrides: Record<string, unknown>, from: string, to: readonly string[]): void {
+  if (!(from in overrides)) {
+    return;
+  }
+  for (const key of to) {
+    if (!(key in overrides)) {
+      overrides[key] = overrides[from];
+    }
+  }
+  delete overrides[from];
+}
+
+/**
+ * Removes one field from every language's stored overrides, dropping a language left with none.
+ * @param overrides The override map, updated in place.
+ * @param field The per-language field that can no longer be overridden.
+ */
+function dropLanguageOverride(overrides: Record<string, unknown>, field: string): void {
+  const stored: unknown = overrides['textEditor.languageOverrides'];
+  if (typeof stored !== 'object' || stored === null || Array.isArray(stored)) {
+    return;
+  }
+  const kept: Record<string, unknown> = {};
+  for (const [language, values] of Object.entries(stored as Record<string, unknown>)) {
+    if (typeof values !== 'object' || values === null || Array.isArray(values)) {
+      kept[language] = values;
+      continue;
+    }
+    const rest: Record<string, unknown> = { ...(values as Record<string, unknown>) };
+    delete rest[field];
+    if (Object.keys(rest).length > 0) {
+      kept[language] = rest;
+    }
+  }
+  overrides['textEditor.languageOverrides'] = kept;
 }
 
 /**

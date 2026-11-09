@@ -1,9 +1,199 @@
 import {
   codeActionSupportOf,
   executeCommandsOf,
+  formattingSupportOf,
+  inlayHintSupportOf,
+  autoInsertTriggersOf,
+  codeLensSupportOf,
+  structureSupportOf,
+  navigationSupportOf,
   renameSupportOf,
   semanticLegendOf,
+  fileRenameFiltersOf,
 } from './lsp-capabilities';
+
+describe('formattingSupportOf (#1141)', () => {
+  it('readsRoslynsFormatters_andItsOnTypeTriggerCharacters', () => {
+    // Exactly what Roslyn 5.4/5.13 advertise.
+    expect(
+      formattingSupportOf({
+        documentFormattingProvider: true,
+        documentRangeFormattingProvider: true,
+        documentOnTypeFormattingProvider: {
+          firstTriggerCharacter: '}',
+          moreTriggerCharacter: [';', '\n'],
+        },
+      }),
+    ).toEqual({ document: true, range: true, onTypeTriggers: ['}', ';', '\n'] });
+  });
+
+  it('acceptsProviderOptionObjects_andReadsAbsenceAsNotFormatting', () => {
+    expect(formattingSupportOf({ documentFormattingProvider: { workDoneProgress: true } })).toEqual(
+      {
+        document: true,
+        range: false,
+        onTypeTriggers: [],
+      },
+    );
+    expect(formattingSupportOf(undefined)).toEqual({
+      document: false,
+      range: false,
+      onTypeTriggers: [],
+    });
+  });
+
+  it('dropsMalformedAndDuplicateTriggerCharacters', () => {
+    expect(
+      formattingSupportOf({
+        documentOnTypeFormattingProvider: {
+          firstTriggerCharacter: '}',
+          moreTriggerCharacter: ['}', 'ab', 3],
+        },
+      }).onTypeTriggers,
+    ).toEqual(['}']);
+  });
+});
+
+describe('navigationSupportOf (#1142)', () => {
+  const NONE: unknown = {
+    declaration: false,
+    implementation: false,
+    typeDefinition: false,
+    callHierarchy: false,
+    typeHierarchy: false,
+    sourceHeader: false,
+  };
+
+  it('readsRustAnalyzersOwnNavigations_fromWhatItCallsExperimental (#1210)', () => {
+    expect(
+      navigationSupportOf({ experimental: { parentModule: true, openCargoToml: true, ssr: true } }),
+    ).toEqual({
+      ...(NONE as object),
+      parentModule: true,
+      cargoManifest: true,
+      // Its views, which it advertises nowhere (#1210).
+      expandMacro: true,
+      hir: true,
+      mir: true,
+    });
+  });
+
+  it('readsClangdsViews_fromItsOwnCapabilities (#1213)', () => {
+    expect(
+      navigationSupportOf({
+        compilationDatabase: {},
+        astProvider: true,
+        memoryUsageProvider: true,
+      }),
+    ).toEqual({ ...(NONE as object), sourceHeader: true, syntaxTree: true, memoryUsage: true });
+  });
+
+  it('readsImplementationTypeDefinitionAndHierarchies_asBooleansOrOptions', () => {
+    // What Roslyn 5.13 advertises (#1153).
+    expect(
+      navigationSupportOf({
+        implementationProvider: true,
+        typeDefinitionProvider: { workDoneProgress: true },
+        callHierarchyProvider: true,
+        typeHierarchyProvider: {},
+      }),
+    ).toEqual({
+      declaration: false,
+      implementation: true,
+      typeDefinition: true,
+      callHierarchy: true,
+      typeHierarchy: true,
+      sourceHeader: false,
+    });
+    expect(navigationSupportOf({ implementationProvider: false })).toEqual(NONE);
+    expect(navigationSupportOf(undefined)).toEqual(NONE);
+  });
+});
+
+describe('navigationSupportOf for clangd (#1213)', () => {
+  it('readsDeclarations_andKnowsHeaderSwitchingByTheCapabilityOnlyClangdHas', () => {
+    expect(
+      navigationSupportOf({
+        declarationProvider: true,
+        compilationDatabase: { automaticReload: true },
+      }),
+    ).toMatchObject({ declaration: true, sourceHeader: true });
+  });
+});
+
+describe('codeLensSupportOf (#1149)', () => {
+  it('readsWhetherTheServerShowsLenses_andFillsThemInOnRequest', () => {
+    // What Roslyn 5.13 advertises.
+    expect(codeLensSupportOf({ codeLensProvider: { resolveProvider: true } })).toEqual({
+      resolve: true,
+    });
+    expect(codeLensSupportOf({ codeLensProvider: {} })).toEqual({ resolve: false });
+    expect(codeLensSupportOf({})).toBeUndefined();
+  });
+});
+
+describe('autoInsertTriggersOf (#1148)', () => {
+  it('readsTheCharactersRoslynAnswersByInsertingText', () => {
+    // What Roslyn 5.13 advertises.
+    expect(
+      autoInsertTriggersOf({
+        _vs_onAutoInsertProvider: { _vs_triggerCharacters: ["'", '/', '\n', '"', 'too long', 3] },
+      }),
+    ).toEqual(["'", '/', '\n', '"']);
+    expect(autoInsertTriggersOf({ _vs_onAutoInsertProvider: { _vs_triggerCharacters: [] } })).toBe(
+      undefined,
+    );
+    expect(autoInsertTriggersOf(undefined)).toBeUndefined();
+  });
+});
+
+describe('structureSupportOf (#1147)', () => {
+  it('readsFoldsOccurrencesRangeTokensAndSelectionRanges_aRangeOnlyWithALegend', () => {
+    const legend: unknown = { tokenTypes: ['class'], tokenModifiers: [] };
+    // What Roslyn 5.13 advertises, offered full and range.
+    expect(
+      structureSupportOf({
+        foldingRangeProvider: true,
+        documentHighlightProvider: true,
+        linkedEditingRangeProvider: true,
+        selectionRangeProvider: true,
+        semanticTokensProvider: { legend, range: true, full: false },
+      }),
+    ).toEqual({
+      folding: true,
+      highlights: true,
+      linkedEditing: true,
+      rangeTokens: true,
+      selectionRanges: true,
+    });
+    expect(structureSupportOf({ semanticTokensProvider: { range: true } })).toEqual({
+      folding: false,
+      highlights: false,
+      linkedEditing: false,
+      rangeTokens: false,
+      selectionRanges: false,
+    });
+    expect(structureSupportOf(undefined)).toEqual({
+      folding: false,
+      highlights: false,
+      linkedEditing: false,
+      rangeTokens: false,
+      selectionRanges: false,
+    });
+  });
+});
+
+describe('inlayHintSupportOf (#1145)', () => {
+  it('readsWhetherTheServerSetsHints_andFillsThemInOnRequest', () => {
+    // What Roslyn 5.13 advertises.
+    expect(inlayHintSupportOf({ inlayHintProvider: { resolveProvider: true } })).toEqual({
+      resolve: true,
+    });
+    expect(inlayHintSupportOf({ inlayHintProvider: true })).toEqual({ resolve: false });
+    expect(inlayHintSupportOf({ inlayHintProvider: false })).toBeUndefined();
+    expect(inlayHintSupportOf(undefined)).toBeUndefined();
+  });
+});
 
 describe('semanticLegendOf', () => {
   it('extractsTheLegendWhenTheServerAdvertisesOne', () => {
@@ -57,5 +247,40 @@ describe('executeCommandsOf (#1016)', () => {
     ).toEqual(['server.format', 'x']);
     expect(executeCommandsOf({ executeCommandProvider: {} })).toEqual([]);
     expect(executeCommandsOf(undefined)).toEqual([]);
+  });
+});
+
+describe('fileRenameFiltersOf (#1207)', () => {
+  it('compilesTheServersFilters_overFilesOnly', () => {
+    const filters: readonly RegExp[] = fileRenameFiltersOf({
+      workspace: {
+        fileOperations: {
+          willRename: {
+            filters: [
+              { scheme: 'file', pattern: { glob: '**/*.{ts,tsx}', matches: 'file' } },
+              { scheme: 'untitled', pattern: { glob: '**' } },
+              { pattern: { glob: '**/*.razor' } },
+              { scheme: 'file', pattern: {} },
+              null,
+            ],
+          },
+        },
+      },
+    });
+
+    expect(filters.map((filter: RegExp): boolean => filter.test('/root/src/a.ts'))).toEqual([
+      true,
+      false,
+    ]);
+    expect(filters[1].test('/root/Pages/Index.razor')).toBe(true);
+  });
+
+  it.each<[string, unknown]>([
+    ['NoCapabilities', undefined],
+    ['NoFileOperations', { workspace: {} }],
+    ['NoWillRename', { workspace: { fileOperations: { didRename: {} } } }],
+    ['MalformedFilters', { workspace: { fileOperations: { willRename: { filters: 'x' } } } }],
+  ])('answersNone_with%s', (_name: string, capabilities: unknown) => {
+    expect(fileRenameFiltersOf(capabilities)).toEqual([]);
   });
 });

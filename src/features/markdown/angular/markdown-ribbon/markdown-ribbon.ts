@@ -16,6 +16,7 @@ import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contrib
 import { MENU_SEPARATOR, MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
 import { Log } from '@shared/angular/services/log/log';
 import { Printing } from '@shared/angular/services/printing/printing';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import {
   MarkdownPanels,
@@ -41,6 +42,9 @@ import { FootnoteInsert, MarkdownFootnoteModal } from './insert-modals/markdown-
 import { ImageInsert, MarkdownImageModal } from './insert-modals/markdown-image-modal';
 import { LinkInsert, MarkdownLinkModal } from './insert-modals/markdown-link-modal';
 import { MarkdownMathModal, MathInsert } from './insert-modals/markdown-math-modal';
+import { MarkdownTableModal, TableInsert } from './insert-modals/markdown-table-modal';
+import { styleImagePath } from '@shared/angular/milkdown/markdown-image-path';
+import { markdownDestination } from './markdown-destination';
 
 /**
  * Maps each style-field label back to its block type.
@@ -104,6 +108,7 @@ const VARIANT_EXPORT_PDF: string = 'export-pdf';
     MarkdownImageModal,
     MarkdownLinkModal,
     MarkdownMathModal,
+    MarkdownTableModal,
     MarkdownCollapseModal,
     MarkdownFootnoteModal,
     MarkdownEmojiModal,
@@ -138,6 +143,11 @@ export class MarkdownRibbon {
    * Holds the printing service backing the Print and Export-to-PDF actions.
    */
   private readonly printing: Printing = inject(Printing);
+
+  /**
+   * Holds the settings, read for the Markdown print margin.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the tool-panel registry the Tools group toggles.
@@ -225,7 +235,7 @@ export class MarkdownRibbon {
           {
             id: 'markdown.print',
             label: 'Print',
-            accelerator: 'CmdOrCtrl+P',
+            binding: 'markdown.print',
             run: (): void => this.onPrint(),
           },
           {
@@ -248,7 +258,7 @@ export class MarkdownRibbon {
           {
             id: 'markdown.find',
             label: 'Find',
-            accelerator: 'CmdOrCtrl+F',
+            binding: 'markdown.find',
             run: (): void => this.onFind(),
           },
         ],
@@ -513,7 +523,10 @@ export class MarkdownRibbon {
     this.log.info('markdown.ribbon', 'Export to PDF requested', {
       name: this.activeDocumentName(),
     });
-    void this.printing.exportPdf(this.activeDocumentName());
+    void this.printing.exportPdf(
+      this.activeDocumentName(),
+      this.settings.get('markdownEditor.printMargin'),
+    );
   }
 
   /**
@@ -521,7 +534,10 @@ export class MarkdownRibbon {
    */
   protected onPrint(): void {
     this.log.info('markdown.ribbon', 'Print requested');
-    this.printing.print();
+    void this.printing.print(
+      this.activeDocumentName(),
+      this.settings.get('markdownEditor.printMargin'),
+    );
   }
 
   /**
@@ -606,6 +622,11 @@ export class MarkdownRibbon {
   protected readonly linkOpen: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Holds whether the table insert modal is open.
+   */
+  protected readonly tableOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
    * Holds whether the math insert modal is open.
    */
   protected readonly mathOpen: WritableSignal<boolean> = signal<boolean>(false);
@@ -631,11 +652,19 @@ export class MarkdownRibbon {
   private footnoteCounter: number = 0;
 
   /**
-   * Inserts a table at the cursor.
+   * Opens the table insert modal.
    */
   protected onTable(): void {
-    this.log.info('markdown.ribbon', 'Insert table');
-    this.commands.insertTable();
+    this.tableOpen.set(true);
+  }
+
+  /**
+   * Inserts a table of the size chosen in the modal at the cursor.
+   * @param table The table's size.
+   */
+  protected onTableSubmit(table: TableInsert): void {
+    this.log.info('markdown.ribbon', 'Insert table confirmed', { ...table });
+    this.commands.insertTable(table.rows, table.columns);
   }
 
   /**
@@ -659,7 +688,14 @@ export class MarkdownRibbon {
    */
   protected onImageSubmit(image: ImageInsert): void {
     this.log.info('markdown.ribbon', 'Insert image confirmed', { url: image.url });
-    this.commands.insertMarkdown(`![${image.alt}](${image.url})`);
+    const id: string | null = this.documents.activeDocumentId();
+    const path: string = (id === null ? null : this.documents.get(id)?.filePath()) ?? '';
+    const source: string = styleImagePath(
+      image.url,
+      path.slice(0, Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'), 0)),
+      this.settings.get('markdownEditor.insertedImagePaths'),
+    );
+    this.commands.insertMarkdown(`![${image.alt}](${markdownDestination(source)})`);
   }
 
   /**
@@ -676,7 +712,7 @@ export class MarkdownRibbon {
   protected onLinkSubmit(link: LinkInsert): void {
     this.log.info('markdown.ribbon', 'Insert link confirmed', { url: link.url });
     const text: string = link.text.length > 0 ? link.text : link.url;
-    this.commands.insertInlineMarkdown(`[${text}](${link.url})`);
+    this.commands.insertInlineMarkdown(`[${text}](${markdownDestination(link.url)})`);
   }
 
   /**
@@ -742,7 +778,7 @@ export class MarkdownRibbon {
     this.log.info('markdown.ribbon', 'Insert collapsible block confirmed');
     const body: string = collapse.body.length > 0 ? collapse.body : '';
     this.commands.insertMarkdown(
-      `<details>\n<summary>${collapse.summary}</summary>\n\n${body}\n\n</details>`,
+      `<details open>\n<summary>${collapse.summary}</summary>\n\n${body}\n\n</details>`,
     );
   }
 

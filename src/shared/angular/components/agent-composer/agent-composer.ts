@@ -26,6 +26,8 @@ import type {
   AiSignInRequest,
   AiSlashCommand,
 } from '@shared/api/ai-types';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
 import { Agent, AgentItem, AgentQueuedMessage } from '@shared/angular/services/agent/agent';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentPrompt, AgentPrompts } from '@shared/angular/services/agent-prompts/agent-prompts';
@@ -45,17 +47,13 @@ import { AgentTasksMenu } from '@shared/angular/components/agent-tasks-menu/agen
 import { AgentLoginModal } from '@shared/angular/components/agent-login-modal/agent-login-modal';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { AgentPerf } from '@shared/angular/services/agent-perf/agent-perf';
+import { Settings } from '@shared/angular/services/settings/settings';
+import type { SendMessageWith } from '@shared/angular/services/settings/settings-registry';
 
 /**
- * The most images a single turn can carry.
+ * Holds the bytes in a megabyte, for the Size per Image setting.
  */
-const MAX_IMAGES: number = 4;
-
-/**
- * The largest accepted image file (bytes). Base64 inflates this by ~4/3 on the wire and in the
- * persisted transcript, and the main process backstops at a slightly larger cap.
- */
-const MAX_IMAGE_BYTES: number = 4 * 1024 * 1024;
+const BYTES_PER_MB: number = 1024 * 1024;
 
 /**
  * The image media types accepted by the composer (the types the providers accept).
@@ -195,6 +193,8 @@ interface ContextChip {
     AgentComposerShortcuts,
     AgentQuickResponses,
     AgentTasksMenu,
+    Textarea,
+    TextField,
   ],
   templateUrl: './agent-composer.html',
   styleUrl: './agent-composer.scss',
@@ -211,6 +211,11 @@ export class AgentComposer {
    * the same transcript.
    */
   private readonly agent: Agent = inject(Agent);
+
+  /**
+   * Holds the settings store: the send key and the image limits.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the transcript-performance probe, so the cost of a keystroke is measured rather than guessed.
@@ -433,6 +438,28 @@ export class AgentComposer {
    * composing normally. Sending in edit mode rewinds the conversation to that message.
    */
   protected readonly editing: WritableSignal<AgentItem | null> = signal<AgentItem | null>(null);
+
+  /**
+   * Gets a value indicating whether to offer compaction: Auto-Compact's threshold is reached and At
+   * Threshold is Ask.
+   */
+  protected readonly compactOffered: Signal<boolean> = computed((): boolean =>
+    this.agent.compactOffered(),
+  );
+
+  /**
+   * Compacts the conversation, as offered.
+   */
+  protected compactNow(): void {
+    this.agent.compact();
+  }
+
+  /**
+   * Dismisses the offer to compact until the context fills again.
+   */
+  protected dismissCompactOffer(): void {
+    this.agent.dismissCompactOffer();
+  }
 
   /**
    * Holds the images attached to the draft (pasted or dropped), shown as thumbnail chips and sent
@@ -1055,7 +1082,9 @@ export class AgentComposer {
     if (levels.length === 0) {
       return [];
     }
-    const current: AiEffort | null = this.agent.effort();
+    // The level runs use, whether chosen here or from Default Reasoning Effort; `/effort default`
+    // returns to that setting.
+    const current: AiEffort | null = this.agent.effectiveEffort();
     const entries: ComposerSuggestion[] = levels.map((level: AiEffort): ComposerSuggestion => ({
       kind: 'command',
       label: `/effort ${level}`,
@@ -1065,7 +1094,10 @@ export class AgentComposer {
     entries.push({
       kind: 'command',
       label: '/effort default',
-      hint: current === null ? 'Provider default (current)' : 'Use the provider default',
+      hint:
+        this.agent.effort() === null
+          ? 'Your default from Settings (current)'
+          : 'Use your default from Settings',
       value: 'effort:default',
     });
     return entries;
@@ -1208,26 +1240,37 @@ export class AgentComposer {
         this.showImageHint('Only PNG, JPEG, WebP, and GIF images can be attached.');
         continue;
       }
-      if (file.size > MAX_IMAGE_BYTES) {
-        this.showImageHint('Images larger than 4 MB cannot be attached.');
+      // Base64 inflates an image by ~4/3 on the wire and in the persisted transcript; the main process
+      // backstops at the largest choice.
+      const maxMb: number = this.settings.get('ai.maxImageSizeMb');
+      if (file.size > maxMb * BYTES_PER_MB) {
+        this.showImageHint(`Images larger than ${maxMb} MB cannot be attached.`);
         continue;
       }
-      if (this.pendingImages().length >= MAX_IMAGES) {
-        this.showImageHint(`At most ${MAX_IMAGES} images can be attached to one message.`);
+      const maxImages: number = this.settings.get('ai.maxImagesPerMessage');
+      if (this.pendingImages().length >= maxImages) {
+        this.showImageHint(`At most ${maxImages} images can be attached to one message.`);
         return;
       }
       const data: string | null = await this.readAsBase64(file);
-      if (data !== null) {
-        const image: AiImageRef = {
-          mediaType: file.type,
-          data,
-          ...(file.name.length > 0 ? { name: file.name } : {}),
-        };
-        this.pendingImages.update((images: readonly AiImageRef[]): readonly AiImageRef[] => [
-          ...images,
-          image,
-        ]);
+      if (data === null) {
+        this.showImageHint(`${file.name.length > 0 ? file.name : 'The image'} could not be read.`);
+        continue;
       }
+      // Asked again after the wait: a second paste can have taken the last place during the read.
+      if (this.pendingImages().length >= maxImages) {
+        this.showImageHint(`At most ${maxImages} images can be attached to one message.`);
+        return;
+      }
+      const image: AiImageRef = {
+        mediaType: file.type,
+        data,
+        ...(file.name.length > 0 ? { name: file.name } : {}),
+      };
+      this.pendingImages.update((images: readonly AiImageRef[]): readonly AiImageRef[] => [
+        ...images,
+        image,
+      ]);
     }
   }
 
@@ -1418,11 +1461,34 @@ export class AgentComposer {
       this.onHistoryKey(event);
       return;
     }
-    if (event.key !== 'Enter' || event.shiftKey) {
+    if (event.key !== 'Enter' || event.altKey) {
       return;
     }
-    event.preventDefault();
-    this.send();
+    // Send Message With names the one Enter that sends; the other two insert a new line. Shift+Enter
+    // and plain Enter do that natively in a text area, but ⌘Enter does not, so it is inserted here.
+    const mod: boolean = window.host?.platform === 'darwin' ? event.metaKey : event.ctrlKey;
+    const pressed: SendMessageWith = mod ? 'mod-enter' : event.shiftKey ? 'shift-enter' : 'enter';
+    if (mod && event.shiftKey) {
+      return;
+    }
+    if (pressed === this.settings.get('ai.sendMessageWith')) {
+      event.preventDefault();
+      this.send();
+      return;
+    }
+    if (pressed === 'mod-enter') {
+      event.preventDefault();
+      this.insertNewLine(event.target as HTMLTextAreaElement);
+    }
+  }
+
+  /**
+   * Inserts a new line at the caret, replacing any selection, as plain Enter would.
+   * @param area The composer text area.
+   */
+  private insertNewLine(area: HTMLTextAreaElement): void {
+    area.setRangeText('\n', area.selectionStart, area.selectionEnd, 'end');
+    area.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
   /**

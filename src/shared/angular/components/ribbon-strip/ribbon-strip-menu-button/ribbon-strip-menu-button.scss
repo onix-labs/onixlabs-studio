@@ -166,7 +166,9 @@
   }
 }
 
-.ribbon-menu-button:has(:disabled) {
+// Each half on its own: the chevron can offer something while the primary action cannot.
+.ribbon-menu-button__action:disabled,
+.ribbon-menu-button__menu:disabled {
   opacity: 0.4;
   pointer-events: none;
 }

@@ -102,6 +102,23 @@ export interface AiRunOptions {
   readonly tokenCap?: number;
 
   /**
+   * Gets the most steps the turn may take, or 0 for no limit.
+   */
+  readonly maxSteps?: number;
+
+  /**
+   * Gets a value indicating whether shell commands are refused where the machine has no OS sandbox
+   * (Require OS Sandbox). Absent means on.
+   */
+  readonly requireSandbox?: boolean;
+
+  /**
+   * Gets a value indicating whether a shell command that runs inside the OS sandbox goes ahead without
+   * asking (Auto-Allow Sandboxed Shell Commands). Absent means off.
+   */
+  readonly autoAllowSandboxedShell?: boolean;
+
+  /**
    * Gets the absolute path of the shell whose login profile the agent's environment is sourced from,
    * or omitted/empty to inherit the process environment (hydrated from the default login shell at
    * startup).
@@ -129,6 +146,11 @@ export interface AiRunOptions {
    * on the next turn.
    */
   readonly agentSessionLifetimeMs?: number;
+
+  /**
+   * Gets the most live sessions kept open at once, or 0 for no limit.
+   */
+  readonly maxLiveSessions?: number;
 
   /**
    * Gets the reasoning-effort level to run at (#330), or omitted for the provider default. Applied only
@@ -292,6 +314,11 @@ export class AiRuntime {
       allowedNetworkLocations: options.allowedNetworkLocations ?? [],
       deniedNetworkLocations: options.deniedNetworkLocations ?? [],
       tokenCap: options.tokenCap ?? 0,
+      ...(options.maxSteps === undefined ? {} : { maxSteps: options.maxSteps }),
+      ...(options.requireSandbox === undefined ? {} : { requireSandbox: options.requireSandbox }),
+      ...(options.autoAllowSandboxedShell === undefined
+        ? {}
+        : { autoAllowSandboxedShell: options.autoAllowSandboxedShell }),
       agentShell: options.agentShell ?? '',
       ...(options.claudeExecutable === undefined
         ? {}
@@ -301,6 +328,9 @@ export class AiRuntime {
         : { codexExecutable: options.codexExecutable }),
       runTimeoutMs: options.runTimeoutMs ?? 0,
       agentSessionLifetimeMs: options.agentSessionLifetimeMs ?? 0,
+      ...(options.maxLiveSessions === undefined
+        ? {}
+        : { maxLiveSessions: options.maxLiveSessions }),
       ...(options.effort === undefined ? {} : { effort: options.effort }),
       ...(options.remoteControl === undefined ? {} : { remoteControl: options.remoteControl }),
       owningTabId: options.owningTabId ?? null,

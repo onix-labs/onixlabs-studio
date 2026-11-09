@@ -39,6 +39,7 @@ import type {
 import { API_KEY_AUTH } from '@shared/api/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { AgentEngine } from '../agent-engine/agent-engine';
+import { defaultEffort } from './default-effort';
 import { Log } from '@shared/angular/services/log/log';
 import { AgentPerf } from '@shared/angular/services/agent-perf/agent-perf';
 import {
@@ -202,7 +203,7 @@ export interface AgentTask {
 /**
  * Identifies the state of a permission request item.
  */
-export type AgentPermissionState = 'pending' | 'allowed' | 'denied' | 'dismissed';
+export type AgentPermissionState = 'pending' | 'allowed' | 'denied' | 'dismissed' | 'expired';
 
 /**
  * Identifies the state of an input-request (agent question) item: awaiting the user's answer,
@@ -273,6 +274,11 @@ export interface AgentItem {
   readonly toolDetail?: string;
 
   /**
+   * Gets why the command ran outside the OS sandbox, or undefined when it did not (#1160).
+   */
+  readonly toolUnsandboxed?: string;
+
+  /**
    * Gets the tool's lifecycle state.
    */
   readonly toolState?: AgentToolState;
@@ -319,7 +325,7 @@ export interface AgentItem {
    * Gets how a grant can be remembered (#979): for any use of the tool, for the exact command shown,
    * or for the session only. Undefined means any use of the tool.
    */
-  readonly permissionRemembers?: 'tool' | 'command' | 'session';
+  readonly permissionRemembers?: 'tool' | 'command' | 'session' | 'session-command';
 
   /**
    * Gets how long the broker remembers the grant (granted permission items only; undefined for a
@@ -929,6 +935,12 @@ export class Agent {
   private compacting: boolean = false;
 
   /**
+   * Counts the times the conversation has been replaced (a clear or a restore), so work that outlived
+   * one can tell the conversation it began in has gone.
+   */
+  private conversationEpoch: number = 0;
+
+  /**
    * Accumulates the summary text streamed by a compaction run.
    */
   private compactionText: string = '';
@@ -985,6 +997,14 @@ export class Agent {
    * value is stable across a run once the first item lands.
    */
   public readonly hasMessages: Signal<boolean> = computed((): boolean => this.log().length > 0);
+
+  /**
+   * Gets how many commands in this conversation ran outside the OS sandbox (#1160).
+   */
+  public readonly unsandboxedRuns: Signal<number> = computed(
+    (): number =>
+      this.log().filter((item: AgentItem): boolean => item.toolUnsandboxed !== undefined).length,
+  );
 
   /**
    * Gets the messages waiting to dispatch once the running turn completes.
@@ -1049,6 +1069,20 @@ export class Agent {
    * Gets the reasoning-effort level the conversation's runs use (#330), or null for the provider default.
    */
   public readonly effort: Signal<AiEffort | null> = this.effortState.asReadonly();
+
+  /**
+   * Gets the reasoning-effort level the conversation's runs actually use: the level chosen with
+   * `/effort`, else the Default Reasoning Effort setting resolved against what the provider offers,
+   * else null for the provider's own default.
+   */
+  public readonly effectiveEffort: Signal<AiEffort | null> = computed(
+    (): AiEffort | null =>
+      this.effortState() ??
+      defaultEffort(
+        this.settings.value('ai.defaultReasoningEffort')(),
+        this.providerInfo()?.supportedEfforts ?? [],
+      ),
+  );
 
   /**
    * Gets whether this conversation's session is exposed via Remote Control (#331) — the on/off state
@@ -1128,6 +1162,42 @@ export class Agent {
       0
     );
   });
+
+  /**
+   * Gets a value indicating whether the conversation has filled its context window to the Auto-Compact
+   * threshold. Never true while the threshold is Off or the window is unknown: a percentage of a
+   * guessed window would compact on a guess.
+   */
+  public readonly contextAtThreshold: Signal<boolean> = computed((): boolean => {
+    const threshold: number = this.settings.value('ai.autoCompactThreshold')();
+    const window: number = this.contextWindow();
+    return threshold > 0 && window > 0 && (this.contextTokens() / window) * 100 >= threshold;
+  });
+
+  /**
+   * Holds a value indicating whether the user dismissed the offer to compact; cleared once the
+   * context drops below the threshold again, so the next time it fills the offer returns.
+   */
+  private readonly compactOfferDismissed: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets a value indicating whether to offer compaction (Auto-Compact's At Threshold is Ask): the
+   * context is at the threshold, nothing is running, and the offer has not been dismissed.
+   */
+  public readonly compactOffered: Signal<boolean> = computed(
+    (): boolean =>
+      this.contextAtThreshold() &&
+      this.settings.value('ai.autoCompactMode')() === 'ask' &&
+      !this.busy() &&
+      !this.compactOfferDismissed(),
+  );
+
+  /**
+   * Dismisses the offer to compact until the context next fills to the threshold.
+   */
+  public dismissCompactOffer(): void {
+    this.compactOfferDismissed.set(true);
+  }
 
   /**
    * Gets the conversation's accumulated cost in US dollars, or zero when the provider reports no cost.
@@ -1295,12 +1365,18 @@ export class Agent {
     images: readonly AiImageRef[] = [],
   ): Promise<void> {
     const requestId: string | null = this.activeRequestId;
-    if (
+    const epoch: number = this.conversationEpoch;
+    const steered: boolean =
       !this.compacting &&
       images.length === 0 &&
       requestId !== null &&
-      (await this.runtime.steer(requestId, text))
-    ) {
+      (await this.trySteer(requestId, text));
+    // The message belongs to the conversation it was typed in. Queuing it now would send it into
+    // whatever replaced that conversation, where nobody asked for it.
+    if (epoch !== this.conversationEpoch) {
+      return;
+    }
+    if (steered) {
       this.push({ kind: 'user', text });
       this.lastPrompt = text;
       return;
@@ -1319,6 +1395,22 @@ export class Agent {
     // The run may have ended while the steer attempt was in flight; drain immediately if now idle.
     if (!this.busy()) {
       this.dispatchQueue();
+    }
+  }
+
+  /**
+   * Offers a message to the run in flight. A bridge that fails counts as a refusal, so the message is
+   * queued: nothing awaits a send, and a rejection here would lose what the user typed.
+   * @param requestId The run to steer.
+   * @param text The message.
+   * @returns Returns a promise resolving to whether the run took the message.
+   */
+  private async trySteer(requestId: string, text: string): Promise<boolean> {
+    try {
+      return await this.runtime.steer(requestId, text);
+    } catch (error: unknown) {
+      this.logger.warn('Agent', 'Could not steer the run; queuing the message', error);
+      return false;
     }
   }
 
@@ -1499,6 +1591,9 @@ export class Agent {
       allowedNetworkLocations: this.settings.aiAllowedNetworkLocations(),
       deniedNetworkLocations: this.settings.aiDeniedNetworkLocations(),
       tokenCap: this.settings.aiTokenCap(),
+      maxSteps: this.settings.get('ai.maxStepsPerTurn'),
+      requireSandbox: this.settings.get('ai.requireOsSandbox'),
+      autoAllowSandboxedShell: this.settings.get('ai.autoAllowSandboxedShell'),
       agentShell: this.settings.aiAgentShell(),
       claudeExecutable: {
         mode: this.settings.aiClaudeExecutable(),
@@ -1510,10 +1605,11 @@ export class Agent {
       },
       runTimeoutMs: this.settings.aiRunTimeoutMinutes() * 60_000,
       agentSessionLifetimeMs: this.settings.aiAgentSessionLifetimeMinutes() * 60_000,
+      maxLiveSessions: this.settings.aiMaxLiveSessions(),
       owningTabId: this.runOwnerResolver?.() ?? owningTabId,
       surface,
       mode: this.modeState(),
-      ...(this.effortState() === null ? {} : { effort: this.effortState()! }),
+      ...(this.effectiveEffort() === null ? {} : { effort: this.effectiveEffort()! }),
       ...(this.remoteControl() === 'off' ? {} : { remoteControl: this.remoteControl() }),
       contextPaths: attached,
       resumeSessionId: this.sessionIdState(),
@@ -1717,7 +1813,13 @@ export class Agent {
         'Stop deadline passed with no terminal status; landing it locally',
         requestId,
       );
-      this.onStatus('aborted', '');
+      // A compaction ends through its own path, or `compacting` outlives it and the next turn is taken
+      // for the summary: its text swallowed, and the transcript replaced with whatever it said.
+      if (this.compacting) {
+        this.onCompactionStatus('aborted', '');
+      } else {
+        this.onStatus('aborted', '');
+      }
     }, STOP_SETTLE_DEADLINE_MS);
   }
 
@@ -1732,6 +1834,7 @@ export class Agent {
     if (this.busy() || history.length === 0) {
       return;
     }
+    this.compactOfferDismissed.set(false);
     this.compacting = true;
     this.compactionText = '';
     this.busy.set(true);
@@ -1741,6 +1844,9 @@ export class Agent {
       model: this.model(),
       permissionPosture: 'prompt',
       tokenCap: this.settings.aiTokenCap(),
+      maxSteps: this.settings.get('ai.maxStepsPerTurn'),
+      requireSandbox: this.settings.get('ai.requireOsSandbox'),
+      autoAllowSandboxedShell: this.settings.get('ai.autoAllowSandboxedShell'),
       runTimeoutMs: this.settings.aiRunTimeoutMinutes() * 60_000,
       mode: 'chat',
     });
@@ -1751,6 +1857,13 @@ export class Agent {
    * turn opens a new session. Called when the conversation identity changes: New chat, restore, fork.
    */
   private resetAgentSession(): void {
+    // The `session-ended` that closing raises arrives under the old id, which this conversation stops
+    // answering to below, so its tasks would be listed as running for good with a Stop reaching nothing.
+    this.untrackTasks(
+      this.tasks().map((task: AgentTask): string => task.taskId),
+      'its agent session was closed',
+      'Background tasks untracked',
+    );
     this.runtime.closeSession(this.agentSessionId);
     this.agentSessionId = crypto.randomUUID();
     this.sessionRequestId = null;
@@ -1760,10 +1873,29 @@ export class Agent {
   }
 
   /**
+   * Gives up on a compaction in flight, for a transcript that is being replaced. It has no session for
+   * {@link resetAgentSession} to end, so it is aborted by name or it runs on, unseen, spending tokens.
+   */
+  private abandonCompaction(): void {
+    if (!this.compacting) {
+      return;
+    }
+    this.compacting = false;
+    this.compactionText = '';
+    if (this.activeRequestId !== null) {
+      this.runtime.abort(this.activeRequestId);
+    }
+  }
+
+  /**
    * Clears the transcript.
    */
   public clear(): void {
     this.logger.info('Agent', 'Conversation cleared');
+    this.conversationEpoch += 1;
+    // The turn that needed signing in went with the conversation; a sign-in must not re-send it.
+    this.retryAfterLogin = false;
+    this.abandonCompaction();
     this.briefText = null;
     this.resetAgentSession();
     this.discardStream();
@@ -1773,6 +1905,7 @@ export class Agent {
     this.contextPathsState.set([]);
     this.sessionIdState.set(null);
     this.contextTokensState.set(0);
+    this.compactOfferDismissed.set(false);
     this.costUsdState.set(0);
     this.queueState.set([]);
   }
@@ -1803,6 +1936,9 @@ export class Agent {
     queue: readonly string[] = [],
   ): void {
     this.logger.info('Agent', 'Conversation restored', items.length, sessionId);
+    this.conversationEpoch += 1;
+    this.retryAfterLogin = false;
+    this.abandonCompaction();
     this.briefText = null;
     this.resetAgentSession();
     this.activeRequestId = null;
@@ -1819,6 +1955,7 @@ export class Agent {
     );
     // Usage is not persisted with the conversation; it refills from the next turn's reported counts.
     this.contextTokensState.set(0);
+    this.compactOfferDismissed.set(false);
     this.costUsdState.set(0);
     this.discardStream();
     this.sequence = items.reduce((max: number, item: AgentItem): number => {
@@ -1832,6 +1969,9 @@ export class Agent {
       items.map((item: AgentItem): AgentItem => {
         if (item.kind === 'edit-decision' && item.decisionState === 'pending') {
           return { ...item, decisionState: 'dismissed' };
+        }
+        if (item.kind === 'permission' && item.permissionState === 'pending') {
+          return { ...item, permissionState: 'expired' };
         }
         if (item.kind !== 'input-request') {
           return item;
@@ -2037,6 +2177,12 @@ export class Agent {
     if (event.kind === 'remote-message') {
       if (event.agentSessionId === this.agentSessionId) {
         this.flushStream();
+        // A compaction would take this turn's text for its summary and end on this turn's status, and
+        // its reset would close the session the peer is working in. The peer's turn is the live one.
+        if (this.compacting) {
+          this.abandonCompaction();
+          this.push({ kind: 'notice', text: 'Compaction stopped' });
+        }
         this.push({ kind: 'user', text: event.text });
         this.activeRequestId = event.requestId;
         this.sessionRequestId = event.requestId;
@@ -2098,6 +2244,9 @@ export class Agent {
           ...(event.parentToolId === undefined ? {} : { parentToolId: event.parentToolId }),
           ...(event.agentType === undefined ? {} : { agentType: event.agentType }),
         });
+        break;
+      case 'tool-unsandboxed':
+        this.markUnsandboxed(event.toolId, event.reason);
         break;
       case 'tool-end':
         this.endTool(event.toolId, event.ok, event.output);
@@ -2240,8 +2389,15 @@ export class Agent {
     }
     this.notifyRunEnded(state, detail);
     // A completed run dispatches the next queued message; a failed or stopped run holds the queue so
-    // messages never fire into a broken or deliberately-stopped conversation.
+    // messages never fire into a broken or deliberately-stopped conversation. A run that filled the
+    // context to the Auto-Compact threshold compacts first when At Threshold is Automatic; the queue
+    // carries on once the compaction lands.
     if (state === 'completed') {
+      if (this.contextAtThreshold() && this.settings.get('ai.autoCompactMode') === 'automatic') {
+        this.logger.info('Agent', 'Context at the Auto-Compact threshold; compacting');
+        this.compact();
+        return;
+      }
       this.dispatchQueue();
     }
   }
@@ -2269,10 +2425,11 @@ export class Agent {
     if (request === null) {
       return;
     }
+    const epoch: number = this.conversationEpoch;
     void this.runtime
       .checkSignIn(request)
       .then((status: AiSignInStatus): void => {
-        if (status.supported && !status.signedIn) {
+        if (epoch === this.conversationEpoch && status.supported && !status.signedIn) {
           this.logger.warn('Agent', 'Sign-in expired or absent; prompting sign-in');
           this.retryAfterLogin = true;
           this.needsLoginState.set(true);
@@ -2281,6 +2438,9 @@ export class Agent {
       .catch((): void => {
         // A failed status check (for example the login IPC being unavailable) must not swallow the
         // prompt: the run already failed, so err towards offering sign-in.
+        if (epoch !== this.conversationEpoch) {
+          return;
+        }
         this.retryAfterLogin = true;
         this.needsLoginState.set(true);
       });
@@ -2333,7 +2493,22 @@ export class Agent {
     this.logger.info('Agent', `Signing out of ${name}`);
     const request: AiSignInRequest | null = this.signInRequest();
     if (request !== null) {
-      await this.runtime.signOut(request);
+      try {
+        await this.runtime.signOut(request);
+      } catch (error: unknown) {
+        // Still signed in, so the session stays: its caller does not await this, and saying nothing
+        // would leave the user believing the sign-out worked.
+        this.logger.warn('Agent', `Could not sign out of ${name}`, error);
+        this.notifications.notify({
+          severity: 'error',
+          title: `Could not sign out of ${name}`,
+          detail: error instanceof Error ? error.message : String(error),
+          actions: [],
+          key: 'agent:logout',
+          route: 'default',
+        });
+        return;
+      }
     }
     this.resetAgentSession();
     this.notifications.notify({
@@ -2400,6 +2575,7 @@ export class Agent {
       route: watching ? 'history-only' : 'default',
       // Seen on the desktop while the user is elsewhere, watching or not (#927).
       desktop: true,
+      finished: { kind: 'agent', failed },
       ...(tabId === undefined ? {} : { reveal: (): void => this.tabs.activate(tabId) }),
     });
   }
@@ -2458,6 +2634,7 @@ export class Agent {
       route: watching ? 'history-only' : 'default',
       // Seen on the desktop while the user is elsewhere, watching or not (#927).
       desktop: true,
+      finished: { kind: 'agent', failed: status === 'failed' },
       ...(tabId === undefined ? {} : { reveal: (): void => this.tabs.activate(tabId) }),
     });
   }
@@ -2614,6 +2791,8 @@ export class Agent {
         );
         this.activeRequestId = null;
         this.busy.set(false);
+        // Nothing failed here, and no status will come along to carry on with what was queued.
+        this.dispatchQueue();
       }, ADOPTION_DEADLINE_MS),
     };
   }
@@ -2871,6 +3050,9 @@ export class Agent {
       this.sessionIdState.set(null);
       this.contextTokensState.set(0);
       this.pendingContextSeed = summary;
+      this.compactOfferDismissed.set(false);
+      // Messages queued while the summary was written go out now, onto the fresh session.
+      this.dispatchQueue();
     }
   }
 
@@ -3045,8 +3227,9 @@ export class Agent {
   }
 
   /**
-   * Marks every still-pending input request and edit decision dismissed (the run ended before the
-   * user answered).
+   * Settles every prompt still pending when the run ended before the user answered. A permission
+   * expires rather than dismisses, which reads as answered on another device; left pending it would
+   * keep every later turn "waiting" on a run that has gone.
    */
   private dismissPendingInputs(): void {
     this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
@@ -3057,9 +3240,31 @@ export class Agent {
         if (item.kind === 'edit-decision' && item.decisionState === 'pending') {
           return { ...item, decisionState: 'dismissed' };
         }
+        if (item.kind === 'permission' && item.permissionState === 'pending') {
+          return { ...item, permissionState: 'expired' };
+        }
         return item;
       }),
     );
+  }
+
+  /**
+   * Marks a command as having run outside the sandbox, and why.
+   * @param toolId The tool use.
+   * @param reason Why it was allowed.
+   */
+  private markUnsandboxed(toolId: string, reason: string): void {
+    this.log.update((items: readonly AgentItem[]): readonly AgentItem[] => {
+      // From the tail, as `endTool` searches: the command that just ran is nearly always among the latest.
+      for (let index: number = items.length - 1; index >= 0; index -= 1) {
+        if (items[index].toolId === toolId) {
+          const next: AgentItem[] = [...items];
+          next[index] = { ...items[index], toolUnsandboxed: reason };
+          return next;
+        }
+      }
+      return items;
+    });
   }
 
   /**
@@ -3083,17 +3288,25 @@ export class Agent {
         .map((task: AgentTask): string => `${task.taskId}:${task.toolId ?? 'none'}`)
         .join(', ')}]`,
     );
-    this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
-      items.map((item: AgentItem): AgentItem =>
-        item.kind === 'tool' && item.toolId === toolId
-          ? {
-              ...item,
-              toolState: backgrounded ? 'backgrounded' : ok ? 'ok' : 'error',
-              ...(output === undefined ? {} : { toolOutput: output }),
-            }
-          : item,
-      ),
-    );
+    // ⚠️ Searched from the tail, because this runs for every tool call and the call ending is nearly
+    // always among the latest: a `map` over the log made a long transcript quadratic. A tool id names one
+    // call, so the search stops at the match, and a tool id nothing holds leaves the log as it was.
+    this.log.update((items: readonly AgentItem[]): readonly AgentItem[] => {
+      let index: number = items.length - 1;
+      while (index >= 0 && !(items[index].kind === 'tool' && items[index].toolId === toolId)) {
+        index -= 1;
+      }
+      if (index < 0) {
+        return items;
+      }
+      const next: AgentItem[] = [...items];
+      next[index] = {
+        ...items[index],
+        toolState: backgrounded ? 'backgrounded' : ok ? 'ok' : 'error',
+        ...(output === undefined ? {} : { toolOutput: output }),
+      };
+      return next;
+    });
   }
 
   /**
@@ -3104,13 +3317,19 @@ export class Agent {
    * @param change The change it proposes.
    */
   private attachProposedDiff(permissionId: string, change: AiProposedChange): void {
-    void this.proposedChanges.diffOf(change).then((diff: ProposedDiff): void => {
-      this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
-        items.map((item: AgentItem): AgentItem =>
-          item.permissionId === permissionId ? { ...item, permissionDiff: diff } : item,
-        ),
-      );
-    });
+    void this.proposedChanges
+      .diffOf(change)
+      .then((diff: ProposedDiff): void => {
+        this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
+          items.map((item: AgentItem): AgentItem =>
+            item.permissionId === permissionId ? { ...item, permissionDiff: diff } : item,
+          ),
+        );
+      })
+      .catch((error: unknown): void => {
+        // The prompt still stands without its diff; the user can answer from its name and detail.
+        this.logger.warn('Agent', 'Could not work out the proposed change', error);
+      });
   }
 
   /**

@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import type { Options, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Answer, HarnessMessage, Request, TurnRequest } from './protocol';
@@ -318,6 +319,24 @@ describe('Session instructions (#955)', () => {
     sdk.sequence = 0;
   });
 
+  it('keepsItsTemporaryFolderAcrossAReopen_andRemovesItWhenItEnds', async () => {
+    const studio: FakeStudio = fakeStudio();
+    const session: Session = new Session(studio.host, turn('r1'));
+    await session.run(turn('r1'));
+    const first: Options = sdk.queries[0].options;
+
+    studio.instructions = 'Profile: reopen for this.';
+    await session.run(turn('r2'));
+    const folder: string | undefined = first.env?.['TMPDIR'];
+
+    expect(sdk.queries[1].options.env?.['TMPDIR']).toBe(folder);
+    expect(existsSync(folder ?? '')).toBe(true);
+
+    await session.close();
+
+    expect(existsSync(folder ?? '')).toBe(false);
+  });
+
   it('keepsTheQueryOpen_whenTheInstructionsAreUnchanged', async () => {
     const studio: FakeStudio = fakeStudio();
     const session: Session = new Session(studio.host, turn('r1'));
@@ -345,7 +364,7 @@ describe('Session instructions (#955)', () => {
     expect(second.options.resume).toBe('fresh-1');
     expect(second.options.forkSession).toBeUndefined();
     expect(second.options.resumeSessionAt).toBeUndefined();
-    expect(instructionsOf(second)).toBe('Profile: be terse.\n\nSkills: release-notes');
+    expect(instructionsOf(second)).toContain('Profile: be terse.\n\nSkills: release-notes');
     // Without this the CLI resends the prompt it recorded at the first request, and the resume
     // silently keeps the old instructions — which is how the first live test of #955 failed.
     expect((second.options.systemPrompt as { snapshot?: unknown }).snapshot).toBe(false);
@@ -381,7 +400,7 @@ describe('Session instructions (#955)', () => {
     const next: Promise<void> = session.run(turn('r2'));
     await flush();
     expect(sdk.queries.length).toBe(2);
-    expect(instructionsOf(sdk.queries[1])).toBe('Profile: be thorough.');
+    expect(instructionsOf(sdk.queries[1])).toContain('Profile: be thorough.');
     await next;
     await session.close();
   });

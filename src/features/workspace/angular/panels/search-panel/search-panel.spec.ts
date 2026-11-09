@@ -1,3 +1,5 @@
+import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
+import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
@@ -141,6 +143,7 @@ describe('SearchPanel', () => {
       imports: [SearchPanel],
       providers: [
         { provide: Search, useValue: search },
+        { provide: ModalWindows, useValue: new FakeModalWindows() },
         {
           provide: FileOpener,
           useValue: {
@@ -260,7 +263,8 @@ describe('SearchPanel', () => {
       '.search-view__form',
     );
 
-    expect(form?.querySelectorAll('app-text-field').length).toBe(1);
+    // Find, then Files to Include and Files to Exclude for a search on disk.
+    expect(form?.querySelectorAll('app-text-field').length).toBe(3);
     expect(form?.textContent).toContain('Match Case');
     expect(form?.textContent).toContain('Match Whole Word');
     expect(form?.textContent).toContain('Match Regex');
@@ -274,7 +278,7 @@ describe('SearchPanel', () => {
     );
 
     expect(toggles()[1].classList.contains('panel-toolbar__button--active')).toBe(true);
-    expect(form?.querySelectorAll('app-text-field').length).toBe(2);
+    expect(form?.querySelectorAll('app-text-field').length).toBe(4);
     const replaceAll: HTMLButtonElement | undefined = Array.from(
       form?.querySelectorAll<HTMLButtonElement>('button') ?? [],
     ).find((button: HTMLButtonElement): boolean => button.textContent.trim() === 'Replace All');
@@ -305,13 +309,70 @@ describe('SearchPanel', () => {
     fixture.detectChanges();
   }
 
+  /**
+   * Answers the Replace All confirmation with yes, as the dialog's button does.
+   */
+  async function confirmReplaceAll(): Promise<void> {
+    void member<() => Promise<void>>('confirmReplaceEvery').call(view());
+    await vi.advanceTimersByTimeAsync(0);
+    fixture.detectChanges();
+  }
+
+  it('replaceAll_countsEveryOccurrenceOnALine_whenItAsks', async () => {
+    search.results = {
+      files: [
+        {
+          path: '/ws/a.ts',
+          relativePath: 'a.ts',
+          matches: [{ line: 1, column: 1, before: '', text: 'todo', after: '', occurrences: 3 }],
+        },
+      ],
+      total: 1,
+      capped: false,
+    };
+    await readyToReplace();
+
+    formButton('Replace All')?.click();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(member<() => unknown>('pendingReplace')()).toEqual({
+      skipped: [],
+      replacements: 3,
+      files: 1,
+    });
+  });
+
+  it('aSearch_carriesTheFindPanelsFilters_andTheSearchSettings', async () => {
+    member<WritableSignal<string>>('filesToInclude').set('*.ts, src/**');
+    member<WritableSignal<string>>('filesToExclude').set('*.spec.ts');
+    member<WritableSignal<boolean>>('searchHidden').set(true);
+    await findTodo();
+
+    expect(search.requests.at(-1)).toMatchObject({
+      files: {
+        include: ['*.ts', 'src/**'],
+        exclude: ['*.spec.ts'],
+        ignored: false,
+        excluded: false,
+        hidden: true,
+      },
+      limits: {
+        maxResults: 5000,
+        timeoutSeconds: 60,
+        maxFileSizeMegabytes: 10,
+        followSymlinks: false,
+      },
+    });
+  });
+
   it('replaceAll_replacesInEveryFileListed_thenSearchesAgain_andSaysWhatItDid', async () => {
     await readyToReplace();
 
     expect(formButton('Replace All')?.disabled).toBe(false);
     formButton('Replace All')?.click();
     await vi.advanceTimersByTimeAsync(0);
-    fixture.detectChanges();
+    expect(search.replaces).toEqual([]);
+    await confirmReplaceAll();
 
     expect(search.replaces).toEqual([
       {
@@ -355,6 +416,12 @@ describe('SearchPanel', () => {
 
     formButton('Replace All')?.click();
     await vi.advanceTimersByTimeAsync(0);
+    expect(member<() => unknown>('pendingReplace')()).toEqual({
+      skipped: ['/ws/a.ts'],
+      replacements: 1,
+      files: 1,
+    });
+    await confirmReplaceAll();
 
     expect(search.replaces[0].files).toEqual(['/ws/b.ts']);
     expect(notify).toHaveBeenCalledWith({

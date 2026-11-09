@@ -10,6 +10,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { RUN_UNSANDBOXED } from '@shared/api/ai-types';
 import type { AgentItem } from '@shared/angular/services/agent/agent';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
@@ -60,6 +61,14 @@ export class AgentPermissionCard {
   public readonly respond: OutputEmitterRef<PermissionAnswer> = output<PermissionAnswer>();
 
   /**
+   * Gets whether this prompt is to run a command outside the sandbox (#1159): the one prompt that takes
+   * a safety net away, so the card says so in words.
+   */
+  protected readonly leavesSandbox: Signal<boolean> = computed(
+    (): boolean => this.item().permissionName === RUN_UNSANDBOXED,
+  );
+
+  /**
    * Holds whether an answered card shows its change again, having folded it away.
    */
   protected readonly showChange: WritableSignal<boolean> = signal<boolean>(false);
@@ -95,6 +104,12 @@ export class AgentPermissionCard {
       const item: AgentItem = this.item();
       const name: string = item.permissionName ?? '';
       const remembers: string = item.permissionRemembers ?? 'tool';
+      if (remembers === 'session-command') {
+        return [
+          { value: 'once', label: 'Just this once' },
+          { value: 'session', label: 'Allow this command for this session' },
+        ];
+      }
       if (remembers === 'tool') {
         return [
           { value: 'once', label: 'Just this once' },
@@ -131,13 +146,18 @@ export class AgentPermissionCard {
     if (item.permissionState === 'dismissed') {
       return 'Answered on another device';
     }
+    if (item.permissionState === 'expired') {
+      return 'Not answered before the run ended';
+    }
     if (item.permissionState !== 'allowed') {
       return 'Denied';
     }
     const command: boolean = item.permissionRemembers === 'command';
     switch (item.permissionRemember) {
       case 'session':
-        return 'Allowed for this session';
+        return item.permissionRemembers === 'session-command'
+          ? 'This command allowed for this session'
+          : 'Allowed for this session';
       case 'workspace':
         return command ? 'This command allowed in this workspace' : 'Allowed for this workspace';
       case 'always':

@@ -1,6 +1,6 @@
-import { effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
-import { PackageChannel } from '@shared/api/package-channels';
+import { PackageAnswer, PackageChannel, PackageManagerSummary } from '@shared/api/package-channels';
 import {
   PackageSearchItem,
   PackageSearchResult,
@@ -8,6 +8,43 @@ import {
 } from '@shared/api/package-management';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { Log } from '@shared/angular/services/log/log';
+import { PackageModel } from './package-model';
+
+/**
+ * Describes a source the Explore view can browse: one of an installed package manager's registries.
+ */
+export interface ExploreSource {
+  /**
+   * Gets the key the picker selects it by, unique across package managers.
+   */
+  readonly key: string;
+
+  /**
+   * Gets the source's name, as the plugin names it.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the package manager it belongs to.
+   */
+  readonly manager: PackageManagerSummary;
+}
+
+/**
+ * Says how a source answers a query: it lists its packages with none (`browse`), it needs text
+ * (`query`), or it has no search and looks one exact name up (`exact`).
+ */
+export type ExploreSearchMode = 'browse' | 'query' | 'exact';
+
+/**
+ * Separates the plugin from the source name in a source's key.
+ */
+const KEY_SEPARATOR: string = '\u001f';
+
+/**
+ * The page a failed search shows: nothing.
+ */
+const EMPTY_PAGE: PackageSearchResult = { items: [], total: 0, hasMore: false };
 
 /**
  * How many results are fetched per page.
@@ -39,19 +76,25 @@ export class PackageExplorer {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds this tab's package model, which says which package managers are installed for the root.
+   */
+  private readonly packages: PackageModel = inject(PackageModel);
+
+  /**
    * Holds the generic transport, or undefined when running outside Electron.
    */
   private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
-   * Holds the sources available to browse for the current root.
+   * Holds the sources available to browse for the current root, across every installed package
+   * manager that can search.
    */
-  private readonly sourcesSignal: WritableSignal<readonly PackageSourceInfo[]> = signal<
-    readonly PackageSourceInfo[]
+  private readonly sourcesSignal: WritableSignal<readonly ExploreSource[]> = signal<
+    readonly ExploreSource[]
   >([]);
 
   /**
-   * Holds the selected source name, or null when none is chosen yet.
+   * Holds the selected source's key, or null when none is chosen yet.
    */
   private readonly selectedSourceSignal: WritableSignal<string | null> = signal<string | null>(
     null,
@@ -108,12 +151,51 @@ export class PackageExplorer {
   /**
    * Gets the sources available to browse.
    */
-  public readonly sources: Signal<readonly PackageSourceInfo[]> = this.sourcesSignal.asReadonly();
+  public readonly sources: Signal<readonly ExploreSource[]> = this.sourcesSignal.asReadonly();
 
   /**
-   * Gets the selected source name, or null.
+   * Gets the selected source's key, or null.
    */
   public readonly selectedSource: Signal<string | null> = this.selectedSourceSignal.asReadonly();
+
+  /**
+   * Gets the selected source, or null.
+   */
+  public readonly selected: Signal<ExploreSource | null> = computed(
+    (): ExploreSource | null =>
+      this.sourcesSignal().find(
+        (source: ExploreSource): boolean => source.key === this.selectedSourceSignal(),
+      ) ?? null,
+  );
+
+  /**
+   * Gets how the selected source answers a query.
+   */
+  public readonly searchMode: Signal<ExploreSearchMode> = computed((): ExploreSearchMode => {
+    const capabilities: readonly string[] = this.selected()?.manager.capabilities ?? [];
+    if (capabilities.includes('searchExactName')) {
+      return 'exact';
+    }
+    return capabilities.includes('searchRequiresQuery') ? 'query' : 'browse';
+  });
+
+  /**
+   * Gets whether the selected source can be asked for prerelease versions.
+   */
+  public readonly canFilterPrereleases: Signal<boolean> = computed((): boolean =>
+    (this.selected()?.manager.capabilities ?? []).includes('prerelease'),
+  );
+
+  /**
+   * Gets the installed package managers that apply to the root but cannot search, so the panel can
+   * say so rather than leave them out silently.
+   */
+  public readonly unsearchable: Signal<readonly PackageManagerSummary[]> = computed(
+    (): readonly PackageManagerSummary[] =>
+      this.packages
+        .installed()
+        .filter((manager: PackageManagerSummary): boolean => !canSearch(manager)),
+  );
 
   /**
    * Gets the active query text.
@@ -152,9 +234,21 @@ export class PackageExplorer {
   public constructor() {
     effect((): void => {
       this.workspace.root();
+      this.installedKey();
       this.reset();
     });
   }
+
+  /**
+   * Gets the installed package managers as one key, so a refresh that changes nothing about them does
+   * not reset what the user was exploring.
+   */
+  private readonly installedKey: Signal<string> = computed((): string =>
+    this.packages
+      .installed()
+      .map((manager: PackageManagerSummary): string => manager.pluginId)
+      .join(','),
+  );
 
   /**
    * Loads the browseable sources for the current root once, then runs the initial (browse) query. A
@@ -169,23 +263,62 @@ export class PackageExplorer {
     if (this.bridge === undefined || root === null) {
       return;
     }
-    const sources: readonly PackageSourceInfo[] = await this.bridge.invoke<
-      readonly PackageSourceInfo[]
-    >(PackageChannel.Sources, root);
+    const generation: number = this.generation;
+    const bridge: Bridge = this.bridge;
+    const searchable: readonly PackageManagerSummary[] = this.packages
+      .installed()
+      .filter(canSearch);
+    let sources: readonly ExploreSource[];
+    try {
+      const answers: readonly (readonly ExploreSource[])[] = await Promise.all(
+        searchable.map(
+          async (manager: PackageManagerSummary): Promise<readonly ExploreSource[]> => {
+            const answer: PackageAnswer<readonly PackageSourceInfo[]> = await bridge.invoke<
+              PackageAnswer<readonly PackageSourceInfo[]>
+            >(PackageChannel.Sources, root, manager.pluginId);
+            if (!answer.ok) {
+              this.log.warn(
+                'workspace.packages',
+                `${manager.pluginId} lists no sources`,
+                answer.error,
+              );
+              return [];
+            }
+            return answer.result.map((source: PackageSourceInfo): ExploreSource => ({
+              key: `${manager.pluginId}${KEY_SEPARATOR}${source.name}`,
+              name: source.name,
+              manager,
+            }));
+          },
+        ),
+      );
+      sources = answers.flat();
+    } catch (error: unknown) {
+      this.log.warn('workspace.packages', 'Could not list package sources', error);
+      // Left unloaded, so reopening the explorer tries again.
+      if (generation === this.generation) {
+        this.sourcesLoaded = false;
+      }
+      return;
+    }
+    // The workspace may have changed while the sources were on their way.
+    if (generation !== this.generation) {
+      return;
+    }
     this.sourcesSignal.set(sources);
     if (sources.length > 0) {
-      this.selectedSourceSignal.set(sources[0].name);
+      this.selectedSourceSignal.set(sources[0].key);
       this.runQuery();
     }
   }
 
   /**
    * Selects the source to browse, resetting and re-running the query against it.
-   * @param name The source name.
+   * @param key The source's key.
    */
-  public selectSource(name: string): void {
-    this.log.debug('workspace.packages', 'Select explore source', name);
-    this.selectedSourceSignal.set(name);
+  public selectSource(key: string): void {
+    this.log.debug('workspace.packages', 'Select explore source', key);
+    this.selectedSourceSignal.set(key);
     this.runQuery();
   }
 
@@ -246,21 +379,40 @@ export class PackageExplorer {
    */
   private async fetchPage(skip: number, generation: number): Promise<void> {
     const root: string | null = this.workspace.root()?.path ?? null;
-    const source: string | null = this.selectedSourceSignal();
+    const source: ExploreSource | null = this.selected();
     if (this.bridge === undefined || root === null || source === null) {
       return;
     }
     this.loadingSignal.set(true);
-    const result: PackageSearchResult = await this.bridge.invoke<PackageSearchResult>(
-      PackageChannel.Search,
-      root,
-      source,
-      this.querySignal().trim(),
-      { skip, take: PAGE_SIZE, prerelease: this.prereleaseSignal() },
-    );
+    let answer: PackageAnswer<PackageSearchResult>;
+    try {
+      answer = await this.bridge.invoke<PackageAnswer<PackageSearchResult>>(
+        PackageChannel.Search,
+        root,
+        source.manager.pluginId,
+        source.name,
+        this.querySignal().trim(),
+        {
+          skip,
+          take: PAGE_SIZE,
+          prerelease: this.prereleaseSignal() && this.canFilterPrereleases(),
+        },
+      );
+    } catch (error: unknown) {
+      this.log.warn('workspace.packages', 'Package search failed', error);
+      // A spinner left on would also block Load More for good.
+      if (generation === this.generation) {
+        this.loadingSignal.set(false);
+      }
+      return;
+    }
     if (generation !== this.generation) {
       return;
     }
+    if (!answer.ok) {
+      this.log.warn('workspace.packages', 'Package search failed', answer.error);
+    }
+    const result: PackageSearchResult = answer.ok ? answer.result : EMPTY_PAGE;
     this.resultsSignal.update(
       (current: readonly PackageSearchItem[]): readonly PackageSearchItem[] =>
         skip === 0 ? result.items : [...current, ...result.items],
@@ -289,4 +441,13 @@ export class PackageExplorer {
     this.hasMoreSignal.set(false);
     this.loadingSignal.set(false);
   }
+}
+
+/**
+ * Determines whether a package manager can be explored: it lists sources and searches them.
+ * @param manager The package manager.
+ * @returns Returns true when it can.
+ */
+function canSearch(manager: PackageManagerSummary): boolean {
+  return manager.capabilities.includes('sources') && manager.capabilities.includes('search');
 }

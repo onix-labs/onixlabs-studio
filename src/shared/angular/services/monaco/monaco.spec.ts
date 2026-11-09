@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import type * as MonacoApi from 'monaco-editor';
 import type { FindMode } from '@shared/angular/components/find-panel/find-request';
 import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
+import { Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
 
 import { buildHeuristicSemanticTokens, MonarchToken, Monaco } from './monaco';
 import {
@@ -57,6 +58,10 @@ function wholeLineAs(type: string): MonarchToken[] {
 }
 
 describe('Monaco', () => {
+  afterEach(() => {
+    localStorage.removeItem('settings');
+  });
+
   let monaco: Monaco;
 
   beforeEach(() => {
@@ -116,6 +121,32 @@ describe('Monaco', () => {
     );
   });
 
+  it('semanticHighlightingEnabled_followsTheModelsLanguage', () => {
+    TestBed.inject(Settings).setLanguageOverride('rust', 'semanticHighlighting', false);
+    const model: (language: string) => MonacoApi.editor.ITextModel = (
+      language: string,
+    ): MonacoApi.editor.ITextModel =>
+      ({ getLanguageId: (): string => language }) as MonacoApi.editor.ITextModel;
+
+    expect(monaco.semanticHighlightingEnabled(model('rust'))).toBe(false);
+    expect(monaco.semanticHighlightingEnabled(model('csharp'))).toBe(true);
+  });
+
+  it('motionOptions_keepSmoothScrollingOffWhenTheSettingIs', () => {
+    const resolved: TextEditorSettings =
+      TestBed.inject(Settings).resolveSettingsForLanguage('rust');
+
+    expect(monaco.motionOptions({ ...resolved, smoothScrolling: false }).smoothScrolling).toBe(
+      false,
+    );
+  });
+
+  it('getEditorOptions_startsWithInlayHintsOffWhenTheyWaitForTheModifier', () => {
+    TestBed.inject(Settings).set('textEditor.global.inlayHints', 'while-holding');
+
+    expect(monaco.getEditorOptions('rust').inlayHints?.enabled).toBe('off');
+  });
+
   it('getEditorOptions_turnsMonacosRightClickMenuOff', () => {
     // #1009: Monaco's menu offers its own Go to Symbol and Command Palette, so it is off everywhere
     // until Studio draws its own (#946 phase 3).
@@ -132,7 +163,35 @@ describe('Monaco', () => {
 
     expect(options.renderGutterMenu).toBe(false);
     expect(options.renderMarginRevertIcon).toBe(false);
-    expect(options.hideUnchangedRegions).toBeUndefined();
+    // Folding the unchanged runs is Collapse Unchanged Regions' to say: on by default.
+    expect(options.hideUnchangedRegions?.enabled).toBe(true);
+  });
+
+  it('getDiffEditorOptions_findMovedCode_andFollowTheDiffAndCodeSettings', () => {
+    const settings: Settings = TestBed.inject(Settings);
+    let options: ReturnType<Monaco['getDiffEditorOptions']> = monaco.getDiffEditorOptions();
+    expect(options.diffAlgorithm).toBe('advanced');
+    expect(options.experimental?.showMoves).toBe(true);
+    expect(options.ignoreTrimWhitespace).toBe(false);
+
+    try {
+      settings.set('textEditor.diffIgnoreWhitespace', true);
+      settings.set('textEditor.diffCollapseUnchanged', false);
+      settings.set('textEditor.global.wordWrap', true);
+      settings.set('textEditor.global.showMinimap', true);
+      settings.set('textEditor.global.showLineNumbers', false);
+      options = monaco.getDiffEditorOptions();
+
+      expect(options.ignoreTrimWhitespace).toBe(true);
+      expect(options.hideUnchangedRegions?.enabled).toBe(false);
+      expect(options.wordWrap).toBe('on');
+      expect(options.minimap?.enabled).toBe(true);
+      expect(options.lineNumbers).toBe('off');
+      // The diff's own whitespace switch overrides the setting for an open diff.
+      expect(monaco.getDiffLiveOptions(false).ignoreTrimWhitespace).toBe(false);
+    } finally {
+      localStorage.removeItem('settings');
+    }
   });
 
   it('editorAndDiffOptions_neverPeek_soSeveralAnswersGoToTheFirst', () => {
@@ -517,5 +576,180 @@ describe('installGoToCommands', () => {
     installed.commands.get(STUDIO_GO_TO_LINE_COMMAND)?.();
 
     expect(installed.opened).toEqual([]);
+  });
+
+  describe('loading', () => {
+    let scripts: HTMLScriptElement[];
+    let monaco: Monaco;
+
+    /**
+     * Lets a load reach its script and adds the element to what the test can see.
+     */
+    async function nextTurn(): Promise<void> {
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+
+    /**
+     * Spies on where a document's loader scripts go, without letting them load.
+     * @param target The document.
+     */
+    function capture(target: Document): void {
+      vi.spyOn(target.head, 'appendChild').mockImplementation(<T extends Node>(node: T): T => {
+        if (node instanceof (target.defaultView?.HTMLScriptElement ?? HTMLScriptElement)) {
+          scripts.push(node);
+        }
+        return node;
+      });
+    }
+
+    /**
+     * Gets the newest loader script.
+     * @returns Returns it.
+     */
+    function latestScript(): HTMLScriptElement {
+      const script: HTMLScriptElement | undefined = scripts[scripts.length - 1];
+      if (script === undefined) {
+        throw new Error('No loader script was added');
+      }
+      return script;
+    }
+
+    /**
+     * Fails the newest loader script as a missing file would.
+     */
+    function failScript(): void {
+      latestScript().onerror?.(new Event('error'));
+    }
+
+    beforeEach((): void => {
+      scripts = [];
+      capture(document);
+      monaco = TestBed.inject(Monaco);
+    });
+
+    afterEach((): void => {
+      vi.restoreAllMocks();
+      Reflect.deleteProperty(window, 'MonacoEnvironment');
+      Reflect.deleteProperty(window, 'require');
+    });
+
+    it('ensureLoaded_calledTwiceWhileLoading_addsOneScript', async () => {
+      const first: Promise<void> = monaco.ensureLoaded();
+      const second: Promise<void> = monaco.ensureLoaded();
+      await nextTurn();
+
+      expect(scripts).toHaveLength(1);
+      failScript();
+      await expect(first).rejects.toThrow('Failed to load');
+      await expect(second).rejects.toThrow('Failed to load');
+    });
+
+    it('ensureLoaded_afterAFailedLoad_triesAgain', async () => {
+      const first: Promise<void> = monaco.ensureLoaded();
+      await nextTurn();
+      failScript();
+      await expect(first).rejects.toThrow('Failed to load');
+
+      const second: Promise<void> = monaco.ensureLoaded();
+      await nextTurn();
+
+      expect(scripts).toHaveLength(2);
+      failScript();
+      await expect(second).rejects.toThrow('Failed to load');
+    });
+
+    it('ensureLoaded_editorModulesFailToLoad_rejectsRatherThanHanging', async () => {
+      const failure: Error = new Error('editor.main.js missing');
+      const loader: ((
+        modules: readonly string[],
+        loaded: () => void,
+        failed: (error: Error) => void,
+      ) => void) & { config?: () => void } = (
+        _modules: readonly string[],
+        _loaded: () => void,
+        failed: (error: Error) => void,
+      ): void => {
+        failed(failure);
+      };
+      loader.config = (): void => undefined;
+      Object.defineProperty(window, 'require', { value: loader, configurable: true });
+
+      const loading: Promise<void> = monaco.ensureLoaded();
+      await nextTurn();
+      latestScript().onload?.(new Event('load'));
+
+      await expect(loading).rejects.toBe(failure);
+    });
+
+    it.each([
+      ['json', 'vs/language/json/json.worker.js'],
+      ['css', 'vs/language/css/css.worker.js'],
+      ['scss', 'vs/language/css/css.worker.js'],
+      ['less', 'vs/language/css/css.worker.js'],
+      ['html', 'vs/language/html/html.worker.js'],
+      ['handlebars', 'vs/language/html/html.worker.js'],
+      ['razor', 'vs/language/html/html.worker.js'],
+      ['typescript', 'vs/language/typescript/ts.worker.js'],
+      ['javascript', 'vs/language/typescript/ts.worker.js'],
+      ['anything-else', 'vs/editor/editor.worker.js'],
+    ])('workerUrl_%s_is_%s', async (label: string, worker: string) => {
+      const loading: Promise<void> = monaco.ensureLoaded();
+      await nextTurn();
+
+      expect(window.MonacoEnvironment?.getWorkerUrl?.('module', label)).toContain(worker);
+      failScript();
+      await expect(loading).rejects.toThrow();
+    });
+
+    it('ensureLoadedIn_aDocumentWithNoWindow_refuses', async () => {
+      const detached: Document = document.implementation.createHTMLDocument('detached');
+
+      await expect(monaco.ensureLoadedIn(detached)).rejects.toThrow('no window');
+    });
+
+    describe('in a child window', () => {
+      let frame: HTMLIFrameElement;
+      let child: Document;
+
+      beforeEach((): void => {
+        frame = document.body.appendChild(document.createElement('iframe'));
+        const contents: Document | null = frame.contentDocument;
+        if (contents === null) {
+          throw new Error('The frame has no document');
+        }
+        child = contents;
+        capture(child);
+      });
+
+      afterEach((): void => {
+        frame.remove();
+      });
+
+      it('ensureLoadedIn_calledTwiceWhileLoading_addsOneScript', async () => {
+        const first: Promise<unknown> = monaco.ensureLoadedIn(child);
+        const second: Promise<unknown> = monaco.ensureLoadedIn(child);
+        await nextTurn();
+
+        expect(scripts).toHaveLength(1);
+        failScript();
+        await expect(first).rejects.toThrow('Failed to load');
+        await expect(second).rejects.toThrow('Failed to load');
+      });
+
+      it('ensureLoadedIn_afterAFailedLoad_triesAgain', async () => {
+        const first: Promise<unknown> = monaco.ensureLoadedIn(child);
+        await nextTurn();
+        failScript();
+        await expect(first).rejects.toThrow('Failed to load');
+
+        const second: Promise<unknown> = monaco.ensureLoadedIn(child);
+        await nextTurn();
+
+        expect(scripts).toHaveLength(2);
+        failScript();
+        await expect(second).rejects.toThrow('Failed to load');
+      });
+    });
   });
 });

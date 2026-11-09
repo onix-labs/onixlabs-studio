@@ -202,6 +202,8 @@ export class HarnessHost {
     name: string,
     detail: string,
     source: string,
+    sandboxed?: boolean,
+    toolId?: string,
   ) => void;
 
   /**
@@ -211,7 +213,14 @@ export class HarnessHost {
    */
   public constructor(
     transport: HarnessTransport,
-    onAudit: (requestId: string, name: string, detail: string, source: string) => void,
+    onAudit: (
+      requestId: string,
+      name: string,
+      detail: string,
+      source: string,
+      sandboxed?: boolean,
+      toolId?: string,
+    ) => void,
   ) {
     this.transport = transport;
     this.onAudit = onAudit;
@@ -535,7 +544,15 @@ export class HarnessHost {
         // Attributed to the turn that ran the action, which is what protocol 1.1.0 added `requestId`
         // for. Before it, this was host-level via a constructor sink, because routing an unattributed
         // record to an arbitrary in-flight turn would have credited whichever run was first in a map.
-        this.onAudit(message.requestId, message.name, message.detail, message.source);
+        this.onAudit(
+          message.requestId,
+          message.name,
+          message.detail,
+          message.source,
+          // A harness is not trusted to send a boolean; anything else says nothing.
+          typeof message.sandboxed === 'boolean' ? message.sandboxed : undefined,
+          typeof message.toolId === 'string' ? message.toolId : undefined,
+        );
         break;
       case 'turn.completed':
         this.settlers.get(message.requestId)?.(null);

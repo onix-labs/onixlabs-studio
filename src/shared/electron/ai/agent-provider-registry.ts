@@ -1,3 +1,5 @@
+import { resolveOllamaBaseUrl } from './ollama-endpoint';
+import { ollamaEnvironment, ollamaNeeded } from './ollama-settings';
 import type { AiConnection } from '@shared/api/ai-types';
 import { logger } from '@shared/electron/logger';
 import type { ContributedHarness } from '../contributions/plugins/plugin-loader';
@@ -147,6 +149,7 @@ export function toHarnessDescriptor(
         label: harness.displayName,
         models: connection.models,
         defaultModelId: connection.defaultModelId,
+        ...(connection.kind === 'ollama' ? { beforeTurn: ollamaNeeded } : {}),
         // ⛔ Resolved at every connect, not captured from `create`. Installs are version-scoped and an
         // update prunes the version it replaced, so a spec captured when the provider was built names
         // an entry point the update deleted — every later turn failed to spawn until Studio restarted
@@ -171,7 +174,11 @@ export function toHarnessDescriptor(
           connectionKind: connection.kind,
           connectionLabel: connection.label,
           connectionAuth: connection.auth,
-          baseUrl: connection.baseUrl ?? null,
+          // A plugin is not given `OLLAMA_HOST`, so an Ollama connection with no address of its own is
+          // told the one the environment or the AI Manager's setting names.
+          baseUrl:
+            connection.baseUrl ??
+            (connection.kind === 'ollama' ? resolveOllamaBaseUrl(ollamaEnvironment()) : null),
           // Gateways that need an extra header need it on every request, including the one that
           // discovers models — so a harness that did not get them could reach an endpoint it is then
           // refused by, and report that as the endpoint being wrong.

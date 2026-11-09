@@ -78,9 +78,10 @@ describe('PluginManagerView', () => {
         }
         return 'declined';
       },
-      uninstall: (id: string): Promise<void> => {
-        stub.uninstalled.push(id);
-        return Promise.resolve();
+      // The real client's confirmed removal, reduced to its shape: the user confirms, then it goes.
+      uninstallWithConsent: (plugin: PluginSummary): Promise<'removed' | 'declined'> => {
+        stub.uninstalled.push(plugin.id);
+        return Promise.resolve('removed');
       },
     };
     TestBed.configureTestingModule({
@@ -212,8 +213,9 @@ describe('PluginManagerView', () => {
 
     choose('Installed');
     expect(actionButtons()).toEqual([
-      { label: 'Remove', disabled: false },
+      // A plugin with an update waiting is pinned to the top of the list.
       { label: 'Update', disabled: false },
+      { label: 'Remove', disabled: false },
     ]);
 
     choose('Available');
@@ -273,7 +275,7 @@ describe('PluginManagerView', () => {
     // #950. One flat filter list beside one table: no accordions.
     render([
       summary({ id: 'a', name: 'Alpha', state: 'available' }),
-      summary({ id: 'b', name: 'Beta', state: 'installed', installedVersion: '1.0.0' }),
+      summary({ id: 'b', name: 'Beta', state: 'installed', installedVersion: '0.15.0' }),
       // Mid-update: still installed, so it stays under Installed while the work runs.
       summary({ id: 'c', name: 'Gamma', state: 'busy', installedVersion: '1.0.0' }),
       summary({ id: 'd', name: 'Delta', state: 'unavailable' }),
@@ -519,7 +521,7 @@ describe('PluginManagerView', () => {
     render([summary()]);
     click('Install');
 
-    clickIn(windows.contentHost, 'Accept and install');
+    clickIn(windows.contentHost, 'Install');
     await settle();
 
     expect(stub.installed).toEqual(['dockerfile-language-server']);
@@ -546,14 +548,14 @@ describe('PluginManagerView', () => {
     expect(stub.installed).toEqual([]);
     expect(windows.openWindows).toBe(1);
     expect(modalText()).toContain('Update Dockerfile Language Server?');
-    expect(modalText()).toContain('Accept and update');
+    expect(modalText()).toContain('Update');
   });
 
   it('update_acceptedInstallsTheOfferedVersion', async () => {
     render([summary({ state: 'installed', version: '2.0.0', installedVersion: '1.0.0' })]);
     click('Update');
 
-    clickIn(windows.contentHost, 'Accept and update');
+    clickIn(windows.contentHost, 'Update');
     await settle();
 
     expect(stub.installed).toEqual(['dockerfile-language-server']);
@@ -569,7 +571,7 @@ describe('PluginManagerView', () => {
 
   it('uninstall_isNotGatedByTheTerms', () => {
     // The terms are about running someone else's code. Removing it is not that, and asking again
-    // would be consent theatre.
+    // would be consent theatre; Remove asks only whether to remove (Plugins.uninstallWithConsent).
     render([summary({ state: 'installed' })]);
 
     click('Remove');

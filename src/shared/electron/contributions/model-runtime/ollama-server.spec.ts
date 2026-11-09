@@ -47,3 +47,15 @@ describe('stopsOnShutdown', () => {
     expect(stopsOnShutdown('absent')).toBe(false);
   });
 });
+
+describe('stopsOnShutdown', () => {
+  it('automatic_stopsOnlyStudiosOwnCopy', () => {
+    expect(stopsOnShutdown('managed')).toBe(true);
+    expect(stopsOnShutdown('system')).toBe(false);
+  });
+
+  it('followsTheSetting_whateverTheInstall', () => {
+    expect(stopsOnShutdown('system', 'always')).toBe(true);
+    expect(stopsOnShutdown('managed', 'never')).toBe(false);
+  });
+});

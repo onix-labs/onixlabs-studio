@@ -2,6 +2,16 @@ import { BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent, WebContents }
 import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { statSync } from 'node:fs';
 import { logger } from '../logger';
+import { answerConfiguration } from './lsp-server-settings';
+import { LspAttachDebuggerForwarder } from './lsp-attach-debugger';
+import { LANGUAGE_STATUS_METHOD, LspServerStatus, serverStatusOf } from './lsp-language-status';
+import { LspIndentationForwarder, LspIndentationSections } from './lsp-indentation';
+import { LspShowMessageForwarder } from './lsp-show-message';
+import { toShowDocumentRequest } from './lsp-show-document';
+import { LspOpenDocuments } from './lsp-open-documents';
+import { LspDiagnosticsCoalescer } from './lsp-diagnostics-coalescer';
+import { WorkspaceDiagnosticsPull, WorkspaceDocumentReport } from './lsp-workspace-diagnostics';
+import { ProjectDiagnosticsCheck } from './lsp-project-diagnostics';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -12,19 +22,41 @@ import {
 } from 'vscode-jsonrpc/node';
 import type { InitializeParams, InitializeResult } from 'vscode-languageserver-protocol';
 import {
+  LSP_BRACE_STYLES,
+  LspBraceStyle,
   LspChannel,
   LspExit,
+  LspGeneratedViewResult,
   LspMessage,
   LspServerSummary,
+  LspShowDocumentRequest,
   LspStartRequest,
   LspStartResult,
+  PUBLISH_DIAGNOSTICS_METHOD,
+  REFRESH_WORKSPACE_DIAGNOSTICS_METHOD,
+  WORKSPACE_DIAGNOSTICS_METHOD,
 } from '@shared/api/lsp-channels';
 import { pidJournal } from '../pid-journal';
 import { detachedSpawnOptions, killProcessTree } from '../process-tree';
 import { WorkspaceContext } from '../workspace-context';
-import { LspResolution, LspServerRegistry, LspServerSpec } from './lsp-server-registry';
+import {
+  LspResolution,
+  LspServerRegistry,
+  LspServerSpec,
+  LspSettingsChange,
+} from './lsp-server-registry';
 import { FileEvent, LspFileWatcher } from './lsp-file-watcher';
-import { globToRegExp } from './lsp-watch-glob';
+import {
+  createsCompilationDatabase,
+  hasCompilationDatabase,
+  readsCompilationDatabase,
+} from './lsp-compilation-database';
+import {
+  generatedViewRequest,
+  renderGeneratedView,
+  writeGeneratedView,
+} from './lsp-generated-views';
+import { LspServerTail } from './lsp-server-tail';
 import { ApplyEditResult, LspApplyEditForwarder } from './lsp-apply-edit';
 import { clientCapabilities } from './lsp-client-capabilities';
 
@@ -46,6 +78,24 @@ const INITIALIZE_TIMEOUT_MS: number = 60000;
 const SHUTDOWN_TIMEOUT_MS: number = 3000;
 
 /**
+ * Names the notification a server sends once it has loaded the workspace (Roslyn's), which a window
+ * attaching later is told again.
+ */
+const PROJECT_INITIALIZATION_COMPLETE: string = 'workspace/projectInitializationComplete';
+
+/**
+ * Names the notification rust-analyzer says how it is with (#1210), which a window attaching later is
+ * told again, since the server says it only when it changes.
+ */
+const SERVER_STATUS: string = 'experimental/serverStatus';
+
+/**
+ * Names the notification typescript-language-server says which TypeScript it runs with (#1207), once,
+ * as it starts, so a window attaching later is told it again.
+ */
+const TYPESCRIPT_VERSION: string = '$/typescriptVersion';
+
+/**
  * The server notifications forwarded to the renderer — exactly the set the renderer's client
  * handles. Everything else (progress, telemetry, server-specific chatter) is dropped here, before it
  * costs an IPC hop.
@@ -56,9 +106,25 @@ const FORWARDED_NOTIFICATIONS: ReadonlySet<string> = new Set<string>([
   '$/progress',
   'textDocument/publishDiagnostics',
   'workspace/projectInitializationComplete',
+  'experimental/serverStatus',
+  // Which TypeScript typescript-language-server runs with (#1207), for its status row.
+  '$/typescriptVersion',
   'workspace/semanticTokens/refresh',
   'window/logMessage',
   'window/showMessage',
+  // Roslyn's own "show this to the user" (a project that failed to load or restore, #1134), which it
+  // sends in place of `window/showMessage`.
+  'window/_roslyn_showToast',
+  // clangd's word on what it is doing with a file (#1213), which it sends once told to at start-up.
+  'textDocument/clangd.fileStatus',
+  // clangd's word on which lines of a file the preprocessor leaves out (#1213), for the editor to fade.
+  'textDocument/inactiveRegions',
+  // Sent on from the server's request of the same name, for the editors to ask for hints again.
+  'workspace/inlayHint/refresh',
+  // Sent on from the server's request of the same name, for the editors to ask for lenses again.
+  'workspace/codeLens/refresh',
+  // Sent on from the server's request of the same name, for the open documents to be pulled again.
+  'workspace/diagnostic/refresh',
 ]);
 
 /**
@@ -102,11 +168,72 @@ interface LspSession {
   readonly clients: Map<WebContents, number>;
 
   /**
+   * Holds the last few things the server said about itself (stderr, logged errors and warnings), so
+   * an exit it chose can be explained in the log and to the user.
+   */
+  readonly tail: LspServerTail;
+
+  /**
    * Holds the outcome of the session's initialize handshake, shared with every client that starts
    * the same session — a deduplicated Start must receive the real capabilities, not a bare success
    * (a client without capabilities silently loses pull diagnostics and semantic tokens).
    */
   ready: Promise<LspStartResult>;
+
+  /**
+   * Holds whether the server process ended without being asked to, so a handshake it abandons can
+   * be reported as the server stopping rather than as the connection's own wording.
+   */
+  exited?: boolean;
+
+  /**
+   * Holds the pull that keeps the server's diagnostics for the whole workspace flowing (#1144), or
+   * null for a server that does not serve them.
+   */
+  workspaceDiagnostics: WorkspaceDiagnosticsPull | null;
+
+  /**
+   * Holds the check that has the server report every file of the projects its open documents are in
+   * (#1207), or null for a server that is not asked.
+   */
+  projectDiagnostics: ProjectDiagnosticsCheck | null;
+
+  /**
+   * Holds whether the server has said it finished loading the workspace
+   * (`workspace/projectInitializationComplete`), which a window attaching later is told, since the
+   * server says it only once.
+   */
+  loaded: boolean;
+
+  /**
+   * Holds what the server last said of how it is (`experimental/serverStatus`), or undefined for a
+   * server that has said nothing.
+   */
+  serverStatus?: unknown;
+
+  /**
+   * Holds which TypeScript the server said it runs with (`$/typescriptVersion`, #1207), or undefined
+   * for a server that has said nothing of it.
+   */
+  typescriptVersion?: unknown;
+
+  /**
+   * Holds whether jdtls has said it is ready (`language/status`, #1208), after which its saying it is
+   * starting is not a new load.
+   */
+  serviceReady?: boolean;
+
+  /**
+   * Holds whether a workspace diagnostics pull has run to its end since the server loaded the
+   * workspace (#1182): the workspace has been analysed, which a window attaching later is told.
+   */
+  analysed: boolean;
+
+  /**
+   * Holds which windows hold each document open on the server (#1190), so the server never hears a
+   * document opened twice — Roslyn aborts on that — nor closed while another window still has it.
+   */
+  readonly openDocuments: LspOpenDocuments<WebContents>;
 }
 
 /**
@@ -139,9 +266,40 @@ export class LspManager {
   private readonly sessions: Map<string, LspSession> = new Map<string, LspSession>();
 
   /**
+   * Holds the diagnostics on their way to the renderer, limiting how fast they cross.
+   */
+  private readonly diagnostics: LspDiagnosticsCoalescer = new LspDiagnosticsCoalescer(
+    (sessionId: string, method: string, params: unknown): void =>
+      this.notifyRenderer(sessionId, method, params),
+  );
+
+  /**
+   * Counts the times every session has been disposed, so a launch that was still resolving its server
+   * when that happened can tell, and spawn nothing. A count rather than a flag: the renderer crashing
+   * disposes everything too, and the renderer that replaces it starts its servers again.
+   */
+  private disposals: number = 0;
+
+  /**
    * Holds the forwarder that hands a server's `workspace/applyEdit` to the renderer (#1015).
    */
   private readonly applyEdits: LspApplyEditForwarder;
+
+  /**
+   * Holds the forwarder that asks the renderer to attach the debugger to a process a server started
+   * (#1150).
+   */
+  private readonly attaches: LspAttachDebuggerForwarder;
+
+  /**
+   * Holds the forwarder that puts a server's questions to the user (#1154).
+   */
+  private readonly questions: LspShowMessageForwarder;
+
+  /**
+   * Holds the forwarder that asks the renderer how a document is indented (#1208).
+   */
+  private readonly indentation: LspIndentationForwarder;
 
   /**
    * Initializes a new instance of the {@link LspManager} class.
@@ -149,17 +307,26 @@ export class LspManager {
    * @param workspaceContext The open-workspace tracker used to confine sessions to opened roots.
    * @param registry The registry that resolves server identifiers into spawn specifications.
    * @param applyEdits The forwarder that hands a server's edits to the renderer.
+   * @param attaches The forwarder that asks the renderer to attach the debugger (#1150).
+   * @param questions The forwarder that puts a server's questions to the user (#1154).
+   * @param indentation The forwarder that asks the renderer how a document is indented (#1208).
    */
   public constructor(
     windowGetter: () => BrowserWindow | null,
     workspaceContext: WorkspaceContext,
     registry: LspServerRegistry,
     applyEdits: LspApplyEditForwarder = new LspApplyEditForwarder(),
+    attaches: LspAttachDebuggerForwarder = new LspAttachDebuggerForwarder(),
+    questions: LspShowMessageForwarder = new LspShowMessageForwarder(),
+    indentation: LspIndentationForwarder = new LspIndentationForwarder(),
   ) {
     this.windowGetter = windowGetter;
     this.workspaceContext = workspaceContext;
     this.registry = registry;
     this.applyEdits = applyEdits;
+    this.attaches = attaches;
+    this.questions = questions;
+    this.indentation = indentation;
   }
 
   /**
@@ -176,9 +343,9 @@ export class LspManager {
     );
     ipcMain.handle(
       LspChannel.Restart,
-      (_event: IpcMainInvokeEvent, id: unknown): Promise<LspStartResult> =>
-        typeof id === 'string'
-          ? this.restart(id)
+      (_event: IpcMainInvokeEvent, id: unknown, braceStyle?: unknown): Promise<LspStartResult> =>
+        typeof id === 'string' && (braceStyle === undefined || isBraceStyle(braceStyle))
+          ? this.restart(id, braceStyle)
           : Promise.resolve({ success: false, error: 'Invalid restart request' }),
     );
     ipcMain.handle(
@@ -190,16 +357,142 @@ export class LspManager {
         params: unknown,
       ): Promise<unknown> => this.request(id, method, params),
     );
+    ipcMain.handle(
+      LspChannel.GeneratedView,
+      (
+        _event: IpcMainInvokeEvent,
+        id: unknown,
+        kind: unknown,
+        params: unknown,
+      ): Promise<LspGeneratedViewResult> => this.generatedView(id, kind, params),
+    );
     ipcMain.on(
       LspChannel.Notify,
-      (_event: IpcMainEvent, id: unknown, method: unknown, params: unknown): void =>
-        this.notify(id, method, params),
+      (event: IpcMainEvent, id: unknown, method: unknown, params: unknown): void =>
+        this.notify(id, method, params, event.sender),
     );
     ipcMain.handle(LspChannel.GetCatalogue, (): readonly LspServerSummary[] =>
       this.registry.catalogue(),
     );
+    // A server reads its declared settings whenever it is told they changed, so a change reaches a
+    // running server at once rather than on its next start (#1143) — or restarts it, for a setting it
+    // reads only when it starts (#1204).
+    this.registry.onConfigurationChange((changes: readonly LspSettingsChange[]): void =>
+      this.announceConfigurationChange(changes),
+    );
     this.applyEdits.register();
+    this.attaches.register();
+    this.questions.register();
+    this.indentation.register();
     logger.info('LspManager', 'Registered language-server IPC handlers');
+  }
+
+  /**
+   * Starts the pull of a server's diagnostics for the whole workspace (#1144), when it serves them:
+   * it says so in its capabilities, or its descriptor does (Roslyn answers `workspace/diagnostic`
+   * while advertising `workspaceDiagnostics: false` to a client without dynamic registration). Each
+   * batch of reports goes to the session's renderers.
+   * @param sessionId The session.
+   * @param session The session's state.
+   * @param result The server's initialize result.
+   */
+  private startWorkspaceDiagnostics(
+    sessionId: string,
+    session: LspSession,
+    result: InitializeResult,
+  ): void {
+    const provider: unknown = result.capabilities.diagnosticProvider;
+    const advertised: boolean =
+      (provider as { workspaceDiagnostics?: unknown } | undefined)?.workspaceDiagnostics === true;
+    if (!advertised && !this.registry.servesWorkspaceDiagnostics(session.request.serverId)) {
+      return;
+    }
+    session.workspaceDiagnostics = new WorkspaceDiagnosticsPull(
+      session.connection,
+      (reports: readonly WorkspaceDocumentReport[], reset?: boolean, complete?: boolean): void => {
+        if (reset === true) {
+          session.analysed = false;
+        }
+        // A pull that runs to its end once the server has loaded the workspace has reported all of it.
+        if (complete === true && session.loaded) {
+          session.analysed = true;
+        }
+        this.diagnostics.report(sessionId, reports, reset, complete);
+      },
+      sessionId,
+    );
+    session.workspaceDiagnostics.start();
+    logger.info('LspManager', `Pulling workspace diagnostics for session ${sessionId}`);
+  }
+
+  /**
+   * Starts the check that has a server report every file of the projects its open documents are in
+   * (#1207), for a server whose descriptor asks for it.
+   * @param sessionId The session.
+   * @param session The session's state.
+   */
+  private startProjectDiagnostics(sessionId: string, session: LspSession): void {
+    if (this.registry.projectDiagnosticsOf(session.request.serverId) !== 'tsserver') {
+      return;
+    }
+    session.projectDiagnostics = new ProjectDiagnosticsCheck(
+      session.connection,
+      (): readonly string[] => session.openDocuments.uris(),
+      sessionId,
+    );
+    // Documents opened before the handshake finished were opened on the server all the same.
+    session.projectDiagnostics.schedule();
+  }
+
+  /**
+   * Tells each running session of the given servers that its configuration changed (#1143): pushed
+   * the settings, for a server that is pushed them, or told to ask for them again through
+   * `workspace/configuration` (#1204). A server that reads a changed setting only when it starts is
+   * restarted instead, which is the only way it hears of it.
+   * @param changes The servers whose settings changed.
+   */
+  private announceConfigurationChange(changes: readonly LspSettingsChange[]): void {
+    for (const [id, session] of [...this.sessions]) {
+      const change: LspSettingsChange | undefined = changes.find(
+        (candidate: LspSettingsChange): boolean => candidate.serverId === session.request.serverId,
+      );
+      if (change === undefined) {
+        continue;
+      }
+      if (change.restart) {
+        logger.info('LspManager', `Settings changed that ${id} reads at start-up; restarting it`);
+        void this.restart(id);
+        continue;
+      }
+      const pushed: Record<string, unknown> | undefined = this.registry.pushedSettingsOf(
+        change.serverId,
+        session.rootPath,
+      );
+      // A bare announcement is `{ settings: null }`, which only a server that asks again can use: the
+      // JSON server never asks, reads the settings it is sent, and throws on null (#1219).
+      if (pushed === undefined && !this.registry.pullsSettings(change.serverId)) {
+        logger.debug('LspManager', `Settings changed; ${id} neither asks for nor is pushed them`);
+        continue;
+      }
+      logger.info(
+        'LspManager',
+        pushed === undefined
+          ? `Settings changed; telling session ${id} to read them again`
+          : `Settings changed; pushing them to session ${id}`,
+      );
+      this.tell(session.connection, 'workspace/didChangeConfiguration', {
+        settings: pushed ?? null,
+      });
+      // A setting may change what the server reports at all (its analysis scope): start the
+      // workspace diagnostics over rather than keep what it no longer mentions (#1144).
+      session.workspaceDiagnostics?.reset();
+      // A server that is pushed its settings rarely says its lenses and hints went stale with them
+      // (typescript-language-server does not), so the editors are told to ask again.
+      if (pushed !== undefined) {
+        this.forwardNotification(id, 'workspace/codeLens/refresh', undefined);
+        this.forwardNotification(id, 'workspace/inlayHint/refresh', undefined);
+      }
+    }
   }
 
   /**
@@ -207,7 +500,11 @@ export class LspManager {
    */
   public disposeAll(): void {
     logger.info('LspManager', `Disposing all LSP sessions (${this.sessions.size})`);
+    this.disposals += 1;
     this.applyEdits.dispose();
+    this.attaches.dispose();
+    this.questions.dispose();
+    this.indentation.dispose();
     for (const id of [...this.sessions.keys()]) {
       this.tearDown(id);
     }
@@ -237,7 +534,11 @@ export class LspManager {
         'LspManager',
         `Reusing LSP session ${parsed.sessionId} (refCount now ${this.refCount(existing)})`,
       );
-      return existing.ready;
+      const result: LspStartResult = await existing.ready;
+      if (result.success) {
+        this.catchUp(parsed.sessionId, existing, sender);
+      }
+      return result;
     }
     return this.launch(parsed, sender);
   }
@@ -253,9 +554,11 @@ export class LspManager {
    * count, so with the session shared by another surface the old process survived and the "restarted"
    * client silently reattached to it — the spinner and the cleared crash counters were theatre.
    * @param id The session identifier.
+   * @param braceStyle The brace style to start the new server with, when the user's setting for the
+   * session's language changed (#1177); undefined keeps the one it was started with.
    * @returns Returns the new session's start outcome, or a failure when no such session is running.
    */
-  private async restart(id: string): Promise<LspStartResult> {
+  private async restart(id: string, braceStyle?: LspBraceStyle): Promise<LspStartResult> {
     const session: LspSession | undefined = this.sessions.get(id);
     if (session === undefined) {
       return { success: false, error: 'No such session' };
@@ -263,7 +566,9 @@ export class LspManager {
     logger.info('LspManager', `Restarting LSP session ${id} on request`);
     const holders: WebContents[] = [...session.clients.keys()];
     await this.shutDown(id, session);
-    const ready: Promise<LspStartResult> = this.launch(session.request, null);
+    const request: LspStartRequest =
+      braceStyle === undefined ? session.request : { ...session.request, braceStyle };
+    const ready: Promise<LspStartResult> = this.launch(request, null);
     const exit: LspExit = { sessionId: id, code: null, signal: null, restarted: true };
     for (const contents of holders) {
       if (!contents.isDestroyed()) {
@@ -288,7 +593,25 @@ export class LspManager {
       logger.warn('LspManager', `LSP start denied for non-open root ${parsed.rootPath}`);
       return { success: false, error: 'Workspace root is not open' };
     }
-    const resolution: LspResolution = await this.registry.resolve(parsed.serverId, parsed.rootPath);
+    const disposals: number = this.disposals;
+    const resolution: LspResolution = await this.registry.resolve(
+      parsed.serverId,
+      parsed.rootPath,
+      parsed.braceStyle,
+    );
+    // Resolving can take minutes (a first install downloads the server), and the world moves on
+    // meanwhile. A process spawned for a session someone else has since started would replace it in
+    // the map, leaving a server nothing can ever stop; one spawned after a dispose outlives Studio.
+    if (disposals !== this.disposals) {
+      return { success: false, error: 'Language servers were shut down' };
+    }
+    const running: LspSession | undefined = this.sessions.get(parsed.sessionId);
+    if (running !== undefined) {
+      if (sender !== null) {
+        this.attach(running, parsed.sessionId, sender);
+      }
+      return running.ready;
+    }
     const spec: LspServerSpec | null = resolution.spec;
     if (spec === null) {
       logger.warn(
@@ -319,18 +642,50 @@ export class LspManager {
       logger.error('LspManager', `Failed to spawn LSP server ${spec.command}`, error);
       return { success: false, error: error instanceof Error ? error.message : 'Spawn failed' };
     }
+    // A program that cannot be run does not throw: `spawn` returns a child with no pid and emits
+    // `error` on the next tick, which with no listener is an uncaught exception in the main process.
+    if (child.pid === undefined) {
+      const failure: Error = await new Promise<Error>((resolve: (error: Error) => void): void => {
+        child.once('error', resolve);
+      });
+      logger.warn('LspManager', `Failed to spawn LSP server ${spec.command}`, failure);
+      return { success: false, error: failure.message };
+    }
+    child.on('error', (error: Error): void => {
+      logger.warn('LspManager', `LSP server ${spec.command} reported an error`, error);
+    });
     pidJournal()?.register(child.pid, 'lsp', spec.command);
     logger.info('LspManager', `Started LSP server ${spec.command} (pid ${child.pid})`);
-    // Drain stderr so a chatty server cannot stall on a full pipe; its contents are diagnostic only.
-    child.stderr.resume();
+    // Reading stderr keeps the pipe drained so a chatty server cannot stall on it, and keeps its
+    // last lines for when the server exits: a server that dies over a protocol error says why there
+    // (or over `window/logMessage`) and nowhere else. Draining it to nowhere left every such exit a
+    // bare "code=0".
+    const tail: LspServerTail = new LspServerTail();
+    child.stderr.on('data', (chunk: Buffer | string): void => tail.stderr(chunk.toString()));
 
     const connection: MessageConnection = createMessageConnection(
       new StreamMessageReader(child.stdout),
       new StreamMessageWriter(child.stdin),
     );
-    connection.onNotification((method: string, params: unknown): void =>
-      this.forwardNotification(parsed.sessionId, method, params),
-    );
+    connection.onNotification((method: string, params: unknown): void => {
+      if (method === 'window/logMessage') {
+        tail.logMessage(params);
+      }
+      this.forwardNotification(parsed.sessionId, method, params);
+    });
+    // The connection keeps `$/progress` to itself — it never reaches the handler above — and hands on
+    // only the progress no request of its own is waiting for. A workspace diagnostics pull's partial
+    // results go to the pull (#1144); the rest is the server's own progress, for its status row.
+    connection.onUnhandledProgress((progress: { token: unknown; value: unknown }): void => {
+      const pull: WorkspaceDiagnosticsPull | null | undefined = this.sessions.get(
+        parsed.sessionId,
+      )?.workspaceDiagnostics;
+      if (pull?.owns(progress.token) === true) {
+        pull.partial(progress.value);
+        return;
+      }
+      this.forwardNotification(parsed.sessionId, '$/progress', progress);
+    });
     child.on('exit', (code: number | null, signal: NodeJS.Signals | null): void =>
       this.handleExit(parsed.sessionId, child, code, signal),
     );
@@ -340,11 +695,27 @@ export class LspManager {
     // switch, a file another tool wrote — through `workspace/didChangeWatchedFiles`. Without it a
     // server's picture of the workspace is a snapshot from spawn time: a package that landed a
     // minute later stays "missing" until the server is restarted.
+    // One exception is restarted after all (#1213): clangd does not take up a compilation database that
+    // first appears once it is running, so the CMake configure that writes one restarts it, once.
+    let awaitingDatabase: boolean =
+      readsCompilationDatabase(parsed.serverId) && !hasCompilationDatabase(parsed.rootPath);
     const watcher: LspFileWatcher = new LspFileWatcher(
       parsed.rootPath,
       (events: readonly FileEvent[]): void => {
         if (this.sessions.get(parsed.sessionId)?.child === child) {
-          void connection.sendNotification('workspace/didChangeWatchedFiles', { changes: events });
+          logger.trace(
+            'LspManager',
+            `Told ${parsed.sessionId} about ${events.length} file change(s) on disk`,
+          );
+          this.tell(connection, 'workspace/didChangeWatchedFiles', { changes: events });
+          if (awaitingDatabase && createsCompilationDatabase(events)) {
+            awaitingDatabase = false;
+            logger.info(
+              'LspManager',
+              `A compilation database appeared under ${parsed.rootPath}; restarting ${parsed.sessionId}`,
+            );
+            void this.restart(parsed.sessionId);
+          }
         }
       },
     );
@@ -355,7 +726,13 @@ export class LspManager {
       request: parsed,
       watcher,
       clients: new Map<WebContents, number>(),
+      tail,
       ready: Promise.resolve({ success: false, error: 'Initialize pending' }),
+      workspaceDiagnostics: null,
+      projectDiagnostics: null,
+      loaded: false,
+      analysed: false,
+      openDocuments: new LspOpenDocuments<WebContents>(),
     };
     this.answerServerRequests(connection, parsed.sessionId, session);
     this.sessions.set(parsed.sessionId, session);
@@ -365,18 +742,40 @@ export class LspManager {
 
     // The handshake outcome (capabilities included) is retained on the session, so a concurrent or
     // later Start for the same session shares the real result instead of a capability-less success.
-    session.ready = this.initialize(connection, parsed.rootPath, spec)
-      .then((result: InitializeResult): LspStartResult => ({
-        success: true,
-        serverInfo: result.serverInfo,
-        capabilities: result.capabilities,
-      }))
+    session.ready = this.initialize(
+      connection,
+      parsed.rootPath,
+      spec,
+      this.registry.pushedSettingsOf(parsed.serverId, parsed.rootPath),
+      parsed.serverId,
+    )
+      .then((result: InitializeResult): LspStartResult => {
+        this.startWorkspaceDiagnostics(parsed.sessionId, session, result);
+        this.startProjectDiagnostics(parsed.sessionId, session);
+        return {
+          success: true,
+          serverInfo: result.serverInfo,
+          capabilities: result.capabilities,
+          ...(session.workspaceDiagnostics === null ? {} : { pullsWorkspaceDiagnostics: true }),
+        };
+      })
       .catch((error: unknown): LspStartResult => {
+        // The original error stays in the log whatever the user is told.
         logger.warn('LspManager', `LSP server ${spec.command} failed to initialize`, error);
         this.tearDown(parsed.sessionId);
+        const message: string = error instanceof Error ? error.message : 'Initialize failed';
+        if (session.exited !== true) {
+          return { success: false, error: message };
+        }
+        // The server died mid-handshake: its exit disposed the connection, which rejects the pending
+        // `initialize` with JSON-RPC's own "connection got disposed". That is the same crash a running
+        // server has, so the renderer says it in the same words, with the server's last words.
+        const reason: string | null = session.tail.summary();
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Initialize failed',
+          error: message,
+          exited: true,
+          ...(reason === null ? {} : { reason }),
         };
       });
     return session.ready;
@@ -387,12 +786,17 @@ export class LspManager {
    * @param connection The server connection.
    * @param rootPath The absolute workspace root.
    * @param spec The server specification, supplying initialization options.
+   * @param pushed The settings to push once the server has started (#1204), or undefined for a
+   * server that is not pushed them.
+   * @param serverId The server, as what a server is told can depend on which it is.
    * @returns Returns the server's initialize result.
    */
   private async initialize(
     connection: MessageConnection,
     rootPath: string,
     spec: LspServerSpec,
+    pushed?: Record<string, unknown>,
+    serverId?: string,
   ): Promise<InitializeResult> {
     const rootUri: string = pathToFileURL(rootPath).href;
     const params: InitializeParams = {
@@ -400,7 +804,7 @@ export class LspManager {
       rootUri,
       workspaceFolders: [{ uri: rootUri, name: rootPath }],
       initializationOptions: spec.initializationOptions,
-      capabilities: clientCapabilities(),
+      capabilities: clientCapabilities(serverId),
     };
     logger.trace('LspManager', `Sending initialize handshake for root ${rootPath}`);
     const result: InitializeResult = await this.withTimeout<InitializeResult>(
@@ -408,11 +812,16 @@ export class LspManager {
       INITIALIZE_TIMEOUT_MS,
     );
     logger.debug('LspManager', `Initialize complete: ${result.serverInfo?.name ?? 'server'}`);
-    void connection.sendNotification('initialized', {});
+    this.tell(connection, 'initialized', {});
+    // A server that never asks for its settings hears of them only when it is sent them, as VS Code
+    // does at once (#1204): until then typescript-language-server runs with none.
+    if (pushed !== undefined) {
+      this.tell(connection, 'workspace/didChangeConfiguration', { settings: pushed });
+    }
     // A server that does not load a workspace from `rootUri` alone (such as the Roslyn C# server) is
     // told which solution or project to open here, once the handshake has completed.
     for (const message of spec.postInitialize ?? []) {
-      void connection.sendNotification(message.method, message.params);
+      this.tell(connection, message.method, message.params);
     }
     return result;
   }
@@ -438,13 +847,59 @@ export class LspManager {
   }
 
   /**
+   * Asks a session's server for a view of the code (#1210, #1213) — a macro's expansion, the HIR or
+   * MIR of a function, the syntax tree at a place, the server's memory — and writes it where the editor
+   * opens it read-only. The renderer names only the kind and the place: the request, the file's name
+   * and its folder are this side's.
+   * @param id The session identifier.
+   * @param kind The kind of view, untrusted.
+   * @param params The place, untrusted.
+   * @returns Returns where the view was written, or why there is none.
+   */
+  private async generatedView(
+    id: unknown,
+    kind: unknown,
+    params: unknown,
+  ): Promise<LspGeneratedViewResult> {
+    const session: LspSession | undefined =
+      typeof id === 'string' ? this.sessions.get(id) : undefined;
+    const request: ReturnType<typeof generatedViewRequest> = generatedViewRequest(kind, params);
+    if (session === undefined || request === null) {
+      return { error: 'Invalid view request' };
+    }
+    let result: unknown;
+    try {
+      result = await session.connection.sendRequest(request.method, request.params);
+    } catch (error: unknown) {
+      logger.debug('LspManager', `${request.method} failed for ${String(id)}`, error);
+      return { error: error instanceof Error ? error.message : 'The server could not answer' };
+    }
+    const view: { readonly name: string; readonly text: string } | null = renderGeneratedView(
+      request.kind,
+      result,
+      request.where,
+    );
+    if (view === null) {
+      return { error: 'Nothing to show here' };
+    }
+    try {
+      return await writeGeneratedView(view);
+    } catch (error: unknown) {
+      logger.warn('LspManager', `Could not write the ${request.kind} view`, error);
+      return { error: 'The view could not be written' };
+    }
+  }
+
+  /**
    * Sends an LSP notification to a session's server. Does nothing when the session or arguments are
    * invalid.
    * @param id The session identifier.
    * @param method The LSP method name.
    * @param params The method parameters.
+   * @param sender The renderer sending it, whose open documents are tracked (#1190); undefined for
+   * a notification of the main process's own.
    */
-  private notify(id: unknown, method: unknown, params: unknown): void {
+  private notify(id: unknown, method: unknown, params: unknown, sender?: WebContents): void {
     if (typeof id !== 'string' || typeof method !== 'string' || method.length === 0) {
       return;
     }
@@ -452,7 +907,79 @@ export class LspManager {
     if (session === undefined) {
       return;
     }
-    void session.connection.sendNotification(method, params);
+    if (method === REFRESH_WORKSPACE_DIAGNOSTICS_METHOD) {
+      const closed: unknown = (params as { uri?: unknown } | null)?.uri;
+      session.workspaceDiagnostics?.refresh(typeof closed === 'string' ? closed : undefined);
+      return;
+    }
+    if (sender !== undefined && !this.trackOpenDocument(id, session, method, params, sender)) {
+      return;
+    }
+    this.tell(session.connection, method, params);
+    // A document opened can bring a project in; one saved can break a file of it that is not open; and
+    // one closed has its diagnostics cleared by the server, which a check reports again.
+    if (
+      method === 'textDocument/didOpen' ||
+      method === 'textDocument/didSave' ||
+      method === 'textDocument/didClose'
+    ) {
+      session.projectDiagnostics?.schedule();
+    }
+  }
+
+  /**
+   * Sends a server a notification nothing waits on. Sending is not safe to leave alone: a connection
+   * whose server closed its output throws, into an IPC listener, and a write to a server that has just
+   * died rejects with EPIPE, with nothing to catch it. Either way the exit handling deals with the
+   * server, so a notification that could not be delivered needs no more than a log line.
+   * @param connection The server connection.
+   * @param method The notification.
+   * @param params Its parameters.
+   */
+  private tell(connection: MessageConnection, method: string, params?: unknown): void {
+    try {
+      connection.sendNotification(method, params).catch((error: unknown): void => {
+        logger.debug('LspManager', `Could not deliver ${method}`, error);
+      });
+    } catch (error: unknown) {
+      logger.debug('LspManager', `Could not deliver ${method}`, error);
+    }
+  }
+
+  /**
+   * Keeps the server's view of a session's open documents consistent with the windows holding them
+   * (#1190): a document opened while the server already has it open — a window reloaded while its
+   * session kept running, and opened its documents again — is closed on the server first, as Roslyn
+   * aborts on a second `didOpen`; a document closed while another window still holds it stays open.
+   * @param id The session identifier.
+   * @param session The session.
+   * @param method The notification.
+   * @param params Its parameters.
+   * @param sender The renderer sending it.
+   * @returns Returns false when the notification is not to reach the server.
+   */
+  private trackOpenDocument(
+    id: string,
+    session: LspSession,
+    method: string,
+    params: unknown,
+    sender: WebContents,
+  ): boolean {
+    if (method !== 'textDocument/didOpen' && method !== 'textDocument/didClose') {
+      return true;
+    }
+    const uri: unknown = (params as { textDocument?: { uri?: unknown } } | null)?.textDocument?.uri;
+    if (typeof uri !== 'string') {
+      return true;
+    }
+    if (method === 'textDocument/didClose') {
+      return session.openDocuments.close(uri, sender);
+    }
+    if (session.openDocuments.open(uri, sender)) {
+      logger.debug('LspManager', `Re-opening ${uri} on session ${id}; the server had it open`);
+      this.tell(session.connection, 'textDocument/didClose', { textDocument: { uri } });
+    }
+    return true;
   }
 
   /**
@@ -473,6 +1000,12 @@ export class LspManager {
         }
         current.clients.delete(sender);
         logger.debug('LspManager', `A renderer holding session ${id} was destroyed`);
+        // The documents only it held are closed on the server, for a session that carries on (#1190).
+        for (const uri of current.openDocuments.release(sender)) {
+          this.tell(current.connection, 'textDocument/didClose', {
+            textDocument: { uri },
+          });
+        }
         if (this.refCount(current) === 0) {
           void this.shutDown(id, current);
         }
@@ -530,12 +1063,16 @@ export class LspManager {
     logger.debug('LspManager', `Last client stopped session ${id}; shutting server down`);
     try {
       await this.withTimeout(session.connection.sendRequest('shutdown'), SHUTDOWN_TIMEOUT_MS);
-      void session.connection.sendNotification('exit');
+      this.tell(session.connection, 'exit');
     } catch (error: unknown) {
       // The server is being killed regardless; ignore a failed graceful shutdown.
       logger.debug('LspManager', `Graceful shutdown failed for session ${id}`, error);
     }
-    this.tearDown(id);
+    // Two shutdowns of one session can overlap (a restart racing a stop); by the time the second gets
+    // here its id may belong to the replacement, which is not this shutdown's to end.
+    if (this.sessions.get(id) === session) {
+      this.tearDown(id);
+    }
   }
 
   /**
@@ -555,14 +1092,32 @@ export class LspManager {
     code: number | null,
     signal: NodeJS.Signals | null,
   ): void {
-    if (this.sessions.get(id)?.child !== child) {
+    const session: LspSession | undefined = this.sessions.get(id);
+    if (session?.child !== child) {
       return;
     }
-    logger.info(
+    // An exit the manager did not ask for is a failure whatever the code: a server that hits a
+    // protocol error shuts itself down cleanly (Roslyn exits 0 after "Error occurred processing
+    // queue"). Its last words are the only evidence, so they go in the log with the exit.
+    const recent: readonly string[] = session.tail.recent();
+    const reason: string | null = session.tail.summary();
+    logger.warn(
       'LspManager',
-      `LSP server for session ${id} exited (code=${code}, signal=${signal})`,
+      `LSP server for session ${id} exited unexpectedly (code=${code}, signal=${signal})${
+        recent.length === 0
+          ? '; it said nothing on stderr or in its log'
+          : `; its last output:\n  ${recent.join('\n  ')}`
+      }`,
     );
-    const exit: LspExit = { sessionId: id, code, signal: signal ?? null };
+    const exit: LspExit = {
+      sessionId: id,
+      code,
+      signal: signal ?? null,
+      ...(reason === null ? {} : { reason }),
+    };
+    session.exited = true;
+    // Ahead of the exit: the renderer forgets the session on hearing it.
+    this.diagnostics.flush(id);
     this.send(id, LspChannel.ServerExit, exit);
     this.tearDown(id);
   }
@@ -577,8 +1132,12 @@ export class LspManager {
       return;
     }
     logger.info('LspManager', `Stopping LSP server for session ${id} (pid ${session.child.pid})`);
+    // While the session still knows its windows, which is who these are for.
+    this.diagnostics.flush(id);
     this.sessions.delete(id);
     session.watcher.close();
+    session.workspaceDiagnostics?.stop();
+    session.projectDiagnostics?.stop();
     try {
       session.connection.dispose();
     } catch (error: unknown) {
@@ -616,34 +1175,72 @@ export class LspManager {
         return null;
       },
     );
+    // Unregistered by id, as the protocol does: a server that drops one project's watchers keeps the
+    // rest. (The field really is spelt `unregisterations`.)
     connection.onRequest(
       'client/unregisterCapability',
-      (params: { unregisterations?: readonly { method?: unknown }[] }): null => {
-        if (
-          (params.unregisterations ?? []).some(
-            (entry: { method?: unknown }): boolean =>
-              entry.method === 'workspace/didChangeWatchedFiles',
-          )
-        ) {
-          session.watcher.setPatterns(null);
+      (params: { unregisterations?: readonly { id?: unknown; method?: unknown }[] }): null => {
+        for (const entry of params.unregisterations ?? []) {
+          if (entry.method === 'workspace/didChangeWatchedFiles' && typeof entry.id === 'string') {
+            session.watcher.unregister(entry.id);
+          }
         }
         return null;
       },
     );
     connection.onRequest('window/workDoneProgress/create', (): null => null);
+    // The server's diagnostics changed in a way an open workspace pull will not report (a project
+    // finished loading, the analysis scope changed): pull afresh (#1144). A server with no workspace
+    // pull has its open documents pulled again by the renderer (#1210).
+    connection.onRequest('workspace/diagnostic/refresh', (): null => {
+      if (session.workspaceDiagnostics) {
+        session.workspaceDiagnostics.refresh();
+      } else {
+        this.forwardNotification(sessionId, 'workspace/diagnostic/refresh', undefined);
+      }
+      return null;
+    });
     // A server sends this when its semantic classification has improved (a project finished loading)
     // and cached tokens are stale. Forwarded to the renderer, which re-pulls and repaints.
+    // A server's hints are stale (a setting changed, a project loaded): the renderer has its editors
+    // ask again (#1145).
+    // A server's code lenses are stale (a reference added elsewhere, a setting changed): the renderer
+    // has its editors ask again (#1149).
+    connection.onRequest('workspace/codeLens/refresh', (): null => {
+      this.forwardNotification(sessionId, 'workspace/codeLens/refresh', undefined);
+      return null;
+    });
+    connection.onRequest('workspace/inlayHint/refresh', (): null => {
+      this.forwardNotification(sessionId, 'workspace/inlayHint/refresh', undefined);
+      return null;
+    });
     connection.onRequest('workspace/semanticTokens/refresh', (): null => {
       this.forwardNotification(sessionId, 'workspace/semanticTokens/refresh', undefined);
       return null;
     });
-    // Answer each requested configuration item with null (rather than an empty object): null tells a
-    // server to use its default for that setting, whereas `{}` is parsed as a value and rejected by
-    // servers (such as Roslyn) that expect a scalar per key.
+    // Answer each requested configuration item with the user's value for the setting the server
+    // declared (#1143), or null — the server's default — for anything else. What is a document's
+    // indentation is answered from the document's editor (#1208).
     connection.onRequest(
       'workspace/configuration',
-      (params: { items?: readonly unknown[] }): unknown[] =>
-        (params.items ?? []).map((): unknown => null),
+      (params: { items?: readonly unknown[] }): unknown[] | Promise<unknown[]> => {
+        const answers: unknown[] = answerConfiguration(
+          this.registry.configurationOf(session.request.serverId, session.rootPath),
+          params.items,
+        );
+        const sections: LspIndentationSections | undefined = this.registry.indentationSectionsOf(
+          session.request.serverId,
+        );
+        return sections === undefined
+          ? answers
+          : this.indentation.fill(
+              sessionId,
+              this.applierOf(session),
+              sections,
+              params.items,
+              answers,
+            );
+      },
     );
     // A server's own edit — a code action's or a command's — is applied by the renderer that holds
     // the session, as a rename is (#1015), and the server told whether it was: `{ applied }`, never
@@ -651,6 +1248,36 @@ export class LspManager {
     connection.onRequest('workspace/applyEdit', (params: unknown): Promise<ApplyEditResult> =>
       this.applyEdits.forward(sessionId, this.applierOf(session), params),
     );
+    // Roslyn's Debug Test starts the test host and waits in it for a debugger (#1150): the renderer
+    // that holds the session attaches the workspace's debugger, and the server is told whether it did.
+    connection.onRequest(
+      'workspace/attachDebugger',
+      (params: unknown): Promise<{ didAttach: boolean }> =>
+        this.attaches.forward(sessionId, this.applierOf(session), params),
+    );
+    // A server's question for the user ("Import this project?"), answered with the action they chose,
+    // or null once they dismiss it (#1154).
+    connection.onRequest('window/showMessageRequest', (params: unknown): Promise<unknown> =>
+      this.questions.forward(sessionId, this.applierOf(session), params),
+    );
+    // A server's page or file to show (#1211) — gopls's Browse Documentation serves a page of its own
+    // — opened by the renderer that holds the session: a page in the browser, a file in an editor.
+    connection.onRequest('window/showDocument', (params: unknown): { success: boolean } => {
+      const request: LspShowDocumentRequest | null = toShowDocumentRequest(sessionId, params);
+      const target: WebContents | null = this.applierOf(session);
+      if (request === null || target === null) {
+        logger.debug('LspManager', `Did not show a document for session ${sessionId}`);
+        return { success: false };
+      }
+      target.send(LspChannel.ShowDocument, request);
+      return { success: true };
+    });
+    // The folders the session serves (#1214), as `initialize` named them: Studio advertises workspace
+    // folders, so a null answer would say none is open — perlnavigator asks five times as it starts,
+    // and resolves a workspace's own modules from the answer.
+    connection.onRequest('workspace/workspaceFolders', (): { uri: string; name: string }[] => [
+      { uri: pathToFileURL(session.rootPath).href, name: session.rootPath },
+    ]);
     // Any other server-to-client request is acknowledged with null so the server is never left
     // waiting on a response it requires to make progress.
     connection.onRequest((): null => null);
@@ -673,44 +1300,90 @@ export class LspManager {
   }
 
   /**
-   * Applies one dynamic registration: a `workspace/didChangeWatchedFiles` registration narrows the
-   * session's file watcher to the server's globs (a relative pattern is taken relative to the
-   * session root; an absolute or `file:` base is honoured when it is the root, and otherwise treated
-   * as "anything", since the watcher only covers the root). Other methods need nothing here.
+   * Applies one dynamic registration: a `workspace/didChangeWatchedFiles` registration is **added**
+   * to the session's file watcher under its id, so what the server hears about is the union of every
+   * registration it has made (#1170). Each pattern is relative to its own base folder, which may be
+   * a sub-folder of the root; a base outside the root names nothing the watcher can see. Other
+   * methods need nothing here.
    * @param session The session the registration belongs to.
    * @param registration The registration entry, untrusted.
    */
   private applyRegistration(session: LspSession, registration: unknown): void {
     const entry: {
+      id?: unknown;
       method?: unknown;
-      registerOptions?: { watchers?: readonly { globPattern?: unknown }[] };
+      registerOptions?: { watchers?: unknown };
     } | null = (registration as typeof entry) ?? null;
     if (entry?.method !== 'workspace/didChangeWatchedFiles') {
       return;
     }
-    const patterns: RegExp[] = [];
-    let unbounded: boolean = false;
-    for (const watcher of entry.registerOptions?.watchers ?? []) {
-      const glob: unknown = watcher.globPattern;
-      if (typeof glob === 'string') {
-        if (path.isAbsolute(glob) || glob.startsWith('file:')) {
-          // An absolute glob outside our root cannot be narrowed safely; report everything.
-          unbounded = true;
-        } else {
-          patterns.push(globToRegExp(glob));
-        }
-      } else if (typeof glob === 'object' && glob !== null) {
-        const relative: { baseUri?: unknown; pattern?: unknown } = glob;
-        if (typeof relative.pattern === 'string') {
-          patterns.push(globToRegExp(relative.pattern));
-        }
-      }
-    }
-    session.watcher.setPatterns(unbounded || patterns.length === 0 ? null : patterns);
-    logger.debug(
+    // The protocol requires an id; one without is kept under a name no unregistration can reach.
+    const id: string =
+      typeof entry.id === 'string' ? entry.id : `anonymous-${session.watcher.registrationCount}`;
+    session.watcher.register(id, entry.registerOptions?.watchers);
+    logger.trace(
       'LspManager',
-      `Server registered ${patterns.length} watch pattern(s) for ${session.rootPath}`,
+      `Server watch registration ${id} for ${session.rootPath} (${session.watcher.registrationCount} live)`,
     );
+  }
+
+  /**
+   * Tells a window that attached to a running session what the windows before it were told and the
+   * server will not say again (#1182): that it finished loading the workspace, how it is, which
+   * TypeScript it runs with (#1207), and the
+   * workspace's diagnostics as they stand. Without this, a window reloaded — or a second one opened on the same
+   * folder — waited on a load that had long finished, its Error List empty. Sent once the window has
+   * its start answer, which it needs to take them.
+   * @param sessionId The session.
+   * @param session The session's state.
+   * @param sender The window that attached.
+   */
+  private catchUp(sessionId: string, session: LspSession, sender: WebContents): void {
+    setTimeout((): void => {
+      if (sender.isDestroyed() || this.sessions.get(sessionId) !== session) {
+        return;
+      }
+      const reports: readonly WorkspaceDocumentReport[] =
+        session.workspaceDiagnostics?.snapshot() ?? [];
+      // Loaded first: the window takes a pull as complete only from a server it knows has loaded.
+      if (session.loaded) {
+        const message: LspMessage = {
+          sessionId,
+          method: PROJECT_INITIALIZATION_COMPLETE,
+          params: {},
+        };
+        sender.send(LspChannel.Notification, message);
+      }
+      if (session.serverStatus !== undefined) {
+        const message: LspMessage = {
+          sessionId,
+          method: SERVER_STATUS,
+          params: session.serverStatus,
+        };
+        sender.send(LspChannel.Notification, message);
+      }
+      if (session.typescriptVersion !== undefined) {
+        const message: LspMessage = {
+          sessionId,
+          method: TYPESCRIPT_VERSION,
+          params: session.typescriptVersion,
+        };
+        sender.send(LspChannel.Notification, message);
+      }
+      if (reports.length > 0 || session.analysed) {
+        const message: LspMessage = {
+          sessionId,
+          method: WORKSPACE_DIAGNOSTICS_METHOD,
+          params: { reports, ...(session.analysed ? { complete: true } : {}) },
+        };
+        sender.send(LspChannel.Notification, message);
+      }
+      logger.debug(
+        'LspManager',
+        `Caught a window up on session ${sessionId}`,
+        `${reports.length} report(s), loaded=${session.loaded}`,
+      );
+    }, 0);
   }
 
   /**
@@ -720,12 +1393,58 @@ export class LspManager {
    * @param params The method parameters.
    */
   private forwardNotification(sessionId: string, method: string, params: unknown): void {
+    // jdtls says how it is in a notification of its own (#1208), read here as the one rust-analyzer
+    // sends, so the renderer and a window attaching later handle one shape.
+    if (method === LANGUAGE_STATUS_METHOD) {
+      const session: LspSession | undefined = this.sessions.get(sessionId);
+      const status: LspServerStatus | null = serverStatusOf(params, session?.serviceReady === true);
+      if (status === null) {
+        return;
+      }
+      if (session !== undefined && status.quiescent) {
+        session.serviceReady = true;
+      }
+      this.forwardNotification(sessionId, SERVER_STATUS, status);
+      return;
+    }
     // Only the notifications the renderer actually consumes cross the IPC boundary. A loading server
     // (Roslyn on a big solution) emits a large volume of progress and telemetry notifications; each
     // forwarded one is a structured-clone plus a renderer handler invocation, only to be discarded.
     if (!FORWARDED_NOTIFICATIONS.has(method)) {
       return;
     }
+    if (method === PROJECT_INITIALIZATION_COMPLETE) {
+      const session: LspSession | undefined = this.sessions.get(sessionId);
+      if (session !== undefined) {
+        session.loaded = true;
+      }
+    }
+    if (method === SERVER_STATUS) {
+      const session: LspSession | undefined = this.sessions.get(sessionId);
+      if (session !== undefined) {
+        session.serverStatus = params;
+      }
+    }
+    if (method === TYPESCRIPT_VERSION) {
+      const session: LspSession | undefined = this.sessions.get(sessionId);
+      if (session !== undefined) {
+        session.typescriptVersion = params;
+      }
+    }
+    if (method === PUBLISH_DIAGNOSTICS_METHOD) {
+      this.diagnostics.publish(sessionId, params);
+      return;
+    }
+    this.notifyRenderer(sessionId, method, params);
+  }
+
+  /**
+   * Sends a notification to the session's renderers.
+   * @param sessionId The session the notification belongs to.
+   * @param method The LSP method name.
+   * @param params The method parameters.
+   */
+  private notifyRenderer(sessionId: string, method: string, params: unknown): void {
     const message: LspMessage = { sessionId, method, params };
     this.send(sessionId, LspChannel.Notification, message);
   }
@@ -744,6 +1463,7 @@ export class LspManager {
       serverId?: unknown;
       rootPath?: unknown;
       standaloneFile?: unknown;
+      braceStyle?: unknown;
     } = request;
     if (
       typeof candidate.sessionId !== 'string' ||
@@ -758,11 +1478,15 @@ export class LspManager {
     if (candidate.standaloneFile !== undefined && typeof candidate.standaloneFile !== 'string') {
       return null;
     }
+    if (candidate.braceStyle !== undefined && !isBraceStyle(candidate.braceStyle)) {
+      return null;
+    }
     return {
       sessionId: candidate.sessionId,
       serverId: candidate.serverId,
       rootPath: candidate.rootPath,
       standaloneFile: candidate.standaloneFile,
+      ...(candidate.braceStyle === undefined ? {} : { braceStyle: candidate.braceStyle }),
     };
   }
 
@@ -842,4 +1566,13 @@ export class LspManager {
       contents.send(channel, payload);
     }
   }
+}
+
+/**
+ * Determines whether an untrusted value from the renderer names a brace style.
+ * @param value The value.
+ * @returns Returns true when it is one of {@link LSP_BRACE_STYLES}.
+ */
+function isBraceStyle(value: unknown): value is LspBraceStyle {
+  return LSP_BRACE_STYLES.includes(value as LspBraceStyle);
 }

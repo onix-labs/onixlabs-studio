@@ -28,6 +28,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 import { Log } from '@shared/angular/services/log/log';
 import { FindAdapter, FindQuery, FindResultItem } from './find-adapter';
+import { FindOptions } from '@shared/angular/services/find-options/find-options';
 
 /**
  * Identifies which view the find panel shows.
@@ -97,19 +98,21 @@ export class FindPanel implements OnDestroy {
   protected readonly replaceText: WritableSignal<string> = signal<string>('');
 
   /**
-   * Holds a value indicating whether the search is case-sensitive.
+   * Holds a value indicating whether the search is case-sensitive — remembered for the session, as
+   * the other two options are.
    */
-  protected readonly caseSensitive: WritableSignal<boolean> = signal<boolean>(false);
+  protected readonly caseSensitive: WritableSignal<boolean> =
+    inject(FindOptions).panel.caseSensitive;
 
   /**
    * Holds a value indicating whether the search matches whole words only.
    */
-  protected readonly wholeWord: WritableSignal<boolean> = signal<boolean>(false);
+  protected readonly wholeWord: WritableSignal<boolean> = inject(FindOptions).panel.wholeWord;
 
   /**
    * Holds a value indicating whether the find text is a regular expression.
    */
-  protected readonly regexp: WritableSignal<boolean> = signal<boolean>(false);
+  protected readonly regexp: WritableSignal<boolean> = inject(FindOptions).panel.regexp;
 
   /**
    * Holds the requested view; forced to find when the surface does not support replace.

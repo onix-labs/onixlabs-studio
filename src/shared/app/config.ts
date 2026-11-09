@@ -6,11 +6,14 @@ import {
   provideZonelessChangeDetection,
 } from '@angular/core';
 import { AgentRequestToasts } from '@shared/angular/services/notifications/agent-request-toasts';
+import { NarrowedGrantNotice } from '@shared/angular/services/notifications/narrowed-grant-notice';
 import { AgentTabAttention } from '@shared/angular/services/agent-requests/agent-tab-attention';
 import { ModelUpdates } from '@shared/angular/services/ai-connections/model-updates';
 import { PluginUpdates } from '@shared/angular/services/plugins/plugin-updates';
 import { ConsoleForwarder } from '@shared/angular/services/console-forwarder/console-forwarder';
 import { Display } from '@shared/angular/services/display/display';
+import { Accessibility } from '@shared/angular/services/accessibility/accessibility';
+import { FullScreen } from '@shared/angular/services/full-screen/full-screen';
 import { provideUnsavedWork } from '@shared/angular/services/unsaved-work/unsaved-work';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Lifecycle } from '@shared/angular/services/lifecycle/lifecycle';
@@ -18,6 +21,7 @@ import { LogLevelPreference } from '@shared/angular/services/log/log-level-prefe
 import { OpenWith } from '@shared/angular/services/open-with/open-with';
 import { Printing } from '@shared/angular/services/printing/printing';
 import { SetupWizard } from '@shared/angular/services/setup-wizard/setup-wizard';
+import { StartupSettingsMirror } from '@shared/angular/services/settings/startup-settings-mirror';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { FeatureDescriptor, FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
@@ -26,6 +30,9 @@ import {
   registerFeatureContribution,
 } from '@shared/app/feature-contributions';
 import { CoreMenu } from '@shared/angular/services/app-menu/core-menu';
+import { Spelling } from '@shared/angular/services/spelling/spelling';
+import { APPLICATION_KEYBINDINGS } from '@shared/angular/services/app-menu/core-keybindings';
+import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
 import { provideAgentFeature } from '@features/agent/angular/agent.feature';
 import { provideBinaryFeature } from '@features/binary/angular/binary.feature';
 import { provideImageFeature } from '@features/image/angular/image.feature';
@@ -58,6 +65,26 @@ export const config: ApplicationConfig = {
     provideAppInitializer((): void => {
       inject(Display);
     }),
+    // Instantiate the Accessibility service at start-up so Reduce Motion and Scroll Bars are applied to
+    // the document before the first view renders.
+    provideAppInitializer((): void => {
+      inject(Accessibility);
+    }),
+    // Follow the main window's full screen from the start, so the title strip drops the room it
+    // leaves for the macOS traffic lights while there are none.
+    provideAppInitializer((): void => {
+      inject(FullScreen);
+    }),
+    // Mirror the startup settings to the main process from the start, so quitting, window restore
+    // and the first paint's corners follow what the settings say.
+    provideAppInitializer((): void => {
+      inject(StartupSettingsMirror);
+    }),
+    // Apply the spell-checking settings from the start, so text boxes are checked (or not) in the
+    // chosen languages, with the personal dictionary, from the first paint.
+    provideAppInitializer((): void => {
+      inject(Spelling);
+    }),
     // Instantiate the Printing service at start-up so the persisted print-margin choice drives the
     // `@page` rule before the first document is printed or exported.
     provideAppInitializer((): void => {
@@ -73,6 +100,11 @@ export const config: ApplicationConfig = {
     // toasts (when the setting is on) whichever panels happen to be mounted.
     provideAppInitializer((): void => {
       inject(AgentRequestToasts);
+    }),
+    // Instantiate the narrowed-grant notice at start-up: it says once that an old grant has gone, and
+    // waiting for the first agent run would leave a user believing it still applies.
+    provideAppInitializer((): void => {
+      inject(NarrowedGrantNotice);
     }),
     // Instantiate the agent tab-attention bridge at start-up, for the same reason: a tab's dot has to
     // light while its conversation waits regardless of which panels are mounted, and no single chat
@@ -96,6 +128,9 @@ export const config: ApplicationConfig = {
     provideAppInitializer((): void => {
       inject(CoreMenu);
     }),
+    // The menu's own commands (Open File, Settings, Close Tab), catalogued ahead of every feature so
+    // Application › Keyboard lists them and the menu shows whatever chord is in effect.
+    provideKeybindingCatalogue(APPLICATION_KEYBINDINGS),
     // Stand up the terminal feature: register its view + ribbon with the shell and eagerly register
     // its agent terminal capabilities. The one line that enumerates the terminal feature here.
     provideTerminalFeature(),

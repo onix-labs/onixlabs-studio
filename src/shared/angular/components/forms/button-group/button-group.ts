@@ -59,6 +59,12 @@ export class ButtonGroup {
   public readonly ariaLabel: InputSignal<string | undefined> = input<string>();
 
   /**
+   * Gets a value indicating whether the group fills its container, sharing the width between its
+   * options.
+   */
+  public readonly fullWidth: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Emits the newly picked value when the selection changes.
    */
   public readonly valueChange: OutputEmitterRef<string> = output<string>();

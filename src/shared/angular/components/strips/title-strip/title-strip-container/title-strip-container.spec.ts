@@ -1,5 +1,7 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
+import { FullScreen } from '@shared/angular/services/full-screen/full-screen';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { TitleStripContainer } from './title-strip-container';
 
@@ -48,5 +50,27 @@ describe('TitleStripContainer', () => {
 
   afterEach(() => {
     localStorage.clear();
+  });
+});
+
+describe('TitleStripContainer in full screen', () => {
+  it('windowLock_whileTheWindowIsInFullScreen_isNotCarriedByTheStrip', async () => {
+    localStorage.clear();
+    const fullScreen: ReturnType<typeof signal<boolean>> = signal<boolean>(true);
+    await TestBed.configureTestingModule({
+      imports: [TitleStripContainer],
+      providers: [{ provide: FullScreen, useValue: { active: fullScreen } }],
+    }).compileComponents();
+    const fixture: ComponentFixture<TitleStripContainer> =
+      TestBed.createComponent(TitleStripContainer);
+    await fixture.whenStable();
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    expect(host.querySelector('.window-lock')).toBeNull();
+
+    // Leaving full screen brings the switch back.
+    fullScreen.set(false);
+    await fixture.whenStable();
+    expect(host.querySelector('.window-lock')).not.toBeNull();
   });
 });

@@ -57,10 +57,16 @@ export interface WorkspaceTextEdits {
   readonly files: readonly FileTextEdits[];
 
   /**
-   * Gets the parts that cannot be applied at all — creating, renaming or deleting a file — named so
-   * the user is told.
+   * Gets the parts that cannot be applied at all — renaming or deleting a file — named so the user is
+   * told.
    */
   readonly refused: readonly SkippedEdit[];
+
+  /**
+   * Gets the absolute paths of the files to create, empty, before any edit is applied (#1210), or
+   * undefined for none.
+   */
+  readonly creates?: readonly string[];
 }
 
 /**
@@ -105,11 +111,10 @@ export interface WorkspaceEditOutcome {
 }
 
 /**
- * Holds the reason a file operation in an edit is refused: Studio advertises no resource operations
- * to servers yet, so one arriving anyway is named rather than half-applied.
+ * Holds the reason a file operation in an edit is refused: Studio advertises only creating a file, and
+ * only to a server it has been tried with, so another arriving anyway is named rather than half-applied.
  */
-export const FILE_OPERATION_REFUSED: string =
-  "Creating, renaming or deleting files isn't supported yet.";
+export const FILE_OPERATION_REFUSED: string = "Renaming or deleting files isn't supported yet.";
 
 /**
  * A zero-based Language Server Protocol position.
@@ -128,10 +133,34 @@ interface LspRange {
 }
 
 /**
+ * Re-keys edits worked out before a file or folder was renamed by the paths they have now (#1207).
+ * @param edits The edits.
+ * @param from The entry's path before the rename.
+ * @param to Its path after it.
+ * @returns Returns the edits, with every file in the entry following it.
+ */
+export function movedEdits(
+  edits: WorkspaceTextEdits,
+  from: string,
+  to: string,
+): WorkspaceTextEdits {
+  return {
+    ...edits,
+    files: edits.files.map((file: FileTextEdits): FileTextEdits => {
+      const inside: boolean = file.path.startsWith(`${from}/`) || file.path.startsWith(`${from}\\`);
+      return file.path === from || inside
+        ? { ...file, path: `${to}${file.path.slice(from.length)}` }
+        : file;
+    }),
+  };
+}
+
+/**
  * Reads an LSP `WorkspaceEdit` into edits by document (#1015): its versioned `documentChanges` when it
- * has them — each a `TextDocumentEdit`, or a file operation, which is refused and named — and its
- * per-file `changes` otherwise, as the protocol has a client prefer. Versions are not checked: a
- * closed file has none, and an open one is edited as it stands. Malformed entries are dropped.
+ * has them — each a `TextDocumentEdit`, a file to create (#1210), or another file operation, which is
+ * refused and named, as is a create that asks to overwrite — and its per-file `changes` otherwise, as
+ * the protocol has a client prefer. Versions are not checked: a closed file has none, and an open one
+ * is edited as it stands. Malformed entries are dropped.
  * @param edit The edit, untrusted.
  * @param toPath Maps a document's `file:` URI to the absolute path the edits are keyed by.
  * @returns Returns the edits by document, in the server's order, and the parts refused.
@@ -142,6 +171,7 @@ export function fromLspWorkspaceEdit(
 ): WorkspaceTextEdits {
   const files: Map<string, TextEditEntry[]> = new Map<string, TextEditEntry[]>();
   const refused: SkippedEdit[] = [];
+  const creates: string[] = [];
   const add: (uri: string, edits: unknown) => void = (uri: string, edits: unknown): void => {
     if (!Array.isArray(edits)) {
       return;
@@ -169,7 +199,17 @@ export function fromLspWorkspaceEdit(
         oldUri?: unknown;
         textDocument?: unknown;
         edits?: unknown;
+        options?: { overwrite?: unknown; ignoreIfExists?: unknown };
       } = change;
+      if (
+        entry.kind === 'create' &&
+        typeof entry.uri === 'string' &&
+        entry.options?.overwrite !== true &&
+        entry.options?.ignoreIfExists !== true
+      ) {
+        creates.push(toPath(entry.uri));
+        continue;
+      }
       if (typeof entry.kind === 'string') {
         const uri: unknown = entry.kind === 'rename' ? entry.oldUri : entry.uri;
         refused.push({
@@ -193,6 +233,7 @@ export function fromLspWorkspaceEdit(
       .filter(([, edits]: [string, TextEditEntry[]]): boolean => edits.length > 0)
       .map(([path, edits]: [string, TextEditEntry[]]): FileTextEdits => ({ path, edits })),
     refused,
+    ...(creates.length > 0 ? { creates } : {}),
   };
 }
 

@@ -11,6 +11,7 @@ import {
   untracked,
   WritableSignal,
 } from '@angular/core';
+import { Alert } from '@shared/angular/components/alert/alert';
 import { SettingsNavigation } from '@shared/angular/services/settings-navigation/settings-navigation';
 import { Log } from '@shared/angular/services/log/log';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
@@ -19,46 +20,210 @@ import { AiSettingsSection } from './sections/ai-settings/ai-settings';
 import { KeyboardSettingsSection } from './sections/keyboard-settings/keyboard-settings';
 import { SourceControlSettingsSection } from './sections/source-control-settings/source-control-settings';
 import { TerminalSettingsSection } from './sections/terminal-settings/terminal-settings';
-import { AiManagerLink } from './sections/ai-manager-link/ai-manager-link';
 import { LanguageEditorOverrides } from './language-editor-overrides/language-editor-overrides';
+import { ProjectsFolder } from './sections/projects-folder/projects-folder';
 import { LanguageServerSettings } from './language-server-settings/language-server-settings';
 import { SettingsSection } from './settings-section/settings-section';
+import { ContainerEngine } from './sections/container-engine/container-engine';
+import { PackageRegistryTokens } from './sections/package-registry-tokens/package-registry-tokens';
+import { DefaultSeverities } from './sections/default-severities/default-severities';
+import { LogFolder } from './sections/log-folder/log-folder';
+import { PersonalDictionary } from './sections/personal-dictionary/personal-dictionary';
+import { ReadAloudVoice } from './sections/read-aloud-voice/read-aloud-voice';
+import { PluginsFolder } from './sections/plugins-folder/plugins-folder';
+import { PluginSuggestionsDismissed } from './sections/plugin-suggestions-dismissed/plugin-suggestions-dismissed';
+import { RememberedFileAccess } from './sections/remembered-file-access/remembered-file-access';
+import { SpellCheckingLanguages } from './sections/spell-checking-languages/spell-checking-languages';
 import { SettingsRestart } from '@features/settings/angular/settings-restart';
 import type { ProviderPage } from '@shared/api/ai-types';
 import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
+import { installedContributions } from '@shared/api/plugin-channels';
+import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { CdkMenuTrigger } from '@angular/cdk/menu';
+import { Accordion } from '@shared/angular/components/forms/accordion/accordion';
+import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
+import { Modal } from '@shared/angular/components/modal/modal';
+import { ModalContent } from '@shared/angular/components/modal/modal-content';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
+import {
+  PendingSettingsImport,
+  SettingsFileRead,
+  SettingsTransfer,
+} from '@features/settings/angular/settings-transfer';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
+import { Keybindings, ResolvedBinding } from '@shared/angular/services/keybindings/keybindings';
+import { codeSettings, findSection } from '@shared/angular/services/settings/settings-registry';
+import {
+  appliesToPlatform,
+  type SettingDef,
+} from '@shared/angular/services/settings/settings-schema';
+
+/**
+ * Names the registry sections Version Control › General draws, in page order, so the page's search
+ * finds every one of them. Hosting and Cloning are pages of their own, one registry section each.
+ */
+const VERSION_CONTROL_SECTIONS: readonly string[] = ['vc-fetch', 'vc-commits', 'vc-history'];
+
+/**
+ * The keys of the AI registry settings each AI page shows. The registry keeps every AI setting in one
+ * `ai` section while the tree splits them across pages, so the search has to be told which page each
+ * lives on. A key named on neither (the connections, the CLI paths) is shown on no page the search can
+ * point at, so it matches nothing rather than the wrong page.
+ */
+const AI_PAGE_KEYS: Readonly<Partial<Record<SettingsSectionId, ReadonlySet<string>>>> = {
+  ai: new Set<string>([
+    'ai.autoScroll',
+    'ai.conversationTextSize',
+    'ai.reportBackgroundTasks',
+    'ai.tokenCap',
+    'ai.runTimeoutMinutes',
+    'ai.agentSessionLifetime',
+    'ai.defaultReasoningEffort',
+    'ai.maxStepsPerTurn',
+    'ai.autoCompactThreshold',
+    'ai.autoCompactMode',
+    'ai.deleteConversationsAfterDays',
+    'ai.deleteConversationsMode',
+    'ai.maxLiveSessions',
+    'ai.sendMessageWith',
+    'ai.maxImagesPerMessage',
+    'ai.maxImageSizeMb',
+    'ai.expandToolCalls',
+    'ai.expandThinking',
+    'ai.confirmDeleteConversations',
+  ]),
+  'ai-security': new Set<string>([
+    'ai.permissionPosture',
+    'ai.remoteControlPosture',
+    'ai.toolPolicies',
+    'ai.blockHostCommandLine',
+    'ai.requireOsSandbox',
+    'ai.autoAllowSandboxedShell',
+    'ai.allowedWritePaths',
+    'ai.deniedWritePaths',
+    'ai.allowedNetworkLocations',
+    'ai.deniedNetworkLocations',
+  ]),
+};
 
 /**
  * Identifies a section in the settings navigation.
  */
 type SettingsSectionId =
-  | 'appearance'
   | 'application'
   | 'accessibility'
   | 'notifications'
-  | 'text-editor'
+  | 'printing'
+  | 'code-general'
+  | 'code-appearance'
+  | 'code-highlighting'
+  | 'code-lens'
+  | 'code-editing'
+  | 'code-saving'
+  | 'code-suggestions'
+  | 'code-find'
+  | 'code-diffs'
+  | 'code-language-servers'
   | 'markdown'
+  | 'markdown-editing'
+  | 'markdown-review'
+  | 'images'
+  | 'binary'
   | 'terminal'
+  | 'terminal-appearance'
+  | 'terminal-input'
   | 'keyboard'
   | 'ai'
   | 'ai-security'
-  // Prompt Profiles and Skills live in the AI Manager (#948); their entries here link to it.
-  | 'ai-prompts'
-  | 'ai-skills'
   | 'mission-control'
   | 'system-monitor'
+  | 'api-explorer'
+  | 'containers'
+  | 'ai-manager'
+  | 'database-explorer'
+  | 'database-results'
+  | 'database-connections'
+  | 'database-export'
   | 'plugins'
   // One per provider an installed harness contributes, so the set is open (#653). It was seven fixed
   // literals — anthropic, openai, google, deepseek, xai, ollama, custom — which is what made the
   // Providers branch a list of companies core shipped rather than a list of what is installed.
   | `ai-provider-${string}`
   | 'source-control'
+  | 'vc-hosting'
+  | 'vc-cloning'
   | 'language-providers'
   | 'security'
-  | 'workspaces';
+  | 'workspaces'
+  | 'workspaces-explorers'
+  | 'workspaces-search'
+  | 'workspaces-run'
+  | 'workspaces-new-projects'
+  | 'workspaces-packages'
+  // One per capability whose shortcuts are catalogued, each a Keyboard leaf under that capability's
+  // root; the bare `keyboard` is Application › Keyboard, for the shortcuts that belong to no one view.
+  | `keyboard-${string}`;
+
+/**
+ * The More Actions menu's Expand item.
+ */
+const MENU_EXPAND: string = 'settings.expand';
+
+/**
+ * The More Actions menu's Collapse item.
+ */
+const MENU_COLLAPSE: string = 'settings.collapse';
+
+/**
+ * The More Actions menu's Import item.
+ */
+const MENU_IMPORT: string = 'settings.import';
+
+/**
+ * The More Actions menu's Export item.
+ */
+const MENU_EXPORT: string = 'settings.export';
+
+/**
+ * Names a group of roots in the settings tree, headed in the tree by its label.
+ */
+type SettingsGroupId = 'studio' | 'documents' | 'capabilities' | 'tools';
+
+/**
+ * Labels the groups of roots, in the order they appear. Studio holds what shapes the whole app, and the
+ * pieces that appear throughout it (terminals, version control); Documents the kinds of content opened,
+ * wherever they appear; Capabilities the tabs that put those together to work in; Tools the welcome
+ * screen's tools.
+ */
+const SETTINGS_GROUPS: Readonly<Record<SettingsGroupId, string>> = {
+  studio: 'Studio',
+  documents: 'Documents',
+  capabilities: 'Capabilities',
+  tools: 'Tools',
+};
+
+/**
+ * Maps each root to the keyboard catalogue view whose shortcuts its Keyboard leaf shows. A shortcut
+ * belongs with the rest of its capability's settings, rather than in one list covering every view.
+ */
+const KEYBOARD_PAGES: Readonly<Record<string, string>> = {
+  workspaces: 'Workspace',
+  code: 'Code Editor',
+  markdown: 'Markdown Editor',
+  images: 'Image Viewer',
+  terminal: 'Terminal',
+  ai: 'Agent',
+  'api-explorer': 'API Explorer',
+  'database-explorer': 'Database Explorer',
+  'system-monitor': 'System Monitor',
+  containers: 'Containers',
+  'ai-manager': 'AI Manager',
+};
 
 /**
  * Describes a node in the settings navigation tree. A node is either a selectable leaf — it names the
@@ -84,15 +249,25 @@ interface SettingsNavNode {
   readonly icon?: Icon;
 
   /**
+   * Gets the group a root belongs to, headed in the tree above it (roots only).
+   */
+  readonly group?: SettingsGroupId;
+
+  /**
    * Gets the section content the node shows when selected, for a leaf; absent for a branch.
    */
   readonly sectionId?: SettingsSectionId;
 
   /**
-   * Gets the language a leaf configures, for the Language Providers branch whose leaves all share one
+   * Gets the language a leaf configures, for the Languages branch whose leaves all share one
    * section and differ only by the language they are about. Absent everywhere else.
    */
   readonly language?: string;
+
+  /**
+   * Gets the keyboard catalogue view a capability's Keyboard leaf shows. Absent everywhere else.
+   */
+  readonly keyboardView?: string;
 
   /**
    * Gets the node's children, for a branch; absent for a leaf.
@@ -137,9 +312,23 @@ interface SettingsTreeData {
 @Component({
   selector: 'app-settings-view',
   imports: [
+    Alert,
     Button,
-    AiManagerLink,
+    ButtonRow,
+    ContainerEngine,
+    PackageRegistryTokens,
+    DefaultSeverities,
+    LogFolder,
+    Modal,
+    ModalContent,
+    PersonalDictionary,
+    ReadAloudVoice,
+    PluginsFolder,
+    PluginSuggestionsDismissed,
+    RememberedFileAccess,
+    SpellCheckingLanguages,
     LanguageEditorOverrides,
+    ProjectsFolder,
     LanguageServerSettings,
     AiSettingsSection,
     KeyboardSettingsSection,
@@ -147,7 +336,11 @@ interface SettingsTreeData {
     TerminalSettingsSection,
     SettingsSection,
     AppIcon,
+    TextField,
     TreeView,
+    Accordion,
+    CdkMenuTrigger,
+    Menu,
   ],
   templateUrl: './settings-view.html',
   styleUrl: './settings-view.scss',
@@ -186,10 +379,37 @@ export class SettingsView {
   private readonly providers: AiProviders = inject(AiProviders);
 
   /**
+   * Holds the installed plugins, which decide whether the Containers root is shown.
+   */
+  private readonly plugins: Plugins = inject(Plugins);
+
+  /**
+   * Holds the keyboard catalogue, which decides the Keyboard leaves and lets search find a shortcut.
+   */
+  private readonly keybindings: Keybindings = inject(Keybindings);
+
+  /**
+   * Holds the settings export and import.
+   */
+  private readonly transfer: SettingsTransfer = inject(SettingsTransfer);
+
+  /**
+   * Holds the notifications service, which reports how an export or import went.
+   */
+  private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Holds the settings file read for import, while the user decides what happens to the settings it
+   * does not mention; null when no import is waiting.
+   */
+  protected readonly pendingImport: WritableSignal<PendingSettingsImport | null> =
+    signal<PendingSettingsImport | null>(null);
+
+  /**
    * Holds the identifier of the section currently shown in the content pane.
    */
   private readonly section: WritableSignal<SettingsSectionId> =
-    signal<SettingsSectionId>('appearance');
+    signal<SettingsSectionId>('application');
 
   /**
    * Holds the language whose server settings are on show. Every Language Providers leaf shares one
@@ -236,91 +456,264 @@ export class SettingsView {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
-   * Gets the settings navigation tree, in display order. Single-section categories carry one "General"
-   * leaf; Application and Artificial Intelligence group several, and the latter nests a Providers branch
-   * with a leaf per company.
+   * Gets the settings navigation tree, in display order, each root in one of the groups headed in the
+   * tree (see {@link SETTINGS_GROUPS}). A setting lives with the thing it changes, wherever that thing
+   * appears: code settings apply wherever code is shown, terminal settings to every terminal, version
+   * control settings to every repository. Single-section roots carry one "General" leaf; Keyboard,
+   * Providers and Languages leaves are added from what is installed.
    */
   private readonly staticSections: readonly SettingsNavNode[] = [
     {
       id: 'application',
+      group: 'studio',
       label: 'Application',
       icon: Icon.APPLICATION,
       children: [
         { id: 'application-general', label: 'General', sectionId: 'application' },
-        { id: 'application-appearance', label: 'Appearance', sectionId: 'appearance' },
-        { id: 'application-keyboard', label: 'Keyboard', sectionId: 'keyboard' },
         { id: 'application-accessibility', label: 'Accessibility', sectionId: 'accessibility' },
         { id: 'application-notifications', label: 'Notifications', sectionId: 'notifications' },
-        { id: 'application-security', label: 'Security', sectionId: 'security' },
+        { id: 'application-printing', label: 'Printing', sectionId: 'printing' },
+        { id: 'application-security', label: 'Privacy & Content', sectionId: 'security' },
+        // The app-wide shortcuts; each root's own are on a Keyboard leaf under it.
+        { id: 'application-keyboard', label: 'Keyboard', sectionId: 'keyboard' },
       ],
     },
     {
       id: 'ai',
+      group: 'studio',
       label: 'Artificial Intelligence',
       icon: Icon.AGENT,
       children: [
         { id: 'ai-general', label: 'General', sectionId: 'ai' },
         { id: 'ai-security-leaf', label: 'Security & Permissions', sectionId: 'ai-security' },
-        { id: 'ai-prompts-leaf', label: 'Prompt Profiles', sectionId: 'ai-prompts' },
-        { id: 'ai-skills-leaf', label: 'Skills', sectionId: 'ai-skills' },
         { id: 'ai-mission-control', label: 'Mission Control', sectionId: 'mission-control' },
       ],
     },
     {
-      id: 'workspaces',
-      label: 'Workspaces',
-      icon: Icon.DIRECTORY,
-      children: [{ id: 'workspaces-general', label: 'General', sectionId: 'workspaces' }],
-    },
-    {
       id: 'source-control',
+      group: 'studio',
       label: 'Version Control',
       icon: Icon.SOURCE_CONTROL,
-      children: [{ id: 'source-control-general', label: 'General', sectionId: 'source-control' }],
-    },
-    {
-      id: 'text-editor',
-      label: 'Text Editor',
-      icon: Icon.SETTINGS_TEXT_EDITOR,
-      children: [{ id: 'text-editor-general', label: 'General', sectionId: 'text-editor' }],
-    },
-    {
-      id: 'markdown',
-      label: 'Markdown',
-      icon: Icon.SETTINGS_MARKDOWN,
-      children: [{ id: 'markdown-general', label: 'General', sectionId: 'markdown' }],
+      children: [
+        { id: 'source-control-general', label: 'General', sectionId: 'source-control' },
+        { id: 'source-control-hosting', label: 'Hosting', sectionId: 'vc-hosting' },
+        { id: 'source-control-cloning', label: 'Cloning', sectionId: 'vc-cloning' },
+      ],
     },
     {
       id: 'terminal',
+      group: 'studio',
       label: 'Terminal',
       icon: Icon.TERMINAL,
-      children: [{ id: 'terminal-general', label: 'General', sectionId: 'terminal' }],
+      children: [
+        { id: 'terminal-general', label: 'General', sectionId: 'terminal' },
+        { id: 'terminal-appearance-leaf', label: 'Appearance', sectionId: 'terminal-appearance' },
+        { id: 'terminal-input-leaf', label: 'Input', sectionId: 'terminal-input' },
+      ],
+    },
+    {
+      id: 'plugins',
+      group: 'studio',
+      label: 'Plugins',
+      icon: Icon.PLUGINS,
+      children: [{ id: 'plugins-general', label: 'General', sectionId: 'plugins' }],
+    },
+    {
+      // Code wherever it appears: editor tabs, diffs, database queries, request bodies, Markdown code
+      // blocks. Its Languages branch is added from the installed language servers.
+      id: 'code',
+      group: 'documents',
+      label: 'Code',
+      icon: Icon.SETTINGS_TEXT_EDITOR,
+      children: [
+        { id: 'code-general-leaf', label: 'General', sectionId: 'code-general' },
+        { id: 'code-appearance-leaf', label: 'Appearance', sectionId: 'code-appearance' },
+        {
+          id: 'code-highlighting-leaf',
+          label: 'Guides and Highlights',
+          sectionId: 'code-highlighting',
+        },
+        { id: 'code-lens-leaf', label: 'Code Lenses', sectionId: 'code-lens' },
+        { id: 'code-editing-leaf', label: 'Editing', sectionId: 'code-editing' },
+        { id: 'code-saving-leaf', label: 'Saving', sectionId: 'code-saving' },
+        {
+          id: 'code-suggestions-leaf',
+          label: 'Suggestions and Hover',
+          sectionId: 'code-suggestions',
+        },
+        { id: 'code-find-leaf', label: 'Find and Navigation', sectionId: 'code-find' },
+        { id: 'code-diffs-leaf', label: 'Diffs', sectionId: 'code-diffs' },
+        {
+          id: 'code-language-servers-leaf',
+          label: 'Language Servers',
+          sectionId: 'code-language-servers',
+        },
+      ],
+    },
+    {
+      id: 'markdown',
+      group: 'documents',
+      label: 'Markdown',
+      icon: Icon.SETTINGS_MARKDOWN,
+      children: [
+        { id: 'markdown-general', label: 'General', sectionId: 'markdown' },
+        { id: 'markdown-editing-leaf', label: 'Editing', sectionId: 'markdown-editing' },
+        { id: 'markdown-review-leaf', label: 'Review and Reading', sectionId: 'markdown-review' },
+      ],
+    },
+    {
+      id: 'images',
+      group: 'documents',
+      label: 'Images',
+      icon: Icon.IMAGE_FILE,
+      children: [{ id: 'images-general', label: 'General', sectionId: 'images' }],
+    },
+    {
+      id: 'binary',
+      group: 'documents',
+      label: 'Binary',
+      icon: Icon.BINARY,
+      children: [{ id: 'binary-general', label: 'General', sectionId: 'binary' }],
+    },
+    {
+      id: 'workspaces',
+      group: 'capabilities',
+      label: 'Workspaces',
+      icon: Icon.DIRECTORY,
+      children: [
+        { id: 'workspaces-general', label: 'General', sectionId: 'workspaces' },
+        { id: 'workspaces-explorers', label: 'Explorers', sectionId: 'workspaces-explorers' },
+        { id: 'workspaces-search', label: 'Search and Problems', sectionId: 'workspaces-search' },
+        { id: 'workspaces-run', label: 'Run and Debug', sectionId: 'workspaces-run' },
+        {
+          id: 'workspaces-new-projects',
+          label: 'New Projects',
+          sectionId: 'workspaces-new-projects',
+        },
+        // Only while a package manager is installed: there is nothing to save a token for before then.
+        { id: 'workspaces-packages', label: 'Package Managers', sectionId: 'workspaces-packages' },
+      ],
+    },
+    {
+      id: 'api-explorer',
+      group: 'capabilities',
+      label: 'API Explorer',
+      icon: Icon.API_EXPLORER,
+      children: [{ id: 'api-explorer-general', label: 'General', sectionId: 'api-explorer' }],
+    },
+    {
+      id: 'database-explorer',
+      group: 'capabilities',
+      label: 'Database Explorer',
+      icon: Icon.DATABASE,
+      children: [
+        { id: 'database-explorer-general', label: 'Queries', sectionId: 'database-explorer' },
+        { id: 'database-explorer-results', label: 'Results', sectionId: 'database-results' },
+        {
+          id: 'database-explorer-connections',
+          label: 'Connections',
+          sectionId: 'database-connections',
+        },
+        { id: 'database-explorer-export', label: 'Export', sectionId: 'database-export' },
+      ],
     },
     {
       id: 'system-monitor',
+      group: 'tools',
       label: 'System Monitor',
       icon: Icon.SYSTEM_MONITOR,
       children: [{ id: 'system-monitor-general', label: 'General', sectionId: 'system-monitor' }],
     },
     {
-      id: 'plugins',
-      label: 'Plugin Manager',
-      icon: Icon.PLUGINS,
-      children: [{ id: 'plugins-general', label: 'General', sectionId: 'plugins' }],
+      // Only while an engine is installed: its settings have nothing to act on before then.
+      id: 'containers',
+      group: 'tools',
+      label: 'Containers',
+      icon: Icon.CONTAINERS,
+      children: [{ id: 'containers-general', label: 'General', sectionId: 'containers' }],
+    },
+    {
+      id: 'ai-manager',
+      group: 'tools',
+      label: 'AI Manager',
+      icon: Icon.AI_MODELS,
+      children: [{ id: 'ai-manager-general', label: 'General', sectionId: 'ai-manager' }],
     },
   ];
 
   /**
-   * Gets the navigation tree, with the AI Providers and Language Providers branches built from what is
+   * Gets the navigation tree, with the AI Providers and Code Languages branches built from what is
    * installed.
    */
   protected readonly sections: Signal<readonly SettingsNavNode[]> = computed(
     (): readonly SettingsNavNode[] =>
-      this.withLanguageProviderPages(this.withProviderPages(this.staticSections)),
+      // Leaves before branches: each root's Keyboard leaf comes before its Providers or Languages
+      // branch, so the branch's open list of entries never pushes the root's own pages out of sight.
+      this.withLanguageProviderPages(
+        this.withProviderPages(this.withKeyboardPages(this.withoutUninstalledPages())),
+      ).filter(
+        (node: SettingsNavNode): boolean =>
+          (node.children?.length ?? 1) > 0 &&
+          (node.id !== 'containers' ||
+            installedContributions(this.plugins.plugins(), 'container-engine').length > 0),
+      ),
   );
 
   /**
-   * Puts the Language Providers branch into the Text Editor section, built from the languages the
+   * Leaves out the pages for a capability whose plugin is not installed: Package Managers has nothing
+   * to configure until a package-manager plugin is.
+   * @returns Returns the static sections, less those pages.
+   */
+  private withoutUninstalledPages(): readonly SettingsNavNode[] {
+    if (installedContributions(this.plugins.plugins(), 'package-manager').length > 0) {
+      return this.staticSections;
+    }
+    return this.staticSections.map((node: SettingsNavNode): SettingsNavNode =>
+      node.children === undefined
+        ? node
+        : {
+            ...node,
+            children: node.children.filter(
+              (child: SettingsNavNode): boolean => child.sectionId !== 'workspaces-packages',
+            ),
+          },
+    );
+  }
+
+  /**
+   * Puts a Keyboard leaf under each root whose capability has catalogued shortcuts, built from the
+   * catalogue so a capability with none (or not installed) gets no empty page. A root left with no
+   * children at all — API Explorer or Image Viewer when their shortcuts are absent — is dropped by
+   * {@link sections}.
+   * @param sections The sections.
+   * @returns Returns the sections with the Keyboard leaves appended.
+   */
+  private withKeyboardPages(sections: readonly SettingsNavNode[]): readonly SettingsNavNode[] {
+    const views: ReadonlySet<string> = new Set<string>(
+      this.keybindings.resolvedCatalogue().map((binding: ResolvedBinding): string => binding.view),
+    );
+    return sections.map((node: SettingsNavNode): SettingsNavNode => {
+      const view: string | undefined = KEYBOARD_PAGES[node.id];
+      if (view === undefined || !views.has(view)) {
+        return node;
+      }
+      return {
+        ...node,
+        children: [
+          ...(node.children ?? []),
+          {
+            id: `${node.id}-keyboard`,
+            label: 'Keyboard',
+            sectionId: `keyboard-${node.id}`,
+            keyboardView: view,
+          },
+        ],
+      };
+    });
+  }
+
+  /**
+   * Puts the Languages branch into the Code root, built from the languages the
    * installed server plugins serve.
    *
    * The branch carries a leaf per language that has an installed server, rather than one page listing
@@ -340,14 +733,14 @@ export class SettingsView {
       return sections;
     }
     return sections.map((node: SettingsNavNode): SettingsNavNode =>
-      node.id === 'text-editor'
+      node.id === 'code'
         ? {
             ...node,
             children: [
               ...(node.children ?? []),
               {
                 id: 'language-providers',
-                label: 'Language Providers',
+                label: 'Languages',
                 children: languages.map((language: string): SettingsNavNode => ({
                   id: `language-providers-${language}`,
                   label: languageDisplayName(language),
@@ -365,7 +758,7 @@ export class SettingsView {
    * Puts the Providers branch into the AI section, built from the providers installed harnesses
    * contribute.
    *
-   * ⛔ On exactly the rule the Language Providers branch follows, and for the same reason. A company with
+   * ⛔ On exactly the rule the Languages branch follows, and for the same reason. A company with
    * no installed harness is not a settings page with nothing to say — it is a plugin to install, which
    * is the Plugin Manager's business. So the branch carries a leaf per contributed provider and
    * disappears entirely when none is installed, which is what a fresh binary now shows (#653).
@@ -429,25 +822,247 @@ export class SettingsView {
   });
 
   /**
+   * Gets the keyboard catalogue view a capability's Keyboard leaf shows, or null when the selection
+   * is not one.
+   */
+  protected readonly selectedKeyboardView: Signal<string | null> = computed((): string | null => {
+    const path: readonly SettingsNavNode[] | null = this.pathToSection(this.section());
+    return path?.[path.length - 1].keyboardView ?? null;
+  });
+
+  /**
    * Gets the breadcrumb trail shown above the content pane: the labels along the path to the selected
    * leaf (for example ["Application", "General"] or ["Artificial Intelligence", "Providers",
    * "Anthropic"]), rendered as static, non-clickable crumbs.
    */
   protected readonly selectedTrail: Signal<readonly string[]> = computed((): readonly string[] => {
-    const path: readonly SettingsNavNode[] | null = this.pathToSection(this.section());
+    // Every language's page shares one section, so the trail is found by the selected row rather than
+    // the section — by the section it was always the first language's.
+    const language: string = this.selectedLanguage();
+    const path: readonly SettingsNavNode[] | null =
+      this.section() === 'language-providers' && language !== ''
+        ? this.pathToNode(`language-providers-${language}`)
+        : this.pathToSection(this.section());
     return path === null ? [] : path.map((node: SettingsNavNode): string => node.label);
   });
+
+  /**
+   * Finds the path of nodes from a root down to the node with the given id.
+   * @param id The node's id.
+   * @param nodes The nodes to search (the whole tree by default).
+   * @param trail The nodes accumulated on the way down (empty at the root).
+   * @returns Returns the path root→node, or null when no node has that id.
+   */
+  private pathToNode(
+    id: string,
+    nodes: readonly SettingsNavNode[] = this.sections(),
+    trail: readonly SettingsNavNode[] = [],
+  ): readonly SettingsNavNode[] | null {
+    for (const node of nodes) {
+      const next: readonly SettingsNavNode[] = [...trail, node];
+      if (node.id === id) {
+        return next;
+      }
+      const found: readonly SettingsNavNode[] | null =
+        node.children === undefined ? null : this.pathToNode(id, node.children, next);
+      if (found !== null) {
+        return found;
+      }
+    }
+    return null;
+  }
 
   /**
    * Gets the flattened navigation rows: every node in order, indented by depth, with a branch's children
    * following it only while it is expanded.
    */
   protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] => {
-    const expanded: ReadonlySet<string> = this.expandedNodes();
+    const words: readonly string[] = this.queryWords();
+    const nodes: readonly SettingsNavNode[] =
+      words.length === 0 ? this.sections() : this.matchingNodes(this.sections(), [], words);
+    // While searching, every branch left standing holds a match, so all of them are open: a match
+    // tucked inside a collapsed branch is a match the user cannot see. The user's own expansion is
+    // left alone underneath and is what they get back when the query is cleared.
+    const expanded: ReadonlySet<string> =
+      words.length === 0 ? this.expandedNodes() : this.branchIds(nodes);
     const rows: TreeRow[] = [];
-    this.appendRows(this.sections(), 0, expanded, rows);
+    // A heading opens each group of roots. Groups follow one another in order, so a heading is due
+    // wherever a root's group differs from the last; while searching, a group with no match left has
+    // no roots and so no heading.
+    let group: SettingsGroupId | undefined;
+    for (const root of nodes) {
+      if (root.group !== undefined && root.group !== group) {
+        group = root.group;
+        rows.push({
+          id: `group-${group}`,
+          depth: 0,
+          expandable: false,
+          expanded: false,
+          data: null,
+          heading: SETTINGS_GROUPS[group],
+        });
+      }
+      this.appendRows([root], 0, expanded, rows);
+    }
     return rows;
   });
+
+  /**
+   * Holds the text typed into the search box above the tree.
+   */
+  protected readonly query: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Gets the search query split into lower-cased words; empty when there is no query.
+   */
+  private readonly queryWords: Signal<readonly string[]> = computed((): readonly string[] =>
+    this.query()
+      .toLocaleLowerCase()
+      .split(/\s+/)
+      .filter((word: string): boolean => word !== ''),
+  );
+
+  /**
+   * Gets a value indicating whether a search is in force and nothing matches it.
+   */
+  protected readonly noMatches: Signal<boolean> = computed(
+    (): boolean => this.queryWords().length > 0 && this.rows().length === 0,
+  );
+
+  /**
+   * Prunes the tree to the leaves a search matches, keeping each one's ancestors so it stays in place.
+   * A branch survives only while something beneath it matches.
+   * @param nodes The nodes to prune.
+   * @param trail The ancestors of the nodes (empty at the root).
+   * @param words The lower-cased query words.
+   * @returns Returns the pruned nodes.
+   */
+  private matchingNodes(
+    nodes: readonly SettingsNavNode[],
+    trail: readonly SettingsNavNode[],
+    words: readonly string[],
+  ): readonly SettingsNavNode[] {
+    const kept: SettingsNavNode[] = [];
+    for (const node of nodes) {
+      if (node.children === undefined) {
+        if (this.leafMatches(node, trail, words)) {
+          kept.push(node);
+        }
+        continue;
+      }
+      const children: readonly SettingsNavNode[] = this.matchingNodes(
+        node.children,
+        [...trail, node],
+        words,
+      );
+      if (children.length > 0) {
+        kept.push({ ...node, children });
+      }
+    }
+    return kept;
+  }
+
+  /**
+   * Determines whether a leaf matches a search: every word must appear somewhere in the leaf's own
+   * label, its ancestors' labels, or the titles and descriptions of the settings on its page — so
+   * "font size" finds Code › Appearance, and "terminal" finds the leaf under Terminal.
+   * @param leaf The leaf.
+   * @param trail The leaf's ancestors.
+   * @param words The lower-cased query words.
+   * @returns Returns true when the leaf matches.
+   */
+  private leafMatches(
+    leaf: SettingsNavNode,
+    trail: readonly SettingsNavNode[],
+    words: readonly string[],
+  ): boolean {
+    const group: SettingsGroupId | undefined = trail[0]?.group;
+    const text: string = [
+      ...(group === undefined ? [] : [SETTINGS_GROUPS[group]]),
+      ...trail.map((node: SettingsNavNode): string => node.label),
+      leaf.label,
+      ...this.settingsOnPage(leaf)
+        .filter(appliesToPlatform)
+        .flatMap((setting: SettingDef): string[] => [setting.title, setting.description]),
+      ...this.shortcutsOnPage(leaf),
+    ]
+      .join('\n')
+      .toLocaleLowerCase();
+    return words.every((word: string): boolean => text.includes(word));
+  }
+
+  /**
+   * Finds the registry settings a leaf's page shows, for the search to match against.
+   *
+   * Most pages render one registry section of the same id. The AI pages split the one `ai` section
+   * between them (see {@link AI_PAGE_KEYS}), Version Control › General draws several (see
+   * {@link VERSION_CONTROL_SECTIONS}), and a language's page shows the editor settings a language may
+   * override. Pages built by hand from settings the registry does not hold — a language's server rows,
+   * the provider pages — have none, and are found by their names alone.
+   * @param leaf The leaf.
+   * @returns Returns the settings on the leaf's page.
+   */
+  private settingsOnPage(leaf: SettingsNavNode): readonly SettingDef[] {
+    if (leaf.sectionId === undefined) {
+      return [];
+    }
+    if (leaf.sectionId === 'language-providers') {
+      return codeSettings().filter(
+        (setting: SettingDef): boolean => setting.profileOverridable === true,
+      );
+    }
+    if (leaf.sectionId === 'source-control') {
+      return VERSION_CONTROL_SECTIONS.flatMap(
+        (id: string): readonly SettingDef[] => findSection(id)?.settings ?? [],
+      );
+    }
+    const keys: ReadonlySet<string> | undefined = AI_PAGE_KEYS[leaf.sectionId];
+    if (keys !== undefined) {
+      return (findSection('ai')?.settings ?? []).filter((setting: SettingDef): boolean =>
+        keys.has(setting.key),
+      );
+    }
+    return findSection(leaf.sectionId)?.settings ?? [];
+  }
+
+  /**
+   * Finds the shortcut descriptions a Keyboard leaf shows, so "zoom in" finds Image Viewer › Keyboard.
+   * @param leaf The leaf.
+   * @returns Returns the descriptions, or none for a leaf that is not a Keyboard page.
+   */
+  private shortcutsOnPage(leaf: SettingsNavNode): readonly string[] {
+    const application: boolean = leaf.sectionId === 'keyboard';
+    if (leaf.keyboardView === undefined && !application) {
+      return [];
+    }
+    return this.keybindings
+      .resolvedCatalogue()
+      .filter((binding: ResolvedBinding): boolean =>
+        application ? binding.global : binding.view === leaf.keyboardView,
+      )
+      .map((binding: ResolvedBinding): string => `${binding.description} shortcut`);
+  }
+
+  /**
+   * Collects the ids of every branch in a tree.
+   * @param nodes The nodes.
+   * @returns Returns the branch ids.
+   */
+  private branchIds(nodes: readonly SettingsNavNode[]): ReadonlySet<string> {
+    const ids: Set<string> = new Set<string>();
+    const visit: (list: readonly SettingsNavNode[]) => void = (
+      list: readonly SettingsNavNode[],
+    ): void => {
+      for (const node of list) {
+        if (node.children !== undefined) {
+          ids.add(node.id);
+          visit(node.children);
+        }
+      }
+    };
+    visit(nodes);
+    return ids;
+  }
 
   /**
    * Gets the id of the selected navigation row: the leaf whose content is on show, or null when none.
@@ -592,6 +1207,99 @@ export class SettingsView {
       }
       return next;
     });
+  }
+
+  /**
+   * Gets the More Actions menu beside the search box: what acts on the settings as a whole.
+   */
+  protected readonly menuItems: readonly MenuItem[] = [
+    { id: MENU_EXPAND, label: 'Expand', icon: Icon.PLUS_SQUARE },
+    { id: MENU_COLLAPSE, label: 'Collapse', icon: Icon.MINUS_SQUARE },
+    { id: 'settings.tree-separator', label: '', separator: true },
+    { id: MENU_IMPORT, label: 'Import Settings', icon: Icon.DOWNLOAD },
+    { id: MENU_EXPORT, label: 'Export Settings', icon: Icon.EXPORT },
+  ];
+
+  /**
+   * Runs a command chosen from the More Actions menu.
+   * @param id The chosen item's identifier.
+   */
+  protected onMenu(id: string): void {
+    if (id === MENU_EXPAND) {
+      this.expandedNodes.set(this.branchIds(this.sections()));
+    } else if (id === MENU_COLLAPSE) {
+      this.expandedNodes.set(new Set<string>());
+    } else if (id === MENU_IMPORT) {
+      void this.importSettings();
+    } else if (id === MENU_EXPORT) {
+      void this.exportSettings();
+    }
+  }
+
+  /**
+   * Exports the settings to a file the user chooses.
+   */
+  protected async exportSettings(): Promise<void> {
+    this.log.info('settings', 'Settings export requested');
+    const path: string | null = await this.transfer.exportToFile();
+    if (path !== null) {
+      this.notifications.notify({ severity: 'success', title: 'Settings exported', detail: path });
+    }
+  }
+
+  /**
+   * Reads a settings file the user chooses and asks what happens to the settings it does not
+   * mention, which is a question to put each time: the answer depends on the file.
+   */
+  protected async importSettings(): Promise<void> {
+    this.log.info('settings', 'Settings import requested');
+    const read: SettingsFileRead | null = await this.transfer.readFromFile();
+    if (read === null) {
+      return;
+    }
+    if (!read.ok) {
+      this.notifications.notify({
+        severity: 'error',
+        title: "Settings couldn't be imported",
+        detail: read.error,
+      });
+      return;
+    }
+    this.pendingImport.set(read.pending);
+  }
+
+  /**
+   * Applies the waiting import.
+   * @param replace Whether settings the file does not mention go back to their defaults.
+   */
+  protected confirmImport(replace: boolean): void {
+    const pending: PendingSettingsImport | null = this.pendingImport();
+    if (pending === null) {
+      return;
+    }
+    this.transfer.apply(pending, replace);
+    this.pendingImport.set(null);
+    this.notifications.notify({
+      severity: 'success',
+      title: 'Settings imported',
+      detail: pending.fileName,
+    });
+  }
+
+  /**
+   * Drops the waiting import without applying anything.
+   */
+  protected cancelImport(): void {
+    this.pendingImport.set(null);
+  }
+
+  /**
+   * Counts the settings an import applies.
+   * @param pending The checked import.
+   * @returns Returns the number of settings the file sets.
+   */
+  protected importCount(pending: PendingSettingsImport): number {
+    return this.transfer.countOf(pending);
   }
 
   /**

@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  inject,
   input,
   InputSignal,
   output,
@@ -14,6 +15,7 @@ import { TextField } from '@shared/angular/components/forms/text-field/text-fiel
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { ListRow, ListView } from '@shared/angular/components/list-view/list-view';
 import type { GoToSymbol, GoToTarget } from '@shared/angular/services/go-to/go-to-model';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { GoToPicker } from '../go-to-picker';
 
 /**
@@ -27,16 +29,22 @@ import { GoToPicker } from '../go-to-picker';
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './go-to-dialog.scss',
   template: `
-    <app-modal [open]="open()" [width]="34" ariaLabel="Go to Symbol" (dismiss)="dismissed.emit()">
+    <app-modal
+      [open]="open()"
+      [width]="34"
+      [frameless]="true"
+      ariaLabel="Go to Symbol"
+      (dismiss)="dismissed.emit()"
+    >
       <ng-template appModalContent>
         <div class="go-to-dialog">
           <h2 class="go-to-dialog__title">Go to Symbol</h2>
           <app-text-field
             class="go-to-dialog__field"
             kind="search"
+            variant="floating"
+            label="Symbol name"
             [(value)]="picker.query"
-            placeholder="Symbol name"
-            ariaLabel="Symbol name"
             (keydown.enter)="commit($event)"
             (keydown.arrowdown)="step($event, 1)"
             (keydown.arrowup)="step($event, -1)"
@@ -68,7 +76,7 @@ import { GoToPicker } from '../go-to-picker';
               [disabled]="picker.selectedId() === null"
               (click)="commit()"
             />
-            <app-button label="Cancel" (click)="dismissed.emit()" />
+            <app-button variant="none" label="Cancel" (click)="dismissed.emit()" />
           </app-button-row>
         </div>
       </ng-template>
@@ -104,7 +112,15 @@ export class GoToSymbolModal {
   protected readonly picker: GoToPicker = new GoToPicker(
     (): readonly GoToSymbol[] | null => this.symbols(),
     (): number => 1,
+    undefined,
+    undefined,
+    (): boolean => this.settings.value('textEditor.goToSymbolMatching')() === 'fuzzy',
   );
+
+  /**
+   * Holds the settings, read for how symbols are matched.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Moves the selection through the symbols, keeping the caret where it is in the field.

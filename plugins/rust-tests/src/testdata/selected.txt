@@ -1,0 +1,26 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/mathy-63c9d37f95b5708b)
+
+running 2 tests
+test tests::slow ... ok
+test tests::fails ... FAILED
+
+failures:
+
+---- tests::fails stdout ----
+
+thread 'tests::fails' (15032945) panicked at src/lib.rs:18:9:
+assertion `left == right` failed: one and two
+  left: 3
+ right: 4
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::fails
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`
+error: 1 target failed:
+    `--lib`

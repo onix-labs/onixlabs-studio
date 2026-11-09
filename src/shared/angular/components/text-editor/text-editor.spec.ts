@@ -4,8 +4,10 @@ import { By } from '@angular/platform-browser';
 import type * as MonacoApi from 'monaco-editor';
 import { EditorContextMenuHost } from '@shared/angular/components/editor-context-menu/editor-context-menu-host';
 import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
-import type { MockInstance } from 'vitest';
+import type { Mock, MockInstance } from 'vitest';
+import { EditorZoom } from '@shared/angular/services/editor-zoom/editor-zoom';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import {
   FIND_HOST,
@@ -23,6 +25,7 @@ import { HoverCards } from '@shared/angular/services/hover/hover-cards';
 import { Autocomplete } from '@shared/angular/services/autocomplete/autocomplete';
 import { ColourPickers } from '@shared/angular/services/colour-picker/colour-pickers';
 import { TextEditor } from './text-editor';
+import type { EditorConfigProperties } from '@shared/api/editor-config-channels';
 
 describe('TextEditor', () => {
   let fixture: ComponentFixture<TextEditor>;
@@ -57,6 +60,10 @@ describe('TextEditor', () => {
 });
 
 describe('TextEditor over a stand-in Monaco editor (#1007)', () => {
+  afterEach(() => {
+    localStorage.removeItem('settings');
+  });
+
   /**
    * The tab Find panel the pane's enclosing tab provides.
    */
@@ -74,11 +81,21 @@ describe('TextEditor over a stand-in Monaco editor (#1007)', () => {
       uri: { toString: (): string => 'inmemory://model/1' },
       onDidChangeOptions: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
       getEOL: (): string => '\n',
+      getLineCount: (): number => 1,
+      getValue: (): string => '',
       getAllDecorations: (): unknown[] => [],
       getLanguageId: (): string => 'plaintext',
-      getOptions: (): unknown => ({ bracketPairColorizationOptions: { enabled: true } }),
+      getOptions: (): unknown => ({
+        bracketPairColorizationOptions: { enabled: true },
+        tabSize: 2,
+        indentSize: 2,
+        insertSpaces: true,
+      }),
+      detectIndentation: (): void => undefined,
+      updateOptions: (): void => undefined,
     };
     const named: Record<string, unknown> = {
+      getContainerDomNode: (): HTMLElement => document.body,
       getModel: (): unknown => model,
       getPosition: (): null => null,
       getValue: (): string => '',
@@ -96,6 +113,200 @@ describe('TextEditor over a stand-in Monaco editor (#1007)', () => {
           : (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
     }) as unknown as MonacoApi.editor.IStandaloneCodeEditor;
   }
+
+  /**
+   * Builds a text editor over a model that keeps its indentation like Monaco's.
+   * @param properties What the file's `.editorconfig` says.
+   * @param detected What the model reads from its content.
+   * @returns Returns the fixture, the model's options, and what re-seeds them.
+   */
+  async function indented(
+    properties: EditorConfigProperties | null,
+    detected: { tabSize: number; insertSpaces: boolean } = { tabSize: 4, insertSpaces: false },
+    held: string = '',
+  ): Promise<{
+    fixture: ComponentFixture<TextEditor>;
+    options: Record<string, unknown>;
+    reseed: () => void;
+    updateEditor: Mock<(options: unknown) => void>;
+    setEOL: Mock<(eol: number) => void>;
+    replaced: Mock<() => void>;
+  }> {
+    const options: Record<string, unknown> = {
+      bracketPairColorizationOptions: { enabled: true },
+      tabSize: 2,
+      indentSize: 2,
+      insertSpaces: true,
+    };
+    let onOptions: () => void = (): void => undefined;
+    const setEOL: Mock<(eol: number) => void> = vi.fn<(eol: number) => void>();
+    const replaced: Mock<() => void> = vi.fn<() => void>();
+    const model: unknown = {
+      uri: { toString: (): string => 'inmemory://model/2' },
+      getFullModelRange: (): unknown => ({}),
+      pushEditOperations: replaced,
+      onDidChangeOptions: (listener: () => void): MonacoApi.IDisposable => {
+        onOptions = listener;
+        return { dispose: (): void => undefined };
+      },
+      getEOL: (): string => '\n',
+      getLineCount: (): number => 1,
+      getValue: (): string => '',
+      getAllDecorations: (): unknown[] => [],
+      getLanguageId: (): string => 'plaintext',
+      getOptions: (): unknown => options,
+      setEOL,
+      detectIndentation: (): void => {
+        Object.assign(options, detected, { indentSize: detected.tabSize });
+        onOptions();
+      },
+      updateOptions: (changes: Record<string, unknown>): void => {
+        Object.assign(options, changes);
+        onOptions();
+      },
+    };
+    const updateEditor: Mock<(options: unknown) => void> = vi.fn<(options: unknown) => void>();
+    const editor: MonacoApi.editor.IStandaloneCodeEditor = standInEditor({
+      getModel: (): unknown => model,
+      getValue: (): string => held,
+      updateOptions: updateEditor,
+    });
+    const fakeMonaco: unknown = {
+      editor: {
+        create: (): MonacoApi.editor.IStandaloneCodeEditor => editor,
+        setTheme: (): void => undefined,
+        EndOfLineSequence: { LF: 0, CRLF: 1 },
+      },
+    };
+    await TestBed.configureTestingModule({
+      imports: [TextEditor],
+      providers: [{ provide: FIND_HOST, useValue: host }],
+    }).compileComponents();
+    const monaco: Monaco = TestBed.inject(Monaco);
+    vi.spyOn(monaco, 'ensureLoaded').mockResolvedValue(undefined);
+    vi.spyOn(monaco, 'getMonaco').mockReturnValue(fakeMonaco as typeof MonacoApi);
+    const fixture: ComponentFixture<TextEditor> = TestBed.createComponent(TextEditor);
+    fixture.componentRef.setInput('editorConfig', properties);
+    fixture.componentRef.setInput('content', held);
+    await fixture.whenStable();
+    return {
+      fixture,
+      options,
+      setEOL,
+      replaced,
+      updateEditor,
+      reseed: (): void => {
+        Object.assign(options, { tabSize: 2, indentSize: 2, insertSpaces: true });
+        onOptions();
+      },
+    };
+  }
+
+  it('rebuildsTheCursorsOptions_whenAutoIndentChanges', async () => {
+    const { fixture, updateEditor } = await indented(null);
+    updateEditor.mockClear();
+
+    TestBed.inject(Settings).set('textEditor.global.autoIndent', 'none');
+    await fixture.whenStable();
+    localStorage.removeItem('settings');
+
+    expect(updateEditor).toHaveBeenCalledWith({ autoClosingDelete: 'never' });
+    expect(updateEditor).toHaveBeenCalledWith({ autoClosingDelete: 'auto' });
+  });
+
+  it('readsIndentationFromTheContent_underDetectIndentation', async () => {
+    const { options } = await indented(null);
+
+    expect(options).toMatchObject({ tabSize: 4, indentSize: 4, insertSpaces: false });
+  });
+
+  it('keepsTheSettings_whenDetectIndentationIsOff', async () => {
+    localStorage.setItem(
+      'settings',
+      JSON.stringify({ 'textEditor.global.detectIndentation': false }),
+    );
+
+    const { options } = await indented(null);
+
+    expect(options).toMatchObject({ tabSize: 2, insertSpaces: true });
+  });
+
+  it('letsEditorConfigWinOverTheContent', async () => {
+    const { options } = await indented({ indentStyle: 'space', indentSize: 8 });
+
+    expect(options).toMatchObject({ tabSize: 8, indentSize: 8, insertSpaces: true });
+  });
+
+  it('putsTheIndentationBackWhenMonacoReseedsTheModel', async () => {
+    const { options, reseed } = await indented({ indentStyle: 'tab', tabWidth: 8 });
+
+    reseed();
+
+    expect(options).toMatchObject({ tabSize: 8, insertSpaces: false });
+  });
+
+  it('reportsTheIndentationInForce', async () => {
+    const seen: string[] = [];
+    const { fixture } = await indented({ indentStyle: 'space', indentSize: 8 });
+    fixture.componentInstance.indentationChange.subscribe((label: string): void => {
+      seen.push(label);
+    });
+
+    fixture.componentRef.setInput('editorConfig', { indentStyle: 'tab', indentSize: 4 });
+    await fixture.whenStable();
+
+    expect(seen).toContain('Tabs: 4');
+  });
+
+  it('letsMaxLineLengthWinOverTheRulers', async () => {
+    localStorage.setItem('settings', JSON.stringify({ 'textEditor.global.rulers': '80, 120' }));
+
+    const { updateEditor } = await indented({ maxLineLength: 100 });
+
+    expect(updateEditor).toHaveBeenCalledWith(expect.objectContaining({ rulers: [100] }));
+  });
+
+  it('drawsNoRuler_whenMaxLineLengthIsOff', async () => {
+    localStorage.setItem('settings', JSON.stringify({ 'textEditor.global.rulers': '80' }));
+
+    const { updateEditor } = await indented({ maxLineLength: 'off' });
+
+    expect(updateEditor).toHaveBeenCalledWith(expect.objectContaining({ rulers: [] }));
+  });
+
+  it('convertsTheModelToTheFixedLineEnding', async () => {
+    const { setEOL } = await indented({ endOfLine: 'crlf' });
+
+    expect(setEOL).toHaveBeenCalledWith(1);
+  });
+
+  it('doesNotTakeAConvertedModelForDifferentText', async () => {
+    const { fixture, replaced } = await indented(
+      { endOfLine: 'crlf' },
+      { tabSize: 4, insertSpaces: false },
+      'a\r\nb',
+    );
+
+    fixture.componentRef.setInput('content', 'a\nb');
+    await fixture.whenStable();
+
+    expect(replaced).not.toHaveBeenCalled();
+  });
+
+  it('replacesTextWhereItStands_whenItReallyDiffers', async () => {
+    const { fixture, replaced } = await indented(null, { tabSize: 4, insertSpaces: false }, 'a');
+
+    fixture.componentRef.setInput('content', 'b');
+    await fixture.whenStable();
+
+    expect(replaced).toHaveBeenCalledTimes(1);
+  });
+
+  it('leavesTheLineEndingAloneForABareCr', async () => {
+    const { setEOL } = await indented({ endOfLine: 'cr' });
+
+    expect(setEOL).not.toHaveBeenCalled();
+  });
 
   it('attachesItsEditorToTheFindRouter_withTheEnclosingTabsFindPanel_andDetachesOnDestroy', async () => {
     const editor: MonacoApi.editor.IStandaloneCodeEditor = standInEditor();
@@ -398,5 +609,595 @@ describe('TextEditor over a stand-in Monaco editor (#1007)', () => {
       endLineNumber: 4,
       endColumn: 7,
     });
+  });
+});
+
+describe('TextEditor driven through a stand-in Monaco', () => {
+  /**
+   * What the stand-in records and exposes.
+   */
+  interface Stand {
+    readonly fixture: ComponentFixture<TextEditor>;
+    readonly calls: string[];
+    readonly edits: unknown[];
+    readonly setLanguage: Mock<(model: unknown, language: string) => void>;
+    readonly pushEol: Mock<(eol: number) => void>;
+    readonly setEol: Mock<(eol: number) => void>;
+    readonly updateModel: Mock<(options: unknown) => void>;
+    readonly fireContent: () => void;
+    readonly fireSelection: () => void;
+  }
+
+  /**
+   * The parts of the stand-in a spec replaces.
+   */
+  interface StandOptions {
+    readonly editor?: Record<string, unknown>;
+    readonly model?: Record<string, unknown>;
+    readonly inputs?: Record<string, unknown>;
+  }
+
+  afterEach(() => {
+    localStorage.removeItem('settings');
+  });
+
+  /**
+   * Mounts a text editor over a stand-in Monaco whose every unnamed member answers as a subscription.
+   * @param stand What to replace.
+   * @returns Returns the mounted editor and its recorders.
+   */
+  async function mounted(stand: StandOptions = {}): Promise<Stand> {
+    const calls: string[] = [];
+    const edits: unknown[] = [];
+    let fireContent: () => void = (): void => undefined;
+    let fireSelection: () => void = (): void => undefined;
+    const setEol: Mock<(eol: number) => void> = vi.fn<(eol: number) => void>();
+    const pushEol: Mock<(eol: number) => void> = vi.fn<(eol: number) => void>();
+    const updateModel: Mock<(options: unknown) => void> = vi.fn<(options: unknown) => void>();
+    const model: Record<string, unknown> = {
+      uri: { toString: (): string => 'inmemory://model/driven' },
+      onDidChangeOptions: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
+      getEOL: (): string => '\n',
+      getLineCount: (): number => 1,
+      getValue: (): string => '',
+      getAllDecorations: (): unknown[] => [],
+      getLanguageId: (): string => 'plaintext',
+      getFullModelRange: (): string => 'everything',
+      getLineMaxColumn: (): number => 9,
+      getOptions: (): unknown => ({
+        bracketPairColorizationOptions: { enabled: true },
+        tabSize: 2,
+        indentSize: 2,
+        insertSpaces: true,
+      }),
+      detectIndentation: (): void => undefined,
+      updateOptions: updateModel,
+      setEOL: setEol,
+      pushEOL: pushEol,
+      ...stand.model,
+    };
+    const named: Record<string, unknown> = {
+      getContainerDomNode: (): HTMLElement => document.body,
+      getModel: (): unknown => model,
+      getPosition: (): null => null,
+      getSelection: (): null => null,
+      getValue: (): string => '',
+      getVisibleRanges: (): unknown[] => [],
+      createDecorationsCollection: (): unknown => ({
+        set: (): void => undefined,
+        clear: (): void => undefined,
+      }),
+      focus: (): void => void calls.push('focus'),
+      layout: (): void => void calls.push('layout'),
+      dispose: (): void => void calls.push('dispose'),
+      pushUndoStop: (): void => void calls.push('stop'),
+      executeEdits: (_source: string, operations: unknown): void => {
+        calls.push('edit');
+        edits.push(operations);
+      },
+      saveViewState: (): string => 'view',
+      restoreViewState: (view: string): void => void calls.push(`restore ${view}`),
+      onDidChangeModelContent: (listener: () => void): MonacoApi.IDisposable => {
+        fireContent = listener;
+        return { dispose: (): void => undefined };
+      },
+      onDidChangeCursorSelection: (listener: () => void): MonacoApi.IDisposable => {
+        fireSelection = listener;
+        return { dispose: (): void => undefined };
+      },
+      ...stand.editor,
+    };
+    const editor: unknown = new Proxy(named, {
+      get: (target: Record<string, unknown>, key: string): unknown =>
+        key in target
+          ? target[key]
+          : (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
+    });
+    const setLanguage: Mock<(model: unknown, language: string) => void> =
+      vi.fn<(model: unknown, language: string) => void>();
+    const fakeMonaco: unknown = {
+      editor: {
+        create: (): unknown => editor,
+        setTheme: (): void => undefined,
+        setModelLanguage: setLanguage,
+        EndOfLineSequence: { LF: 0, CRLF: 1 },
+      },
+    };
+    await TestBed.configureTestingModule({ imports: [TextEditor] }).compileComponents();
+    const monaco: Monaco = TestBed.inject(Monaco);
+    vi.spyOn(monaco, 'ensureLoaded').mockResolvedValue(undefined);
+    vi.spyOn(monaco, 'getMonaco').mockReturnValue(fakeMonaco as typeof MonacoApi);
+    const fixture: ComponentFixture<TextEditor> = TestBed.createComponent(TextEditor);
+    for (const [name, value] of Object.entries(stand.inputs ?? {})) {
+      fixture.componentRef.setInput(name, value);
+    }
+    await fixture.whenStable();
+    return {
+      fixture,
+      calls,
+      edits,
+      setLanguage,
+      pushEol,
+      setEol,
+      updateModel,
+      fireContent: (): void => fireContent(),
+      fireSelection: (): void => fireSelection(),
+    };
+  }
+
+  /**
+   * Builds a selection as Monaco reports one.
+   * @param start The first line and column.
+   * @param end The last line and column.
+   * @returns Returns the selection.
+   */
+  function selection(start: [number, number], end: [number, number]): unknown {
+    return {
+      startLineNumber: start[0],
+      startColumn: start[1],
+      endLineNumber: end[0],
+      endColumn: end[1],
+      isEmpty: (): boolean => start[0] === end[0] && start[1] === end[1],
+    };
+  }
+
+  describe('zooming with the wheel', () => {
+    /**
+     * Turns the wheel over the editor.
+     * @param fixture The editor.
+     * @param init The wheel's move.
+     * @returns Returns the raised event.
+     */
+    function wheel(fixture: ComponentFixture<TextEditor>, init: WheelEventInit): WheelEvent {
+      const event: WheelEvent = new WheelEvent('wheel', {
+        cancelable: true,
+        bubbles: true,
+        ...init,
+      });
+      (fixture.nativeElement as HTMLElement).querySelector('.text-editor')?.dispatchEvent(event);
+      return event;
+    }
+
+    it('zooms_onceTheMovesAddUpToAStep_andTakesTheEventFromMonaco', async () => {
+      localStorage.setItem(
+        'settings',
+        JSON.stringify({ 'textEditor.global.mouseWheelZoom': true }),
+      );
+      const { fixture } = await mounted();
+      const zoom: EditorZoom = TestBed.inject(EditorZoom);
+      const before: number = zoom.percent();
+
+      const small: WheelEvent = wheel(fixture, { deltaY: -30, ctrlKey: true });
+      expect(zoom.percent()).toBe(before);
+      expect(small.defaultPrevented).toBe(true);
+
+      wheel(fixture, { deltaY: -30, ctrlKey: true });
+
+      expect(zoom.percent()).toBeGreaterThan(before);
+    });
+
+    it('leavesAPlainWheelToScroll', async () => {
+      localStorage.setItem(
+        'settings',
+        JSON.stringify({ 'textEditor.global.mouseWheelZoom': true }),
+      );
+      const { fixture } = await mounted();
+
+      expect(wheel(fixture, { deltaY: -60 }).defaultPrevented).toBe(false);
+    });
+
+    it('leavesTheWheelAlone_whenTheSettingIsOff', async () => {
+      const { fixture } = await mounted();
+      const zoom: EditorZoom = TestBed.inject(EditorZoom);
+      const before: number = zoom.percent();
+
+      const event: WheelEvent = wheel(fixture, { deltaY: -60, metaKey: true });
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(zoom.percent()).toBe(before);
+    });
+
+    it('stopsListening_whenDestroyed', async () => {
+      localStorage.setItem(
+        'settings',
+        JSON.stringify({ 'textEditor.global.mouseWheelZoom': true }),
+      );
+      const { fixture } = await mounted();
+      const element: Element | null = (fixture.nativeElement as HTMLElement).querySelector(
+        '.text-editor',
+      );
+
+      fixture.destroy();
+      const event: WheelEvent = new WheelEvent('wheel', {
+        cancelable: true,
+        deltaY: -60,
+        ctrlKey: true,
+      });
+      element?.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+    });
+  });
+
+  it('retargetsTheModel_whenTheLanguageChanges', async () => {
+    const { fixture, setLanguage } = await mounted();
+
+    fixture.componentRef.setInput('language', 'typescript');
+    await fixture.whenStable();
+
+    expect(setLanguage).toHaveBeenCalledTimes(1);
+    expect(setLanguage.mock.calls[0]?.[1]).toBe('typescript');
+  });
+
+  it('laysOutAndFocuses_whenThePaneBecomesActive', async () => {
+    const { fixture, calls } = await mounted();
+    calls.length = 0;
+
+    fixture.componentRef.setInput('isActive', true);
+    await fixture.whenStable();
+
+    expect(calls).toEqual(['layout', 'focus']);
+  });
+
+  it('turnsBracketColoursOff_pastTheLargeFileThreshold', async () => {
+    const { updateModel } = await mounted({
+      model: { getLineCount: (): number => 100_000_000 },
+    });
+
+    expect(updateModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bracketColorizationOptions: expect.objectContaining({ enabled: false }) as unknown,
+      }),
+    );
+  });
+
+  describe('selection', () => {
+    it('getSelectionText_withNoSelection_isEmpty', async () => {
+      const { fixture } = await mounted();
+
+      expect(fixture.componentInstance.getSelectionText()).toBe('');
+    });
+
+    it('getSelectionText_ofACaret_isEmpty', async () => {
+      const { fixture } = await mounted({
+        editor: { getSelection: (): unknown => selection([1, 2], [1, 2]) },
+      });
+
+      expect(fixture.componentInstance.getSelectionText()).toBe('');
+    });
+
+    it('getSelectionText_readsTheSelectedText', async () => {
+      const { fixture } = await mounted({
+        editor: { getSelection: (): unknown => selection([1, 1], [1, 4]) },
+        model: { getValueInRange: (): string => 'abc' },
+      });
+
+      expect(fixture.componentInstance.getSelectionText()).toBe('abc');
+    });
+
+    /**
+     * Reports what a selection over given lines tells the host.
+     * @param lines The lines of the file.
+     * @param from The selection's start.
+     * @param to The selection's end.
+     * @returns Returns whether the host was told there is a selection.
+     */
+    async function reported(
+      lines: readonly string[],
+      from: [number, number],
+      to: [number, number],
+    ): Promise<boolean | undefined> {
+      const { fixture, fireSelection } = await mounted({
+        editor: { getSelection: (): unknown => selection(from, to) },
+        model: { getLineContent: (line: number): string => lines[line - 1] ?? '' },
+      });
+      let seen: boolean | undefined;
+      fixture.componentInstance.selectionChange.subscribe((value: boolean): void => {
+        seen = value;
+      });
+      fireSelection();
+      return seen;
+    }
+
+    it('selectionChange_ofWhitespaceAcrossLines_reportsNothingToAttach', async () => {
+      expect(await reported(['  ', '   ', ' x'], [1, 1], [3, 2])).toBe(false);
+    });
+
+    it('selectionChange_findsTextOnALaterLine', async () => {
+      expect(await reported(['  ', ' x'], [1, 1], [2, 3])).toBe(true);
+    });
+
+    it('selectionChange_countsOnlyTheSelectedPartOfALine', async () => {
+      expect(await reported(['ab   cd'], [1, 3], [1, 6])).toBe(false);
+    });
+  });
+
+  it('contentChange_carriesWhatWasTyped_andTheLineEnding', async () => {
+    let held: string = '';
+    const { fixture, fireContent } = await mounted({
+      editor: { getValue: (): string => held },
+      model: { getEOL: (): string => '\r\n' },
+    });
+    const typed: string[] = [];
+    const endings: string[] = [];
+    fixture.componentInstance.contentChange.subscribe((value: string): void => {
+      typed.push(value);
+    });
+    fixture.componentInstance.eolChange.subscribe((value: string): void => {
+      endings.push(value);
+    });
+
+    held = 'typed';
+    fireContent();
+
+    expect(typed).toEqual(['typed']);
+    expect(endings).toEqual(['CRLF']);
+  });
+
+  describe('new document line endings', () => {
+    it('setsThemOnABlankDocument', async () => {
+      const { setEol } = await mounted({ inputs: { newDocumentEol: 'CRLF' } });
+
+      expect(setEol).toHaveBeenCalledWith(1);
+    });
+
+    it('leavesADocumentThatAlreadyHasLinesAlone', async () => {
+      const { setEol } = await mounted({
+        inputs: { newDocumentEol: 'CRLF' },
+        model: { getValue: (): string => 'a\nb' },
+      });
+
+      expect(setEol).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('setEol', () => {
+    it('convertsAsAnEditTheUserCanUndo', async () => {
+      const { fixture, pushEol } = await mounted();
+
+      fixture.componentInstance.setEol('CRLF');
+
+      expect(pushEol).toHaveBeenCalledWith(1);
+    });
+
+    it('doesNothing_whenTheDocumentIsAlreadyThere', async () => {
+      const { fixture, pushEol } = await mounted();
+
+      fixture.componentInstance.setEol('LF');
+
+      expect(pushEol).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('actions', () => {
+    it('trigger_focusesThenDispatches', async () => {
+      const trigger: Mock<(source: string, action: string) => void> =
+        vi.fn<(source: string, action: string) => void>();
+      const { fixture, calls } = await mounted({ editor: { trigger } });
+      calls.length = 0;
+
+      fixture.componentInstance.trigger('editor.action.formatDocument');
+
+      expect(calls).toEqual(['focus']);
+      expect(trigger.mock.calls[0]?.[1]).toBe('editor.action.formatDocument');
+    });
+
+    it('runAction_ofAnActionTheEditorLacks_resolvesWithoutRunning', async () => {
+      const { fixture } = await mounted({ editor: { getAction: (): null => null } });
+
+      await expect(fixture.componentInstance.runAction('nope')).resolves.toBeUndefined();
+    });
+
+    it('runActionForSave_leavesTheFocusWhereItIs', async () => {
+      const run: Mock<() => Promise<void>> = vi.fn<() => Promise<void>>().mockResolvedValue();
+      const { fixture, calls } = await mounted({ editor: { getAction: (): unknown => ({ run }) } });
+      calls.length = 0;
+
+      await fixture.componentInstance.runActionForSave('editor.action.organizeImports');
+
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(calls).toEqual([]);
+    });
+  });
+
+  describe('organizeImports', () => {
+    it('aLanguageServerAnswers_soMonacosActionIsNotRun', async () => {
+      const run: Mock<() => Promise<void>> = vi.fn<() => Promise<void>>().mockResolvedValue();
+      const { fixture, calls } = await mounted({ editor: { getAction: (): unknown => ({ run }) } });
+      const organize: MockInstance = vi
+        .spyOn(TestBed.inject(QuickFixes), 'organizeImports')
+        .mockResolvedValue(true);
+      calls.length = 0;
+
+      await fixture.componentInstance.organizeImports();
+
+      expect(organize).toHaveBeenCalledTimes(1);
+      expect(run).not.toHaveBeenCalled();
+      expect(calls).toEqual(['focus']);
+    });
+
+    it('noLanguageServerAnswers_soMonacosActionRuns', async () => {
+      const run: Mock<() => Promise<void>> = vi.fn<() => Promise<void>>().mockResolvedValue();
+      const { fixture } = await mounted({ editor: { getAction: (): unknown => ({ run }) } });
+      vi.spyOn(TestBed.inject(QuickFixes), 'organizeImports').mockResolvedValue(false);
+
+      await fixture.componentInstance.organizeImports();
+
+      expect(run).toHaveBeenCalledTimes(1);
+    });
+
+    it('forSave_leavesTheFocusWhereItIs', async () => {
+      const { fixture, calls } = await mounted({ editor: { getAction: (): null => null } });
+      vi.spyOn(TestBed.inject(QuickFixes), 'organizeImports').mockResolvedValue(true);
+      calls.length = 0;
+
+      await fixture.componentInstance.organizeImportsForSave();
+
+      expect(calls).toEqual([]);
+    });
+  });
+
+  describe('formatLinesForSave', () => {
+    const lines: readonly { first: number; last: number }[] = [
+      { first: 7, last: 9 },
+      { first: 2, last: 3 },
+    ];
+
+    it('formatsEachRange_thenPutsTheCaretBack', async () => {
+      const selected: unknown[] = [];
+      const run: Mock<() => Promise<void>> = vi.fn<() => Promise<void>>().mockResolvedValue();
+      const { fixture, calls } = await mounted({
+        editor: {
+          getAction: (): unknown => ({ run }),
+          setSelection: (range: unknown): void => void selected.push(range),
+        },
+      });
+
+      await fixture.componentInstance.formatLinesForSave(lines);
+
+      expect(selected).toEqual([
+        { startLineNumber: 7, startColumn: 1, endLineNumber: 9, endColumn: 9 },
+        { startLineNumber: 2, startColumn: 1, endLineNumber: 3, endColumn: 9 },
+      ]);
+      expect(run).toHaveBeenCalledTimes(2);
+      expect(calls).toContain('restore view');
+    });
+
+    it('withNothingToFormat_touchesNothing', async () => {
+      const { fixture, calls } = await mounted();
+
+      await fixture.componentInstance.formatLinesForSave([]);
+
+      expect(calls).not.toContain('restore view');
+    });
+
+    it('whenAFormatterFails_stillPutsTheCaretBack', async () => {
+      const { fixture, calls } = await mounted({
+        editor: {
+          getAction: (): unknown => ({
+            run: (): Promise<void> => Promise.reject(new Error('the formatter crashed')),
+          }),
+        },
+      });
+
+      await expect(fixture.componentInstance.formatLinesForSave(lines)).rejects.toThrow(
+        'the formatter crashed',
+      );
+
+      expect(calls).toContain('restore view');
+    });
+  });
+
+  describe('replacing text', () => {
+    it('replaceAll_isOneEditOverTheWholeDocument', async () => {
+      const { fixture, edits } = await mounted();
+
+      fixture.componentInstance.replaceAll('new');
+
+      expect(edits).toEqual([[{ range: 'everything', text: 'new' }]]);
+    });
+
+    it('replaceRange_undoesOnItsOwn', async () => {
+      const { fixture, calls, edits } = await mounted({
+        model: {
+          getPositionAt: (offset: number): unknown => ({ lineNumber: 1, column: offset + 1 }),
+        },
+      });
+      calls.length = 0;
+
+      fixture.componentInstance.replaceRange(2, 3, 'x');
+
+      expect(calls).toEqual(['stop', 'edit', 'stop']);
+      expect(edits).toEqual([
+        [
+          {
+            range: { startLineNumber: 1, startColumn: 3, endLineNumber: 1, endColumn: 6 },
+            text: 'x',
+            forceMoveMarkers: true,
+          },
+        ],
+      ]);
+    });
+  });
+
+  describe('after it is destroyed', () => {
+    it('disposesTheEditorOnce_andEveryCallIsANoOp', async () => {
+      const { fixture, calls } = await mounted();
+      const editor: TextEditor = fixture.componentInstance;
+
+      fixture.destroy();
+      calls.length = 0;
+      editor.focus();
+      editor.layout();
+      editor.reveal(1, 1);
+      editor.trigger('anything');
+      editor.paste();
+      editor.replaceAll('x');
+      editor.replaceRange(0, 0, 'x');
+      editor.setEol('CRLF');
+      await editor.runAction('anything');
+      await editor.runActionForSave('anything');
+      await editor.formatLinesForSave([{ first: 1, last: 1 }]);
+
+      expect(calls).toEqual([]);
+      expect(editor.getModel()).toBeNull();
+      expect(editor.getSelectionText()).toBe('');
+    });
+
+    it('createsNothing_whenMonacoFinishesLoadingAfterTheTabClosed', async () => {
+      let finishLoading: () => void = (): void => undefined;
+      const create: Mock<() => unknown> = vi.fn<() => unknown>();
+      await TestBed.configureTestingModule({ imports: [TextEditor] }).compileComponents();
+      const monaco: Monaco = TestBed.inject(Monaco);
+      vi.spyOn(monaco, 'ensureLoaded').mockReturnValue(
+        new Promise<void>((resolve: () => void): void => {
+          finishLoading = resolve;
+        }),
+      );
+      vi.spyOn(monaco, 'getMonaco').mockReturnValue({
+        editor: { create },
+      } as unknown as typeof MonacoApi);
+      const fixture: ComponentFixture<TextEditor> = TestBed.createComponent(TextEditor);
+      fixture.detectChanges();
+
+      fixture.destroy();
+      finishLoading();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(create).not.toHaveBeenCalled();
+    });
+  });
+
+  it('staysEmpty_whenMonacoIsUnavailable', async () => {
+    await TestBed.configureTestingModule({ imports: [TextEditor] }).compileComponents();
+    const monaco: Monaco = TestBed.inject(Monaco);
+    vi.spyOn(monaco, 'ensureLoaded').mockResolvedValue(undefined);
+    vi.spyOn(monaco, 'getMonaco').mockReturnValue(undefined);
+    const fixture: ComponentFixture<TextEditor> = TestBed.createComponent(TextEditor);
+
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.getEditor()).toBeNull();
   });
 });

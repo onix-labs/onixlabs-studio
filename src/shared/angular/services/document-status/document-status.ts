@@ -1,6 +1,40 @@
+import type { EditorConfigProperties } from '@shared/api/editor-config-channels';
+import type { TextEncoding } from '@shared/api/text-encodings';
 import { ChipTone } from '@shared/angular/components/chip/chip';
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+
+/**
+ * Names a status strip segment an `.editorconfig` can decide.
+ */
+export type EditorConfigSegment = 'indent' | 'eol' | 'encoding';
+
+/**
+ * Holds what a segment says when an `.editorconfig` decided its value.
+ */
+export const SET_BY_EDITOR_CONFIG: string = 'Set by .editorconfig';
+
+/**
+ * Lists the status strip segments an `.editorconfig` decides.
+ * @param config The properties in force, or null.
+ * @returns Returns the segments.
+ */
+export function governedByEditorConfig(
+  config: EditorConfigProperties | null,
+): readonly EditorConfigSegment[] {
+  if (config === null) {
+    return [];
+  }
+  return [
+    ...(config.indentStyle !== undefined ||
+    config.indentSize !== undefined ||
+    config.tabWidth !== undefined
+      ? (['indent'] as const)
+      : []),
+    ...(config.endOfLine === 'lf' || config.endOfLine === 'crlf' ? (['eol'] as const) : []),
+    ...(config.charset !== undefined ? (['encoding'] as const) : []),
+  ];
+}
 
 /**
  * Describes a document's status shown as a chip on the well status strip (#882).
@@ -123,6 +157,43 @@ export interface DocumentStatusInfo {
    * Gets the document's encoding label (for example "UTF-8" or "UTF-8 with BOM").
    */
   readonly encoding?: string;
+
+  /**
+   * Gets the indentation in force (for example "Spaces: 4").
+   */
+  readonly indent?: string;
+
+  /**
+   * Gets the segments an `.editorconfig` decided, so the strip can say where a surprise came from.
+   */
+  readonly editorConfig?: readonly EditorConfigSegment[];
+
+  /**
+   * Gets what the strip's end-of-line and encoding segments can do to the document, or undefined when
+   * they only show it (#1236).
+   */
+  readonly actions?: DocumentStatusActions;
+}
+
+/**
+ * Describes what a document's status strip may do to it: reopen or save it in another encoding, and
+ * change its line endings. A segment whose action is absent shows its value only.
+ */
+export interface DocumentStatusActions {
+  /**
+   * Reopens the document's file in an encoding, or is absent when it has no file to reopen.
+   */
+  readonly reopenWithEncoding?: (encoding: TextEncoding) => void;
+
+  /**
+   * Saves the document in an encoding, or is absent when it cannot be saved.
+   */
+  readonly saveWithEncoding?: (encoding: TextEncoding) => void;
+
+  /**
+   * Converts the document's line endings, or is absent when they cannot be changed.
+   */
+  readonly setEol?: (eol: 'LF' | 'CRLF') => void;
 }
 
 /**

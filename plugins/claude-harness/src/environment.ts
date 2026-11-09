@@ -16,7 +16,7 @@
 // being in core, and moving out deletes it rather than porting it. The Codex port found the same thing.
 
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
-import { accessSync, constants, existsSync } from 'node:fs';
+import { accessSync, constants, existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 
 /**
@@ -26,6 +26,76 @@ import { delimiter, join } from 'node:path';
  * bracketed by an unlikely marker and everything outside the two markers is discarded.
  */
 const ENV_DELIMITER: string = '__STUDIO_SHELL_ENV_DELIMITER_6b3f0e__';
+
+/**
+ * Where a session's temporary folder is made.
+ *
+ * ⛔ Not `os.tmpdir()`, for a reason that fails silently. Inside the sandbox the CLI sets `TMPDIR` to
+ * `<CLAUDE_CODE_TMPDIR>/claude-<uid>`, but only while that path is at most 44 bytes, because sockets are
+ * made under it; past that it falls back to `/tmp/claude-<uid>` and the two modes disagree again.
+ * macOS's temporary directory alone is around 50 bytes. `/tmp` leaves room, for 36 bytes at worst.
+ */
+const SESSION_TEMPORARY_PARENT: string = '/tmp';
+
+/**
+ * Describes the temporary folder a session's commands share, inside the sandbox and out (#1165).
+ */
+export interface SessionTemporary {
+  /**
+   * Gets the folder made for the session, handed to the CLI as `CLAUDE_CODE_TMPDIR`.
+   */
+  readonly root: string;
+
+  /**
+   * Gets the folder inside it the CLI uses, which is `TMPDIR` for every command.
+   */
+  readonly directory: string;
+}
+
+/**
+ * Makes a session's temporary folder. A file a command leaves in `$TMPDIR` should still be there for
+ * the next command whichever side of the sandbox that one runs on: without this, the sandbox's is
+ * `/tmp/claude-<uid>` and the other is the user's own, and the file is silently not there (#1165).
+ *
+ * Setting `TMPDIR` alone cannot do it, because the CLI overwrites it inside the sandbox from
+ * `CLAUDE_CODE_TMPDIR`; so that is set too, and `TMPDIR` set to what the CLI will derive from it.
+ * @param parent Where to make it; overridable for tests.
+ * @param platform The platform, as Node names it.
+ * @returns Returns the folder, or null where there is no sandbox to agree with or none could be made,
+ * so that the session runs with the temporary folders it always had.
+ */
+export function openSessionTemporary(
+  parent: string = SESSION_TEMPORARY_PARENT,
+  platform: NodeJS.Platform = process.platform,
+): SessionTemporary | null {
+  if (platform === 'win32') {
+    return null;
+  }
+  try {
+    const root: string = mkdtempSync(join(parent, 'studio-'));
+    const directory: string = join(root, `claude-${process.getuid?.() ?? 0}`);
+    // The CLI refuses a temporary folder anyone else can reach.
+    mkdirSync(directory, { mode: 0o700 });
+    return { root, directory };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Removes a session's temporary folder when the session ends.
+ * @param temporary The folder, or null when the session has none.
+ */
+export function closeSessionTemporary(temporary: SessionTemporary | null): void {
+  if (temporary === null) {
+    return;
+  }
+  try {
+    rmSync(temporary.root, { recursive: true, force: true });
+  } catch {
+    // Best-effort: what is left is in /tmp, which the system clears.
+  }
+}
 
 /**
  * Per-shell cache of captured environments, so a turn sources each shell's profile at most once for
@@ -133,20 +203,22 @@ function mergePath(captured: string, existing: string | undefined): string {
 /**
  * Builds the environment the SDK should run the turn in, or null to leave it inheriting this process's.
  *
- * An explicit environment is built when either an API key must be injected or the user chose an agent
- * shell. ⚠️ The shell's exports **override** the inherited values here, unlike the application's own
+ * An explicit environment is built when an API key must be injected, the user chose an agent shell,
+ * or the session has its own temporary folder. ⚠️ The shell's exports **override** the inherited values here, unlike the application's own
  * startup hydrate which only fills gaps: this is an explicit per-agent choice rather than a repair of
  * a GUI launch, so the shell the user named is the one that wins.
  * @param shell The agent shell from the envelope, or null to inherit.
  * @param apiKey The API key to inject, or null when the local login authenticates the run.
+ * @param temporary The session's temporary folder, or null to leave the temporary folders alone.
  * @returns Returns the environment, or null to inherit.
  */
 export function runEnvironment(
   shell: string | null,
   apiKey: string | null,
+  temporary: SessionTemporary | null = null,
 ): Record<string, string> | null {
   const useShell: boolean = typeof shell === 'string' && shell.length > 0;
-  if (!useShell && apiKey === null) {
+  if (!useShell && apiKey === null && temporary === null) {
     return null;
   }
   const env: Record<string, string> = {};
@@ -171,6 +243,13 @@ export function runEnvironment(
   }
   if (apiKey !== null) {
     env['ANTHROPIC_API_KEY'] = apiKey;
+  }
+  if (temporary !== null) {
+    // After the shell's exports, which would otherwise put the two modes back out of step.
+    env['TMPDIR'] = temporary.directory;
+    env['CLAUDE_CODE_TMPDIR'] = temporary.root;
+    // Inherited when Studio itself was started from a Claude session.
+    delete env['CLAUDE_TMPDIR'];
   }
   return env;
 }

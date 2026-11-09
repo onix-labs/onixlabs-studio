@@ -104,7 +104,10 @@ async function answer(op: string, params: unknown): Promise<unknown> {
     case 'stop':
       return engine.stop(text(params, 'id'));
     case 'remove':
-      return engine.remove(text(params, 'id'));
+      return engine.remove(
+        text(params, 'id'),
+        (params as { readonly volumes?: unknown } | null)?.volumes === true,
+      );
     case 'logs': {
       const tail: unknown =
         typeof params === 'object' && params !== null

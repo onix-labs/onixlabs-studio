@@ -39,6 +39,12 @@ export enum TerminalChannel {
   GetCwd = 'terminal:get-cwd',
 
   /**
+   * Requests the program a shell session is running in the foreground, or null when only the shell
+   * itself is — at its prompt, or ended (renderer→main, invoke).
+   */
+  GetForeground = 'terminal:get-foreground',
+
+  /**
    * Requests the list of shells installed on the host, for the shell picker (renderer→main, invoke).
    */
   ListShells = 'terminal:list-shells',
@@ -60,6 +66,12 @@ export enum TerminalChannel {
    * Notifies the renderer that a session has exited (main→renderer, send).
    */
   Exit = 'terminal:exit',
+
+  /**
+   * Tells main how many characters of a session's output the renderer has parsed, which is what
+   * paces a session producing faster than it can be shown (renderer→main, invoke).
+   */
+  Acknowledge = 'terminal:acknowledge',
 }
 
 /**
@@ -104,6 +116,23 @@ export interface TerminalCreateOptions {
    * not a usable executable. Ignored when a {@link command} is given.
    */
   readonly shell?: string;
+
+  /**
+   * Gets the arguments an interactive shell starts with, written as on a command line (Shell
+   * Arguments), or undefined for none. Ignored when a {@link command} is given.
+   */
+  readonly shellArguments?: string;
+
+  /**
+   * Gets output to keep above the new session's own: a relaunch carrying on from its last run.
+   */
+  readonly earlierOutput?: string;
+
+  /**
+   * Gets whether an interactive shell starts as a login shell (Start as Login Shell). Ignored on
+   * Windows, and when a {@link command} is given.
+   */
+  readonly login?: boolean;
 
   /**
    * Gets the command a `run` or `task` session executes instead of an interactive shell. Without

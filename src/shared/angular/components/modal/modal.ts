@@ -46,7 +46,8 @@ const MAX_WINDOW_FRACTION: number = 0.9;
 
 /**
  * Matches the text-entry controls a freshly opened dialog gives keyboard focus to: enabled text-like
- * inputs and text areas, in document order. See {@link Modal.focusInitial}.
+ * inputs and text areas, or an element that asks for it (`data-modal-autofocus`, such as a dialog that
+ * reads key presses), in document order. See {@link Modal.focusInitial}.
  */
 const INITIAL_FOCUS_SELECTOR: string = [
   'input:not([type])',
@@ -57,6 +58,7 @@ const INITIAL_FOCUS_SELECTOR: string = [
   'input[type="number"]',
   'input[type="password"]',
   'textarea',
+  '[data-modal-autofocus]',
 ]
   .map((selector: string): string => `${selector}:not([disabled]):not([readonly])`)
   .join(', ');
@@ -212,6 +214,13 @@ export class Modal implements OnDestroy {
   public readonly chromeless: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets a value indicating whether the modal's window has no platform controls, for a dialog whose
+   * own buttons and backdrop already dismiss it. Its content rises into the space they took, and the
+   * window moves by the band over its title.
+   */
+  public readonly frameless: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Gets the caller's marked content template. A modal is presented in a window, which can only
    * render templated content; a modal that declares none cannot be presented.
    */
@@ -284,6 +293,7 @@ export class Modal implements OnDestroy {
         position: null,
         background: this.openingBackground(),
         dragless: this.chromeless(),
+        frameless: this.frameless(),
         minimum: this.bound(this.minWidth(), this.minHeight()),
         maximum: this.bound(this.maxWidth(), this.maxHeight()),
       },
@@ -407,7 +417,8 @@ export class Modal implements OnDestroy {
    * replaced by typing rather than appended to. A dialog with no text field — a confirmation, a
    * picker — is left alone; its buttons are reached by Tab as before, and none is favoured.
    *
-   * Only text-like inputs qualify. A checkbox or radio first in the content is a setting, not the
+   * Only text-like inputs qualify, plus an element marked `data-modal-autofocus` (a dialog that reads
+   * key presses, which has no input to focus). A checkbox or radio first in the content is a setting, not the
    * thing the dialog opened to collect, and focusing it would put the first keypress somewhere
    * surprising. A freestanding modal is exempt: it is a surface (the welcome screen), not a prompt.
    * @param window The modal window whose content has been mounted.

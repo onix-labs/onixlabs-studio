@@ -116,20 +116,21 @@
      to that window, dims it, and never reaches for the main window — which is hidden while the
      welcome screen stands in for it. -->
 <app-modal
-  class="welcome__confirm"
+  class="welcome__confirm welcome__confirm--standard"
   [open]="confirmingClear()"
   [width]="24"
+  [frameless]="true"
   ariaLabel="Clear recent items"
   (dismiss)="cancelClearRecent()"
 >
   <ng-template appModalContent>
-    <h2 class="welcome__confirm-title">Clear recent items</h2>
-    <p class="welcome__confirm-message">
+    <h2 class="welcome__confirm-title">Clear Recent Items</h2>
+    <p class="welcome__confirm-message welcome__confirm-message--body">
       Are you sure you want to clear all recent items? This cannot be undone.
     </p>
     <app-button-row>
-      <app-button variant="solid" label="Clear" (click)="clearRecent()" />
-      <app-button label="Cancel" (click)="cancelClearRecent()" />
+      <app-button variant="solid" tone="danger" label="Clear" (click)="clearRecent()" />
+      <app-button variant="none" label="Cancel" (click)="cancelClearRecent()" />
     </app-button-row>
   </ng-template>
 </app-modal>
@@ -138,22 +139,24 @@
      means it has moved, been renamed, or been deleted. Rather than the click doing nothing, the user is
      offered a way forward — point it at its new location, forget it, or leave it be. -->
 <app-modal
-  class="welcome__confirm"
+  class="welcome__confirm welcome__confirm--standard"
   [open]="missingItem() !== null"
   [width]="30"
+  [frameless]="true"
   ariaLabel="Item not found"
   (dismiss)="dismissMissing()"
 >
   <ng-template appModalContent>
     @if (missingItem(); as missing) {
-      <h2 class="welcome__confirm-title">Can’t find this item</h2>
-      <p class="welcome__confirm-message">
-        “{{ missing.name }}” could not be opened. It may have been moved, renamed, or deleted.
+      <h2 class="welcome__confirm-title">Can’t Find This Item</h2>
+      <p class="welcome__confirm-message welcome__confirm-message--body">
+        <strong>{{ missing.name }}</strong> could not be opened. It may have been moved, renamed, or
+        deleted.
       </p>
       <app-button-row>
         <app-button variant="solid" label="Locate" (click)="locateMissing()" />
-        <app-button label="Remove" (click)="removeMissing()" />
-        <app-button label="Cancel" (click)="dismissMissing()" />
+        <app-button variant="ghost" label="Remove" (click)="removeMissing()" />
+        <app-button variant="none" label="Cancel" (click)="dismissMissing()" />
       </app-button-row>
     }
   </ng-template>

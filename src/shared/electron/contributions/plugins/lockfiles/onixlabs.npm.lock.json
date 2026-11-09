@@ -1,0 +1,20 @@
+{
+  "name": "npm",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "npm",
+      "version": "1.0.0",
+      "dependencies": {
+        "@onixlabs/npm": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-npm-v0.1.1/onixlabs-npm-0.1.1.tgz"
+      }
+    },
+    "node_modules/@onixlabs/npm": {
+      "version": "0.1.1",
+      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-npm-v0.1.1/onixlabs-npm-0.1.1.tgz",
+      "integrity": "sha512-m7JpAEKHHniQ+uYePqjN4RPpZNE+3afc3UKqaRCLt7e7/we06By0NkgfCXFy7Ke6uH5XrhDZpDqCYbdqSo1hgQ=="
+    }
+  }
+}

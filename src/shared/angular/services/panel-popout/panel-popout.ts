@@ -22,7 +22,12 @@ import {
 } from '@shared/angular/components/popout-dock-host/popout-dock-host';
 import { DockDrag } from '@shared/angular/services/dock-layout/dock-drag';
 import { DockFloating } from '@shared/angular/services/dock-layout/dock-floating';
-import { DockNode, StackNode } from '@shared/angular/services/dock-layout/dock-node';
+import {
+  DockNode,
+  isStackNode,
+  StackNode,
+  StackRole,
+} from '@shared/angular/services/dock-layout/dock-node';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
@@ -30,7 +35,9 @@ import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
 import {
   collectPanelIds,
+  findDocumentWell,
   findNode,
+  findPrimaryStack,
   findStackOfPanel,
   firstStackOfRole,
 } from '@shared/angular/services/dock-layout/dock-tree';
@@ -85,6 +92,12 @@ interface PopoutWindow {
    * leaves the popped set; an emptied window closes).
    */
   watcher: EffectRef | null;
+
+  /**
+   * Gets the function that deregisters the window dock's outside-drop handler, which holds this
+   * record and so the whole window's dock until it runs.
+   */
+  releaseDrop: (() => void) | null;
 
   /**
    * Gets the identifiers of the panels this window currently owns.
@@ -297,6 +310,7 @@ export class PanelPopout implements OnDestroy {
       floating: host.injector.get(DockFloating),
       reveal: host.injector.get(DockReveal),
       watcher: null,
+      releaseDrop: null,
       tracked: new Set<string>(),
     };
     this.windows.push(popout);
@@ -318,13 +332,11 @@ export class PanelPopout implements OnDestroy {
 
     // The window's dock takes over outside drops released from ITS drags, so panels move between
     // windows and back to the main dock by the same gesture.
-    this.unregister.push(
-      host.injector
-        .get(DockDrag)
-        .registerExternalDrop((panel: DockPanel, event: MouseEvent): boolean =>
-          this.handleWindowDrop(popout, panel, event),
-        ),
-    );
+    popout.releaseDrop = host.injector
+      .get(DockDrag)
+      .registerExternalDrop((panel: DockPanel, event: MouseEvent): boolean =>
+        this.handleWindowDrop(popout, panel, event),
+      );
 
     // Reconcile membership as the window's dock changes: a panel closed there leaves the popped
     // set entirely (exactly as a close in the main dock would), and a window with nothing left —
@@ -340,6 +352,17 @@ export class PanelPopout implements OnDestroy {
       { injector: this.injector },
     );
     return popout;
+  }
+
+  /**
+   * Detaches a window from the dock's changes and its drops, on any of the ways it goes away.
+   * @param popout The window.
+   */
+  private stopWatching(popout: PopoutWindow): void {
+    popout.watcher?.destroy();
+    popout.watcher = null;
+    popout.releaseDrop?.();
+    popout.releaseDrop = null;
   }
 
   /**
@@ -525,8 +548,7 @@ export class PanelPopout implements OnDestroy {
     if (index !== -1) {
       this.windows.splice(index, 1);
     }
-    popout.watcher?.destroy();
-    popout.watcher = null;
+    this.stopWatching(popout);
     const returning: readonly string[] = [...popout.tracked];
     popout.tracked = new Set<string>();
     this.applicationRef.detachView(popout.host.hostView);
@@ -577,8 +599,12 @@ export class PanelPopout implements OnDestroy {
   }
 
   /**
-   * Restores a panel to the main dock: to the stack and tab index it left when they still exist,
-   * otherwise docked to the bottom edge.
+   * Restores a panel to the main dock, keeping its kind: to the stack and tab index it left when
+   * that stack still exists and still holds panels of the same role, otherwise docked to the bottom
+   * edge. The origin stack can outlive the panel with a DIFFERENT role: a tool filling the centre
+   * empties it on leaving, and the centre reverts to an empty document well under the same id. A
+   * tool coming home to that well occupies it again — flipping it back to a tool slot — rather than
+   * becoming a tab in it, which would give the tool a document's chrome and behaviour.
    * @param panelId The panel identifier.
    * @param origin The dock position the panel left, or null when unknown.
    */
@@ -587,8 +613,20 @@ export class PanelPopout implements OnDestroy {
     if (findStackOfPanel(tree, panelId) !== null) {
       return;
     }
-    const originStack: DockNode | null = origin === null ? null : findNode(tree, origin.stackId);
-    if (origin !== null && originStack !== null && originStack.kind === 'stack') {
+    const role: StackRole = this.registry.get(panelId)?.role ?? 'tool';
+    const found: DockNode | null = origin === null ? null : findNode(tree, origin.stackId);
+    const originStack: StackNode | null = found !== null && isStackNode(found) ? found : null;
+    if (
+      origin !== null &&
+      originStack !== null &&
+      originStack.role === 'document' &&
+      originStack.panels.length === 0 &&
+      role === 'tool'
+    ) {
+      this.dockState.occupyWell(origin.stackId, panelId);
+      return;
+    }
+    if (origin !== null && originStack !== null && originStack.role === role) {
       this.dockState.tabInto(origin.stackId, panelId);
       const placed: DockNode | null = findNode(this.dockState.layout(), origin.stackId);
       if (placed !== null && placed.kind === 'stack') {
@@ -598,8 +636,29 @@ export class PanelPopout implements OnDestroy {
           this.dockState.reorderTab(origin.stackId, from, to);
         }
       }
+    } else if (role === 'document') {
+      this.restoreDocument(panelId);
     } else {
       this.dockState.dockEdge(panelId, 'bottom');
+    }
+  }
+
+  /**
+   * Restores a document whose origin well is gone or no longer a well: into the layout's document
+   * well, or, when a tool holds the centre and no well exists, a fresh well split beside it — never
+   * an edge dock, which would make the document a tool group.
+   * @param panelId The document panel identifier.
+   */
+  private restoreDocument(panelId: string): void {
+    const tree: DockNode = this.dockState.layout();
+    const well: StackNode | null = findDocumentWell(tree);
+    if (well !== null) {
+      this.dockState.tabInto(well.id, panelId);
+      return;
+    }
+    const centre: StackNode | null = findPrimaryStack(tree) ?? firstStackOfRole(tree, 'tool');
+    if (centre !== null) {
+      this.dockState.openWellBeside(centre.id, panelId);
     }
   }
 
@@ -615,8 +674,7 @@ export class PanelPopout implements OnDestroy {
       if (index !== -1) {
         this.windows.splice(index, 1);
       }
-      popout.watcher?.destroy();
-      popout.watcher = null;
+      this.stopWatching(popout);
       for (const panelId of popout.tracked) {
         this.origins.delete(panelId);
         this.popouts.clear(panelId);
@@ -638,8 +696,7 @@ export class PanelPopout implements OnDestroy {
       dispose();
     }
     for (const popout of [...this.windows]) {
-      popout.watcher?.destroy();
-      popout.watcher = null;
+      this.stopWatching(popout);
       this.applicationRef.detachView(popout.host.hostView);
       popout.host.destroy();
       popout.window.close();

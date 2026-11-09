@@ -1,0 +1,42 @@
+// Every key cap in a chord is as wide as the widest, so ⌘ sits beside Shift as an equal: a grid of
+// equal columns sized to the content. The plus between two keys is drawn in the gap.
+:host {
+  --chord-keys-gap: 1.1rem;
+
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: var(--chord-keys-columns, 1fr);
+  align-items: center;
+  column-gap: var(--chord-keys-gap);
+  white-space: nowrap;
+}
+
+// A key cap is a regular button's height and type, so a chord sits level with the buttons beside it.
+.chord-keys__key {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-inline-size: var(--chord-keys-min-width, var(--control-height));
+  block-size: var(--chord-keys-height, var(--control-height));
+  padding: 0 var(--chord-keys-padding, 0.5rem);
+  font: inherit;
+  font-size: var(--chord-keys-font-size, inherit);
+  background: var(--key-cap-background-color, var(--form-control-background-color));
+  border: 0.0625rem solid var(--form-control-border-color);
+  border-block-end-width: 0.125rem;
+  border-radius: calc(0.375rem * var(--border-radius-multiplier, 1));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+// The plus joining a key to the one before it, centred in the gap between them. Decoration only: the
+// host's label reads the chord to assistive technology.
+.chord-keys__key + .chord-keys__key::before {
+  content: '+';
+  position: absolute;
+  inset-inline-end: calc(100% + 0.0625rem);
+  inline-size: var(--chord-keys-gap);
+  text-align: center;
+  color: var(--form-muted-foreground-color);
+}

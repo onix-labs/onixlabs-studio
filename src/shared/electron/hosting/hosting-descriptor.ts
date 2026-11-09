@@ -78,6 +78,12 @@ export interface HostingDescriptor {
   readonly commandLineTools: readonly string[];
 
   /**
+   * Gets whether the user may add hosts for the plugin to serve (Add Host in Settings); absent means
+   * no.
+   */
+  readonly customHosts?: boolean;
+
+  /**
    * Resolves how to start the plugin. Never installs anything: an uninstalled plugin resolves to
    * unavailable, and the user installs it in the Plugin Manager.
    */

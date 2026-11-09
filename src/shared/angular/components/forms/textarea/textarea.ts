@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   ElementRef,
   input,
   InputSignal,
@@ -19,8 +20,15 @@ import {
  *   field wears. The default, and right wherever the field sits on a plain surface.
  * - `seamless` — the field draws no chrome at all, for a composer card that has already drawn the box
  *   and lit its own border on focus. Drawn chrome here would box the field twice.
+ * - `floating` — the boxed field carrying its own label inside the box, which rests on the first line
+ *   and rises to the top edge once the field has focus or a value. For a form. It cannot be resized.
  */
-export type TextareaVariant = 'boxed' | 'seamless';
+export type TextareaVariant = 'boxed' | 'seamless' | 'floating';
+
+/**
+ * Holds the number the next field's control is identified by.
+ */
+let nextFieldId: number = 0;
 
 /**
  * Represents a multi-line text input: the sibling of {@link import('../text-field/text-field').TextField},
@@ -41,6 +49,9 @@ export type TextareaVariant = 'boxed' | 'seamless';
   templateUrl: './textarea.html',
   styleUrl: './textarea.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '[class.textarea--floating]': "variant() === 'floating'",
+  },
 })
 export class Textarea {
   /**
@@ -67,6 +78,30 @@ export class Textarea {
    * Gets how the field is drawn.
    */
   public readonly variant: InputSignal<TextareaVariant> = input<TextareaVariant>('boxed');
+
+  /**
+   * Gets the label a `floating` field carries inside its box. It rests on the first line, and rises
+   * to the top edge once the field has focus or a value.
+   */
+  public readonly label: InputSignal<string> = input<string>('');
+
+  /**
+   * Gets a value indicating whether the text is set in monospace, for code rather than prose.
+   */
+  public readonly monospace: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets the identifier tying a `floating` field's label to its control.
+   */
+  protected readonly controlId: string = `textarea-${String(nextFieldId++)}`;
+
+  /**
+   * Gets the placeholder the control carries. A `floating` field needs one even when none is given:
+   * whether the placeholder is showing is how the stylesheet tells an empty field from a filled one.
+   */
+  protected readonly shownPlaceholder: Signal<string> = computed((): string =>
+    this.variant() === 'floating' && this.placeholder() === '' ? ' ' : this.placeholder(),
+  );
 
   /**
    * Gets a value indicating whether the field is held to exactly {@link rows} lines, scrolling

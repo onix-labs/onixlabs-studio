@@ -2,29 +2,42 @@ import { CdkMenuTrigger } from '@angular/cdk/menu';
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   input,
   InputSignal,
   output,
   OutputEmitterRef,
+  Signal,
 } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import {
+  EXPLORER_FILTER_KINDS,
+  ExplorerFilterKind,
+} from '@shared/angular/services/explorer-filter/explorer-filter';
 
 /**
- * The state of an explorer's Show Changed Files Only toggle.
+ * Describes an explorer's filter as its tool strip shows it (#1182 follow-up): the kinds ticked, and
+ * why any kind cannot be ticked here — Show Differences outside a repository, say.
  */
-export interface ExplorerChangesOnly {
+export interface ExplorerFilterState {
   /**
-   * Gets a value indicating whether the tree shows only changed files.
+   * Gets the kinds ticked.
    */
-  readonly on: boolean;
+  readonly selected: ReadonlySet<ExplorerFilterKind>;
 
   /**
-   * Gets why the toggle cannot be pressed — `not a repository`, `no changes` — or null when it can.
+   * Gets why each kind that cannot be ticked cannot be, by kind.
    */
-  readonly unavailable: string | null;
+  readonly unavailable: Readonly<Partial<Record<ExplorerFilterKind, string>>>;
+
+  /**
+   * Gets the kinds that mean nothing here and are not offered at all — Show Differences outside a
+   * repository — or undefined when every kind is offered.
+   */
+  readonly hidden?: readonly ExplorerFilterKind[];
 }
 
 /**
@@ -75,16 +88,56 @@ export class ExplorerToolbar {
   public readonly collapseAll: OutputEmitterRef<void> = output<void>();
 
   /**
-   * Gets the state of the Show Changed Files Only toggle, which sits between the search box and
-   * expand-all — or null, for an explorer that has no changes to narrow to and so shows no toggle.
+   * Gets the explorer's filter, shown as a funnel whose menu ticks what the tree is narrowed to — or
+   * null for an explorer that cannot be narrowed.
    */
-  public readonly changesOnly: InputSignal<ExplorerChangesOnly | null> =
-    input<ExplorerChangesOnly | null>(null);
+  public readonly filter: InputSignal<ExplorerFilterState | null> =
+    input<ExplorerFilterState | null>(null);
 
   /**
-   * Emits when the Show Changed Files Only toggle is pressed.
+   * Emits the kind ticked or unticked in the filter's menu.
    */
-  public readonly changesOnlyToggle: OutputEmitterRef<void> = output<void>();
+  public readonly filterToggle: OutputEmitterRef<ExplorerFilterKind> = output<ExplorerFilterKind>();
+
+  /**
+   * Gets the filter menu's rows: each kind, ticked or not, and inert where it cannot be ticked.
+   */
+  protected readonly filterItems: Signal<readonly MenuItem[]> = computed(
+    (): readonly MenuItem[] => {
+      const filter: ExplorerFilterState | null = this.filter();
+      if (filter === null) {
+        return [];
+      }
+      return EXPLORER_FILTER_KINDS.filter(
+        ({ kind }: { readonly kind: ExplorerFilterKind }): boolean =>
+          !(filter.hidden ?? []).includes(kind),
+      ).map(
+        ({
+          kind,
+          label,
+        }: {
+          readonly kind: ExplorerFilterKind;
+          readonly label: string;
+        }): MenuItem => {
+          const unavailable: string | undefined = filter.unavailable[kind];
+          return {
+            id: kind,
+            label: unavailable === undefined ? label : `${label} (${unavailable})`,
+            checked: filter.selected.has(kind),
+            ...(unavailable === undefined ? {} : { disabled: true }),
+          };
+        },
+      );
+    },
+  );
+
+  /**
+   * Hands on a filter menu choice.
+   * @param id The row's identifier: the kind.
+   */
+  protected onFilter(id: string): void {
+    this.filterToggle.emit(id as ExplorerFilterKind);
+  }
 
   /**
    * Gets the items offered by the more-actions menu — the panel's own commands, since only the panel

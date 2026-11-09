@@ -4,6 +4,7 @@ import {
   ManifestAgentHarness,
   ManifestCommand,
   ManifestContainerEngine,
+  ManifestDatabaseEngine,
   ManifestDebugAdapter,
   ManifestDecoder,
   ManifestDownload,
@@ -13,12 +14,18 @@ import {
   ManifestResult,
   ManifestVersionControl,
   ManifestHosting,
+  ManifestPackageManager,
+  ManifestTestAdapter,
   parsePluginManifest,
   PluginManifest,
 } from '@shared/api/plugin-manifest';
 import { PluginContribution, PluginOrigin } from '@shared/api/plugin-channels';
 import { logger } from '../../logger';
 import { ContainerEngineDescriptor } from '../containers/container-engine';
+import type {
+  DatabaseEngineDescriptor,
+  DatabaseEngineResolution,
+} from '../database/database-engine-descriptor';
 import {
   DecoderDescriptor,
   DecoderResolution,
@@ -50,6 +57,14 @@ import {
   VersionControlResolution,
 } from '../../version-control/version-control-descriptor';
 import { HostingDescriptor, HostingResolution } from '../../hosting/hosting-descriptor';
+import {
+  PackageManagerDescriptor,
+  PackageManagerResolution,
+} from '../../package-managers/package-manager-descriptor';
+import {
+  TestAdapterDescriptor,
+  TestAdapterResolution,
+} from '../../test-adapters/test-adapter-descriptor';
 
 /**
  * The file a sideloaded plugin is described by, inside its own directory.
@@ -483,6 +498,14 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
       priority: engine.priority,
     }),
   );
+  const databaseEngines: readonly PluginContribution[] = (
+    manifest.contributes.databaseEngines ?? []
+  ).map((engine: ManifestDatabaseEngine): PluginContribution => ({
+    slot: 'database-engine',
+    id: engine.id,
+    displayName: engine.displayName,
+    priority: engine.priority,
+  }));
   const harnesses: readonly PluginContribution[] = (manifest.contributes.agentHarnesses ?? []).map(
     (harness: ManifestAgentHarness): PluginContribution => ({
       slot: 'agent-harness',
@@ -511,6 +534,22 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
       priority: host.priority,
     }),
   );
+  const packageManagers: readonly PluginContribution[] = (
+    manifest.contributes.packageManagers ?? []
+  ).map((manager: ManifestPackageManager): PluginContribution => ({
+    slot: 'package-manager',
+    id: manager.id,
+    displayName: manager.displayName,
+    priority: manager.priority,
+  }));
+  const testAdapters: readonly PluginContribution[] = (manifest.contributes.testAdapters ?? []).map(
+    (adapter: ManifestTestAdapter): PluginContribution => ({
+      slot: 'test-adapter',
+      id: adapter.id,
+      displayName: adapter.displayName,
+      priority: adapter.priority,
+    }),
+  );
   return [
     ...servers,
     ...adapters,
@@ -519,6 +558,9 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
     ...versionControl,
     ...hosting,
     ...harnesses,
+    ...databaseEngines,
+    ...packageManagers,
+    ...testAdapters,
   ];
 }
 
@@ -625,6 +667,18 @@ function toSpec(
 }
 
 /**
+ * Gives a resolved server the `initializationOptions` its manifest says it always starts with.
+ * @param resolution The resolution.
+ * @param server The server's manifest entry.
+ * @returns Returns the resolution, with the options when it has any and resolved to a server.
+ */
+function withOptions(resolution: LspResolution, server: ManifestLanguageServer): LspResolution {
+  return resolution.spec === null || server.initializationOptions === undefined
+    ? resolution
+    : resolved({ ...resolution.spec, initializationOptions: server.initializationOptions });
+}
+
+/**
  * Turns a manifest's language servers into descriptors the server registry can resolve.
  * @param manifest The validated manifest.
  * @param installedVersion Looks up the version actually installed, so a server whose catalogue entry
@@ -642,6 +696,11 @@ export function toLanguageServerDescriptors(
       displayName: server.displayName,
       languages: server.languages,
       priority: server.priority,
+      // Declared as a first-party server declares them (#1204): the same shapes, so they pass as is.
+      ...(server.settings === undefined ? {} : { settings: server.settings }),
+      ...(server.settingsDelivery === undefined
+        ? {}
+        : { settingsDelivery: server.settingsDelivery }),
       resolve: (context: LanguageServerContext): LspResolution => {
         // Never installs: a server resolves to "not installed" and the user installs it in the Plugin
         // Manager, rather than opening a file silently triggering a large download.
@@ -652,7 +711,7 @@ export function toLanguageServerDescriptors(
         const override: string | undefined = context.settings.get().serverPaths[server.id];
         if (override !== undefined) {
           return existsSync(override)
-            ? toSpec(server.command, override, context)
+            ? withOptions(toSpec(server.command, override, context), server)
             : unavailable(`${server.displayName} was not found at ${override}.`);
         }
         const entryPoint: string | null = ops.isInstalled(context.provisioner)
@@ -660,7 +719,7 @@ export function toLanguageServerDescriptors(
           : null;
         return entryPoint === null
           ? unavailable(`${server.displayName} is not installed — install it in Plugins.`)
-          : toSpec(server.command, entryPoint, context);
+          : withOptions(toSpec(server.command, entryPoint, context), server);
       },
     }),
   );
@@ -895,6 +954,110 @@ export function toVersionControlDescriptors(
 }
 
 /**
+ * Turns a manifest's package managers into descriptors the package-manager host can start (#908).
+ *
+ * Like a version-control system, a plugin that is not installed stays registered and resolves to
+ * unavailable, so a surface can say why and offer the install.
+ * @param manifest The validated manifest.
+ * @param provisioner Gets the provisioner the plugin's install went through.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @param localRoot The sideloaded plugin's directory, or undefined when it was not sideloaded.
+ * @param installedVersion Resolves the installed version of a plugin.
+ * @returns Returns the descriptors.
+ */
+export function toPackageManagerDescriptors(
+  manifest: PluginManifest,
+  provisioner: () => LspProvisioner,
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+  localRoot?: string,
+  installedVersion?: InstalledVersion,
+): readonly PackageManagerDescriptor[] {
+  const ops: PayloadOps = payloadOps(manifest, localRoot, installedVersion);
+  return (manifest.contributes.packageManagers ?? []).map(
+    (manager: ManifestPackageManager): PackageManagerDescriptor => ({
+      id: manager.id,
+      displayName: manager.displayName,
+      ecosystem: manager.ecosystem,
+      priority: manager.priority,
+      markers: manager.markers,
+      capabilities: manager.capabilities,
+      resolve: (): PackageManagerResolution => {
+        const entryPoint: string | null = ops.isInstalled(provisioner())
+          ? ops.target(provisioner(), manager.entryPoint)
+          : null;
+        if (entryPoint === null) {
+          return {
+            available: false,
+            reason: `${manager.displayName} is not installed — install it in Plugins.`,
+          };
+        }
+        const spec: NodeRuntimeSpec | string = toCommandSpec(
+          manager.command,
+          entryPoint,
+          manager.displayName,
+          nodeRuntime,
+        );
+        return typeof spec === 'string'
+          ? { available: false, reason: spec }
+          : { available: true, spec };
+      },
+    }),
+  );
+}
+
+/**
+ * Turns a manifest's test adapters into descriptors the test-adapter host can start (#1351).
+ *
+ * Like a package manager, an adapter that is not installed stays registered and resolves to
+ * unavailable, so the Tests panel can say why and offer the install.
+ * @param manifest The validated manifest.
+ * @param provisioner Gets the provisioner the plugin's install went through.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @param localRoot The sideloaded plugin's directory, or undefined when it was not sideloaded.
+ * @param installedVersion Resolves the installed version of a plugin.
+ * @returns Returns the descriptors.
+ */
+export function toTestAdapterDescriptors(
+  manifest: PluginManifest,
+  provisioner: () => LspProvisioner,
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+  localRoot?: string,
+  installedVersion?: InstalledVersion,
+): readonly TestAdapterDescriptor[] {
+  const ops: PayloadOps = payloadOps(manifest, localRoot, installedVersion);
+  return (manifest.contributes.testAdapters ?? []).map(
+    (adapter: ManifestTestAdapter): TestAdapterDescriptor => ({
+      id: adapter.id,
+      displayName: adapter.displayName,
+      frameworks: adapter.frameworks,
+      priority: adapter.priority,
+      markers: adapter.markers,
+      capabilities: adapter.capabilities,
+      resolve: (): TestAdapterResolution => {
+        const entryPoint: string | null = ops.isInstalled(provisioner())
+          ? ops.target(provisioner(), adapter.entryPoint)
+          : null;
+        if (entryPoint === null) {
+          return {
+            available: false,
+            reason: `${adapter.displayName} is not installed — install it in Plugins.`,
+          };
+        }
+        const spec: NodeRuntimeSpec | string = toCommandSpec(
+          adapter.command,
+          entryPoint,
+          adapter.displayName,
+          nodeRuntime,
+        );
+        return typeof spec === 'string'
+          ? { available: false, reason: spec }
+          : { available: true, spec };
+      },
+    }),
+  );
+}
+
+/**
  * Turns a manifest's code hosts into descriptors the hosting host can start (#819).
  *
  * Like a version-control system, a plugin that is not installed stays registered and resolves to
@@ -922,6 +1085,7 @@ export function toHostingDescriptors(
     capabilities: host.capabilities,
     authModes: host.authModes,
     commandLineTools: host.commandLineTools,
+    customHosts: host.customHosts === true,
     resolve: (): HostingResolution => {
       const entryPoint: string | null = ops.isInstalled(provisioner())
         ? ops.target(provisioner(), host.entryPoint)
@@ -999,6 +1163,56 @@ export function toContainerEngineDescriptors(
     });
   }
   return descriptors;
+}
+
+/**
+ * Converts a manifest's database-engine contributions into the descriptors the Database Explorer's
+ * host starts plugins from (#1095).
+ *
+ * Every contribution becomes a descriptor, installed or not; each resolves how to start it only when
+ * asked, so the answer is about what is on disk then.
+ * @param manifest The validated manifest.
+ * @param provisioner Gets the provisioner the payload is located through.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @param localRoot The sideloaded plugin's own directory, when the plugin is sideloaded.
+ * @param installedVersion Gets the version installed on disk for a plugin, when there is one.
+ * @returns Returns the descriptors.
+ */
+export function toDatabaseEngineDescriptors(
+  manifest: PluginManifest,
+  provisioner: () => LspProvisioner,
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+  localRoot?: string,
+  installedVersion?: InstalledVersion,
+): readonly DatabaseEngineDescriptor[] {
+  const ops: PayloadOps = payloadOps(manifest, localRoot, installedVersion);
+  return (manifest.contributes.databaseEngines ?? []).map(
+    (engine: ManifestDatabaseEngine): DatabaseEngineDescriptor => ({
+      id: engine.id,
+      displayName: engine.displayName,
+      priority: engine.priority,
+      resolve: (): DatabaseEngineResolution => {
+        const entryPoint: string | null = ops.isInstalled(provisioner())
+          ? ops.target(provisioner(), engine.entryPoint)
+          : null;
+        if (entryPoint === null) {
+          return {
+            available: false,
+            reason: `${engine.displayName} is not installed — install it in Plugins.`,
+          };
+        }
+        const spec: NodeRuntimeSpec | string = toCommandSpec(
+          engine.command,
+          entryPoint,
+          engine.displayName,
+          nodeRuntime,
+        );
+        return typeof spec === 'string'
+          ? { available: false, reason: spec }
+          : { available: true, spec };
+      },
+    }),
+  );
 }
 
 /**

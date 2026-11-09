@@ -253,6 +253,11 @@
 
 // The confirmations are raised from the welcome window and take its panel treatment with them, so a
 // dialog looks like it belongs to the window it opened over, in both themes.
+// A dialog on the app-wide standard takes the usual panel rather than the window's.
+.welcome__confirm--standard {
+  --modal-panel-background: var(--modal-panel-background-color);
+}
+
 .welcome__confirm-title {
   margin: 0 0 0.6rem;
   font-size: 1.05rem;
@@ -265,6 +270,11 @@
   font-size: 0.9rem;
   line-height: 1.5;
   color: var(--form-muted-foreground-color);
+}
+
+.welcome__confirm-message--body {
+  font-size: 1rem;
+  color: var(--body-foreground-color);
 }
 
 // At a narrow window the columns stack, the actions first.

@@ -1,4 +1,4 @@
-import { Dirent } from 'node:fs';
+import { Dirent, Stats } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import {
@@ -12,6 +12,8 @@ import {
 } from '@shared/api/project-system';
 import { DebugResolveResult } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
+import { buildItemTree, EvaluatedItem } from './item-tree';
+import { publishedRoots, readTsconfigSources, TsconfigSources } from './node-sources';
 import { ProjectSystem } from './project-system';
 import { parseWorkspacePatterns, splitWorkspacePattern } from './node-workspaces';
 import { logger } from '../logger';
@@ -96,10 +98,24 @@ const SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set<string>([
 const MAX_ITEMS: number = 5_000;
 
 /**
+ * The folders that hold a package's tests, which `files` leaves out because it does not publish them
+ * and a `tsconfig.json` often leaves to one of its own.
+ */
+const TEST_DIRECTORIES: readonly string[] = ['test', 'tests', '__tests__', 'e2e'];
+
+/**
+ * Matches the files listed from a package's own folder beside what it declares: sources, the
+ * configuration most tools keep there, the page a bundler starts from, and the lock files.
+ */
+const ROOT_FILE_PATTERN: RegExp =
+  /\.(?:[cm]?[jt]sx?|json|html)$|^(?:yarn\.lock|pnpm-lock\.yaml|bun\.lockb?)$/;
+
+/**
  * Models a Node/npm workspace: the root package, plus — when the root manifest declares npm/yarn
  * workspaces — each workspace package expanded from the declared patterns (`packages/*` and literal
- * directory forms). A package's files are listed straight from its directory, skipping dependency
- * and build-output folders. Deliberately language-server-agnostic, like the .NET provider; the
+ * directory forms). A package's contents are what its `tsconfig.json` and `files` field declare, or
+ * its files listed straight from its directory, skipping dependency and build-output folders, when
+ * they declare nothing narrower. Deliberately language-server-agnostic, like the .NET provider; the
  * workspace view decides to prestart the TypeScript server for `node` models.
  */
 export class NodeProjectSystem implements ProjectSystem {
@@ -268,20 +284,132 @@ export class NodeProjectSystem implements ProjectSystem {
   }
 
   /**
-   * Lists a package's files straight from its directory, skipping dependency and build-output
-   * folders and other packages' directories (a nested package.json marks a separate package).
+   * Loads what a package is made of (#899): what its `tsconfig.json` compiles and its `files` field
+   * publishes, its tests, and the files in its own folder, so outputs and assets that share the tree
+   * stay out of the Solution Explorer; the File Explorer shows everything. Both are only read, so
+   * nothing a package's scripts would do happens here. A package that declares nothing narrower than
+   * its whole folder has its files listed from its directory instead, skipping dependency and
+   * build-output folders and other packages' directories (a nested package.json marks a separate
+   * package).
    * @param projectPath The absolute path of the package manifest.
    * @returns Returns the contents, or null when the directory cannot be read.
    */
   public async loadProjectItems(projectPath: string): Promise<ProjectItems | null> {
     const directory: string = path.dirname(projectPath);
-    const budget: { remaining: number } = { remaining: MAX_ITEMS };
-    const tree: readonly ProjectItemNode[] | null = await this.listDirectory(
-      directory,
-      budget,
-      true,
-    );
+    const tree: readonly ProjectItemNode[] | null =
+      (await this.declaredTree(projectPath, directory)) ??
+      (await this.listDirectory(directory, { remaining: MAX_ITEMS }, true));
     return tree === null ? null : { projectPath, tree };
+  }
+
+  /**
+   * Builds a package's contents from what it declares. `files` says what is published, which is often
+   * the output, so anything the configuration writes to, or that is named like an output, is dropped.
+   * @param projectPath The absolute path of the package manifest.
+   * @param directory The package's directory.
+   * @returns Returns the contents, or null when nothing narrower than the package is declared.
+   */
+  private async declaredTree(
+    projectPath: string,
+    directory: string,
+  ): Promise<readonly ProjectItemNode[] | null> {
+    const manifest: Record<string, unknown> | null = await this.readManifest(projectPath);
+    const tsconfig: TsconfigSources | null = await readTsconfigSources(directory);
+    if (tsconfig?.coversPackage === true) {
+      return null;
+    }
+    const outputs: readonly string[] = tsconfig?.outputs ?? [];
+    const budget: { remaining: number } = { remaining: MAX_ITEMS };
+    const sources: string[] = [];
+    for (const root of [...(tsconfig?.roots ?? []), ...publishedRoots(manifest?.['files'])]) {
+      const output: boolean =
+        SKIPPED_DIRECTORIES.has(root.split('/')[0]) ||
+        outputs.some((entry: string): boolean => root === entry || root.startsWith(`${entry}/`));
+      if (!output) {
+        sources.push(...(await this.declaredFiles(directory, root, budget)));
+      }
+    }
+    if (sources.length === 0) {
+      return null;
+    }
+    const tests: string[] = [];
+    for (const name of TEST_DIRECTORIES) {
+      tests.push(...(await this.declaredFiles(directory, name, budget)));
+    }
+    logger.debug(
+      'NodeProjectSystem',
+      `Listed ${sources.length} declared file(s) for '${projectPath}' from its manifests.`,
+    );
+    const files: readonly string[] = [...(await this.rootFiles(directory)), ...sources, ...tests];
+    return buildItemTree(
+      projectPath,
+      files.map((file: string): EvaluatedItem => ({
+        identity: path.relative(directory, file),
+        link: '',
+      })),
+    );
+  }
+
+  /**
+   * Lists what a declared path holds. The path comes from a file in the workspace, so one that leaves
+   * the package, or is the package itself, holds nothing, and a link is not followed. A folder that is
+   * a package of its own is left to its own node.
+   * @param directory The package's directory.
+   * @param declared The declared path, relative to the package.
+   * @param budget The remaining file budget.
+   * @returns Returns the absolute paths of its files.
+   */
+  private async declaredFiles(
+    directory: string,
+    declared: string,
+    budget: { remaining: number },
+  ): Promise<readonly string[]> {
+    const full: string = path.resolve(directory, declared);
+    const relative: string = path.relative(directory, full);
+    if (relative.length === 0 || relative.startsWith('..') || path.isAbsolute(relative)) {
+      return [];
+    }
+    let kind: Stats;
+    try {
+      kind = await fs.lstat(full);
+    } catch {
+      return [];
+    }
+    if (kind.isFile()) {
+      return [full];
+    }
+    if (!kind.isDirectory() || (await this.readManifest(path.join(full, MANIFEST))) !== null) {
+      return [];
+    }
+    return this.filesOf((await this.listDirectory(full, budget, false, true)) ?? []);
+  }
+
+  /**
+   * Finds the files listed from a package's own folder.
+   * @param directory The package's directory.
+   * @returns Returns the absolute paths.
+   */
+  private async rootFiles(directory: string): Promise<readonly string[]> {
+    let entries: Dirent[];
+    try {
+      entries = await fs.readdir(directory, { withFileTypes: true });
+    } catch {
+      return [];
+    }
+    return entries
+      .filter((entry: Dirent): boolean => entry.isFile() && ROOT_FILE_PATTERN.test(entry.name))
+      .map((entry: Dirent): string => path.join(directory, entry.name));
+  }
+
+  /**
+   * Flattens a listing into its files.
+   * @param nodes The listing.
+   * @returns Returns the absolute paths.
+   */
+  private filesOf(nodes: readonly ProjectItemNode[]): readonly string[] {
+    return nodes.flatMap((node: ProjectItemNode): readonly string[] =>
+      node.type === 'file' ? [node.path] : this.filesOf(node.children),
+    );
   }
 
   /**
@@ -291,12 +419,15 @@ export class NodeProjectSystem implements ProjectSystem {
    * @param directory The directory to list.
    * @param budget The remaining file budget, decremented as files are added.
    * @param isRoot Whether this is the package's own directory (nested manifests only prune below it).
+   * @param isSources Whether the directory is inside a declared source folder, where a name like
+   * `build` is a folder of sources and not an output.
    * @returns Returns the nodes, or null when the directory cannot be read.
    */
   private async listDirectory(
     directory: string,
     budget: { remaining: number },
     isRoot: boolean,
+    isSources: boolean = false,
   ): Promise<readonly ProjectItemNode[] | null> {
     let entries: Dirent[];
     try {
@@ -305,7 +436,13 @@ export class NodeProjectSystem implements ProjectSystem {
       return null;
     }
     const directories: Dirent[] = entries
-      .filter((entry: Dirent): boolean => entry.isDirectory() && !this.isSkipped(entry.name))
+      .filter(
+        (entry: Dirent): boolean =>
+          entry.isDirectory() &&
+          (isSources
+            ? !entry.name.startsWith('.') && entry.name !== 'node_modules'
+            : !this.isSkipped(entry.name)),
+      )
       .sort((a: Dirent, b: Dirent): number => a.name.localeCompare(b.name));
     const files: Dirent[] = entries
       .filter((entry: Dirent): boolean => entry.isFile())
@@ -321,6 +458,7 @@ export class NodeProjectSystem implements ProjectSystem {
         full,
         budget,
         false,
+        isSources,
       );
       if (children !== null && children.length > 0) {
         nodes.push({ type: 'folder', name: child.name, path: full, children });
@@ -381,7 +519,8 @@ export class NodeProjectSystem implements ProjectSystem {
   private async readManifest(manifestPath: string): Promise<Record<string, unknown> | null> {
     try {
       const content: string = await fs.readFile(manifestPath, 'utf8');
-      const parsed: unknown = JSON.parse(content);
+      // JSON has no byte order mark, but editors on Windows write one and npm reads past it.
+      const parsed: unknown = JSON.parse(content.replace(/^\uFEFF/, ''));
       return typeof parsed === 'object' && parsed !== null
         ? (parsed as Record<string, unknown>)
         : null;

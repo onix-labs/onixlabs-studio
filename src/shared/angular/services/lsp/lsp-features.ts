@@ -1,14 +1,35 @@
-import { inject, Service } from '@angular/core';
+import {
+  STUDIO_LOCATIONS_LENS_COMMAND,
+  STUDIO_REFERENCES_LENS_COMMAND,
+} from '@shared/angular/services/monaco/monaco-navigation-commands';
+import {
+  applyAutoInsert,
+  isDocCommentTyping,
+} from '@shared/angular/services/monaco/monaco-auto-insert';
+import { effect, inject, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Bridge } from '@shared/api/bridge';
+import type { RunConfiguration } from '@shared/api/studio';
 import { Log } from '@shared/angular/services/log/log';
+import { Builds } from '@shared/angular/services/tasks/builds';
+import { Debugger } from '@shared/angular/services/debug/debugger';
+import {
+  type FoldingProvider,
+  type LanguageOverrides,
+  Settings,
+} from '@shared/angular/services/settings/settings';
+import { codeLensKind, CodeLensSwitches, showsCodeLensKind } from './code-lens-kinds';
+import { BUILT_IN_FORMATTER_LANGUAGES } from '@shared/angular/services/settings/settings-registry';
 import {
   LspChannel,
+  LspGeneratedViewKind,
+  LspGeneratedViewResult,
   LspSemanticTokensLegend,
   SEMANTIC_TOKEN_MODIFIERS,
   SEMANTIC_TOKEN_TYPES,
 } from '@shared/api/lsp-channels';
 import { Editors } from '@shared/angular/services/editors/editors';
+import { cargoRunConfiguration } from './lsp-cargo-runnable';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { CodeSymbol, toCodeSymbols } from '@shared/angular/services/lsp/lsp-symbols';
 import { LinePreviews } from '@shared/angular/services/references/line-previews';
@@ -26,6 +47,12 @@ import {
 } from '@shared/angular/services/workspace-edit/workspace-edit';
 import { markStudioProvider } from '@shared/angular/services/monaco/monaco-editor-capabilities';
 import { escapeMarkdown, fenced } from '@shared/angular/services/hover/hover-content';
+import type {
+  HierarchyDirection,
+  HierarchyKind,
+  HierarchyNode,
+  HierarchySource,
+} from '@shared/angular/services/hierarchy/hierarchy';
 import type { LspDiagnostic } from './lsp-client';
 import {
   completionAnswer,
@@ -102,6 +129,46 @@ export interface LspDocumentRef {
    * as none.
    */
   readonly commands?: readonly string[];
+
+  /**
+   * Gets how the server formats code (#1141). Undefined is taken as not at all.
+   */
+  readonly formatting?: LspFormattingSupport;
+
+  /**
+   * Gets how the server sets hints into the code (#1145). Undefined is taken as not at all.
+   */
+  readonly inlayHints?: LspInlayHintSupport;
+
+  /**
+   * Gets which of the compiler's views of the document's structure the server gives (#1147).
+   * Undefined is taken as none.
+   */
+  readonly structure?: LspStructureSupport;
+
+  /**
+   * Gets the characters whose typing the server answers by inserting text (#1148) — Roslyn's `/`
+   * (a doc-comment skeleton after `///`), newline, and quotes. Undefined is taken as none.
+   */
+  readonly autoInsertTriggers?: readonly string[];
+
+  /**
+   * Gets how the server shows facts above the document's types and members (#1149). Undefined is
+   * taken as not at all.
+   */
+  readonly codeLens?: LspCodeLensSupport;
+
+  /**
+   * Runs the tests a test lens names (#1150) — its argument, as the server gave it — on the session
+   * serving the document, reporting what happens. Undefined where nothing runs them.
+   */
+  readonly runTests?: (lens: unknown) => void;
+
+  /**
+   * Gets which navigations beyond Go to Definition the server answers (#1142). Undefined is taken as
+   * none.
+   */
+  readonly navigation?: LspNavigationSupport;
 
   /**
    * Gets the document's diagnostics exactly as the server sent them, codes and data included, which a
@@ -189,6 +256,27 @@ export interface LspCodeAction {
    * Gets the action exactly as the server sent it, which is what a `codeAction/resolve` sends back.
    */
   readonly raw: unknown;
+
+  /**
+   * Gets where the action sits among the server's nested actions (#1151) — Roslyn's `CodeActionPath`,
+   * `["Suppress or configure issues", "Suppress CS0219", "in Source"]` — or undefined when the server
+   * gave none.
+   */
+  readonly path?: readonly string[];
+
+  /**
+   * Gets the scopes the action fixes every occurrence in (#1151) — Roslyn's `FixAllFlavors`:
+   * `Document`, `Project`, `Solution`, `ContainingMember`, `ContainingType` — for a fix-all action,
+   * whose edit is asked for one scope at a time ({@link LspFeatures.resolveFixAll}); undefined for any
+   * other.
+   */
+  readonly fixAllScopes?: readonly string[];
+
+  /**
+   * Gets the actions nested under it (#1151) — Roslyn's "Suppress or configure issues" holds thirty —
+   * for an action that only opens them; undefined for any other.
+   */
+  readonly children?: readonly LspCodeAction[];
 }
 
 /**
@@ -218,6 +306,282 @@ export type LspCommandOutcome =
  * cannot say beforehand whether a symbol can be; `prepare` — it says first (`textDocument/prepareRename`).
  */
 export type LspRenameSupport = 'none' | 'rename' | 'prepare';
+
+/**
+ * Describes which navigations beyond Go to Definition a server answers (#1142).
+ */
+export interface LspNavigationSupport {
+  /**
+   * Gets whether it answers Go to Declaration (`textDocument/declaration`, #1213).
+   */
+  readonly declaration: boolean;
+
+  /**
+   * Gets whether it answers Go to Implementation (`textDocument/implementation`).
+   */
+  readonly implementation: boolean;
+
+  /**
+   * Gets whether it answers Go to Type Definition (`textDocument/typeDefinition`).
+   */
+  readonly typeDefinition: boolean;
+
+  /**
+   * Gets whether it shows a member's callers and callees (`textDocument/prepareCallHierarchy`, #1153).
+   */
+  readonly callHierarchy: boolean;
+
+  /**
+   * Gets whether it answers Go to Parent Module (rust-analyzer's `experimental/parentModule`, #1210);
+   * undefined for a server with no such thing.
+   */
+  readonly parentModule?: boolean;
+
+  /**
+   * Gets whether it answers Open Cargo.toml (rust-analyzer's `experimental/openCargoToml`, #1210);
+   * undefined for a server with no such thing.
+   */
+  readonly cargoManifest?: boolean;
+
+  /**
+   * Gets whether it expands the macro at the caret (rust-analyzer's `rust-analyzer/expandMacro`,
+   * #1210); undefined for a server with no such thing.
+   */
+  readonly expandMacro?: boolean;
+
+  /**
+   * Gets whether it shows the HIR of the function at the caret (rust-analyzer's `rust-analyzer/viewHir`,
+   * #1210); undefined for a server with no such thing.
+   */
+  readonly hir?: boolean;
+
+  /**
+   * Gets whether it shows the MIR of the function at the caret (rust-analyzer's `rust-analyzer/viewMir`,
+   * #1210); undefined for a server with no such thing.
+   */
+  readonly mir?: boolean;
+
+  /**
+   * Gets whether it shows the syntax tree at the caret (clangd's `textDocument/ast`, #1213); undefined
+   * for a server with no such thing.
+   */
+  readonly syntaxTree?: boolean;
+
+  /**
+   * Gets whether it says how much memory it uses (clangd's `$/memoryUsage`, #1213); undefined for a
+   * server with no such thing.
+   */
+  readonly memoryUsage?: boolean;
+
+  /**
+   * Gets whether it shows a type's base and derived types (`textDocument/prepareTypeHierarchy`).
+   */
+  readonly typeHierarchy: boolean;
+
+  /**
+   * Gets whether it says which file is a file's header or source (`textDocument/switchSourceHeader`,
+   * clangd's own, #1213).
+   */
+  readonly sourceHeader: boolean;
+}
+
+/**
+ * Names a navigation a server may answer beyond Go to Definition (#1142).
+ */
+export type LspNavigationKind = keyof LspNavigationSupport;
+
+/**
+ * rust-analyzer's own request for the module that declares a file's (#1210).
+ */
+const PARENT_MODULE_METHOD: string = 'experimental/parentModule';
+
+/**
+ * rust-analyzer's own request for the `Cargo.toml` of a file's crate (#1210).
+ */
+const CARGO_MANIFEST_METHOD: string = 'experimental/openCargoToml';
+
+/**
+ * Describes how a server formats code (#1141).
+ */
+export interface LspFormattingSupport {
+  /**
+   * Gets whether it formats a whole document (`textDocument/formatting`).
+   */
+  readonly document: boolean;
+
+  /**
+   * Gets whether it formats a range (`textDocument/rangeFormatting`).
+   */
+  readonly range: boolean;
+
+  /**
+   * Gets the characters it formats on as they are typed (`textDocument/onTypeFormatting`), or empty
+   * when it does not.
+   */
+  readonly onTypeTriggers: readonly string[];
+}
+
+/**
+ * Describes how a server sets hints into the code (#1145): parameter names at call sites, inferred
+ * types after `var`.
+ */
+export interface LspInlayHintSupport {
+  /**
+   * Gets whether it fills a hint's tooltip in on request (`inlayHint/resolve`), rather than with
+   * every hint up front.
+   */
+  readonly resolve: boolean;
+}
+
+/**
+ * Describes which of the compiler's views of a document's structure a server gives (#1147): its
+ * folds, the occurrences of the symbol under the caret, and the semantic tokens of a range alone.
+ */
+export interface LspStructureSupport {
+  /**
+   * Gets whether it folds a document (`textDocument/foldingRange`).
+   */
+  readonly folding: boolean;
+
+  /**
+   * Gets whether it marks the reads and writes of the symbol under the caret
+   * (`textDocument/documentHighlight`).
+   */
+  readonly highlights: boolean;
+
+  /**
+   * Gets a value indicating whether the server links ranges that are edited together, such as an HTML
+   * tag's opening and closing names.
+   */
+  readonly linkedEditing: boolean;
+
+  /**
+   * Gets whether it colours a range alone (`textDocument/semanticTokens/range`), which paints the
+   * screen shown before the rest of a large file.
+   */
+  readonly rangeTokens: boolean;
+
+  /**
+   * Gets whether it gives the syntax nodes around a position (`textDocument/selectionRange`), which
+   * Expand and Shrink Selection grow and shrink by (#1155).
+   */
+  readonly selectionRanges: boolean;
+}
+
+/**
+ * Describes how a server shows facts above a document's types and members (#1149): code lenses —
+ * Roslyn's reference counts.
+ */
+export interface LspCodeLensSupport {
+  /**
+   * Gets whether it fills a lens in (its title and command) on request (`codeLens/resolve`), rather
+   * than with every lens up front.
+   */
+  readonly resolve: boolean;
+}
+
+/**
+ * The command Roslyn gives a references lens: its arguments are the document's URI and the symbol's
+ * position, and the client is to list the symbol's references (#1149).
+ */
+const ROSLYN_PEEK_REFERENCES: string = 'roslyn.client.peekReferences';
+
+/**
+ * The client command typescript-language-server gives a reference or implementation lens, named after
+ * VS Code's (#1207): its arguments are the document's URI, the symbol's position, and the places the
+ * lens counted, which Studio has to list itself.
+ */
+const SHOW_REFERENCES_COMMAND: string = 'editor.action.showReferences';
+
+/**
+ * The client command rust-analyzer gives a reference or implementation lens (#1210), with the same
+ * arguments as {@link SHOW_REFERENCES_COMMAND}.
+ */
+const RUST_SHOW_REFERENCES_COMMAND: string = 'rust-analyzer.showReferences';
+
+/**
+ * The client command jdtls gives a reference lens (#1208), with the same arguments as
+ * {@link SHOW_REFERENCES_COMMAND}. It is not among the commands jdtls runs itself.
+ */
+const JAVA_SHOW_REFERENCES_COMMAND: string = 'java.show.references';
+
+/**
+ * The client command jdtls gives an implementation lens (#1208), with the same arguments as
+ * {@link SHOW_REFERENCES_COMMAND}.
+ */
+const JAVA_SHOW_IMPLEMENTATIONS_COMMAND: string = 'java.show.implementations';
+
+/**
+ * The client commands that hand a lens the places it counted, for Studio to list itself.
+ */
+const LOCATIONS_LENS_COMMANDS: ReadonlySet<string> = new Set<string>([
+  SHOW_REFERENCES_COMMAND,
+  RUST_SHOW_REFERENCES_COMMAND,
+  JAVA_SHOW_REFERENCES_COMMAND,
+  JAVA_SHOW_IMPLEMENTATIONS_COMMAND,
+]);
+
+/**
+ * The client command rust-analyzer gives a Run lens (#1210): its argument says what to run.
+ */
+const RUST_RUN_SINGLE_COMMAND: string = 'rust-analyzer.runSingle';
+
+/**
+ * The Monaco command a rust-analyzer Run lens runs (#1210): it hands the run configuration read from
+ * the lens to the active workspace's runner. Its argument is that configuration.
+ */
+export const STUDIO_RUN_LENS_COMMAND: string = 'studio.lsp.runLens';
+
+/**
+ * The client command rust-analyzer gives a Debug lens (#1210): its argument is the runnable its Run
+ * lens gives.
+ */
+const RUST_DEBUG_SINGLE_COMMAND: string = 'rust-analyzer.debugSingle';
+
+/**
+ * The Monaco command a rust-analyzer Debug lens runs (#1210): it hands the run configuration read from
+ * the lens, marked to be debugged, to the active workspace's debugger. Its argument is that
+ * configuration.
+ */
+export const STUDIO_DEBUG_LENS_COMMAND: string = 'studio.lsp.debugLens';
+
+/**
+ * The command Roslyn gives a test lens (#1150): its argument names the document, the range of the
+ * test or class, and whether to attach a debugger.
+ */
+const ROSLYN_RUN_TESTS: string = 'dotnet.test.run';
+
+/**
+ * The command typescript-language-server runs for Go to Source Definition (#1207): from an import to
+ * the JavaScript or TypeScript source behind a package's `.d.ts`. No request does this, so it is offered
+ * wherever a server lists this command. Its arguments are the document's URI and the position.
+ */
+const SOURCE_DEFINITION_COMMAND: string = '_typescript.goToSourceDefinition';
+
+/**
+ * typescript-language-server's command that hands a request to tsserver as it is, through which Go to
+ * Project Configuration asks which `tsconfig.json` a file belongs to (#1207).
+ */
+const TSSERVER_REQUEST_COMMAND: string = 'typescript.tsserverRequest';
+
+/**
+ * Where tsserver says an inferred project's configuration is: there is none, as no `tsconfig.json` or
+ * `jsconfig.json` is above the file.
+ */
+const INFERRED_PROJECT: string = '/dev/null/';
+
+/**
+ * The Monaco command a Run Test lens runs (#1150): it hands the lens's argument to the session that
+ * serves the lens's document, which runs the tests. Its arguments are the model's URI and the lens's
+ * argument.
+ */
+export const STUDIO_RUN_TESTS_COMMAND: string = 'studio.lsp.runTests';
+
+/**
+ * The `_vs_textEditFormat` of an auto-insert whose text is a snippet (#1148): Roslyn's doc-comment
+ * skeleton, `$0` marking where the caret goes.
+ */
+const SNIPPET_TEXT_EDIT_FORMAT: number = 2;
 
 /**
  * What a language server says of the symbol at a position before the new name is asked for (#1015).
@@ -487,12 +851,75 @@ const SEMANTIC_LEGEND: { tokenTypes: string[]; tokenModifiers: string[] } = {
  * Maps a server's token-type name (including common spellings that differ from the standard set) to
  * the standard type it is coloured as. A type with no entry and no standard name is dropped (so its
  * range simply keeps its grammar colour).
+ *
+ * Most entries are Roslyn's: for classifications the standard set has no name for, it sends custom
+ * types (`recordClass`, `extensionMethod`, …). Dropping them is how a `record` came to be painted in
+ * the plain text colour instead of as a type (#1137). typescript-language-server's `member` is a
+ * method by the older name (#1207), clangd's `concept` names a constraint on a type (#1213), and
+ * jdtls names annotations and records (#1208); its own modifiers (`public`, `generic`, `constructor`,
+ * …) have no standard counterpart and are dropped, as any unknown modifier is. The
+ * Rust entries are the types rust-analyzer sends by default (#1210); its finer operator and punctuation
+ * types are off until a setting turns them on. Names with no sensible standard equivalent —
+ * punctuation, XML doc-comment parts, JSON-in-string parts, a format specifier, a name that resolves to
+ * nothing — are deliberately absent, so the grammar's own colour stands.
  */
 const TOKEN_TYPE_ALIASES: Readonly<Record<string, string>> = {
+  // Members.
   field: 'property',
-  constant: 'variable',
-  regex: 'regexp',
+  // A constant takes the theme's constant colour (the one enum members use), not a local's. Rust's
+  // statics are named at the same level, and read the same way.
+  constant: 'enumMember',
+  const: 'enumMember',
+  static: 'enumMember',
   label: 'variable',
+  member: 'method',
+  extensionMethod: 'method',
+  operatorOverloaded: 'method',
+  // Types: records are classes and structs; a delegate is a type; a VB module is a class.
+  recordClass: 'class',
+  recordStruct: 'struct',
+  delegate: 'type',
+  module: 'class',
+  // Rust's types: an `i32` and a `type` alias are types, and a union is laid out as a struct. A
+  // lifetime and a const generic are generic parameters like any other.
+  builtinType: 'type',
+  typeAlias: 'type',
+  union: 'struct',
+  lifetime: 'typeParameter',
+  constParameter: 'typeParameter',
+  // Rust's attributes, and the derives and tool names inside them; a procedural macro is a macro.
+  attribute: 'decorator',
+  builtinAttribute: 'decorator',
+  derive: 'decorator',
+  deriveHelper: 'decorator',
+  toolModule: 'decorator',
+  procMacro: 'macro',
+  concept: 'type',
+  // Java's (#1208): an annotation is a decorator, and its members are declared as methods; a record
+  // is a class, and its components are its fields, coloured as jdtls colours them in the body.
+  annotation: 'decorator',
+  annotationMember: 'method',
+  record: 'class',
+  recordComponent: 'property',
+  // Keywords, comments and strings. `self`, `Self`, `true` and `false` are keywords in Rust.
+  controlKeyword: 'keyword',
+  selfKeyword: 'keyword',
+  selfTypeKeyword: 'keyword',
+  boolean: 'keyword',
+  character: 'string',
+  // Code inside an inactive `#if` is shown as a comment, as Visual Studio dims it.
+  excludedCode: 'comment',
+  stringVerbatim: 'string',
+  // Regular expressions, spelt by Roslyn per part of the pattern.
+  regex: 'regexp',
+  regexAlternation: 'regexp',
+  regexAnchor: 'regexp',
+  regexCharacterClass: 'regexp',
+  regexGrouping: 'regexp',
+  regexOtherEscape: 'regexp',
+  regexQuantifier: 'regexp',
+  regexSelfEscapedCharacter: 'regexp',
+  regexText: 'regexp',
 };
 
 /**
@@ -519,12 +946,38 @@ const HEURISTIC_CACHE_LIMIT: number = 64;
  * Monaco's one-based and the protocol's zero-based coordinates here. Cross-file navigation resolves
  * to a target only when that file is already open as an editor model.
  */
+/**
+ * Names Roslyn's client command for a fix-all action (#1151): the client offers its scopes, and asks
+ * for the chosen scope's edit with `codeAction/resolveFixAll`.
+ */
+const FIX_ALL_COMMAND: string = 'roslyn.client.fixAllCodeAction';
+
+/**
+ * Names Roslyn's client command for a group of nested actions (#1151): the client opens them.
+ */
+const NESTED_ACTIONS_COMMAND: string = 'roslyn.client.nestedCodeAction';
+
+/**
+ * Names the request that walks a hierarchy one level in each direction (#1153).
+ */
+const HIERARCHY_METHODS: Readonly<Record<HierarchyDirection, string>> = {
+  callers: 'callHierarchy/incomingCalls',
+  callees: 'callHierarchy/outgoingCalls',
+  supertypes: 'typeHierarchy/supertypes',
+  subtypes: 'typeHierarchy/subtypes',
+};
+
 @Service()
 export class LspFeatures {
   /**
    * Holds the Monaco service used to load the editor and register providers.
    */
   private readonly monaco: Monaco = inject(Monaco);
+
+  /**
+   * Holds the settings, whose Semantic Highlighting choices ask for tokens again when they change.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the editor registry used to map a model URI to its file path and back.
@@ -535,6 +988,16 @@ export class LspFeatures {
    * Holds the reader of each reference's line, for Find All References (#1014).
    */
   private readonly linePreviews: LinePreviews = inject(LinePreviews);
+
+  /**
+   * Holds the active workspace's runner, which a Run lens runs through (#1210).
+   */
+  private readonly builds: Builds = inject(Builds);
+
+  /**
+   * Holds the active workspace's debugger, which a Debug lens launches through (#1210).
+   */
+  private readonly debugger: Debugger = inject(Debugger);
 
   /**
    * Holds the structured logger.
@@ -555,6 +1018,73 @@ export class LspFeatures {
    * Holds whether the Monaco providers have been registered, so registration happens once.
    */
   private registered: boolean = false;
+
+  /**
+   * Holds the formatting providers registered so far, by `<language>:<document|range|onType>`, so
+   * each is registered once (#1141), and one Default Formatter withdraws can be disposed.
+   */
+  private readonly formattingRegistered: Map<string, MonacoApi.IDisposable> = new Map<
+    string,
+    MonacoApi.IDisposable
+  >();
+
+  /**
+   * Holds how a server formats each language with a built-in formatter, so Default Formatter can add
+   * or withdraw the server's formatter whenever it changes.
+   */
+  private readonly formattingOffered: Map<string, LspFormattingSupport> = new Map<
+    string,
+    LspFormattingSupport
+  >();
+
+  /**
+   * Holds the languages hints are registered for (#1145).
+   */
+  private readonly inlayHintsRegistered: Set<string> = new Set<string>();
+
+  /**
+   * Holds the structure providers registered (#1147), keyed `<language>:<folding|highlights|rangeTokens>`.
+   */
+  private readonly structureRegistered: Set<string> = new Set<string>();
+
+  /**
+   * Holds the languages code lenses are registered for (#1149).
+   */
+  private readonly codeLensRegistered: Set<string> = new Set<string>();
+
+  /**
+   * Holds the event that asks every editor showing code lenses to ask again, made with the first
+   * registration.
+   */
+  private codeLensChanged: MonacoApi.Emitter<MonacoApi.languages.CodeLensProvider> | undefined;
+
+  /**
+   * Holds the code lens providers registered, one per language, each told to ask again on a refresh.
+   */
+  private readonly codeLensProviders: MonacoApi.languages.CodeLensProvider[] = [];
+
+  /**
+   * Holds, for each lens shown, the server's own lens and its session, for resolving it.
+   */
+  private readonly codeLensOrigins: WeakMap<
+    MonacoApi.languages.CodeLens,
+    { lens: unknown; sessionId: string }
+  > = new WeakMap<MonacoApi.languages.CodeLens, { lens: unknown; sessionId: string }>();
+
+  /**
+   * Holds the event that asks every editor showing hints to ask again, made with the first
+   * registration.
+   */
+  private inlayHintsChanged: MonacoApi.Emitter<void> | undefined;
+
+  /**
+   * Holds, for each hint shown from a server that fills hints in on request, the server's own hint
+   * and its session, for resolving it when hovered.
+   */
+  private readonly inlayHintOrigins: WeakMap<
+    MonacoApi.languages.InlayHint,
+    { hint: LspInlayHint; sessionId: string }
+  > = new WeakMap<MonacoApi.languages.InlayHint, { hint: LspInlayHint; sessionId: string }>();
 
   /**
    * Fires to ask Monaco to re-request semantic tokens, one emitter per registered language. Monaco
@@ -634,6 +1164,31 @@ export class LspFeatures {
       return;
     }
     void this.monaco.ensureLoaded().then((): void => this.registerProviders());
+    let previous: string | undefined;
+    effect((): void => {
+      const choices: string = this.settings.semanticHighlightingChoices();
+      if (previous !== undefined) {
+        this.refreshSemanticTokens();
+      }
+      previous = choices;
+    });
+    effect((): void => {
+      this.settings.defaultFormatterChoices();
+      this.applyDefaultFormatter();
+    });
+    // A code-lens switch changed (#1215), globally or for a language: every editor asks again, and
+    // the lenses it shows are filtered afresh.
+    let lensChoices: string | undefined;
+    effect((): void => {
+      const choices: string = codeLensChoices(
+        this.settings.globalTextEditor(),
+        this.settings.languageOverrides(),
+      );
+      if (lensChoices !== undefined && choices !== lensChoices) {
+        this.refreshCodeLenses();
+      }
+      lensChoices = choices;
+    });
   }
 
   /**
@@ -693,6 +1248,1052 @@ export class LspFeatures {
   }
 
   /**
+   * Turns on formatting for a language, with what a server serving it can do (#1141): Format
+   * Document, Format Selection, and formatting as the user types its trigger characters.
+   *
+   * Registered on demand, when a session that formats starts serving a document of the language,
+   * rather than for every language up front: Monaco offers Format Document (in the menu, on its chord,
+   * on the ribbon) exactly when a formatter is registered for the language, and one registered for a
+   * language whose server cannot format would offer a command that does nothing. Each kind is
+   * registered once per language.
+   *
+   * A language Monaco already formats (see {@link BUILT_IN_FORMATTER_LANGUAGES}) gets the server's
+   * formatter only while Default Formatter asks for it. Monaco runs the formatter registered last, and
+   * offers no way to choose per call, so the choice is made by what is registered.
+   * @param language The Monaco language identifier.
+   * @param support How the serving server formats.
+   */
+  public enableFormatting(language: string, support: LspFormattingSupport): void {
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    if (monaco === undefined) {
+      return;
+    }
+    if (BUILT_IN_FORMATTER_LANGUAGES.has(language)) {
+      this.formattingOffered.set(language, support);
+      if (this.settings.resolveSettingsForLanguage(language).defaultFormatter === 'built-in') {
+        return;
+      }
+    }
+    const registered: Map<string, MonacoApi.IDisposable> = this.formattingRegistered;
+    if (support.document && !registered.has(`${language}:document`)) {
+      const provider: MonacoApi.languages.DocumentFormattingEditProvider = {
+        provideDocumentFormattingEdits: (
+          model: MonacoApi.editor.ITextModel,
+          options: MonacoApi.languages.FormattingOptions,
+        ): Promise<MonacoApi.languages.TextEdit[] | undefined> =>
+          this.provideFormatting(model, 'textDocument/formatting', options),
+      };
+      registered.set(
+        `${language}:document`,
+        monaco.languages.registerDocumentFormattingEditProvider(language, provider),
+      );
+    }
+    if (support.range && !registered.has(`${language}:range`)) {
+      const provider: MonacoApi.languages.DocumentRangeFormattingEditProvider = {
+        provideDocumentRangeFormattingEdits: (
+          model: MonacoApi.editor.ITextModel,
+          range: MonacoApi.Range,
+          options: MonacoApi.languages.FormattingOptions,
+        ): Promise<MonacoApi.languages.TextEdit[] | undefined> =>
+          this.provideFormatting(model, 'textDocument/rangeFormatting', options, {
+            range: {
+              start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
+              end: { line: range.endLineNumber - 1, character: range.endColumn - 1 },
+            },
+          }),
+      };
+      registered.set(
+        `${language}:range`,
+        monaco.languages.registerDocumentRangeFormattingEditProvider(language, provider),
+      );
+    }
+    if (support.onTypeTriggers.length > 0 && !registered.has(`${language}:onType`)) {
+      const provider: MonacoApi.languages.OnTypeFormattingEditProvider = {
+        autoFormatTriggerCharacters: [...support.onTypeTriggers],
+        provideOnTypeFormattingEdits: async (
+          model: MonacoApi.editor.ITextModel,
+          position: MonacoApi.Position,
+          ch: string,
+          options: MonacoApi.languages.FormattingOptions,
+        ): Promise<MonacoApi.languages.TextEdit[] | undefined> => {
+          const typed: MonacoApi.languages.TextEdit[] | undefined = await this.provideFormatting(
+            model,
+            'textDocument/onTypeFormatting',
+            options,
+            { position: toLspPosition(position), ch },
+          );
+          if (ch !== '\n' || (typed !== undefined && typed.length > 0)) {
+            return typed;
+          }
+          return (await this.placeOpeningBrace(model, position, options)) ?? typed;
+        },
+      };
+      registered.set(
+        `${language}:onType`,
+        monaco.languages.registerOnTypeFormattingEditProvider(language, provider),
+      );
+    }
+  }
+
+  /**
+   * Adds or withdraws the servers' formatters of the languages Monaco also formats, to match Default
+   * Formatter.
+   */
+  private applyDefaultFormatter(): void {
+    for (const [language, support] of this.formattingOffered) {
+      if (this.settings.resolveSettingsForLanguage(language).defaultFormatter !== 'built-in') {
+        this.enableFormatting(language, support);
+        continue;
+      }
+      for (const kind of ['document', 'range', 'onType']) {
+        this.formattingRegistered.get(`${language}:${kind}`)?.dispose();
+        this.formattingRegistered.delete(`${language}:${kind}`);
+      }
+    }
+  }
+
+  /**
+   * Places the opening brace of a block just opened with Enter (#1177): with the caret on the blank
+   * line between an auto-closed `{` and `}`, asks the server to format the block and keeps the edits
+   * on the brace's line and above — so the brace goes where the language's formatter puts it (its own
+   * line, for Allman), while the caret's line and the closing brace are left as Enter made them.
+   *
+   * A server's own newline handling only indents (Roslyn answers `\n` with no edits): Visual Studio
+   * moves the brace with a brace-completion service of its own, which this stands in for.
+   * @param model The model.
+   * @param position The caret, just after the newline.
+   * @param options The editor's indentation.
+   * @returns Returns the edits, or undefined when the caret is not inside a just-opened block or the
+   * server cannot format a range.
+   */
+  private async placeOpeningBrace(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.Position,
+    options: MonacoApi.languages.FormattingOptions,
+  ): Promise<MonacoApi.languages.TextEdit[] | undefined> {
+    const caret: number = position.lineNumber;
+    if (!opensBlockAt(model, caret)) {
+      return undefined;
+    }
+    const edits: MonacoApi.languages.TextEdit[] | undefined = await this.provideFormatting(
+      model,
+      'textDocument/rangeFormatting',
+      options,
+      {
+        range: {
+          start: { line: caret - 2, character: 0 },
+          end: { line: caret, character: model.getLineMaxColumn(caret + 1) - 1 },
+        },
+      },
+    );
+    return edits?.filter(
+      (edit: MonacoApi.languages.TextEdit): boolean => edit.range.endLineNumber < caret,
+    );
+  }
+
+  /**
+   * Answers a character typed with what the document's server inserts (#1148): after `///` above a
+   * member, Roslyn's doc-comment skeleton — `<summary>`, a `<param>` per parameter, `<returns>` — the
+   * caret left in the summary; after Enter in a doc comment, the next line's `///`. Asked only for a
+   * character the server declares (Roslyn's `_vs_onAutoInsert`), and applied only when the document
+   * has not changed while the server answered, so a quick typist's next keystrokes are never undone.
+   * @param editor The editor typed in.
+   * @param ch The character typed (`\n` for Enter).
+   * @returns Returns a promise that resolves once the answer is applied, or found not to be.
+   */
+  private async autoInsert(editor: MonacoApi.editor.ICodeEditor, ch: string): Promise<void> {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    const position: MonacoApi.Position | null = editor.getPosition();
+    if (model === null || position === null || this.bridge === undefined) {
+      return;
+    }
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || ref.autoInsertTriggers?.includes(ch) !== true) {
+      return;
+    }
+    if (
+      !this.settings.resolveSettingsForLanguage(model.getLanguageId()).docCommentAutoInsert &&
+      isDocCommentTyping(model, position, ch)
+    ) {
+      return;
+    }
+    const version: number = model.getVersionId();
+    await ref.sync?.(model.getValue());
+    const options: MonacoApi.editor.TextModelResolvedOptions = model.getOptions();
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/_vs_onAutoInsert',
+        {
+          _vs_textDocument: { uri: ref.uri },
+          _vs_position: toLspPosition(position),
+          _vs_ch: ch,
+          _vs_options: { tabSize: options.tabSize, insertSpaces: options.insertSpaces },
+        },
+      );
+    } catch {
+      return;
+    }
+    const answer: {
+      _vs_textEditFormat?: unknown;
+      _vs_textEdit?: { range?: LspRange; newText?: unknown };
+    } | null = (result as typeof answer) ?? null;
+    const edit: { range?: LspRange; newText?: unknown } | undefined = answer?._vs_textEdit;
+    if (
+      edit?.range === undefined ||
+      typeof edit.newText !== 'string' ||
+      model.isDisposed() ||
+      model.getVersionId() !== version
+    ) {
+      return;
+    }
+    applyAutoInsert(
+      editor,
+      this.toRange(edit.range),
+      edit.newText,
+      answer?._vs_textEditFormat === SNIPPET_TEXT_EDIT_FORMAT,
+    );
+  }
+
+  /**
+   * Turns on code lenses for a language (#1149) — facts shown above its types and members, Roslyn's
+   * reference counts — when a session that shows them starts serving a document of it. Registered
+   * once per language; whether a server shows them is its own setting (Settings › Language
+   * Providers), which it is told of without a restart.
+   * @param language The Monaco language identifier.
+   */
+  public enableCodeLens(language: string): void {
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    if (monaco === undefined || this.codeLensRegistered.has(language)) {
+      return;
+    }
+    this.codeLensRegistered.add(language);
+    this.codeLensChanged ??= new monaco.Emitter<MonacoApi.languages.CodeLensProvider>();
+    const provider: MonacoApi.languages.CodeLensProvider = {
+      onDidChange: this.codeLensChanged.event,
+      provideCodeLenses: (
+        model: MonacoApi.editor.ITextModel,
+      ): Promise<MonacoApi.languages.CodeLensList | undefined> => this.provideCodeLenses(model),
+      resolveCodeLens: (
+        model: MonacoApi.editor.ITextModel,
+        lens: MonacoApi.languages.CodeLens,
+      ): Promise<MonacoApi.languages.CodeLens> => this.resolveCodeLens(model, lens),
+    };
+    this.codeLensProviders.push(provider);
+    monaco.languages.registerCodeLensProvider(language, provider);
+  }
+
+  /**
+   * Asks every editor showing code lenses to ask for them again: the server said they are stale
+   * (`workspace/codeLens/refresh`) — a reference was added elsewhere, a setting changed (#1149).
+   */
+  public refreshCodeLenses(): void {
+    for (const provider of this.codeLensProviders) {
+      this.codeLensChanged?.fire(provider);
+    }
+  }
+
+  /**
+   * Asks the server serving a model for its code lenses, leaving each to be filled in as Monaco
+   * shows it.
+   * @param model The model.
+   * @returns Returns the lenses, or undefined when no server serving the model shows them.
+   */
+  private async provideCodeLenses(
+    model: MonacoApi.editor.ITextModel,
+  ): Promise<MonacoApi.languages.CodeLensList | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || this.bridge === undefined || ref.codeLens === undefined) {
+      return undefined;
+    }
+    // Lenses switched off for the language are not asked for at all (#1215).
+    const switches: CodeLensSwitches = this.settings.resolveSettingsForLanguage(
+      model.getLanguageId(),
+    );
+    if (!switches.codeLens) {
+      return undefined;
+    }
+    await ref.sync?.(model.getValue());
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/codeLens',
+        {
+          textDocument: { uri: ref.uri },
+        },
+      );
+    } catch {
+      return undefined;
+    }
+    const lenses: MonacoApi.languages.CodeLens[] = [];
+    for (const candidate of Array.isArray(result) ? (result as readonly unknown[]) : []) {
+      const range: LspRange | undefined = (candidate as { range?: LspRange } | null)?.range;
+      if (range === undefined || !this.showsLens(switches, candidate)) {
+        continue;
+      }
+      const command: { command?: MonacoApi.languages.Command } | null = this.lensCommand(
+        model,
+        ref,
+        candidate,
+      );
+      if (command === null) {
+        continue;
+      }
+      const lens: MonacoApi.languages.CodeLens = { range: this.toRange(range), ...command };
+      this.codeLensOrigins.set(lens, { lens: candidate, sessionId: ref.sessionId });
+      lenses.push(lens);
+    }
+    return { lenses, dispose: (): void => undefined };
+  }
+
+  /**
+   * Fills a lens in as Monaco shows it: the server gives its title (`4 references`) and command on
+   * request.
+   * @param model The model.
+   * @param lens The lens.
+   * @returns Returns the lens, filled in when the server answered.
+   */
+  private async resolveCodeLens(
+    model: MonacoApi.editor.ITextModel,
+    lens: MonacoApi.languages.CodeLens,
+  ): Promise<MonacoApi.languages.CodeLens> {
+    const origin: { lens: unknown; sessionId: string } | undefined = this.codeLensOrigins.get(lens);
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (
+      lens.command !== undefined ||
+      origin === undefined ||
+      ref === null ||
+      this.bridge === undefined
+    ) {
+      return lens;
+    }
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        origin.sessionId,
+        'codeLens/resolve',
+        origin.lens,
+      );
+    } catch {
+      return lens;
+    }
+    // A lens comes filled in as a kind switched off (#1215): the server had no switch of its own to
+    // leave it out by, so it shows nothing.
+    if (!this.showsLens(this.settings.resolveSettingsForLanguage(model.getLanguageId()), result)) {
+      return { ...lens, command: { id: '', title: '' } };
+    }
+    return { ...lens, ...(this.lensCommand(model, ref, result) ?? {}) };
+  }
+
+  /**
+   * Determines whether a lens is of a kind its language shows (#1215). A lens not yet filled in has no
+   * kind yet, and is shown until it is.
+   * @param switches The language's code-lens switches.
+   * @param lens The server's lens, untrusted.
+   * @returns Returns true when it is shown.
+   */
+  private showsLens(switches: CodeLensSwitches, lens: unknown): boolean {
+    const command: LspCommand | null = toCommand((lens as { command?: unknown } | null)?.command);
+    return (
+      command === null || showsCodeLensKind(switches, codeLensKind(command.command, command.title))
+    );
+  }
+
+  /**
+   * Reads the places a lens brought with it.
+   * @param raw The lens's list of locations, untrusted.
+   * @returns Returns the places by path, leaving out any it cannot read.
+   */
+  private lensPlaces(raw: unknown): readonly LspDefinition[] {
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+    const places: LspDefinition[] = [];
+    for (const entry of raw as readonly (Partial<LspLocation> | null)[]) {
+      if (typeof entry?.uri === 'string' && entry.range !== undefined) {
+        places.push({ path: this.uriToPath(entry.uri), range: this.toRange(entry.range) });
+      }
+    }
+    return places;
+  }
+
+  /**
+   * Maps a lens's command to what clicking it does: a references lens lists the symbol's references
+   * in the References panel (through {@link STUDIO_REFERENCES_LENS_COMMAND}), or the places it brought
+   * (through {@link STUDIO_LOCATIONS_LENS_COMMAND}); a command the server runs itself is run there; a
+   * Run Test or Debug Test lens runs its tests on the session (#1150); a rust-analyzer Run lens runs as
+   * any run configuration does (#1210); any other shows its title alone.
+   * @param model The model the lens is in.
+   * @param ref The document's session.
+   * @param lens The server's lens, untrusted.
+   * @returns Returns the lens's command, nothing for a lens not yet filled in, or null for a lens not
+   * offered.
+   */
+  private lensCommand(
+    model: MonacoApi.editor.ITextModel,
+    ref: LspDocumentRef,
+    lens: unknown,
+  ): { command?: MonacoApi.languages.Command } | null {
+    const command: LspCommand | null = toCommand((lens as { command?: unknown } | null)?.command);
+    if (command === null) {
+      return {};
+    }
+    if (command.command === ROSLYN_RUN_TESTS) {
+      // Run Test and Debug Test alike: a Debug Test lens's argument asks for the debugger, which
+      // attaches to the test host the server starts (#1150).
+      const argument: unknown = command.arguments?.[0];
+      return ref.runTests === undefined
+        ? { command: { id: '', title: command.title } }
+        : {
+            command: {
+              id: STUDIO_RUN_TESTS_COMMAND,
+              title: command.title,
+              arguments: [model.uri.toString(), argument],
+            },
+          };
+    }
+    if (command.command === ROSLYN_PEEK_REFERENCES) {
+      const position: unknown =
+        command.arguments?.[1] ?? (lens as { range?: LspRange } | null)?.range?.start;
+      return {
+        command: {
+          id: STUDIO_REFERENCES_LENS_COMMAND,
+          title: command.title,
+          arguments: [model.uri.toString(), position],
+        },
+      };
+    }
+    if (command.command === RUST_RUN_SINGLE_COMMAND) {
+      const configuration: RunConfiguration | null = cargoRunConfiguration(command.arguments?.[0]);
+      return {
+        command:
+          configuration === null
+            ? { id: '', title: command.title }
+            : { id: STUDIO_RUN_LENS_COMMAND, title: command.title, arguments: [configuration] },
+      };
+    }
+    if (command.command === RUST_DEBUG_SINGLE_COMMAND) {
+      const configuration: RunConfiguration | null = cargoRunConfiguration(
+        command.arguments?.[0],
+        'debug',
+      );
+      return {
+        command:
+          configuration === null
+            ? { id: '', title: command.title }
+            : { id: STUDIO_DEBUG_LENS_COMMAND, title: command.title, arguments: [configuration] },
+      };
+    }
+    if (LOCATIONS_LENS_COMMANDS.has(command.command)) {
+      const position: unknown =
+        command.arguments?.[1] ?? (lens as { range?: LspRange } | null)?.range?.start;
+      return {
+        command: {
+          id: STUDIO_LOCATIONS_LENS_COMMAND,
+          title: command.title,
+          // Most servers send both kinds of lens one command, so only the count's wording tells them
+          // apart; jdtls gives each its own.
+          arguments: [
+            model.uri.toString(),
+            position,
+            command.command === JAVA_SHOW_IMPLEMENTATIONS_COMMAND ||
+            /implementation/i.test(command.title)
+              ? 'implementations'
+              : 'references',
+            this.lensPlaces(command.arguments?.[2]),
+          ],
+        },
+      };
+    }
+    if ((ref.commands ?? []).includes(command.command)) {
+      return {
+        command: {
+          id: STUDIO_LSP_COMMAND,
+          title: command.title,
+          arguments: [ref.sessionId, command],
+        },
+      };
+    }
+    // A reference count with no command of its own — lua-language-server's, Svelte's — lists the
+    // references of the symbol it sits on, as any other reference count does (#1215). A count of none
+    // (TypeScript's) has nothing to list, and shows its title alone.
+    if (
+      command.command === '' &&
+      codeLensKind('', command.title) === 'references' &&
+      !/^\s*0\b/.test(command.title)
+    ) {
+      return {
+        command: {
+          id: STUDIO_REFERENCES_LENS_COMMAND,
+          title: command.title,
+          arguments: [model.uri.toString(), (lens as { range?: LspRange } | null)?.range?.start],
+        },
+      };
+    }
+    return { command: { id: '', title: command.title } };
+  }
+
+  /**
+   * Turns on the compiler's views of a language's structure (#1147), when a session that gives them
+   * starts serving a document of it: its folds — members, regions, usings, comments, from their
+   * declaration line, as Visual Studio folds — the reads and writes of the symbol under the caret,
+   * a range's semantic tokens, so a large file's visible screen is coloured before the rest, and the
+   * syntax nodes Expand and Shrink Selection grow and shrink by (#1155). Each
+   * is registered once per language; a document no server serves keeps the heuristic folding and
+   * Monaco's own word highlighting.
+   * @param language The Monaco language identifier.
+   * @param support Which the server gives.
+   */
+  public enableStructure(language: string, support: LspStructureSupport): void {
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    if (monaco === undefined) {
+      return;
+    }
+    const registered: Set<string> = this.structureRegistered;
+    if (support.folding && !registered.has(`${language}:folding`)) {
+      registered.add(`${language}:folding`);
+      monaco.languages.registerFoldingRangeProvider(language, {
+        provideFoldingRanges: (
+          model: MonacoApi.editor.ITextModel,
+        ): Promise<MonacoApi.languages.FoldingRange[] | undefined> =>
+          this.provideFoldingRanges(monaco, model, language),
+      });
+    }
+    if (support.highlights && !registered.has(`${language}:highlights`)) {
+      registered.add(`${language}:highlights`);
+      monaco.languages.registerDocumentHighlightProvider(language, {
+        provideDocumentHighlights: (
+          model: MonacoApi.editor.ITextModel,
+          position: MonacoApi.Position,
+        ): Promise<MonacoApi.languages.DocumentHighlight[] | undefined> =>
+          this.provideDocumentHighlights(monaco, model, position),
+      });
+    }
+    if (support.linkedEditing && !registered.has(`${language}:linkedEditing`)) {
+      registered.add(`${language}:linkedEditing`);
+      monaco.languages.registerLinkedEditingRangeProvider(language, {
+        provideLinkedEditingRanges: (
+          model: MonacoApi.editor.ITextModel,
+          position: MonacoApi.Position,
+        ): Promise<MonacoApi.languages.LinkedEditingRanges | undefined> =>
+          this.provideLinkedEditingRanges(model, position),
+      });
+    }
+    if (support.rangeTokens && !registered.has(`${language}:rangeTokens`)) {
+      registered.add(`${language}:rangeTokens`);
+      monaco.languages.registerDocumentRangeSemanticTokensProvider(language, {
+        getLegend: (): MonacoApi.languages.SemanticTokensLegend => SEMANTIC_LEGEND,
+        provideDocumentRangeSemanticTokens: (
+          model: MonacoApi.editor.ITextModel,
+          range: MonacoApi.Range,
+        ): Promise<MonacoApi.languages.SemanticTokens | null> =>
+          this.provideRangeSemanticTokens(model, range),
+      });
+    }
+    if (support.selectionRanges && !registered.has(`${language}:selectionRanges`)) {
+      registered.add(`${language}:selectionRanges`);
+      monaco.languages.registerSelectionRangeProvider(language, {
+        provideSelectionRanges: (
+          model: MonacoApi.editor.ITextModel,
+          positions: MonacoApi.Position[],
+        ): Promise<MonacoApi.languages.SelectionRange[][] | undefined> =>
+          this.provideSelectionRanges(model, positions),
+      });
+    }
+  }
+
+  /**
+   * Asks the server serving a model for the syntax nodes around each position (#1155) — identifier,
+   * expression, statement, block, member, type — innermost first, which Monaco's Expand Selection
+   * climbs (merged with its own word ranges) and Shrink Selection descends.
+   * @param model The model.
+   * @param positions The carets.
+   * @returns Returns each caret's ranges, innermost first, or undefined when no server serving the
+   * model gives them.
+   */
+  private async provideSelectionRanges(
+    model: MonacoApi.editor.ITextModel,
+    positions: readonly MonacoApi.Position[],
+  ): Promise<MonacoApi.languages.SelectionRange[][] | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || this.bridge === undefined || ref.structure?.selectionRanges !== true) {
+      return undefined;
+    }
+    await ref.sync?.(model.getValue());
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/selectionRange',
+        { textDocument: { uri: ref.uri }, positions: positions.map(toLspPosition) },
+      );
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(result) || result.length !== positions.length) {
+      return undefined;
+    }
+    return (result as readonly unknown[]).map(
+      (chain: unknown): MonacoApi.languages.SelectionRange[] => {
+        const ranges: MonacoApi.languages.SelectionRange[] = [];
+        // The server nests each node in its parent; the depth bound only stops a malformed cycle.
+        let node: { range?: LspRange; parent?: unknown } | null = chain as typeof node;
+        while (node?.range !== undefined && ranges.length < 256) {
+          ranges.push({ range: this.toRange(node.range) });
+          node = node.parent ?? null;
+        }
+        return ranges;
+      },
+    );
+  }
+
+  /**
+   * Asks the server serving a model for its folds, and maps them to Monaco's.
+   * @param monaco The Monaco namespace.
+   * @param model The model.
+   * @param language The model's language.
+   * @returns Returns the folds, or undefined when no server serving the model folds it, or Folding
+   * Provider leaves the language to something else.
+   */
+  private async provideFoldingRanges(
+    monaco: typeof MonacoApi,
+    model: MonacoApi.editor.ITextModel,
+    language: string,
+  ): Promise<MonacoApi.languages.FoldingRange[] | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || this.bridge === undefined || ref.structure?.folding !== true) {
+      return undefined;
+    }
+    const provider: FoldingProvider =
+      this.settings.resolveSettingsForLanguage(language).foldingProvider;
+    if (provider === 'braces' || provider === 'indentation') {
+      return undefined;
+    }
+    await ref.sync?.(model.getValue());
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/foldingRange',
+        {
+          textDocument: { uri: ref.uri },
+        },
+      );
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(result)) {
+      return undefined;
+    }
+    const kinds: Record<string, MonacoApi.languages.FoldingRangeKind> = {
+      comment: monaco.languages.FoldingRangeKind.Comment,
+      imports: monaco.languages.FoldingRangeKind.Imports,
+      region: monaco.languages.FoldingRangeKind.Region,
+    };
+    const ranges: MonacoApi.languages.FoldingRange[] = [];
+    for (const fold of result as readonly {
+      startLine?: unknown;
+      endLine?: unknown;
+      kind?: unknown;
+    }[]) {
+      if (typeof fold?.startLine !== 'number' || typeof fold.endLine !== 'number') {
+        continue;
+      }
+      if (fold.endLine <= fold.startLine) {
+        continue;
+      }
+      const kind: MonacoApi.languages.FoldingRangeKind | undefined =
+        typeof fold.kind === 'string' ? kinds[fold.kind] : undefined;
+      ranges.push({
+        start: fold.startLine + 1,
+        end: fold.endLine + 1,
+        ...(kind === undefined ? {} : { kind }),
+      });
+    }
+    return ranges;
+  }
+
+  /**
+   * Asks the server serving a model which ranges are edited together with the one at a position.
+   * @param model The model.
+   * @param position The caret.
+   * @returns Returns the ranges, or undefined when no server serving the model links any there.
+   */
+  private async provideLinkedEditingRanges(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.Position,
+  ): Promise<MonacoApi.languages.LinkedEditingRanges | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || this.bridge === undefined || ref.structure?.linkedEditing !== true) {
+      return undefined;
+    }
+    await ref.sync?.(model.getValue());
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/linkedEditingRange',
+        { textDocument: { uri: ref.uri }, position: toLspPosition(position) },
+      );
+    } catch {
+      return undefined;
+    }
+    const answer: { ranges?: unknown; wordPattern?: unknown } | null =
+      (result as { ranges?: unknown; wordPattern?: unknown } | null) ?? null;
+    if (!Array.isArray(answer?.ranges) || answer.ranges.length === 0) {
+      return undefined;
+    }
+    return {
+      ranges: (answer.ranges as readonly LspRange[]).map((range: LspRange): MonacoApi.IRange =>
+        this.toRange(range),
+      ),
+      ...(typeof answer.wordPattern === 'string'
+        ? { wordPattern: new RegExp(answer.wordPattern) }
+        : {}),
+    };
+  }
+
+  /**
+   * Asks the server serving a model for the occurrences of the symbol at a position, each marked a
+   * read or a write, and maps them to Monaco's.
+   * @param monaco The Monaco namespace.
+   * @param model The model.
+   * @param position The caret.
+   * @returns Returns the occurrences, or undefined when no server serving the model marks them.
+   */
+  private async provideDocumentHighlights(
+    monaco: typeof MonacoApi,
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.Position,
+  ): Promise<MonacoApi.languages.DocumentHighlight[] | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || this.bridge === undefined || ref.structure?.highlights !== true) {
+      return undefined;
+    }
+    await ref.sync?.(model.getValue());
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/documentHighlight',
+        { textDocument: { uri: ref.uri }, position: toLspPosition(position) },
+      );
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(result)) {
+      return undefined;
+    }
+    const kinds: Record<number, MonacoApi.languages.DocumentHighlightKind> = {
+      1: monaco.languages.DocumentHighlightKind.Text,
+      2: monaco.languages.DocumentHighlightKind.Read,
+      3: monaco.languages.DocumentHighlightKind.Write,
+    };
+    return (result as readonly { range?: LspRange; kind?: unknown }[])
+      .filter((highlight: { range?: LspRange }): boolean => highlight?.range !== undefined)
+      .map(
+        (highlight: {
+          range?: LspRange;
+          kind?: unknown;
+        }): MonacoApi.languages.DocumentHighlight => ({
+          range: this.toRange(highlight.range!),
+          kind:
+            (typeof highlight.kind === 'number' ? kinds[highlight.kind] : undefined) ??
+            monaco.languages.DocumentHighlightKind.Text,
+        }),
+      );
+  }
+
+  /**
+   * Asks the server serving a model for the semantic tokens of a range — what is on screen — remapped
+   * onto the fixed legend. Only real tokens are given: while the server cannot serve them, the whole
+   * document's tokens (with their heuristic stand-in) colour it.
+   * @param model The model.
+   * @param range The range shown.
+   * @returns Returns the tokens, or null to leave the range to the whole document's.
+   */
+  private async provideRangeSemanticTokens(
+    model: MonacoApi.editor.ITextModel,
+    range: MonacoApi.Range,
+  ): Promise<MonacoApi.languages.SemanticTokens | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    const legend: LspSemanticTokensLegend | null | undefined = ref?.semanticLegend;
+    if (
+      ref === null ||
+      this.bridge === undefined ||
+      legend === undefined ||
+      legend === null ||
+      ref.structure?.rangeTokens !== true ||
+      ref.suppressServerTokens === true
+    ) {
+      return null;
+    }
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/semanticTokens/range',
+        {
+          textDocument: { uri: ref.uri },
+          range: {
+            start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
+            end: { line: range.endLineNumber - 1, character: range.endColumn - 1 },
+          },
+        },
+      );
+    } catch {
+      return null;
+    }
+    const data: unknown = (result as { data?: unknown } | null)?.data;
+    if (!Array.isArray(data)) {
+      return null;
+    }
+    const remapped: Uint32Array = this.remapSemanticTokens(data as number[], legend);
+    return remapped.length === 0 ? null : { data: remapped };
+  }
+
+  /**
+   * Turns on hints set into the code for a language (#1145) — parameter names at call sites, inferred
+   * types after `var` — when a session that serves them starts serving a document of it. Registered
+   * once per language; which hints a server sets is its own settings' business (Settings › Language
+   * Providers), which it is told of without a restart.
+   * @param language The Monaco language identifier.
+   */
+  public enableInlayHints(language: string): void {
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    if (monaco === undefined || this.inlayHintsRegistered.has(language)) {
+      return;
+    }
+    this.inlayHintsRegistered.add(language);
+    this.inlayHintsChanged ??= new monaco.Emitter<void>();
+    monaco.languages.registerInlayHintsProvider(language, {
+      onDidChangeInlayHints: this.inlayHintsChanged.event,
+      provideInlayHints: (
+        model: MonacoApi.editor.ITextModel,
+        range: MonacoApi.Range,
+      ): Promise<MonacoApi.languages.InlayHintList | undefined> =>
+        this.provideInlayHints(model, range),
+      resolveInlayHint: (
+        hint: MonacoApi.languages.InlayHint,
+      ): Promise<MonacoApi.languages.InlayHint> => this.resolveInlayHint(hint),
+    });
+  }
+
+  /**
+   * Asks every editor showing hints to ask for them again: the server said they are stale
+   * (`workspace/inlayHint/refresh`) — a setting changed, or a project finished loading (#1145).
+   */
+  public refreshInlayHints(): void {
+    this.inlayHintsChanged?.fire();
+  }
+
+  /**
+   * Asks the server serving a model for the hints in a range, and maps them to Monaco's.
+   * @param model The model.
+   * @param range The range shown.
+   * @returns Returns the hints, or undefined when no server serving the model sets them.
+   */
+  private async provideInlayHints(
+    model: MonacoApi.editor.ITextModel,
+    range: MonacoApi.Range,
+  ): Promise<MonacoApi.languages.InlayHintList | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || this.bridge === undefined || ref.inlayHints === undefined) {
+      return undefined;
+    }
+    await ref.sync?.(model.getValue());
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/inlayHint',
+        {
+          textDocument: { uri: ref.uri },
+          range: {
+            start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
+            end: { line: range.endLineNumber - 1, character: range.endColumn - 1 },
+          },
+        },
+      );
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(result)) {
+      return { hints: [], dispose: (): void => undefined };
+    }
+    const hints: MonacoApi.languages.InlayHint[] = [];
+    for (const candidate of result as readonly LspInlayHint[]) {
+      const hint: MonacoApi.languages.InlayHint | null = this.toInlayHint(candidate);
+      if (hint !== null) {
+        if (ref.inlayHints.resolve) {
+          this.inlayHintOrigins.set(hint, { hint: candidate, sessionId: ref.sessionId });
+        }
+        hints.push(hint);
+      }
+    }
+    return { hints, dispose: (): void => undefined };
+  }
+
+  /**
+   * Fills a hint in when it is hovered: its tooltip — the parameter's or type's signature — and the
+   * text a double-click inserts, which the server leaves out of the first answer.
+   * @param hint The hint.
+   * @returns Returns the hint, filled in when the server answered.
+   */
+  private async resolveInlayHint(
+    hint: MonacoApi.languages.InlayHint,
+  ): Promise<MonacoApi.languages.InlayHint> {
+    const origin: { hint: LspInlayHint; sessionId: string } | undefined =
+      this.inlayHintOrigins.get(hint);
+    if (origin === undefined || this.bridge === undefined) {
+      return hint;
+    }
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        origin.sessionId,
+        'inlayHint/resolve',
+        origin.hint,
+      );
+    } catch {
+      return hint;
+    }
+    const resolved: MonacoApi.languages.InlayHint | null = this.toInlayHint(result as LspInlayHint);
+    return resolved === null
+      ? hint
+      : {
+          ...hint,
+          label: resolved.label,
+          tooltip: resolved.tooltip ?? hint.tooltip,
+          textEdits: resolved.textEdits ?? hint.textEdits,
+        };
+  }
+
+  /**
+   * Maps a server's hint to Monaco's, or null for one that is malformed.
+   * @param hint The server's hint, untrusted.
+   * @returns Returns the hint.
+   */
+  private toInlayHint(hint: LspInlayHint | null | undefined): MonacoApi.languages.InlayHint | null {
+    const position: LspPosition | undefined = hint?.position;
+    if (
+      hint === null ||
+      hint === undefined ||
+      typeof position?.line !== 'number' ||
+      typeof position.character !== 'number'
+    ) {
+      return null;
+    }
+    const label: string | MonacoApi.languages.InlayHintLabelPart[] | null =
+      typeof hint.label === 'string'
+        ? hint.label
+        : Array.isArray(hint.label)
+          ? hint.label
+              .filter((part: LspInlayHintLabelPart): boolean => typeof part?.value === 'string')
+              .map((part: LspInlayHintLabelPart): MonacoApi.languages.InlayHintLabelPart => ({
+                label: part.value,
+                ...(part.tooltip === undefined ? {} : { tooltip: toTooltip(part.tooltip) }),
+              }))
+          : null;
+    if (label === null || label.length === 0) {
+      return null;
+    }
+    return {
+      label,
+      position: { lineNumber: position.line + 1, column: position.character + 1 },
+      ...(hint.kind === 1 || hint.kind === 2 ? { kind: hint.kind } : {}),
+      ...(hint.paddingLeft === true ? { paddingLeft: true } : {}),
+      ...(hint.paddingRight === true ? { paddingRight: true } : {}),
+      ...(hint.tooltip === undefined ? {} : { tooltip: toTooltip(hint.tooltip) }),
+      ...(Array.isArray(hint.textEdits)
+        ? {
+            textEdits: hint.textEdits
+              .filter(
+                (edit: { range?: LspRange; newText?: unknown }): boolean =>
+                  edit?.range !== undefined && typeof edit.newText === 'string',
+              )
+              .map(
+                (edit: { range?: LspRange; newText?: unknown }): MonacoApi.languages.TextEdit => ({
+                  range: this.toRange(edit.range!),
+                  text: edit.newText as string,
+                }),
+              ),
+          }
+        : {}),
+    };
+  }
+
+  /**
+   * Asks the server serving a model to format it — the whole document, a range, or around a character
+   * just typed — and maps its edits to Monaco's.
+   * @param model The model to format.
+   * @param method The formatting request.
+   * @param options The editor's indentation, which the server is told to follow.
+   * @param extra The request's own parameters (a range, or the position and character typed).
+   * @returns Returns the edits, or undefined when no server serves the model, it does not format this
+   * way, or the request fails.
+   */
+  private async provideFormatting(
+    model: MonacoApi.editor.ITextModel,
+    method:
+      'textDocument/formatting' | 'textDocument/rangeFormatting' | 'textDocument/onTypeFormatting',
+    options: MonacoApi.languages.FormattingOptions,
+    extra?: Record<string, unknown>,
+  ): Promise<MonacoApi.languages.TextEdit[] | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    const support: LspFormattingSupport | undefined = ref?.formatting;
+    if (ref === null || this.bridge === undefined || support === undefined) {
+      return undefined;
+    }
+    const offered: boolean =
+      method === 'textDocument/formatting'
+        ? support.document
+        : method === 'textDocument/rangeFormatting'
+          ? support.range
+          : typeof extra?.['ch'] === 'string' && support.onTypeTriggers.includes(extra['ch']);
+    if (!offered) {
+      return undefined;
+    }
+    // The server must have the text the edits will apply to — above all for on-type formatting, which
+    // is asked the moment the character lands.
+    await ref.sync?.(model.getValue());
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(LspChannel.Request, ref.sessionId, method, {
+        textDocument: { uri: ref.uri },
+        options: { tabSize: options.tabSize, insertSpaces: options.insertSpaces },
+        ...extra,
+      });
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(result)) {
+      return undefined;
+    }
+    return (result as readonly { range?: LspRange; newText?: unknown }[])
+      .filter(
+        (edit: { range?: LspRange; newText?: unknown }): boolean =>
+          edit.range !== undefined && typeof edit.newText === 'string',
+      )
+      .map((edit: { range?: LspRange; newText?: unknown }): MonacoApi.languages.TextEdit => ({
+        range: this.toRange(edit.range!),
+        text: edit.newText as string,
+      }));
+  }
+
+  /**
    * Registers the Monaco feature providers for every supported language.
    */
   private registerProviders(): void {
@@ -711,7 +2312,51 @@ export class LspFeatures {
     this.monaco.suppressWordSuggestionsWhen((model: MonacoApi.editor.ITextModel): boolean =>
       this.servesDocument(model),
     );
+    // What a server inserts in answer to a character typed — Roslyn's doc-comment skeleton after
+    // `///` (#1148).
+    this.monaco.useAutoInsert((editor: MonacoApi.editor.ICodeEditor, ch: string): void => {
+      void this.autoInsert(editor, ch);
+    });
+    // A document whose server folds it is folded by the server alone (#1147).
+    this.monaco.suppressBraceFoldingWhen(
+      (model: MonacoApi.editor.ITextModel): boolean =>
+        this.resolve(model)?.structure?.folding === true,
+    );
     // A completion's server command, run when the completion is accepted (#1021).
+    // A Run Test lens runs its tests on the session serving its document (#1150).
+    monaco.editor.registerCommand(
+      STUDIO_RUN_TESTS_COMMAND,
+      (_accessor: unknown, modelUri: unknown, lens: unknown): void => {
+        const model: MonacoApi.editor.ITextModel | undefined = monaco.editor
+          .getModels()
+          .find(
+            (candidate: MonacoApi.editor.ITextModel): boolean =>
+              candidate.uri.toString() === modelUri,
+          );
+        if (model !== undefined) {
+          this.resolve(model)?.runTests?.(lens);
+        }
+      },
+    );
+    // A rust-analyzer Run lens runs in the active workspace's run terminal (#1210). Pressed again, it
+    // replaces the run it started, as a run configuration does.
+    monaco.editor.registerCommand(
+      STUDIO_RUN_LENS_COMMAND,
+      (_accessor: unknown, configuration: RunConfiguration): void =>
+        this.builds.runConfiguration(configuration, [], { restart: true }),
+    );
+    // A Debug lens builds what its Run lens would run and launches it under CodeLLDB (#1210), in the
+    // active workspace's debugger: one session at a time, as from the ribbon.
+    monaco.editor.registerCommand(
+      STUDIO_DEBUG_LENS_COMMAND,
+      (_accessor: unknown, configuration: RunConfiguration): void => {
+        if (this.debugger.running()) {
+          this.log.info('LspFeatures', 'Debug lens ignored: a debug session is already running');
+          return;
+        }
+        this.debugger.launch(configuration);
+      },
+    );
     monaco.editor.registerCommand(
       STUDIO_LSP_COMMAND,
       (_accessor: unknown, sessionId: unknown, command: unknown): void =>
@@ -817,6 +2462,9 @@ export class LspFeatures {
   private provideSemanticTokens(
     model: MonacoApi.editor.ITextModel,
   ): Promise<MonacoApi.languages.SemanticTokens | undefined> {
+    if (!this.monaco.semanticHighlightingEnabled(model)) {
+      return Promise.resolve(undefined);
+    }
     const key: string = model.uri.toString();
     const pending: Promise<MonacoApi.languages.SemanticTokens | undefined> | undefined =
       this.pendingTokenRequests.get(key);
@@ -1368,18 +3016,400 @@ export class LspFeatures {
    * @returns Returns the definitions, in the server's order, or null when no server serves the
    * document (an empty list is a server answering that it knows of none).
    */
-  public async definitions(
+  public definitions(
     model: MonacoApi.editor.ITextModel,
     position: MonacoApi.IPosition,
+  ): Promise<readonly LspDefinition[] | null> {
+    return this.locationsByPath(model, position, 'textDocument/definition');
+  }
+
+  /**
+   * Determines whether the language server that serves a document answers a navigation beyond Go to
+   * Definition (#1142), so the command is offered only where something will answer.
+   * @param model The editor model.
+   * @param kind The navigation.
+   * @returns Returns true when the serving server answers it.
+   */
+  public servesNavigation(model: MonacoApi.editor.ITextModel, kind: LspNavigationKind): boolean {
+    return this.resolve(model)?.navigation?.[kind] === true;
+  }
+
+  /**
+   * Asks the language server that serves a document where the symbol at a position is implemented —
+   * for an interface or abstract member, the classes that implement it — for Go to Implementation
+   * (#1142). Answered by path, like {@link definitions}.
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @returns Returns the implementations, or null when no server serves the document or it does not
+   * answer this.
+   */
+  public implementations(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+  ): Promise<readonly LspDefinition[] | null> {
+    return this.servesNavigation(model, 'implementation')
+      ? this.locationsByPath(model, position, 'textDocument/implementation')
+      : Promise.resolve(null);
+  }
+
+  /**
+   * Asks the language server that serves a document where the symbol at a position is declared, for
+   * Go to Declaration (#1213): in C++, the line in the header where Go to Definition goes to the
+   * source file. Answered by path, like {@link definitions}.
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @returns Returns the declarations, or null when no server serves the document or it does not
+   * answer this.
+   */
+  public declarations(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+  ): Promise<readonly LspDefinition[] | null> {
+    return this.servesNavigation(model, 'declaration')
+      ? this.locationsByPath(model, position, 'textDocument/declaration')
+      : Promise.resolve(null);
+  }
+
+  /**
+   * Asks clangd which file is a document's header or source, for Switch Header/Source (#1213). It
+   * answers a URI, or nothing when the file has no counterpart.
+   * @param model The editor model.
+   * @returns Returns the counterpart's path, or null when there is none or the server does not answer
+   * this.
+   */
+  public async sourceHeaderOf(model: MonacoApi.editor.ITextModel): Promise<string | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || !this.servesNavigation(model, 'sourceHeader')) {
+      return null;
+    }
+    const outcome: LspOutcome = await this.ask(ref, 'textDocument/switchSourceHeader', {
+      uri: ref.uri,
+    });
+    return outcome.ok && typeof outcome.result === 'string' ? this.uriToPath(outcome.result) : null;
+  }
+
+  /**
+   * Determines whether the language server that serves a document answers Go to Parent Module (#1210).
+   * @param model The editor model.
+   * @returns Returns true when it does.
+   */
+  public servesParentModule(model: MonacoApi.editor.ITextModel): boolean {
+    return this.resolve(model)?.navigation?.parentModule === true;
+  }
+
+  /**
+   * Asks the language server that serves a document for what declares the module at a position, for
+   * Go to Parent Module (#1210): the `mod` item, or at a crate's root its `Cargo.toml`.
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @returns Returns the places, or null when the server does not answer this.
+   */
+  public async parentModules(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+  ): Promise<readonly LspDefinition[] | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || !this.servesParentModule(model)) {
+      return null;
+    }
+    await ref.sync?.(model.getValue());
+    const outcome: LspOutcome = await this.ask(ref, PARENT_MODULE_METHOD, {
+      textDocument: { uri: ref.uri },
+      position: { line: position.lineNumber - 1, character: position.column - 1 },
+    });
+    return outcome.ok ? this.toPlaces(outcome.result) : null;
+  }
+
+  /**
+   * Determines whether the language server that serves a document answers Open Cargo.toml (#1210).
+   * @param model The editor model.
+   * @returns Returns true when it does.
+   */
+  public servesCargoManifest(model: MonacoApi.editor.ITextModel): boolean {
+    return this.resolve(model)?.navigation?.cargoManifest === true;
+  }
+
+  /**
+   * Asks the language server that serves a document for the `Cargo.toml` of its crate (#1210).
+   * @param model The editor model.
+   * @returns Returns the places, or null when the server does not answer this.
+   */
+  public async cargoManifests(
+    model: MonacoApi.editor.ITextModel,
+  ): Promise<readonly LspDefinition[] | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || !this.servesCargoManifest(model)) {
+      return null;
+    }
+    const outcome: LspOutcome = await this.ask(ref, CARGO_MANIFEST_METHOD, {
+      textDocument: { uri: ref.uri },
+    });
+    return outcome.ok ? this.toPlaces(outcome.result) : null;
+  }
+
+  /**
+   * Determines whether the language server that serves a document answers Go to Project Configuration:
+   * it lists tsserver's pass-through command among those it runs (#1207).
+   * @param model The editor model.
+   * @returns Returns true when it does.
+   */
+  public servesProjectConfiguration(model: MonacoApi.editor.ITextModel): boolean {
+    return (this.resolve(model)?.commands ?? []).includes(TSSERVER_REQUEST_COMMAND);
+  }
+
+  /**
+   * Asks the language server that serves a document which `tsconfig.json` or `jsconfig.json` its
+   * project is configured by, for Go to Project Configuration (#1207), as tsserver's `projectInfo`
+   * says. A file with none above it is in an inferred project, which has no configuration to go to.
+   * @param model The editor model.
+   * @returns Returns the configuration's place, none for an inferred project, or null when the server
+   * does not answer this.
+   */
+  public async projectConfigurations(
+    model: MonacoApi.editor.ITextModel,
+  ): Promise<readonly LspDefinition[] | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || !this.servesProjectConfiguration(model)) {
+      return null;
+    }
+    const outcome: LspOutcome = await this.ask(ref, 'workspace/executeCommand', {
+      command: TSSERVER_REQUEST_COMMAND,
+      arguments: ['projectInfo', { file: ref.uri, needFileNameList: false }],
+    });
+    if (!outcome.ok) {
+      return null;
+    }
+    const config: unknown = (outcome.result as { body?: { configFileName?: unknown } } | null)?.body
+      ?.configFileName;
+    return typeof config === 'string' && config.length > 0 && !config.startsWith(INFERRED_PROJECT)
+      ? [
+          {
+            path: config,
+            range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 },
+          },
+        ]
+      : [];
+  }
+
+  /**
+   * Asks the language server that serves a document for a view of the code at a place (#1210, #1213):
+   * the expansion of the macro there, the HIR or MIR of the function there, the syntax tree there, or
+   * the server's memory. The main process writes it where the editor opens it read-only.
+   * @param model The editor model.
+   * @param kind The view.
+   * @param selection The one-based range asked about: the caret, or what is selected.
+   * @returns Returns the view's path, or why there is none; null when the server gives no such view.
+   */
+  public async generatedView(
+    model: MonacoApi.editor.ITextModel,
+    kind: LspGeneratedViewKind,
+    selection: MonacoApi.IRange,
+  ): Promise<LspGeneratedViewResult | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || ref.navigation?.[kind] !== true || this.bridge === undefined) {
+      return null;
+    }
+    await ref.sync?.(model.getValue());
+    try {
+      return await this.bridge.invoke<LspGeneratedViewResult>(
+        LspChannel.GeneratedView,
+        ref.sessionId,
+        kind,
+        {
+          uri: ref.uri,
+          line: selection.startLineNumber - 1,
+          character: selection.startColumn - 1,
+          endLine: selection.endLineNumber - 1,
+          endCharacter: selection.endColumn - 1,
+        },
+      );
+    } catch (error: unknown) {
+      this.log.debug('LspFeatures', `The ${kind} view failed`, error);
+      return { error: serverMessage(error) };
+    }
+  }
+
+  /**
+   * Determines whether the language server that serves a document answers Go to Source Definition: it
+   * lists the command among those it runs (#1207).
+   * @param model The editor model.
+   * @returns Returns true when it does.
+   */
+  public servesSourceDefinition(model: MonacoApi.editor.ITextModel): boolean {
+    return (this.resolve(model)?.commands ?? []).includes(SOURCE_DEFINITION_COMMAND);
+  }
+
+  /**
+   * Asks the language server that serves a document for the source behind the symbol at a position,
+   * for Go to Source Definition (#1207). Answered by path, like {@link definitions}.
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @returns Returns the places, or null when the server does not answer this.
+   */
+  public async sourceDefinitions(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+  ): Promise<readonly LspDefinition[] | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || !this.servesSourceDefinition(model)) {
+      return null;
+    }
+    await ref.sync?.(model.getValue());
+    const outcome: LspOutcome = await this.ask(ref, 'workspace/executeCommand', {
+      command: SOURCE_DEFINITION_COMMAND,
+      arguments: [ref.uri, { line: position.lineNumber - 1, character: position.column - 1 }],
+    });
+    return outcome.ok ? this.toPlaces(outcome.result) : null;
+  }
+
+  /**
+   * Asks the language server that serves a document where the type of the symbol at a position is
+   * declared — from a variable or parameter to its type — for Go to Type Definition (#1142).
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @returns Returns the type definitions, or null when no server serves the document or it does not
+   * answer this.
+   */
+  public typeDefinitions(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+  ): Promise<readonly LspDefinition[] | null> {
+    return this.servesNavigation(model, 'typeDefinition')
+      ? this.locationsByPath(model, position, 'textDocument/typeDefinition')
+      : Promise.resolve(null);
+  }
+
+  /**
+   * Asks the language server that serves a document for the hierarchy of the symbol at a position
+   * (#1153) — a member's callers and callees, or a type's base and derived types — as its roots and a
+   * way to walk one level from any node, through the same server. The server's items go back to it
+   * untouched: Roslyn's carry the symbol's key in their `data`.
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @param kind Which hierarchy.
+   * @returns Returns the hierarchy (with no roots when the caret names no symbol that has one), or null
+   * when no server serving the document answers it.
+   */
+  public async hierarchy(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+    kind: HierarchyKind,
+  ): Promise<HierarchySource | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    const navigation: LspNavigationKind = kind === 'calls' ? 'callHierarchy' : 'typeHierarchy';
+    if (ref === null || this.bridge === undefined || ref.navigation?.[navigation] !== true) {
+      return null;
+    }
+    const bridge: Bridge = this.bridge;
+    const sessionId: string = ref.sessionId;
+    const prepared: unknown = await this.request(
+      model,
+      kind === 'calls' ? 'textDocument/prepareCallHierarchy' : 'textDocument/prepareTypeHierarchy',
+      position as MonacoApi.Position,
+    );
+    const roots: readonly HierarchyNode[] = Array.isArray(prepared)
+      ? this.hierarchyNodes(prepared)
+      : [];
+    return {
+      kind,
+      roots,
+      children: async (
+        node: HierarchyNode,
+        direction: HierarchyDirection,
+      ): Promise<readonly HierarchyNode[] | null> => {
+        let result: unknown;
+        try {
+          result = await bridge.invoke(
+            LspChannel.Request,
+            sessionId,
+            HIERARCHY_METHODS[direction],
+            { item: node.item },
+          );
+        } catch {
+          return null;
+        }
+        if (!Array.isArray(result)) {
+          return result === null ? [] : null;
+        }
+        // A call is reported as the caller (`from`) or the callee (`to`) with the spans of the calls
+        // themselves; the hierarchy lists the members.
+        const items: readonly unknown[] =
+          direction === 'callers'
+            ? result.map((call: { from?: unknown } | null): unknown => call?.from)
+            : direction === 'callees'
+              ? result.map((call: { to?: unknown } | null): unknown => call?.to)
+              : result;
+        return this.hierarchyNodes(items);
+      },
+    };
+  }
+
+  /**
+   * Maps a server's hierarchy items to nodes, dropping any that are malformed.
+   * @param items The items: `CallHierarchyItem`s or `TypeHierarchyItem`s.
+   * @returns Returns the nodes.
+   */
+  private hierarchyNodes(items: readonly unknown[]): readonly HierarchyNode[] {
+    const nodes: HierarchyNode[] = [];
+    for (const item of items) {
+      const candidate: {
+        name?: unknown;
+        detail?: unknown;
+        kind?: unknown;
+        uri?: unknown;
+        range?: LspRange;
+        selectionRange?: LspRange;
+      } | null = (item as typeof candidate) ?? null;
+      const range: LspRange | undefined = candidate?.selectionRange ?? candidate?.range;
+      if (
+        typeof candidate?.name !== 'string' ||
+        typeof candidate.uri !== 'string' ||
+        range === undefined
+      ) {
+        continue;
+      }
+      nodes.push({
+        name: candidate.name,
+        ...(typeof candidate.detail === 'string' && candidate.detail.length > 0
+          ? { detail: candidate.detail }
+          : {}),
+        kind: typeof candidate.kind === 'number' ? candidate.kind : 0,
+        location: { path: this.uriToPath(candidate.uri), range: this.toRange(range) },
+        item,
+      });
+    }
+    return nodes;
+  }
+
+  /**
+   * Asks the serving language server a location request and answers its places by path.
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @param method The location request.
+   * @returns Returns the places, in the server's order, or null when no server serves the document (an
+   * empty list is a server answering that it knows of none).
+   */
+  private async locationsByPath(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+    method:
+      | 'textDocument/definition'
+      | 'textDocument/declaration'
+      | 'textDocument/implementation'
+      | 'textDocument/typeDefinition',
   ): Promise<readonly LspDefinition[] | null> {
     if (this.resolve(model) === null) {
       return null;
     }
-    const result: unknown = await this.request(
-      model,
-      'textDocument/definition',
-      position as MonacoApi.Position,
-    );
+    return this.toPlaces(await this.request(model, method, position as MonacoApi.Position));
+  }
+
+  /**
+   * Reads a server's answer of one or several locations or location links as places by path.
+   * @param result The server's answer.
+   * @returns Returns the places, empty for no answer.
+   */
+  private toPlaces(result: unknown): readonly LspDefinition[] {
     if (result === null || result === undefined) {
       return [];
     }
@@ -1557,6 +3587,8 @@ export class LspFeatures {
     if (ref === null || (ref.codeActions ?? 'none') === 'none') {
       return null;
     }
+    // Edits are computed against what the server holds, and a stale text would land them wrongly.
+    await ref.sync?.(model.getValue());
     const diagnostics: readonly LspDiagnostic[] = (ref.diagnostics ?? []).filter(
       (diagnostic: LspDiagnostic): boolean => touches(diagnostic.range, range),
     );
@@ -1579,7 +3611,7 @@ export class LspFeatures {
     const actions: LspCodeAction[] = [];
     for (const raw of outcome.result as unknown[]) {
       const action: LspCodeAction | null = this.toCodeAction(raw);
-      if (action !== null) {
+      if (action !== null && !isMisplaced(action, model)) {
         actions.push(action);
       }
     }
@@ -1612,6 +3644,35 @@ export class LspFeatures {
       edit: resolved.edit ?? action.edit,
       command: resolved.command ?? action.command,
     };
+  }
+
+  /**
+   * Asks the language server that serves a document for a fix-all action's edit in one scope (#1151):
+   * every occurrence of the problem it fixes in the document, member, type, project or solution
+   * (Roslyn's `codeAction/resolveFixAll`, which answers with the edit across every file it touches).
+   * @param model The editor model the action was offered in.
+   * @param action The fix-all action.
+   * @param scope The scope, one of its {@link LspCodeAction.fixAllScopes}.
+   * @returns Returns the action with its edit for that scope, or with none when the server gave none.
+   */
+  public async resolveFixAll(
+    model: MonacoApi.editor.ITextModel,
+    action: LspCodeAction,
+    scope: string,
+  ): Promise<LspCodeAction> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    const unresolved: LspCodeAction = { ...action, edit: null, command: null };
+    if (ref === null) {
+      return unresolved;
+    }
+    const outcome: LspOutcome = await this.ask(ref, 'codeAction/resolveFixAll', {
+      title: action.title,
+      data: actionDataOf(action.raw),
+      scope,
+    });
+    const resolved: LspCodeAction | null = outcome.ok ? this.toCodeAction(outcome.result) : null;
+    // The fix-all's own command is the client's to run — this is that run — so none is kept.
+    return resolved === null ? unresolved : { ...resolved, title: action.title, command: null };
   }
 
   /**
@@ -1678,7 +3739,31 @@ export class LspFeatures {
     }
     const disabled: unknown = entry.disabled;
     const reason: unknown = (disabled as { reason?: unknown } | undefined)?.reason;
+    const command: LspCommand | null = toCommand(entry.command);
+    const data: {
+      CodeActionPath?: unknown;
+      FixAllFlavors?: unknown;
+      NestedCodeActions?: unknown;
+    } | null = (actionDataOf(raw) as typeof data) ?? null;
+    const path: readonly string[] | undefined = Array.isArray(data?.CodeActionPath)
+      ? data.CodeActionPath.filter((step: unknown): step is string => typeof step === 'string')
+      : undefined;
+    // Roslyn's two client commands (#1151): a fix-all, whose scopes the client offers and resolves one
+    // at a time, and a group of nested actions, which the client opens.
+    const fixAllScopes: readonly string[] | undefined =
+      command?.command === FIX_ALL_COMMAND && Array.isArray(data?.FixAllFlavors)
+        ? data.FixAllFlavors.filter((scope: unknown): scope is string => typeof scope === 'string')
+        : undefined;
+    const children: readonly LspCodeAction[] | undefined =
+      command?.command === NESTED_ACTIONS_COMMAND && Array.isArray(data?.NestedCodeActions)
+        ? data.NestedCodeActions.map((child: unknown): LspCodeAction | null =>
+            this.toCodeAction(child),
+          ).filter((child: LspCodeAction | null): child is LspCodeAction => child !== null)
+        : undefined;
     return {
+      ...(path === undefined ? {} : { path }),
+      ...(fixAllScopes === undefined ? {} : { fixAllScopes }),
+      ...(children === undefined ? {} : { children }),
       title: entry.title,
       kind: typeof entry.kind === 'string' ? entry.kind : '',
       isPreferred: entry.isPreferred === true,
@@ -1692,7 +3777,7 @@ export class LspFeatures {
         typeof entry.edit === 'object' && entry.edit !== null
           ? fromLspWorkspaceEdit(entry.edit, (uri: string): string => this.uriToPath(uri))
           : null,
-      command: toCommand(entry.command),
+      command,
       raw,
     };
   }
@@ -1842,6 +3927,65 @@ export class LspFeatures {
 }
 
 /**
+ * A part of a hint's label, as a server sends it.
+ */
+interface LspInlayHintLabelPart {
+  readonly value: string;
+  readonly tooltip?: string | { readonly kind?: string; readonly value?: string };
+}
+
+/**
+ * A hint set into the code, as a server sends it (`textDocument/inlayHint`).
+ */
+interface LspInlayHint {
+  readonly position?: LspPosition;
+  readonly label?: string | readonly LspInlayHintLabelPart[];
+  readonly kind?: number;
+  readonly paddingLeft?: boolean;
+  readonly paddingRight?: boolean;
+  readonly tooltip?: string | { readonly kind?: string; readonly value?: string };
+  readonly textEdits?: readonly { range?: LspRange; newText?: unknown }[];
+}
+
+/**
+ * Maps a server's tooltip — plain text or markup — to Monaco's.
+ * @param tooltip The tooltip.
+ * @returns Returns Monaco's tooltip.
+ */
+function toTooltip(
+  tooltip: string | { readonly kind?: string; readonly value?: string },
+): string | MonacoApi.IMarkdownString {
+  if (typeof tooltip === 'string') {
+    return tooltip;
+  }
+  return tooltip.kind === 'markdown' ? { value: tooltip.value ?? '' } : (tooltip.value ?? '');
+}
+
+/**
+ * Determines whether a line is the blank line Enter makes inside a just-opened block: the line above
+ * ends with `{`, the line itself holds only whitespace, and the line below starts with `}`.
+ * @param model The model.
+ * @param line The one-based line — the caret's, just after the newline.
+ * @returns Returns true when it is.
+ */
+export function opensBlockAt(model: MonacoApi.editor.ITextModel, line: number): boolean {
+  if (line < 2 || line >= model.getLineCount()) {
+    return false;
+  }
+  return (
+    model
+      .getLineContent(line - 1)
+      .trimEnd()
+      .endsWith('{') &&
+    model.getLineContent(line).trim().length === 0 &&
+    model
+      .getLineContent(line + 1)
+      .trimStart()
+      .startsWith('}')
+  );
+}
+
+/**
  * Converts a one-based editor position to a zero-based protocol position.
  * @param position The editor position.
  * @returns Returns the protocol position.
@@ -1886,6 +4030,42 @@ function isCommand(raw: unknown): boolean {
 }
 
 /**
+ * The server commands that convert a file from one language, keyed by that language. A server offers
+ * them wherever it is asked, and kotlin-language-server offers Convert Java to Kotlin on every span of
+ * a Kotlin file (#1209), where there is no Java to convert.
+ */
+const CONVERSIONS_FROM: Readonly<Record<string, string>> = { convertJavaToKotlin: 'java' };
+
+/**
+ * Determines whether a code action converts from a language other than the document's, so it has
+ * nothing to work on there.
+ * @param action The action.
+ * @param model The document's model.
+ * @returns Returns true when it does.
+ */
+function isMisplaced(action: LspCodeAction, model: MonacoApi.editor.ITextModel): boolean {
+  const from: string | undefined =
+    action.command === null ? undefined : CONVERSIONS_FROM[action.command.command];
+  return from !== undefined && from !== model.getLanguageId();
+}
+
+/**
+ * Reads the data a code action carries for its server: its own `data`, or — for a Roslyn action whose
+ * command the client runs — its command's first argument, which carries the same.
+ * @param raw The action, untrusted.
+ * @returns Returns the data, or undefined when it carries none.
+ */
+function actionDataOf(raw: unknown): unknown {
+  const entry: { data?: unknown; command?: { arguments?: unknown } } | null =
+    typeof raw === 'object' && raw !== null ? raw : null;
+  if (entry?.data !== undefined) {
+    return entry.data;
+  }
+  const args: unknown = entry?.command?.arguments;
+  return Array.isArray(args) ? args[0] : undefined;
+}
+
+/**
  * Reads a server's command.
  * @param raw The command, untrusted.
  * @returns Returns the command, or null when there is none or it is malformed.
@@ -1903,6 +4083,32 @@ function toCommand(raw: unknown): LspCommand | null {
     command: entry.command,
     ...(Array.isArray(entry.arguments) ? { arguments: entry.arguments as unknown[] } : {}),
   };
+}
+
+/**
+ * Sums up every code-lens switch, globally and for each language that overrides one (#1215), so a
+ * change to any of them is seen as one.
+ * @param global The global code settings.
+ * @param overrides Every language's overrides.
+ * @returns Returns the summary.
+ */
+function codeLensChoices(global: CodeLensSwitches, overrides: LanguageOverrides): string {
+  const pick: (from: Partial<CodeLensSwitches>) => unknown[] = (
+    from: Partial<CodeLensSwitches>,
+  ): unknown[] => [
+    from.codeLens,
+    from.codeLensReferences,
+    from.codeLensImplementations,
+    from.codeLensTests,
+    from.codeLensOther,
+  ];
+  return JSON.stringify([
+    pick(global),
+    Object.entries(overrides).map(([language, own]: [string, Partial<CodeLensSwitches>]) => [
+      language,
+      pick(own),
+    ]),
+  ]);
 }
 
 /**

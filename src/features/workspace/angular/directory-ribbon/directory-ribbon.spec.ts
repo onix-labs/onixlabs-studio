@@ -25,6 +25,9 @@ import {
   DockPanelCommands,
   DockPanelState,
 } from '@shared/angular/services/dock-panel-commands/dock-panel-commands';
+import { WorkspaceSymbolRouter } from '@shared/angular/services/go-to/workspace-symbol-router';
+import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
+import type { HierarchyKind } from '@shared/angular/services/hierarchy/hierarchy';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import type { FindRequest } from '@shared/angular/components/find-panel/find-request';
 import { DirectoryRibbon } from './directory-ribbon';
@@ -146,6 +149,18 @@ class FakeDocumentHandler implements WorkspaceDocumentCommandHandler {
 
   public saveAll(): void {
     this.saveAllCalls++;
+  }
+
+  public unsavedFiles: boolean = false;
+  public saveFilesCalls: number = 0;
+
+  public hasUnsavedFiles(): boolean {
+    return this.unsavedFiles;
+  }
+
+  public saveFiles(): Promise<void> {
+    this.saveFilesCalls++;
+    return Promise.resolve();
   }
 }
 
@@ -943,7 +958,60 @@ describe('DirectoryRibbon', () => {
           ?.items ?? [];
       expect(edit.map((entry: MenuEntry): string | undefined => entry.id)).toEqual([
         'directory.find',
+        'directory.goToWorkspaceSymbol',
+        'directory.showCallHierarchy',
+        'directory.showTypeHierarchy',
       ]);
+    });
+
+    it('showHierarchy_showsTheActiveEditorsHierarchy_fromTheEditMenu (#1153)', () => {
+      const shown: string[] = [];
+      vi.spyOn(TestBed.inject(EditorNavigation), 'showHierarchyInActiveEditor').mockImplementation(
+        (kind: HierarchyKind): Promise<void> => {
+          shown.push(kind);
+          return Promise.resolve();
+        },
+      );
+      const edit: readonly MenuEntry[] =
+        menu.sections().find((section: MenuContribution): boolean => section.id === 'edit')
+          ?.items ?? [];
+
+      menu.dispatch('directory.showCallHierarchy');
+      menu.dispatch('directory.showTypeHierarchy');
+
+      expect(
+        edit
+          .filter((entry: MenuEntry): boolean => entry.id?.includes('Hierarchy') === true)
+          .map((entry: MenuEntry): string | undefined => entry.label),
+      ).toEqual(['Show Call Hierarchy', 'Show Type Hierarchy']);
+      // The chords are the editor's own.
+      expect(
+        edit.some(
+          (entry: MenuEntry): boolean =>
+            entry.id?.includes('Hierarchy') === true && entry.accelerator !== undefined,
+        ),
+      ).toBe(false);
+      expect(shown).toEqual(['calls', 'types']);
+    });
+
+    it('goToSymbolInWorkspace_opensInTheWorkspaceInFront_fromTheEditMenu (#1146)', () => {
+      let opened: number = 0;
+      vi.spyOn(TestBed.inject(WorkspaceSymbolRouter), 'open').mockImplementation(
+        (): void => void (opened += 1),
+      );
+      const edit: readonly MenuEntry[] =
+        menu.sections().find((section: MenuContribution): boolean => section.id === 'edit')
+          ?.items ?? [];
+      const entry: MenuEntry | undefined = edit.find(
+        (candidate: MenuEntry): boolean => candidate.id === 'directory.goToWorkspaceSymbol',
+      );
+
+      menu.dispatch('directory.goToWorkspaceSymbol');
+
+      expect(entry?.label).toBe('Go to Symbol in Workspace');
+      // The chord is the workspace's own keybinding, which the user can change.
+      expect(entry?.accelerator).toBeUndefined();
+      expect(opened).toBe(1);
     });
 
     it('find_opensTheSearchPanelScopedToTheCurrentFile_throughTheFindRouter', () => {
@@ -1251,7 +1319,7 @@ describe('DirectoryRibbon', () => {
       expect(windows.openWindows).toBe(1);
       expect(
         windows.contentHost?.querySelector('.directory-ribbon__confirm-title')?.textContent,
-      ).toContain('Save layout');
+      ).toContain('Save Layout');
 
       internals().cancelSaveAs();
       internals().onManageLayouts();
@@ -1259,8 +1327,8 @@ describe('DirectoryRibbon', () => {
       appRef.tick();
       expect(windows.openWindows).toBe(1);
       const manage: string = windows.contentHost?.textContent ?? '';
-      expect(manage).toContain('Manage layouts');
-      expect(manage).toContain('Pick from a template');
+      expect(manage).toContain('Manage Layouts');
+      expect(manage).toContain('Add from Template');
       expect(manage).toContain('Default');
 
       internals().closeManage();

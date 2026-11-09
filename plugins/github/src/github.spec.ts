@@ -4,6 +4,7 @@ import {
   GitHubHosting,
   Http,
   HttpResponse,
+  listOptions,
   mapRunStatus,
   notSignedInDetail,
   Outcome,
@@ -372,6 +373,7 @@ describe('GitHubHosting', () => {
         private: true,
         default_branch: 'main',
         clone_url: 'https://github.com/onix-labs/studio.git',
+        ssh_url: 'git@github.com:onix-labs/studio.git',
         html_url: 'https://github.com/onix-labs/studio',
         updated_at: '2026-10-05T10:00:00Z',
       };
@@ -401,6 +403,7 @@ describe('GitHubHosting', () => {
             private: true,
             defaultBranch: 'main',
             cloneUrl: 'https://github.com/onix-labs/studio.git',
+            sshUrl: 'git@github.com:onix-labs/studio.git',
             webUrl: 'https://github.com/onix-labs/studio',
             updatedAt: '2026-10-05T10:00:00Z',
             starred: false,
@@ -712,6 +715,63 @@ describe('GitHubHosting', () => {
     });
   });
 
+  describe('list options (#1233)', () => {
+    /**
+     * Builds a page of raw issues.
+     * @param count How many.
+     * @param from The first number.
+     * @returns Returns the issues.
+     */
+    function issuesPage(count: number, from: number): readonly unknown[] {
+      return Array.from({ length: count }, (_unused: unknown, index: number): unknown => ({
+        id: from + index,
+        number: from + index,
+        title: `Issue ${from + index}`,
+        state: 'open',
+        user: { login: 'm' },
+      }));
+    }
+
+    it('readsAsManyPagesAsTheLimitNeeds_andStopsAtAShortPage', async () => {
+      const { github, http } = setup([
+        { match: 'page=2', status: 200, body: issuesPage(10, 101) },
+        { match: '/issues', status: 200, body: issuesPage(100, 1) },
+      ]);
+
+      const listed: Outcome<readonly HostedIssue[]> = await github.listIssues(REPOSITORY, {
+        limit: 150,
+      });
+
+      expect(listed.ok ? listed.result.length : -1).toBe(110);
+      expect(http.urls).toHaveLength(2);
+      expect(http.urls[0]).toContain('per_page=100');
+      expect(http.urls[1]).toContain('page=2');
+    });
+
+    it('asksForEveryState_andForOneBranchsRuns_whenTold', async () => {
+      const { github, http } = setup([
+        { match: '/issues', status: 200, body: [] },
+        { match: '/actions/runs', status: 200, body: { workflow_runs: [] } },
+      ]);
+
+      await github.listIssues(REPOSITORY, { state: 'all', limit: 25 });
+      await github.listCiRuns(REPOSITORY, { branch: 'feature/x' });
+
+      expect(http.urls[0]).toContain('state=all');
+      expect(http.urls[0]).toContain('per_page=25');
+      expect(http.urls[1]).toContain('branch=feature%2Fx');
+    });
+
+    it('listOptions_keepsOnlyWellFormedOptions', () => {
+      expect(listOptions({ limit: 50, state: 'all', branch: 'main' })).toEqual({
+        limit: 50,
+        state: 'all',
+        branch: 'main',
+      });
+      expect(listOptions({ limit: -1, state: 'closed', branch: '' })).toEqual({});
+    });
+  });
+
   describe('pull requests', () => {
     it('mapsPullRequests_withTheRefToFetch_andRollsUpTheirChecks', async () => {
       const { github } = setup([
@@ -749,6 +809,7 @@ describe('GitHubHosting', () => {
             author: 'matthew',
             url: 'https://github.com/onix-labs/onixlabs-studio/pull/7',
             draft: false,
+            state: 'open',
             headRef: 'feature/thing',
             fetchRef: 'refs/pull/7/head',
             checks: 'succeeded',
@@ -814,6 +875,7 @@ describe('GitHubHosting', () => {
         author: 'unknown',
         url: '',
         draft: false,
+        state: 'open',
         headRef: '',
         fetchRef: 'refs/pull/0/head',
         checks: 'none',
@@ -1209,6 +1271,7 @@ describe('writing', () => {
         author: 'matthew',
         url: 'https://github.com/onix-labs/onixlabs-studio/pull/851',
         draft: true,
+        state: 'open',
         headRef: 'feat/851',
         fetchRef: 'refs/pull/851/head',
         checks: 'none',

@@ -1,0 +1,267 @@
+import { Service } from '@angular/core';
+import { Bridge } from '@shared/api/bridge';
+import { DatabaseChannel, PassphraseUnlock } from '@shared/api/database-channels';
+import { PassphraseLock, SealedSecrets } from '@shared/api/database-document';
+import {
+  CompletionName,
+  ConnectionValues,
+  ConnectOptions,
+  ConnectOutcome,
+  DatabaseEngineInfo,
+  DatabaseValue,
+  ExecuteOutcome,
+  ExecuteRequest,
+  ExpandOutcome,
+  FetchRequest,
+  NamesRequest,
+  NodeActionOutcome,
+  TransactionOutcome,
+  TransactionRequest,
+  TreeOptions,
+} from '@shared/api/database-engine-protocol';
+
+/**
+ * The message every call answers with outside the desktop application, where there is no engine.
+ */
+const UNAVAILABLE: string = 'Database engines are unavailable outside the desktop application.';
+
+/**
+ * The renderer client for the database engines: a typed wrapper over the generic {@link Bridge} naming
+ * the {@link DatabaseChannel} channels, so no panel touches `window.bridge`. Outside Electron every
+ * call answers with a failure rather than throwing, as the API Explorer's client does.
+ */
+@Service()
+export class DatabaseClient {
+  /**
+   * Holds the IPC transport, or undefined outside Electron.
+   */
+  private readonly bridge: Bridge | undefined = window.bridge;
+
+  /**
+   * Lists the available engines.
+   * @returns Returns a promise resolving the engines.
+   */
+  public engines(): Promise<readonly DatabaseEngineInfo[]> {
+    return (
+      this.bridge?.invoke<readonly DatabaseEngineInfo[]>(DatabaseChannel.Engines) ??
+      Promise.resolve([])
+    );
+  }
+
+  /**
+   * Opens a connection.
+   * @param engine The engine's id.
+   * @param values The field values, secrets included.
+   * @param options How to open it.
+   * @returns Returns a promise resolving the outcome.
+   */
+  public connect(
+    engine: string,
+    values: ConnectionValues,
+    options?: ConnectOptions,
+  ): Promise<ConnectOutcome> {
+    return (
+      this.bridge?.invoke<ConnectOutcome>(DatabaseChannel.Connect, engine, values, options) ??
+      Promise.resolve({ kind: 'failure', message: UNAVAILABLE })
+    );
+  }
+
+  /**
+   * Tests a connection without keeping it open.
+   * @param engine The engine's id.
+   * @param values The field values, secrets included.
+   * @param options How to open it.
+   * @returns Returns a promise resolving the outcome.
+   */
+  public test(
+    engine: string,
+    values: ConnectionValues,
+    options?: ConnectOptions,
+  ): Promise<ConnectOutcome> {
+    return (
+      this.bridge?.invoke<ConnectOutcome>(DatabaseChannel.Test, engine, values, options) ??
+      Promise.resolve({ kind: 'failure', message: UNAVAILABLE })
+    );
+  }
+
+  /**
+   * Closes a session.
+   * @param session The session's id.
+   * @returns Returns a promise resolving once it is closed.
+   */
+  public disconnect(session: string): Promise<void> {
+    return this.bridge?.invoke<void>(DatabaseChannel.Disconnect, session) ?? Promise.resolve();
+  }
+
+  /**
+   * Lists a tree node's children.
+   * @param session The session's id.
+   * @param path The node's path, or null for the top of the tree.
+   * @param options How to describe the tree.
+   * @returns Returns a promise resolving the outcome.
+   */
+  public expand(
+    session: string,
+    path: string | null,
+    options?: TreeOptions,
+  ): Promise<ExpandOutcome> {
+    return (
+      this.bridge?.invoke<ExpandOutcome>(DatabaseChannel.Expand, session, path, options) ??
+      Promise.resolve({ kind: 'failure', message: UNAVAILABLE })
+    );
+  }
+
+  /**
+   * Runs text.
+   * @param request The execution.
+   * @returns Returns a promise resolving the outcome; it never rejects.
+   */
+  public execute(request: ExecuteRequest): Promise<ExecuteOutcome> {
+    return (
+      this.bridge?.invoke<ExecuteOutcome>(DatabaseChannel.Execute, request) ??
+      Promise.resolve({
+        id: request.id,
+        resultSets: [],
+        messages: [{ severity: 'error', text: UNAVAILABLE }],
+        elapsedMs: 0,
+        failed: true,
+        cancelled: false,
+      })
+    );
+  }
+
+  /**
+   * Cancels a running execution.
+   * @param id The execution's id.
+   */
+  public cancel(id: string): void {
+    this.bridge?.send(DatabaseChannel.Cancel, id);
+  }
+
+  /**
+   * Reads more rows of a paged result set.
+   * @param request What to read.
+   * @returns Returns a promise resolving the rows.
+   */
+  public fetch(request: FetchRequest): Promise<readonly (readonly DatabaseValue[])[]> {
+    return (
+      this.bridge?.invoke<readonly (readonly DatabaseValue[])[]>(DatabaseChannel.Fetch, request) ??
+      Promise.resolve([])
+    );
+  }
+
+  /**
+   * Runs a node action.
+   * @param session The session's id.
+   * @param path The node's path.
+   * @param action The action's id.
+   * @param options How to describe the tree.
+   * @returns Returns a promise resolving what it produced.
+   */
+  public action(
+    session: string,
+    path: string,
+    action: string,
+    options?: TreeOptions,
+  ): Promise<NodeActionOutcome> {
+    return (
+      this.bridge?.invoke<NodeActionOutcome>(
+        DatabaseChannel.Action,
+        session,
+        path,
+        action,
+        options,
+      ) ?? Promise.resolve({ kind: 'failure', message: UNAVAILABLE })
+    );
+  }
+
+  /**
+   * Commits or rolls back the transaction an execution left open.
+   * @param request What to do.
+   * @returns Returns a promise resolving what it came to.
+   */
+  public transaction(request: TransactionRequest): Promise<TransactionOutcome> {
+    return (
+      this.bridge?.invoke<TransactionOutcome>(DatabaseChannel.Transaction, request) ??
+      Promise.resolve({ failed: true, message: UNAVAILABLE })
+    );
+  }
+
+  /**
+   * Lists names to complete a query with.
+   * @param request The request.
+   * @returns Returns a promise resolving the names; none when there are none to be had.
+   */
+  public names(request: NamesRequest): Promise<readonly CompletionName[]> {
+    return (
+      this.bridge?.invoke<readonly CompletionName[]>(DatabaseChannel.Names, request) ??
+      Promise.resolve([])
+    );
+  }
+
+  /**
+   * Asks whether this machine can seal secrets with its keychain.
+   * @returns Returns a promise resolving true when it can.
+   */
+  public canSealWithMachine(): Promise<boolean> {
+    return (
+      this.bridge?.invoke<boolean>(DatabaseChannel.SecretsMachineSealing) ?? Promise.resolve(false)
+    );
+  }
+
+  /**
+   * Unlocks a passphrase against a document's lock, or makes a new lock.
+   * @param passphrase The passphrase.
+   * @param lock The document's lock, or null to make one.
+   * @returns Returns a promise resolving the handle and lock, or that it is wrong.
+   */
+  public unlock(passphrase: string, lock: PassphraseLock | null): Promise<PassphraseUnlock> {
+    return (
+      this.bridge?.invoke<PassphraseUnlock>(DatabaseChannel.SecretsUnlock, passphrase, lock) ??
+      Promise.resolve({ kind: 'wrong' })
+    );
+  }
+
+  /**
+   * Seals a connection's secrets.
+   * @param secrets The secrets, by field id.
+   * @param handle The unlocked passphrase, or null for the machine's keychain.
+   * @returns Returns a promise resolving the seal, or null when none could be made.
+   */
+  public seal(
+    secrets: Readonly<Record<string, string>>,
+    handle: string | null,
+  ): Promise<SealedSecrets | null> {
+    return (
+      this.bridge?.invoke<SealedSecrets | null>(DatabaseChannel.SecretsSeal, secrets, handle) ??
+      Promise.resolve(null)
+    );
+  }
+
+  /**
+   * Opens a seal.
+   * @param sealed The seal.
+   * @param handle The unlocked passphrase, for a passphrase seal.
+   * @returns Returns a promise resolving the secrets, or null when they cannot be opened here.
+   */
+  public open(
+    sealed: SealedSecrets,
+    handle: string | null,
+  ): Promise<Readonly<Record<string, string>> | null> {
+    return (
+      this.bridge?.invoke<Readonly<Record<string, string>> | null>(
+        DatabaseChannel.SecretsOpen,
+        sealed,
+        handle,
+      ) ?? Promise.resolve(null)
+    );
+  }
+
+  /**
+   * Forgets an unlocked passphrase's key in main.
+   * @param handle The handle.
+   */
+  public forget(handle: string): void {
+    this.bridge?.send(DatabaseChannel.SecretsForget, handle);
+  }
+}

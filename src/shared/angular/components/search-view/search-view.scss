@@ -92,3 +92,18 @@
   flex-direction: column;
   min-block-size: 0;
 }
+
+// The Replace All confirmation, in the shape of the explorers' delete confirmation.
+.search-view__dialog-title {
+  margin: 0 0 0.6rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.search-view__dialog-message {
+  margin: 0 0 1.3rem;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--body-foreground-color);
+}

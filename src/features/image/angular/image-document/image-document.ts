@@ -1,3 +1,4 @@
+import { Settings } from '@shared/angular/services/settings/settings';
 import {
   computed,
   effect,
@@ -41,17 +42,39 @@ const SAVE_ECHO_WINDOW_MS: number = 2000;
  * Specifies how many edits the undo history keeps. Each step holds a whole raster, so the history is
  * bounded rather than growing with every rotate.
  */
-const MAX_UNDO: number = 20;
+const DEFAULT_MAX_UNDO: number = 20;
 
 /**
  * Specifies the quality a lossy format is written back at when an edited image is saved in place.
  */
-const SAVE_QUALITY: number = 0.92;
+const DEFAULT_SAVE_QUALITY: number = 0.92;
 
 /**
  * Specifies the custom scheme the main process serves local images over.
  */
 const MEDIA_SCHEME: string = 'studio-media';
+
+/**
+ * Holds how a percentage setting becomes a fraction.
+ */
+const PERCENT: number = 100;
+
+/**
+ * Holds the limits a document reads from Settings as it needs them.
+ */
+export interface ImageDocumentLimits {
+  /**
+   * Gets how many edits Undo can go back.
+   * @returns Returns the number of edits.
+   */
+  undoHistory(): number;
+
+  /**
+   * Gets the quality a lossy format is written back at.
+   * @returns Returns the quality from 0 to 1.
+   */
+  saveQuality(): number;
+}
 
 /**
  * Maps the file extensions to the short format label the status strip shows.
@@ -248,12 +271,17 @@ export class ImageDocument {
    * @param fileName The file's base name.
    * @param raster The raster service that decodes, edits and encodes pixels.
    * @param workspace The workspace client the file's bytes are read and written through.
+   * @param limits The undo depth and save quality, read as they are needed.
    */
   public constructor(
     public readonly path: string,
     public readonly fileName: string,
     private readonly raster: ImageRaster,
     private readonly workspace: Workspace,
+    private readonly limits: ImageDocumentLimits = {
+      undoHistory: (): number => DEFAULT_MAX_UNDO,
+      saveQuality: (): number => DEFAULT_SAVE_QUALITY,
+    },
   ) {
     const extension: string = imageExtensionOf(path);
     this.mime = imageMimeTypeOf(path) ?? 'application/octet-stream';
@@ -306,7 +334,7 @@ export class ImageDocument {
       const base: Raster = this.edited ?? (await this.decoded());
       const next: Raster = this.raster.apply(base, edit);
       this.undoStack.push(this.edited);
-      if (this.undoStack.length > MAX_UNDO) {
+      while (this.undoStack.length > this.limits.undoHistory()) {
         this.undoStack.shift();
       }
       this.redoStack = [];
@@ -353,7 +381,12 @@ export class ImageDocument {
     if (!this.canSaveInPlace || !isEncodableImageType(this.mime)) {
       return 'needs-export';
     }
-    const written: boolean = await this.write(this.path, this.edited, this.mime, SAVE_QUALITY);
+    const written: boolean = await this.write(
+      this.path,
+      this.edited,
+      this.mime,
+      this.limits.saveQuality(),
+    );
     if (!written) {
       return 'failed';
     }
@@ -554,6 +587,11 @@ export class ImageDocuments implements UnsavedWorkSource {
    * Holds the raster service documents decode, edit and encode through.
    */
   private readonly raster: ImageRaster = inject(ImageRaster);
+
+  /**
+   * Holds the settings, which give a document its undo depth and save quality.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the file-system service showing the save and confirm-save dialogs.
@@ -801,6 +839,10 @@ export class ImageDocuments implements UnsavedWorkSource {
       basename(path),
       this.raster,
       this.workspace,
+      {
+        undoHistory: (): number => this.settings.get('imageViewer.undoHistory'),
+        saveQuality: (): number => this.settings.get('imageViewer.saveQuality') / PERCENT,
+      },
     );
     this.documents.set(path, document);
     this.watchDisposers.set(
@@ -826,7 +868,7 @@ export class ImageDocuments implements UnsavedWorkSource {
 
   /**
    * Handles a document's file changing on disk. The echo of its own save is ignored; an unedited
-   * image reloads in place; an edited one raises a keep-or-reload conflict, so edits are never
+   * image does what Reload Files Changed on Disk says; an edited one raises a keep-or-reload conflict, so edits are never
    * silently discarded.
    * @param document The document whose file changed.
    */
@@ -834,12 +876,15 @@ export class ImageDocuments implements UnsavedWorkSource {
     if (document.recentlySaved(SAVE_ECHO_WINDOW_MS)) {
       return;
     }
+    const tabId: string = this.holdersOf(document)[0]?.tabId ?? '';
     if (!document.dirty()) {
-      this.log.info('image.document', 'External change; reloading image', document.path);
-      void document.reload();
+      this.log.info('image.document', 'External change to an unedited image', document.path);
+      this.fileConflicts.changedOnDisk(
+        { documentId: document.path, tabId, name: document.fileName },
+        (): void => void document.reload(),
+      );
       return;
     }
-    const tabId: string = this.holdersOf(document)[0]?.tabId ?? '';
     this.log.warn('image.document', 'External change on edited image', document.path);
     this.fileConflicts.raise(
       { documentId: document.path, tabId, name: document.fileName },

@@ -1,3 +1,4 @@
+import { Settings } from '@shared/angular/services/settings/settings';
 import { TestBed } from '@angular/core/testing';
 import { FakeProjectMachine } from '@features/welcome/angular/welcome-create/project-draft.testing';
 import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
@@ -26,6 +27,11 @@ describe('ProjectDestination', () => {
     machine = new FakeProjectMachine();
   });
 
+  afterEach(() => {
+    localStorage.removeItem('settings');
+    localStorage.removeItem('newProject.lastAccount');
+  });
+
   it('readsWhereProjectsGo_andWhatRepositoriesCanBeMade', async () => {
     const destination: ProjectDestination = await made();
 
@@ -50,6 +56,49 @@ describe('ProjectDestination', () => {
       private: true,
       layout: 'flat',
     });
+  });
+
+  it('followsDefaultCloneLayout_untilItSaysAsk', async () => {
+    const before: ProjectDestination = await made();
+    expect(before.layout()).toBeNull();
+
+    TestBed.inject(Settings).set('versionControl.cloneLayout', 'worktree');
+    const after: ProjectDestination = TestBed.runInInjectionContext(
+      (): ProjectDestination => new ProjectDestination(),
+    );
+    expect(after.layout()).toBe('worktree');
+  });
+
+  it('remembersTheAccountLastUsed', async () => {
+    machine.accounts = [
+      { login: 'one', name: null, kind: 'user' },
+      { login: 'two', name: null, kind: 'organization' },
+    ];
+    const first: ProjectDestination = await made();
+    const id: string = first.accounts()[1].id;
+    first.setRepository('public');
+    expect(first.account()).toBeNull();
+    first.chooseAccount(id);
+
+    const next: ProjectDestination = TestBed.runInInjectionContext(
+      (): ProjectDestination => new ProjectDestination(),
+    );
+    next.accounts.set(first.accounts());
+    next.setRepository('public');
+
+    expect(next.account()).toBe(id);
+  });
+
+  it('stopsAsking_oncePointedAtTheDefaultProjectsFolder', async () => {
+    const destination: ProjectDestination = await made();
+    expect(destination.asksWhere()).toBe(true);
+
+    TestBed.inject(Settings).set('workspaces.askWhereToCreate', false);
+    expect(destination.asksWhere()).toBe(false);
+
+    // With nowhere to go it has to ask all the same.
+    destination.location.set(null);
+    expect(destination.asksWhere()).toBe(true);
   });
 
   it('saysWhatIsMissing', async () => {

@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { realPathOf } from './ai/write-confinement';
 import { logger } from './logger';
 
 /**
@@ -72,12 +73,60 @@ export class TrustedPaths {
   }
 
   /**
+   * Remembers a path the user chose themselves, by the operating system's dialog or by opening it from
+   * outside the app, under the name they chose and under where it really is. The second is what lets
+   * a link they picked keep working where the file channels follow links before they check (#1174).
+   * Never for a path the renderer named: {@link remember} is the one for those, because a link planted
+   * in a workspace must not turn the file it points at into a trusted one.
+   * @param target The absolute path chosen.
+   */
+  public rememberChosen(target: string): void {
+    this.remember(target);
+    if (target.length > 0) {
+      this.remember(realPathOf(path.resolve(target)));
+    }
+  }
+
+  /**
    * Determines whether a path has been remembered as trusted.
    * @param target The path to test.
    * @returns Returns true when the path is trusted.
    */
   public has(target: unknown): boolean {
     return typeof target === 'string' && target.length > 0 && this.index.has(path.resolve(target));
+  }
+
+  /**
+   * Lists the remembered paths, newest first.
+   * @returns Returns the paths.
+   */
+  public list(): readonly string[] {
+    return [...this.entries].reverse();
+  }
+
+  /**
+   * Forgets a remembered path, so reopening it needs a dialog again.
+   * @param target The path to forget.
+   */
+  public forget(target: unknown): void {
+    if (!this.has(target)) {
+      return;
+    }
+    const resolved: string = path.resolve(target as string);
+    logger.info('TrustedPaths', `Forgetting trusted path ${resolved}`);
+    this.entries = this.entries.filter((entry: string): boolean => entry !== resolved);
+    this.index = new Set<string>(this.entries);
+    save(this.file, this.entries);
+  }
+
+  /**
+   * Forgets every remembered path.
+   */
+  public clear(): void {
+    logger.info('TrustedPaths', `Forgetting all ${this.entries.length} trusted path(s)`);
+    this.entries = [];
+    this.index = new Set<string>();
+    save(this.file, this.entries);
   }
 }
 

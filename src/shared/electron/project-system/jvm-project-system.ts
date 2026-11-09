@@ -9,6 +9,8 @@ import {
   ProjectModel,
   ProjectNode,
 } from '@shared/api/project-system';
+import { buildItemTree, EvaluatedItem } from './item-tree';
+import { gradleSourceDirectories, mavenSourceDirectories } from './jvm-source-sets';
 import { ProjectSystem } from './project-system';
 import { logger } from '../logger';
 
@@ -59,6 +61,23 @@ const SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set<string>([
  * effectively the whole repository) cannot balloon the Solution Explorer.
  */
 const MAX_ITEMS: number = 5_000;
+
+/**
+ * The folder both Gradle and Maven keep source sets under by convention, one folder per set: `src/main`,
+ * `src/test`, `src/integrationTest`, Kotlin Multiplatform's `src/commonMain`.
+ */
+const SOURCE_ROOT: string = 'src';
+
+/**
+ * The files of a module that describe its build, listed beside its source sets.
+ */
+const BUILD_FILES: readonly string[] = [
+  ...GRADLE_BUILD_FILES,
+  ...GRADLE_SETTINGS_FILES,
+  MAVEN_POM,
+  'gradle.properties',
+  'gradle/libs.versions.toml',
+];
 
 /**
  * The build tool a JVM root uses. Gradle and Maven are modelled the same way — a root project with
@@ -145,7 +164,8 @@ export function parseMavenModules(pom: string | null): readonly string[] {
 /**
  * Models a JVM workspace built by Gradle or Maven: the root project, plus each declared submodule
  * (Gradle's `include`d projects, Maven's `<modules>`) expanded from the settings/pom manifest. A
- * module's files are listed straight from its directory, skipping build-output and cache folders.
+ * module's contents are its source sets and build files, or its files listed straight from its
+ * directory, skipping build-output and cache folders, when it has no source sets.
  * Deliberately language-server-agnostic, like the .NET and Node providers; the workspace view decides to
  * prestart the Java language server (jdtls) for `jvm` models.
  */
@@ -197,20 +217,105 @@ export class JvmProjectSystem implements ProjectSystem {
   }
 
   /**
-   * Lists a module's source files straight from its directory, skipping build-output and cache folders
-   * and other modules' directories (a nested manifest marks a separate module).
+   * Loads what a module's build is made of (#899): its source sets and the files describing its build,
+   * so outputs and assets that share the tree stay out of the Solution Explorer; the File Explorer
+   * shows everything. The tools are deliberately not asked. A Gradle script is a program and a pom can
+   * pull in build extensions, so either would run the project's code from a scan; the source sets are
+   * read from the convention, and from the manifest where it moves them. A module with none, such as
+   * an aggregator, has its files listed from its directory instead, skipping build-output and cache
+   * folders and other modules' directories (a nested manifest marks a separate module).
    * @param projectPath The absolute path of the module manifest.
    * @returns Returns the contents, or null when the directory cannot be read.
    */
   public async loadProjectItems(projectPath: string): Promise<ProjectItems | null> {
     const directory: string = path.dirname(projectPath);
-    const budget: { remaining: number } = { remaining: MAX_ITEMS };
-    const tree: readonly ProjectItemNode[] | null = await this.listDirectory(
-      directory,
-      budget,
-      true,
-    );
+    const tree: readonly ProjectItemNode[] | null =
+      (await this.sourceSetTree(projectPath, directory)) ??
+      (await this.listDirectory(directory, { remaining: MAX_ITEMS }, true));
     return tree === null ? null : { projectPath, tree };
+  }
+
+  /**
+   * Builds a module's contents from its source sets.
+   * @param projectPath The absolute path of the module manifest.
+   * @param directory The module's directory.
+   * @returns Returns the contents, or null when the module has no source files.
+   */
+  private async sourceSetTree(
+    projectPath: string,
+    directory: string,
+  ): Promise<readonly ProjectItemNode[] | null> {
+    const manifest: string | null = await this.readFile(projectPath);
+    const declared: readonly string[] =
+      path.basename(projectPath) === MAVEN_POM
+        ? mavenSourceDirectories(manifest)
+        : gradleSourceDirectories(manifest);
+    const budget: { remaining: number } = { remaining: MAX_ITEMS };
+    const sources: string[] = [];
+    for (const folder of [SOURCE_ROOT, ...declared]) {
+      sources.push(...(await this.sourceSetFiles(directory, folder, budget)));
+    }
+    if (sources.length === 0) {
+      return null;
+    }
+    const buildFiles: string[] = [];
+    for (const file of BUILD_FILES) {
+      if (await this.exists(path.join(directory, file))) {
+        buildFiles.push(path.join(directory, file));
+      }
+    }
+    logger.debug(
+      'JvmProjectSystem',
+      `Listed ${sources.length} source-set file(s) for '${projectPath}' without running its build.`,
+    );
+    return buildItemTree(
+      projectPath,
+      [...buildFiles, ...sources].map((file: string): EvaluatedItem => ({
+        identity: path.relative(directory, file),
+        link: '',
+      })),
+    );
+  }
+
+  /**
+   * Lists what a source folder holds. A declared folder comes from a file in the workspace, so one
+   * that leaves the module, or is the module itself, holds nothing, and a link is not followed.
+   * @param directory The module's directory.
+   * @param folder The folder, relative to the module.
+   * @param budget The remaining file budget.
+   * @returns Returns the absolute paths of its files.
+   */
+  private async sourceSetFiles(
+    directory: string,
+    folder: string,
+    budget: { remaining: number },
+  ): Promise<readonly string[]> {
+    const full: string = path.resolve(directory, folder);
+    const relative: string = path.relative(directory, full);
+    if (relative.length === 0 || relative.startsWith('..') || path.isAbsolute(relative)) {
+      return [];
+    }
+    let isDirectory: boolean;
+    try {
+      isDirectory = (await fs.lstat(full)).isDirectory();
+    } catch {
+      return [];
+    }
+    if (!isDirectory) {
+      return [];
+    }
+    return this.filesOf((await this.listDirectory(full, budget, false, true)) ?? []);
+  }
+
+  /**
+   * Flattens a listing into its files.
+   * @param nodes The listing.
+   * @returns Returns the absolute paths.
+   */
+  private filesOf(nodes: readonly ProjectItemNode[]): readonly string[] {
+    return nodes.flatMap((node: ProjectItemNode): readonly string[] =>
+      node.type === 'file' ? [node.path] : this.filesOf(node.children),
+    );
   }
 
   /**
@@ -342,12 +447,15 @@ export class JvmProjectSystem implements ProjectSystem {
    * @param directory The directory to list.
    * @param budget The remaining file budget, decremented as files are added.
    * @param isRoot Whether this is the module's own directory (nested manifests only prune below it).
+   * @param isSources Whether the directory is inside a source set, where a name like `build` is a
+   * package and not an output: `org/acme/build/Task.java` must not disappear.
    * @returns Returns the nodes, or null when the directory cannot be read.
    */
   private async listDirectory(
     directory: string,
     budget: { remaining: number },
     isRoot: boolean,
+    isSources: boolean = false,
   ): Promise<readonly ProjectItemNode[] | null> {
     let entries: Dirent[];
     try {
@@ -356,7 +464,9 @@ export class JvmProjectSystem implements ProjectSystem {
       return null;
     }
     const directories: Dirent[] = entries
-      .filter((entry: Dirent): boolean => entry.isDirectory() && !this.isSkipped(entry.name))
+      .filter(
+        (entry: Dirent): boolean => entry.isDirectory() && !this.isSkipped(entry.name, isSources),
+      )
       .sort((a: Dirent, b: Dirent): number => a.name.localeCompare(b.name));
     const files: Dirent[] = entries
       .filter((entry: Dirent): boolean => entry.isFile())
@@ -372,6 +482,7 @@ export class JvmProjectSystem implements ProjectSystem {
         full,
         budget,
         false,
+        isSources,
       );
       if (children !== null && children.length > 0) {
         nodes.push({ type: 'folder', name: child.name, path: full, children });
@@ -442,10 +553,14 @@ export class JvmProjectSystem implements ProjectSystem {
   /**
    * Determines whether a directory is skipped when listing a module's files.
    * @param name The directory name.
+   * @param isSources Whether the directory is inside a source set, where only dot folders and a
+   * front end's dependencies are skipped.
    * @returns Returns true when the directory should be skipped.
    */
-  private isSkipped(name: string): boolean {
-    return name.startsWith('.') || SKIPPED_DIRECTORIES.has(name);
+  private isSkipped(name: string, isSources: boolean = false): boolean {
+    return (
+      name.startsWith('.') || (isSources ? name === 'node_modules' : SKIPPED_DIRECTORIES.has(name))
+    );
   }
 
   /**

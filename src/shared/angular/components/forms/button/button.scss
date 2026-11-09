@@ -8,7 +8,7 @@
 }
 
 // Every measurement of a button lives here. The reference is the clear-recent-items pair, whose
-// radius and spacing were judged right: a solid affirmative beside an outlined counterpart.
+// radius and spacing were judged right: a solid affirmative beside a quieter counterpart.
 .button {
   // The button's colour, resolved through a local set of tone variables so shape and meaning stay
   // separate axes: every coloured surface below reads these, and a tone class (below) is the only
@@ -17,7 +17,6 @@
   --btn-tone-surface-background: var(--accent-surface-background-color);
   --btn-tone-surface-border: var(--accent-surface-border-color);
   --btn-tone-surface-foreground: var(--accent-surface-foreground-color);
-  --btn-outline-border-color: var(--dock-border-color);
 
   display: inline-flex;
   flex: 1;
@@ -27,7 +26,7 @@
   // Height is stated, not left to the label's line box, so a button matches the field or dropdown
   // beside it. Only the inline padding is the button's own.
   block-size: var(--control-height);
-  padding: 0 0.5rem;
+  padding: 0 var(--btn-padding-inline, 0.5rem);
   font: inherit;
   color: var(--body-foreground-color);
   background: transparent;
@@ -47,19 +46,21 @@
   }
 }
 
-// The label's box is trimmed to the text it draws, so it is the same height as the glyph beside it
-// (which the icon atom already draws at `line-height: 1`). Without this the label carries the font's
-// default leading — more above the text than below — and the two boxes centre at slightly different
-// heights, which is what reads as an icon sitting a hair high next to its label.
+// The label's box is trimmed to the text it draws — from the capital height down to the baseline —
+// so the button centres the letters themselves, not the font's leading: `text-box` drops the
+// font's uneven space above and below, which is what read as text (and an icon beside it) sitting a
+// hair off centre. Descenders (the tail of a g or a y) hang below that box by design, so the label
+// clips only sideways: a vertical clip would cut them off.
 //
 // One line, always: the button's height is fixed, so a wrapped label spills out of it. A button
 // squeezed narrower than its label ellipsises instead.
 .button__label {
   min-inline-size: 0;
-  overflow: hidden;
-  line-height: 1;
+  overflow-x: clip;
+  overflow-y: visible;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-box: trim-both cap alphabetic;
 }
 
 // A glyph with no label is a square: the height comes from the shared control height, and the width
@@ -100,8 +101,7 @@
 // Tone: repoints the local tone variables off the accent onto a state colour. Only the four state
 // tones carry a class (the accent tone is the default and adds none), so these never touch an
 // ordinary button. Each builds the same tinted-fill / brighter-border surface the accent does, from
-// the state colour's RGB triplet. The outline border is left neutral (--dock-border-color) so a
-// toned outline rests like any other and only takes its tone on hover.
+// the state colour's RGB triplet.
 :host(.button--tone-success) .button {
   --btn-tone-color: var(--success-color);
   --btn-tone-surface-background: rgba(var(--success-color-rgb), 0.15);
@@ -157,10 +157,25 @@
   }
 }
 
-// Outline: neutral until pointed at, then the tone surface — the counterpart to a solid button. A
-// toned outline carries the tone's border at rest too.
-:host(.button--outline) .button {
-  border-color: var(--btn-outline-border-color);
+// A disabled solid button fades like any other, but its label takes a very light shade of its tone
+// rather than fading to grey.
+:host(.button--solid:not(.button--loading)) .button:disabled {
+  color: color-mix(in srgb, var(--btn-tone-color) 25%, white);
+}
+
+// Ghost: a secondary action that needs to stand out. At rest it is already stronger than any button's
+// hover, so a borderless button lit up beside it still reads as the quieter of the two; pointing at it
+// goes further again.
+:host(.button--ghost) .button {
+  color: var(--btn-tone-surface-foreground);
+  background: color-mix(in srgb, var(--btn-tone-color) 32%, transparent);
+  border-color: var(--btn-tone-color);
+
+  &:hover:not(:disabled),
+  &:focus-visible:not(:disabled) {
+    color: var(--gray-100);
+    background: color-mix(in srgb, var(--btn-tone-color) 55%, transparent);
+  }
 }
 
 // A toggle that is on wears the hover treatment permanently, so "engaged" and "pointed at" read as
@@ -172,9 +187,7 @@
 }
 
 // None: no chrome at rest, for buttons that sit in a row (tool strips, ribbon strips, panel
-// toolbars) where borders at rest would read as a wall of boxes. Hovers exactly as an outlined one,
-// so the two are the same button with a different resting state.
-:host(.button--outline) .button,
+// toolbars) where borders at rest would read as a wall of boxes.
 :host(.button--none) .button {
   &:hover:not(:disabled),
   &:focus-visible:not(:disabled) {

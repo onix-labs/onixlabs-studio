@@ -1,10 +1,10 @@
 import { app } from 'electron';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createReadStream, createWriteStream, existsSync } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, readdirSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { Readable } from 'node:stream';
+import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
 import { logger } from '../logger';
@@ -47,7 +47,8 @@ const JDTLS_URL: string =
  * Holds the expected SHA-256 of the pinned distribution. The download is verified against this before
  * it is extracted, so a corrupted or tampered archive of executable code is never run.
  */
-const JDTLS_SHA256: string = '2a5bbe55ec91b4325392050dc422cead3220a2459b3766be35e1fff45b4a50d9';
+export const JDTLS_SHA256: string =
+  '2a5bbe55ec91b4325392050dc422cead3220a2459b3766be35e1fff45b4a50d9';
 
 /**
  * Holds the lowest Java major version the downloaded language server can run on.
@@ -55,21 +56,138 @@ const JDTLS_SHA256: string = '2a5bbe55ec91b4325392050dc422cead3220a2459b3766be35
 const MINIMUM_JAVA_VERSION: number = 21;
 
 /**
- * Holds the pinned version of the Roslyn C# language server (`Microsoft.CodeAnalysis.LanguageServer`,
- * the same engine the open-source vscode-csharp extension uses). The distribution is pinned so every
- * machine provisions the same server; bumping it downloads into a fresh, version-scoped directory.
- * This build is the newest published to the public feed below — newer vscode-csharp builds depend on
- * private feeds and are not publicly downloadable.
+ * How long a server download may go without a byte before it is given up on. Measured from the last
+ * byte rather than the start: these archives run to hundreds of megabytes, and a slow link that keeps
+ * moving must be left to finish, while a connection that has gone quiet never will.
  */
-export const ROSLYN_VERSION: string = '5.4.0-2.26179.14';
+export const DOWNLOAD_STALL_MS: number = 60_000;
 
 /**
- * Holds the NuGet flat-container base URL of the public Azure DevOps feed the Roslyn server is
- * published to. A package is fetched from `<base>/<id>/<version>/<id>.<version>.nupkg`, where the id
- * is lower-cased; a `.nupkg` is a plain zip.
+ * Holds the pinned version of the Roslyn C# language server (`Microsoft.CodeAnalysis.LanguageServer`,
+ * the same engine the open-source vscode-csharp extension uses), as Microsoft publishes it on nuget.org
+ * in the `roslyn-language-server.<rid>` packages. The distribution is pinned so every machine
+ * provisions the same server; bumping it downloads into a fresh, version-scoped directory, and a
+ * machine that has an older version keeps using it until the user updates the plugin (#1135).
+ *
+ * ⛔ Bump it as a step of the release recipe, after `scripts/probe-roslyn.mjs` on a fixture solution,
+ * and update {@link ROSLYN_SHA512} from the nuget.org catalog in the same change. These are versions,
+ * not decimals: 5.13 is nine minor releases after 5.4.
  */
-const ROSLYN_FEED: string =
-  'https://pkgs.dev.azure.com/azure-public/vside/_packaging/vs-impl/nuget/v3/flat2';
+export const ROSLYN_VERSION: string = '5.13.0-1.26514.10';
+
+/**
+ * Holds the NuGet flat-container base URL the Roslyn server is fetched from. A package is fetched from
+ * `<base>/<id>/<version>/<id>.<version>.nupkg`, where the id is lower-cased; a `.nupkg` is a plain zip.
+ *
+ * nuget.org, not the internal `vs-impl` Azure DevOps feed the server came from until 5.4: that feed is
+ * not a public contract and stopped publishing usable builds; nuget.org is where Microsoft ships the
+ * server for every editor that is not Visual Studio.
+ */
+const ROSLYN_FEED: string = 'https://api.nuget.org/v3-flatcontainer';
+
+/**
+ * Holds the SHA-512 (base64, as the nuget.org catalog publishes it) of each pinned platform package.
+ * A download is verified against this before it is extracted, so a corrupted or substituted package of
+ * executable code is never run.
+ */
+export const ROSLYN_SHA512: Readonly<Record<string, string>> = {
+  'osx-x64':
+    'KtsZpvvq7t8KU0l+yFZaDhXx3MEnACjTan7I4e/QxC4HI165spiAVP3TO1dB/Eb7rfYTPQ89rbDnOiO08TAyyA==',
+  'osx-arm64':
+    '2Jb1K/zED//VPVrZQMk9TdYxKAPVpYFdQWyR5quBkwlDfOTfmmvOJUpvyknSn5gEvOhDxUaC8Jvw2mBhl2SOsw==',
+  'linux-x64':
+    'hiECk5jwtKqn8RvClv355qJL/wCiT5z1CjWza/99wgKJj0oZ/drlKD8LVYQ7zKM3gPVC4tFXbA+SfQ7PzQlzPw==',
+  'linux-arm64':
+    'kj87Xl6/ctaL70mM+q7X3FHuJ4fjrK0lr1H9usa2EAxF/asM8Sya3GmXiIcExCE/iqhNkcOvYKJhXc6ghdvtNw==',
+  'win-x64':
+    '+bE9gCtusnlR0SVlFdfc0remupBvkNf8y2NKNp7CrCDEfbZMgCfucEMyQ/c56BxxmVy8nKDxnYpL5KnziLWo1Q==',
+  'win-arm64':
+    'zZd+KlY+3TS8xXd9VNWZ0DRmutD/LaFyEODgHriBo7zLWEniyQVCUqFqCmJPoADzKkgLDxE3rLyWRaG60Mqqnw==',
+};
+
+/**
+ * Lists where a Roslyn package keeps its server apphost, relative to the version's install directory,
+ * newest layout first: nuget.org's `roslyn-language-server.<rid>` puts it under `tools/net10.0/<rid>`,
+ * the `vs-impl` packages Studio installed up to 5.4 under `content/LanguageServer/<rid>`. Both are
+ * read, so an install from before the move keeps working until it is updated.
+ * @param rid The .NET runtime identifier.
+ * @param windows Whether the apphost has an `.exe` suffix.
+ * @returns Returns the candidate relative paths.
+ */
+export function roslynBinaryCandidates(rid: string, windows: boolean): readonly string[] {
+  const executable: string = windows
+    ? 'Microsoft.CodeAnalysis.LanguageServer.exe'
+    : 'Microsoft.CodeAnalysis.LanguageServer';
+  return [
+    path.join(rid, 'tools', 'net10.0', rid, executable),
+    path.join(rid, 'content', 'LanguageServer', rid, executable),
+  ];
+}
+
+/**
+ * Orders two Roslyn package versions (`5.13.0-1.26514.10`), oldest first. Each dot-separated part is
+ * compared as a whole number — 5.13 is newer than 5.4 — and a release sorts after its prereleases.
+ * @param left One version.
+ * @param right The other.
+ * @returns Returns a negative number, zero, or a positive number as `left` is older, the same, or newer.
+ */
+export function compareRoslynVersions(left: string, right: string): number {
+  const a: ParsedVersion = parseVersion(left);
+  const b: ParsedVersion = parseVersion(right);
+  const main: number = compareNumberParts(a.main, b.main);
+  if (main !== 0) {
+    return main;
+  }
+  if (a.pre === null || b.pre === null) {
+    return a.pre === b.pre ? 0 : a.pre === null ? 1 : -1;
+  }
+  return compareNumberParts(a.pre, b.pre);
+}
+
+/**
+ * A version split into its release numbers and, when it is a prerelease, its prerelease numbers.
+ */
+interface ParsedVersion {
+  /**
+   * Gets the release numbers (`5.13.0` → 5, 13, 0).
+   */
+  readonly main: readonly number[];
+
+  /**
+   * Gets the prerelease numbers (`1.26514.10`), or null for a release.
+   */
+  readonly pre: readonly number[] | null;
+}
+
+/**
+ * Splits a version into its numbers.
+ * @param version The version (`5.13.0-1.26514.10`).
+ * @returns Returns the parsed version.
+ */
+function parseVersion(version: string): ParsedVersion {
+  const dash: number = version.indexOf('-');
+  const numbers: (part: string) => number[] = (part: string): number[] =>
+    part.split('.').map((piece: string): number => Number.parseInt(piece, 10) || 0);
+  return dash === -1
+    ? { main: numbers(version), pre: null }
+    : { main: numbers(version.slice(0, dash)), pre: numbers(version.slice(dash + 1)) };
+}
+
+/**
+ * Compares two lists of version numbers part by part, a missing part counting as zero.
+ * @param left One list.
+ * @param right The other.
+ * @returns Returns the first non-zero difference, or zero when they are equal.
+ */
+function compareNumberParts(left: readonly number[], right: readonly number[]): number {
+  for (let index: number = 0; index < Math.max(left.length, right.length); index++) {
+    const difference: number = (left[index] ?? 0) - (right[index] ?? 0);
+    if (difference !== 0) {
+      return difference;
+    }
+  }
+  return 0;
+}
 
 /**
  * Holds the pinned version of the Kotlin language server (`fwcd/kotlin-language-server`). The
@@ -88,7 +206,8 @@ const KOTLIN_LS_URL: string =
  * Holds the expected SHA-256 of the pinned Kotlin server distribution. The download is verified against
  * this before it is extracted, so a corrupted or tampered archive of executable code is never run.
  */
-const KOTLIN_LS_SHA256: string = '4fe7d71d087b307c7869036171bd9d8c6a4284cd7c25b89098b0a24eb2d9b6d2';
+export const KOTLIN_LS_SHA256: string =
+  '4fe7d71d087b307c7869036171bd9d8c6a4284cd7c25b89098b0a24eb2d9b6d2';
 
 /**
  * Holds the pinned version of the Go language server (gopls). gopls publishes no prebuilt binaries, so
@@ -236,11 +355,18 @@ export class LspProvisioner {
   /**
    * Ensures the Eclipse JDT Language Server is installed under the user-data directory, downloading
    * and extracting it on first use and reusing the cached copy thereafter. The work is shared across
-   * concurrent callers.
+   * concurrent callers; a failure is not remembered, so a retry after a network blip downloads again.
    * @returns Returns the installation, or null when it could not be provisioned.
    */
   public ensureJdtls(): Promise<JdtlsInstall | null> {
-    this.jdtlsProvision ??= this.provisionJdtls();
+    this.jdtlsProvision ??= this.provisionJdtls().then(
+      (install: JdtlsInstall | null): JdtlsInstall | null => {
+        if (install === null) {
+          this.jdtlsProvision = null;
+        }
+        return install;
+      },
+    );
     return this.jdtlsProvision;
   }
 
@@ -258,24 +384,86 @@ export class LspProvisioner {
   }
 
   /**
-   * Ensures the Roslyn C# language server is installed under the user-data directory, downloading and
-   * extracting its platform-specific package on first use and reusing the cached copy thereafter. The
-   * work is shared across concurrent callers.
+   * Ensures the **pinned** Roslyn C# language server is installed under the user-data directory,
+   * downloading, verifying and extracting its platform package when it is not, and reusing it when it
+   * is. This is the plugin's install and update action; nothing that merely *uses* the server calls it
+   * (see {@link installedRoslyn}), so a pin moving in a Studio release downloads nothing until the user
+   * chooses to update. The work is shared across concurrent callers; a failure is not remembered, so a
+   * retry after a network blip downloads again.
    * @returns Returns the absolute path of the server apphost, or null when it could not be provisioned.
    */
   public ensureRoslyn(): Promise<string | null> {
-    this.roslynProvision ??= this.provisionRoslyn();
+    this.roslynProvision ??= this.provisionRoslyn().then((binary: string | null): string | null => {
+      if (binary === null) {
+        this.roslynProvision = null;
+      }
+      return binary;
+    });
     return this.roslynProvision;
+  }
+
+  /**
+   * Finds the Roslyn server already installed on this machine, without downloading anything: the
+   * pinned version when it is there, otherwise the newest complete install of an older one. An older
+   * install is what a machine has between a Studio release moving the pin and the user updating the
+   * plugin — it keeps working, and the Plugin Manager offers the update (#1135).
+   * @returns Returns the absolute path of the server apphost, or null when none is installed.
+   */
+  public installedRoslyn(): string | null {
+    const rid: string | null = this.roslynRid();
+    if (rid === null) {
+      return null;
+    }
+    const root: string = path.join(this.serversRoot(), 'roslyn');
+    let versions: string[];
+    try {
+      versions = readdirSync(root);
+    } catch {
+      return null;
+    }
+    const ordered: string[] = versions
+      .filter((version: string): boolean => isComplete(path.join(root, version)))
+      .sort((left: string, right: string): number => {
+        if (left === ROSLYN_VERSION || right === ROSLYN_VERSION) {
+          return left === ROSLYN_VERSION ? -1 : 1;
+        }
+        return compareRoslynVersions(right, left);
+      });
+    for (const version of ordered) {
+      for (const candidate of roslynBinaryCandidates(rid, process.platform === 'win32')) {
+        const binary: string = path.join(root, version, candidate);
+        if (existsSync(binary)) {
+          return binary;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Removes every Roslyn install other than the pinned version, once the pinned version has installed
+   * and verified, so an update replaces rather than accumulates (~70 MB a version).
+   * @returns Returns a promise that resolves once older versions are gone.
+   */
+  public pruneRoslyn(): Promise<void> {
+    return pruneVersions(this.serversRoot(), 'roslyn', ROSLYN_VERSION, 'LspProvisioner');
   }
 
   /**
    * Ensures the Kotlin language server is installed under the user-data directory, downloading and
    * extracting it on first use and reusing the cached copy thereafter. The work is shared across
-   * concurrent callers.
+   * concurrent callers; a failure is not remembered, so a retry after a network blip downloads again.
    * @returns Returns the absolute path of the launcher script, or null when it could not be provisioned.
    */
   public ensureKotlin(): Promise<string | null> {
-    this.kotlinProvision ??= this.provisionKotlin();
+    this.kotlinProvision ??= this.provisionKotlin().then(
+      (launcher: string | null): string | null => {
+        if (launcher === null) {
+          this.kotlinProvision = null;
+        }
+        return launcher;
+      },
+    );
     return this.kotlinProvision;
   }
 
@@ -294,12 +482,17 @@ export class LspProvisioner {
   /**
    * Ensures the Go language server (gopls) is built under the user-data directory, running `go install`
    * into a controlled GOBIN on first use and reusing the cached binary thereafter. The work is shared
-   * across concurrent callers.
+   * across concurrent callers; a failure is not remembered, so a retry builds again.
    * @param go The Go executable used to build gopls.
    * @returns Returns the absolute path of the gopls binary, or null when it could not be built.
    */
   public ensureGopls(go: string): Promise<string | null> {
-    this.goplsProvision ??= this.provisionGopls(go);
+    this.goplsProvision ??= this.provisionGopls(go).then((binary: string | null): string | null => {
+      if (binary === null) {
+        this.goplsProvision = null;
+      }
+      return binary;
+    });
     return this.goplsProvision;
   }
 
@@ -692,15 +885,21 @@ export class LspProvisioner {
       logger.warn('LspProvisioner', 'Cannot provision Roslyn: unsupported platform');
       return null;
     }
+    const expected: string | undefined = ROSLYN_SHA512[rid];
+    if (expected === undefined) {
+      logger.warn('LspProvisioner', `Cannot provision Roslyn: no pinned package for ${rid}`);
+      return null;
+    }
     // The marker goes on the version directory the probe and the uninstall use, not beside the binary.
     const versionDir: string = path.join(this.serversRoot(), 'roslyn', ROSLYN_VERSION);
     const installDir: string = path.join(versionDir, rid);
-    const executable: string =
-      process.platform === 'win32'
-        ? 'Microsoft.CodeAnalysis.LanguageServer.exe'
-        : 'Microsoft.CodeAnalysis.LanguageServer';
-    const binary: string = path.join(installDir, 'content', 'LanguageServer', rid, executable);
+    const binary: string = path.join(
+      versionDir,
+      roslynBinaryCandidates(rid, process.platform === 'win32')[0],
+    );
+    const archive: string = path.join(installDir, 'server.nupkg');
     try {
+      await this.clearInterruptedInstall(archive, versionDir);
       if (existsSync(binary)) {
         // Mark an install that predates the completion marker, so an existing, working server is not
         // reported as missing forever.
@@ -710,10 +909,18 @@ export class LspProvisioner {
       }
       logger.info('LspProvisioner', `Downloading Roslyn server ${ROSLYN_VERSION} (${rid})`);
       await fs.mkdir(installDir, { recursive: true });
-      const id: string = `microsoft.codeanalysis.languageserver.${rid}`;
+      const id: string = `roslyn-language-server.${rid}`;
       const url: string = `${ROSLYN_FEED}/${id}/${ROSLYN_VERSION}/${id}.${ROSLYN_VERSION}.nupkg`;
-      const archive: string = path.join(installDir, 'server.nupkg');
       await this.download(url, archive);
+      const digest: string = await this.fileDigest(archive, 'sha512', 'base64');
+      if (digest !== expected) {
+        logger.error(
+          'LspProvisioner',
+          `Checksum mismatch for Roslyn ${ROSLYN_VERSION} (${rid}): expected ${expected}, got ${digest}`,
+        );
+        await fs.rm(versionDir, { recursive: true, force: true });
+        return null;
+      }
       await this.extractZip(archive, installDir);
       await fs.rm(archive, { force: true });
       if (!existsSync(binary)) {
@@ -774,7 +981,9 @@ export class LspProvisioner {
    */
   private async provisionJdtls(): Promise<JdtlsInstall | null> {
     const installDir: string = path.join(this.serversRoot(), 'jdtls', JDTLS_VERSION);
+    const archive: string = path.join(installDir, 'jdtls.tar.gz');
     try {
+      await this.clearInterruptedInstall(archive, installDir);
       const existing: JdtlsInstall | null = await this.readInstall(installDir);
       if (existing !== null) {
         // Mark an install that predates the completion marker, so an existing, working server is not
@@ -785,7 +994,6 @@ export class LspProvisioner {
       }
       logger.info('LspProvisioner', `Downloading JDT.LS ${JDTLS_VERSION}`);
       await fs.mkdir(installDir, { recursive: true });
-      const archive: string = path.join(installDir, 'jdtls.tar.gz');
       await this.download(JDTLS_URL, archive);
       const digest: string = await this.sha256(archive);
       if (digest !== JDTLS_SHA256) {
@@ -798,9 +1006,14 @@ export class LspProvisioner {
       }
       await execFileAsync('tar', ['-xzf', archive, '-C', installDir]);
       await fs.rm(archive, { force: true });
+      const installed: JdtlsInstall | null = await this.readInstall(installDir);
+      if (installed === null) {
+        logger.warn('LspProvisioner', 'Extracted JDT.LS but its launcher or config is missing');
+        return null;
+      }
       await markComplete(installDir);
       logger.info('LspProvisioner', `Installed JDT.LS into ${installDir}`);
-      return await this.readInstall(installDir);
+      return installed;
     } catch (error: unknown) {
       logger.error(
         'LspProvisioner',
@@ -826,7 +1039,9 @@ export class LspProvisioner {
       'bin',
       process.platform === 'win32' ? 'kotlin-language-server.bat' : 'kotlin-language-server',
     );
+    const archive: string = path.join(installDir, 'server.zip');
     try {
+      await this.clearInterruptedInstall(archive, installDir);
       if (existsSync(launcher)) {
         // Mark an install that predates the completion marker, so an existing, working server is not
         // reported as missing forever.
@@ -836,7 +1051,6 @@ export class LspProvisioner {
       }
       logger.info('LspProvisioner', `Downloading Kotlin server ${KOTLIN_LS_VERSION}`);
       await fs.mkdir(installDir, { recursive: true });
-      const archive: string = path.join(installDir, 'server.zip');
       await this.download(KOTLIN_LS_URL, archive);
       const digest: string = await this.sha256(archive);
       if (digest !== KOTLIN_LS_SHA256) {
@@ -962,10 +1176,41 @@ export class LspProvisioner {
    * @param file The file to hash.
    * @returns Returns the lower-case hex digest.
    */
-  private async sha256(file: string): Promise<string> {
-    const hash: ReturnType<typeof createHash> = createHash('sha256');
+  private sha256(file: string): Promise<string> {
+    return this.fileDigest(file, 'sha256', 'hex');
+  }
+
+  /**
+   * Computes a digest of a file, streaming it so a large archive is not held in memory.
+   * @param file The file to hash.
+   * @param algorithm The hash algorithm.
+   * @param encoding How the digest is written: hex (as most publishers do) or base64 (as nuget.org
+   * does).
+   * @returns Returns the encoded digest.
+   */
+  private async fileDigest(
+    file: string,
+    algorithm: 'sha256' | 'sha512',
+    encoding: 'hex' | 'base64',
+  ): Promise<string> {
+    const hash: ReturnType<typeof createHash> = createHash(algorithm);
     await pipeline(createReadStream(file), hash);
-    return hash.digest('hex');
+    return hash.digest(encoding);
+  }
+
+  /**
+   * Clears what an install that died part way left behind. The archive is removed only once extraction
+   * has finished, so one still there means the files beside it cannot be trusted, however complete
+   * they look: a launcher found among them would otherwise be marked complete, and reused for good.
+   * @param archive The archive the install downloads.
+   * @param installRoot The directory the install owns.
+   * @returns Returns a promise that resolves once any remains are gone.
+   */
+  private async clearInterruptedInstall(archive: string, installRoot: string): Promise<void> {
+    if (existsSync(archive)) {
+      logger.warn('LspProvisioner', `Clearing an interrupted install at ${installRoot}`);
+      await fs.rm(installRoot, { recursive: true, force: true });
+    }
   }
 
   /**
@@ -992,24 +1237,65 @@ export class LspProvisioner {
   }
 
   /**
-   * Downloads a URL to a file, streaming the response to disk.
+   * Downloads a URL to a file, streaming the response to disk, and gives up on one that stops moving.
    * @param url The URL to download.
    * @param destination The file to write.
    * @returns Returns a promise that resolves once the download completes.
    */
   private async download(url: string, destination: string): Promise<void> {
-    const response: Response = await fetch(url);
-    if (!response.ok || response.body === null) {
-      throw new Error(`Download failed: ${response.status}`);
+    const controller: AbortController = new AbortController();
+    let stall: ReturnType<typeof setTimeout> | undefined;
+    const arm: () => void = (): void => {
+      clearTimeout(stall);
+      stall = setTimeout((): void => {
+        controller.abort(new Error(`Download stalled: nothing for ${DOWNLOAD_STALL_MS} ms`));
+      }, DOWNLOAD_STALL_MS);
+    };
+    arm();
+    try {
+      const response: Response = await fetch(url, { signal: controller.signal });
+      if (!response.ok || response.body === null) {
+        throw new Error(`Download failed: ${response.status}`);
+      }
+      arm();
+      await this.writeBody(response.body, destination, arm, controller.signal);
+    } finally {
+      clearTimeout(stall);
     }
+  }
+
+  /**
+   * Streams a response's body to a file, reporting each chunk as it passes.
+   * @param source The response's body.
+   * @param destination The file to write.
+   * @param onChunk Called for each chunk.
+   * @param signal Aborts the write.
+   * @returns Returns a promise that resolves once the body is on disk.
+   */
+  private async writeBody(
+    source: NonNullable<Response['body']>,
+    destination: string,
+    onChunk: () => void,
+    signal: AbortSignal,
+  ): Promise<void> {
     // The two compilations disagree about this type: under the main process's Node libs the cast is
     // redundant, while under the renderer's DOM libs `ReadableStream` is the DOM one and the call will
     // not typecheck without it. It is what lets anything importing this module be tested at all.
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-    const body: Parameters<typeof Readable.fromWeb>[0] = response.body as Parameters<
+    const body: Parameters<typeof Readable.fromWeb>[0] = source as Parameters<
       typeof Readable.fromWeb
     >[0];
-    await pipeline(Readable.fromWeb(body), createWriteStream(destination));
+    const watched: Transform = new Transform({
+      transform: (
+        chunk: Buffer,
+        _encoding: BufferEncoding,
+        done: (error: null, data: Buffer) => void,
+      ): void => {
+        onChunk();
+        done(null, chunk);
+      },
+    });
+    await pipeline(Readable.fromWeb(body), watched, createWriteStream(destination), { signal });
   }
 
   /**

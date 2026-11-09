@@ -54,18 +54,46 @@ describe('MarkdownMathModal', () => {
   }
 
   /**
+   * Finds a field's control by the label of the atom holding it.
+   * @param label The field's trimmed label text.
+   * @returns Returns the matching control.
+   */
+  function fieldWithLabel(label: string): HTMLTextAreaElement {
+    const labels: HTMLLabelElement[] = Array.from(host.querySelectorAll<HTMLLabelElement>('label'));
+    const match: HTMLLabelElement = labels.find(
+      (candidate: HTMLLabelElement): boolean => candidate.textContent?.trim() === label,
+    )!;
+    return match.parentElement!.querySelector<HTMLTextAreaElement>('input, textarea')!;
+  }
+
+  /**
+   * Finds an action button by its visible label.
+   * @param label The button's trimmed text content.
+   * @returns Returns the matching button element.
+   */
+  function buttonWithLabel(label: string): HTMLButtonElement {
+    const buttons: HTMLButtonElement[] = Array.from(
+      host.querySelectorAll<HTMLButtonElement>('app-button button'),
+    );
+    return buttons.find(
+      (button: HTMLButtonElement): boolean => button.textContent?.trim() === label,
+    )!;
+  }
+
+  /**
    * Sets the LaTeX expression field and dispatches its input event so the component signal updates.
    * @param value The expression to type into the field.
    */
   function setExpression(value: string): void {
-    const field: HTMLTextAreaElement = host.querySelector<HTMLTextAreaElement>('#math-expression')!;
+    const field: HTMLTextAreaElement = fieldWithLabel('LaTeX expression');
     field.value = value;
     field.dispatchEvent(new Event('input'));
     flush();
   }
 
   /**
-   * Selects the Block or Inline mode radio by dispatching its change event.
+   * Selects the Block or Inline mode radio by clicking it. A click rather than a bare change event:
+   * the radio atom reports a change only when its checked state has actually moved.
    * @param label The trimmed label of the mode option to select.
    */
   function selectMode(label: string): void {
@@ -75,14 +103,12 @@ describe('MarkdownMathModal', () => {
     const option: HTMLLabelElement = options.find(
       (candidate: HTMLLabelElement): boolean => candidate.textContent?.trim() === label,
     )!;
-    option.querySelector<HTMLInputElement>('input')!.dispatchEvent(new Event('change'));
+    option.querySelector<HTMLInputElement>('input')!.click();
     flush();
   }
 
   it('insert_whenExpressionEmpty_isDisabled', () => {
-    const insert: HTMLButtonElement = host.querySelector<HTMLButtonElement>(
-      '.insert-modal__button--primary',
-    )!;
+    const insert: HTMLButtonElement = buttonWithLabel('Insert');
 
     expect(insert.disabled).toBe(true);
   });
@@ -90,7 +116,7 @@ describe('MarkdownMathModal', () => {
   it('insert_whenSubmitted_emitsTrimmedExpressionAsBlockByDefault', () => {
     setExpression('  \\frac{a}{b}  ');
 
-    host.querySelector<HTMLButtonElement>('.insert-modal__button--primary')!.click();
+    buttonWithLabel('Insert').click();
 
     expect(component.submitted).toEqual({ expression: '\\frac{a}{b}', block: true });
     expect(component.open()).toBe(false);
@@ -100,7 +126,7 @@ describe('MarkdownMathModal', () => {
     setExpression('a^2 + b^2');
     selectMode('Inline');
 
-    host.querySelector<HTMLButtonElement>('.insert-modal__button--primary')!.click();
+    buttonWithLabel('Insert').click();
 
     expect(component.submitted).toEqual({ expression: 'a^2 + b^2', block: false });
   });
@@ -109,7 +135,7 @@ describe('MarkdownMathModal', () => {
     setExpression('a^2');
     selectMode('Inline');
 
-    host.querySelector<HTMLButtonElement>('.insert-modal__button--primary')!.click();
+    buttonWithLabel('Insert').click();
     flush();
 
     component.open.set(true);
@@ -119,7 +145,7 @@ describe('MarkdownMathModal', () => {
       host.querySelectorAll<HTMLInputElement>('input[name="math-mode"]'),
     );
 
-    expect(host.querySelector<HTMLTextAreaElement>('#math-expression')!.value).toBe('');
+    expect(fieldWithLabel('LaTeX expression').value).toBe('');
     expect(radios[0].checked).toBe(true);
     expect(radios[1].checked).toBe(false);
   });
@@ -127,13 +153,7 @@ describe('MarkdownMathModal', () => {
   it('cancel_whenClicked_closesWithoutEmitting', () => {
     setExpression('a^2');
 
-    const buttons: HTMLButtonElement[] = Array.from(
-      host.querySelectorAll<HTMLButtonElement>('.insert-modal__button'),
-    );
-    const cancel: HTMLButtonElement = buttons.find(
-      (button: HTMLButtonElement): boolean => button.textContent?.trim() === 'Cancel',
-    )!;
-    cancel.click();
+    buttonWithLabel('Cancel').click();
     flush();
 
     expect(component.submitted).toBeNull();

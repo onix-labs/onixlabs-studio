@@ -1,5 +1,28 @@
 <div class="settings">
   <nav class="settings__nav" aria-label="Settings sections">
+    <div class="settings__search-row">
+      <app-text-field
+        class="settings__search"
+        kind="search"
+        placeholder="Search Settings"
+        ariaLabel="Search Settings"
+        [value]="query()"
+        (valueChange)="query.set($event)"
+        (escape)="query.set('')"
+      />
+      <app-button
+        variant="none"
+        [icon]="Icon.DOTS_THREE_BOLD"
+        ariaLabel="More Actions"
+        tooltip="More Actions"
+        [cdkMenuTriggerFor]="moreMenu.panel() ?? null"
+        [cdkMenuPosition]="moreMenu.position()"
+      />
+      <app-menu #moreMenu [items]="menuItems" placement="down-end" (selected)="onMenu($event)" />
+    </div>
+    @if (noMatches()) {
+      <p class="settings__no-matches">No settings match.</p>
+    }
     <app-tree-view [rows]="rows()" [selectedId]="selectedRowId()" (rowClick)="onRowClick($event)">
       <ng-template let-row>
         @let node = dataOf(row);
@@ -27,11 +50,9 @@
       </h2>
 
       @switch (selectedSection()) {
-        @case ('appearance') {
-          <app-settings-section sectionId="appearance" />
-        }
         @case ('application') {
           <app-settings-section sectionId="application" />
+          <app-spell-checking-languages />
         }
         @case ('accessibility') {
           <app-settings-section sectionId="accessibility" />
@@ -39,23 +60,95 @@
         @case ('notifications') {
           <app-settings-section sectionId="notifications" />
         }
+        @case ('printing') {
+          <app-settings-section sectionId="printing" />
+        }
         @case ('workspaces') {
           <app-settings-section sectionId="workspaces" />
         }
-        @case ('text-editor') {
-          <app-settings-section sectionId="text-editor" />
+        @case ('workspaces-explorers') {
+          <app-settings-section sectionId="workspaces-explorers" />
+        }
+        @case ('workspaces-search') {
+          <app-settings-section sectionId="workspaces-search" />
+        }
+        @case ('workspaces-run') {
+          <app-settings-section sectionId="workspaces-run" />
+        }
+        @case ('workspaces-new-projects') {
+          <app-projects-folder />
+          <app-settings-section sectionId="workspaces-new-projects" />
+        }
+        @case ('workspaces-packages') {
+          <app-package-registry-tokens />
+        }
+        @case ('code-general') {
+          <app-settings-section sectionId="code-general" />
+        }
+        @case ('code-appearance') {
+          <app-settings-section sectionId="code-appearance" />
+        }
+        @case ('code-highlighting') {
+          <app-settings-section sectionId="code-highlighting" />
+        }
+        @case ('code-lens') {
+          <app-settings-section sectionId="code-lens" />
+        }
+        @case ('code-editing') {
+          <app-settings-section sectionId="code-editing" />
+        }
+        @case ('code-saving') {
+          <app-settings-section sectionId="code-saving" />
+        }
+        @case ('code-suggestions') {
+          <app-settings-section sectionId="code-suggestions" />
+        }
+        @case ('code-find') {
+          <app-settings-section sectionId="code-find" />
+        }
+        @case ('code-diffs') {
+          <app-settings-section sectionId="code-diffs" />
+        }
+        @case ('code-language-servers') {
+          <app-settings-section sectionId="code-language-servers" />
         }
         @case ('markdown') {
           <app-settings-section sectionId="markdown" />
         }
+        @case ('markdown-editing') {
+          <app-settings-section sectionId="markdown-editing" />
+        }
+        @case ('markdown-review') {
+          <app-settings-section sectionId="markdown-review" />
+          <app-read-aloud-voice />
+          <app-personal-dictionary />
+        }
+        @case ('images') {
+          <app-settings-section sectionId="images" />
+        }
+        @case ('binary') {
+          <app-settings-section sectionId="binary" />
+        }
         @case ('terminal') {
           <app-terminal-settings />
         }
+        @case ('terminal-appearance') {
+          <app-settings-section sectionId="terminal-appearance" />
+        }
+        @case ('terminal-input') {
+          <app-settings-section sectionId="terminal-input" />
+        }
         @case ('source-control') {
-          <app-source-control-settings />
+          <app-source-control-settings view="general" />
+        }
+        @case ('vc-hosting') {
+          <app-source-control-settings view="hosting" />
+        }
+        @case ('vc-cloning') {
+          <app-source-control-settings view="cloning" />
         }
         @case ('keyboard') {
-          <app-keyboard-settings />
+          <app-keyboard-settings [view]="null" />
         }
         @case ('ai') {
           <app-ai-settings view="general" />
@@ -63,36 +156,71 @@
         @case ('ai-security') {
           <app-ai-settings view="security" />
         }
-        @case ('ai-prompts') {
-          <app-ai-manager-link section="profiles" />
-        }
-        @case ('ai-skills') {
-          <app-ai-manager-link section="skills" />
-        }
         @case ('mission-control') {
           <app-settings-section sectionId="mission-control" />
         }
         @case ('system-monitor') {
           <app-settings-section sectionId="system-monitor" />
+          <app-default-severities />
+          <app-log-folder />
+        }
+        @case ('api-explorer') {
+          <app-settings-section sectionId="api-explorer" />
+        }
+        @case ('ai-manager') {
+          <app-settings-section sectionId="ai-manager" />
+        }
+        @case ('containers') {
+          <app-container-engine />
+          <app-settings-section sectionId="containers" />
+        }
+        @case ('database-explorer') {
+          <app-settings-section sectionId="database-explorer" />
+        }
+        @case ('database-results') {
+          <app-settings-section sectionId="database-results" />
+        }
+        @case ('database-connections') {
+          <app-settings-section sectionId="database-connections" />
+        }
+        @case ('database-export') {
+          <app-settings-section sectionId="database-export" />
         }
         @case ('plugins') {
           <app-settings-section sectionId="plugins" />
+          <app-plugin-suggestions-dismissed />
+          <app-plugins-folder />
         }
         @case ('language-providers') {
-          <!-- One language's page: which server serves it, then how the editor behaves in its files.
-               The server half is the same component the setup wizard shows, so it carries no editor
-               rows of its own. -->
-          <app-language-server-settings
-            [language]="activeLanguage()"
-            [languageName]="activeLanguageName()"
-          />
-          <app-language-editor-overrides
-            [language]="activeLanguage()"
-            [languageName]="activeLanguageName()"
-          />
+          <!-- One language's page, in three collapsible sections, all open to begin with: which server
+               serves it, then the Code › Appearance and Code › Editing settings the language may give
+               values of its own. The server section is the same component the setup wizard shows. -->
+          <div class="settings__language">
+            <app-accordion heading="Language Server" [section]="true" [expanded]="true">
+              <app-language-server-settings
+                [language]="activeLanguage()"
+                [languageName]="activeLanguageName()"
+              />
+            </app-accordion>
+            <app-accordion heading="Appearance" [section]="true" [expanded]="true">
+              <app-language-editor-overrides
+                section="code-appearance"
+                [language]="activeLanguage()"
+                [languageName]="activeLanguageName()"
+              />
+            </app-accordion>
+            <app-accordion heading="Editing" [section]="true" [expanded]="true">
+              <app-language-editor-overrides
+                section="code-editing"
+                [language]="activeLanguage()"
+                [languageName]="activeLanguageName()"
+              />
+            </app-accordion>
+          </div>
         }
         @case ('security') {
           <app-settings-section sectionId="security" />
+          <app-remembered-file-access />
         }
         @default {
           <!-- The provider pages are the open set: one per provider an installed harness contributes
@@ -100,6 +228,9 @@
                eighth company got an empty page for it. -->
           @if (selectedProvider(); as providerId) {
             <app-ai-settings view="provider" [providerId]="providerId" />
+          }
+          @if (selectedKeyboardView(); as view) {
+            <app-keyboard-settings [view]="view" />
           }
         }
       }
@@ -113,3 +244,36 @@
     }
   </div>
 </div>
+
+@if (pendingImport(); as pending) {
+  <app-modal
+    [open]="true"
+    [width]="30"
+    [frameless]="true"
+    ariaLabel="Import settings"
+    (dismiss)="cancelImport()"
+  >
+    <ng-template appModalContent>
+      <div class="settings-import">
+        <h2 class="settings-import__title">Import Settings</h2>
+        <p class="settings-import__body">
+          <strong>{{ pending.fileName }}</strong> sets {{ importCount(pending) }}
+          {{ importCount(pending) === 1 ? 'setting' : 'settings' }}. <strong>Keep</strong> leaves
+          your other settings as they are. <strong>Reset</strong> returns them to their defaults.
+        </p>
+        @if (pending.skipped > 0) {
+          <app-alert tone="warning">
+            {{ pending.skipped }} {{ pending.skipped === 1 ? 'entry' : 'entries' }} in the file will
+            be skipped: Studio doesn't recognise {{ pending.skipped === 1 ? 'it' : 'them' }}, or the
+            value doesn't fit the setting.
+          </app-alert>
+        }
+        <app-button-row class="settings-import__actions">
+          <app-button variant="solid" label="Keep" (click)="confirmImport(false)" />
+          <app-button variant="ghost" tone="warning" label="Reset" (click)="confirmImport(true)" />
+          <app-button variant="none" label="Cancel" (click)="cancelImport()" />
+        </app-button-row>
+      </div>
+    </ng-template>
+  </app-modal>
+}

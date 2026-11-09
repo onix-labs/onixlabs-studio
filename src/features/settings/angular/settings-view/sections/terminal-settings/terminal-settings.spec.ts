@@ -30,20 +30,22 @@ describe('TerminalSettingsSection', () => {
   });
 
   it('render_leadsWithSystemDefaultThenEachInstalledShell', () => {
-    const labels: string[] = Array.from(host.querySelectorAll('option')).map(
-      (option: HTMLOptionElement): string => option.textContent?.trim() ?? '',
-    );
+    const labels: string[] = Array.from(
+      host.querySelector('app-shell-picker')?.querySelectorAll<HTMLOptionElement>('option') ?? [],
+    ).map((option: HTMLOptionElement): string => option.textContent?.trim() ?? '');
     expect(labels).toEqual(['System default', 'zsh', 'bash']);
   });
 
   it('defaultShell_defaultsToTheSystemDefault', () => {
-    const select: HTMLSelectElement | null = host.querySelector('select');
+    const select: HTMLSelectElement | null =
+      host.querySelector<HTMLSelectElement>('app-shell-picker select');
     expect(select?.value).toBe('');
   });
 
   it('onChange_whenShellChosen_persistsThePathToSettings', () => {
     const settings: Settings = TestBed.inject(Settings);
-    const select: HTMLSelectElement | null = host.querySelector('select');
+    const select: HTMLSelectElement | null =
+      host.querySelector<HTMLSelectElement>('app-shell-picker select');
     if (select === null) {
       throw new Error('No shell select rendered');
     }
@@ -52,5 +54,17 @@ describe('TerminalSettingsSection', () => {
     select.dispatchEvent(new Event('change'));
 
     expect(settings.get('terminal.defaultShell')).toBe('/bin/zsh');
+  });
+
+  it('agentShell_isOfferedBesideTheDefaultShell_andPersists', () => {
+    const pickers: NodeListOf<HTMLSelectElement> =
+      host.querySelectorAll<HTMLSelectElement>('app-shell-picker select');
+    expect(pickers).toHaveLength(2);
+    expect(host.textContent).toContain('Agent Shell');
+
+    pickers[1].value = '/bin/bash';
+    pickers[1].dispatchEvent(new Event('change'));
+
+    expect(TestBed.inject(Settings).get('ai.agentShell')).toBe('/bin/bash');
   });
 });

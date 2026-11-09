@@ -1,11 +1,14 @@
 import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import * as nodePath from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { rgPath } from '@vscode/ripgrep';
 import {
   ReplaceResponse,
   SearchChannel,
+  SearchFileFilter,
+  SearchLimits,
   SearchMatch,
   SearchRequest,
   SearchResponse,
@@ -15,6 +18,7 @@ import {
 import { applyTextEdits, isTextEditsRequest } from './apply-text-edits';
 import { isReplaceRequest, replaceInFiles } from './search-replace-files';
 import { WorkspaceContext } from './workspace-context';
+import { LineSplitter } from './line-splitter';
 import { logger } from './logger';
 
 /**
@@ -28,6 +32,13 @@ const MAX_MATCHES_PER_FILE: number = 500;
  * renderer. When reached, the search is stopped early and the response is marked capped.
  */
 const MAX_TOTAL_MATCHES: number = 5000;
+
+/**
+ * The folders Studio leaves out of every search unless asked: the version control systems' own, which
+ * are never what a search is for. Ripgrep skips them only as hidden folders, so they are named for a
+ * search that reads hidden files.
+ */
+const EXCLUDED_FOLDERS: readonly string[] = ['.git', '.hg', '.svn'];
 
 /**
  * Caps the length of each match's line preview, so a long line does not bloat the payload.
@@ -72,6 +83,16 @@ interface RipgrepMatchEvent {
 }
 
 /**
+ * Holds a caller's latest search.
+ */
+interface LatestSearch {
+  /**
+   * Holds how to stop it, once its process is running.
+   */
+  cancel: (() => void) | null;
+}
+
+/**
  * Runs workspace text searches in the main process by shelling out to the bundled ripgrep binary.
  * The renderer never spawns processes itself; it names a query and a workspace root, and this manager
  * confines the search to an open root, translates the options to ripgrep flags, parses the streamed
@@ -86,14 +107,19 @@ export class SearchManager {
   public constructor(private readonly workspace: WorkspaceContext) {}
 
   /**
+   * Holds the latest search of each caller, by {@link callerKey}.
+   */
+  private readonly latest: Map<string, LatestSearch> = new Map<string, LatestSearch>();
+
+  /**
    * Registers the search IPC handler.
    */
   public register(): void {
     ipcMain.handle(
       SearchChannel.Run,
-      (_event: IpcMainInvokeEvent, request: unknown): Promise<SearchResponse> => {
+      (event: IpcMainInvokeEvent, request: unknown): Promise<SearchResponse> => {
         logger.trace('SearchManager.register', `IPC ${SearchChannel.Run}`);
-        return this.run(request);
+        return this.run(request, event?.sender?.id);
       },
     );
     ipcMain.handle(
@@ -143,7 +169,6 @@ export class SearchManager {
     return new Promise<readonly string[]>((resolve: (value: readonly string[]) => void): void => {
       const child: ChildProcessWithoutNullStreams = spawn(rgPath, ['--files'], { cwd: root });
       const paths: string[] = [];
-      let buffer: string = '';
       let settled: boolean = false;
 
       const finish: () => void = (): void => {
@@ -154,22 +179,26 @@ export class SearchManager {
         }
       };
 
-      child.stdout.on('data', (chunk: Buffer): void => {
-        buffer += chunk.toString();
-        let newline: number = buffer.indexOf('\n');
-        while (newline !== -1) {
-          const line: string = buffer.slice(0, newline).replace(/\r$/, '');
-          buffer = buffer.slice(newline + 1);
-          if (line.length > 0) {
-            paths.push(line.startsWith('./') ? line.slice(2) : line);
-            if (paths.length >= MAX_LISTED_FILES) {
-              logger.warn('SearchManager.listFiles', `Capped file listing at ${MAX_LISTED_FILES}`);
-              child.kill();
-              finish();
-              return;
-            }
+      // A chunk ends wherever the pipe decides, which can be inside a multi-byte character.
+      const decoder: StringDecoder = new StringDecoder('utf8');
+      const lines: LineSplitter = new LineSplitter({
+        onLine: (raw: string): void => {
+          const line: string = raw.replace(/\r$/, '');
+          if (line.length === 0) {
+            return;
           }
-          newline = buffer.indexOf('\n');
+          paths.push(line.startsWith('./') ? line.slice(2) : line);
+          if (paths.length >= MAX_LISTED_FILES) {
+            logger.warn('SearchManager.listFiles', `Capped file listing at ${MAX_LISTED_FILES}`);
+            child.kill();
+            finish();
+            lines.reset();
+          }
+        },
+      });
+      child.stdout.on('data', (chunk: Buffer): void => {
+        if (!settled) {
+          lines.push(decoder.write(chunk));
         }
       });
 
@@ -193,14 +222,60 @@ export class SearchManager {
    * Runs a search for the given request, after validating it and confining it to an open root — and,
    * when it names paths, confining each of those to the root too.
    * @param request The candidate search request.
-   * @returns Returns the grouped matches, or an empty response for an invalid or empty request.
+   * @param senderId The window asking, which a caller's name is unique within.
+   * @returns Returns the grouped matches, or an empty response for an invalid or empty request, and
+   * whatever it had found for one replaced by the same caller's next search.
    */
-  private async run(request: unknown): Promise<SearchResponse> {
+  private async run(request: unknown, senderId?: number): Promise<SearchResponse> {
     const empty: SearchResponse = { files: [], total: 0, capped: false };
     if (!this.isValidRequest(request)) {
       logger.warn('SearchManager.run', 'Rejected malformed search request');
       return empty;
     }
+    // Before anything else can refuse this one: clearing the query must stop the search for it too.
+    const key: string | undefined =
+      request.caller === undefined ? undefined : `${senderId}:${request.caller}`;
+    const search: LatestSearch | undefined = key === undefined ? undefined : this.supersede(key);
+    try {
+      return await this.runConfined(
+        request,
+        empty,
+        (): boolean => key === undefined || this.latest.get(key) === search,
+        search,
+      );
+    } finally {
+      if (key !== undefined && this.latest.get(key) === search) {
+        this.latest.delete(key);
+      }
+    }
+  }
+
+  /**
+   * Stops a caller's search, if it has one running, and makes way for its next.
+   * @param key The caller's key.
+   * @returns Returns the record of the next search.
+   */
+  private supersede(key: string): LatestSearch {
+    this.latest.get(key)?.cancel?.();
+    const search: LatestSearch = { cancel: null };
+    this.latest.set(key, search);
+    return search;
+  }
+
+  /**
+   * Confines a validated search to an open root and runs it.
+   * @param request The search request.
+   * @param empty The response for a search that is refused.
+   * @param isCurrent Reports whether the search has not been replaced.
+   * @param search The record of the search, for one that can be replaced.
+   * @returns Returns the grouped matches.
+   */
+  private async runConfined(
+    request: SearchRequest,
+    empty: SearchResponse,
+    isCurrent: () => boolean,
+    search: LatestSearch | undefined,
+  ): Promise<SearchResponse> {
     if (request.query.length === 0 || !this.workspace.isRoot(request.root)) {
       logger.warn('SearchManager.run', 'Rejected empty query or unknown root');
       return empty;
@@ -216,8 +291,12 @@ export class SearchManager {
       }
       targets = confined;
     }
+    // Confining paths is asynchronous, so a later search can have overtaken this one by here.
+    if (!isCurrent()) {
+      return empty;
+    }
     logger.debug('SearchManager', `Searching ${request.root} for "${request.query}"`);
-    return this.spawnSearch(request, targets);
+    return this.spawnSearch(request, targets, search);
   }
 
   /**
@@ -280,6 +359,9 @@ export class SearchManager {
     }
     const candidate: Partial<Record<keyof SearchRequest, unknown>> = request;
     return (
+      (candidate.caller === undefined || typeof candidate.caller === 'string') &&
+      isFileFilter(candidate.files) &&
+      isLimits(candidate.limits) &&
       typeof candidate.query === 'string' &&
       typeof candidate.root === 'string' &&
       typeof candidate.caseSensitive === 'boolean' &&
@@ -297,9 +379,16 @@ export class SearchManager {
    * Spawns ripgrep for a validated request and collects its results.
    * @param request The validated search request.
    * @param targets The root-relative paths to search ('.' for the whole root).
+   * @param search The record to leave a way of stopping it in, for one that can be replaced.
    * @returns Returns the grouped matches.
    */
-  private spawnSearch(request: SearchRequest, targets: readonly string[]): Promise<SearchResponse> {
+  private spawnSearch(
+    request: SearchRequest,
+    targets: readonly string[],
+    search?: LatestSearch,
+  ): Promise<SearchResponse> {
+    const maxResults: number = request.limits?.maxResults ?? MAX_TOTAL_MATCHES;
+    const timeout: number = (request.limits?.timeoutSeconds ?? RG_TIMEOUT_MS / 1000) * 1000;
     return new Promise<SearchResponse>((resolve: (value: SearchResponse) => void): void => {
       const child: ChildProcessWithoutNullStreams = spawn(
         rgPath,
@@ -312,7 +401,6 @@ export class SearchManager {
       const order: string[] = [];
       let total: number = 0;
       let capped: boolean = false;
-      let buffer: string = '';
       let settled: boolean = false;
 
       const finish: () => void = (): void => {
@@ -332,31 +420,42 @@ export class SearchManager {
         resolve({ files: results, total, capped });
       };
 
-      child.stdout.on('data', (chunk: Buffer): void => {
-        buffer += chunk.toString();
-        let newline: number = buffer.indexOf('\n');
-        while (newline !== -1) {
-          const line: string = buffer.slice(0, newline);
-          buffer = buffer.slice(newline + 1);
-          if (this.consumeLine(line, files, order) && ++total >= MAX_TOTAL_MATCHES) {
+      // A chunk ends wherever the pipe decides, which can be inside a multi-byte character.
+      const decoder: StringDecoder = new StringDecoder('utf8');
+      const lines: LineSplitter = new LineSplitter({
+        onLine: (line: string): void => {
+          if (this.consumeLine(line, files, order) && ++total >= maxResults) {
             capped = true;
-            logger.warn(
-              'SearchManager.spawnSearch',
-              `Capped search at ${MAX_TOTAL_MATCHES} matches`,
-            );
+            logger.warn('SearchManager.spawnSearch', `Capped search at ${maxResults} matches`);
             child.kill();
             finish();
-            return;
+            lines.reset();
           }
-          newline = buffer.indexOf('\n');
+        },
+      });
+      child.stdout.on('data', (chunk: Buffer): void => {
+        if (!settled) {
+          lines.push(decoder.write(chunk));
         }
       });
 
-      const deadline: NodeJS.Timeout = setTimeout((): void => {
-        logger.warn('SearchManager.spawnSearch', `ripgrep timed out after ${RG_TIMEOUT_MS}ms`);
-        child.kill('SIGKILL');
-        finish();
-      }, RG_TIMEOUT_MS);
+      if (search !== undefined) {
+        search.cancel = (): void => {
+          logger.trace('SearchManager.spawnSearch', 'Stopping a replaced search');
+          child.kill();
+          finish();
+        };
+      }
+
+      // No Limit runs until ripgrep is done; a capped search still stops it above.
+      const deadline: NodeJS.Timeout | undefined =
+        timeout === 0
+          ? undefined
+          : setTimeout((): void => {
+              logger.warn('SearchManager.spawnSearch', `ripgrep timed out after ${timeout}ms`);
+              child.kill('SIGKILL');
+              finish();
+            }, timeout);
       child.on('error', (error: Error): void => {
         logger.error('SearchManager.spawnSearch', 'ripgrep failed', error);
         finish();
@@ -415,6 +514,7 @@ export class SearchManager {
       before,
       text,
       after,
+      occurrences: event.data.submatches.length,
     };
     let matches: SearchMatch[] | undefined = files.get(relativePath);
     if (matches === undefined) {
@@ -442,9 +542,99 @@ export class SearchManager {
     if (!request.regexp) {
       args.push('--fixed-strings');
     }
+    args.push(...fileArgs(request.files), ...limitArgs(request.limits));
     args.push('--', request.query, ...targets);
     return args;
   }
+}
+
+/**
+ * Determines whether a value is a list of strings.
+ * @param value The value to check.
+ * @returns Returns true when it is.
+ */
+function isStringList(value: unknown): value is readonly string[] {
+  return (
+    Array.isArray(value) && value.every((entry: unknown): boolean => typeof entry === 'string')
+  );
+}
+
+/**
+ * Determines whether a value is absent or a well-formed {@link SearchFileFilter}.
+ * @param value The value to check.
+ * @returns Returns true when it can be used.
+ */
+function isFileFilter(value: unknown): boolean {
+  if (value === undefined) {
+    return true;
+  }
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const candidate: Partial<Record<keyof SearchFileFilter, unknown>> = value;
+  return (
+    (candidate.include === undefined || isStringList(candidate.include)) &&
+    (candidate.exclude === undefined || isStringList(candidate.exclude))
+  );
+}
+
+/**
+ * Determines whether a value is absent or a well-formed {@link SearchLimits}: every number whole and
+ * not negative, as each ends up in a ripgrep flag or a timer, and a result cap above nothing.
+ * @param value The value to check.
+ * @returns Returns true when it can be used.
+ */
+function isLimits(value: unknown): boolean {
+  if (value === undefined) {
+    return true;
+  }
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const candidate: Partial<Record<keyof SearchLimits, unknown>> = value;
+  const count: (entry: unknown) => boolean = (entry: unknown): boolean =>
+    entry === undefined || (Number.isSafeInteger(entry) && (entry as number) >= 0);
+  return (
+    count(candidate.maxResults) &&
+    candidate.maxResults !== 0 &&
+    count(candidate.timeoutSeconds) &&
+    count(candidate.maxFileSizeMegabytes)
+  );
+}
+
+/**
+ * Builds the ripgrep flags for which files a search reads. A pattern travels inside its flag, so one
+ * beginning with a dash is not read as an option of its own.
+ * @param files The filter, if any.
+ * @returns Returns the flags.
+ */
+function fileArgs(files: SearchFileFilter | undefined): string[] {
+  const args: string[] = [];
+  if (files?.ignored === true) {
+    args.push('--no-ignore');
+  }
+  if (files?.hidden === true || files?.excluded === true) {
+    args.push('--hidden');
+  }
+  args.push(...(files?.include ?? []).map((pattern: string): string => `--glob=${pattern}`));
+  if (files?.excluded !== true) {
+    args.push(...EXCLUDED_FOLDERS.map((folder: string): string => `--glob=!${folder}`));
+  }
+  args.push(...(files?.exclude ?? []).map((pattern: string): string => `--glob=!${pattern}`));
+  return args;
+}
+
+/**
+ * Builds the ripgrep flags for the limits a search runs under.
+ * @param limits The limits, if any.
+ * @returns Returns the flags.
+ */
+function limitArgs(limits: SearchLimits | undefined): string[] {
+  const size: number = limits?.maxFileSizeMegabytes ?? 0;
+  return [
+    ...(size > 0 ? [`--max-filesize=${size}M`] : []),
+    ...(limits?.followSymlinks === true ? ['--follow'] : []),
+  ];
 }
 
 /**

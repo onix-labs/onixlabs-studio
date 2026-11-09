@@ -4,6 +4,16 @@ import type { LspDiagnostic } from './lsp-client';
 import { basename, uriToPath } from './lsp-paths';
 
 /**
+ * The protocol's tag on code a diagnostic marks as unnecessary, such as an unused variable.
+ */
+const UNNECESSARY_TAG: number = 1;
+
+/**
+ * The protocol's tag on code a diagnostic marks as deprecated.
+ */
+const DEPRECATED_TAG: number = 2;
+
+/**
  * Identifies the document a language-server diagnostic is mapped against: the pair of values the
  * provider-agnostic {@link Diagnostic} needs that are not carried on the protocol diagnostic itself.
  */
@@ -14,9 +24,10 @@ export interface DiagnosticContext {
   readonly uri: string;
 
   /**
-   * Gets the document identifier.
+   * Gets the document identifier, or null for a file that is not open (a workspace diagnostic,
+   * #1144), which is located by its path alone.
    */
-  readonly documentId: string;
+  readonly documentId: string | null;
 }
 
 /**
@@ -60,6 +71,42 @@ export function markerSeverityOf(
 }
 
 /**
+ * Maps a diagnostic's protocol tags to Monaco's, which fade unnecessary code and strike deprecated
+ * code through. A tag this build does not know is left out rather than guessed at.
+ * @param monaco The loaded Monaco namespace (for the tag enum).
+ * @param tags The protocol tags, or undefined.
+ * @returns Returns the Monaco marker tags.
+ */
+export function markerTagsOf(
+  monaco: typeof MonacoApi,
+  tags: readonly number[] | undefined,
+): MonacoApi.MarkerTag[] {
+  const mapped: MonacoApi.MarkerTag[] = [];
+  if (tags?.includes(UNNECESSARY_TAG) === true) {
+    mapped.push(monaco.MarkerTag.Unnecessary);
+  }
+  if (tags?.includes(DEPRECATED_TAG) === true) {
+    mapped.push(monaco.MarkerTag.Deprecated);
+  }
+  return mapped;
+}
+
+/**
+ * Decides whether a diagnostic belongs in the Error List. A hint carrying a tag is an editor treatment
+ * (fading an unused name, striking a deprecated one through) rather than a problem to work through, so
+ * it stays in the editor. A tagged warning or error is a problem the server or the project asked for,
+ * and stays listed.
+ * @param diagnostic The server diagnostic.
+ * @returns Returns true when the diagnostic is listed, false when it only marks the editor.
+ */
+export function isErrorListDiagnostic(diagnostic: LspDiagnostic): boolean {
+  const tagged: boolean =
+    diagnostic.tags?.includes(UNNECESSARY_TAG) === true ||
+    diagnostic.tags?.includes(DEPRECATED_TAG) === true;
+  return !tagged || severityOf(diagnostic.severity) !== 'hint';
+}
+
+/**
  * Maps a language-server diagnostic into the provider-agnostic shape for the given document.
  * @param diagnostic The server diagnostic.
  * @param context The document the diagnostic belongs to.
@@ -82,7 +129,8 @@ export function toDiagnostic(diagnostic: LspDiagnostic, context: DiagnosticConte
 /**
  * Maps server diagnostics into Monaco marker data (converting the protocol's zero-based positions to
  * Monaco's one-based line and column numbers). A diagnostic's code rides along, so the marker shows it
- * (#1016); its server data stays with the client, which sends it back with a code-action request.
+ * (#1016), and so do its tags, which fade or strike the code; its server data stays with the client,
+ * which sends it back with a code-action request.
  * @param monaco The loaded Monaco namespace.
  * @param diagnostics The server diagnostics.
  * @returns Returns the Monaco marker data.
@@ -92,7 +140,9 @@ export function toMarkerData(
   diagnostics: readonly LspDiagnostic[],
 ): MonacoApi.editor.IMarkerData[] {
   return diagnostics.map((diagnostic: LspDiagnostic): MonacoApi.editor.IMarkerData => {
+    const tags: MonacoApi.MarkerTag[] = markerTagsOf(monaco, diagnostic.tags);
     const marker: MonacoApi.editor.IMarkerData = {
+      ...(tags.length > 0 ? { tags } : {}),
       severity: markerSeverityOf(monaco, diagnostic.severity),
       message: diagnostic.message,
       source: diagnostic.source,
@@ -103,4 +153,37 @@ export function toMarkerData(
     };
     return diagnostic.code === undefined ? marker : { ...marker, code: String(diagnostic.code) };
   });
+}
+
+/**
+ * Names a diagnostic by what it says and where, so the same one reported twice is seen as one.
+ * @param diagnostic The diagnostic.
+ * @returns Returns its identity.
+ */
+function diagnosticIdentity(diagnostic: LspDiagnostic): string {
+  return JSON.stringify([diagnostic.range, diagnostic.severity, diagnostic.message]);
+}
+
+/**
+ * Merges what a server pulled and what it pushed for one document (#1210). rust-analyzer answers a pull
+ * with what it finds itself, and pushes what `cargo check` finds: neither is the document's whole
+ * picture, and neither replaces the other. A diagnostic both say is kept once.
+ * @param pulled The document's diagnostics from its last pull.
+ * @param pushed The document's diagnostics from its last push.
+ * @returns Returns the document's diagnostics.
+ */
+export function mergeDiagnostics(
+  pulled: readonly LspDiagnostic[],
+  pushed: readonly LspDiagnostic[],
+): readonly LspDiagnostic[] {
+  if (pulled.length === 0 || pushed.length === 0) {
+    return pulled.length === 0 ? pushed : pulled;
+  }
+  const seen: Set<string> = new Set<string>(pulled.map(diagnosticIdentity));
+  return [
+    ...pulled,
+    ...pushed.filter(
+      (diagnostic: LspDiagnostic): boolean => !seen.has(diagnosticIdentity(diagnostic)),
+    ),
+  ];
 }

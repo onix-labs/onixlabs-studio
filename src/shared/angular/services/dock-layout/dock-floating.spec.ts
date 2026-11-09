@@ -3,9 +3,12 @@ import { DOCK_BLUEPRINT } from './dock-blueprint';
 import { TEST_DOCK_BLUEPRINT } from './dock-test-blueprint';
 import { DockFloating, FloatWindow } from './dock-floating';
 import { Rect } from './dock-legality';
+import { DockPanelPlaceholder } from '../../components/dock-layout/dock-panel-placeholder/dock-panel-placeholder';
+import { Icon } from '@shared/angular/icons/icon';
 import { StackNode } from './dock-node';
+import { DockPanelRegistry } from './dock-panel-registry';
 import { DockState } from './dock-state';
-import { findStackOfPanel, firstStackOfRole } from './dock-tree';
+import { findPrimaryStack, findStackOfPanel, firstStackOfRole } from './dock-tree';
 
 describe('DockFloating', () => {
   let floating: DockFloating;
@@ -92,5 +95,40 @@ describe('DockFloating', () => {
 
     const well: StackNode | null = findStackOfPanel(state.layout(), 'doc-a');
     expect(well?.role).toBe('document');
+  });
+
+  describe('keeping the panel kind', () => {
+    it('dockBack_toolThatFilledTheCentre_comesBackAsATool', () => {
+      const well: StackNode | null = findPrimaryStack(state.layout());
+      state.removeFromLayout('agent');
+      state.occupyWell(well!.id, 'agent');
+      floating.float('agent', rect);
+
+      floating.dockBack('agent');
+
+      expect(findStackOfPanel(state.layout(), 'agent')?.role).toBe('tool');
+      expect(findPrimaryStack(state.layout())).toMatchObject({ role: 'document', panels: [] });
+    });
+
+    it('dockBack_registeredDocument_comesBackToTheWellAsADocument', () => {
+      TestBed.inject(DockPanelRegistry).register({
+        id: 'doc-b',
+        title: 'Doc B',
+        icon: Icon.CODE,
+        role: 'document',
+        component: DockPanelPlaceholder,
+      });
+      const well: StackNode | null = firstStackOfRole(state.layout(), 'document');
+      state.tabInto(well!.id, 'doc-b');
+      floating.float('doc-b', rect);
+      expect(findStackOfPanel(state.layout(), 'doc-b')).toBeNull();
+
+      floating.dockBack('doc-b');
+
+      expect(findStackOfPanel(state.layout(), 'doc-b')).toMatchObject({
+        id: well!.id,
+        role: 'document',
+      });
+    });
   });
 });

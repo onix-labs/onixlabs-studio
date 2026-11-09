@@ -60,6 +60,7 @@ function fakeDocument(format: BinaryFormat): FakeDocument {
     instructions,
     listing,
     format: formatSignal,
+    decodeSkipped: signal<number | null>(null),
     selection: signal<BinarySelection | null>(null),
     cursor: signal<number | null>(null),
     revealVersion: signal<number>(0),

@@ -1,0 +1,10 @@
+<app-setting-row label="Plugins Folder" [description]="description()">
+  <app-button
+    variant="ghost"
+    label="Open Plugins Folder"
+    [icon]="Icon.FOLDER_OPEN"
+    [disabled]="sideloading.directory() === null"
+    data-testid="plugins-folder-open"
+    (click)="open()"
+  />
+</app-setting-row>

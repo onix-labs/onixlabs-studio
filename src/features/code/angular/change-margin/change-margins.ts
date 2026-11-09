@@ -1,6 +1,7 @@
-import { inject, OnDestroy, Service } from '@angular/core';
+import { effect, inject, OnDestroy, Service, Signal } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { ChangeMarginMode, Settings } from '@shared/angular/services/settings/settings';
 import {
   ChangeMarginColors,
   ChangeMarginController,
@@ -37,6 +38,25 @@ export class ChangeMargins implements OnDestroy {
   private readonly controllers: Set<ChangeMarginController> = new Set<ChangeMarginController>();
 
   /**
+   * Gets what the Change Margin setting marks.
+   */
+  private readonly mode: Signal<ChangeMarginMode> = inject(Settings).value(
+    'textEditor.global.changeMargin',
+  );
+
+  /**
+   * Initialises the service, keeping every live controller on the Change Margin setting.
+   */
+  public constructor() {
+    effect((): void => {
+      const mode: ChangeMarginMode = this.mode();
+      for (const controller of this.controllers) {
+        controller.setMode(mode);
+      }
+    });
+  }
+
+  /**
    * Attaches a change-margin controller to an editor, resolving the active theme's colours. Returns
    * null when Monaco has not loaded yet, in which case no change margin is drawn.
    * @param editor The editor to draw the change margin for.
@@ -64,6 +84,7 @@ export class ChangeMargins implements OnDestroy {
       {
         ...options,
         colors: this.resolveColors(),
+        mode: this.mode(),
       },
     );
     this.controllers.add(controller);

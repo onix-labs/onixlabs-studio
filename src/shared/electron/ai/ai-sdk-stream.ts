@@ -1,6 +1,13 @@
 import type { ToolSet } from 'ai';
 import {
   ASK_USER,
+  CREATE_DATABASE_QUERY,
+  LIST_DATABASE_CONNECTIONS,
+  LIST_DATABASE_OBJECTS,
+  LIST_DATABASE_QUERIES,
+  RUN_DATABASE_QUERY,
+  SCRIPT_DATABASE_OBJECT,
+  UPDATE_DATABASE_QUERY,
   isToolViewSurface,
   LIST_LOG_SESSIONS,
   QUERY_LOGS,
@@ -186,6 +193,17 @@ import {
   runContainer,
 } from './containers-tools';
 import { describeRunRequest } from '@shared/api/container-run-request';
+import {
+  createDatabaseQuery,
+  DATABASE_PROMPT_APPENDIX,
+  describeDatabaseRun,
+  listDatabaseConnections,
+  listDatabaseObjects,
+  listDatabaseQueries,
+  runDatabaseQuery,
+  scriptDatabaseObject,
+  updateDatabaseQuery,
+} from './database-tools';
 import { summarizeToolInput } from './tool-format';
 import { coarseGrantSource } from './tool-policy';
 import { logger } from '../logger';
@@ -536,7 +554,8 @@ export async function createWorkspaceTerminalTools(context: AgentRunContext): Pr
       description:
         "Open a new terminal in the workspace's terminal panel, rooted at the workspace, where the user can watch it. Returns the id to drive it with. Use this when the user should see a command run rather than a hidden shell.",
       inputSchema: z.object({}),
-      execute: (): Promise<string> => openTerminal(context, true),
+      // Gated as the workbench declaration it overrides is: this spawns a real shell.
+      execute: gated(context, OPEN_TERMINAL, (): Promise<string> => openTerminal(context, true)),
     }),
     [WRITE_TERMINAL_INPUT]: tool({
       description:
@@ -888,6 +907,12 @@ export async function createRunConfigurationTools(context: AgentRunContext): Pro
       .describe(
         'For a compound: the ids of the configurations to start in parallel. Every id must exist.',
       ),
+    default: z
+      .boolean()
+      .optional()
+      .describe(
+        'Whether a single press of Run starts this one. A workspace has at most one default, so saving one replaces the last.',
+      ),
   });
   return {
     // Listing is a read, so it runs without prompting — the agent can see what exists before deciding
@@ -1020,6 +1045,106 @@ export async function createApiTools(context: AgentRunContext): Promise<ToolSet>
       }),
       execute: (args: { name: string; value: string }): Promise<string> =>
         setApiVariable(context, args.name, args.value),
+    }),
+  };
+}
+
+/**
+ * Builds the Database Explorer tools for a database-surface run: inspecting connections and their
+ * object trees freely (structure, never data), writing and changing queries in the document, and
+ * running a query — which reads the user's data, so it is gated and the user is asked first, shown the
+ * query's own text.
+ * @param context The run context the tools act through.
+ * @returns Returns the database tool set.
+ */
+export async function createDatabaseTools(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  const readTools: ToolSet = {
+    [LIST_DATABASE_CONNECTIONS]: tool({
+      description:
+        "List the Database Explorer's connections: their ids, engines and query languages, and whether each is connected.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listDatabaseConnections(context),
+    }),
+    [LIST_DATABASE_OBJECTS]: tool({
+      description:
+        "List what is under a node of a connection's object tree (databases, schemas, tables, columns with types and keys, indexes; for a graph, labels and relationship types). Omit the path for the top of the tree; pass a returned path to go deeper. Reads structure only, never data.",
+      inputSchema: z.object({
+        connection_id: z.string().min(1).describe('The id of the connection.'),
+        path: z
+          .string()
+          .optional()
+          .describe('The path of the node to list, exactly as returned; omit for the top.'),
+      }),
+      execute: (args: { connection_id: string; path?: string }): Promise<string> =>
+        listDatabaseObjects(context, args),
+    }),
+    [SCRIPT_DATABASE_OBJECT]: tool({
+      description:
+        "Return the script one of a node's actions writes (for example a table's CREATE) without running it.",
+      inputSchema: z.object({
+        connection_id: z.string().min(1).describe('The id of the connection.'),
+        path: z.string().min(1).describe('The path of the node, exactly as returned.'),
+        action: z.string().min(1).describe("The id of one of the node's actions."),
+      }),
+      execute: (args: { connection_id: string; path: string; action: string }): Promise<string> =>
+        scriptDatabaseObject(context, args),
+    }),
+    [LIST_DATABASE_QUERIES]: tool({
+      description: "List the document's saved queries, with their connections and text.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listDatabaseQueries(context),
+    }),
+  };
+  // Chat mode is read-only: the agent may look at the structure and the queries, not write or run.
+  if (context.mode === 'chat') {
+    return readTools;
+  }
+  return {
+    ...readTools,
+    [CREATE_DATABASE_QUERY]: tool({
+      description:
+        'Write a new query into the document and open it for the user, in the dialect of its connection (SQL or Cypher).',
+      inputSchema: z.object({
+        title: z.string().min(1).describe('A short title for the query.'),
+        connection_id: z.string().min(1).describe('The id of the connection it runs against.'),
+        database: z
+          .string()
+          .optional()
+          .describe('The database to run against, for an engine that reaches several.'),
+        text: z.string().min(1).describe('The query text.'),
+      }),
+      execute: (args: Record<string, unknown>): Promise<string> =>
+        createDatabaseQuery(context, args),
+    }),
+    [UPDATE_DATABASE_QUERY]: tool({
+      description: 'Change a saved query. Anything not named is left as it was.',
+      inputSchema: z.object({
+        id: z.string().min(1).describe('The id of the query.'),
+        title: z.string().optional().describe('A new title.'),
+        text: z.string().optional().describe('New query text.'),
+        connection_id: z.string().optional().describe('A different connection to run against.'),
+        database: z.string().optional().describe('A different database to run against.'),
+      }),
+      execute: (args: Record<string, unknown>): Promise<string> =>
+        updateDatabaseQuery(context, args),
+    }),
+    [RUN_DATABASE_QUERY]: tool({
+      description:
+        "Run a saved query and return its messages and the first rows of each result set. This reads the user's data, so the user is asked for permission first.",
+      inputSchema: z.object({ id: z.string().min(1).describe('The id of the query to run.') }),
+      // Gated: running reads the user's data. The prompt carries the query's own text, looked up
+      // before asking, so the user decides on what will run rather than on an id.
+      execute: async (args: { id: string }): Promise<string> => {
+        const detail: string = await describeDatabaseRun(context, args.id);
+        return gated(
+          context,
+          RUN_DATABASE_QUERY,
+          (input: { id: string }): Promise<string> => runDatabaseQuery(context, input.id),
+          (): string => detail,
+        )(args);
+      },
     }),
   };
 }
@@ -1661,6 +1786,8 @@ export function promptForSurface(
         return BINARY_PROMPT_APPENDIX;
       case 'api':
         return API_PROMPT_APPENDIX;
+      case 'database':
+        return DATABASE_PROMPT_APPENDIX;
       case 'workspace':
         return WORKSPACE_PROMPT_APPENDIX;
       case 'project':
@@ -1794,6 +1921,8 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
         return createBinaryTools(context);
       case 'api':
         return createApiTools(context);
+      case 'database':
+        return createDatabaseTools(context);
       case 'workspace':
         return createWorkspaceTools(context);
       // The standalone agent has no owning document, and the AI-SDK providers have no built-in tools:

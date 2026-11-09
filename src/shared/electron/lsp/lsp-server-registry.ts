@@ -1,6 +1,24 @@
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
-import { LspServerId, LspServerSummary } from '@shared/api/lsp-channels';
+import {
+  LspBraceStyle,
+  LspServerId,
+  LspServerSettingDescriptor,
+  LspServerSummary,
+  LspSettings,
+} from '@shared/api/lsp-channels';
+import {
+  changedSections,
+  LspServerSettingValues,
+  mergeOptions,
+  pushedSettings,
+  readOnlyAtStartup,
+  serversWithChangedSettings,
+  settingArguments,
+  startupOptions,
+  withDeclaredDefaults,
+  withWorkspaceFolder,
+} from './lsp-server-settings';
 import { logger } from '../logger';
 import { languageServerCatalogue } from './language-server-catalogue';
 import {
@@ -12,6 +30,7 @@ import {
 } from './language-server-descriptor';
 import { contributedLanguageServers } from '../contributions/plugins/contributed';
 import { LspProvisioner } from './lsp-provisioner';
+import type { LspIndentationSections } from './lsp-indentation';
 import { ArchiveProvision } from '../provisioning/archive-provision';
 import { LspSettingsManager } from './lsp-settings';
 
@@ -22,6 +41,22 @@ export type {
   LspResolution,
   LspServerSpec,
 } from './language-server-descriptor';
+
+/**
+ * Describes a change to the user's values for one server's declared settings (#1204).
+ */
+export interface LspSettingsChange {
+  /**
+   * Gets the server whose values changed.
+   */
+  readonly serverId: LspServerId;
+
+  /**
+   * Gets whether a setting that changed is one the server reads only when it starts, so its sessions
+   * must restart for the change to take effect.
+   */
+  readonly restart: boolean;
+}
 
 /**
  * Provides a `require` rooted at this module, used to resolve bundled language-server packages from
@@ -118,6 +153,11 @@ export class LspServerRegistry {
         displayName: descriptor.displayName,
         languages: descriptor.languages,
         priority: descriptor.priority,
+        ...(descriptor.takesBraceStyle === true ? { takesBraceStyle: true } : {}),
+        ...(descriptor.readsEditorConfigAtStart === true ? { readsEditorConfigAtStart: true } : {}),
+        ...(descriptor.settings === undefined || descriptor.settings.length === 0
+          ? {}
+          : { settings: descriptor.settings }),
       }),
     );
   }
@@ -128,9 +168,14 @@ export class LspServerRegistry {
    * a server that is configured but unavailable resolves with a reason to surface.
    * @param serverId The identifier of the server to resolve.
    * @param rootPath The workspace root the server is rooted at (used for per-workspace data).
+   * @param braceStyle The brace style the user's settings give the session's language, if any.
    * @returns Returns the resolution.
    */
-  public async resolve(serverId: LspServerId, rootPath: string): Promise<LspResolution> {
+  public async resolve(
+    serverId: LspServerId,
+    rootPath: string,
+    braceStyle?: LspBraceStyle,
+  ): Promise<LspResolution> {
     logger.trace('LspServerRegistry', `Resolving server ${serverId}`);
     if (this.settings.get().disabledServers.includes(serverId)) {
       logger.debug('LspServerRegistry', `Server ${serverId} is disabled by settings`);
@@ -141,20 +186,191 @@ export class LspServerRegistry {
       logger.debug('LspServerRegistry', `Unknown server ${serverId}`);
       return NO_SERVER;
     }
-    const resolution: LspResolution = await descriptor.resolve(this.context(rootPath));
+    const resolution: LspResolution = await descriptor.resolve(this.context(rootPath, braceStyle));
     return resolution.spec === null
       ? resolution
-      : { spec: this.withExtraArgs(serverId, resolution.spec), error: null };
+      : {
+          spec: this.withStartupSettings(
+            serverId,
+            this.withExtraArgs(
+              serverId,
+              this.withSettingArguments(serverId, resolution.spec, rootPath),
+            ),
+            rootPath,
+          ),
+          error: null,
+        };
+  }
+
+  /**
+   * Determines whether a server answers `workspace/diagnostic` whatever its static capabilities say
+   * (#1144).
+   * @param serverId The server.
+   * @returns Returns true when its descriptor says it does.
+   */
+  public servesWorkspaceDiagnostics(serverId: LspServerId): boolean {
+    return this.descriptors.get(serverId)?.servesWorkspaceDiagnostics === true;
+  }
+
+  /**
+   * Gets how a server is asked to report the whole of the projects its open documents are in (#1207).
+   * @param serverId The server.
+   * @returns Returns how, or undefined for a server that is not asked.
+   */
+  public projectDiagnosticsOf(serverId: LspServerId): 'tsserver' | undefined {
+    return this.descriptors.get(serverId)?.projectDiagnostics;
+  }
+
+  /**
+   * Gets the values to answer a server's `workspace/configuration` requests with (#1143): the user's
+   * for the settings it declares, and each one's default where they have set none, with the
+   * workspace's folder put where a value names it (#1212).
+   * @param serverId The server.
+   * @param rootPath The folder the session serves, or undefined to leave the placeholder as written.
+   * @returns Returns the values, or undefined for a server that declares none and has none set.
+   */
+  public configurationOf(
+    serverId: LspServerId,
+    rootPath?: string,
+  ): LspServerSettingValues | undefined {
+    return withWorkspaceFolder(
+      withDeclaredDefaults(
+        this.descriptors.get(serverId)?.settings,
+        this.settings.get().serverSettings[serverId],
+      ),
+      rootPath,
+    );
+  }
+
+  /**
+   * Gets the settings a server asks for that are a document's indentation (#1208).
+   * @param serverId The server.
+   * @returns Returns their sections, or undefined for a server that asks for none.
+   */
+  public indentationSectionsOf(serverId: LspServerId): LspIndentationSections | undefined {
+    return this.descriptors.get(serverId)?.indentationSections;
+  }
+
+  /**
+   * Gets the settings to push to a server in `workspace/didChangeConfiguration` (#1204), shaped as it
+   * expects them.
+   * @param serverId The server.
+   * @param rootPath The folder the session serves, or undefined to leave the placeholder as written.
+   * @returns Returns the settings, or undefined for a server that is not pushed them.
+   */
+  public pushedSettingsOf(
+    serverId: LspServerId,
+    rootPath?: string,
+  ): Record<string, unknown> | undefined {
+    return pushedSettings(
+      this.descriptors.get(serverId)?.settingsDelivery,
+      this.configurationOf(serverId, rootPath),
+    );
+  }
+
+  /**
+   * Determines whether a server asks for its settings through `workspace/configuration` (#1204), so a
+   * bare `didChangeConfiguration` tells it to ask again.
+   * @param serverId The server.
+   * @returns Returns true unless the server says it never asks.
+   */
+  public pullsSettings(serverId: LspServerId): boolean {
+    return this.descriptors.get(serverId)?.settingsDelivery?.pull !== false;
+  }
+
+  /**
+   * Listens for changes to the user's values for servers' declared settings (#1143), each saying
+   * whether the server must restart to take it (#1204).
+   * @param listener The listener, given the servers whose values changed.
+   */
+  public onConfigurationChange(listener: (changes: readonly LspSettingsChange[]) => void): void {
+    this.settings.onChange((previous: LspSettings, next: LspSettings): void => {
+      const changes: LspSettingsChange[] = serversWithChangedSettings(
+        previous.serverSettings,
+        next.serverSettings,
+      ).map((serverId: LspServerId): LspSettingsChange => ({
+        serverId,
+        restart: this.changeNeedsRestart(
+          serverId,
+          changedSections(previous.serverSettings[serverId], next.serverSettings[serverId]),
+        ),
+      }));
+      if (changes.length > 0) {
+        listener(changes);
+      }
+    });
+  }
+
+  /**
+   * Determines whether a change to some of a server's settings needs it restarted (#1204): one of
+   * them is a declared setting the server reads only when it starts.
+   * @param serverId The server.
+   * @param sections The sections that changed.
+   * @returns Returns true when its sessions must restart.
+   */
+  private changeNeedsRestart(serverId: LspServerId, sections: readonly string[]): boolean {
+    const descriptor: LanguageServerDescriptor | undefined = this.descriptors.get(serverId);
+    return (descriptor?.settings ?? []).some(
+      (setting: LspServerSettingDescriptor): boolean =>
+        sections.includes(setting.section) &&
+        readOnlyAtStartup(descriptor?.settingsDelivery, setting),
+    );
+  }
+
+  /**
+   * Gives a server the settings it takes on its command line (#1213), before the user's own extra
+   * arguments, so an argument typed in Settings has the last word.
+   * @param serverId The server.
+   * @param spec The resolved spawn specification.
+   * @param rootPath The folder the session serves.
+   * @returns Returns the specification with its settings' options added.
+   */
+  private withSettingArguments(
+    serverId: LspServerId,
+    spec: LspServerSpec,
+    rootPath: string,
+  ): LspServerSpec {
+    const descriptor: LanguageServerDescriptor | undefined = this.descriptors.get(serverId);
+    const options: readonly string[] = settingArguments(
+      descriptor?.settingsDelivery,
+      descriptor?.settings,
+      this.configurationOf(serverId, rootPath),
+    );
+    return options.length === 0 ? spec : { ...spec, args: [...spec.args, ...options] };
+  }
+
+  /**
+   * Gives a server the settings it reads at start-up in its `initializationOptions` (#1204), merged
+   * with the options its descriptor resolved.
+   * @param serverId The server.
+   * @param spec The resolved spawn specification.
+   * @param rootPath The folder the session serves.
+   * @returns Returns the specification with its settings' options merged in.
+   */
+  private withStartupSettings(
+    serverId: LspServerId,
+    spec: LspServerSpec,
+    rootPath: string,
+  ): LspServerSpec {
+    const options: Record<string, unknown> | undefined = startupOptions(
+      this.descriptors.get(serverId)?.settingsDelivery,
+      this.configurationOf(serverId, rootPath),
+    );
+    return options === undefined
+      ? spec
+      : { ...spec, initializationOptions: mergeOptions(spec.initializationOptions, options) };
   }
 
   /**
    * Builds the surface handed to a descriptor when it resolves.
    * @param rootPath The workspace root the server is being resolved for.
+   * @param braceStyle The brace style the user's settings give the session's language, if any.
    * @returns Returns the context.
    */
-  private context(rootPath: string): LanguageServerContext {
+  private context(rootPath: string, braceStyle?: LspBraceStyle): LanguageServerContext {
     return {
       rootPath,
+      braceStyle,
       settings: this.settings,
       provisioner: this.provisioner,
       nodePackageServer: (packageBinPath: string): LspServerSpec =>

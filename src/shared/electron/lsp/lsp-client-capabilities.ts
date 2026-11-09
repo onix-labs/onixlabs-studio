@@ -1,21 +1,44 @@
-import type { ClientCapabilities } from 'vscode-languageserver-protocol';
+import type { ClientCapabilities, SymbolKind } from 'vscode-languageserver-protocol';
 import { SEMANTIC_TOKEN_MODIFIERS, SEMANTIC_TOKEN_TYPES } from '@shared/api/lsp-channels';
 
 /**
- * Builds the client capabilities advertised to every server. They cover diagnostics, document
+ * The servers told an edit may create a file (#1210). Told so, a server answers differently, and sends
+ * what it would otherwise have left out, so each joins once its edits have been tried: rust-analyzer's
+ * Create Module and Extract Module to File have.
+ */
+const FILE_CREATING_SERVERS: ReadonlySet<string> = new Set<string>(['rust']);
+
+/**
+ * clangd's extension to the text-document capabilities (#1213), kept apart because the protocol's type
+ * has no room for it.
+ */
+const INACTIVE_REGIONS_CAPABILITY: Record<string, unknown> = {
+  inactiveRegionsCapabilities: { inactiveRegions: true },
+};
+
+/**
+ * Builds the client capabilities advertised to a server. They cover diagnostics, document
  * synchronisation, and the core language features the renderer client surfaces.
+ * @param serverId The server, or undefined for what every server is told.
  * @returns Returns the client capabilities.
  */
-export function clientCapabilities(): ClientCapabilities {
+export function clientCapabilities(serverId?: string): ClientCapabilities {
   return {
     textDocument: {
       synchronization: { dynamicRegistration: true, didSave: true },
-      publishDiagnostics: { relatedInformation: true },
+      // Studio fades code a diagnostic marks unnecessary (1) and strikes through what it marks
+      // deprecated (2). A server asked for neither drops or under-reports those hints, so the tags are
+      // advertised on both routes a diagnostic can arrive by.
+      publishDiagnostics: { relatedInformation: true, tagSupport: { valueSet: [1, 2] } },
       // Advertise pull diagnostics so a pull-based server (notably the Roslyn C# server, which does
       // not push `publishDiagnostics`) advertises its `diagnosticProvider` back and answers
       // `textDocument/diagnostic`; without this the server treats the client as push-only and the
       // Error List never receives its errors.
-      diagnostic: { dynamicRegistration: false, relatedDocumentSupport: false },
+      diagnostic: {
+        dynamicRegistration: false,
+        relatedDocumentSupport: false,
+        tagSupport: { valueSet: [1, 2] },
+      },
       // Studio's completion list (#1021) inserts snippets with tab stops, honours the characters
       // that accept a completion, shows a completion's documentation as markdown (struck through when
       // deprecated, preselected when the server says), offers insert-or-replace, shows a label's
@@ -60,8 +83,42 @@ export function clientCapabilities(): ClientCapabilities {
         contextSupport: true,
       },
       hover: { contentFormat: ['markdown', 'plaintext'] },
+      // The compiler's folds and the reads and writes of the symbol under the caret (#1147). Folds are
+      // whole lines, as Monaco folds.
+      foldingRange: {
+        dynamicRegistration: false,
+        lineFoldingOnly: true,
+        foldingRangeKind: { valueSet: ['comment', 'imports', 'region'] },
+      },
+      documentHighlight: { dynamicRegistration: false },
+      // Ranges edited together, such as an HTML tag's opening and closing names.
+      linkedEditingRange: { dynamicRegistration: false },
+      // Expand and Shrink Selection grow by the compiler's syntax nodes (#1155).
+      selectionRange: { dynamicRegistration: false },
+      // Facts above types and members — Roslyn's reference counts (#1149) — each filled in as shown.
+      codeLens: { dynamicRegistration: false },
+      // Parameter names and inferred types set into the code (#1145); the tooltip — the parameter's
+      // or type's signature — and a hint's insertable text are filled in when it is hovered.
+      inlayHint: {
+        dynamicRegistration: false,
+        resolveSupport: { properties: ['tooltip', 'textEdits', 'label.tooltip'] },
+      },
+      // Format Document, Format Selection and format-on-type (#1141): the server lays the code out,
+      // honouring the project's own conventions (`.editorconfig` for Roslyn).
+      formatting: { dynamicRegistration: false },
+      rangeFormatting: { dynamicRegistration: false },
+      onTypeFormatting: { dynamicRegistration: false },
       definition: { linkSupport: false },
+      // Go to Declaration (#1213), where a language tells the two apart: a C++ function declared in a
+      // header and defined in a source file.
+      declaration: { linkSupport: false },
+      // Go to Implementation and Go to Type Definition (#1142), answered by path like a definition.
+      implementation: { linkSupport: false },
+      typeDefinition: { linkSupport: false },
       references: {},
+      // A member's callers and callees, and a type's base and derived types (#1153).
+      callHierarchy: { dynamicRegistration: false },
+      typeHierarchy: { dynamicRegistration: false },
       // Nested symbols, so a server answers with each type's members inside it rather than one flat
       // list; the editor strip's Type and Member dropdowns read them (#882).
       documentSymbol: { hierarchicalDocumentSymbolSupport: true },
@@ -98,14 +155,21 @@ export function clientCapabilities(): ClientCapabilities {
       },
       // Advertise semantic tokens so servers send them; the renderer maps each server's legend onto
       // the standard one and feeds Monaco, colouring types, members, and parameters.
+      // Range as well as full (#1147): Monaco paints the screen shown from a range request before the
+      // whole file's tokens arrive. Roslyn then advertises `full: false`, but answers full requests
+      // still — and the full provider is registered off the server's legend, not that flag.
       semanticTokens: {
-        requests: { full: true, range: false },
+        requests: { full: true, range: true },
         tokenTypes: [...SEMANTIC_TOKEN_TYPES],
         tokenModifiers: [...SEMANTIC_TOKEN_MODIFIERS],
         formats: ['relative'],
         overlappingTokenSupport: false,
         multilineTokenSupport: false,
       },
+      // Not in the protocol: clangd reports the lines the preprocessor leaves out, an `#if 0` block or
+      // the branch of an `#ifdef` not taken, only to a client that says it fades them (#1213). Other
+      // servers ignore it.
+      ...INACTIVE_REGIONS_CAPABILITY,
     },
     // `refreshSupport` tells a server it may send `workspace/semanticTokens/refresh` when its
     // classification improves (a project finishes loading); without it heavy servers never signal
@@ -113,20 +177,72 @@ export function clientCapabilities(): ClientCapabilities {
     workspace: {
       workspaceFolders: true,
       configuration: true,
+      // A changed setting is announced with `didChangeConfiguration`, on which a server asks for its
+      // configuration again (#1143); nothing is registered for it dynamically.
+      didChangeConfiguration: { dynamicRegistration: false },
       semanticTokens: { refreshSupport: true },
+      // A server may say its diagnostics are stale (a project finished loading, the analysis scope
+      // changed), on which the workspace pull starts afresh (#1144).
+      diagnostics: { refreshSupport: true },
+      // A server may say its hints are stale (a setting changed, a project loaded), on which the
+      // editors ask again (#1145).
+      inlayHint: { refreshSupport: true },
+      // A server may say its lenses are stale, on which the editors ask again (#1149).
+      codeLens: { refreshSupport: true },
+      // Go to Symbol in Workspace (#1146). No resolveSupport: a server must say where each symbol is
+      // in its first answer, which Roslyn does.
+      symbol: {
+        dynamicRegistration: false,
+        symbolKind: {
+          valueSet: Array.from(
+            { length: 26 },
+            (_: unknown, index: number): SymbolKind => (index + 1) as SymbolKind,
+          ),
+        },
+      },
       // The main process watches the session root and sends `didChangeWatchedFiles`; a server
       // narrows that to its own globs through a dynamic registration.
       didChangeWatchedFiles: { dynamicRegistration: true, relativePatternSupport: true },
       // A server's `workspace/applyEdit` is applied by the renderer (#1015), and a rename's answer may
-      // come either as per-file `changes` or as versioned `documentChanges`. Creating, renaming and
-      // deleting files is not supported yet: no resource operations are advertised, and any a server
-      // sends anyway are refused and named rather than half-applied.
+      // come either as per-file `changes` or as versioned `documentChanges`. Renaming and deleting
+      // files is not supported yet, and any a server sends anyway are refused and named rather than
+      // half-applied.
       applyEdit: true,
-      workspaceEdit: { documentChanges: true, resourceOperations: [] },
+      workspaceEdit: {
+        documentChanges: true,
+        resourceOperations: FILE_CREATING_SERVERS.has(serverId ?? '') ? ['create'] : [],
+      },
+      // A file or folder renamed in an explorer asks the server what else has to change: the imports
+      // of it, for one (#1207). The edit is applied once the rename has worked.
+      fileOperations: { dynamicRegistration: false, willRename: true },
       // A chosen code action's command runs on the server (#1016), when the server lists it among
       // the commands it runs; whatever it changes comes back as a `workspace/applyEdit`.
       executeCommand: { dynamicRegistration: false },
     },
-    window: { workDoneProgress: true },
+    // A server's question is put to the user with its actions as buttons, and the chosen action
+    // returned exactly as the server sent it, whatever else it carries (#1154).
+    window: {
+      workDoneProgress: true,
+      showMessage: { messageActionItem: { additionalPropertiesSupport: true } },
+      // A server may ask for a page or file to be shown (#1211): a web page opens in the browser, a
+      // file in an editor with its range selected. gopls's Browse actions offer nothing else.
+      showDocument: { support: true },
+    },
+    // Not in the protocol, and ignored by any server that does not know them. A server may say when it
+    // has finished loading and what stops it loading (`experimental/serverStatus`): rust-analyzer has
+    // no other way of saying a broken `Cargo.toml` stopped the workspace loading (#1210). The client
+    // commands a server may put on a lens: rust-analyzer drops a lens whose command the client does not
+    // run, so without this it shows none at all (#1210). Debug runs under CodeLLDB, the Rust debugger
+    // the Plugin Manager installs.
+    experimental: {
+      serverStatusNotification: true,
+      commands: {
+        commands: [
+          'rust-analyzer.runSingle',
+          'rust-analyzer.debugSingle',
+          'rust-analyzer.showReferences',
+        ],
+      },
+    },
   };
 }

@@ -1,5 +1,18 @@
 <app-panel-layout class="ai-manager">
-  <!-- One sub-view at a time, chosen on the ribbon (#948). Each brings its own side panel. -->
+  <!-- One sidebar for every sub-view: the search, then Local Models, Prompt Profiles and Skills as
+       accordions, one open at a time. The open one is the sub-view shown beside it. -->
+  <app-panel
+    panelId="ai-manager-sidebar"
+    defaultEdge="left"
+    [allowedEdges]="sideEdges"
+    [movable]="false"
+    [defaultSize]="260"
+    [minSize]="240"
+    [maxSize]="480"
+  >
+    <app-ai-manager-sidebar />
+  </app-panel>
+
   <div main class="ai-manager__section">
     @switch (section()) {
       @case ('models') {
@@ -10,6 +23,16 @@
       }
       @case ('skills') {
         <app-skill-library />
+      }
+      @default {
+        <!-- Nothing open: the sidebar's sections are all closed. -->
+        <div class="ai-manager__overview">
+          <app-icon class="ai-manager__overview-icon" [icon]="Icon.AI_MODELS" />
+          <p class="ai-manager__overview-title">AI Manager</p>
+          <p class="ai-manager__overview-hint">
+            Open Local Models, Prompt Profiles or Skills in the sidebar.
+          </p>
+        </div>
       }
     }
   </div>

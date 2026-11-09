@@ -14,19 +14,25 @@ import {
   WindowOpenHandlerResponse,
 } from 'electron';
 import { pluginNodeRuntime } from './plugin-node-runtime';
+import { showMessageBox } from './dialog-parent';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { AppChannel } from '@shared/api/app-channels';
 import { ShellChannel } from '@shared/api/shell-channels';
+import { SecurityChannel } from '@shared/api/security-channels';
 import { AUX_PANEL_URL, MODAL_WINDOW_URL, WindowChannel } from '@shared/api/window-channels';
 import { AgentConversationStore } from './ai/agent-conversation-store';
 import { useDevelopmentUserData } from './development-user-data';
 import { AgentCategoryStore } from './ai/agent-category-store';
 import { AiManager } from './ai/ai-manager';
+import { PromptProfileLibrary } from './ai/prompt-profiles/prompt-profile-library';
+import { LibraryTransfer } from './ai/skills/library-transfer';
+import { LibraryTransferHandlers } from './ai/skills/library-transfer-handlers';
 import { SkillHandlers } from './ai/skills/skill-handlers';
 import { SkillLibrary } from './ai/skills/skill-library';
 import { mainContributions } from '@shared/electron/contributions';
+import { databaseContribution } from '@shared/electron/contributions/database/database.contribution';
 import {
   ContributionContext,
   ContributionListener,
@@ -53,6 +59,7 @@ import { CodeRunner } from '@shared/electron/code-runner';
 import { DecoderHost } from '@shared/electron/decoders/decoder-ipc';
 import { BinaryAssembler } from '@shared/electron/binary-assembler';
 import { DirectoryWatcher } from '@shared/electron/directory-watcher';
+import { EditorConfigManager } from '@shared/electron/editor-config/editor-config-manager';
 import { FileManager } from '@shared/electron/file-manager';
 import { FileWatcher } from '@shared/electron/file-watcher';
 import { Logger, logger as appLogger } from '@shared/electron/logger';
@@ -69,6 +76,7 @@ import { DebugAdapterRegistry } from './debug/debug-adapter-registry';
 import { DebugLaunchResolver } from './debug/debug-launch-resolver';
 import { DebugManager } from './debug/debug-manager';
 import { projectSystems } from './project-system/default-project-systems';
+import { setProjectScanDepth } from './project-system/dotnet-project-system';
 import { DebugAdapterLocator } from './debug/debug-adapter-locator';
 import { LspManager } from './lsp/lsp-manager';
 import { LspServerRegistry } from './lsp/lsp-server-registry';
@@ -83,6 +91,7 @@ import {
   PidJournal,
 } from '@shared/electron/pid-journal';
 import { PrintManager } from '@shared/electron/print-manager';
+import { SpellingManager } from '@shared/electron/spelling-manager';
 import { SecurityManager } from '@shared/electron/security-manager';
 import { hydrateLoginShellEnvironment } from '@shared/electron/shell-env';
 import { hydratePythonRuntime } from '@shared/electron/provisioning/python-runtime';
@@ -91,7 +100,14 @@ import type { GitIdentity, SetupProbeResult } from '@shared/api/setup-channels';
 import { runSetupProbes } from '@shared/electron/setup/setup-probes';
 import type { GraphicsAcceleration } from '@shared/api/host';
 import { StartupPreferences, StartupPreferencesStore } from './startup-preferences';
+import { parseStartupSettings, StartupSettings } from '@shared/api/startup-settings';
 import { VersionControlHost } from '@shared/electron/version-control/version-control-host';
+import { PackageManagerHost } from '@shared/electron/package-managers/package-manager-host';
+import { PackageManagerChannels } from '@shared/electron/package-managers/package-manager-channels';
+import { PackageRegistryTokenStore } from '@shared/electron/package-managers/package-registry-token-store';
+import { createPackageRegistryTokens } from '@shared/electron/package-managers/package-registry-tokens';
+import { TestAdapterHost } from '@shared/electron/test-adapters/test-adapter-host';
+import { TestAdapterManager } from '@shared/electron/test-adapters/test-adapter-manager';
 import { VersionControlManager } from '@shared/electron/version-control/version-control-manager';
 import { VersionControlSetup } from '@shared/electron/version-control/version-control-setup';
 import { VersionControlSettings } from '@shared/electron/version-control/version-control-settings';
@@ -99,6 +115,8 @@ import type { VersionControlExecutableChoice } from '@shared/api/version-control
 import type { MetadataPolicies } from '@shared/electron/directory-watch-filter';
 import {
   contributedHosting,
+  contributedPackageManagers,
+  contributedTestAdapters,
   contributedVersionControl,
 } from '@shared/electron/contributions/plugins/contributed';
 import {
@@ -107,6 +125,8 @@ import {
 } from '@shared/electron/contributions/plugins/plugin-install-events';
 import { HostingHost } from '@shared/electron/hosting/hosting-host';
 import { HostingAgentAccess } from '@shared/electron/hosting/hosting-agent-access';
+import type { HostingDescriptor } from '@shared/electron/hosting/hosting-descriptor';
+import { CustomHosts } from '@shared/electron/hosting/custom-hosts';
 import { HostingSettings } from '@shared/electron/hosting/hosting-settings';
 import { HostingManager } from '@shared/electron/hosting/hosting-manager';
 import { HostingCredentialStore } from '@shared/electron/hosting/hosting-credential-store';
@@ -241,6 +261,7 @@ class Program {
     indexHtml: Program.INDEX_HTML,
     applySecurity: (contents: WebContents): void => this.applyWebContentsSecurity(contents),
     onMainClose: (event: ElectronEvent): void => this.onWindowClose(event),
+    startupSettings: (): StartupSettings => this.startupSettings,
     onMainDidStartLoad: (): void => {
       // A (re)loading page has no listeners yet: OS-open paths queue again until the fresh renderer
       // drains them over TakePendingOpenPaths.
@@ -283,6 +304,18 @@ class Program {
   private graphicsAcceleration: GraphicsAcceleration | null = null;
 
   /**
+   * Holds the startup settings as the renderer last mirrored them, read from the startup preferences
+   * before the app is ready and kept current by {@link AppChannel.SetStartupSettings}.
+   */
+  private startupSettings: StartupSettings = parseStartupSettings(undefined);
+
+  /**
+   * Holds a value indicating whether the main window was closed on macOS while Studio keeps running:
+   * it is hidden rather than destroyed, with everything in it intact, and the dock brings it back.
+   */
+  private mainParked: boolean = false;
+
+  /**
    * Holds whether GPU hardware acceleration is enabled for this launch. Follows the level, except
    * that the `STUDIO_DISABLE_GPU` diagnostic forces it off — so the renderer is told what actually
    * happened rather than what was asked for.
@@ -293,6 +326,18 @@ class Program {
    * Holds the resolver for the in-flight close request, or null when none is pending.
    */
   private pendingClose: ((proceed: boolean) => void) | null = null;
+
+  /**
+   * Holds the resolver of the in-flight park request (the window closing while Studio keeps
+   * running), or null when none is pending.
+   */
+  private pendingPark: ((proceed: boolean) => void) | null = null;
+
+  /**
+   * Holds a value indicating whether the quit in progress was asked for as a relaunch, so Studio
+   * starts again once it is confirmed (and not when it is cancelled).
+   */
+  private relaunchOnQuit: boolean = false;
 
   /**
    * Holds the file paths the operating system asked the application to open before the renderer was
@@ -314,6 +359,11 @@ class Program {
   private readonly terminalManager: TerminalManager = new TerminalManager(
     (): BrowserWindow | null => this.windows.main(),
   );
+
+  /**
+   * Tracks the open workspace roots and confines filesystem operations (and agent runs) to them.
+   */
+  private readonly workspaceContext: WorkspaceContext = new WorkspaceContext();
 
   /**
    * Handles file-system operations and dialogs on behalf of the renderer.
@@ -338,7 +388,13 @@ class Program {
   private readonly fileManager: FileManager = new FileManager(
     (): BrowserWindow | null => this.windows.main(),
     this.trustedPaths,
+    this.workspaceContext,
   );
+
+  /**
+   * Holds the EditorConfig resolver, answering what a file's `.editorconfig` files say about it.
+   */
+  private readonly editorConfigManager: EditorConfigManager = new EditorConfigManager();
 
   /**
    * Renders the contextual application menu the renderer composes.
@@ -371,17 +427,29 @@ class Program {
   );
 
   /**
-   * Owns the user's skill library (#301): a folder of `SKILL.md` folders under the user-data path,
-   * which runs draw their in-scope skills from and Settings edits.
+   * Owns the user's skill library (#301): a folder of `SKILL.md` folders, under the user-data path
+   * unless the user chose another, which runs draw their in-scope skills from and Settings edits.
    */
   private readonly skillLibrary: SkillLibrary = new SkillLibrary(
-    path.join(app.getPath('userData'), 'skills'),
+    StartupPreferencesStore.read().settings.skillLibraryFolder ||
+      path.join(app.getPath('userData'), 'skills'),
   );
 
   /**
-   * Tracks the open workspace roots and confines filesystem operations (and agent runs) to them.
+   * Owns the user's prompt profiles (#1263): a folder of Markdown files beside the skill library.
    */
-  private readonly workspaceContext: WorkspaceContext = new WorkspaceContext();
+  private readonly promptProfileLibrary: PromptProfileLibrary = new PromptProfileLibrary(
+    path.join(app.getPath('userData'), 'prompt-profiles'),
+  );
+
+  /**
+   * Serves the prompt-profile library, and imports into and exports out of both libraries (#1263).
+   */
+  private readonly libraryTransferHandlers: LibraryTransferHandlers = new LibraryTransferHandlers(
+    this.promptProfileLibrary,
+    new LibraryTransfer(this.skillLibrary, this.promptProfileLibrary),
+    (): BrowserWindow | null => this.windows.main(),
+  );
 
   /**
    * Hosts the version-control plugins (#815–#817): picks the one serving each repository, confines
@@ -395,6 +463,54 @@ class Program {
     executableFor: (pluginId: string): VersionControlExecutableChoice | null =>
       this.versionControlSettings.executableFor(pluginId),
   });
+
+  /**
+   * Holds the registry tokens saved in Studio for package-manager plugins, encrypted at rest (#911).
+   */
+  private readonly packageRegistryTokens: PackageRegistryTokenStore = createPackageRegistryTokens();
+
+  /**
+   * Hosts the package-manager plugins (#908): finds which apply to a folder, confines every request to
+   * an open, trusted workspace, and refuses what a plugin does not support.
+   */
+  private readonly packageManagerHost: PackageManagerHost = new PackageManagerHost({
+    descriptors: () => contributedPackageManagers(versionControlNodeRuntime),
+    roots: this.workspaceContext,
+    trust: this.repositoryTrust,
+    // A token the user saved in Settings for this plugin and this registry; the plugin reads the
+    // tool's own configuration first, and asks for this only when that holds none.
+    credential: (pluginId: string, registry: string): Promise<string | null> =>
+      Promise.resolve(this.packageRegistryTokens.token(pluginId, registry)),
+  });
+
+  /**
+   * Serves the Packages panel and Settings over the package-manager host (#911). Core reads no package
+   * manifest of its own: with no plugin installed, the panel has nothing to show.
+   */
+  private readonly packageManagerChannels: PackageManagerChannels = new PackageManagerChannels(
+    this.packageManagerHost,
+    this.workspaceContext,
+    this.repositoryTrust,
+    this.packageRegistryTokens,
+  );
+
+  /**
+   * Hosts the test-adapter plugins (#1351): finds which apply to a folder, confines every request to an
+   * open, trusted workspace, gives each run its own output folder, and checks every command and launch
+   * a plugin answers with before Studio runs it. Core knows no test framework — each is a plugin.
+   */
+  private readonly testAdapterHost: TestAdapterHost = new TestAdapterHost({
+    descriptors: () => contributedTestAdapters(versionControlNodeRuntime),
+    roots: this.workspaceContext,
+    trust: this.repositoryTrust,
+  });
+
+  /**
+   * Serves the Tests panel's requests to the test-adapter host.
+   */
+  private readonly testAdapterManager: TestAdapterManager = new TestAdapterManager(
+    this.testAdapterHost,
+  );
 
   /**
    * Holds which tool each version-control plugin runs, as chosen in Settings.
@@ -426,12 +542,29 @@ class Program {
   );
 
   /**
+   * Holds the hosts the user added to hosting plugins that accept them — enterprise servers — from
+   * Settings › Version Control.
+   */
+  private readonly customHosts: CustomHosts = new CustomHosts(
+    path.join(app.getPath('userData'), 'hosting-hosts.json'),
+  );
+
+  /**
    * Hosts the code-hosting plugins (#819, #820): picks the one serving each repository's host, hands it
-   * a credential only for a host it declares, and refuses what it or the repository does not allow.
-   * Core talks to no host of its own — GitHub is a plugin.
+   * a credential only for a host it declares (or the user added for it), and refuses what it or the
+   * repository does not allow. Core talks to no host of its own — GitHub is a plugin.
    */
   private readonly hostingHost: HostingHost = new HostingHost({
-    descriptors: () => contributedHosting(versionControlNodeRuntime),
+    descriptors: () =>
+      contributedHosting(versionControlNodeRuntime).map(
+        (descriptor: HostingDescriptor): HostingDescriptor =>
+          descriptor.customHosts === true
+            ? {
+                ...descriptor,
+                hosts: [...descriptor.hosts, ...this.customHosts.hostsFor(descriptor.id)],
+              }
+            : descriptor,
+      ),
     authFor: (pluginId: string) => this.hostingSettings.authFor(pluginId),
     credential: (host: string): Promise<string | null> =>
       Promise.resolve(this.hostingCredentials.token(host)),
@@ -444,6 +577,7 @@ class Program {
     this.hostingHost,
     this.hostingCredentials,
     this.hostingSettings,
+    this.customHosts,
   );
 
   /**
@@ -489,10 +623,18 @@ class Program {
   private readonly printManager: PrintManager = new PrintManager();
 
   /**
+   * Applies the spell-checking settings to the session every window shares.
+   */
+  private readonly spellingManager: SpellingManager = new SpellingManager();
+
+  /**
    * Reads and writes each workspace's `.studio` persistence, confined to the open workspace roots the
    * {@link workspaceContext} tracks.
    */
-  private readonly studioStore: StudioStore = new StudioStore(this.workspaceContext);
+  private readonly studioStore: StudioStore = new StudioStore(
+    this.workspaceContext,
+    (): boolean => this.startupSettings.addStudioUserFileToGitignore,
+  );
 
   /**
    * Handles workspace (open folder) and directory operations on behalf of the renderer.
@@ -534,6 +676,7 @@ class Program {
     this.versionControlHost,
     this.trustedPaths,
     (): BrowserWindow | null => this.windows.main(),
+    path.join(app.getPath('userData'), 'new-project.json'),
   );
 
   /**
@@ -689,6 +832,8 @@ class Program {
     // this early), and the STUDIO_DISABLE_GPU diagnostic switch forces it off regardless.
     const startupPreferences: StartupPreferences = StartupPreferencesStore.read();
     this.graphicsAcceleration = startupPreferences.graphicsAcceleration;
+    this.startupSettings = startupPreferences.settings;
+    setProjectScanDepth(this.startupSettings.projectScanDepth);
     // The log floor is applied as early as the preferences can be read: everything logged from here
     // on is filtered by it. A packaged build defaults to info, which drops the trace and debug
     // records that are nineteen in twenty of what would otherwise be written.
@@ -699,6 +844,7 @@ class Program {
     );
     this.logger.setFloor(logFloor);
     this.logger.info('startup', `Log level: ${logFloor}`);
+    this.applyLogLimits(startupPreferences.settings);
     // An unpersisted level is accelerated: the renderer completes the migration and may then ask for
     // a relaunch, which is the right way round — a first launch should not start degraded.
     const wantsAcceleration: boolean = this.graphicsAcceleration !== 'off';
@@ -797,7 +943,11 @@ class Program {
     for (const filePath of openFilePathsFromArgv(argv, process.defaultApp === true)) {
       this.dispatchOpenPath(filePath);
     }
-    this.windows.focusMain();
+    // A dormant Studio wakes to its welcome screen; focusing the hidden main window would show it
+    // empty.
+    if (!this.unparkMain()) {
+      this.windows.focusMain();
+    }
   }
 
   /**
@@ -815,7 +965,7 @@ class Program {
     } catch {
       return;
     }
-    this.trustedPaths.remember(filePath);
+    this.trustedPaths.rememberChosen(filePath);
     const window: BrowserWindow | null = this.windows.main();
     if (this.openPathsReady && window !== null && !window.isDestroyed()) {
       window.webContents.send(AppChannel.OpenPath, filePath);
@@ -912,6 +1062,12 @@ class Program {
       this.resolveClose(proceed === true);
     });
 
+    ipcMain.on(AppChannel.ConfirmPark, (_event: IpcMainEvent, proceed: unknown): void => {
+      const resolver: ((proceed: boolean) => void) | null = this.pendingPark;
+      this.pendingPark = null;
+      resolver?.(proceed === true);
+    });
+
     ipcMain.on(AppChannel.GetDisplayStartup, (event: IpcMainEvent): void => {
       // Synchronous: every value was resolved before the window (and thus this preload) was created.
       event.returnValue = {
@@ -924,6 +1080,11 @@ class Program {
         // The escape hatch past a blocking setup wizard. It rides with the startup facts because the
         // wizard decides whether to run before the first paint, which is too early for the bridge.
         skipSetup: process.env['STUDIO_SKIP_SETUP'] === '1',
+        // Mirrored settings that shape the first paint (the corner style) are needed before the
+        // renderer has read its own store.
+        startupSettings: this.startupSettings,
+        // Development-only menu items (developer tools, reload) are left out of a packaged build.
+        packaged: app.isPackaged,
         // The versions ride with the startup facts because only main can read the app's own version,
         // and the About dialog needs all four together.
         versions: {
@@ -980,6 +1141,20 @@ class Program {
     );
 
     ipcMain.handle(
+      AppChannel.SetStartupSettings,
+      (_event: IpcMainInvokeEvent, settings: unknown): void => {
+        const parsed: StartupSettings = parseStartupSettings(settings);
+        if (JSON.stringify(parsed) === JSON.stringify(this.startupSettings)) {
+          return;
+        }
+        this.startupSettings = parsed;
+        setProjectScanDepth(parsed.projectScanDepth);
+        this.applyLogLimits(parsed);
+        StartupPreferencesStore.write({ settings: parsed });
+      },
+    );
+
+    ipcMain.handle(
       LogChannel.SetLevel,
       (_event: IpcMainInvokeEvent, setting: unknown): Severity => {
         if (!LOG_LEVEL_SETTINGS.includes(setting as LogLevelSetting)) {
@@ -1008,9 +1183,10 @@ class Program {
     });
 
     ipcMain.on(AppChannel.Relaunch, (): void => {
-      // Relaunch then quit through the normal close path, so the renderer's unsaved-work confirmation
-      // still runs before the process exits.
-      app.relaunch();
+      // Quit through the normal close path, so the renderer's confirmations still run, and relaunch
+      // only once they have: relaunching first started a second Studio even when the quit was
+      // cancelled.
+      this.relaunchOnQuit = true;
       app.quit();
     });
 
@@ -1024,8 +1200,24 @@ class Program {
 
     ipcMain.handle(
       ShellChannel.OpenExternal,
-      (_event: IpcMainInvokeEvent, url: unknown): Promise<void> => this.openExternalUrl(url),
+      (event: IpcMainInvokeEvent, url: unknown, origin: unknown): Promise<void> =>
+        this.openExternalUrl(url, event.sender, origin === 'studio'),
     );
+
+    ipcMain.handle(SecurityChannel.ListRememberedAccess, (): readonly string[] =>
+      this.trustedPaths.list(),
+    );
+    ipcMain.handle(
+      SecurityChannel.ForgetRememberedAccess,
+      (_event: IpcMainInvokeEvent, target: unknown): readonly string[] => {
+        this.trustedPaths.forget(target);
+        return this.trustedPaths.list();
+      },
+    );
+    ipcMain.handle(SecurityChannel.ClearRememberedAccess, (): readonly string[] => {
+      this.trustedPaths.clear();
+      return this.trustedPaths.list();
+    });
 
     ipcMain.handle(ShellChannel.RevealPath, (_event: IpcMainInvokeEvent, target: unknown): void => {
       if (typeof target === 'string' && target.length > 0) {
@@ -1038,13 +1230,17 @@ class Program {
     this.securityManager.register();
     this.mediaProtocol.register();
     this.printManager.register();
+    this.spellingManager.register();
     this.terminalManager.register();
     this.fileManager.register();
+    this.editorConfigManager.register();
     this.menuManager.register();
     this.codeRunner.register();
     this.versionControlManager.register();
     this.hostingManager.register();
+    this.testAdapterManager.register();
     this.workspaceManager.register();
+    this.packageManagerChannels.register();
     this.searchManager.register();
     this.studioStore.register();
     this.worktreeManager.register();
@@ -1056,6 +1252,7 @@ class Program {
     this.directoryWatcher.register();
     this.aiManager.register();
     this.skillHandlers.register();
+    this.libraryTransferHandlers.register();
     this.agentConversationStore.register();
     this.agentCategoryStore.register();
     this.lspSettingsManager.register();
@@ -1092,8 +1289,14 @@ class Program {
         this.hostingHost.restartPlugin(contribution.id);
       } else if (contribution.slot === 'version-control') {
         this.versionControlHost.restartPlugin(contribution.id);
+      } else if (contribution.slot === 'package-manager') {
+        this.packageManagerHost.restartPlugin(contribution.id);
+      } else if (contribution.slot === 'test-adapter') {
+        this.testAdapterHost.restartPlugin(contribution.id);
       } else if (contribution.slot === 'agent-harness') {
         this.aiManager.retireHarnessSessions(contribution.id);
+      } else if (contribution.slot === 'database-engine') {
+        databaseContribution.restartEngine(contribution.id);
       }
     }
     this.logger.info(
@@ -1113,7 +1316,7 @@ class Program {
         return;
       }
       event.preventDefault();
-      void this.openExternalUrl(url);
+      void this.openExternalUrl(url, contents, false);
     });
 
     contents.setWindowOpenHandler((details: HandlerDetails): WindowOpenHandlerResponse => {
@@ -1137,7 +1340,7 @@ class Program {
           ),
         };
       }
-      void this.openExternalUrl(details.url);
+      void this.openExternalUrl(details.url, contents, false);
       return { action: 'deny' };
     });
 
@@ -1193,15 +1396,43 @@ class Program {
 
   /**
    * Opens a URL in the operating system's default browser when it is a safe external URL; otherwise
-   * does nothing.
+   * does nothing. Asks first when Confirm Before Opening External Links says to: always, or for any
+   * link that is not one of Studio's own.
    * @param url The candidate URL.
+   * @param sender The web contents the link was opened from, which the question is shown over.
+   * @param trusted Whether the link is one of Studio's own (help, releases) rather than content.
    * @returns Returns a promise that resolves once the URL has been opened (or rejected).
    */
-  private async openExternalUrl(url: unknown): Promise<void> {
+  private async openExternalUrl(
+    url: unknown,
+    sender: WebContents,
+    trusted: boolean,
+  ): Promise<void> {
     const safe: string | null = this.safeExternalUrl(url);
-    if (safe !== null) {
-      await shell.openExternal(safe);
+    if (safe === null) {
+      return;
     }
+    const confirm: string = this.startupSettings.confirmExternalLinks;
+    if (confirm === 'always' || (confirm === 'untrusted' && !trusted)) {
+      const answer: Electron.MessageBoxReturnValue = await showMessageBox(
+        sender,
+        (): BrowserWindow | null => this.windows.main(),
+        {
+          type: 'question',
+          buttons: ['Open', 'Cancel'],
+          defaultId: 0,
+          cancelId: 1,
+          title: 'Open Link',
+          message: 'Open this link in your browser?',
+          detail: safe,
+        },
+      );
+      if (answer.response !== 0) {
+        this.logger.info('shell', 'Opening a link was cancelled');
+        return;
+      }
+    }
+    await shell.openExternal(safe);
   }
 
   /**
@@ -1222,10 +1453,23 @@ class Program {
   }
 
   /**
+   * Applies the user's limits on what is logged and kept.
+   * @param settings The startup settings.
+   */
+  private applyLogLimits(settings: StartupSettings): void {
+    this.logger.applyLimits({
+      liveRecords: settings.liveLogRecords,
+      fileSizeMb: settings.logFileSizeMb,
+      rotatedCopies: settings.logRotatedCopies,
+    });
+  }
+
+  /**
    * Handles the app whenReady event.
    */
   private async onReady(): Promise<void> {
     this.logger.info('app', `Studio ready (v${app.getVersion()} on ${process.platform})`);
+    this.logger.pruneSessions(this.startupSettings.keepSessionLogsDays);
     this.installApplicationMenu();
     this.registerIpcHandlers();
     // Resolve the GPU rendering recommendation before the window exists, so the value is ready when
@@ -1415,6 +1659,8 @@ class Program {
     this.codeRunner.dispose();
     this.decoderHost.dispose();
     this.versionControlManager.dispose();
+    this.packageManagerHost.dispose();
+    this.testAdapterManager.dispose();
     this.hostingManager.dispose();
     this.fileWatcher.disposeAll();
     this.directoryWatcher.disposeAll();
@@ -1437,7 +1683,77 @@ class Program {
       return;
     }
     event.preventDefault();
+    if (
+      process.platform === 'darwin' &&
+      this.startupSettings.quitWhenLastWindowCloses === 'keep-running'
+    ) {
+      void this.beginPark();
+      return;
+    }
     void this.beginQuit();
+  }
+
+  /**
+   * Closes the main window the macOS way, keeping Studio running in the Dock. The renderer is asked
+   * first: it confirms running work and unsaved changes as quitting does, closes every tab and goes
+   * dormant, so nothing is on screen until the Dock icon wakes it to the welcome screen. The window
+   * itself is hidden rather than destroyed, since the renderer in it is Studio. A cancellation leaves
+   * the window open.
+   * @returns Returns a promise that resolves once the decision has been handled.
+   */
+  private async beginPark(): Promise<void> {
+    const window: BrowserWindow | null = this.windows.main();
+    if (this.confirming || window === null || window.isDestroyed()) {
+      return;
+    }
+    this.confirming = true;
+    const proceed: boolean = await new Promise<boolean>(
+      (resolve: (proceed: boolean) => void): void => {
+        // A renderer that does not answer keeps its window: hiding it would hide its tabs too.
+        const timer: NodeJS.Timeout = setTimeout((): void => {
+          this.pendingPark = null;
+          resolve(false);
+        }, Program.CLOSE_CONFIRM_TIMEOUT_MS);
+        this.pendingPark = (answer: boolean): void => {
+          clearTimeout(timer);
+          resolve(answer);
+        };
+        window.webContents.send(AppChannel.RequestPark);
+      },
+    );
+    this.confirming = false;
+    if (!proceed || window.isDestroyed()) {
+      return;
+    }
+    this.logger.info('lifecycle', 'Main window closed; Studio keeps running');
+    this.mainParked = true;
+    // Anything that shows the window again (a file opened from the Finder) ends the dormancy.
+    window.once('show', (): void => {
+      this.mainParked = false;
+    });
+    // A full-screen window hidden in place leaves an empty space behind; it leaves full screen first.
+    if (window.isFullScreen()) {
+      window.once('leave-full-screen', (): void => window.hide());
+      window.setFullScreen(false);
+      return;
+    }
+    window.hide();
+  }
+
+  /**
+   * Wakes Studio after its window was closed while it kept running: the renderer shows the welcome
+   * screen, as at a cold start, rather than the main window.
+   * @returns Returns true when Studio was dormant and has been woken.
+   */
+  private unparkMain(): boolean {
+    const window: BrowserWindow | null = this.windows.main();
+    if (!this.mainParked || window === null || window.isDestroyed()) {
+      return false;
+    }
+    this.mainParked = false;
+    this.logger.info('lifecycle', 'Studio woken from the Dock');
+    window.webContents.send(AppChannel.Wake);
+    return true;
   }
 
   /**
@@ -1472,8 +1788,12 @@ class Program {
     this.confirming = false;
     if (proceed) {
       this.quitConfirmed = true;
+      if (this.relaunchOnQuit) {
+        app.relaunch();
+      }
       app.quit();
     }
+    this.relaunchOnQuit = false;
   }
 
   /**
@@ -1513,6 +1833,9 @@ class Program {
    * Handles the app onActivate event.
    */
   private onActivate(): void {
+    if (this.unparkMain()) {
+      return;
+    }
     if (this.windows.main() === null) this.windows.createMainWindow();
   }
 

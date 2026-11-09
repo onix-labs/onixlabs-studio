@@ -1,165 +1,286 @@
 import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-
-import type { AgentSurface } from '@shared/api/ai-types';
-import { AgentHost, AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
-import {
-  AgentRequestEntry,
-  AgentRequests,
-} from '@shared/angular/services/agent-requests/agent-requests';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AiEvent, AiProviderInfo } from '@shared/api/ai-types';
+import { AiRunOptions, AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
-import { Tabs } from '@shared/angular/services/tabs/tabs';
-import { RunConfigurationAgent } from './run-configuration-agent';
+import { AutoConfigureOutcome, RunConfigurationAgent } from './run-configuration-agent';
 
 /**
- * One recorded dispatch to a host's agent.
+ * Stands in for the agent runtime, recording what it is asked and emitting what a test tells it to.
  */
-interface SendCall {
-  readonly text: string;
-  readonly tabId?: string;
-  readonly surface?: AgentSurface;
+class FakeRuntime {
+  public providers: AiProviderInfo[] = [
+    { id: 'first', label: 'First', available: false } as AiProviderInfo,
+    { id: 'second', label: 'Second', available: true } as AiProviderInfo,
+    { id: 'third', label: 'Third', available: true } as AiProviderInfo,
+  ];
+  public readonly runs: { provider: string; prompt: string; options: AiRunOptions }[] = [];
+  public readonly aborted: string[] = [];
+  public readonly closed: string[] = [];
+  public readonly permissions: [string, boolean][] = [];
+  public readonly inputs: [string, string | null][] = [];
+  private listener: ((event: AiEvent) => void) | null = null;
+
+  public listProviders(): Promise<AiProviderInfo[]> {
+    return Promise.resolve(this.providers);
+  }
+
+  public run(provider: string, prompt: string, options: AiRunOptions): string {
+    this.runs.push({ provider, prompt, options });
+    return 'run-1';
+  }
+
+  public onEvent(listener: (event: AiEvent) => void): () => void {
+    this.listener = listener;
+    return (): void => {
+      this.listener = null;
+    };
+  }
+
+  public abort(requestId: string): void {
+    this.aborted.push(requestId);
+  }
+
+  public closeSession(session: string): void {
+    this.closed.push(session);
+  }
+
+  public respondPermission(permissionId: string, granted: boolean): void {
+    this.permissions.push([permissionId, granted]);
+  }
+
+  public respondInput(inputId: string, answer: string | null): void {
+    this.inputs.push([inputId, answer]);
+  }
+
+  public emit(event: Record<string, unknown>): void {
+    this.listener?.({ requestId: 'run-1', ...event } as unknown as AiEvent);
+  }
+
+  public get listening(): boolean {
+    return this.listener !== null;
+  }
 }
 
 describe('RunConfigurationAgent', () => {
-  let hosts: WritableSignal<readonly AgentHost[]>;
-  let activeTabId: WritableSignal<string | undefined>;
+  let runtime: FakeRuntime;
   let root: WritableSignal<string | null>;
-  let sends: SendCall[];
-  let running: WritableSignal<boolean>;
-  let requests: WritableSignal<readonly AgentRequestEntry[]>;
+  let agent: RunConfigurationAgent;
 
   /**
-   * Builds a fake live host whose agent records what it is sent.
-   * @param tabId The host's owning tab id.
-   * @returns Returns the host.
+   * Waits for a started run to reach the runtime.
    */
-  function host(tabId: string): AgentHost {
-    const agent: unknown = {
-      isRunning: running,
-      send: (text: string, owningTabId?: string, surface?: AgentSurface): void => {
-        sends.push({ text, tabId: owningTabId, surface });
-      },
-    };
-    return {
-      id: `host-${tabId}`,
-      tabId,
-      label: signal<string>(tabId),
-      surface: 'editor',
-      agent,
-      conversation: {},
-      isActive: signal<boolean>(true),
-    } as unknown as AgentHost;
+  async function started(): Promise<void> {
+    await vi.waitFor((): void => {
+      expect(runtime.runs).toHaveLength(1);
+    });
   }
 
   beforeEach(() => {
-    hosts = signal<readonly AgentHost[]>([]);
-    activeTabId = signal<string | undefined>('tab-1');
-    root = signal<string | null>('/work');
-    running = signal<boolean>(false);
-    requests = signal<readonly AgentRequestEntry[]>([]);
-    sends = [];
-
+    runtime = new FakeRuntime();
+    root = signal<string | null>('/workspace');
     TestBed.configureTestingModule({
       providers: [
-        { provide: AgentHosts, useValue: { hosts } as Partial<AgentHosts> },
-        { provide: Tabs, useValue: { activeTabId } as Partial<Tabs> },
-        { provide: ActiveWorkspace, useValue: { rootPath: root } as Partial<ActiveWorkspace> },
-        { provide: AgentRequests, useValue: { entries: requests } as Partial<AgentRequests> },
+        RunConfigurationAgent,
+        { provide: AiRuntime, useValue: runtime },
+        { provide: ActiveWorkspace, useValue: { rootPath: root } },
+        {
+          provide: Settings,
+          useValue: {
+            aiConnections: (): readonly unknown[] => [],
+            aiActiveConnectionId: (): string => 'third',
+          },
+        },
       ],
     });
+    agent = TestBed.inject(RunConfigurationAgent);
   });
 
-  it('canDispatch_requiresAnOpenWorkspaceAndTheActiveTabsAgent', () => {
-    const seam: RunConfigurationAgent = TestBed.inject(RunConfigurationAgent);
-    expect(seam.canDispatch()).toBe(false);
-    expect(seam.unavailableReason()).toContain('agent');
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
-    hosts.set([host('tab-1')]);
-    expect(seam.canDispatch()).toBe(true);
-    expect(seam.unavailableReason()).toBeNull();
-
-    // No folder open: there is nowhere to write configurations, whatever the agent could do.
+  it('refusesToRun_withNoWorkspaceOpen', async () => {
     root.set(null);
-    expect(seam.canDispatch()).toBe(false);
-    expect(seam.unavailableReason()).toContain('workspace folder');
+
+    const outcome: AutoConfigureOutcome = await agent.configure();
+
+    expect(outcome.status).toBe('failed');
+    expect(runtime.runs).toEqual([]);
   });
 
-  it('dispatchAuto_sendsToTheActiveTabsAgentOnItsOwnSurface', () => {
-    hosts.set([host('other'), host('tab-1')]);
-    const seam: RunConfigurationAgent = TestBed.inject(RunConfigurationAgent);
+  it('saysSo_whenNoProviderIsAvailable', async () => {
+    runtime.providers = [];
 
-    expect(seam.dispatchAuto()).toBe(true);
+    const outcome: AutoConfigureOutcome = await agent.configure();
 
-    expect(sends).toHaveLength(1);
-    expect(sends[0].tabId).toBe('tab-1');
-    expect(sends[0].surface).toBe('editor');
-    expect(sends[0].text).toContain("Set up this workspace's run configurations");
+    expect(outcome).toEqual({
+      status: 'failed',
+      message: 'No AI provider is available. Set one up in Settings, then try again.',
+    });
+    expect(agent.running()).toBe(false);
   });
 
-  it('dispatchAuto_followsTheActiveTab', () => {
-    hosts.set([host('tab-1'), host('tab-2')]);
-    const seam: RunConfigurationAgent = TestBed.inject(RunConfigurationAgent);
+  it('runsAsItsOwnAgent_inItsOwnSession_notTheWorkspaces', async () => {
+    const pending: Promise<AutoConfigureOutcome> = agent.configure();
+    await started();
 
-    activeTabId.set('tab-2');
-    seam.dispatchAuto();
+    const { options } = runtime.runs[0];
+    expect(options.agentSessionId).toMatch(/^auto-configure-/);
+    expect(options.workspaceRoot).toBe('/workspace');
+    // The run-configuration tools are offered on workspace surfaces only.
+    expect(options.surface).toBe('workspace');
+    expect(options.mode).toBe('agent');
 
-    expect(sends[0].tabId).toBe('tab-2');
+    runtime.emit({ kind: 'status', state: 'completed', detail: '' });
+    await pending;
   });
 
-  it('dispatchRequest_carriesTheUsersWordsIntoThePrompt', () => {
-    hosts.set([host('tab-1')]);
-    const seam: RunConfigurationAgent = TestBed.inject(RunConfigurationAgent);
+  it('usesTheActiveConnection_whenItCanRun', async () => {
+    const pending: Promise<AutoConfigureOutcome> = agent.configure();
+    await started();
 
-    expect(seam.dispatchRequest('  run the three scripts in ./scripts in parallel  ')).toBe(true);
+    expect(runtime.runs[0].provider).toBe('third');
 
-    expect(sends[0].text).toContain('run the three scripts in ./scripts in parallel');
-    expect(sends[0].text).toContain('compound');
+    runtime.emit({ kind: 'status', state: 'completed', detail: '' });
+    await pending;
   });
 
-  it('dispatchRequest_ignoresABlankRequest', () => {
-    hosts.set([host('tab-1')]);
-    const seam: RunConfigurationAgent = TestBed.inject(RunConfigurationAgent);
+  it('fallsBackToTheFirstAvailableProvider', async () => {
+    runtime.providers = runtime.providers.slice(0, 2);
+    const pending: Promise<AutoConfigureOutcome> = agent.configure();
+    await started();
 
-    expect(seam.dispatchRequest('   ')).toBe(false);
-    expect(sends).toEqual([]);
+    expect(runtime.runs[0].provider).toBe('second');
+
+    runtime.emit({ kind: 'status', state: 'completed', detail: '' });
+    await pending;
   });
 
-  it('dispatch_withNothingToDispatchTo_reportsFailureRatherThanThrowing', () => {
-    const seam: RunConfigurationAgent = TestBed.inject(RunConfigurationAgent);
+  it('tellsTheAgentToPickADefault_andNotToAskQuestions', async () => {
+    const pending: Promise<AutoConfigureOutcome> = agent.configure();
+    await started();
 
-    expect(seam.dispatchAuto()).toBe(false);
-    expect(sends).toEqual([]);
+    expect(runtime.runs[0].prompt).toContain('Set `default: true` on exactly one configuration');
+    expect(runtime.runs[0].prompt).toContain('do not ask any');
+
+    runtime.emit({ kind: 'status', state: 'completed', detail: '' });
+    await pending;
   });
 
-  it('pendingRequests_surfacesOnlyTheDispatchedAgentsQuestions', () => {
-    const mine: AgentHost = host('tab-1');
-    const theirs: AgentHost = host('tab-2');
-    hosts.set([mine, theirs]);
-    const seam: RunConfigurationAgent = TestBed.inject(RunConfigurationAgent);
+  it('completes_runningUntilThen_andClosesItsSession', async () => {
+    const pending: Promise<AutoConfigureOutcome> = agent.configure();
+    await started();
+    expect(agent.running()).toBe(true);
 
-    requests.set([
-      {
-        key: 'a',
-        tabId: 'tab-2',
-        label: 'Other',
-        item: {},
-        agent: theirs.agent,
-      } as AgentRequestEntry,
-      { key: 'b', tabId: 'tab-1', label: 'Mine', item: {}, agent: mine.agent } as AgentRequestEntry,
+    runtime.emit({ kind: 'status', state: 'completed', detail: '' });
+
+    expect(await pending).toEqual({ status: 'completed' });
+    expect(agent.running()).toBe(false);
+    expect(runtime.closed).toEqual([runtime.runs[0].options.agentSessionId]);
+    expect(runtime.listening).toBe(false);
+  });
+
+  it('reportsARunThatFails', async () => {
+    const pending: Promise<AutoConfigureOutcome> = agent.configure();
+    await started();
+
+    runtime.emit({ kind: 'status', state: 'error', detail: 'boom' });
+
+    expect((await pending).status).toBe('failed');
+    expect(runtime.closed).toHaveLength(1);
+  });
+
+  it('ignoresAnotherRunsEvents', async () => {
+    const pending: Promise<AutoConfigureOutcome> = agent.configure();
+    await started();
+
+    runtime.emit({ requestId: 'run-2', kind: 'status', state: 'completed', detail: '' });
+    expect(agent.running()).toBe(true);
+
+    runtime.emit({ kind: 'status', state: 'completed', detail: '' });
+    await pending;
+  });
+
+  it('grantsTheRunConfigurationTools_andRefusesEverythingElse', async () => {
+    const pending: Promise<AutoConfigureOutcome> = agent.configure();
+    await started();
+
+    runtime.emit({ kind: 'permission', permissionId: 'a', name: 'save_run_configurations' });
+    runtime.emit({
+      kind: 'permission',
+      permissionId: 'b',
+      name: 'mcp__studio__delete_run_configurations',
+    });
+    runtime.emit({ kind: 'permission', permissionId: 'c', name: 'Bash' });
+    runtime.emit({ kind: 'permission', permissionId: 'd', name: 'Write' });
+
+    expect(runtime.permissions).toEqual([
+      ['a', true],
+      ['b', true],
+      ['c', false],
+      ['d', false],
     ]);
 
-    // The dialog is modal, so it must show its own agent's prompts — and only those.
-    expect(seam.pendingRequests().map((entry: AgentRequestEntry): string => entry.key)).toEqual([
-      'b',
-    ]);
+    runtime.emit({ kind: 'status', state: 'completed', detail: '' });
+    await pending;
   });
 
-  it('busy_followsTheResolvedAgentsRunState', () => {
-    hosts.set([host('tab-1')]);
-    const seam: RunConfigurationAgent = TestBed.inject(RunConfigurationAgent);
+  it('answersAQuestionWithSilence_soTheRunCannotWaitForever', async () => {
+    const pending: Promise<AutoConfigureOutcome> = agent.configure();
+    await started();
 
-    expect(seam.busy()).toBe(false);
-    running.set(true);
-    expect(seam.busy()).toBe(true);
+    runtime.emit({ kind: 'input-request', inputId: 'q', question: 'Which one?' });
+
+    expect(runtime.inputs).toEqual([['q', null]]);
+
+    runtime.emit({ kind: 'status', state: 'completed', detail: '' });
+    await pending;
+  });
+
+  it('cancel_abortsTheRun_andClosesItsSession', async () => {
+    const pending: Promise<AutoConfigureOutcome> = agent.configure();
+    await started();
+
+    agent.cancel();
+
+    expect(await pending).toEqual({ status: 'cancelled' });
+    expect(runtime.aborted).toEqual(['run-1']);
+    expect(runtime.closed).toHaveLength(1);
+  });
+
+  it('cancel_beforeTheProviderIsChosen_startsNothing', async () => {
+    const pending: Promise<AutoConfigureOutcome> = agent.configure();
+
+    agent.cancel();
+
+    expect(await pending).toEqual({ status: 'cancelled' });
+    expect(runtime.runs).toEqual([]);
+  });
+
+  it('refusesASecondRun_whileOneIsGoing', async () => {
+    const pending: Promise<AutoConfigureOutcome> = agent.configure();
+    await started();
+
+    expect((await agent.configure()).status).toBe('failed');
+    expect(runtime.runs).toHaveLength(1);
+
+    runtime.emit({ kind: 'status', state: 'completed', detail: '' });
+    await pending;
+  });
+
+  it('abandonsARunThatStalls', async () => {
+    vi.useFakeTimers();
+    const pending: Promise<AutoConfigureOutcome> = agent.configure();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(runtime.runs).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+    expect((await pending).status).toBe('failed');
+    expect(runtime.aborted).toEqual(['run-1']);
+    expect(runtime.closed).toHaveLength(1);
   });
 });

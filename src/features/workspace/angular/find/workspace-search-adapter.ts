@@ -10,6 +10,7 @@ import { Search } from '@shared/angular/services/search/search';
 import {
   ReplaceRequest,
   ReplaceResponse,
+  SearchLimits,
   SearchMatch,
   SearchResponse,
   SearchResultFile,
@@ -106,6 +107,17 @@ export class WorkspaceSearchAdapter implements FindAdapter {
   private sequence: number = 0;
 
   /**
+   * Holds how many adapters there have been, which names each one to the search it starts. One window
+   * can hold several, and one must not cancel another's search.
+   */
+  private static adapters: number = 0;
+
+  /**
+   * Holds the name this adapter's searches go under.
+   */
+  private readonly caller: string = `workspace-search-${(WorkspaceSearchAdapter.adapters += 1)}`;
+
+  /**
    * Holds the query, root and paths of the last search asked for, or null before any — what a replace
    * replaces, and what it searches again afterwards.
    */
@@ -139,6 +151,7 @@ export class WorkspaceSearchAdapter implements FindAdapter {
    * @param rootOf Resolves the active workspace root, or null when no folder is open.
    * @param pathsOf Resolves the folders or files under the root to confine the search to, or undefined
    * to search the whole root (#1007: a project's folder for the Current Project scope).
+   * @param limitsOf Resolves the limits a search runs under, read as each one starts.
    */
   public constructor(
     private readonly search: Search,
@@ -146,6 +159,7 @@ export class WorkspaceSearchAdapter implements FindAdapter {
     private readonly editors: Editors,
     private readonly rootOf: () => string | null,
     private readonly pathsOf: () => readonly string[] | undefined = (): undefined => undefined,
+    private readonly limitsOf: () => SearchLimits | undefined = (): undefined => undefined,
   ) {}
 
   /**
@@ -348,12 +362,15 @@ export class WorkspaceSearchAdapter implements FindAdapter {
     let response: SearchResponse;
     try {
       response = await this.search.run({
+        caller: this.caller,
         query: query.text,
         root,
         caseSensitive: query.caseSensitive,
         wholeWord: query.wholeWord,
         regexp: query.regexp,
         ...(paths === undefined ? {} : { paths }),
+        ...(query.files === undefined ? {} : { files: query.files }),
+        ...this.limits(),
       });
     } catch {
       response = { files: [], total: 0, capped: false };
@@ -371,12 +388,22 @@ export class WorkspaceSearchAdapter implements FindAdapter {
           text: match.text,
           after: match.after,
           file: file.relativePath,
+          ...(match.occurrences === undefined ? {} : { occurrences: match.occurrences }),
         },
       })),
     );
     this.flat = flat;
     this.matchesState.set(flat.map((entry: FlatMatch): FindResultItem => entry.item));
     this.activeIndexState.set(-1);
+  }
+
+  /**
+   * Builds the part of a search request the settings decide.
+   * @returns Returns the limits field, or nothing without any.
+   */
+  private limits(): { readonly limits?: SearchLimits } {
+    const limits: SearchLimits | undefined = this.limitsOf();
+    return limits === undefined ? {} : { limits };
   }
 
   /**

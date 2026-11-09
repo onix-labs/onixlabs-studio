@@ -1,0 +1,20 @@
+{
+  "name": "sqlite-engine",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "sqlite-engine",
+      "version": "1.0.0",
+      "dependencies": {
+        "@onixlabs/sqlite-engine": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-sqlite-engine-v1.3.0/onixlabs-sqlite-engine-1.3.0.tgz"
+      }
+    },
+    "node_modules/@onixlabs/sqlite-engine": {
+      "version": "1.3.0",
+      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-sqlite-engine-v1.3.0/onixlabs-sqlite-engine-1.3.0.tgz",
+      "integrity": "sha512-fJv7H0I0wzq/jKUixd5Ucj0ZFi7GVcSH57rSYEnzmgJePZ9hAB6O7KovsWgeTZ516cOOIxh4nRI7JpiZdIPT3w=="
+    }
+  }
+}

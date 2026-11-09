@@ -228,6 +228,50 @@ export class StudioConfig {
   }
 
   /**
+   * Gets the Debug panel's watch expressions.
+   */
+  public readonly watchExpressions: Signal<readonly string[]> = computed(
+    (): readonly string[] => this.current().user.watchExpressions ?? [],
+  );
+
+  /**
+   * Gets whether the debugger breaks on uncaught exceptions: on until the user says otherwise.
+   */
+  public readonly breakOnUncaughtExceptions: Signal<boolean> = computed(
+    (): boolean => this.current().user.breakOnUncaughtExceptions ?? true,
+  );
+
+  /**
+   * Gets whether the debugger breaks on every exception: off until the user says otherwise.
+   */
+  public readonly breakOnAllExceptions: Signal<boolean> = computed(
+    (): boolean => this.current().user.breakOnAllExceptions ?? false,
+  );
+
+  /**
+   * Records which exceptions the debugger breaks on in the per-developer file.
+   * @param uncaught Whether it breaks on uncaught exceptions.
+   * @param all Whether it breaks on every exception.
+   * @returns Returns a promise that resolves once the write is issued.
+   */
+  public setBreakOnExceptions(uncaught: boolean, all: boolean): Promise<void> {
+    return this.saveUser({
+      ...this.current().user,
+      breakOnUncaughtExceptions: uncaught,
+      breakOnAllExceptions: all,
+    });
+  }
+
+  /**
+   * Records the Debug panel's watch expressions in the per-developer file.
+   * @param expressions The expressions.
+   * @returns Returns a promise that resolves once the write is issued.
+   */
+  public setWatchExpressions(expressions: readonly string[]): Promise<void> {
+    return this.saveUser({ ...this.current().user, watchExpressions: expressions });
+  }
+
+  /**
    * Writes the per-developer user configuration, applying it locally first.
    * @param user The new user configuration.
    * @returns Returns a promise that resolves once the write is issued.
@@ -252,7 +296,10 @@ export class StudioConfig {
       return;
     }
     this.suppressReloadUntil = Date.now() + SELF_WRITE_GUARD_MS;
-    await this.bridge.invoke(channel, root, payload);
+    const saved: boolean = await this.bridge.invoke<boolean>(channel, root, payload);
+    if (!saved) {
+      this.log.error('StudioConfig', `Could not save the configuration in '${root}'`);
+    }
   }
 
   /**

@@ -8,6 +8,7 @@ import CURATED_PLUGINS from '@shared/electron/contributions/plugins/curated-plug
 import {
   isApiCompatible,
   ManifestContainerEngine,
+  ManifestDatabaseEngine,
   ManifestError,
   ManifestResult,
   PLUGIN_API_VERSION,
@@ -104,6 +105,21 @@ function containerEngine(): Record<string, unknown> {
       darwin: 'podman machine start',
       linux: 'systemctl --user start podman.socket',
     },
+  };
+}
+
+/**
+ * Builds a well-formed database-engine contribution, modelled on the SQLite engine (#1095), which tests
+ * then break in one place at a time.
+ * @returns Returns the contribution as untrusted JSON would arrive.
+ */
+function databaseEngine(): Record<string, unknown> {
+  return {
+    id: 'sqlite',
+    displayName: 'SQLite',
+    priority: 50,
+    entryPoint: 'dist/main.js',
+    command: { kind: 'node' },
   };
 }
 
@@ -260,6 +276,36 @@ describe('parsePluginManifest', () => {
 
       expect(result.errors).toEqual([]);
       expect(result.manifest?.contributes.containerEngines?.[0]?.startCommands).toBeUndefined();
+    });
+
+    it('aDatabaseEngineContribution', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { databaseEngines: [databaseEngine()] } }),
+      );
+
+      expect(result.errors).toEqual([]);
+      const engine: ManifestDatabaseEngine | undefined =
+        result.manifest?.contributes.databaseEngines?.[0];
+      expect(engine).toEqual({
+        id: 'sqlite',
+        displayName: 'SQLite',
+        priority: 50,
+        entryPoint: 'dist/main.js',
+        command: { kind: 'node', args: undefined, env: undefined },
+      });
+    });
+
+    it('aDatabaseEngineWithoutAPriorityOrEntryPoint_defaultingThem', () => {
+      const engine: Record<string, unknown> = databaseEngine();
+      delete engine['priority'];
+      delete engine['entryPoint'];
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { databaseEngines: [engine] } }),
+      );
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.databaseEngines?.[0]?.priority).toBe(100);
+      expect(result.manifest?.contributes.databaseEngines?.[0]?.entryPoint).toBeUndefined();
     });
 
     it('aContributionWithoutAPriority_defaultingIt', () => {
@@ -465,6 +511,65 @@ describe('parsePluginManifest', () => {
       expect(paths(result)).toContain(
         'contributes.containerEngines[0].discovery.sockets.darwin-arm64',
       );
+    });
+
+    it('aDatabaseEngineWithNoCommand', () => {
+      const engine: Record<string, unknown> = databaseEngine();
+      delete engine['command'];
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { databaseEngines: [engine] } }),
+      );
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('contributes.databaseEngines[0].command');
+    });
+
+    it('aDatabaseEngineWithAnUnknownCommandKind', () => {
+      const engine: Record<string, unknown> = databaseEngine();
+      engine['command'] = { kind: 'ruby' };
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { databaseEngines: [engine] } }),
+      );
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('contributes.databaseEngines[0].command.kind');
+    });
+
+    it('aDatabaseEngineWithABadIdOrNoDisplayName', () => {
+      const engine: Record<string, unknown> = databaseEngine();
+      engine['id'] = 'Not An Id';
+      delete engine['displayName'];
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { databaseEngines: [engine] } }),
+      );
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toEqual(
+        expect.arrayContaining([
+          'contributes.databaseEngines[0].id',
+          'contributes.databaseEngines[0].displayName',
+        ]),
+      );
+    });
+
+    it('aDatabaseEngineWhoseEntryPointEscapesThePayload', () => {
+      const engine: Record<string, unknown> = databaseEngine();
+      engine['entryPoint'] = '../../outside.js';
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { databaseEngines: [engine] } }),
+      );
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('contributes.databaseEngines[0].entryPoint');
+    });
+
+    it('databaseEnginesThatAreNotAList', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { databaseEngines: databaseEngine() } }),
+      );
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('contributes.databaseEngines');
     });
 
     it('aContainerEngineWhoseStartCommandIsNotAString', () => {
@@ -697,6 +802,183 @@ describe('parsePluginManifest', () => {
     it('still refuses a manifest contributing nothing at all', () => {
       const result: ManifestResult = parsePluginManifest(manifest({ contributes: {} }));
       expect(paths(result)).toContain('contributes');
+    });
+  });
+
+  describe('package-manager contributions', () => {
+    /**
+     * Builds a well-formed package-manager contribution, which tests then break in one place at a time.
+     * @param overrides Fields to replace on the contribution.
+     * @returns Returns the contribution as untrusted JSON would arrive.
+     */
+    function packageManager(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        id: 'nuget',
+        displayName: 'NuGet',
+        ecosystem: 'nuget',
+        markers: ['*.sln', '*.csproj', 'packages.config'],
+        capabilities: ['sources', 'search', 'prerelease', 'restore'],
+        command: { kind: 'node' },
+        ...overrides,
+      };
+    }
+
+    it('accepts a package manager contributed alone', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { packageManagers: [packageManager()] } }),
+      );
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.packageManagers?.[0]).toMatchObject({
+        id: 'nuget',
+        ecosystem: 'nuget',
+        priority: 100,
+        markers: ['*.sln', '*.csproj', 'packages.config'],
+        capabilities: ['sources', 'search', 'prerelease', 'restore'],
+      });
+    });
+
+    it('treats absent capabilities as none, since reading a folder needs none', () => {
+      const entry: Record<string, unknown> = packageManager();
+      delete entry['capabilities'];
+
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { packageManagers: [entry] } }),
+      );
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.packageManagers?.[0].capabilities).toEqual([]);
+    });
+
+    it.each<[string, unknown]>([
+      ['nothing', undefined],
+      ['an empty list', []],
+      ['a path', ['src/package.json']],
+      ['a parent directory', ['..']],
+      ['a bare wildcard', ['*']],
+      ['wildcards alone', ['**']],
+    ])('refuses markers that are %s', (_name: string, markers: unknown) => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { packageManagers: [packageManager({ markers })] } }),
+      );
+
+      expect(paths(result)).toContain('contributes.packageManagers[0].markers');
+    });
+
+    it.each<[string, unknown]>([
+      ['absent', undefined],
+      ['capitalised', 'NuGet'],
+      ['not a word', 'nu get'],
+      ['not text', 7],
+    ])('refuses an ecosystem that is %s', (_name: string, ecosystem: unknown) => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { packageManagers: [packageManager({ ecosystem })] } }),
+      );
+
+      expect(paths(result)).toContain('contributes.packageManagers[0].ecosystem');
+    });
+
+    it('refuses a capability outside the closed list', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({
+          contributes: { packageManagers: [packageManager({ capabilities: ['publish'] })] },
+        }),
+      );
+
+      expect(paths(result)).toContain('contributes.packageManagers[0].capabilities');
+    });
+
+    it('refuses capabilities that are not a list', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({
+          contributes: { packageManagers: [packageManager({ capabilities: 'search' })] },
+        }),
+      );
+
+      expect(paths(result)).toContain('contributes.packageManagers[0].capabilities');
+    });
+  });
+
+  describe('test-adapter contributions (#1351)', () => {
+    /**
+     * Builds a well-formed test-adapter contribution, which tests then break in one place at a time.
+     * @param overrides Fields to replace on the contribution.
+     * @returns Returns the contribution as untrusted JSON would arrive.
+     */
+    function testAdapter(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        id: 'dotnet-tests',
+        displayName: '.NET Tests',
+        frameworks: ['xUnit', 'NUnit', 'MSTest'],
+        markers: ['*.csproj'],
+        capabilities: ['run', 'runSelected'],
+        command: { kind: 'node' },
+        ...overrides,
+      };
+    }
+
+    it('accepts a test adapter contributed alone', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { testAdapters: [testAdapter()] } }),
+      );
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.testAdapters?.[0]).toMatchObject({
+        id: 'dotnet-tests',
+        frameworks: ['xUnit', 'NUnit', 'MSTest'],
+        priority: 100,
+        markers: ['*.csproj'],
+        capabilities: ['run', 'runSelected'],
+      });
+    });
+
+    it('treats absent capabilities as none, since finding tests needs none', () => {
+      const entry: Record<string, unknown> = testAdapter();
+      delete entry['capabilities'];
+
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { testAdapters: [entry] } }),
+      );
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.testAdapters?.[0].capabilities).toEqual([]);
+    });
+
+    it.each<[string, unknown]>([
+      ['absent', undefined],
+      ['empty', []],
+      ['not text', [7]],
+      ['blank', ['  ']],
+      ['too long', ['x'.repeat(65)]],
+    ])('refuses frameworks that are %s', (_name: string, frameworks: unknown) => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { testAdapters: [testAdapter({ frameworks })] } }),
+      );
+
+      expect(paths(result)).toContain('contributes.testAdapters[0].frameworks');
+    });
+
+    it.each<[string, unknown]>([
+      ['nothing', undefined],
+      ['a path', ['tests/x.csproj']],
+      ['a bare wildcard', ['*']],
+    ])('refuses markers that are %s', (_name: string, markers: unknown) => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { testAdapters: [testAdapter({ markers })] } }),
+      );
+
+      expect(paths(result)).toContain('contributes.testAdapters[0].markers');
+    });
+
+    it.each<[string, unknown]>([
+      ['outside the closed list', ['watch']],
+      ['not a list', 'run'],
+    ])('refuses capabilities %s', (_name: string, capabilities: unknown) => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { testAdapters: [testAdapter({ capabilities })] } }),
+      );
+
+      expect(paths(result)).toContain('contributes.testAdapters[0].capabilities');
     });
   });
 
@@ -1053,5 +1335,130 @@ describe('parsePluginManifest', () => {
           .manifest,
       ).toBeNull();
     });
+  });
+});
+
+describe('language server settings (1.21.0, #1204)', () => {
+  /**
+   * Builds a manifest whose server declares the given settings fields.
+   * @param fields The fields to add to the server.
+   * @returns Returns the parse result.
+   */
+  function withServer(fields: Record<string, unknown>): ManifestResult {
+    return parsePluginManifest({
+      ...manifest(),
+      id: 'yaml-language-server',
+      contributes: {
+        languageServers: [
+          {
+            id: 'yaml-language-server',
+            displayName: 'YAML Language Server',
+            languages: ['yaml'],
+            command: { kind: 'node' },
+            ...fields,
+          },
+        ],
+      },
+    });
+  }
+
+  it('acceptsSettings_andHowTheServerTakesThem', () => {
+    const result: ManifestResult = withServer({
+      settings: [
+        {
+          section: 'yaml.validate',
+          label: 'Validate',
+          description: 'Check YAML against its schema.',
+          default: true,
+        },
+        {
+          section: 'yaml.format.proseWrap',
+          label: 'Wrap prose',
+          description: 'How prose is wrapped.',
+          default: 'preserve',
+          options: [
+            { value: 'preserve', label: 'Preserve' },
+            { value: 'always', label: 'Always' },
+          ],
+          advanced: true,
+          startupOnly: true,
+        },
+      ],
+      settingsDelivery: {
+        pull: true,
+        push: ['yaml'],
+        startup: { section: 'yaml', key: 'settings' },
+      },
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.manifest?.contributes.languageServers?.[0]).toMatchObject({
+      settings: [
+        { section: 'yaml.validate', default: true },
+        {
+          section: 'yaml.format.proseWrap',
+          options: [
+            { value: 'preserve', label: 'Preserve' },
+            { value: 'always', label: 'Always' },
+          ],
+          advanced: true,
+          startupOnly: true,
+        },
+      ],
+      settingsDelivery: {
+        pull: true,
+        push: ['yaml'],
+        startup: { section: 'yaml', key: 'settings' },
+      },
+    });
+  });
+
+  it('leavesAServerThatDeclaresNone_withoutEither', () => {
+    const server: unknown = withServer({}).manifest?.contributes.languageServers?.[0];
+
+    expect(server).not.toHaveProperty('settings');
+    expect(server).not.toHaveProperty('settingsDelivery');
+    expect(server).not.toHaveProperty('initializationOptions');
+  });
+
+  it('refusesAMalformedSetting_orDelivery', () => {
+    const paths: (fields: Record<string, unknown>) => string[] = (
+      fields: Record<string, unknown>,
+    ): string[] => withServer(fields).errors.map((error: ManifestError): string => error.path);
+    const base: Record<string, unknown> = {
+      section: 'yaml.validate',
+      label: 'Validate',
+      description: 'd',
+      default: true,
+    };
+
+    expect(paths({ settings: [{ ...base, section: 'yaml..validate' }] })).toEqual([
+      'contributes.languageServers[0].settings[0].section',
+    ]);
+    expect(paths({ settings: [{ ...base, default: 3 }] })).toEqual([
+      'contributes.languageServers[0].settings[0].default',
+    ]);
+    expect(paths({ settings: [{ ...base, options: [] }] })).toEqual([
+      'contributes.languageServers[0].settings[0].options',
+    ]);
+    expect(paths({ settings: [{ ...base, startupOnly: 'yes' }] })).toEqual([
+      'contributes.languageServers[0].settings[0].startupOnly',
+    ]);
+    expect(paths({ settingsDelivery: { push: 'yaml' } })).toEqual([
+      'contributes.languageServers[0].settingsDelivery.push',
+    ]);
+    expect(paths({ initializationOptions: 'yes' })).toEqual([
+      'contributes.languageServers[0].initializationOptions',
+    ]);
+    expect(
+      paths({ settingsDelivery: { arguments: [{ section: 'yaml.x', flag: 'not an option' }] } }),
+    ).toEqual(['contributes.languageServers[0].settingsDelivery.arguments[0].flag']);
+    expect(paths({ settingsDelivery: { arguments: [{ flag: '--x' }] } })).toEqual([
+      'contributes.languageServers[0].settingsDelivery.arguments[0].section',
+    ]);
+    expect(paths({ settingsDelivery: { pull: 'no', startup: { key: 'x' } } })).toEqual([
+      'contributes.languageServers[0].settingsDelivery.pull',
+      'contributes.languageServers[0].settingsDelivery.startup.section',
+    ]);
   });
 });

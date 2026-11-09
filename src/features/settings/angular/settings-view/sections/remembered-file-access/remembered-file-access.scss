@@ -1,0 +1,40 @@
+.remembered-access {
+  display: flex;
+  flex-direction: column;
+
+  &__list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0 0 12px;
+    padding: 0;
+    list-style: none;
+  }
+
+  &__item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 4px 4px 10px;
+    border: 0.0625rem solid var(--settings-border-color);
+    border-radius: calc(0.375rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
+    background: var(--settings-control-background-color);
+  }
+
+  &__path {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    font-family: var(--font-mono, monospace);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.remembered-access__empty {
+  margin: 0 0 12px;
+  color: var(--settings-muted-foreground-color);
+  font-size: 12px;
+}

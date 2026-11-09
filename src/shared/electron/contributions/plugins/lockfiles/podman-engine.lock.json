@@ -8,13 +8,13 @@
       "name": "podman-engine",
       "version": "1.0.0",
       "dependencies": {
-        "@onixlabs/podman-engine": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-podman-engine-v7.2.0/onixlabs-podman-engine-7.2.0.tgz"
+        "@onixlabs/podman-engine": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-podman-engine-v7.3.0/onixlabs-podman-engine-7.3.0.tgz"
       }
     },
     "node_modules/@onixlabs/podman-engine": {
-      "version": "7.2.0",
-      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-podman-engine-v7.2.0/onixlabs-podman-engine-7.2.0.tgz",
-      "integrity": "sha512-eea8OAegYwKUhLbdXvzazd0CEJtAJA3UVnv44ayk8XM6qrdapZWmiajYl7ttvyfNFbPUnjQDNcZmFWSeya2CxA=="
+      "version": "7.3.0",
+      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-podman-engine-v7.3.0/onixlabs-podman-engine-7.3.0.tgz",
+      "integrity": "sha512-mwd8gTLhEAk29wxYxOUUnr6+FNYd4BXhgQZHniZf5Sy/++3gzWGnGWbVPNrq0aqfdZTFHAfnG+LRBH8bVgrSkw=="
     }
   }
 }

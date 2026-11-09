@@ -7,6 +7,7 @@ import {
   WorkspaceChannel,
 } from '@shared/api/workspace-channels';
 import { Documents } from '@shared/angular/services/documents/documents';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Workspace } from './workspace';
 
 /**
@@ -192,6 +193,85 @@ interface BridgeCall {
   readonly args: readonly unknown[];
 }
 
+describe('Workspace, Collapse Empty Folders', () => {
+  /**
+   * The folders of a Java package path, each holding only the next, and the last holding a file.
+   */
+  const LISTINGS: Readonly<Record<string, DirectoryListing>> = {
+    '/ws/com': {
+      path: '/ws/com',
+      name: 'com',
+      entries: [{ name: 'org', path: '/ws/com/org', type: 'directory' }],
+    },
+    '/ws/com/org': {
+      path: '/ws/com/org',
+      name: 'org',
+      entries: [{ name: 'foo', path: '/ws/com/org/foo', type: 'directory' }],
+    },
+    '/ws/com/org/foo': {
+      path: '/ws/com/org/foo',
+      name: 'foo',
+      entries: [{ name: 'Main.java', path: '/ws/com/org/foo/Main.java', type: 'file' }],
+    },
+  };
+  let service: Workspace;
+
+  beforeEach(async () => {
+    localStorage.removeItem('workspace.files.collapseEmptyFolders');
+    (window as unknown as { bridge: Bridge }).bridge = {
+      ...fakeBridge(),
+      invoke: <T>(channel: string, ...args: unknown[]): Promise<T> =>
+        Promise.resolve(
+          (channel === (WorkspaceChannel.OpenFolder as string)
+            ? {
+                path: '/ws',
+                name: 'ws',
+                entries: [{ name: 'com', path: '/ws/com', type: 'directory' }],
+              }
+            : channel === (WorkspaceChannel.ReadDirectory as string)
+              ? (LISTINGS[args[0] as string] ?? null)
+              : null) as T,
+        ),
+    };
+    TestBed.configureTestingModule({});
+    service = TestBed.inject(Workspace);
+    await service.openFolder();
+  });
+
+  afterEach(() => {
+    delete (window as unknown as { bridge?: unknown }).bridge;
+    localStorage.removeItem('workspace.files.collapseEmptyFolders');
+  });
+
+  it('isOffByDefault_soEachFolderKeepsItsOwnRow', async () => {
+    await service.toggleDirectory('/ws/com');
+
+    expect(service.rows().map((row) => row.node.name)).toEqual(['com', 'org']);
+  });
+
+  it('opensTheWholeChainInOnePress_asOneRow_standingForTheLastFolder', async () => {
+    service.toggleCollapseEmptyFolders();
+
+    await service.toggleDirectory('/ws/com');
+
+    expect(service.rows()).toHaveLength(2);
+    expect(service.rows()[0].label).toBe('com/org/foo');
+    expect(service.rows()[0].node.path).toBe('/ws/com/org/foo');
+    expect(service.rows()[0].depth).toBe(0);
+    expect(service.rows()[1].node.name).toBe('Main.java');
+    expect(service.rows()[1].depth).toBe(1);
+  });
+
+  it('usesCollapsedFolderSeparator', async () => {
+    TestBed.inject(Settings).set('workspaces.collapsedFolderSeparator', '.');
+    service.toggleCollapseEmptyFolders();
+
+    await service.toggleDirectory('/ws/com');
+
+    expect(service.rows()[0].label).toBe('com.org.foo');
+  });
+});
+
 describe('Workspace mutations', () => {
   let service: Workspace;
   let calls: BridgeCall[];
@@ -360,16 +440,16 @@ describe('Workspace mutations', () => {
     expect(service.showsGitStatus()).toBe(false);
   });
 
-  it('showsChangesOnly_isOffUntilToggled_andIsRemembered', () => {
-    // #1053: unlike the two switches above, this one survives a restart.
-    localStorage.removeItem('workspace.files.changesOnly');
-    expect(service.showsChangesOnly()).toBe(false);
+  it('filter_isEmptyUntilTicked_andIsRemembered', () => {
+    // #1053, then #1182 follow-up: unlike the two switches above, the filter survives a restart.
+    localStorage.removeItem('workspace.files.filters');
+    expect(service.filter.active()).toBe(false);
 
-    service.toggleChangesOnly();
+    service.filter.toggle('error');
 
-    expect(service.showsChangesOnly()).toBe(true);
-    expect(localStorage.getItem('workspace.files.changesOnly')).toBe('true');
-    localStorage.removeItem('workspace.files.changesOnly');
+    expect([...service.filter.selected()]).toEqual(['error']);
+    expect(localStorage.getItem('workspace.files.filters')).toBe('["error"]');
+    localStorage.removeItem('workspace.files.filters');
   });
 
   it('delete_reconcilesTheDirectory_soTheEntryDropsOut', async () => {

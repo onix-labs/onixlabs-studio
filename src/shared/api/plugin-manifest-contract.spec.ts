@@ -38,6 +38,18 @@ const FINGERPRINTS: Readonly<Record<string, string>> = {
   '1.17.0': '78cf93349a6999d28eb28405aa783460b193c3ba857443f04f2e9f32de094e07',
   '1.18.0': '791ccdb952a907c8b3c74d3d1f382933c4a71af100dc9ff3614d0ff5210dc552',
   '1.19.0': 'f04620539f8783ebe5d5d0e32acc8c5d08c556cf0d2b57694ae37cd627d60337',
+  '1.20.0': '10c07ebba93084b2bb850e5e55ea7aaf707036a82f88063758c40cf7fe5b1d54',
+  '1.21.0': 'a264aaf1a111e6b8426362d0f1d35cd2fc2c386eedf28bfff1b6d4f037e56e7b',
+  '1.22.0': '2a5aaeda4c88616834ad26c41a652125422da4bfc82a03b72595ff069f008b2c',
+  // The same shape as 1.22.0: what changed is the database-engine protocol (#1248).
+  '1.23.0': '2a5aaeda4c88616834ad26c41a652125422da4bfc82a03b72595ff069f008b2c',
+  // The same shape again: what changed is the container-engine protocol (#1250).
+  '1.24.0': '2a5aaeda4c88616834ad26c41a652125422da4bfc82a03b72595ff069f008b2c',
+  '1.25.0': '40c9662b3f14ef9fe757ec3b842ee57eada41d09179a53b4a1ff054b528c7b09',
+  '1.26.0': '771dd15cbec4d5a234018e26490f6d055b08533c2c48ccd3967a6cf4c2f2eaa0',
+  // The same shape as 1.26.0: what changed is the package-manager protocol's capabilities (#907).
+  '1.27.0': '771dd15cbec4d5a234018e26490f6d055b08533c2c48ccd3967a6cf4c2f2eaa0',
+  '1.28.0': '35047b5a862d4c1306dbe3a7a14ec8e978527460a8d04d233015d20df766e494',
 };
 
 /**

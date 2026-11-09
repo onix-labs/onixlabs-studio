@@ -1,6 +1,11 @@
 import { signal, WritableSignal } from '@angular/core';
+import {
+  SETTINGS_DEFAULTS,
+  SettingsKey,
+} from '@shared/angular/services/settings/settings-registry';
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 import { Bridge } from '@shared/api/bridge';
 import {
   LspChannel,
@@ -8,6 +13,8 @@ import {
   LspSettings as LspSettingsData,
   LspStartRequest,
   LspStartResult,
+  LspShowMessageRequest,
+  WORKSPACE_DIAGNOSTICS_METHOD,
 } from '@shared/api/lsp-channels';
 
 import { DirectoryListing } from '@shared/api/workspace-channels';
@@ -15,16 +22,38 @@ import { Diagnostic, Diagnostics, DiagnosticsProvider } from '../diagnostics/dia
 import { Output, OutputChannelInfo } from '../output/output';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
-import { LspClient } from './lsp-client';
+import {
+  crashesExhausted,
+  idleStopMs,
+  LspClient,
+  testLines,
+  WorkspaceSymbolMatch,
+} from './lsp-client';
 import { LspDocumentRef, LspFeatures, LspSessionSupport } from './lsp-features';
 import { WorkspaceEditApplier } from '@shared/angular/services/workspace-edit/workspace-edit-applier';
 import type {
+  FileTextEdits,
   WorkspaceEditOutcome,
   WorkspaceTextEdits,
 } from '@shared/angular/services/workspace-edit/workspace-edit';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import { CodeLensServerSync } from './code-lens-server-sync';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { Log } from '@shared/angular/services/log/log';
+import { DebugAttachRouter } from '@shared/angular/services/debug-attach/debug-attach-router';
+import { Shell } from '@shared/angular/services/shell/shell';
+import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
+import {
+  Notification,
+  NotificationAction,
+  NotificationRequest,
+  Notifications,
+} from '@shared/angular/services/notifications/notifications';
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
-import { LspServer, LspStatus } from './lsp-status';
+import { LspServer, LspStatus, NOTICE_MS } from './lsp-status';
+import { EditorConfigs } from '@shared/angular/services/editor-config/editor-configs';
+import { Editors } from '@shared/angular/services/editors/editors';
+import type * as MonacoApi from 'monaco-editor';
 
 /**
  * The registered servers these tests run against, standing in for the catalogue the real settings
@@ -40,6 +69,7 @@ const CATALOGUE: readonly LspServerSummary[] = [
   { id: 'csharp', displayName: 'Roslyn', languages: ['csharp'], priority: 100 },
   { id: 'java', displayName: 'Eclipse JDT', languages: ['java'], priority: 100 },
   { id: 'pyright', displayName: 'Pyright', languages: ['python'], priority: 100 },
+  { id: 'rust', displayName: 'rust-analyzer', languages: ['rust'], priority: 100 },
 ];
 
 /**
@@ -51,6 +81,8 @@ class FakeLsp implements Bridge {
   public readonly notifications: { sessionId: string; method: string; params: unknown }[] = [];
   public readonly stops: string[] = [];
   public readonly restarts: string[] = [];
+  /** The brace style each restart was asked to start with, if any (#1177). */
+  public readonly restartBraceStyles: unknown[] = [];
   /**
    * The sessions the (fake) main process currently has running: a successful Start adds one, a stop
    * or an exit removes it, and a Restart of anything else answers "No such session" as the real one
@@ -58,16 +90,53 @@ class FakeLsp implements Bridge {
    */
   public readonly running: Set<string> = new Set<string>();
   public startResult: LspStartResult = { success: true };
+  /**
+   * When set, a Start is left unanswered until the test answers it — a server still in its
+   * handshake, which is when a start-up crash happens.
+   */
+  public holdStarts: boolean = false;
+  private readonly heldStarts: ((result: LspStartResult) => void)[] = [];
   public diagnosticReport: unknown = null;
+  /** The requests the client sent its servers, and the answers given for chosen methods (#1143). */
+  public readonly requests: { sessionId: string; method: string; params: unknown }[] = [];
+  public readonly requestAnswers: Record<string, unknown> = {};
+  /** The requests that fail, and those never answered (#1207). */
+  public readonly failingRequests: Set<string> = new Set<string>();
+  public readonly unansweredRequests: Set<string> = new Set<string>();
   private notificationListener: ((...args: unknown[]) => void) | null = null;
   private exitListener: ((...args: unknown[]) => void) | null = null;
   private applyEditListener: ((...args: unknown[]) => void) | null = null;
   public readonly applyEditReplies: unknown[] = [];
+  /** The answers to requests to attach the debugger (#1150). */
+  public readonly attachReplies: unknown[] = [];
+  private attachListener: ((...args: unknown[]) => void) | null = null;
+  /** The answers to a server's questions (#1154). */
+  public readonly questionReplies: unknown[] = [];
+  private questionListener: ((...args: unknown[]) => void) | null = null;
+
+  public attachDebugger(request: unknown): void {
+    this.attachListener?.(request);
+  }
+
+  private showDocumentListener: ((...args: unknown[]) => void) | null = null;
+
+  public showDocument(request: unknown): void {
+    this.showDocumentListener?.(request);
+  }
+
+  public ask(request: unknown): void {
+    this.questionListener?.(request);
+  }
 
   public invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
     switch (channel) {
       case LspChannel.Start as string:
         this.starts.push(args[0] as LspStartRequest);
+        if (this.holdStarts) {
+          return new Promise<T>((resolve: (value: T) => void): void => {
+            this.heldStarts.push((result: LspStartResult): void => resolve(result as T));
+          });
+        }
         if (this.startResult.success) {
           this.running.add((args[0] as LspStartRequest).sessionId);
         }
@@ -75,6 +144,7 @@ class FakeLsp implements Bridge {
       case LspChannel.Restart as string: {
         const sessionId: string = args[0] as string;
         this.restarts.push(sessionId);
+        this.restartBraceStyles.push(args[1]);
         if (!this.running.has(sessionId)) {
           return Promise.resolve({ success: false, error: 'No such session' } as T);
         }
@@ -84,6 +154,20 @@ class FakeLsp implements Bridge {
         return Promise.resolve(this.startResult as T);
       }
       case LspChannel.Request as string:
+        this.requests.push({
+          sessionId: args[0] as string,
+          method: args[1] as string,
+          params: args[2],
+        });
+        if (this.failingRequests.has(args[1] as string)) {
+          return Promise.reject(new Error('The server failed'));
+        }
+        if (this.unansweredRequests.has(args[1] as string)) {
+          return new Promise<T>((): void => undefined);
+        }
+        if (typeof args[1] === 'string' && args[1] in this.requestAnswers) {
+          return Promise.resolve(this.requestAnswers[args[1]] as T);
+        }
         return Promise.resolve(
           (args[1] === 'textDocument/diagnostic' ? this.diagnosticReport : null) as T,
         );
@@ -99,6 +183,7 @@ class FakeLsp implements Bridge {
           serverPaths: {},
           serverArgs: {},
           languageServers: {},
+          serverSettings: {},
         } as LspSettingsData as T);
       case LspChannel.SetSettings as string:
         return Promise.resolve(args[0] as T);
@@ -110,6 +195,12 @@ class FakeLsp implements Bridge {
   public send(channel: string, ...args: unknown[]): void {
     if (channel === (LspChannel.ApplyEditReply as string)) {
       this.applyEditReplies.push(args[0]);
+    }
+    if (channel === (LspChannel.AttachDebuggerReply as string)) {
+      this.attachReplies.push(args[0]);
+    }
+    if (channel === (LspChannel.ShowMessageReply as string)) {
+      this.questionReplies.push(args[0]);
     }
     if (channel === (LspChannel.Notify as string)) {
       this.notifications.push({
@@ -131,6 +222,24 @@ class FakeLsp implements Bridge {
       this.applyEditListener = listener;
       return (): void => {
         this.applyEditListener = null;
+      };
+    }
+    if (channel === (LspChannel.AttachDebugger as string)) {
+      this.attachListener = listener;
+      return (): void => {
+        this.attachListener = null;
+      };
+    }
+    if (channel === (LspChannel.ShowDocument as string)) {
+      this.showDocumentListener = listener;
+      return (): void => {
+        this.showDocumentListener = null;
+      };
+    }
+    if (channel === (LspChannel.ShowMessage as string)) {
+      this.questionListener = listener;
+      return (): void => {
+        this.questionListener = null;
       };
     }
     if (channel === (LspChannel.ServerExit as string)) {
@@ -166,9 +275,26 @@ class FakeLsp implements Bridge {
     });
   }
 
-  public exit(sessionId: string): void {
+  /**
+   * Answers every held Start with the given result.
+   */
+  public answerStarts(result: LspStartResult): void {
+    for (const answer of this.heldStarts.splice(0)) {
+      answer(result);
+    }
+  }
+
+  public exit(
+    sessionId: string,
+    reason?: string,
+    how: { code: number | null; signal: string | null } = { code: 1, signal: null },
+  ): void {
     this.running.delete(sessionId);
-    this.exitListener?.({ sessionId, code: 1, signal: null });
+    this.exitListener?.({
+      sessionId,
+      ...how,
+      ...(reason === undefined ? {} : { reason }),
+    });
   }
 
   public notificationsTo(method: string): { sessionId: string; params: unknown }[] {
@@ -234,6 +360,43 @@ class FakeFeatures {
     this.refreshes.push(languages);
   }
 
+  /** The languages formatting was turned on for, with the support it was turned on with (#1141). */
+  public readonly formattingEnabled: [string, unknown][] = [];
+
+  public enableFormatting(language: string, support: unknown): void {
+    this.formattingEnabled.push([language, support]);
+  }
+  /** The languages hints were turned on for (#1145). */
+  public readonly inlayHintsEnabled: string[] = [];
+  public inlayHintRefreshes: number = 0;
+
+  public enableInlayHints(language: string): void {
+    this.inlayHintsEnabled.push(language);
+  }
+
+  /** The languages the compiler's views of structure were turned on for, with what (#1147). */
+  public readonly structureEnabled: [string, unknown][] = [];
+
+  public enableStructure(language: string, support: unknown): void {
+    this.structureEnabled.push([language, support]);
+  }
+
+  /** The languages code lenses were turned on for, and how many refreshes were asked (#1149). */
+  public readonly codeLensEnabled: string[] = [];
+  public codeLensRefreshes: number = 0;
+
+  public enableCodeLens(language: string): void {
+    this.codeLensEnabled.push(language);
+  }
+
+  public refreshCodeLenses(): void {
+    this.codeLensRefreshes += 1;
+  }
+
+  public refreshInlayHints(): void {
+    this.inlayHintRefreshes += 1;
+  }
+
   public readonly supports: [string, LspSessionSupport | null][] = [];
 
   public setSessionSupport(sessionId: string, support: LspSessionSupport | null): void {
@@ -264,6 +427,7 @@ describe('LspClient', () => {
   let offeredLanguages: string[];
   let installedServers: WritableSignal<readonly LspServerSummary[]>;
   let catalogueLoaded: WritableSignal<boolean>;
+  let serverSettings: Record<string, Record<string, unknown>>;
 
   /**
    * Builds the client under test with the fakes wired in.
@@ -284,6 +448,8 @@ describe('LspClient', () => {
             },
           },
         },
+        // The servers' own lens switches are kept in step elsewhere (#1215).
+        { provide: CodeLensServerSync, useValue: {} },
         {
           provide: LspSettings,
           useValue: {
@@ -297,6 +463,8 @@ describe('LspClient', () => {
             catalogue: (): readonly LspServerSummary[] => installedServers(),
             catalogueLoaded: (): boolean => catalogueLoaded(),
             displayNameOf: (): string | null => null,
+            serverSetting: (serverId: string, section: string): unknown =>
+              serverSettings[serverId]?.[section],
             ready: Promise.resolve(),
           },
         },
@@ -316,12 +484,1088 @@ describe('LspClient', () => {
     offeredLanguages = [];
     installedServers = signal<readonly LspServerSummary[]>(CATALOGUE);
     catalogueLoaded = signal<boolean>(true);
+    serverSettings = {};
     root = signal<DirectoryListing | null>({ path: '/root', name: 'root', entries: [] });
     (window as unknown as { bridge: Bridge }).bridge = lsp;
   });
 
   afterEach(() => {
     delete (window as unknown as { bridge?: unknown }).bridge;
+  });
+
+  describe('pages and files a server asks to show (#1211)', () => {
+    /**
+     * Opens a C# document, starting the Roslyn session.
+     * @param client The client.
+     */
+    async function openCsharp(client: LspClient): Promise<void> {
+      client.syncDocument({
+        documentId: 'a',
+        path: '/root/A.cs',
+        languageId: 'csharp',
+        content: '',
+      });
+      await flush();
+    }
+
+    it('aWebPage_opensThroughTheShell_asContent', async () => {
+      const client: LspClient = build();
+      const open: MockInstance<Shell['openExternal']> = vi
+        .spyOn(TestBed.inject(Shell), 'openExternal')
+        .mockResolvedValue(undefined);
+      await openCsharp(client);
+
+      lsp.showDocument({
+        sessionId: '/root::csharp',
+        uri: 'http://127.0.0.1:6060/gopls/pkg',
+        external: true,
+      });
+
+      expect(open).toHaveBeenCalledWith('http://127.0.0.1:6060/gopls/pkg', 'content');
+    });
+
+    it('aFile_opensInAnEditor_withItsRangeSelected', async () => {
+      const client: LspClient = build();
+      const goTo: MockInstance<EditorNavigation['goTo']> = vi
+        .spyOn(TestBed.inject(EditorNavigation), 'goTo')
+        .mockResolvedValue(undefined);
+      await openCsharp(client);
+
+      lsp.showDocument({
+        sessionId: '/root::csharp',
+        uri: 'file:///root/B.cs',
+        external: false,
+        selection: { start: { line: 2, character: 4 }, end: { line: 2, character: 9 } },
+      });
+
+      expect(goTo).toHaveBeenCalledWith(
+        null,
+        {
+          path: '/root/B.cs',
+          range: { startLineNumber: 3, startColumn: 5, endLineNumber: 3, endColumn: 10 },
+        },
+        true,
+      );
+    });
+
+    it('aRequestForASessionThisWindowDoesNotHold_isLeftAlone', async () => {
+      const client: LspClient = build();
+      const open: MockInstance<Shell['openExternal']> = vi
+        .spyOn(TestBed.inject(Shell), 'openExternal')
+        .mockResolvedValue(undefined);
+      const goTo: MockInstance<EditorNavigation['goTo']> = vi
+        .spyOn(TestBed.inject(EditorNavigation), 'goTo')
+        .mockResolvedValue(undefined);
+      await openCsharp(client);
+
+      lsp.showDocument({ sessionId: '/elsewhere::go', uri: 'https://go.dev', external: true });
+      lsp.showDocument({ sessionId: '/elsewhere::go', uri: 'file:///x.go', external: false });
+
+      expect(open).not.toHaveBeenCalled();
+      expect(goTo).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('server questions and notices (#1154)', () => {
+    /**
+     * Opens a C# document, starting the Roslyn session.
+     * @param client The client.
+     */
+    async function openCsharp(client: LspClient): Promise<void> {
+      client.syncDocument({
+        documentId: 'a',
+        path: '/root/A.cs',
+        languageId: 'csharp',
+        content: '',
+      });
+      await flush();
+    }
+
+    const QUESTION: LspShowMessageRequest = {
+      requestId: 'q1',
+      sessionId: '/root::csharp',
+      type: 2,
+      message: 'Restore the solution?',
+      actions: ['Restore', 'Not now'],
+    };
+
+    it('aQuestion_isAStickyToastWhoseButtonsAnswerIt_once', async () => {
+      const client: LspClient = build();
+      const notifications: Notifications = TestBed.inject(Notifications);
+      await openCsharp(client);
+
+      lsp.ask(QUESTION);
+      TestBed.tick();
+
+      const toast: Notification | undefined = notifications.toasts()[0];
+      expect(toast).toMatchObject({
+        severity: 'warning',
+        title: 'Restore the solution?',
+        sticky: true,
+        key: 'lsp-question:q1',
+      });
+      expect(toast?.actions.map((action: NotificationAction): string => action.label)).toEqual([
+        'Restore',
+        'Not now',
+      ]);
+      expect(lsp.questionReplies).toEqual([]);
+      toast?.actions[0]?.run();
+      notifications.dismiss(toast?.id ?? 0);
+      TestBed.tick();
+
+      expect(lsp.questionReplies).toEqual([{ requestId: 'q1', action: 0 }]);
+    });
+
+    it('aQuestionDismissedWithoutAnAnswer_isAnsweredNull', async () => {
+      const client: LspClient = build();
+      const notifications: Notifications = TestBed.inject(Notifications);
+      await openCsharp(client);
+
+      lsp.ask(QUESTION);
+      TestBed.tick();
+      notifications.dismissByKey('lsp-question:q1');
+      TestBed.tick();
+
+      expect(lsp.questionReplies).toEqual([{ requestId: 'q1', action: null }]);
+    });
+
+    it('aQuestionForASessionThisWindowDoesNotHold_isNotAsked', async () => {
+      const client: LspClient = build();
+      const notifications: Notifications = TestBed.inject(Notifications);
+      await openCsharp(client);
+
+      lsp.ask({ ...QUESTION, sessionId: '/elsewhere::csharp' });
+      TestBed.tick();
+
+      expect(notifications.toasts()).toEqual([]);
+      expect(lsp.questionReplies).toEqual([]);
+    });
+
+    it('anInformationMessage_showsOnTheServersRowForAFewSeconds_withoutAToast', async () => {
+      const client: LspClient = build();
+      const notifications: Notifications = TestBed.inject(Notifications);
+      const status: LspStatus = TestBed.inject(LspStatus);
+      await openCsharp(client);
+      vi.useFakeTimers();
+      try {
+        lsp.notify('/root::csharp', 'window/showMessage', {
+          type: 3,
+          message: 'Solution loaded.',
+        });
+
+        expect(status.servers()[0]?.notice).toBe('Solution loaded.');
+        expect(notifications.toasts()).toEqual([]);
+        vi.advanceTimersByTime(NOTICE_MS);
+        expect(status.servers()[0]?.notice).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe('analysis of the whole workspace (#1182)', () => {
+    const SESSION: string = '/root::csharp';
+
+    /**
+     * Opens a C# document, starting the Roslyn session.
+     * @param client The client.
+     */
+    async function openCsharp(client: LspClient): Promise<void> {
+      client.syncDocument({
+        documentId: 'a',
+        path: '/root/A.cs',
+        languageId: 'csharp',
+        content: '',
+      });
+      await flush();
+    }
+
+    it('isPending_untilAPullRunsToItsEnd_afterTheServerLoaded', async () => {
+      lsp.startResult = { success: true, capabilities: {}, pullsWorkspaceDiagnostics: true };
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      await openCsharp(client);
+
+      expect(status.analysisOf(SESSION)).toBe('pending');
+      // A pull that ends before the server has loaded the workspace reported a workspace not yet there.
+      lsp.notify(SESSION, WORKSPACE_DIAGNOSTICS_METHOD, { reports: [], complete: true });
+      expect(status.analysisOf(SESSION)).toBe('pending');
+
+      lsp.notify(SESSION, 'workspace/projectInitializationComplete', {});
+      lsp.notify(SESSION, WORKSPACE_DIAGNOSTICS_METHOD, { reports: [], complete: true });
+
+      expect(status.analysisOf(SESSION)).toBe('done');
+    });
+
+    it('aServerThatNeverReportsItComplete_isNotLeftAnalysingForever', async () => {
+      lsp.startResult = { success: true, capabilities: {}, pullsWorkspaceDiagnostics: true };
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      await openCsharp(client);
+      vi.useFakeTimers();
+      try {
+        lsp.notify(SESSION, 'workspace/projectInitializationComplete', {});
+        vi.advanceTimersByTime(59_999);
+        expect(status.analysisOf(SESSION)).toBe('pending');
+        vi.advanceTimersByTime(1);
+        expect(status.analysisOf(SESSION)).toBe('done');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('aServerThatDoesNotReportTheWholeWorkspace_hasNoAnalysis', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+
+      expect(TestBed.inject(LspStatus).analysisOf(SESSION)).toBeUndefined();
+    });
+  });
+
+  describe('crash policy (#1136)', () => {
+    let raised: NotificationRequest[];
+    let shown: string[];
+    let now: number;
+
+    beforeEach(() => {
+      raised = [];
+      shown = [];
+      now = Date.now();
+      vi.spyOn(Date, 'now').mockImplementation((): number => now);
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: Notifications,
+            useValue: {
+              notify: (request: NotificationRequest): void => void raised.push(request),
+            },
+          },
+          {
+            provide: Output,
+            useValue: {
+              channel: (): unknown => ({ appendLine: (): void => undefined }),
+              show: (id: string): void => void shown.push(id),
+            },
+          },
+        ],
+      });
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    const BASE: { documentId: string; path: string; languageId: string; content: string } = {
+      documentId: 'a',
+      path: '/root/A.cs',
+      languageId: 'csharp',
+      content: '',
+    };
+
+    /**
+     * Syncs the document once the crash backoff has passed, so the session restarts.
+     * @param client The client.
+     */
+    async function syncAfterBackoff(client: LspClient): Promise<void> {
+      now += 600_000;
+      client.syncDocument(BASE);
+      await flush();
+    }
+
+    it('aCleanExitTwice_stopsAtTheSecond_withAToastOfferingRestartAndShowLog', async () => {
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      client.syncDocument(BASE);
+      await flush();
+
+      lsp.exit('/root::csharp', undefined, { code: 0, signal: null });
+      expect(raised).toEqual([]);
+      await syncAfterBackoff(client);
+      expect(lsp.starts).toHaveLength(2);
+      lsp.exit('/root::csharp', undefined, { code: 0, signal: null });
+      await syncAfterBackoff(client);
+
+      expect(lsp.starts).toHaveLength(2);
+      expect(status.servers()[0]?.detail).toBe(
+        'The server stopped the same way twice, so it was not restarted again. Restart it to try again.',
+      );
+      expect(raised).toHaveLength(1);
+      expect(raised[0]).toMatchObject({
+        severity: 'error',
+        title: 'csharp stopped the same way twice and was not restarted',
+        key: 'lsp-given-up:/root::csharp',
+      });
+      expect(raised[0]?.actions?.map((action): string => action.label)).toEqual([
+        'Restart',
+        'Show log',
+      ]);
+      raised[0]?.actions?.[1]?.run();
+      expect(shown).toEqual(['lsp:csharp']);
+      raised[0]?.actions?.[0]?.run();
+      await flush();
+      expect(lsp.starts).toHaveLength(3);
+    });
+
+    it('theSameReasonTwice_stopsAtTheSecond_namingIt', async () => {
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      client.syncDocument(BASE);
+      await flush();
+
+      lsp.exit('/root::csharp', 'Unhandled exception: boom.');
+      await syncAfterBackoff(client);
+      lsp.exit('/root::csharp', 'Unhandled exception: boom.');
+      await syncAfterBackoff(client);
+
+      expect(lsp.starts).toHaveLength(2);
+      expect(status.servers()[0]?.detail).toBe(
+        'The server stopped the same way twice, so it was not restarted again: Unhandled exception: boom. Restart it to try again.',
+      );
+      expect(raised[0]?.detail).toBe('Unhandled exception: boom.');
+    });
+
+    it('differentReasons_orSignals_keepTheOrdinaryBackoff', async () => {
+      const client: LspClient = build();
+      client.syncDocument(BASE);
+      await flush();
+
+      lsp.exit('/root::csharp', 'First.');
+      await syncAfterBackoff(client);
+      lsp.exit('/root::csharp', 'Second.');
+      await syncAfterBackoff(client);
+      lsp.exit('/root::csharp', 'Killed.', { code: null, signal: 'SIGKILL' });
+      await syncAfterBackoff(client);
+      lsp.exit('/root::csharp', 'Killed.', { code: null, signal: 'SIGKILL' });
+      await syncAfterBackoff(client);
+
+      expect(lsp.starts).toHaveLength(5);
+      expect(raised).toEqual([]);
+      lsp.exit('/root::csharp', 'Killed.', { code: null, signal: 'SIGKILL' });
+      await syncAfterBackoff(client);
+
+      expect(lsp.starts).toHaveLength(5);
+      expect(raised[0]?.title).toBe('csharp crashed repeatedly and was stopped');
+    });
+  });
+
+  describe('server problems as toasts (#1134)', () => {
+    let raised: NotificationRequest[];
+    let shown: string[];
+
+    beforeEach(() => {
+      raised = [];
+      shown = [];
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: Notifications,
+            useValue: {
+              notify: (request: NotificationRequest): void => void raised.push(request),
+            },
+          },
+          {
+            provide: Output,
+            useValue: {
+              channel: (): unknown => ({ appendLine: (): void => undefined }),
+              show: (id: string): void => void shown.push(id),
+            },
+          },
+        ],
+      });
+    });
+
+    /**
+     * Opens a C# document, starting the Roslyn session.
+     * @param client The client.
+     */
+    async function openCsharp(client: LspClient): Promise<void> {
+      client.syncDocument({
+        documentId: 'a',
+        path: '/root/A.cs',
+        languageId: 'csharp',
+        content: '',
+      });
+      await flush();
+    }
+
+    it('roslynsToast_ofAProjectThatFailedToLoad_isRaised_withShowLogOpeningItsOutputChannel', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+
+      lsp.notify('/root::csharp', 'window/_roslyn_showToast', {
+        messageType: 1,
+        message: 'There were problems loading project Fixture.Core.csproj. See log for details.',
+        commands: [{ title: 'Show C# logs', command: 'csharp.showOutputWindow' }],
+      });
+
+      expect(raised).toHaveLength(1);
+      expect(raised[0]).toMatchObject({
+        severity: 'error',
+        title: 'There were problems loading project Fixture.Core.csproj.',
+        detail: 'csharp',
+        key: 'lsp-problem:/root::csharp',
+      });
+      raised[0]?.actions?.[0]?.run();
+      expect(raised[0]?.actions?.[0]?.label).toBe('Show log');
+      expect(shown).toEqual(['lsp:csharp']);
+    });
+
+    it('aBurst_updatesOneToastWithACountOfDistinctProblems', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+
+      for (const project of ['A', 'B', 'B', 'C']) {
+        lsp.notify('/root::csharp', 'window/_roslyn_showToast', {
+          messageType: 1,
+          message: `There were problems loading project ${project}.csproj. See log for details.`,
+        });
+      }
+
+      expect(raised.map((request: NotificationRequest): string => request.title)).toEqual([
+        'There were problems loading project A.csproj.',
+        'csharp reported 2 problems',
+        // Roslyn repeats a failed project's report: the same problem, not a third.
+        'csharp reported 2 problems',
+        'csharp reported 3 problems',
+      ]);
+      expect(raised.at(-1)?.detail).toBe('Latest: There were problems loading project C.csproj.');
+      expect(new Set(raised.map((request: NotificationRequest) => request.key)).size).toBe(1);
+    });
+
+    it('showMessageWarnings_areRaisedToo_butInformationStaysInTheLog', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+
+      lsp.notify('/root::csharp', 'window/showMessage', { type: 3, message: 'Loaded.' });
+      lsp.notify('/root::csharp', 'window/_roslyn_showToast', { messageType: 3, message: 'Hi.' });
+      lsp.notify('/root::csharp', 'window/showMessage', { type: 2, message: 'MSBuild is old.' });
+
+      expect(raised).toHaveLength(1);
+      expect(raised[0]).toMatchObject({ severity: 'warning', title: 'MSBuild is old.' });
+    });
+  });
+
+  describe('running tests (#1150)', () => {
+    let raised: NotificationRequest[];
+    let lines: string[];
+    let shown: string[];
+
+    beforeEach(() => {
+      raised = [];
+      lines = [];
+      shown = [];
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: Notifications,
+            useValue: {
+              notify: (request: NotificationRequest): void => void raised.push(request),
+            },
+          },
+          {
+            provide: Output,
+            useValue: {
+              channel: (): unknown => ({
+                appendLine: (line: string): void => void lines.push(line),
+                clear: (): void => void (lines = []),
+              }),
+              show: (id: string): void => void shown.push(id),
+            },
+          },
+        ],
+      });
+    });
+
+    it('aRunsLog_streamsIntoTheTestsChannel_andAFailureIsRaised_withShowLog', async () => {
+      let finish: (value: unknown) => void = (): void => undefined;
+      lsp.requestAnswers['textDocument/runTests'] = new Promise((resolve) => {
+        finish = resolve;
+      });
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      client.syncDocument({
+        documentId: 't',
+        path: '/root/T.cs',
+        languageId: 'csharp',
+        content: '',
+      });
+      await flush();
+      const lens: unknown = {
+        textDocument: { uri: 'file:///root/T.cs' },
+        range: { start: { line: 16, character: 16 }, end: { line: 16, character: 28 } },
+        attachDebugger: false,
+      };
+
+      features.resolver?.('/root/T.cs')?.runTests?.(lens);
+      await flush();
+      const request: { params: unknown } | undefined = lsp.requests.at(-1);
+      const token: unknown = (request?.params as { partialResultToken?: unknown })
+        ?.partialResultToken;
+      lsp.notify('/root::csharp', '$/progress', {
+        token,
+        value: { stage: 'Building project...', message: 'Build succeeded.' },
+      });
+      lsp.notify('/root::csharp', '$/progress', {
+        token,
+        value: {
+          stage: 'Running tests...',
+          message:
+            '[Failed] Fixture.Tests.PersonTests.Create_Fails\n    Message:\n        Assert.Equal() Failure: Strings differ',
+          progress: { testsPassed: 0, testsFailed: 1, testsSkipped: 0, totalTests: 1 },
+        },
+      });
+      finish([]);
+      await flush();
+
+      expect(shown).toEqual(['lsp-tests']);
+      expect(request?.params).toMatchObject({ ...(lens as object), attachDebugger: false });
+      expect(lines[0]).toBe('Build succeeded.');
+      expect(lines[1]).toContain('[Failed] Fixture.Tests.PersonTests.Create_Fails');
+      expect(raised).toEqual([
+        expect.objectContaining({
+          severity: 'error',
+          title: 'Create_Fails failed',
+          detail: 'Assert.Equal() Failure: Strings differ',
+        }),
+      ]);
+      raised[0]?.actions?.[0]?.run();
+      expect(shown).toEqual(['lsp-tests', 'lsp-tests']);
+    });
+
+    it('aDebugLensAsksForTheDebugger_whichTheWorkspaceAttachesToTheTestHost (#1150)', async () => {
+      const attached: [number, string][] = [];
+      lsp.requestAnswers['textDocument/runTests'] = new Promise((): void => undefined);
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      TestBed.inject(DebugAttachRouter).register(
+        (processId: number, name: string): Promise<boolean> => {
+          attached.push([processId, name]);
+          return Promise.resolve(true);
+        },
+      );
+      client.syncDocument({
+        documentId: 't',
+        path: '/root/T.cs',
+        languageId: 'csharp',
+        content: '',
+      });
+      await flush();
+
+      features.resolver?.('/root/T.cs')?.runTests?.({
+        range: { start: { line: 8, character: 16 }, end: { line: 8, character: 35 } },
+        attachDebugger: true,
+      });
+      await flush();
+      lsp.attachDebugger({ requestId: 'r1', sessionId: '/root::csharp', processId: 46456 });
+      lsp.attachDebugger({ requestId: 'r2', sessionId: '/elsewhere::csharp', processId: 1 });
+      await flush();
+
+      expect(lsp.requests.at(-1)?.params).toMatchObject({ attachDebugger: true });
+      expect(attached).toEqual([[46456, 'Tests']]);
+      expect(lsp.attachReplies).toEqual([{ requestId: 'r1', didAttach: true }]);
+      expect(lines).toContain('Attaching the debugger to the test host (process 46456).');
+    });
+
+    it('testLines_placesEachReportedTestOnItsLensesLine', () => {
+      const source: readonly string[] = [
+        'public class PersonTests',
+        '{',
+        '    public void Create_KeepsTheName()',
+        '    public void Create_Fails()',
+        '    public void Create_Skips()',
+      ];
+      const lens: (line: number, from: number, to: number) => unknown = (
+        line: number,
+        from: number,
+        to: number,
+      ): unknown => ({
+        range: { start: { line, character: from }, end: { line, character: to } },
+        command: { command: 'dotnet.test.run' },
+      });
+
+      const placed: Map<number, string> = testLines(
+        [
+          lens(0, 13, 24),
+          lens(2, 16, 35),
+          lens(3, 16, 28),
+          lens(4, 16, 28),
+          { range: { start: { line: 2, character: 16 }, end: { line: 2, character: 35 } } },
+        ],
+        (line: number): string => source[line - 1] ?? '',
+        new Map([
+          ['Fixture.Tests.PersonTests.Create_KeepsTheName', 'passed'],
+          ['Fixture.Tests.PersonTests.Create_Fails', 'failed'],
+          ['Fixture.Tests.PersonTests.Create_Skips', 'skipped'],
+        ]),
+      );
+
+      expect([...placed]).toEqual([
+        [3, 'passed'],
+        [4, 'failed'],
+      ]);
+    });
+  });
+
+  describe('symbols across the workspace (#1146)', () => {
+    /**
+     * Opens a C# document, starting the Roslyn session.
+     * @param client The client.
+     */
+    async function openCsharp(client: LspClient): Promise<void> {
+      client.syncDocument({
+        documentId: 'a',
+        path: '/root/A.cs',
+        languageId: 'csharp',
+        content: '',
+      });
+      await flush();
+    }
+
+    it('asksEveryServerThatFindsThem_andListsWhatTheyFound', async () => {
+      lsp.startResult = { success: true, capabilities: { workspaceSymbolProvider: true } };
+      lsp.requestAnswers['workspace/symbol'] = [
+        {
+          name: 'FormalGreeter',
+          kind: 5,
+          location: {
+            uri: 'file:///root/Services/FormalGreeter.cs',
+            range: { start: { line: 4, character: 20 }, end: { line: 4, character: 33 } },
+          },
+          containerName: 'project Fixture.Services (net10.0)',
+        },
+        { name: 'Decompiled', kind: 5, location: { uri: 'csharp:/metadata/x.cs' } },
+        { name: 'NoRange', kind: 12, location: { uri: 'file:///root/Util.cs' } },
+      ];
+      const client: LspClient = build();
+      await openCsharp(client);
+
+      const found: readonly WorkspaceSymbolMatch[] = await client.workspaceSymbols('  FoGr ');
+
+      expect(lsp.requests.at(-1)).toEqual({
+        sessionId: '/root::csharp',
+        method: 'workspace/symbol',
+        params: { query: 'FoGr' },
+      });
+      expect(found).toEqual([
+        {
+          name: 'FormalGreeter',
+          kind: 5,
+          container: 'project Fixture.Services (net10.0)',
+          path: '/root/Services/FormalGreeter.cs',
+          range: { startLineNumber: 5, startColumn: 21, endLineNumber: 5, endColumn: 34 },
+        },
+        {
+          name: 'NoRange',
+          kind: 12,
+          container: '',
+          path: '/root/Util.cs',
+          range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 },
+        },
+      ]);
+    });
+
+    it('asksNothing_forNothingTyped_orWhereNoServerFindsThem', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+      const asked: number = lsp.requests.length;
+
+      expect(await client.workspaceSymbols('Greeter')).toEqual([]);
+      lsp.startResult = { success: true, capabilities: { workspaceSymbolProvider: true } };
+      expect(await client.workspaceSymbols('   ')).toEqual([]);
+      expect(lsp.requests.length).toBe(asked);
+    });
+  });
+
+  describe('diagnostics for the whole workspace (#1144)', () => {
+    const BROKEN: unknown = {
+      uri: 'file:///root/src/Broken.cs',
+      kind: 'full',
+      resultId: 'r1',
+      items: [
+        {
+          range: { start: { line: 4, character: 33 }, end: { line: 4, character: 44 } },
+          severity: 1,
+          message: 'Cannot implicitly convert type string to int',
+          source: 'csharp',
+        },
+      ],
+    };
+
+    /**
+     * Opens a C# document, starting the Roslyn session.
+     * @param client The client.
+     * @param path The document's path.
+     */
+    async function openCsharp(client: LspClient, path: string = '/root/src/A.cs'): Promise<void> {
+      client.syncDocument({ documentId: path, path, languageId: 'csharp', content: '' });
+      await flush();
+    }
+
+    it('aFileThatIsNotOpen_keepsItsTaggedHintsOutOfTheList', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+
+      lsp.notify('/root::csharp', 'studio/workspaceDiagnostics', {
+        reports: [
+          {
+            uri: 'file:///root/src/Unused.cs',
+            kind: 'full',
+            items: [
+              {
+                range: { start: { line: 2, character: 8 }, end: { line: 2, character: 9 } },
+                severity: 4,
+                message: 'Remove unnecessary usings',
+                source: 'csharp',
+                tags: [1],
+              },
+            ],
+          },
+        ],
+      });
+
+      expect(diagnostics.emitted).toEqual([]);
+    });
+
+    it('aFileThatIsNotOpen_listsItsErrors_locatedByPath', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+
+      lsp.notify('/root::csharp', 'studio/workspaceDiagnostics', { reports: [BROKEN] });
+
+      expect(diagnostics.emitted).toEqual([
+        {
+          file: 'Broken.cs',
+          message: 'Cannot implicitly convert type string to int',
+          severity: 'error',
+          line: 5,
+          column: 34,
+          source: 'csharp',
+          documentId: null,
+          path: '/root/src/Broken.cs',
+          scope: 'workspace',
+        },
+      ]);
+    });
+
+    it('aFileOnceOpen_isListedFromItsOwnPull_notTwice', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+      lsp.notify('/root::csharp', 'studio/workspaceDiagnostics', { reports: [BROKEN] });
+
+      await openCsharp(client, '/root/src/Broken.cs');
+      lsp.notify('/root::csharp', 'studio/workspaceDiagnostics', {
+        reports: [{ uri: 'file:///root/src/Other.cs', kind: 'full', items: [] }],
+      });
+
+      expect(
+        diagnostics.emitted.filter(
+          (diagnostic: Diagnostic): boolean => diagnostic.scope === 'workspace',
+        ),
+      ).toEqual([]);
+    });
+
+    it('aResetBatch_dropsWhatTheSessionReportedBefore', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+      lsp.notify('/root::csharp', 'studio/workspaceDiagnostics', { reports: [BROKEN] });
+
+      lsp.notify('/root::csharp', 'studio/workspaceDiagnostics', { reports: [], reset: true });
+
+      expect(diagnostics.emitted).toEqual([]);
+    });
+
+    it('closingADocument_hasTheWorkspacePulledAfresh_forgettingIt', async () => {
+      const client: LspClient = build();
+      await openCsharp(client, '/root/src/Broken.cs');
+
+      client.closeDocument('/root/src/Broken.cs');
+      await flush();
+
+      expect(lsp.notifications.slice(-2)).toEqual([
+        {
+          sessionId: '/root::csharp',
+          method: 'textDocument/didClose',
+          params: { textDocument: { uri: 'file:///root/src/Broken.cs' } },
+        },
+        {
+          sessionId: '/root::csharp',
+          method: 'studio/refreshWorkspaceDiagnostics',
+          params: { uri: 'file:///root/src/Broken.cs' },
+        },
+      ]);
+    });
+
+    it('anUnchangedReportKeepsTheErrors_anEmptyOneClearsThem', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+      lsp.notify('/root::csharp', 'studio/workspaceDiagnostics', { reports: [BROKEN] });
+
+      lsp.notify('/root::csharp', 'studio/workspaceDiagnostics', {
+        reports: [{ uri: 'file:///root/src/Broken.cs', kind: 'unchanged', resultId: 'r1' }],
+      });
+      expect(diagnostics.emitted).toHaveLength(1);
+
+      lsp.notify('/root::csharp', 'studio/workspaceDiagnostics', {
+        reports: [{ uri: 'file:///root/src/Broken.cs', kind: 'full', resultId: 'r2', items: [] }],
+      });
+      expect(diagnostics.emitted).toEqual([]);
+    });
+  });
+
+  describe('restore when asked first (#1143)', () => {
+    let raised: NotificationRequest[];
+
+    beforeEach(() => {
+      raised = [];
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: Notifications,
+            useValue: {
+              notify: (request: NotificationRequest): void => void raised.push(request),
+            },
+          },
+        ],
+      });
+    });
+
+    /**
+     * Logs Roslyn's warning for each project that has unresolved dependencies, then waits for the
+     * gathered offer.
+     * @param projects The project files.
+     */
+    async function reportUnresolved(projects: readonly string[]): Promise<void> {
+      for (const project of projects) {
+        lsp.notify('/root::csharp', 'window/logMessage', {
+          type: 2,
+          message: `[solution/open] [LanguageServerProjectLoader] Project ${project} has unresolved dependencies`,
+        });
+      }
+      await new Promise((resolve: (value: unknown) => void): unknown => setTimeout(resolve, 1_700));
+    }
+
+    /**
+     * Opens a C# document, starting the Roslyn session.
+     * @param client The client.
+     */
+    async function openCsharp(client: LspClient): Promise<void> {
+      client.syncDocument({
+        documentId: 'a',
+        path: '/root/A.cs',
+        languageId: 'csharp',
+        content: '',
+      });
+      await flush();
+    }
+
+    it('gathersTheProjectsALoadReports_intoOneOfferToRestoreThem_whichRestoresThem', async () => {
+      serverSettings = { csharp: { 'projects.dotnet_enable_automatic_restore': false } };
+      lsp.requestAnswers['workspace/_roslyn_restore'] = { success: true };
+      const client: LspClient = build();
+      await openCsharp(client);
+
+      await reportUnresolved(['/root/A/A.csproj', '/root/B/B.csproj', '/root/A/A.csproj']);
+
+      expect(raised).toHaveLength(1);
+      expect(raised[0]).toMatchObject({
+        severity: 'warning',
+        title: '2 projects need their packages restored',
+        key: 'lsp-restore:/root::csharp',
+      });
+      raised[0]?.actions?.[0]?.run();
+      await flush();
+      expect(lsp.requests.at(-1)).toEqual({
+        sessionId: '/root::csharp',
+        method: 'workspace/_roslyn_restore',
+        params: {
+          projectFilePaths: ['/root/A/A.csproj', '/root/B/B.csproj'],
+          partialResultToken: expect.any(String) as unknown,
+        },
+      });
+      expect(raised).toHaveLength(1);
+    });
+
+    it('aRestoreUnderWay_showsItsProgressInTheServersStatus_untilItIsDone', async () => {
+      serverSettings = { csharp: { 'projects.dotnet_enable_automatic_restore': false } };
+      let finish: (value: unknown) => void = (): void => undefined;
+      lsp.requestAnswers['workspace/_roslyn_restore'] = new Promise((resolve) => {
+        finish = resolve;
+      });
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      const progressOf: () => string | undefined = (): string | undefined =>
+        status.servers().find((server: LspServer): boolean => server.sessionId === '/root::csharp')
+          ?.progress;
+      await openCsharp(client);
+      await reportUnresolved(['/root/A/A.csproj']);
+
+      raised[0]?.actions?.[0]?.run();
+      await flush();
+      const token: unknown = (lsp.requests.at(-1)?.params as { partialResultToken?: unknown })
+        ?.partialResultToken;
+      lsp.notify('/root::csharp', '$/progress', {
+        token,
+        value: [{ stage: 'Restore', message: 'Restoring A.csproj' }],
+      });
+
+      expect(progressOf()).toBe('Restore — Restoring A.csproj');
+      finish({ success: true });
+      await flush();
+      expect(progressOf()).toBeUndefined();
+    });
+
+    it('aRestoreThatFails_isRaisedWithItsLog', async () => {
+      serverSettings = { csharp: { 'projects.dotnet_enable_automatic_restore': false } };
+      lsp.requestAnswers['workspace/_roslyn_restore'] = { success: false };
+      const client: LspClient = build();
+      await openCsharp(client);
+      await reportUnresolved(['/root/A/A.csproj']);
+      expect(raised[0]?.title).toBe('A.csproj needs its packages restored');
+
+      raised[0]?.actions?.[0]?.run();
+      await flush();
+
+      expect(raised.at(-1)).toMatchObject({
+        severity: 'error',
+        title: 'Restoring packages failed',
+      });
+      expect(raised.at(-1)?.actions?.[0]?.label).toBe('Show log');
+    });
+
+    it('offersNothing_whileTheServerRestoresByItself', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+
+      await reportUnresolved(['/root/A/A.csproj']);
+
+      expect(raised).toEqual([]);
+    });
+  });
+
+  describe('brace style (#1177)', () => {
+    let editorConfigChanged: (path: string) => void;
+    let global: WritableSignal<{ braceStyle: string }>;
+    let overrides: WritableSignal<Record<string, { braceStyle?: string }>>;
+
+    beforeEach(() => {
+      installedServers.set(
+        CATALOGUE.map((server: LspServerSummary): LspServerSummary =>
+          server.id === 'csharp'
+            ? { ...server, takesBraceStyle: true, readsEditorConfigAtStart: true }
+            : server,
+        ),
+      );
+      editorConfigChanged = (): void => undefined;
+      global = signal<{ braceStyle: string }>({ braceStyle: 'kr' });
+      overrides = signal<Record<string, { braceStyle?: string }>>({
+        csharp: { braceStyle: 'allman' },
+      });
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: Settings,
+            useValue: {
+              globalTextEditor: global,
+              languageOverrides: overrides,
+              semanticHighlightingChoices: (): string => '',
+              defaultFormatterChoices: (): string => '',
+              resolveSettingsForLanguage: (language: string): unknown => ({
+                ...global(),
+                ...overrides()[language],
+              }),
+              // Everything else reads its default (the notifications a restart raises, for one).
+              get: (key: SettingsKey): unknown => SETTINGS_DEFAULTS[key],
+            },
+          },
+          {
+            provide: EditorConfigs,
+            useValue: {
+              onChanged: (listener: (path: string) => void): (() => void) => {
+                editorConfigChanged = listener;
+                return (): void => undefined;
+              },
+            },
+          },
+        ],
+      });
+    });
+
+    it('anEditorConfigChanging_restartsAServerThatReadsItAtStart_andNoOther', async () => {
+      const client: LspClient = build();
+      await openDocument(client, '/root/src/A.cs', 'csharp');
+      await openDocument(client, '/root/src/a.ts', 'typescript');
+
+      editorConfigChanged('/root/.editorconfig');
+      await flush();
+
+      expect(lsp.restarts).toEqual(['/root::csharp']);
+    });
+
+    it('anEditorConfigOutsideTheSession_restartsNothing', async () => {
+      const client: LspClient = build();
+      await openDocument(client, '/root/src/A.cs', 'csharp');
+
+      editorConfigChanged('/elsewhere/.editorconfig');
+      await flush();
+
+      expect(lsp.restarts).toEqual([]);
+    });
+
+    /**
+     * Opens a document, starting its session.
+     * @param client The client.
+     * @param path The document's path.
+     * @param languageId Its language.
+     */
+    async function openDocument(
+      client: LspClient,
+      path: string,
+      languageId: string,
+    ): Promise<void> {
+      client.syncDocument({ documentId: path, path, languageId, content: '' });
+      await flush();
+    }
+
+    it('aServerThatTakesTheBraceStyle_isStartedWithItsLanguagesStyle_andNoOtherIs', async () => {
+      const client: LspClient = build();
+
+      await openDocument(client, '/root/src/A.cs', 'csharp');
+      await openDocument(client, '/root/src/a.ts', 'typescript');
+
+      expect(lsp.starts).toEqual([
+        { sessionId: '/root::csharp', serverId: 'csharp', rootPath: '/root', braceStyle: 'allman' },
+        { sessionId: '/root::typescript', serverId: 'typescript', rootPath: '/root' },
+      ]);
+    });
+
+    it('aSessionPreStartedForAWorkspace_takesItsServersLanguagesStyle', async () => {
+      const client: LspClient = build();
+
+      client.prestartServer('csharp', '/root');
+      await flush();
+
+      expect(lsp.starts).toEqual([
+        { sessionId: '/root::csharp', serverId: 'csharp', rootPath: '/root', braceStyle: 'allman' },
+      ]);
+    });
+
+    it('changingTheStyleForItsLanguage_restartsItWithTheNewStyle_andOnlyIt', async () => {
+      const client: LspClient = build();
+      await openDocument(client, '/root/src/A.cs', 'csharp');
+      await openDocument(client, '/root/src/a.ts', 'typescript');
+
+      global.set({ braceStyle: 'gnu' });
+      TestBed.tick();
+      await flush();
+      expect(lsp.restarts).toEqual([]);
+
+      overrides.set({});
+      TestBed.tick();
+      await flush();
+
+      expect(lsp.restarts).toEqual(['/root::csharp']);
+      expect(lsp.restartBraceStyles).toEqual(['gnu']);
+    });
   });
 
   describe('rename and server edits (#1015)', () => {
@@ -430,6 +1674,115 @@ describe('LspClient', () => {
       expect(features.resolver?.('/root/src/a.ts')?.rename).toBe('prepare');
     });
 
+    it('openingADocument_turnsHintsOnForItsLanguage_whenTheServerSetsThem_andARefreshAsksAgain (#1145)', async () => {
+      lsp.startResult = {
+        success: true,
+        capabilities: { inlayHintProvider: { resolveProvider: true } },
+      };
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      await open(client);
+
+      expect(features.inlayHintsEnabled).toEqual(['typescript']);
+      expect(features.resolver?.('/root/src/a.ts')?.inlayHints).toEqual({ resolve: true });
+      lsp.notify('/root::typescript', 'workspace/inlayHint/refresh', undefined);
+      expect(features.inlayHintRefreshes).toBe(1);
+    });
+
+    it('openingADocument_turnsOnTheFoldsOccurrencesAndRangeTokensItsServerGives (#1147)', async () => {
+      lsp.startResult = {
+        success: true,
+        capabilities: { foldingRangeProvider: true, documentHighlightProvider: true },
+      };
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      await open(client);
+
+      const expected: unknown = {
+        folding: true,
+        highlights: true,
+        linkedEditing: false,
+        rangeTokens: false,
+        selectionRanges: false,
+      };
+      expect(features.structureEnabled).toEqual([['typescript', expected]]);
+      expect(features.resolver?.('/root/src/a.ts')?.structure).toEqual(expected);
+    });
+
+    it('documentRefs_carryTheCharactersTheServerAnswersByInsertingText (#1148)', async () => {
+      lsp.startResult = {
+        success: true,
+        capabilities: { _vs_onAutoInsertProvider: { _vs_triggerCharacters: ['/', '\n'] } },
+      };
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      await open(client);
+
+      expect(features.resolver?.('/root/src/a.ts')?.autoInsertTriggers).toEqual(['/', '\n']);
+    });
+
+    it('openingADocument_turnsLensesOnWhereTheServerShowsThem_andARefreshAsksAgain (#1149)', async () => {
+      lsp.startResult = {
+        success: true,
+        capabilities: { codeLensProvider: { resolveProvider: true } },
+      };
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      await open(client);
+
+      expect(features.codeLensEnabled).toEqual(['typescript']);
+      expect(features.resolver?.('/root/src/a.ts')?.codeLens).toEqual({ resolve: true });
+      lsp.notify('/root::typescript', 'workspace/codeLens/refresh', undefined);
+      expect(features.codeLensRefreshes).toBe(1);
+    });
+
+    it('aServerThatSetsNoHints_turnsNoneOn (#1145)', async () => {
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      await open(client);
+
+      expect(features.inlayHintsEnabled).toEqual([]);
+    });
+
+    it('documentRefs_carryWhetherTheSessionsServerFindsImplementationsAndTypes (#1142)', async () => {
+      lsp.startResult = {
+        success: true,
+        capabilities: { implementationProvider: true },
+      };
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      await open(client);
+
+      expect(features.resolver?.('/root/src/a.ts')?.navigation).toEqual({
+        declaration: false,
+        implementation: true,
+        typeDefinition: false,
+        callHierarchy: false,
+        typeHierarchy: false,
+        sourceHeader: false,
+      });
+    });
+
+    it('openingADocument_turnsFormattingOnForItsLanguage_withWhatTheServerOffers (#1141)', async () => {
+      lsp.startResult = {
+        success: true,
+        capabilities: {
+          documentFormattingProvider: true,
+          documentOnTypeFormattingProvider: {
+            firstTriggerCharacter: '}',
+            moreTriggerCharacter: [';'],
+          },
+        },
+      };
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      await open(client);
+
+      const expected: unknown = { document: true, range: false, onTypeTriggers: ['}', ';'] };
+      expect(features.formattingEnabled).toEqual([['typescript', expected]]);
+      expect(features.resolver?.('/root/src/a.ts')?.formatting).toEqual(expected);
+    });
+
     it('documentRefs_carryHowTheSessionsServerCompletes_andTheFeaturesHearOfIt (#1021)', async () => {
       lsp.startResult = {
         success: true,
@@ -454,6 +1807,23 @@ describe('LspClient', () => {
           },
         ],
       ]);
+    });
+
+    it('documentRefs_keepATaggedHint_soItsFixIsStillOffered', async () => {
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      await open(client);
+      const unused: unknown = {
+        range: { start: { line: 0, character: 6 }, end: { line: 0, character: 7 } },
+        severity: 4,
+        message: 'Unused',
+        tags: [1],
+      };
+
+      lsp.publishDiagnostics('/root::typescript', 'file:///root/src/a.ts', [unused]);
+      await flush();
+
+      expect(features.resolver?.('/root/src/a.ts')?.diagnostics).toEqual([unused]);
     });
 
     it('documentRefs_carryTheSessionsCodeActions_itsCommands_andTheDiagnosticsWithTheirCodeAndData (#1016)', async () => {
@@ -561,6 +1931,70 @@ describe('LspClient', () => {
         text: 'const a = 1;',
       },
     });
+  });
+
+  it('syncDocument_aDecompiledSourceOutsideTheRoot_joinsTheWorkspaceSession (#1133)', async () => {
+    // Roslyn answers Go to Definition on a framework symbol with a file it decompiled into the
+    // temporary directory; hover and further navigation inside it work only against the session that
+    // asked for it.
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/tmp/x/MetadataAsSource/abc/DecompilationMetadataAsSourceFileProvider/def/IList.cs',
+      languageId: 'csharp',
+      content: 'public interface IList<T> { }',
+    });
+    await flush();
+
+    expect(lsp.starts.map((start: LspStartRequest): string => start.sessionId)).toEqual([
+      '/root::csharp',
+    ]);
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(1);
+  });
+
+  it('syncDocument_aViewStudioWroteFromAServersAnswer_isNoServersBusiness (#1210)', async () => {
+    // A macro's expansion, read by rust-analyzer as a file of its own, would only be a stray file.
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/tmp/x/MetadataAsSource/StudioViews/1a2b/square! expanded.rs',
+      languageId: 'csharp',
+      content: 'side * side',
+    });
+    await flush();
+
+    expect(lsp.starts).toEqual([]);
+    expect(lsp.notificationsTo('didOpen')).toEqual([]);
+  });
+
+  it('syncDocument_rustsStandardLibraryOutsideTheRoot_joinsTheWorkspaceSession (#1210)', async () => {
+    // Hover and further navigation inside `Option` work only against the session that loaded it.
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/home/me/.rustup/toolchains/stable/lib/rustlib/src/rust/library/core/src/option.rs',
+      languageId: 'rust',
+      content: 'pub enum Option<T> { None, Some(T) }',
+    });
+    await flush();
+
+    expect(lsp.starts.map((start: LspStartRequest): string => start.sessionId)).toEqual([
+      '/root::rust',
+    ]);
+  });
+
+  it('syncDocument_anOrdinaryFileOutsideTheRoot_isStillIgnored', async () => {
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/elsewhere/Program.cs',
+      languageId: 'csharp',
+      content: 'class A { }',
+    });
+    await flush();
+
+    expect(lsp.starts).toHaveLength(0);
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(0);
   });
 
   it('syncDocument_afterServerStarts_suppressesBuiltInDiagnosticsForTheLanguage', async () => {
@@ -765,6 +2199,177 @@ describe('LspClient', () => {
     expect(lsp.starts).toHaveLength(0);
   });
 
+  it('theTypescriptTheServerSaysItRunsWith_showsOnItsRow (#1207)', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: '',
+    });
+    await flush();
+
+    lsp.notify('/root::typescript', '$/typescriptVersion', { version: '5.9.3', source: 'bundled' });
+    lsp.notify('/root::typescript', '$/typescriptVersion', { version: 42 });
+
+    expect(status.servers()[0].version).toBe('5.9.3');
+  });
+
+  describe('a server that both pushes and is pulled (#1210)', () => {
+    const SESSION: string = '/root::rust';
+    const URI: string = 'file:///root/src/lib.rs';
+    const RANGE: unknown = { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } };
+    const NATIVE: unknown = { range: RANGE, severity: 1, message: 'from the server' };
+    const CHECK: unknown = { range: RANGE, severity: 1, message: 'from cargo check' };
+
+    /**
+     * Opens a Rust document against a server that takes diagnostic pulls.
+     * @param client The client.
+     */
+    async function open(client: LspClient): Promise<void> {
+      lsp.startResult = { success: true, capabilities: { diagnosticProvider: {} } };
+      lsp.diagnosticReport = { kind: 'full', items: [NATIVE] };
+      client.syncDocument({
+        documentId: 'doc-1',
+        path: '/root/src/lib.rs',
+        languageId: 'rust',
+        content: 'fn a() {}',
+      });
+      await flush();
+    }
+
+    /**
+     * Gets the messages of the diagnostics the Error List holds.
+     * @returns Returns the messages.
+     */
+    function messages(): readonly string[] {
+      return diagnostics.emitted.map((diagnostic: Diagnostic): string => diagnostic.message);
+    }
+
+    it('aPush_doesNotWipeWhatWasPulled', async () => {
+      const client: LspClient = build();
+      await open(client);
+
+      lsp.publishDiagnostics(SESSION, URI, [CHECK]);
+
+      expect(messages()).toEqual(['from the server', 'from cargo check']);
+    });
+
+    it('aPull_doesNotWipeWhatWasPushed', async () => {
+      const client: LspClient = build();
+      await open(client);
+      lsp.publishDiagnostics(SESSION, URI, [CHECK]);
+
+      lsp.diagnosticReport = { kind: 'full', items: [] };
+      vi.useFakeTimers();
+      try {
+        lsp.notify(SESSION, 'workspace/diagnostic/refresh', undefined);
+        await vi.advanceTimersByTimeAsync(1000);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(messages()).toEqual(['from cargo check']);
+    });
+
+    it('anEmptyPush_clearsOnlyWhatWasPushed', async () => {
+      const client: LspClient = build();
+      await open(client);
+      lsp.publishDiagnostics(SESSION, URI, [CHECK]);
+
+      lsp.publishDiagnostics(SESSION, URI, []);
+
+      expect(messages()).toEqual(['from the server']);
+    });
+
+    it('theCodeActionsOfADocument_seeBoth', async () => {
+      const client: LspClient = build();
+      await open(client);
+
+      lsp.publishDiagnostics(SESSION, URI, [CHECK]);
+
+      const internals: {
+        resolveDocument(path: string): { diagnostics: readonly unknown[] } | null;
+      } = client as never;
+      expect(internals.resolveDocument('/root/src/lib.rs')?.diagnostics).toEqual([NATIVE, CHECK]);
+    });
+
+    it('whatItPushesForAFileNotOpen_reachesTheErrorList_located', async () => {
+      const client: LspClient = build();
+      await open(client);
+
+      lsp.publishDiagnostics(SESSION, 'file:///root/src/other.rs', [CHECK]);
+
+      const listed: Diagnostic | undefined = diagnostics.emitted.find(
+        (diagnostic: Diagnostic): boolean => diagnostic.path === '/root/src/other.rs',
+      );
+      expect(listed).toMatchObject({ message: 'from cargo check', scope: 'workspace' });
+    });
+
+    it('anEmptyPushForAFileNotOpen_clearsIt', async () => {
+      const client: LspClient = build();
+      await open(client);
+      lsp.publishDiagnostics(SESSION, 'file:///root/src/other.rs', [CHECK]);
+
+      lsp.publishDiagnostics(SESSION, 'file:///root/src/other.rs', []);
+
+      expect(messages()).toEqual(['from the server']);
+    });
+
+    it('whatItPushedForADocument_isStillListedOnceTheDocumentCloses', async () => {
+      const client: LspClient = build();
+      await open(client);
+      lsp.publishDiagnostics(SESSION, URI, [CHECK]);
+
+      client.closeDocument('doc-1');
+
+      expect(messages()).toEqual(['from cargo check']);
+    });
+
+    it('anotherServersPushForAFileNotOpen_staysOut', async () => {
+      const client: LspClient = build();
+      client.syncDocument({
+        documentId: 'doc-2',
+        path: '/root/A.java',
+        languageId: 'java',
+        content: '',
+      });
+      await flush();
+
+      lsp.publishDiagnostics('/root::java', 'file:///root/B.java', [CHECK]);
+
+      expect(diagnostics.emitted).toEqual([]);
+    });
+
+    it('typescriptsPushForAFileNotOpen_reachesTheErrorList_asItsProjectsAreChecked (#1207)', async () => {
+      const client: LspClient = build();
+      client.syncDocument({
+        documentId: 'doc-2',
+        path: '/root/a.ts',
+        languageId: 'typescript',
+        content: '',
+      });
+      await flush();
+
+      lsp.publishDiagnostics('/root::typescript', 'file:///root/b.ts', [CHECK]);
+
+      expect(diagnostics.emitted).toEqual([
+        expect.objectContaining({ path: '/root/b.ts', scope: 'workspace' }),
+      ]);
+    });
+
+    it('whatItSaidOfTheWorkspace_goesWhenItExits', async () => {
+      const client: LspClient = build();
+      await open(client);
+      lsp.publishDiagnostics(SESSION, 'file:///root/src/other.rs', [CHECK]);
+
+      lsp.exit(SESSION);
+
+      expect(messages()).not.toContain('from cargo check');
+    });
+  });
+
   it('publishDiagnostics_forTrackedDocument_emitsMappedDiagnostics', async () => {
     const client: LspClient = build();
     client.syncDocument({
@@ -798,6 +2403,36 @@ describe('LspClient', () => {
     ]);
   });
 
+  it('publishDiagnostics_aTaggedHint_staysOutOfTheErrorList', async () => {
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: '',
+    });
+    await flush();
+    const unused: object = {
+      range: { start: { line: 0, character: 6 }, end: { line: 0, character: 7 } },
+      severity: 4,
+      message: "'x' is declared but its value is never read.",
+      source: 'typescript',
+      tags: [1],
+    };
+    const broken: object = {
+      range: { start: { line: 1, character: 0 }, end: { line: 1, character: 1 } },
+      severity: 1,
+      message: 'broken',
+      source: 'typescript',
+    };
+
+    lsp.publishDiagnostics('/root::typescript', 'file:///root/a.ts', [unused, broken]);
+
+    expect(diagnostics.emitted.map((entry: Diagnostic): string => entry.message)).toEqual([
+      'broken',
+    ]);
+  });
+
   it('publishDiagnostics_forUnownedSession_isIgnored', async () => {
     const client: LspClient = build();
     client.syncDocument({
@@ -816,15 +2451,16 @@ describe('LspClient', () => {
   });
 
   it('closeDocument_afterOpen_sendsDidCloseAndClearsDiagnostics', async () => {
+    // A server whose pushes stand for its open documents alone, unlike TypeScript's and Rust's.
     const client: LspClient = build();
     client.syncDocument({
       documentId: 'doc-1',
-      path: '/root/a.ts',
-      languageId: 'typescript',
+      path: '/root/A.java',
+      languageId: 'java',
       content: '',
     });
     await flush();
-    lsp.publishDiagnostics('/root::typescript', 'file:///root/a.ts', [
+    lsp.publishDiagnostics('/root::java', 'file:///root/A.java', [
       { range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }, message: 'x' },
     ]);
     expect(diagnostics.emitted).toHaveLength(1);
@@ -1033,6 +2669,301 @@ describe('LspClient', () => {
     expect(server?.detail).toContain('stopped unexpectedly');
   });
 
+  it('serverExit_namesTheServersOwnReason_whenItGaveOne', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: '',
+    });
+    await flush();
+
+    lsp.exit('/root::typescript', 'didOpen received for file:///root/a.ts which is already open.');
+
+    const server: LspServer | undefined = status
+      .servers()
+      .find((entry: LspServer): boolean => entry.sessionId === '/root::typescript');
+    expect(server?.detail).toBe(
+      'The server stopped unexpectedly: didOpen received for file:///root/a.ts which is already open. Restart it to try again.',
+    );
+  });
+
+  describe('a server that dies during start-up', () => {
+    /**
+     * What JSON-RPC rejects the pending handshake with once the dead server's connection is disposed.
+     */
+    const DISPOSED: string = 'Pending response rejected since connection got disposed';
+
+    /**
+     * Opens a document, leaving its server mid-handshake.
+     */
+    async function startHeld(): Promise<LspStatus> {
+      lsp.holdStarts = true;
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      client.syncDocument({
+        documentId: 'doc-1',
+        path: '/root/a.ts',
+        languageId: 'typescript',
+        content: '',
+      });
+      await flush();
+      expect(status.stateOf('/root::typescript')).toBe('starting');
+      return status;
+    }
+
+    /**
+     * Reads the session's status row.
+     */
+    function row(status: LspStatus): LspServer | undefined {
+      return status
+        .servers()
+        .find((entry: LspServer): boolean => entry.sessionId === '/root::typescript');
+    }
+
+    it('exitReportedFirst_saysItStoppedUnexpectedly_notTheConnectionWording', async () => {
+      const status: LspStatus = await startHeld();
+
+      lsp.exit('/root::typescript');
+      lsp.answerStarts({ success: false, error: DISPOSED, exited: true });
+      await flush();
+
+      expect(row(status)).toMatchObject({
+        state: 'unavailable',
+        detail: 'The server stopped unexpectedly. Restart it to try again.',
+      });
+    });
+
+    it('exitReportedFirst_withItsLastWords_keepsThem', async () => {
+      const status: LspStatus = await startHeld();
+
+      lsp.exit('/root::typescript', 'Could not load the project.');
+      lsp.answerStarts({
+        success: false,
+        error: DISPOSED,
+        exited: true,
+        reason: 'Could not load the project.',
+      });
+      await flush();
+
+      expect(row(status)?.detail).toBe(
+        'The server stopped unexpectedly: Could not load the project. Restart it to try again.',
+      );
+    });
+
+    it('noExitReport_stillSaysItStoppedUnexpectedly_withItsLastWords', async () => {
+      const status: LspStatus = await startHeld();
+
+      lsp.answerStarts({ success: false, error: DISPOSED, exited: true, reason: 'Out of memory.' });
+      await flush();
+
+      expect(row(status)).toMatchObject({
+        state: 'unavailable',
+        detail: 'The server stopped unexpectedly: Out of memory. Restart it to try again.',
+      });
+    });
+
+    it('keepsTheOriginalErrorInTheLog', async () => {
+      const status: LspStatus = await startHeld();
+      const error: MockInstance = vi.spyOn(TestBed.inject(Log), 'error');
+
+      lsp.answerStarts({ success: false, error: DISPOSED, exited: true });
+      await flush();
+
+      expect(row(status)?.detail).not.toContain(DISPOSED);
+      expect(error).toHaveBeenCalledWith(
+        'LspClient',
+        "Server 'typescript' failed to start",
+        DISPOSED,
+      );
+    });
+
+    it('aStartThatFailsForAnotherReason_isStillShownAsItWas', async () => {
+      const status: LspStatus = await startHeld();
+
+      lsp.answerStarts({ success: false, error: 'spawn tsserver ENOENT' });
+      await flush();
+
+      expect(row(status)).toMatchObject({ state: 'unavailable', detail: 'spawn tsserver ENOENT' });
+    });
+
+    it('aCrashAfterStartUp_isWordedAsBefore', async () => {
+      const status: LspStatus = await startHeld();
+      lsp.answerStarts({ success: true });
+      await flush();
+
+      lsp.exit('/root::typescript', 'Fatal error.');
+
+      expect(row(status)).toMatchObject({
+        state: 'unavailable',
+        detail: 'The server stopped unexpectedly: Fatal error. Restart it to try again.',
+      });
+    });
+  });
+
+  it('projectInitializationComplete_pullsOpenDocumentsAgain_butNeverReopensThem', async () => {
+    // Roslyn 5.4 treats a second didOpen for an open document as fatal and exits (code 0) — which it
+    // did ~12 s after every start of a large solution. The post-load pass may only pull.
+    lsp.startResult = { success: true, capabilities: { diagnosticProvider: {} } };
+    lsp.diagnosticReport = { kind: 'full', items: [] };
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/Program.cs',
+      languageId: 'csharp',
+      content: 'class A {}',
+    });
+    await flush();
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(1);
+    const sent: number = lsp.notifications.length;
+    lsp.diagnosticReport = {
+      kind: 'full',
+      items: [
+        {
+          range: { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } },
+          severity: 1,
+          message: 'Only visible once the solution has loaded',
+        },
+      ],
+    };
+
+    vi.useFakeTimers();
+    try {
+      lsp.notify('/root::csharp', 'workspace/projectInitializationComplete', {});
+      await vi.advanceTimersByTimeAsync(5000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(1);
+    expect(lsp.notifications.length).toBe(sent);
+    expect(
+      diagnostics.emitted.some((diagnostic: Diagnostic): boolean =>
+        diagnostic.message.includes('Only visible once the solution has loaded'),
+      ),
+    ).toBe(true);
+  });
+
+  describe('a server that says how it is (#1210)', () => {
+    const SESSION: string = '/root::typescript';
+
+    /**
+     * Opens a document against a server that has just started.
+     * @param client The client.
+     */
+    async function open(client: LspClient): Promise<void> {
+      client.syncDocument({
+        documentId: 'doc-1',
+        path: '/root/a.ts',
+        languageId: 'typescript',
+        content: 'let a = 1;',
+      });
+      await flush();
+    }
+
+    it('staysStarting_whileItSaysItIsLoading_thoughDiagnosticsArrive', async () => {
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      await open(client);
+
+      lsp.notify(SESSION, 'experimental/serverStatus', { health: 'ok', quiescent: false });
+      lsp.notify(SESSION, 'textDocument/publishDiagnostics', {
+        uri: 'file:///root/a.ts',
+        diagnostics: [],
+      });
+
+      expect(status.stateOf(SESSION)).toBe('starting');
+
+      lsp.notify(SESSION, 'experimental/serverStatus', { health: 'ok', quiescent: true });
+
+      expect(status.stateOf(SESSION)).toBe('ready');
+    });
+
+    it('isReady_onceItSaysItHasDone_andItsOpenDocumentsArePulledAgain', async () => {
+      lsp.startResult = { success: true, capabilities: { diagnosticProvider: {} } };
+      lsp.diagnosticReport = { kind: 'full', items: [] };
+      const client: LspClient = build();
+      await open(client);
+      lsp.notify(SESSION, 'experimental/serverStatus', { health: 'ok', quiescent: false });
+      lsp.diagnosticReport = {
+        kind: 'full',
+        items: [
+          {
+            range: { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } },
+            severity: 1,
+            message: 'Only visible once the workspace has loaded',
+          },
+        ],
+      };
+
+      vi.useFakeTimers();
+      try {
+        lsp.notify(SESSION, 'experimental/serverStatus', { health: 'ok', quiescent: true });
+        await vi.advanceTimersByTimeAsync(5000);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(
+        diagnostics.emitted.some((diagnostic: Diagnostic): boolean =>
+          diagnostic.message.includes('Only visible once the workspace has loaded'),
+        ),
+      ).toBe(true);
+    });
+
+    it('thatCouldNotLoad_saysSoOnItsRow_inItsFirstLine_untilItCan', async () => {
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      await open(client);
+
+      lsp.notify(SESSION, 'experimental/serverStatus', {
+        health: 'error',
+        quiescent: true,
+        message: 'cargo check failed\nerror: key with no value',
+      });
+
+      expect(status.stateOf(SESSION)).toBe('ready');
+      expect(status.servers()[0].problem).toBe('cargo check failed');
+      expect(TestBed.inject(Output).snapshotOf('lsp:typescript')).toContain(
+        'error: key with no value',
+      );
+
+      lsp.notify(SESSION, 'experimental/serverStatus', { health: 'ok', quiescent: true });
+
+      expect(status.servers()[0].problem).toBeUndefined();
+    });
+
+    it('isLoggedOnce_howeverManyTimesItsStatusChanges', async () => {
+      const client: LspClient = build();
+      await open(client);
+      const said: unknown = { health: 'error', quiescent: false, message: 'Failed to load' };
+
+      lsp.notify(SESSION, 'experimental/serverStatus', said);
+      lsp.notify(SESSION, 'experimental/serverStatus', { ...(said as object), quiescent: true });
+
+      expect(
+        TestBed.inject(Output)
+          .snapshotOf('lsp:typescript')
+          .match(/Failed to load/g),
+      ).toHaveLength(1);
+    });
+
+    it('thatNeverSaysAnything_isReadyOnItsFirstDiagnostics_asBefore', async () => {
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      await open(client);
+
+      lsp.notify(SESSION, 'textDocument/publishDiagnostics', {
+        uri: 'file:///root/a.ts',
+        diagnostics: [],
+      });
+
+      expect(status.stateOf(SESSION)).toBe('ready');
+    });
+  });
+
   it('crashLoop_repeatedCrashes_backOffExponentially_thenStopForGood', async () => {
     const realNow: () => number = Date.now;
     let now: number = realNow();
@@ -1078,6 +3009,40 @@ describe('LspClient', () => {
       expect(server?.detail).toContain('crashed repeatedly');
     } finally {
       vi.restoreAllMocks();
+    }
+  });
+
+  it('crashLoop_withRestartsOff_theFirstCrashStopsTheServer', async () => {
+    const realNow: () => number = Date.now;
+    let now: number = realNow();
+    vi.spyOn(Date, 'now').mockImplementation((): number => now);
+    try {
+      const client: LspClient = build();
+      TestBed.inject(Settings).set('lsp.restartTries', 0);
+      const status: LspStatus = TestBed.inject(LspStatus);
+      const base: { documentId: string; path: string; languageId: string; content: string } = {
+        documentId: 'doc-1',
+        path: '/root/a.ts',
+        languageId: 'typescript',
+        content: '',
+      };
+      client.syncDocument(base);
+      await flush();
+      lsp.exit('/root::typescript');
+
+      now += 600_000;
+      client.syncDocument(base);
+      await flush();
+
+      expect(lsp.starts).toHaveLength(1);
+      expect(status.stateOf('/root::typescript')).toBe('unavailable');
+      const server: LspServer | undefined = status
+        .servers()
+        .find((entry: LspServer): boolean => entry.sessionId === '/root::typescript');
+      expect(server?.detail).toContain('Restart Crashed Language Servers is off');
+    } finally {
+      vi.restoreAllMocks();
+      localStorage.removeItem('settings');
     }
   });
 
@@ -1167,6 +3132,263 @@ describe('LspClient', () => {
 
     lsp.notify('/root::csharp', '$/progress', { token: 'load', value: { kind: 'end' } });
     expect(status.servers()[0].progress).toBeUndefined();
+  });
+
+  it('progress_begunBeforeARestart_isForgotten_soTheNewServerNeverShowsIt', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/Program.cs',
+      languageId: 'csharp',
+      content: '',
+    });
+    await flush();
+    lsp.notify('/root::csharp', '$/progress', {
+      token: 'index',
+      value: { kind: 'begin', title: 'Indexing' },
+    });
+    expect(status.servers()[0].progress).toBe('Indexing');
+
+    await client.restart('/root::csharp');
+    await flush();
+    lsp.notify('/root::csharp', '$/progress', {
+      token: 'load',
+      value: { kind: 'begin', title: 'Loading' },
+    });
+    lsp.notify('/root::csharp', '$/progress', { token: 'load', value: { kind: 'end' } });
+
+    // The old server's indexing ended with it, so nothing is left to show.
+    expect(status.servers()[0].progress).toBeUndefined();
+    // A report on a token the new server never began has no title to read under.
+    lsp.notify('/root::csharp', '$/progress', {
+      token: 'index',
+      value: { kind: 'report', message: '3/9' },
+    });
+    expect(status.servers()[0].progress).toBeUndefined();
+  });
+
+  it('progress_begunBeforeACrash_isForgotten', async () => {
+    const realNow: () => number = Date.now;
+    let now: number = realNow();
+    vi.spyOn(Date, 'now').mockImplementation((): number => now);
+    try {
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      const base: { documentId: string; path: string; languageId: string; content: string } = {
+        documentId: 'doc-1',
+        path: '/root/a.ts',
+        languageId: 'typescript',
+        content: '',
+      };
+      client.syncDocument(base);
+      await flush();
+      lsp.notify('/root::typescript', '$/progress', {
+        token: 'index',
+        value: { kind: 'begin', title: 'Indexing' },
+      });
+      lsp.exit('/root::typescript');
+      expect(status.servers()[0].progress).toBeUndefined();
+
+      now += 5_001;
+      client.syncDocument({ ...base, content: 'x' });
+      await flush();
+      lsp.notify('/root::typescript', '$/progress', {
+        token: 'load',
+        value: { kind: 'begin', title: 'Loading' },
+      });
+      lsp.notify('/root::typescript', '$/progress', { token: 'load', value: { kind: 'end' } });
+
+      expect(lsp.starts).toHaveLength(2);
+      expect(status.servers()[0].progress).toBeUndefined();
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('fileStatus_isCleared_whenTheServerStops', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/Program.cs',
+      languageId: 'csharp',
+      content: '',
+    });
+    await flush();
+    lsp.notify('/root::csharp', 'textDocument/clangd.fileStatus', {
+      uri: 'file:///root/shapes.cpp',
+      state: 'parsing includes, running Update',
+    });
+    expect(status.servers()[0].activity).toBe('Parsing includes — shapes.cpp');
+
+    lsp.exit('/root::csharp');
+
+    expect(status.servers()[0].activity).toBeUndefined();
+  });
+
+  describe('inactive regions (#1213)', () => {
+    /** The decorations a stand-in model holds, by id. */
+    let shown: Map<string, MonacoApi.editor.IModelDeltaDecoration>;
+
+    /**
+     * Gives the client a Monaco with one model, for `/root/shapes.cpp`, holding three lines.
+     */
+    function withModel(): void {
+      shown = new Map<string, MonacoApi.editor.IModelDeltaDecoration>();
+      let next: number = 0;
+      const model: Partial<MonacoApi.editor.ITextModel> = {
+        getLineCount: (): number => 3,
+        getLineMaxColumn: (line: number): number => line * 10,
+        deltaDecorations: (
+          old: string[],
+          added: MonacoApi.editor.IModelDeltaDecoration[],
+        ): string[] => {
+          old.forEach((id: string): boolean => shown.delete(id));
+          return added.map((decoration: MonacoApi.editor.IModelDeltaDecoration): string => {
+            const id: string = `d${++next}`;
+            shown.set(id, decoration);
+            return id;
+          });
+        },
+      };
+      const api: unknown = {
+        Uri: { parse: (value: string): string => value },
+        editor: {
+          getModel: (uri: string): unknown => (uri === 'inmemory://shapes' ? model : null),
+          TrackedRangeStickiness: { NeverGrowsWhenTypingAtEdges: 1 },
+        },
+      };
+      (monaco as unknown as { getMonaco: () => unknown }).getMonaco = (): unknown => api;
+      vi.spyOn(TestBed.inject(Editors), 'modelUriForPath').mockImplementation(
+        (path: string): string | undefined =>
+          path === '/root/shapes.cpp' ? 'inmemory://shapes' : undefined,
+      );
+    }
+
+    /**
+     * Reads the ranges faded, in the order shown.
+     * @returns Returns the ranges.
+     */
+    function faded(): MonacoApi.IRange[] {
+      return [...shown.values()].map(
+        (decoration: MonacoApi.editor.IModelDeltaDecoration): MonacoApi.IRange => {
+          expect(decoration.options.inlineClassName).toBe('lsp-inactive-region');
+          return decoration.range;
+        },
+      );
+    }
+
+    /**
+     * Opens a document and makes the stand-in model available.
+     * @returns Returns the session the document is served by.
+     */
+    async function open(): Promise<string> {
+      const client: LspClient = build();
+      client.syncDocument({
+        documentId: 'doc-1',
+        path: '/root/Program.cs',
+        languageId: 'csharp',
+        content: '',
+      });
+      await flush();
+      withModel();
+      return '/root::csharp';
+    }
+
+    it('fadesTheWholeLinesOfEachRegion_andAReportReplacesTheLast', async () => {
+      const sessionId: string = await open();
+
+      lsp.notify(sessionId, 'textDocument/inactiveRegions', {
+        textDocument: { uri: 'file:///root/shapes.cpp' },
+        regions: [
+          { start: { line: 1, character: 0 }, end: { line: 1, character: 4 } },
+          // Past the end of the document: cut at its last line.
+          { start: { line: 2, character: 0 }, end: { line: 9, character: 0 } },
+        ],
+      });
+      expect(faded()).toEqual([
+        { startLineNumber: 2, startColumn: 1, endLineNumber: 2, endColumn: 20 },
+        { startLineNumber: 3, startColumn: 1, endLineNumber: 3, endColumn: 30 },
+      ]);
+
+      lsp.notify(sessionId, 'textDocument/inactiveRegions', {
+        textDocument: { uri: 'file:///root/shapes.cpp' },
+        regions: [{ start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }],
+      });
+      expect(faded()).toEqual([
+        { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 10 },
+      ]);
+
+      lsp.notify(sessionId, 'textDocument/inactiveRegions', {
+        textDocument: { uri: 'file:///root/shapes.cpp' },
+        regions: [],
+      });
+      expect(faded()).toEqual([]);
+    });
+
+    it('aFileWithNoEditor_orAMalformedReport_isIgnored', async () => {
+      const sessionId: string = await open();
+
+      lsp.notify(sessionId, 'textDocument/inactiveRegions', {
+        textDocument: { uri: 'file:///root/other.cpp' },
+        regions: [{ start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }],
+      });
+      lsp.notify(sessionId, 'textDocument/inactiveRegions', {
+        textDocument: { uri: 'file:///root/shapes.cpp' },
+        regions: 'all of it',
+      });
+      lsp.notify(sessionId, 'textDocument/inactiveRegions', {
+        textDocument: { uri: 'file:///root/shapes.cpp' },
+        regions: [{ start: { line: 2 }, end: { line: 1 } }, null, { start: { line: -1 } }],
+      });
+
+      expect(faded()).toEqual([]);
+    });
+
+    it('stopsFading_whenTheServerExits', async () => {
+      const sessionId: string = await open();
+      lsp.notify(sessionId, 'textDocument/inactiveRegions', {
+        textDocument: { uri: 'file:///root/shapes.cpp' },
+        regions: [{ start: { line: 0, character: 0 }, end: { line: 1, character: 0 } }],
+      });
+      expect(faded()).toHaveLength(1);
+
+      lsp.exit(sessionId);
+
+      expect(faded()).toEqual([]);
+    });
+  });
+
+  it('fileStatus_showsWhatClangdIsDoing_andClearsWhenTheFileGoesIdle', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/Program.cs',
+      languageId: 'csharp',
+      content: '',
+    });
+    await flush();
+    // The client does not ask which server sent it; the session this spec's stub serves will do.
+    const sessionId: string = '/root::csharp';
+    const uri: string = 'file:///root/shapes.cpp';
+
+    lsp.notify(sessionId, 'textDocument/clangd.fileStatus', {
+      uri,
+      state: 'parsing includes, running Update',
+    });
+    expect(status.servers()[0].activity).toBe('Parsing includes — shapes.cpp');
+
+    // Another file going idle says nothing about this one.
+    lsp.notify(sessionId, 'textDocument/clangd.fileStatus', {
+      uri: 'file:///root/other.cpp',
+      state: 'idle',
+    });
+    expect(status.servers()[0].activity).toBe('Parsing includes — shapes.cpp');
+
+    lsp.notify(sessionId, 'textDocument/clangd.fileStatus', { uri, state: 'idle' });
+    expect(status.servers()[0].activity).toBeUndefined();
   });
 
   it('failedStart_blocksImmediateRetry_untilTheCooldownPasses', async () => {
@@ -1402,5 +3624,706 @@ describe('LspClient', () => {
 
     expect(lsp.stops).toEqual(['/root::typescript']);
     expect(offeredLanguages).toEqual(['typescript']);
+  });
+
+  /**
+   * Opens a document against its server.
+   * @param client The client.
+   * @param path The document's path.
+   * @param languageId The document's language.
+   * @param content The document's text.
+   * @returns Returns a promise that resolves on the next macrotask.
+   */
+  function openDocument(
+    client: LspClient,
+    path: string = '/root/a.ts',
+    languageId: string = 'typescript',
+    content: string = 'const a = 1;',
+  ): void {
+    client.syncDocument({ documentId: 'doc-1', path, languageId, content });
+  }
+
+  /**
+   * Holds back the answer to the next diagnostic pull.
+   * @returns Returns the function that gives the answer.
+   */
+  function holdPullAnswer(): (report: unknown) => void {
+    let answer: (report: unknown) => void = (): void => undefined;
+    lsp.requestAnswers['textDocument/diagnostic'] = new Promise<unknown>(
+      (resolve: (report: unknown) => void): void => {
+        answer = resolve;
+      },
+    );
+    return answer;
+  }
+
+  /**
+   * A problem as a server reports it.
+   */
+  const problem: unknown = {
+    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+    severity: 1,
+    message: 'broken',
+  };
+
+  it('pull_answeredAfterTheDocumentClosed_leavesNoProblemsBehind', async () => {
+    lsp.startResult = { success: true, capabilities: { diagnosticProvider: {} } };
+    const answer: (report: unknown) => void = holdPullAnswer();
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+
+    client.closeDocument('doc-1');
+    await flush();
+    answer({ kind: 'full', items: [problem] });
+    await flush();
+
+    expect(diagnostics.emitted).toEqual([]);
+  });
+
+  it('pull_answeredAfterTheServerCrashed_doesNotCallTheDeadServerReady', async () => {
+    lsp.startResult = { success: true, capabilities: { diagnosticProvider: {} } };
+    const answer: (report: unknown) => void = holdPullAnswer();
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    openDocument(client);
+    await flush();
+
+    lsp.exit('/root::typescript');
+    answer({ kind: 'full', items: [problem] });
+    await flush();
+
+    expect(status.stateOf('/root::typescript')).toBe('unavailable');
+  });
+
+  it('closeDocument_withATypingPullPending_asksTheServerNothingMore', async () => {
+    lsp.startResult = { success: true, capabilities: { diagnosticProvider: {} } };
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    vi.useFakeTimers();
+    try {
+      openDocument(client, '/root/a.ts', 'typescript', 'const a = 2;');
+      await vi.advanceTimersByTimeAsync(0);
+      const before: number = lsp.requests.length;
+
+      client.closeDocument('doc-1');
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(lsp.requests).toHaveLength(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('resume_ofADocumentAnEditAlreadyReopened_doesNotOpenItTwice', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    client.suspend();
+
+    openDocument(client, '/root/a.ts', 'typescript', 'const a = 2;');
+    await flush();
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(2);
+
+    client.resume();
+    await flush();
+
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(2);
+  });
+
+  it('restart_withNoLiveModel_reopensWithTheLastTextTheServerHad', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+
+    await client.restart('/root::typescript');
+    await flush();
+
+    const reopened: { params: unknown } | undefined = lsp.notificationsTo('didOpen').at(-1);
+    expect(reopened?.params).toMatchObject({ textDocument: { text: 'const a = 1;' } });
+  });
+
+  it('resume_withNoLiveModel_reopensWithTheLastTextTheServerHad', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    client.suspend();
+
+    client.resume();
+    await flush();
+
+    const reopened: { params: unknown } | undefined = lsp.notificationsTo('didOpen').at(-1);
+    expect(reopened?.params).toMatchObject({ textDocument: { text: 'const a = 1;' } });
+  });
+
+  it('restart_cancelsARecolourMeantForTheOldServer', async () => {
+    const features: FakeFeatures = new FakeFeatures();
+    const client: LspClient = build(features);
+    openDocument(client, '/root/a.cs', 'csharp');
+    await flush();
+    vi.useFakeTimers();
+    try {
+      lsp.notify('/root::csharp', 'workspace/semanticTokens/refresh', {});
+
+      await client.restart('/root::csharp');
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      // The new server is still loading: its tokens are degraded until it says otherwise.
+      expect(features.resolver?.('/root/a.cs')?.suppressServerTokens).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('suspend_cancelsARecolourMeantForTheStoppedServer', async () => {
+    const features: FakeFeatures = new FakeFeatures();
+    const client: LspClient = build(features);
+    openDocument(client, '/root/a.cs', 'csharp');
+    await flush();
+    vi.useFakeTimers();
+    try {
+      lsp.notify('/root::csharp', 'workspace/semanticTokens/refresh', {});
+
+      client.suspend();
+      await vi.advanceTimersByTimeAsync(5_000);
+      client.resume();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // The server that comes back is loading from scratch, whatever the old one had reached.
+      expect(features.resolver?.('/root/a.cs')?.suppressServerTokens).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('standaloneReap_stopsAServerWhoseLastDocumentClosed', async () => {
+    root.set(null);
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    openDocument(client, '/tmp/scratch/a.ts');
+    await flush();
+    vi.useFakeTimers();
+    try {
+      client.closeDocument('doc-1');
+      await vi.advanceTimersByTimeAsync(601_000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(lsp.stops).toEqual(['/tmp/scratch::typescript']);
+    expect(status.stateOf('/tmp/scratch::typescript')).toBeNull();
+    expect(lsp.notificationsTo('didClose')).toHaveLength(1);
+  });
+
+  it('standaloneReap_forgetsTheSession_soNothingCanBringItBack', async () => {
+    root.set(null);
+    const client: LspClient = build();
+    openDocument(client, '/tmp/scratch/a.ts');
+    await flush();
+    vi.useFakeTimers();
+    try {
+      client.closeDocument('doc-1');
+      await vi.advanceTimersByTimeAsync(601_000);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(lsp.stops).toEqual(['/tmp/scratch::typescript']);
+
+    await client.restart('/tmp/scratch::typescript');
+    await flush();
+
+    expect(lsp.starts).toHaveLength(1);
+  });
+
+  it('standaloneReap_dropsTheWorkspaceProblemsTheSessionReported', async () => {
+    root.set(null);
+    const client: LspClient = build();
+    openDocument(client, '/tmp/scratch/a.ts');
+    await flush();
+    lsp.notify('/tmp/scratch::typescript', WORKSPACE_DIAGNOSTICS_METHOD, {
+      reports: [{ uri: 'file:///tmp/scratch/b.ts', kind: 'full', items: [problem] }],
+    });
+    expect(diagnostics.emitted).toHaveLength(1);
+    vi.useFakeTimers();
+    try {
+      client.closeDocument('doc-1');
+      await vi.advanceTimersByTimeAsync(601_000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(diagnostics.emitted).toEqual([]);
+  });
+
+  it('standaloneReap_whenADocumentReturnedInTime_keepsTheServer', async () => {
+    root.set(null);
+    const client: LspClient = build();
+    openDocument(client, '/tmp/scratch/a.ts');
+    await flush();
+    vi.useFakeTimers();
+    try {
+      client.closeDocument('doc-1');
+      await vi.advanceTimersByTimeAsync(300_000);
+      openDocument(client, '/tmp/scratch/a.ts');
+      await vi.advanceTimersByTimeAsync(601_000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(lsp.stops).toEqual([]);
+  });
+
+  it('standaloneReap_withStopSetToNever_keepsTheServer', async () => {
+    root.set(null);
+    const client: LspClient = build();
+    TestBed.inject(Settings).set('lsp.idleStopMinutes', 0);
+    openDocument(client, '/tmp/scratch/a.ts');
+    await flush();
+    vi.useFakeTimers();
+    try {
+      client.closeDocument('doc-1');
+      await vi.advanceTimersByTimeAsync(24 * 60 * 60_000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(lsp.stops).toEqual([]);
+  });
+
+  describe('fileRenameEdits (#1207)', () => {
+    /**
+     * The file operations typescript-language-server offers.
+     */
+    const OFFERED: unknown = {
+      workspace: {
+        fileOperations: {
+          willRename: { filters: [{ scheme: 'file', pattern: { glob: '**/*.ts' } }] },
+        },
+      },
+    };
+
+    /**
+     * What it answers for a file imported once.
+     */
+    const ANSWER: unknown = {
+      changes: {
+        'file:///root/app.ts': [
+          {
+            range: { start: { line: 0, character: 8 }, end: { line: 0, character: 11 } },
+            newText: 'b',
+          },
+        ],
+      },
+    };
+
+    /**
+     * Gets the rename requests made so far.
+     * @returns Returns their parameters.
+     */
+    function asked(): unknown[] {
+      return lsp.requests
+        .filter(
+          (request: { method: string }): boolean => request.method === 'workspace/willRenameFiles',
+        )
+        .map((request: { params: unknown }): unknown => request.params);
+    }
+
+    it('asksTheServerWhoseFiltersMatch_andReadsItsEdits', async () => {
+      lsp.startResult = { success: true, capabilities: OFFERED };
+      lsp.requestAnswers['workspace/willRenameFiles'] = ANSWER;
+      const client: LspClient = build();
+      openDocument(client);
+      await flush();
+
+      const edits: WorkspaceTextEdits = await client.fileRenameEdits('/root/a.ts', '/root/b.ts');
+
+      expect(asked()).toEqual([
+        { files: [{ oldUri: 'file:///root/a.ts', newUri: 'file:///root/b.ts' }] },
+      ]);
+      expect(edits.files.map((file: FileTextEdits): string => file.path)).toEqual(['/root/app.ts']);
+    });
+
+    it('asksNobody_forAPathTheFiltersDoNotMatch_orOutsideTheSession', async () => {
+      lsp.startResult = { success: true, capabilities: OFFERED };
+      const client: LspClient = build();
+      openDocument(client);
+      await flush();
+
+      await client.fileRenameEdits('/root/image.png', '/root/photo.png');
+      await client.fileRenameEdits('/elsewhere/a.ts', '/elsewhere/b.ts');
+
+      expect(asked()).toEqual([]);
+    });
+
+    it('asksNobody_whenTheServerOffersNone', async () => {
+      const client: LspClient = build();
+      openDocument(client);
+      await flush();
+
+      await client.fileRenameEdits('/root/a.ts', '/root/b.ts');
+
+      expect(asked()).toEqual([]);
+    });
+
+    it('givesNothing_whenTheServerFails', async () => {
+      lsp.startResult = { success: true, capabilities: OFFERED };
+      lsp.failingRequests.add('workspace/willRenameFiles');
+      const client: LspClient = build();
+      openDocument(client);
+      await flush();
+
+      await expect(client.fileRenameEdits('/root/a.ts', '/root/b.ts')).resolves.toEqual({
+        files: [],
+        refused: [],
+      });
+    });
+
+    describe('rust-analyzer (#1210)', () => {
+      /**
+       * The file operations rust-analyzer 2026-07-13 offers: its `.rs` files, and every folder.
+       */
+      const RUST_OFFERED: unknown = {
+        workspace: {
+          fileOperations: {
+            willRename: {
+              filters: [
+                { scheme: 'file', pattern: { glob: '**/*.rs', matches: 'file' } },
+                { scheme: 'file', pattern: { glob: '**', matches: 'folder' } },
+              ],
+            },
+          },
+        },
+      };
+
+      /**
+       * Builds an edit replacing the text on one line.
+       * @param line The zero-based line.
+       * @param from The first character.
+       * @param to The character after the last.
+       * @param newText The text put in.
+       * @returns Returns the LSP edit.
+       */
+      function rename(line: number, from: number, to: number, newText: string): unknown {
+        return {
+          range: { start: { line, character: from }, end: { line, character: to } },
+          newText,
+        };
+      }
+
+      it('renamingAModuleFile_renamesItsModItem_andTheUseOfIt', async () => {
+        lsp.startResult = { success: true, capabilities: RUST_OFFERED };
+        // What it answered for `geometry/circle.rs` → `disk.rs`, `mod.rs` not open (so no version).
+        lsp.requestAnswers['workspace/willRenameFiles'] = {
+          documentChanges: [
+            {
+              textDocument: { version: null, uri: 'file:///root/src/geometry/mod.rs' },
+              edits: [rename(0, 8, 14, 'disk'), rename(2, 8, 14, 'disk')],
+            },
+          ],
+        };
+        const client: LspClient = build();
+        openDocument(client);
+        await flush();
+
+        const edits: WorkspaceTextEdits = await client.fileRenameEdits(
+          '/root/src/geometry/circle.rs',
+          '/root/src/geometry/disk.rs',
+        );
+
+        expect(edits.refused).toEqual([]);
+        expect(edits.files).toEqual([
+          {
+            path: '/root/src/geometry/mod.rs',
+            edits: [
+              {
+                range: { startLineNumber: 1, startColumn: 9, endLineNumber: 1, endColumn: 15 },
+                text: 'disk',
+              },
+              {
+                range: { startLineNumber: 3, startColumn: 9, endLineNumber: 3, endColumn: 15 },
+                text: 'disk',
+              },
+            ],
+          },
+        ]);
+      });
+
+      it('renamingAModuleFolder_renamesItsModItem_andThePathsThroughItInOtherCrates', async () => {
+        lsp.startResult = { success: true, capabilities: RUST_OFFERED };
+        // What it answered for `geometry/` → `geom/`: the `mod` in `lib.rs`, and `app`'s `use`.
+        lsp.requestAnswers['workspace/willRenameFiles'] = {
+          documentChanges: [
+            {
+              textDocument: { version: 1, uri: 'file:///root/src/lib.rs' },
+              edits: [rename(0, 8, 16, 'geom')],
+            },
+            {
+              textDocument: { version: 1, uri: 'file:///root/app/src/main.rs' },
+              edits: [rename(0, 12, 20, 'geom')],
+            },
+          ],
+        };
+        const client: LspClient = build();
+        openDocument(client);
+        await flush();
+
+        const edits: WorkspaceTextEdits = await client.fileRenameEdits(
+          '/root/src/geometry',
+          '/root/src/geom',
+        );
+
+        expect(asked()).toEqual([
+          {
+            files: [{ oldUri: 'file:///root/src/geometry', newUri: 'file:///root/src/geom' }],
+          },
+        ]);
+        expect(edits.files.map((file: FileTextEdits): string => file.path)).toEqual([
+          '/root/src/lib.rs',
+          '/root/app/src/main.rs',
+        ]);
+      });
+    });
+
+    it('givesNothing_whenTheServerTakesTooLong', async () => {
+      lsp.startResult = { success: true, capabilities: OFFERED };
+      lsp.unansweredRequests.add('workspace/willRenameFiles');
+      const client: LspClient = build();
+      openDocument(client);
+      await flush();
+      vi.useFakeTimers();
+
+      const pending: Promise<WorkspaceTextEdits> = client.fileRenameEdits(
+        '/root/a.ts',
+        '/root/b.ts',
+      );
+      await vi.advanceTimersByTimeAsync(5_000);
+      vi.useRealTimers();
+
+      await expect(pending).resolves.toEqual({ files: [], refused: [] });
+    });
+  });
+
+  it('uninstallingAServer_dropsTheProblemsOfTheDocumentsItServed', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    lsp.publishDiagnostics('/root::typescript', 'file:///root/a.ts', [problem]);
+    expect(diagnostics.emitted).toHaveLength(1);
+
+    installedServers.set(
+      CATALOGUE.filter((server: LspServerSummary): boolean => server.id !== 'typescript'),
+    );
+    TestBed.tick();
+    await flush();
+
+    expect(diagnostics.emitted).toEqual([]);
+  });
+
+  it.each<[string, unknown]>([
+    ['NoParams', null],
+    ['NoUri', { diagnostics: [] }],
+    ['NoDiagnostics', { uri: 'file:///root/a.ts' }],
+    ['AnUndecodableUri', { uri: 'file:///root/%zz.ts', diagnostics: [] }],
+  ])('publishDiagnostics_with%s_isIgnored', async (_name: string, params: unknown) => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    lsp.publishDiagnostics('/root::typescript', 'file:///root/a.ts', [problem]);
+
+    lsp.notify('/root::typescript', 'textDocument/publishDiagnostics', params);
+
+    expect(diagnostics.emitted).toHaveLength(1);
+  });
+
+  it('workspaceDiagnostics_skipsAReportItCannotRead_andKeepsTheRest', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+
+    lsp.notify('/root::typescript', WORKSPACE_DIAGNOSTICS_METHOD, {
+      reports: [
+        null,
+        { uri: 'file:///root/%zz.ts', kind: 'full', items: [problem] },
+        { uri: 'file:///root/b.ts', kind: 'full', items: [problem] },
+      ],
+    });
+
+    expect(diagnostics.emitted).toHaveLength(1);
+  });
+
+  it('restart_whenTheBridgeFails_saysSoRatherThanStartingForever', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    openDocument(client);
+    await flush();
+    vi.spyOn(lsp, 'invoke').mockRejectedValueOnce(new Error('main process stalled'));
+
+    await client.restart('/root::typescript');
+
+    expect(status.stateOf('/root::typescript')).toBe('unavailable');
+    expect(
+      status
+        .servers()
+        .find((server: LspServer): boolean => server.sessionId === '/root::typescript')?.detail,
+    ).toBe('main process stalled');
+  });
+
+  it('start_whoseInvokeRejects_saysWhy_andOpensNothing', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    vi.spyOn(lsp, 'invoke').mockRejectedValueOnce(new Error('main process stalled'));
+
+    openDocument(client);
+    await flush();
+
+    expect(status.stateOf('/root::typescript')).toBe('unavailable');
+    expect(
+      status
+        .servers()
+        .find((server: LspServer): boolean => server.sessionId === '/root::typescript')?.detail,
+    ).toBe('main process stalled');
+    expect(lsp.notificationsTo('didOpen')).toEqual([]);
+  });
+
+  it('closeDocument_ofOneOfTwoStandaloneDocuments_leavesTheServerRunning', async () => {
+    root.set(null);
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/tmp/scratch/a.ts',
+      languageId: 'typescript',
+      content: 'a',
+    });
+    client.syncDocument({
+      documentId: 'doc-2',
+      path: '/tmp/scratch/b.ts',
+      languageId: 'typescript',
+      content: 'b',
+    });
+    await flush();
+    vi.useFakeTimers();
+    try {
+      client.closeDocument('doc-1');
+      await vi.advanceTimersByTimeAsync(24 * 60 * 60_000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(lsp.stops).toEqual([]);
+    expect(client.rootForDocument('doc-2')).toBe('/tmp/scratch');
+    expect(client.rootForDocument('doc-1')).toBeNull();
+  });
+
+  it('closeDocument_whileItsOpenIsStillStarting_neverStrandsAnOpenDocument', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+
+    client.closeDocument('doc-1');
+    await flush();
+
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(1);
+    expect(lsp.notificationsTo('didClose')).toHaveLength(1);
+  });
+
+  it('closeDocument_afterTheServerCrashed_startsNothingToCloseIt', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    lsp.exit('/root::typescript');
+
+    client.closeDocument('doc-1');
+    await flush();
+
+    expect(lsp.starts).toHaveLength(1);
+    expect(lsp.notificationsTo('didClose')).toEqual([]);
+  });
+
+  it('attachDebugger_whenAttachingThrows_tellsTheServerItDidNot', async () => {
+    const client: LspClient = build();
+    openDocument(client, '/root/a.cs', 'csharp');
+    await flush();
+    vi.spyOn(TestBed.inject(DebugAttachRouter), 'attach').mockRejectedValue(
+      new Error('no adapter'),
+    );
+
+    lsp.attachDebugger({ requestId: 'r1', sessionId: '/root::csharp', processId: 7 });
+    await flush();
+
+    expect(lsp.attachReplies).toEqual([{ requestId: 'r1', didAttach: false }]);
+    expect(client.rootForDocument('doc-1')).toBe('/root');
+  });
+
+  it('applyEdit_whenApplyingThrows_tellsTheServerWhy', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    vi.spyOn(TestBed.inject(WorkspaceEditApplier), 'apply').mockRejectedValue(
+      new Error('read only'),
+    );
+
+    lsp.applyEdit('/root::typescript', { changes: {} });
+    await flush();
+
+    expect(lsp.applyEditReplies).toEqual([
+      { requestId: 'r1', applied: false, failureReason: 'Error: read only' },
+    ]);
+  });
+
+  it('destroy_answersWhatIsStillAsked_stopsEverything_andCancelsWhatIsPending', async () => {
+    lsp.startResult = { success: true, capabilities: { diagnosticProvider: {} } };
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    lsp.ask({
+      requestId: 'q1',
+      sessionId: '/root::typescript',
+      type: 3,
+      message: 'Sure?',
+      actions: ['Yes'],
+    });
+    vi.useFakeTimers();
+    try {
+      openDocument(client, '/root/a.ts', 'typescript', 'const a = 2;');
+      await vi.advanceTimersByTimeAsync(0);
+      const before: number = lsp.requests.length;
+
+      client.ngOnDestroy();
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(lsp.questionReplies).toEqual([{ requestId: 'q1', action: null }]);
+      expect(lsp.stops).toEqual(['/root::typescript']);
+      expect(lsp.requests).toHaveLength(before);
+      expect(client.rootForDocument('doc-1')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('idleStopMs', () => {
+  it('turnsMinutesIntoADelay_andNeverIntoNone', () => {
+    expect(idleStopMs(5)).toBe(300_000);
+    expect(idleStopMs(30)).toBe(1_800_000);
+    expect(idleStopMs(0)).toBeNull();
+    expect(idleStopMs(-1)).toBe(600_000);
+  });
+});
+
+describe('crashesExhausted', () => {
+  type Crash = Parameters<typeof crashesExhausted>[0];
+  const crash: (count: number, repeated?: boolean) => Crash = (
+    count: number,
+    repeated: boolean = false,
+  ): Crash => ({ count, lastAt: 0, clean: false, repeated });
+
+  it('givesUpAtTheChosenNumberOfTries_orAtOnceWhenOff', () => {
+    expect(crashesExhausted(crash(2), 3)).toBe(false);
+    expect(crashesExhausted(crash(3), 3)).toBe(true);
+    expect(crashesExhausted(crash(9), 10)).toBe(false);
+    expect(crashesExhausted(crash(1), 0)).toBe(true);
+    expect(crashesExhausted(undefined, 0)).toBe(false);
+    // The same crash twice stops it whatever the tries.
+    expect(crashesExhausted(crash(2, true), 10)).toBe(true);
   });
 });

@@ -1,4 +1,7 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { RememberedSwitch } from '@shared/angular/services/explorer-filter/remembered-switch';
+import { explorerSorted } from './explorer-sort';
+import { ExplorerFilter } from '@shared/angular/services/explorer-filter/explorer-filter';
 import { Bridge } from '@shared/api/bridge';
 import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import {
@@ -16,6 +19,8 @@ import { DirectoryWatch } from '@shared/angular/services/directory-watch/directo
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
+import type { TextDecodeOptions, TextEncoding } from '@shared/api/text-encodings';
+import { textDecodeOptionsFrom } from '@shared/angular/services/documents/document-defaults';
 
 /**
  * How long, in milliseconds, external change bursts are accumulated before the affected loaded
@@ -128,6 +133,12 @@ export interface WorkspaceTreeRow {
    * descendant matched, so the match shows.
    */
   readonly expanded: boolean;
+
+  /**
+   * Gets the row's name when Collapse Empty Folders has run a chain of folders into it (`com/org/foo`),
+   * or undefined when the row shows its node's own name. The row stands for the last of the chain.
+   */
+  readonly label?: string;
 }
 
 /**
@@ -252,57 +263,72 @@ export class Workspace {
    * Holds whether the tree follows the active document. On by default, as it always was before it could
    * be turned off; the Solution Explorer has the same switch.
    */
-  private readonly followingActive: WritableSignal<boolean> = signal<boolean>(true);
+  private readonly followingActive: RememberedSwitch = new RememberedSwitch(
+    'workspace.files.followActiveDocument',
+    true,
+  );
 
   /**
    * Holds whether rows are coloured by how version control sees them.
    */
-  private readonly gitStatusVisible: WritableSignal<boolean> = signal<boolean>(true);
+  private readonly gitStatusVisible: RememberedSwitch = new RememberedSwitch(
+    'workspace.files.showGitStatus',
+    true,
+  );
+
+  /**
+   * Holds whether a chain of folders holding only one another shows as a single row.
+   */
+  private readonly collapsingEmptyFolders: RememberedSwitch = new RememberedSwitch(
+    'workspace.files.collapseEmptyFolders',
+    false,
+  );
 
   /**
    * Gets whether the tree follows the active document, revealing it as the editor's tab changes.
    */
-  public readonly followsActiveDocument: Signal<boolean> = this.followingActive.asReadonly();
+  public readonly followsActiveDocument: Signal<boolean> = this.followingActive.on;
 
   /**
    * Gets whether rows are coloured by how version control sees them.
    */
-  public readonly showsGitStatus: Signal<boolean> = this.gitStatusVisible.asReadonly();
+  public readonly showsGitStatus: Signal<boolean> = this.gitStatusVisible.on;
+
+  /**
+   * Gets whether a chain of folders holding only one another shows as a single row.
+   */
+  public readonly collapsesEmptyFolders: Signal<boolean> = this.collapsingEmptyFolders.on;
+
+  /**
+   * Toggles whether a chain of folders holding only one another shows as a single row.
+   */
+  public toggleCollapseEmptyFolders(): void {
+    this.collapsingEmptyFolders.toggle();
+  }
 
   /**
    * Toggles whether the tree follows the active document.
    */
   public toggleFollowActiveDocument(): void {
-    this.followingActive.update((value: boolean): boolean => !value);
+    this.followingActive.toggle();
   }
 
   /**
    * Toggles whether rows are coloured by how version control sees them.
    */
   public toggleGitStatus(): void {
-    this.gitStatusVisible.update((value: boolean): boolean => !value);
+    this.gitStatusVisible.toggle();
   }
 
   /**
-   * Holds whether the tree shows only what version control sees as changed (#1053), remembered
-   * across restarts.
+   * Holds what the tree is narrowed to (#1182 follow-up): files version control sees as changed, or
+   * with problems of the severities ticked — remembered across restarts, and carrying over the older
+   * Show Changed Files Only switch (#1053).
    */
-  private readonly changesOnly: WritableSignal<boolean> = signal<boolean>(
-    readStoredFlag('workspace.files.changesOnly'),
+  public readonly filter: ExplorerFilter = new ExplorerFilter(
+    'workspace.files.filters',
+    'workspace.files.changesOnly',
   );
-
-  /**
-   * Gets whether the tree shows only what version control sees as changed (#1053).
-   */
-  public readonly showsChangesOnly: Signal<boolean> = this.changesOnly.asReadonly();
-
-  /**
-   * Toggles whether the tree shows only what changed, and remembers the choice.
-   */
-  public toggleChangesOnly(): void {
-    this.changesOnly.update((value: boolean): boolean => !value);
-    writeStoredFlag('workspace.files.changesOnly', this.changesOnly());
-  }
 
   /**
    * Re-reads every directory the tree has loaded, keeping what is expanded — the manual counterpart
@@ -343,13 +369,34 @@ export class Workspace {
   }
 
   /**
+   * Reads Large File Size Limit: the largest file, in megabytes, the main process opens as text.
+   * @returns Returns the limit.
+   */
+  private textFileLimitMb(): number {
+    return this.settings.get('textEditor.largeFileSizeMb');
+  }
+
+  /**
+   * Builds how an opened file's bytes decode, from Default Encoding and Auto-Detect Encoding.
+   * @param encoding An encoding to read in whatever the bytes suggest, or undefined to tell it.
+   * @returns Returns the decode options.
+   */
+  private decode(encoding?: TextEncoding): TextDecodeOptions {
+    return textDecodeOptionsFrom(this.settings, encoding);
+  }
+
+  /**
    * Shows the combined open dialog (file or folder). Routing the result into tabs or the workspace
    * is the caller's responsibility; this is a thin bridge to the main process.
    * @returns Returns the selection, or null when cancelled or running outside Electron.
    */
   public open(): Promise<OpenSelection | null> {
     return (
-      this.bridge?.invoke<OpenSelection | null>(WorkspaceChannel.Open) ?? Promise.resolve(null)
+      this.bridge?.invoke<OpenSelection | null>(
+        WorkspaceChannel.Open,
+        this.textFileLimitMb(),
+        this.decode(),
+      ) ?? Promise.resolve(null)
     );
   }
 
@@ -360,8 +407,12 @@ export class Workspace {
    */
   public readFile(path: string): Promise<OpenSelection | null> {
     return (
-      this.bridge?.invoke<OpenSelection | null>(WorkspaceChannel.OpenFile, path) ??
-      Promise.resolve(null)
+      this.bridge?.invoke<OpenSelection | null>(
+        WorkspaceChannel.OpenFile,
+        path,
+        this.textFileLimitMb(),
+        this.decode(),
+      ) ?? Promise.resolve(null)
     );
   }
 
@@ -446,12 +497,17 @@ export class Workspace {
    * Re-opens a previously user-opened file by path. The main process honours this only for files the
    * user has opened before or files within an open workspace, so an arbitrary file cannot be read.
    * @param path The absolute file path to re-open.
+   * @param encoding An encoding to read it in whatever its bytes suggest, or undefined to tell it.
    * @returns Returns the file selection, or null when not trusted, unreadable, or outside Electron.
    */
-  public reopenFile(path: string): Promise<OpenSelection | null> {
+  public reopenFile(path: string, encoding?: TextEncoding): Promise<OpenSelection | null> {
     return (
-      this.bridge?.invoke<OpenSelection | null>(WorkspaceChannel.ReopenFile, path) ??
-      Promise.resolve(null)
+      this.bridge?.invoke<OpenSelection | null>(
+        WorkspaceChannel.ReopenFile,
+        path,
+        this.textFileLimitMb(),
+        this.decode(encoding),
+      ) ?? Promise.resolve(null)
     );
   }
 
@@ -619,26 +675,47 @@ export class Workspace {
         ...current,
         expanded: true,
       }));
+      await this.expandLoneFolder(path);
       return;
     }
     this.update(path, (current: WorkspaceTreeNode): WorkspaceTreeNode => ({
       ...current,
       loading: true,
     }));
-    const listing: DirectoryListing | null = await (this.bridge?.invoke<DirectoryListing | null>(
-      WorkspaceChannel.ReadDirectory,
-      path,
-    ) ?? Promise.resolve(null));
-    const children: readonly WorkspaceTreeNode[] =
-      listing === null
-        ? []
-        : listing.entries.map((entry: DirectoryEntry): WorkspaceTreeNode => this.toNode(entry));
+    const listing: DirectoryListing | null = await this.readListingOrNull(path);
+    // A folder that could not be read stays unloaded, so the next expand tries again rather than
+    // showing it as empty for the rest of the session.
+    if (listing === null) {
+      this.update(path, (current: WorkspaceTreeNode): WorkspaceTreeNode => ({
+        ...current,
+        loading: false,
+      }));
+      return;
+    }
+    const children: readonly WorkspaceTreeNode[] = listing.entries.map(
+      (entry: DirectoryEntry): WorkspaceTreeNode => this.toNode(entry),
+    );
     this.update(path, (current: WorkspaceTreeNode): WorkspaceTreeNode => ({
       ...current,
       loading: false,
       expanded: true,
       children,
     }));
+    await this.expandLoneFolder(path);
+  }
+
+  /**
+   * Reads a directory's listing, a bridge that fails outright counting as a failed read.
+   * @param path The directory.
+   * @returns Returns the listing, or null when it could not be read.
+   */
+  private async readListingOrNull(path: string): Promise<DirectoryListing | null> {
+    try {
+      return await this.readDirectoryListing(path);
+    } catch (error: unknown) {
+      this.log.warn('Workspace', `Could not read '${path}'`, error);
+      return null;
+    }
   }
 
   /**
@@ -686,10 +763,15 @@ export class Workspace {
    * and filesystem allow it. The result's `trashed` flag says which happened, so a caller can report
    * an unrecoverable removal honestly rather than promising a Trash the entry never reached.
    * @param path The absolute path of the entry to delete.
+   * @param permanent Whether to skip the trash: Move to Trash turned off, and confirmed as such.
    * @returns Returns the result describing success and how the entry went, or the failure's message.
    */
-  public delete(path: string): Promise<FileOperationResult> {
-    return this.mutate(WorkspaceChannel.Delete, this.parentDirectory(path), [path]);
+  public delete(path: string, permanent: boolean = false): Promise<FileOperationResult> {
+    return this.mutate(
+      WorkspaceChannel.Delete,
+      this.parentDirectory(path),
+      permanent ? [path, true] : [path],
+    );
   }
 
   /**
@@ -713,10 +795,13 @@ export class Workspace {
     directory: string,
     args: readonly unknown[],
   ): Promise<FileOperationResult> {
-    const result: FileOperationResult = await (this.bridge?.invoke<FileOperationResult>(
-      channel,
-      ...args,
-    ) ?? Promise.resolve({ success: false, error: 'Unavailable outside Electron' }));
+    let result: FileOperationResult;
+    try {
+      result = await (this.bridge?.invoke<FileOperationResult>(channel, ...args) ??
+        Promise.resolve({ success: false, error: 'Unavailable outside Electron' }));
+    } catch (error: unknown) {
+      result = { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
     if (!result.success) {
       this.log.warn('Workspace', `${channel} failed`, result.error);
       return result;
@@ -788,9 +873,10 @@ export class Workspace {
     }
     this.refreshBurstTimer = setTimeout((): void => {
       this.refreshBurstTimer = null;
-      const pending: ReadonlySet<string> | null = this.pendingRefreshDirs ?? new Set<string>();
+      // Null, not empty, is what an overflow left: `??` here would turn "everything" into "nothing".
+      const pending: ReadonlySet<string> | null | undefined = this.pendingRefreshDirs;
       this.pendingRefreshDirs = undefined;
-      void this.runTreeRefresh(pending);
+      void this.runTreeRefresh(pending === undefined ? new Set<string>() : pending);
     }, TREE_REFRESH_DEBOUNCE_MS);
   }
 
@@ -878,7 +964,7 @@ export class Workspace {
    */
   private async refresh(path: string): Promise<void> {
     const root: string | undefined = this.rootListing()?.path;
-    const listing: DirectoryListing | null = await this.readDirectoryListing(path);
+    const listing: DirectoryListing | null = await this.readListingOrNull(path);
     if (listing === null || this.rootListing()?.path !== root) {
       return;
     }
@@ -987,18 +1073,96 @@ export class Workspace {
   }
 
   /**
-   * Flattens the visible tree into depth-tagged rows, pruning collapsed and unloaded subtrees.
+   * Orders one folder's nodes by Sort Order: applied here rather than to the listing, so changing it
+   * needs no re-read.
+   * @param nodes The nodes, as listed.
+   * @returns Returns the nodes in display order.
+   */
+  private sorted(nodes: readonly WorkspaceTreeNode[]): readonly WorkspaceTreeNode[] {
+    return explorerSorted(
+      nodes,
+      (node: WorkspaceTreeNode): boolean => node.type === 'directory',
+      (a: WorkspaceTreeNode, b: WorkspaceTreeNode): number => a.name.localeCompare(b.name),
+      this.settings.value('workspaces.sortOrder')(),
+    );
+  }
+
+  /**
+   * Walks down from a node through folders that hold nothing but one other folder, for Collapse Empty
+   * Folders. Only loaded folders can be walked: expanding opens the next one along, so a chain grows
+   * into a single row as it is opened.
+   * @param node The node to start from.
+   * @returns Returns the node alone, or the chain ending at the last folder.
+   */
+  private emptyFolderChain(node: WorkspaceTreeNode): readonly WorkspaceTreeNode[] {
+    const chain: WorkspaceTreeNode[] = [node];
+    if (!this.collapsesEmptyFolders()) {
+      return chain;
+    }
+    let current: WorkspaceTreeNode = node;
+    while (
+      current.type === 'directory' &&
+      current.expanded &&
+      current.children?.length === 1 &&
+      current.children[0].type === 'directory'
+    ) {
+      current = current.children[0];
+      chain.push(current);
+    }
+    return chain;
+  }
+
+  /**
+   * Names a chain of folders as one row.
+   * @param chain The chain.
+   * @returns Returns the names, joined by Collapsed Folder Separator.
+   */
+  private chainLabel(chain: readonly WorkspaceTreeNode[]): string {
+    return chain
+      .map((node: WorkspaceTreeNode): string => node.name)
+      .join(this.settings.value('workspaces.collapsedFolderSeparator')());
+  }
+
+  /**
+   * Opens a folder's only child when that child is a folder too, so a chain of empty folders opens in
+   * one press when Collapse Empty Folders is on.
+   * @param path The folder just expanded.
+   * @returns Returns a promise that resolves once the chain is open.
+   */
+  private async expandLoneFolder(path: string): Promise<void> {
+    if (!this.collapsesEmptyFolders()) {
+      return;
+    }
+    const children: readonly WorkspaceTreeNode[] | null | undefined = this.find(
+      this.treeNodes(),
+      path,
+    )?.children;
+    const only: WorkspaceTreeNode | undefined = children?.length === 1 ? children[0] : undefined;
+    if (only?.type === 'directory' && !only.expanded) {
+      await this.toggleDirectory(only.path);
+    }
+  }
+
+  /**
+   * Flattens the visible tree into rows, in Sort Order.
    * @param nodes The nodes to flatten.
    * @param depth The depth of these nodes beneath the root.
-   * @returns Returns the flattened rows in render order.
+   * @returns Returns the rows in render order.
    */
   private flatten(nodes: readonly WorkspaceTreeNode[], depth: number): readonly WorkspaceTreeRow[] {
     const rows: WorkspaceTreeRow[] = [];
-    for (const node of nodes) {
-      const expanded: boolean = node.type === 'directory' && node.expanded;
-      rows.push({ node, depth, expanded });
-      if (expanded && node.children !== null) {
-        rows.push(...this.flatten(node.children, depth + 1));
+    for (const node of this.sorted(nodes)) {
+      const chain: readonly WorkspaceTreeNode[] = this.emptyFolderChain(node);
+      const last: WorkspaceTreeNode = chain[chain.length - 1];
+      const expanded: boolean = last.type === 'directory' && last.expanded;
+      rows.push({
+        node: last,
+        depth,
+        expanded,
+        ...(chain.length > 1 ? { label: this.chainLabel(chain) } : {}),
+      });
+      if (expanded && last.children !== null) {
+        rows.push(...this.flatten(last.children, depth + 1));
       }
     }
     return rows;
@@ -1020,7 +1184,7 @@ export class Workspace {
     query: string,
   ): readonly WorkspaceTreeRow[] {
     const rows: WorkspaceTreeRow[] = [];
-    for (const node of nodes) {
+    for (const node of this.sorted(nodes)) {
       const selfMatch: boolean = node.name.toLowerCase().includes(query);
       if (node.type === 'directory') {
         const childRows: readonly WorkspaceTreeRow[] =
@@ -1069,6 +1233,34 @@ export class Workspace {
   }
 
   /**
+   * Applies a finished walk to the tree as it stands now, not as it stood when the walk began: the tree
+   * may have taken watcher refreshes in between, and a walk's snapshot would undo them.
+   * @param nodes The current nodes.
+   * @param walked The paths of the directories the walk reached.
+   * @param listed The children the walk read, by directory path.
+   * @returns Returns the expanded node list.
+   */
+  private expandWalked(
+    nodes: readonly WorkspaceTreeNode[],
+    walked: ReadonlySet<string>,
+    listed: ReadonlyMap<string, readonly WorkspaceTreeNode[]>,
+  ): readonly WorkspaceTreeNode[] {
+    return nodes.map((node: WorkspaceTreeNode): WorkspaceTreeNode => {
+      const children: readonly WorkspaceTreeNode[] | null =
+        node.children ?? listed.get(node.path) ?? null;
+      if (node.type !== 'directory' || !walked.has(node.path) || children === null) {
+        return node;
+      }
+      return {
+        ...node,
+        expanded: true,
+        loading: false,
+        children: this.expandWalked(children, walked, listed),
+      };
+    });
+  }
+
+  /**
    * Reads and expands the entire tree from disk, loading each directory's children where they have not
    * been loaded yet. The result is applied in one update once the whole walk completes; it is discarded
    * when the open root changed while the walk was in flight.
@@ -1098,14 +1290,19 @@ export class Workspace {
       waiters.shift()?.();
     };
     let visited: number = 0;
-    const expandNode: (node: WorkspaceTreeNode) => Promise<WorkspaceTreeNode> = async (
+    const walked: Set<string> = new Set<string>();
+    const listed: Map<string, readonly WorkspaceTreeNode[]> = new Map<
+      string,
+      readonly WorkspaceTreeNode[]
+    >();
+    const walk: (node: WorkspaceTreeNode) => Promise<void> = async (
       node: WorkspaceTreeNode,
-    ): Promise<WorkspaceTreeNode> => {
+    ): Promise<void> => {
       if (node.type !== 'directory') {
-        return node;
+        return;
       }
       if (EXPAND_SKIPPED_DIRECTORIES.has(node.name) || visited >= EXPAND_DIRECTORY_CAP) {
-        return node;
+        return;
       }
       visited += 1;
       let children: readonly WorkspaceTreeNode[];
@@ -1113,54 +1310,30 @@ export class Workspace {
         children = node.children;
       } else {
         await acquire();
+        let listing: DirectoryListing | null;
         try {
-          const listing: DirectoryListing | null =
-            await (this.bridge?.invoke<DirectoryListing | null>(
-              WorkspaceChannel.ReadDirectory,
-              node.path,
-            ) ?? Promise.resolve(null));
-          children =
-            listing === null
-              ? []
-              : listing.entries.map((entry: DirectoryEntry): WorkspaceTreeNode =>
-                  this.toNode(entry),
-                );
+          listing = await this.readListingOrNull(node.path);
         } finally {
           release();
         }
+        // One folder that cannot be read must not cost the rest of the walk, and stays unloaded so the
+        // next expand tries again rather than showing it as empty.
+        if (listing === null) {
+          return;
+        }
+        children = listing.entries.map((entry: DirectoryEntry): WorkspaceTreeNode =>
+          this.toNode(entry),
+        );
+        listed.set(node.path, children);
       }
-      const expanded: readonly WorkspaceTreeNode[] = await Promise.all(children.map(expandNode));
-      return { ...node, expanded: true, loading: false, children: expanded };
+      walked.add(node.path);
+      await Promise.all(children.map(walk));
     };
-    const nodes: readonly WorkspaceTreeNode[] = await Promise.all(this.treeNodes().map(expandNode));
+    await Promise.all(this.treeNodes().map(walk));
     if (this.rootListing()?.path === root) {
-      this.treeNodes.set(nodes);
+      this.treeNodes.update((nodes: readonly WorkspaceTreeNode[]): readonly WorkspaceTreeNode[] =>
+        this.expandWalked(nodes, walked, listed),
+      );
     }
-  }
-}
-
-/**
- * Reads a remembered on/off switch, off when it was never set or storage is unavailable.
- * @param key The storage key.
- * @returns Returns the switch.
- */
-function readStoredFlag(key: string): boolean {
-  try {
-    return localStorage.getItem(key) === 'true';
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Remembers an on/off switch, quietly when storage is unavailable.
- * @param key The storage key.
- * @param value The switch.
- */
-function writeStoredFlag(key: string, value: boolean): void {
-  try {
-    localStorage.setItem(key, String(value));
-  } catch {
-    // Not remembered; the switch still works for this session.
   }
 }

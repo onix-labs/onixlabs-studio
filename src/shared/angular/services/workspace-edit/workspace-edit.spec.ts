@@ -1,4 +1,11 @@
-import { FILE_OPERATION_REFUSED, fromLspWorkspaceEdit, WorkspaceTextEdits } from './workspace-edit';
+import {
+  FILE_OPERATION_REFUSED,
+  FileTextEdits,
+  fromLspWorkspaceEdit,
+  movedEdits,
+  SkippedEdit,
+  WorkspaceTextEdits,
+} from './workspace-edit';
 
 /**
  * Maps a `file:` URI to a path, as the language-server features do.
@@ -23,6 +30,36 @@ function lspEdit(line: number, start: number, end: number, newText: string): unk
     newText,
   };
 }
+
+describe('fromLspWorkspaceEdit: what a clangd tweak sends (#1213)', () => {
+  it('readsAnEditAcrossAHeaderAndItsSource', () => {
+    const edits: WorkspaceTextEdits = fromLspWorkspaceEdit(
+      {
+        changes: {
+          'file:///root/shapes.hpp': [
+            {
+              newText: ' { return 1; }\n',
+              range: { start: { line: 21, character: 30 }, end: { line: 21, character: 31 } },
+            },
+          ],
+          'file:///root/shapes.cpp': [
+            {
+              newText: '\n\n',
+              range: { start: { line: 6, character: 81 }, end: { line: 10, character: 0 } },
+            },
+          ],
+        },
+      },
+      (uri: string): string => uri.slice('file://'.length),
+    );
+
+    expect(edits.files.map((file: { path: string }): string => file.path)).toEqual([
+      '/root/shapes.hpp',
+      '/root/shapes.cpp',
+    ]);
+    expect(edits.refused).toEqual([]);
+  });
+});
 
 describe('fromLspWorkspaceEdit (#1015)', () => {
   it('readsPerFileChanges_oneBased_inTheServersOrder', () => {
@@ -76,7 +113,7 @@ describe('fromLspWorkspaceEdit (#1015)', () => {
             edits: [{ ...(lspEdit(2, 1, 5, 'id') as object), annotationId: 'rename' }],
           },
           { kind: 'rename', oldUri: 'file:///ws/old.ts', newUri: 'file:///ws/new.ts' },
-          { kind: 'create', uri: 'file:///ws/made.ts' },
+          { kind: 'delete', uri: 'file:///ws/made.ts' },
         ],
       },
       toPath,
@@ -111,5 +148,102 @@ describe('fromLspWorkspaceEdit (#1015)', () => {
 
     expect(edits).toEqual({ files: [], refused: [] });
     expect(fromLspWorkspaceEdit(null, toPath)).toEqual({ files: [], refused: [] });
+  });
+});
+
+describe('movedEdits (#1207)', () => {
+  /**
+   * Builds the edits of the given files, each with no edit in it.
+   * @param paths The files.
+   * @returns Returns the edits.
+   */
+  function editsOf(...paths: readonly string[]): WorkspaceTextEdits {
+    return {
+      files: paths.map((path: string): FileTextEdits => ({ path, edits: [] })),
+      refused: [],
+    };
+  }
+
+  it('reKeysTheEntryAndWhatIsInside_andNothingElse', () => {
+    const moved: WorkspaceTextEdits = movedEdits(
+      editsOf('/root/src', '/root/src/a.ts', '/root/source/b.ts', '/root/c.ts'),
+      '/root/src',
+      '/root/lib',
+    );
+
+    expect(moved.files.map((file: FileTextEdits): string => file.path)).toEqual([
+      '/root/lib',
+      '/root/lib/a.ts',
+      '/root/source/b.ts',
+      '/root/c.ts',
+    ]);
+  });
+
+  it('readsAWindowsPath', () => {
+    const moved: WorkspaceTextEdits = movedEdits(
+      editsOf('C:\\root\\src\\a.ts'),
+      'C:\\root\\src',
+      'C:\\root\\lib',
+    );
+
+    expect(moved.files[0].path).toBe('C:\\root\\lib\\a.ts');
+  });
+});
+
+describe('fromLspWorkspaceEdit: creating a file (#1210)', () => {
+  it('readsAFileToCreate_besideTheEditsThatFillIt', () => {
+    const edits: WorkspaceTextEdits = fromLspWorkspaceEdit(
+      {
+        documentChanges: [
+          { kind: 'create', uri: 'file:///w/src/nested.rs' },
+          {
+            textDocument: { uri: 'file:///w/src/nested.rs', version: null },
+            edits: [
+              {
+                range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+                newText: 'pub struct Inner;\n',
+              },
+            ],
+          },
+        ],
+      },
+      toPath,
+    );
+
+    expect(edits.creates).toEqual(['/w/src/nested.rs']);
+    expect(edits.files.map((file: FileTextEdits): string => file.path)).toEqual([
+      '/w/src/nested.rs',
+    ]);
+    expect(edits.refused).toEqual([]);
+  });
+
+  it.each([{ overwrite: true }, { ignoreIfExists: true }])(
+    'refusesACreateThatAsks_%j_asAFileThereIsLeftAlone',
+    (options: object) => {
+      const edits: WorkspaceTextEdits = fromLspWorkspaceEdit(
+        { documentChanges: [{ kind: 'create', uri: 'file:///w/a.rs', options }] },
+        toPath,
+      );
+
+      expect(edits.creates).toBeUndefined();
+      expect(edits.refused).toEqual([{ path: '/w/a.rs', reason: FILE_OPERATION_REFUSED }]);
+    },
+  );
+
+  it('stillRefusesRenamingAndDeleting', () => {
+    const edits: WorkspaceTextEdits = fromLspWorkspaceEdit(
+      {
+        documentChanges: [
+          { kind: 'rename', oldUri: 'file:///w/a.rs', newUri: 'file:///w/b.rs' },
+          { kind: 'delete', uri: 'file:///w/c.rs' },
+        ],
+      },
+      toPath,
+    );
+
+    expect(edits.refused.map((skipped: SkippedEdit): string => skipped.path)).toEqual([
+      '/w/a.rs',
+      '/w/c.rs',
+    ]);
   });
 });

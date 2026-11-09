@@ -1,0 +1,38 @@
+{
+  "id": "onixlabs.go-modules",
+  "name": "Go modules",
+  "description": "Go modules: the modules in a folder or go.work workspace, what each requires, the version selected, what is newer on the module proxy, and lookup of a module by its exact path.",
+  "version": "0.1.0",
+  "apiVersion": "1.27.0",
+  "detail": "Reads go.mod, go.work, go.sum and your Go environment (GOPROXY, GOPRIVATE). Adding, updating and removing run through the go on your machine, in a terminal you can see.",
+  "provision": {
+    "kind": "npm",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.go-modules.lock.json",
+    "sha256": "e5b53fbafab1b6b31bd0fb3454e15b855ab2ba91a83948777fea57b02673a348",
+    "executablePath": "node_modules/@onixlabs/go-modules/main.js"
+  },
+  "contributes": {
+    "packageManagers": [
+      {
+        "id": "onixlabs.go-modules",
+        "displayName": "Go modules",
+        "ecosystem": "go",
+        "priority": 600,
+        "markers": ["go.mod", "go.work"],
+        "capabilities": [
+          "sources",
+          "search",
+          "searchExactName",
+          "install",
+          "update",
+          "remove",
+          "restore"
+        ],
+        "command": {
+          "kind": "node"
+        },
+        "entryPoint": "node_modules/@onixlabs/go-modules/main.js"
+      }
+    ]
+  }
+}

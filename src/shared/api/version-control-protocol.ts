@@ -651,6 +651,74 @@ export interface VersionControlDescription {
  * One table rather than a union written out by hand, so a request's parameters and its result are
  * declared together and the host's `request` is typed by the operation's name.
  */
+/**
+ * Carries the options a fetch runs with. Every field is optional, so a host older than the settings
+ * that set them sends none and the plugin keeps its own behaviour.
+ */
+export interface VcsFetchOptions {
+  /**
+   * Gets whether remote-tracking branches deleted on the remote are removed (Prune on Fetch).
+   */
+  readonly prune?: boolean;
+
+  /**
+   * Gets how long the fetch may take, in milliseconds (Git Network Timeout), or 0 for no limit.
+   */
+  readonly timeoutMs?: number;
+}
+
+/**
+ * Names how a pull integrates the upstream: as git's configuration says, by merging, by rebasing, or
+ * only when it can fast-forward.
+ */
+export type VcsPullMode = 'config' | 'merge' | 'rebase' | 'ff-only';
+
+/**
+ * Carries the options a pull runs with; every field optional, as {@link VcsFetchOptions}.
+ */
+export interface VcsPullOptions {
+  /**
+   * Gets how the pull integrates the upstream (Pull Mode).
+   */
+  readonly mode?: VcsPullMode;
+
+  /**
+   * Gets how long the pull may take, in milliseconds, or 0 for no limit.
+   */
+  readonly timeoutMs?: number;
+}
+
+/**
+ * Names whether a commit is signed: as git's configuration says, always, or never.
+ */
+export type VcsSignCommits = 'config' | 'always' | 'never';
+
+/**
+ * Carries a commit's message and the options it is made with; the options are optional, as
+ * {@link VcsFetchOptions}.
+ */
+export interface VcsCommitOptions {
+  /**
+   * Gets the commit message.
+   */
+  readonly message: string;
+
+  /**
+   * Gets whether the commit is signed (Sign Commits); absent follows git's configuration.
+   */
+  readonly sign?: VcsSignCommits;
+
+  /**
+   * Gets whether a Signed-off-by trailer is added (Add Signed-off-by).
+   */
+  readonly signoff?: boolean;
+
+  /**
+   * Gets whether the repository's commit hooks run (Run Commit Hooks); absent runs them.
+   */
+  readonly hooks?: boolean;
+}
+
 export interface VersionControlOperations {
   /**
    * The handshake: sent once, immediately after the process starts.
@@ -709,7 +777,7 @@ export interface VersionControlOperations {
   readonly discard: { readonly params: Paths; readonly result: Done };
   readonly stage: { readonly params: Paths; readonly result: Done };
   readonly unstage: { readonly params: Paths; readonly result: Done };
-  readonly commit: { readonly params: { readonly message: string }; readonly result: Done };
+  readonly commit: { readonly params: VcsCommitOptions; readonly result: Done };
 
   /**
    * Adds rules to the repository's ignore list, skipping any it already has (1.2, #1043). Gated by
@@ -726,7 +794,15 @@ export interface VersionControlOperations {
    */
   readonly stopTracking: { readonly params: Paths; readonly result: Done };
 
-  readonly stash: { readonly params: Empty; readonly result: Done };
+  readonly stash: {
+    readonly params: {
+      /**
+       * Gets whether untracked files are stashed too (Stash Includes Untracked Files).
+       */
+      readonly includeUntracked?: boolean;
+    };
+    readonly result: Done;
+  };
   readonly stashApply: { readonly params: StashIndex; readonly result: Done };
   readonly stashPop: { readonly params: StashIndex; readonly result: Done };
   readonly stashDrop: { readonly params: StashIndex; readonly result: Done };
@@ -749,7 +825,7 @@ export interface VersionControlOperations {
     readonly result: Done;
   };
 
-  readonly fetch: { readonly params: Empty; readonly result: Done };
+  readonly fetch: { readonly params: VcsFetchOptions; readonly result: Done };
   readonly fetchRef: {
     readonly params: {
       readonly remote: string;
@@ -758,9 +834,9 @@ export interface VersionControlOperations {
     };
     readonly result: Done;
   };
-  readonly pull: { readonly params: Empty; readonly result: Done };
+  readonly pull: { readonly params: VcsPullOptions; readonly result: Done };
   readonly push: {
-    readonly params: { readonly target: VcsPushTarget | null };
+    readonly params: { readonly target: VcsPushTarget | null; readonly timeoutMs?: number };
     readonly result: Done;
   };
   readonly fetchRemote: { readonly params: RemoteName; readonly result: Done };
@@ -801,7 +877,8 @@ export interface VersionControlOperations {
 
   /**
    * Copies a repository into a new directory, optionally checking out a branch (created from the
-   * default branch when `createBranch` is set). The directory must not exist yet.
+   * default branch when `createBranch` is set), with its submodules and with only the latest history
+   * when asked. The directory must not exist yet.
    */
   readonly clone: {
     readonly params: {
@@ -809,6 +886,14 @@ export interface VersionControlOperations {
       readonly directory: string;
       readonly branch?: string;
       readonly createBranch?: boolean;
+      /**
+       * Gets whether submodules are cloned too (Include Submodules), or absent for not.
+       */
+      readonly recurseSubmodules?: boolean;
+      /**
+       * Gets how many commits of history to fetch (Shallow Clone), or absent for all of it.
+       */
+      readonly depth?: number;
     };
     readonly result: Done;
   };
@@ -818,7 +903,14 @@ export interface VersionControlOperations {
    * (1.1, #806). Gated by `init`.
    */
   readonly init: {
-    readonly params: { readonly directory: string };
+    readonly params: {
+      readonly directory: string;
+      /**
+       * Gets the name of the first branch (Default Branch Name for New Repositories), or absent for
+       * git's own `init.defaultBranch`.
+       */
+      readonly defaultBranch?: string;
+    };
     readonly result: Done;
   };
 

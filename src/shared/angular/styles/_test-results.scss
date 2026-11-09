@@ -1,0 +1,26 @@
+// A test's last result (#1150), drawn by the language-server client as a glyph-margin decoration in the
+// margin's right lane on the line of the test's Run Test lens: a green check for a pass, a red cross for
+// a failure. Monaco renders decorations into its own DOM, outside Angular's view encapsulation, so the
+// marker is styled here — as the quick-fix icon is, sharing its lane, sized to its cell at any font size,
+// line height or display scale.
+.monaco-editor .glyph-margin-widgets .cgmr.test-result-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-inline-end: 0.0625rem;
+  container-type: size;
+
+  &::before {
+    display: block;
+    font-size: 62cqmin;
+    line-height: 1;
+  }
+
+  &.test-result-glyph--passed {
+    color: var(--success-color);
+  }
+
+  &.test-result-glyph--failed {
+    color: var(--error-color);
+  }
+}

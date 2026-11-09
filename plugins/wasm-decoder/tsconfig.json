@@ -19,5 +19,5 @@
     "noEmit": true,
     "declaration": false
   },
-  "include": ["src/**/*.ts", "../protocol/**/*.ts"]
+  "include": ["src/**/*.ts", "../protocol/*.ts"]
 }

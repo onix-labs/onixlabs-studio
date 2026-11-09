@@ -1,4 +1,5 @@
 import { inject, Service } from '@angular/core';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Log } from '@shared/angular/services/log/log';
 import { Bridge } from '@shared/api/bridge';
 import { CatalogQuery, CatalogResult } from '@shared/api/model-catalog-types';
@@ -32,6 +33,11 @@ export class ModelRuntimes {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the settings, which say where a catalogue search looks and how much it brings back.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Identifies the runtime being served, so the view can name it rather than assuming one.
@@ -86,11 +92,15 @@ export class ModelRuntimes {
    * Searches the catalogue of models available to install. An empty search returns the curated list,
    * so the view opens on something browsable.
    * @param text The free-text search.
-   * @param limit The most results to return per source.
+   * @param limit The most results to return per source; the user's Results per Source when omitted.
    * @returns Returns the matching models, and any sources that failed.
    */
   public searchCatalog(text: string, limit?: number): Promise<CatalogResult> {
-    const query: CatalogQuery = { text, limit };
+    const query: CatalogQuery = {
+      text,
+      limit: limit ?? this.settings.get('aiManager.resultsPerSource'),
+      huggingFace: this.settings.get('aiManager.searchHuggingFace'),
+    };
     return (
       this.bridge?.invoke<CatalogResult>(ModelRuntimeChannel.SearchCatalog, query) ??
       Promise.resolve({ models: [], failedSources: [] })

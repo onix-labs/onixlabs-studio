@@ -29,3 +29,13 @@
   direction: ltr;
   unicode-bidi: isolate;
 }
+
+// A segment with a menu: the same segment, as a button that keeps the strip's look.
+.status-strip-segment--button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}

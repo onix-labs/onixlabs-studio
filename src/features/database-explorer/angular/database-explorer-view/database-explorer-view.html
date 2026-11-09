@@ -1,0 +1,345 @@
+<app-dock-container />
+
+<!-- The connection dialog. Its fields are the chosen engine's own, as the engine described them;
+     Studio draws each with the atom for its kind. -->
+<!-- New and Edit Connection open at a fixed 16:12 (48 × 36 rem), the fields taking the room and the
+     buttons along the bottom; asking only for a password stays a compact dialog that fits its one
+     field. -->
+<app-modal
+  [open]="prompts.mode() !== null"
+  [width]="prompts.mode() === 'secrets' ? 30 : 48"
+  [height]="prompts.mode() === 'secrets' ? undefined : 36"
+  [minWidth]="prompts.mode() === 'secrets' ? undefined : 48"
+  [minHeight]="prompts.mode() === 'secrets' ? undefined : 36"
+  [maxWidth]="prompts.mode() === 'secrets' ? undefined : 48"
+  [maxHeight]="prompts.mode() === 'secrets' ? undefined : 36"
+  [expandable]="prompts.mode() !== 'secrets'"
+  [frameless]="true"
+  ariaLabel="Connection"
+  (dismiss)="prompts.cancel()"
+>
+  <ng-template appModalContent>
+    <h2 class="database-dialog__title">
+      @switch (prompts.mode()) {
+        @case ('edit') {
+          Edit Connection
+        }
+        @case ('secrets') {
+          Connect to {{ prompts.name() }}
+        }
+        @default {
+          New Connection
+        }
+      }
+    </h2>
+
+    @if (prompts.mode() === 'secrets') {
+      <p class="database-dialog__message">
+        @if (workspace.locked()) {
+          This document's passwords are locked with a passphrase that was not given, so enter the
+          password for this connection.
+        } @else {
+          Enter the password for this connection.
+        }
+      </p>
+    }
+
+    <div class="connection__fields">
+      @if (prompts.mode() !== 'secrets') {
+        <app-dropdown
+          label="Engine"
+          [options]="engineOptions()"
+          [value]="prompts.engineId()"
+          [disabled]="prompts.mode() === 'edit'"
+          [fullWidth]="true"
+          (valueChange)="prompts.chooseEngine($event)"
+        />
+        <app-text-field
+          variant="floating"
+          label="Name"
+          [value]="prompts.name()"
+          (valueChange)="prompts.name.set($event)"
+        />
+      }
+
+      @if (prompts.mode() === 'secrets') {
+        <!-- Asking only for what is missing: the secrets, with no tabs to look behind. -->
+        @for (field of prompts.fields(); track field.id) {
+          <ng-container *ngTemplateOutlet="control; context: { $implicit: field }" />
+        }
+        <ng-container *ngTemplateOutlet="remember" />
+      } @else {
+        <!-- Where and who on Login; everything else on Connection Properties, as SSMS has it (#1121).
+             Each engine says which section a field is in, so every engine's dialog reads alike. -->
+        @if (prompts.layout().properties.length > 0) {
+          <app-tab-list
+            class="connection__tabs"
+            ariaLabel="Connection settings"
+            [tabs]="dialogTabs()"
+            [value]="prompts.tab()"
+            (valueChange)="prompts.tab.set($any($event))"
+          />
+        }
+        <!-- Both tabs are drawn in one cell, the hidden one invisible, so the dialog keeps the
+             taller one's height and its buttons do not move as the tabs change. -->
+        <div class="connection__panels">
+          @for (panel of dialogPanels; track panel) {
+            <div
+              class="connection__panel"
+              role="tabpanel"
+              [class.connection__panel--hidden]="panel !== prompts.tab()"
+              [attr.aria-hidden]="panel !== prompts.tab()"
+              [attr.inert]="panel !== prompts.tab() ? '' : null"
+            >
+              @for (group of prompts.layout()[panel]; track group.section) {
+                <div class="connection__section">
+                  @for (row of group.rows; track row.field.id) {
+                    @if (row.field.kind === 'boolean') {
+                      <app-setting-row [label]="row.field.label">
+                        <ng-container
+                          *ngTemplateOutlet="control; context: { $implicit: row.field }"
+                        />
+                      </app-setting-row>
+                    } @else {
+                      <div class="connection__line">
+                        <ng-container
+                          *ngTemplateOutlet="control; context: { $implicit: row.field }"
+                        />
+                        @if (row.beside; as beside) {
+                          <div class="connection__beside">
+                            <ng-container
+                              *ngTemplateOutlet="control; context: { $implicit: beside }"
+                            />
+                          </div>
+                        }
+                      </div>
+                    }
+                  }
+                  @if (group.section === 'authentication') {
+                    <ng-container *ngTemplateOutlet="remember" />
+                  }
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
+
+      <!-- One field's control: the atom for its kind. -->
+      <ng-template #control let-field>
+        @switch (field.kind) {
+          @case ('password') {
+            <app-password-field
+              class="connection__control"
+              [label]="field.label"
+              [value]="prompts.values()[field.id] ?? ''"
+              [placeholder]="field.placeholder ?? ''"
+              (valueChange)="prompts.setValue(field.id, $event)"
+            />
+          }
+          @case ('boolean') {
+            <app-toggle
+              [ariaLabel]="field.label"
+              [checked]="prompts.values()[field.id] === 'true'"
+              (checkedChange)="prompts.setValue(field.id, $event ? 'true' : 'false')"
+            />
+          }
+          @case ('choice') {
+            <app-dropdown
+              class="connection__control"
+              [label]="field.label"
+              [options]="choiceOptions(field)"
+              [value]="prompts.values()[field.id] ?? ''"
+              [fullWidth]="true"
+              (valueChange)="prompts.setValue(field.id, $event)"
+            />
+          }
+          @case ('file') {
+            <div class="connection__file connection__control">
+              <app-text-field
+                class="connection__control"
+                variant="floating"
+                [label]="field.label"
+                [value]="prompts.values()[field.id] ?? ''"
+                [placeholder]="field.placeholder ?? ''"
+                (valueChange)="prompts.setValue(field.id, $event)"
+              />
+              <app-button
+                class="connection__browse"
+                variant="ghost"
+                label="Browse"
+                (click)="browse(field)"
+              />
+            </div>
+          }
+          @default {
+            <app-text-field
+              class="connection__control"
+              variant="floating"
+              [label]="field.label"
+              [value]="prompts.values()[field.id] ?? ''"
+              [placeholder]="field.placeholder ?? ''"
+              (valueChange)="prompts.setValue(field.id, $event)"
+              (enter)="prompts.complete() && confirmConnection()"
+            />
+          }
+        }
+      </ng-template>
+
+      <!-- Remembered passwords are sealed in the document — with the machine's keychain, or with the
+           document's passphrase when it has one — and never written as typed. -->
+      <ng-template #remember>
+        @if (hasSecretFields()) {
+          <app-setting-row label="Remember Password">
+            <app-toggle
+              ariaLabel="Remember password"
+              [checked]="prompts.remember()"
+              [disabled]="!workspace.canRemember()"
+              (checkedChange)="prompts.remember.set($event)"
+            />
+          </app-setting-row>
+          @if (!workspace.canRemember()) {
+            <p class="database-dialog__message">
+              @if (workspace.locked()) {
+                Unlock the document's passphrase to remember passwords in it.
+              } @else {
+                This computer has no keychain to keep passwords with. Give the document a passphrase
+                to remember them; until then they are kept for this session.
+              }
+            </p>
+          }
+        }
+      </ng-template>
+    </div>
+
+    @switch (prompts.test().state) {
+      @case ('testing') {
+        <p class="connection__test"><app-icon [icon]="Icon.SPINNER" /> Testing…</p>
+      }
+      @case ('passed') {
+        <app-alert class="connection__alert" tone="success">
+          Connected to {{ $any(prompts.test()).serverVersion }}
+        </app-alert>
+      }
+      @case ('failed') {
+        <app-alert class="connection__alert" tone="danger">
+          {{
+            $any(prompts.test()).message || 'The connection failed, and the engine gave no reason.'
+          }}
+        </app-alert>
+      }
+    }
+
+    <!-- Test checks the form and sits apart from it on the leading edge; Connect and Cancel finish
+         the dialog and keep to the trailing edge, where a dialog's answers always are. -->
+    <div class="connection__actions">
+      <app-button-row align="start">
+        <app-button
+          variant="ghost"
+          label="Test"
+          [disabled]="!prompts.complete() || prompts.test().state === 'testing'"
+          (click)="prompts.runTest()"
+        />
+      </app-button-row>
+      <app-button-row>
+        <app-button
+          variant="solid"
+          [label]="prompts.mode() === 'edit' ? 'Save' : 'Connect'"
+          [disabled]="!prompts.complete()"
+          (click)="confirmConnection()"
+        />
+        <app-button variant="none" label="Cancel" (click)="prompts.cancel()" />
+      </app-button-row>
+    </div>
+  </ng-template>
+</app-modal>
+
+<!-- The confirmation before statements that cannot be taken back: Confirm Destructive Statements. -->
+<app-modal
+  [open]="prompts.destructive() !== null"
+  [width]="30"
+  [frameless]="true"
+  ariaLabel="Run destructive statements"
+  (dismiss)="prompts.settleDestructive(false)"
+>
+  <ng-template appModalContent>
+    <h2 class="database-dialog__title">Run This Statement?</h2>
+    <p class="database-dialog__message">
+      This can't be undone. It drops or truncates something, or changes every row of a table.
+    </p>
+    @for (statement of prompts.destructive() ?? []; track $index) {
+      <pre class="connection__statement">{{ statement }}</pre>
+    }
+    <div class="connection__actions">
+      <span></span>
+      <app-button-row>
+        <app-button
+          variant="solid"
+          tone="danger"
+          label="Run"
+          (click)="prompts.settleDestructive(true)"
+        />
+        <app-button variant="none" label="Cancel" (click)="prompts.settleDestructive(false)" />
+      </app-button-row>
+    </div>
+  </ng-template>
+</app-modal>
+
+<!-- The passphrase prompt: unlocking a document whose passwords are sealed with one, or setting a new
+     one. A passphrase protects only the remembered passwords; the connections and queries stay
+     readable without it. -->
+<app-modal
+  [open]="prompts.passphraseMode() !== null"
+  [width]="26"
+  [frameless]="true"
+  ariaLabel="Passphrase"
+  (dismiss)="prompts.closePassphrase()"
+>
+  <ng-template appModalContent>
+    <h2 class="database-dialog__title">
+      {{ prompts.passphraseMode() === 'unlock' ? 'Unlock Passwords' : 'Set Passphrase' }}
+    </h2>
+    <p class="database-dialog__message">
+      @if (prompts.passphraseMode() === 'unlock') {
+        This document's passwords are protected by a passphrase. Enter it to connect without being
+        asked for each one, or skip and enter them as you connect.
+      } @else {
+        Anyone with this file and the passphrase can open its remembered passwords, on any computer.
+        Without it, only the passwords are lost; the connections and queries stay readable.
+      }
+    </p>
+    <div class="connection__fields connection__fields--floating">
+      <app-password-field
+        label="Passphrase"
+        [value]="prompts.passphrase()"
+        (valueChange)="prompts.passphrase.set($event); prompts.passphraseError.set(null)"
+      />
+      @if (prompts.passphraseMode() === 'set') {
+        <app-password-field
+          label="Confirm Passphrase"
+          [value]="prompts.passphraseConfirm()"
+          (valueChange)="prompts.passphraseConfirm.set($event); prompts.passphraseError.set(null)"
+        />
+      }
+    </div>
+    @if (prompts.passphraseError(); as error) {
+      <app-alert class="connection__alert" tone="danger">{{ error }}</app-alert>
+    }
+    <div class="connection__actions">
+      <span></span>
+      <app-button-row>
+        <app-button
+          variant="solid"
+          [label]="prompts.passphraseMode() === 'unlock' ? 'Unlock' : 'Set Passphrase'"
+          [disabled]="prompts.passphrase() === ''"
+          (click)="prompts.confirmPassphrase()"
+        />
+        <app-button
+          variant="none"
+          [label]="prompts.passphraseMode() === 'unlock' ? 'Skip' : 'Cancel'"
+          (click)="prompts.closePassphrase()"
+        />
+      </app-button-row>
+    </div>
+  </ng-template>
+</app-modal>

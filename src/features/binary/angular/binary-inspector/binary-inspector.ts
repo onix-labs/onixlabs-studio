@@ -1,3 +1,4 @@
+import { Settings } from '@shared/angular/services/settings/settings';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -46,6 +47,11 @@ export class BinaryInspector {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the settings the Inspector's switches start from.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Gets the byte-order options.
    */
   protected readonly endianOptions: readonly ButtonGroupOption[] = [
@@ -81,12 +87,16 @@ export class BinaryInspector {
   /**
    * Holds whether multi-byte values are decoded little-endian.
    */
-  protected readonly littleEndian: WritableSignal<boolean> = signal<boolean>(true);
+  protected readonly littleEndian: WritableSignal<boolean> = signal<boolean>(
+    this.settings.get('binaryEditor.inspectorEndian') === 'little',
+  );
 
   /**
    * Holds whether the integer interpretations are signed.
    */
-  protected readonly signed: WritableSignal<boolean> = signal<boolean>(true);
+  protected readonly signed: WritableSignal<boolean> = signal<boolean>(
+    this.settings.get('binaryEditor.inspectorSign') === 'signed',
+  );
 
   /**
    * Holds the decoded rows for the bytes at the cursor, or an empty list when there is no cursor.

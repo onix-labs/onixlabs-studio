@@ -286,7 +286,7 @@ describe('WelcomeCreate', () => {
 
     await clickPrimary();
 
-    expect(machine.created).toEqual([{ name: 'todo-app', repository: { kind: 'none' } }]);
+    expect(machine.created).toMatchObject([{ name: 'todo-app', repository: { kind: 'none' } }]);
     expect(openedCount).toBe(1);
   });
 

@@ -1,3 +1,4 @@
+import { Settings } from '@shared/angular/services/settings/settings';
 import { effect, inject, Injector, Service } from '@angular/core';
 import { DocumentDiffSwitch } from '@shared/angular/services/diffs/document-diff-switch';
 import {
@@ -10,6 +11,8 @@ import {
 } from '@shared/angular/services/file-opener/image-file-opener';
 import { isApiDocumentName } from '@shared/api/api-client-types';
 import { ApiFiles } from '@shared/angular/services/api-files/api-files';
+import { DatabaseFiles } from '@shared/angular/services/database-files/database-files';
+import { isDatabaseDocumentName } from '@shared/api/database-document';
 import { FileInfo, SaveDialogChoice } from '@shared/api/file-channels';
 import { DirectoryListing, OpenSelection } from '@shared/api/workspace-channels';
 import { Icon } from '@shared/angular/icons/icon';
@@ -36,6 +39,11 @@ import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { WorkspaceAgentStart, Workspaces } from '../workspaces/workspaces';
 
 /**
+ * Holds the lowercased extension of an SVG, which Open SVG Files As can send to the code editor.
+ */
+const SVG_EXTENSION: string = '.svg';
+
+/**
  * Holds the lowercased file extensions (including the leading dot) routed to the markdown editor.
  */
 const MARKDOWN_EXTENSIONS: ReadonlySet<string> = new Set<string>(['.md', '.markdown']);
@@ -58,6 +66,11 @@ export class FileOpener {
    * Holds the document model that backs code and markdown tabs.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the settings, which decide the editor a Markdown file opens in.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the file-system service showing the native confirm-save dialog when a dirty well document is
@@ -130,6 +143,11 @@ export class FileOpener {
   private readonly apiFiles: ApiFiles = inject(ApiFiles);
 
   /**
+   * Holds the registry that hands a newly-opened database document to its Database Explorer tab.
+   */
+  private readonly databaseFiles: DatabaseFiles = inject(DatabaseFiles);
+
+  /**
    * Holds the recent-items registry, updated whenever a file or folder is opened.
    */
   private readonly recentItems: RecentItems = inject(RecentItems);
@@ -188,13 +206,18 @@ export class FileOpener {
     // An image is document-shaped, unlike a binary: it sits in the well beside the code that
     // references it, falling back to its own tab only when this dock has no document home.
     if (selection.kind === 'image') {
+      if (this.opensAsCode(selection.path)) {
+        return this.openAsText(selection.path);
+      }
       return (
-        this.openImageInWell(selection.path, options) || this.openImage(selection.path, options)
+        (this.settings.get('imageViewer.openIn') === 'workspace' &&
+          this.openImageInWell(selection.path, options)) ||
+        this.openImage(selection.path, options)
       );
     }
     // An API document is a whole surface rather than a document in this workspace's well, so it opens
     // as its own tab — as a binary file does — instead of being edited as text beside the code.
-    if (this.openApiDocument(selection.file, options)) {
+    if (this.openSurfaceDocument(selection.file, options)) {
       return true;
     }
     this.log.debug('FileOpener', 'Opening file in well', path);
@@ -262,19 +285,37 @@ export class FileOpener {
         this.openDirectory(selection.directory);
         return true;
       case 'file': {
-        if (this.openApiDocument(selection.file)) {
+        if (this.openSurfaceDocument(selection.file)) {
           return true;
         }
-        const type: TabType = this.isMarkdown(selection.file.extension) ? 'markdown' : 'code';
+        const type: TabType = this.opensInMarkdownEditor(selection.file.extension)
+          ? 'markdown'
+          : 'code';
         this.documents.openFileInfo(selection.file, type);
         this.recordRecentFile(selection.file);
         return true;
       }
       case 'image':
+        if (this.opensAsCode(selection.path)) {
+          void this.openAsText(selection.path);
+          return true;
+        }
         return this.openImage(selection.path);
       case 'binary':
         return this.openBinary(selection.path);
     }
+  }
+
+  /**
+   * Determines whether an image opens as its source: an SVG, while Open SVG Files As says Code.
+   * @param path The image's path.
+   * @returns Returns true when it opens in the code editor.
+   */
+  private opensAsCode(path: string): boolean {
+    return (
+      path.toLowerCase().endsWith(SVG_EXTENSION) &&
+      this.settings.get('imageViewer.openSvgAs') === 'code'
+    );
   }
 
   /**
@@ -309,15 +350,19 @@ export class FileOpener {
   }
 
   /**
-   * Opens a file that claims to be an API document in an API Explorer tab. Only the name is consulted
-   * here; the document itself is verified by {@link ApiFiles}, which declines a `*.api.json` that is
-   * not one — so a malformed or foreign file falls through to the text editor rather than being
-   * loaded as a workspace.
+   * Opens a file that claims to be a surface's document — an API document in an API Explorer tab, a
+   * database document in a Database Explorer tab. Only the name is consulted here; the document itself
+   * is verified by {@link ApiFiles} or {@link DatabaseFiles}, which decline a file that is not one — so
+   * a malformed or foreign file falls through to the text editor rather than being loaded as a
+   * workspace.
    * @param fileInfo The file to open.
    * @param options How to open it.
-   * @returns Returns true when the file was opened as an API document; otherwise, false.
+   * @returns Returns true when the file was opened as a surface's document; otherwise, false.
    */
-  private openApiDocument(fileInfo: FileInfo, options?: OpenOptions): boolean {
+  private openSurfaceDocument(fileInfo: FileInfo, options?: OpenOptions): boolean {
+    if (isDatabaseDocumentName(fileInfo.name)) {
+      return this.databaseFiles.open(fileInfo, options);
+    }
     return isApiDocumentName(fileInfo.name) && this.apiFiles.open(fileInfo, options);
   }
 
@@ -531,6 +576,17 @@ export class FileOpener {
       fileInfo.path,
       fileInfo.name,
       this.isMarkdown(fileInfo.extension) ? 'markdown' : 'code',
+    );
+  }
+
+  /**
+   * Determines whether a file opens in the markdown editor, rather than the code editor on its source.
+   * @param extension The file extension, including the leading dot.
+   * @returns Returns true for a markdown file while Open Markdown Files In says Visual.
+   */
+  private opensInMarkdownEditor(extension: string): boolean {
+    return (
+      this.isMarkdown(extension) && this.settings.get('markdownEditor.openFilesIn') === 'visual'
     );
   }
 

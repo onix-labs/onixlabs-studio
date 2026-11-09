@@ -79,6 +79,11 @@ export interface HarnessDefinition {
   readonly connect: HarnessTransportFactory;
 
   /**
+   * Gets what to do before each turn: starting a local runtime the connection needs, say.
+   */
+  readonly beforeTurn?: () => Promise<void>;
+
+  /**
    * Gets how the harness maintains a conversation, as its **manifest** declares.
    *
    * ⛔ Not read from the handshake. `AiManager.dispatchLive` asks this before anything has been started,
@@ -340,9 +345,17 @@ export class HarnessAgentProvider implements AgentProvider {
    * @param context The run context.
    */
   public async run(context: AgentRunContext): Promise<void> {
+    await this.definition.beforeTurn?.();
     const host: HarnessHost = new HarnessHost(
       this.definition.connect(),
-      (requestId: string, name: string, detail: string, source: string): void => {
+      (
+        requestId: string,
+        name: string,
+        detail: string,
+        source: string,
+        sandboxed?: boolean,
+        toolId?: string,
+      ): void => {
         // ⚠️ A record naming a turn other than this one is refused rather than relabelled. One process
         // runs one turn today, so the only way to see a foreign id is a harness that invented it, and
         // an audit log that can be written on another run's behalf is not an audit log.
@@ -353,7 +366,7 @@ export class HarnessAgentProvider implements AgentProvider {
           );
           return;
         }
-        context.recordAudit(name, detail, source as never);
+        context.recordAudit(name, detail, source as never, sandboxed, toolId);
       },
     );
     const abort: () => void = (): void => host.abort(context.requestId);
@@ -366,6 +379,10 @@ export class HarnessAgentProvider implements AgentProvider {
         throw new Error(`${this.definition.label} could not be started.`);
       }
       this.declared = capabilities;
+      // ⚠️ Stopped during the handshake: an abort sent then named a turn the harness had not been given.
+      if (context.signal.aborted) {
+        return;
+      }
       // Steering is offered only when the harness listed it; otherwise the renderer queues the message
       // for the next turn, exactly as it does for an in-core provider with no steer handler. A harness
       // older than 1.5.0 sends no list at all, which reads as "answers none of the optional messages".
@@ -498,7 +515,14 @@ export class HarnessAgentSession implements AgentSession {
    * @param context The run context.
    */
   public async turn(context: AgentRunContext): Promise<void> {
+    await this.definition.beforeTurn?.();
     const host: HarnessHost = await this.start();
+    // ⚠️ Stopped while the harness was starting. Nothing was in flight for the stop to reach, so the turn
+    // has to be dropped here: dispatching it would run what the user stopped, unwatched, until the panic
+    // stop's grace period killed the session for a turn it never saw.
+    if (context.signal.aborted) {
+      return;
+    }
     this.contexts.set(context.requestId, context);
     this.inFlight.push(context.requestId);
     const abort: () => void = (): void => host.abort(context.requestId);
@@ -703,7 +727,14 @@ export class HarnessAgentSession implements AgentSession {
   private async handshake(): Promise<HarnessHost> {
     const host: HarnessHost = new HarnessHost(
       this.definition.connect(),
-      (requestId: string, name: string, detail: string, source: string): void => {
+      (
+        requestId: string,
+        name: string,
+        detail: string,
+        source: string,
+        sandboxed?: boolean,
+        toolId?: string,
+      ): void => {
         const context: AgentRunContext | undefined =
           this.contexts.get(requestId) ??
           (this.idleContext?.requestId === requestId ? this.idleContext : undefined);
@@ -714,7 +745,7 @@ export class HarnessAgentSession implements AgentSession {
           );
           return;
         }
-        context.recordAudit(name, detail, source as never);
+        context.recordAudit(name, detail, source as never, sandboxed, toolId);
       },
     );
     this.host = host;
@@ -1001,6 +1032,9 @@ export function toTurnRequest(
     allowedNetworkLocations: context.allowedNetworkLocations,
     deniedNetworkLocations: context.deniedNetworkLocations,
     tokenCap: context.tokenCap,
+    maxSteps: context.maxSteps,
+    requireSandbox: context.requireSandbox,
+    autoAllowSandboxedShell: context.autoAllowSandboxedShell,
     resumeSessionId: context.resumeSessionId,
     forkSession: context.forkSession,
     resumeSessionAt: context.resumeSessionAt,

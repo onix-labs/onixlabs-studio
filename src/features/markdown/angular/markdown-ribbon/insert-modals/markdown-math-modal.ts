@@ -12,6 +12,8 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+import { Radio } from '@shared/angular/components/forms/radio/radio';
+import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
 import { FormModal } from './form-modal';
 
 /**
@@ -35,7 +37,7 @@ export interface MathInsert {
  */
 @Component({
   selector: 'app-markdown-math-modal',
-  imports: [FormModal],
+  imports: [FormModal, Radio, Textarea],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './insert-modal.scss',
   template: `
@@ -48,24 +50,27 @@ export interface MathInsert {
       (cancelled)="cancel()"
     >
       <div class="insert-modal__field">
-        <label class="insert-modal__label" for="math-expression">LaTeX expression</label>
-        <textarea
-          #expressionInput
-          id="math-expression"
-          class="insert-modal__textarea"
+        <app-textarea
+          variant="floating"
+          label="LaTeX expression"
           placeholder="\\frac{a}{b}"
-          [value]="expression()"
-          (input)="expression.set(expressionInput.value)"
-        ></textarea>
+          [monospace]="true"
+          [rows]="3"
+          [(value)]="expression"
+        />
       </div>
 
       <div class="insert-modal__choice">
+        <!-- The label wraps the radio's projected native input, associating them at runtime; the
+             lint rule cannot see through the component boundary to verify this statically. -->
+        <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
         <label class="insert-modal__choice-option">
-          <input type="radio" name="math-mode" [checked]="block()" (change)="block.set(true)" />
+          <app-radio name="math-mode" [checked]="block()" (checkedChange)="block.set(true)" />
           Block
         </label>
+        <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
         <label class="insert-modal__choice-option">
-          <input type="radio" name="math-mode" [checked]="!block()" (change)="block.set(false)" />
+          <app-radio name="math-mode" [checked]="!block()" (checkedChange)="block.set(false)" />
           Inline
         </label>
       </div>

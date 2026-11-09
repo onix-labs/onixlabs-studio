@@ -1,5 +1,46 @@
 import { describe, expect, it } from 'vitest';
-import { parseQuestions, proposedChange } from './options';
+import { parseQuestions, proposedChange, withSandboxGuidance } from './options';
+import type { TurnRequest } from './protocol';
+
+describe('withSandboxGuidance', () => {
+  /**
+   * Builds a turn.
+   * @param overrides The fields to change.
+   * @returns Returns the turn.
+   */
+  function turn(overrides: Partial<TurnRequest>): TurnRequest {
+    return {
+      mode: 'agent',
+      surface: 'workspace',
+      builtInTools: undefined,
+      allowedWritePaths: [],
+      deniedWritePaths: [],
+      allowedNetworkLocations: [],
+      deniedNetworkLocations: [],
+      permissionPosture: 'prompt',
+      toolPolicies: {},
+      ...overrides,
+    } as unknown as TurnRequest;
+  }
+
+  it('addsTheGuidance_afterStudiosInstructions', () => {
+    const prompt: string = withSandboxGuidance('Studio says.', turn({}));
+
+    expect(prompt.startsWith('Studio says.\n\n')).toBe(true);
+    expect(prompt).toContain('sandbox');
+  });
+
+  it('addsNothing_forAChatTurn_whichCannotRunCommands', () => {
+    expect(withSandboxGuidance('Studio says.', turn({ mode: 'chat' }))).toBe('Studio says.');
+  });
+
+  it('addsNothing_forAnAgentWithoutTheShell', () => {
+    expect(withSandboxGuidance('Studio says.', turn({ surface: 'terminal' }))).toBe('Studio says.');
+    expect(withSandboxGuidance('Studio says.', turn({ builtInTools: 'none' }))).toBe(
+      'Studio says.',
+    );
+  });
+});
 
 describe('parseQuestions', () => {
   it('asksForSeveralChoices_onlyForAMultiSelectQuestion', () => {

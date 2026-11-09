@@ -26,15 +26,21 @@ import { GoToPicker } from '../go-to-picker';
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './go-to-dialog.scss',
   template: `
-    <app-modal [open]="open()" [width]="26" ariaLabel="Rename Symbol" (dismiss)="dismissed.emit()">
+    <app-modal
+      [open]="open()"
+      [width]="26"
+      [frameless]="true"
+      ariaLabel="Rename Symbol"
+      (dismiss)="dismissed.emit()"
+    >
       <ng-template appModalContent>
         <div class="go-to-dialog">
           <h2 class="go-to-dialog__title">Rename Symbol</h2>
           <app-text-field
             class="go-to-dialog__field"
+            variant="floating"
+            label="New name"
             [(value)]="picker.query"
-            placeholder="New name"
-            ariaLabel="New name"
             (keydown.enter)="commit($event)"
           />
           <p
@@ -53,7 +59,7 @@ import { GoToPicker } from '../go-to-picker';
               [disabled]="picker.renameEntry().name === null"
               (click)="commit()"
             />
-            <app-button label="Cancel" (click)="dismissed.emit()" />
+            <app-button variant="none" label="Cancel" (click)="dismissed.emit()" />
           </app-button-row>
         </div>
       </ng-template>

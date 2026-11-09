@@ -1,3 +1,5 @@
+import { Accessibility } from '@shared/angular/services/accessibility/accessibility';
+import { governedByEditorConfig } from '@shared/angular/services/document-status/document-status';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -18,7 +20,12 @@ import {
   TextEditorCursor,
   TextEditorEol,
 } from '@shared/angular/components/text-editor/text-editor';
-import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
+import {
+  CodeDocument,
+  CodeViewToggles,
+  Documents,
+  effectiveViewToggles,
+} from '@shared/angular/services/documents/documents';
 import { Log } from '@shared/angular/services/log/log';
 import { DocumentStatus } from '@shared/angular/services/document-status/document-status';
 import {
@@ -62,6 +69,9 @@ import {
   NavigationType,
 } from '@features/code/angular/code-navigation/code-navigation';
 import type * as MonacoApi from 'monaco-editor';
+import { encodingLabel } from '@shared/api/text-encodings';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { codeDocumentActions } from '@shared/angular/services/document-status/document-encoding-actions';
 
 /**
  * How long the document must be left unchanged before its symbols are read again, in milliseconds:
@@ -126,6 +136,12 @@ export class CodeDocumentPanel {
   private readonly documents: Documents = inject(Documents);
 
   /**
+   * Holds the file system, whose native dialog asks before Reopen with Encoding gives up unsaved
+   * edits.
+   */
+  private readonly fileSystem: FileSystem = inject(FileSystem);
+
+  /**
    * Holds the structured logger for the well document panel's lifecycle and command actions.
    */
   private readonly log: Log = inject(Log);
@@ -165,6 +181,11 @@ export class CodeDocumentPanel {
    * Holds the change-margin registry that draws the editor's save-state gutter bars.
    */
   private readonly changeMargins: ChangeMargins = inject(ChangeMargins);
+
+  /**
+   * Holds the accessibility choices, one of which changes the change margin's colours.
+   */
+  private readonly accessibility: Accessibility = inject(Accessibility);
 
   /**
    * Holds the editor-command registry this panel registers its editor with, keyed by document id. A
@@ -290,24 +311,38 @@ export class CodeDocumentPanel {
   private readonly fileCommands: DocumentFileCommands = injectDocumentFileCommands();
 
   /**
-   * Gets whether long lines wrap, editor-wide — the same setting the ribbon's Word Wrap sets.
+   * Gets the view toggles in force in this document: those it set for itself, otherwise the settings
+   * as they apply to its file — the same rule the code tab's ribbon follows.
+   */
+  private readonly viewToggles: Signal<Required<CodeViewToggles>> = computed(
+    (): Required<CodeViewToggles> => {
+      const document: CodeDocument | undefined = this.document();
+      return effectiveViewToggles(
+        document?.view() ?? {},
+        document === undefined
+          ? this.settings.globalTextEditor()
+          : this.settings.resolveSettingsForLanguage(document.language()),
+      );
+    },
+  );
+
+  /**
+   * Gets whether long lines wrap in this document.
    */
   protected readonly wordWrap: Signal<boolean> = computed(
-    (): boolean => this.settings.globalTextEditor().wordWrap,
+    (): boolean => this.viewToggles().wordWrap,
   );
 
   /**
-   * Gets whether the minimap shows, editor-wide — the same setting the ribbon's Minimap sets.
+   * Gets whether this document shows the minimap.
    */
-  protected readonly minimap: Signal<boolean> = computed(
-    (): boolean => this.settings.globalTextEditor().showMinimap,
-  );
+  protected readonly minimap: Signal<boolean> = computed((): boolean => this.viewToggles().minimap);
 
   /**
-   * Gets whether line numbers show, editor-wide — the same setting the ribbon's Line Numbers sets.
+   * Gets whether this document shows line numbers.
    */
   protected readonly lineNumbers: Signal<boolean> = computed(
-    (): boolean => this.settings.globalTextEditor().showLineNumbers,
+    (): boolean => this.viewToggles().lineNumbers,
   );
 
   /**
@@ -410,6 +445,11 @@ export class CodeDocumentPanel {
   private readonly eolSignal: WritableSignal<TextEditorEol> = signal<TextEditorEol>('LF');
 
   /**
+   * Holds the label of the indentation in force, for the status strip.
+   */
+  protected readonly indent: WritableSignal<string> = signal<string>('');
+
+  /**
    * Initializes a new instance of the {@link CodeDocumentPanel} class, publishing its status to the
    * well status strip while it is the active document and clearing it when it is not or is destroyed.
    */
@@ -422,14 +462,21 @@ export class CodeDocumentPanel {
         this.documentStatus.clear(this.documentId());
         return;
       }
-      const encoding: string = document.encoding();
       this.documentStatus.set(this.documentId(), {
         line: caret.line,
         column: caret.column,
         language: document.language(),
         diagnostics: true,
         eol: this.eolSignal(),
-        encoding: document.hasBom() ? `${encoding} with BOM` : encoding,
+        encoding: encodingLabel(document.encoding(), document.hasBom()),
+        indent: this.indent(),
+        editorConfig: governedByEditorConfig(document.editorConfig()),
+        actions: codeDocumentActions({
+          document,
+          documents: this.documents,
+          fileSystem: this.fileSystem,
+          pane: (): TextEditor | undefined => this.core()?.getPane(),
+        }),
       });
     });
 
@@ -478,6 +525,7 @@ export class CodeDocumentPanel {
     // themselves follow CSS automatically, but the ruler is a canvas colour).
     effect((): void => {
       this.theme.resolvedMode();
+      this.accessibility.colourBlindSafe();
       if (!this.paneReady()) {
         return;
       }
@@ -599,7 +647,7 @@ export class CodeDocumentPanel {
       codeCleanup: async (): Promise<void> => {
         // Sequenced, not fired together: organising imports rewrites the very lines the formatter
         // would otherwise lay out, so formatting has to see the tidied text.
-        await pane.runAction('editor.action.organizeImports');
+        await pane.organizeImports();
         await pane.runAction('editor.action.formatDocument');
       },
       save: (): void => {
@@ -728,10 +776,21 @@ export class CodeDocumentPanel {
   }
 
   /**
-   * Turns Word Wrap on or off, editor-wide, as the ribbon's Word Wrap does.
+   * Turns Word Wrap on or off in this document only; the setting is left alone.
    */
   private toggleWordWrap(): void {
-    this.settings.updateTextEditorSettings({ wordWrap: !this.wordWrap() });
+    this.setViewToggle({ wordWrap: !this.wordWrap() });
+  }
+
+  /**
+   * Records a view toggle on this document, for as long as it is open.
+   * @param toggle The toggle and its new state.
+   */
+  private setViewToggle(toggle: CodeViewToggles): void {
+    this.document()?.view.update((current: CodeViewToggles): CodeViewToggles => ({
+      ...current,
+      ...toggle,
+    }));
   }
 
   /**
@@ -753,10 +812,10 @@ export class CodeDocumentPanel {
         this.toggleWordWrap();
         break;
       case MENU_MINIMAP:
-        this.settings.updateTextEditorSettings({ showMinimap: !this.minimap() });
+        this.setViewToggle({ minimap: !this.minimap() });
         break;
       case MENU_LINE_NUMBERS:
-        this.settings.updateTextEditorSettings({ showLineNumbers: !this.lineNumbers() });
+        this.setViewToggle({ lineNumbers: !this.lineNumbers() });
         break;
       default:
         break;

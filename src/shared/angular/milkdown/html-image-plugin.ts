@@ -24,10 +24,12 @@ import { sanitizeHtmlBlock } from './html-block-sanitizer';
 const EMPTY_CHILDREN: number = 0;
 
 /**
- * Regex to match HTML image patterns we want to handle.
- * Matches: <img ...> or <p align="...">...</p>
+ * Regex to match the raw HTML this plugin renders: an image, or one whole element, opened and closed
+ * in the same block. Half an element can't be shown on its own, and a collapsible section belongs to
+ * the collapse plugin.
  */
-const HTML_IMAGE_PATTERN: RegExp = /^<(?:img\s|p\s+align=)/i;
+const HTML_IMAGE_PATTERN: RegExp =
+  /^(?:<img\s|<(?!details\b|summary\b)([a-z][\w-]*)\b[^>]*>[\s\S]*<\/\1>$)/i;
 
 /**
  * Custom mdast node type for HTML image blocks.

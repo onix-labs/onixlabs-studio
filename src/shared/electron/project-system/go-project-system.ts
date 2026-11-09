@@ -1,6 +1,9 @@
+import { execFile } from 'node:child_process';
 import { Dirent } from 'node:fs';
 import * as fs from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import * as path from 'node:path';
+import { promisify } from 'node:util';
 import {
   ProjectCapabilities,
   ProjectEntry,
@@ -9,6 +12,7 @@ import {
   ProjectModel,
   ProjectNode,
 } from '@shared/api/project-system';
+import { buildGoPackageTree, GoPackage, goListArguments, parseGoPackages } from './go-list';
 import { ProjectSystem } from './project-system';
 import { logger } from '../logger';
 
@@ -55,6 +59,47 @@ const SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set<string>(['vendor', 'nod
 const MAX_ITEMS: number = 5_000;
 
 /**
+ * The files of a module that belong to it without being in any package.
+ */
+const MODULE_FILES: readonly string[] = [MANIFEST, 'go.sum', 'go.work', 'go.work.sum'];
+
+/**
+ * Bounds how long `go list` may take, so a wedged toolchain cannot hold the Solution Explorer. It reads
+ * no dependencies, so it answers in well under a second on any real module.
+ */
+const LIST_TIMEOUT_MS: number = 30_000;
+
+/**
+ * The maximum bytes of `go list` output buffered, generous so a large module is not truncated.
+ */
+const LIST_BUFFER: number = 64 * 1024 * 1024;
+
+/**
+ * Runs a child process and resolves with its standard output.
+ */
+const execFileAsync: (
+  file: string,
+  args: readonly string[],
+  options: {
+    cwd: string;
+    env: NodeJS.ProcessEnv;
+    maxBuffer: number;
+    timeout: number;
+    killSignal: NodeJS.Signals;
+    windowsHide: boolean;
+  },
+) => Promise<{ stdout: string; stderr: string }> = promisify(execFile);
+
+/**
+ * The environment `go list` runs with. Reading a module must not reach out: `go.mod` can name a newer
+ * toolchain, which would otherwise be downloaded and then run from inside a scan.
+ * @returns Returns the environment.
+ */
+function goListEnvironment(): NodeJS.ProcessEnv {
+  return { ...process.env, GOTOOLCHAIN: 'local', GOPROXY: 'off' };
+}
+
+/**
  * Reads the module path from the `module` directive of a `go.mod` (for example
  * `module github.com/acme/widget`).
  * @param goMod The `go.mod` content, or null when absent.
@@ -70,8 +115,8 @@ export function parseGoModulePath(goMod: string | null): string | null {
 
 /**
  * Models a Go module: the single root module, named from the last segment of its `go.mod` module path,
- * with its source files listed on demand (skipping the vendored dependency tree). Deliberately
- * language-server-agnostic, like the other providers; the workspace view prestarts gopls for `go`
+ * with what its build is made of read from `go list` on demand, or its files listed when that cannot be
+ * read (skipping the vendored dependency tree). Deliberately language-server-agnostic, like the other providers; the workspace view prestarts gopls for `go`
  * models.
  */
 export class GoProjectSystem implements ProjectSystem {
@@ -131,15 +176,113 @@ export class GoProjectSystem implements ProjectSystem {
   }
 
   /**
-   * Lists the module's files straight from the root directory, skipping the vendored dependency tree.
+   * Loads what the module's build is made of (#899): its packages' files as `go list` reports them, and
+   * the module's own `go.mod` and `go.sum`, so outputs and assets that share the tree stay out of the
+   * Solution Explorer; the File Explorer shows everything. When the toolchain is missing or cannot
+   * answer, the module's files are listed from the root directory instead, skipping the vendored
+   * dependency tree.
    * @param projectPath The absolute path of the module manifest.
    * @returns Returns the contents, or null when the directory cannot be read.
    */
   public async loadProjectItems(projectPath: string): Promise<ProjectItems | null> {
     const directory: string = path.dirname(projectPath);
-    const budget: { remaining: number } = { remaining: MAX_ITEMS };
-    const tree: readonly ProjectItemNode[] | null = await this.listDirectory(directory, budget);
+    const tree: readonly ProjectItemNode[] | null =
+      (await this.packageTree(projectPath, directory)) ?? (await this.listing(directory));
     return tree === null ? null : { projectPath, tree };
+  }
+
+  /**
+   * Builds the module's contents from its packages.
+   * @param projectPath The absolute path of the module manifest.
+   * @param directory The module's directory.
+   * @returns Returns the contents, or null when the toolchain has no answer or the module no packages.
+   */
+  private async packageTree(
+    projectPath: string,
+    directory: string,
+  ): Promise<readonly ProjectItemNode[] | null> {
+    let moduleDirectory: string;
+    try {
+      // The toolchain answers with resolved paths, so the root is resolved first to compare like with
+      // like: otherwise a workspace reached through a symbolic link would have every file climb out.
+      moduleDirectory = await fs.realpath(directory);
+    } catch {
+      return null;
+    }
+    const packages: readonly GoPackage[] | null = await this.packages(moduleDirectory);
+    if (packages === null || packages.every((entry: GoPackage) => entry.files.length === 0)) {
+      return null;
+    }
+    const moduleFiles: string[] = [];
+    for (const file of MODULE_FILES) {
+      if (await this.exists(path.join(directory, file))) {
+        moduleFiles.push(file);
+      }
+    }
+    logger.debug(
+      'GoProjectSystem',
+      `Listed ${packages.length} Go package(s) for '${projectPath}' from \`go list\`.`,
+    );
+    return buildGoPackageTree(projectPath, moduleDirectory, packages, moduleFiles);
+  }
+
+  /**
+   * Asks the toolchain for a module's packages, trying each `go` in turn. `go list` runs nothing from
+   * the module: it parses the sources and stops.
+   * @param moduleDirectory The module's directory.
+   * @returns Returns the packages, or null when no toolchain could answer.
+   */
+  private async packages(moduleDirectory: string): Promise<readonly GoPackage[] | null> {
+    for (const go of this.goExecutables()) {
+      try {
+        const { stdout }: { stdout: string } = await execFileAsync(
+          go,
+          goListArguments(moduleDirectory),
+          {
+            // Anywhere but the module: see goListArguments.
+            cwd: tmpdir(),
+            env: goListEnvironment(),
+            maxBuffer: LIST_BUFFER,
+            timeout: LIST_TIMEOUT_MS,
+            killSignal: 'SIGKILL',
+            windowsHide: true,
+          },
+        );
+        return parseGoPackages(stdout);
+      } catch (error: unknown) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          continue;
+        }
+        logger.warn(
+          'GoProjectSystem',
+          `\`go list\` failed for '${moduleDirectory}'; listing the files instead.`,
+          error,
+        );
+        return null;
+      }
+    }
+    logger.debug('GoProjectSystem', 'No `go` to read the module with; listing the files instead.');
+    return null;
+  }
+
+  /**
+   * Gets the `go` executables to try: the one under `GOROOT`, then the one on the `PATH`.
+   * @returns Returns the executables, in order.
+   */
+  private goExecutables(): readonly string[] {
+    const root: string | undefined = process.env['GOROOT'];
+    const exe: string = process.platform === 'win32' ? 'go.exe' : 'go';
+    return root === undefined || root.length === 0 ? ['go'] : [path.join(root, 'bin', exe), 'go'];
+  }
+
+  /**
+   * Lists the module's files straight from its directory, skipping the vendored dependency tree.
+   * @param directory The module's directory.
+   * @returns Returns the contents, or null when the directory cannot be read.
+   */
+  private async listing(directory: string): Promise<readonly ProjectItemNode[] | null> {
+    const budget: { remaining: number } = { remaining: MAX_ITEMS };
+    return this.listDirectory(directory, budget);
   }
 
   /**

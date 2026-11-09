@@ -73,7 +73,90 @@ export enum LspChannel {
    * Answers an {@link ApplyEdit} with what was applied (renderer→main, send).
    */
   ApplyEditReply = 'lsp:apply-edit-reply',
+
+  /**
+   * Asks the renderer holding a session to attach the debugger to a process the server started — a
+   * test host Roslyn waits in for Debug Test (#1150) — and answer on {@link AttachDebuggerReply}
+   * (main→renderer, send).
+   */
+  AttachDebugger = 'lsp:attach-debugger',
+
+  /**
+   * Answers an {@link AttachDebugger} with whether the debugger attached (renderer→main, send).
+   */
+  AttachDebuggerReply = 'lsp:attach-debugger-reply',
+
+  /**
+   * Asks the renderer holding a session to put a server's question — `window/showMessageRequest`
+   * (#1154) — to the user, and answer on {@link ShowMessageReply} (main→renderer, send).
+   */
+  ShowMessage = 'lsp:show-message',
+
+  /**
+   * Answers a {@link ShowMessage} with the action the user chose, if any (renderer→main, send).
+   */
+  ShowMessageReply = 'lsp:show-message-reply',
+
+  /**
+   * Asks a session's server for a view of the code it alone can give — a macro's expansion, the
+   * compiler's intermediate form, the syntax tree — and has the main process write it where the editor
+   * opens it read-only (#1210, #1213). Answers {@link LspGeneratedViewResult} (invoke).
+   */
+  GeneratedView = 'lsp:generated-view',
+
+  /**
+   * Asks the renderer holding a session how a document is indented — the tab size and whether it
+   * indents with spaces — for a server that asks for them as settings of its own (#1208), and answer
+   * on {@link IndentationReply} (main→renderer, send).
+   */
+  Indentation = 'lsp:indentation',
+
+  /**
+   * Answers an {@link Indentation} with the document's indentation (renderer→main, send).
+   */
+  IndentationReply = 'lsp:indentation-reply',
+
+  /**
+   * Asks the renderer holding a session to show what a server's `window/showDocument` names (#1211):
+   * a web page in the browser, or a file in an editor with a range selected (main→renderer, send).
+   */
+  ShowDocument = 'lsp:show-document',
 }
+
+/**
+ * Names a view of the code a language server gives that Studio shows as a read-only document (#1210,
+ * #1213): rust-analyzer's expansion of the macro at the caret, and its HIR and MIR of the function
+ * there; clangd's syntax tree at the caret, and how much memory it is using.
+ */
+export type LspGeneratedViewKind = 'expandMacro' | 'hir' | 'mir' | 'syntaxTree' | 'memoryUsage';
+
+/**
+ * Lists every {@link LspGeneratedViewKind}, for validating what the renderer asks for.
+ */
+export const LSP_GENERATED_VIEW_KINDS: readonly LspGeneratedViewKind[] = [
+  'expandMacro',
+  'hir',
+  'mir',
+  'syntaxTree',
+  'memoryUsage',
+];
+
+/**
+ * Says where a document a {@link LspGeneratedViewKind} asks for was written, or why there is none.
+ */
+export type LspGeneratedViewResult =
+  | {
+      /**
+       * Gets the absolute path of the read-only document.
+       */
+      readonly path: string;
+    }
+  | {
+      /**
+       * Gets why there is nothing to show: the server had nothing at the caret, or failed.
+       */
+      readonly error: string;
+    };
 
 /**
  * Identifies a language server known to the main-process registry (for example `typescript`). The
@@ -92,6 +175,23 @@ export interface LspServerSummary extends LanguageSlotEntry {
    * Gets the stable identifier the renderer names this server by.
    */
   readonly id: LspServerId;
+
+  /**
+   * Gets whether the server is told the brace style when it starts, and only then (#1177): a change to
+   * the Brace style setting for a language it serves restarts its sessions, so it takes effect.
+   */
+  readonly takesBraceStyle?: boolean;
+
+  /**
+   * Gets a value indicating whether the server reads `.editorconfig` only as it starts, so one
+   * changing needs a restart to reach it.
+   */
+  readonly readsEditorConfigAtStart?: boolean;
+
+  /**
+   * Gets the settings the server declares (#1143), offered on its language's page in Settings.
+   */
+  readonly settings?: readonly LspServerSettingDescriptor[];
 }
 
 /**
@@ -158,6 +258,28 @@ export interface LspSemanticTokensLegend {
 }
 
 /**
+ * The notification a server pushes one document's diagnostics in.
+ */
+export const PUBLISH_DIAGNOSTICS_METHOD: string = 'textDocument/publishDiagnostics';
+
+/**
+ * Names the notification the main process sends the renderer with a batch of a server's diagnostics
+ * for the whole workspace (#1144): `{ reports }`, each report `{ uri, kind, items?, resultId? }` as
+ * `workspace/diagnostic` answers it, files that are not open included — or, with `reset: true`, word
+ * that the pull is starting over and every report it sent before is to be dropped.
+ */
+export const WORKSPACE_DIAGNOSTICS_METHOD: string = 'studio/workspaceDiagnostics';
+
+/**
+ * Names the notification the renderer sends the main process, on the Notify channel, to have a
+ * session's workspace diagnostics pulled afresh (#1144) — after a document closes, which the server
+ * leaves its open request waiting through, though the closed file's diagnostics are now the
+ * workspace's to report. Its parameters name the closed document, `{ uri }`. It never reaches the
+ * server.
+ */
+export const REFRESH_WORKSPACE_DIAGNOSTICS_METHOD: string = 'studio/refreshWorkspaceDiagnostics';
+
+/**
  * Describes a request to start a language-server session.
  */
 export interface LspStartRequest {
@@ -186,7 +308,26 @@ export interface LspStartRequest {
    * without opening a workspace. Undefined for workspace-rooted sessions.
    */
   readonly standaloneFile?: string;
+
+  /**
+   * Gets the brace style the user's settings give the language the session was started for (#1177) —
+   * the global Text Editor setting, or the language's override of it — for a server that can only be
+   * told it at launch. A project's own `.editorconfig` still wins over it. Undefined when the
+   * renderer says nothing, in which case the server keeps its own default.
+   */
+  readonly braceStyle?: LspBraceStyle;
 }
+
+/**
+ * Names a brace placement style, as the Text Editor's Brace style setting does: K&R (the brace on the
+ * line that opens the block), Allman (on its own line) or GNU (on its own line, indented).
+ */
+export type LspBraceStyle = 'kr' | 'allman' | 'gnu';
+
+/**
+ * Lists every {@link LspBraceStyle}, for validating one from the renderer.
+ */
+export const LSP_BRACE_STYLES: readonly LspBraceStyle[] = ['kr', 'allman', 'gnu'];
 
 /**
  * Describes the server software backing a session, as reported by the server's `initialize` result.
@@ -227,6 +368,24 @@ export interface LspStartResult {
    * Gets the failure reason, when the server did not start.
    */
   readonly error?: string;
+
+  /**
+   * Gets whether the start failed because the server process ended during its handshake — a crash
+   * during start-up, reported to the user as any other crash is, rather than in {@link error}'s
+   * connection-level wording.
+   */
+  readonly exited?: true;
+
+  /**
+   * Gets the server's own last words when it ended during its handshake, when it left any.
+   */
+  readonly reason?: string;
+
+  /**
+   * Gets whether the session pulls the server's diagnostics for the whole workspace (#1144), whose
+   * first complete pull after the server loaded is when the workspace has been analysed (#1182).
+   */
+  readonly pullsWorkspaceDiagnostics?: boolean;
 }
 
 /**
@@ -276,6 +435,158 @@ export interface LspApplyEditRequest {
 }
 
 /**
+ * A server's request that the debugger attach to a process it started (#1150), as the main process
+ * forwards it to the renderer holding the session.
+ */
+export interface LspAttachDebuggerRequest {
+  /**
+   * Gets the identifier the answer names.
+   */
+  readonly requestId: string;
+
+  /**
+   * Gets the session whose server asked.
+   */
+  readonly sessionId: string;
+
+  /**
+   * Gets the process to attach to.
+   */
+  readonly processId: number;
+}
+
+/**
+ * The renderer's answer to a {@link LspAttachDebuggerRequest}.
+ */
+export interface LspAttachDebuggerReply {
+  /**
+   * Gets the identifier of the request answered.
+   */
+  readonly requestId: string;
+
+  /**
+   * Gets whether the debugger attached.
+   */
+  readonly didAttach: boolean;
+}
+
+/**
+ * A server's question of how a document is indented (#1208), as the main process forwards it to the
+ * renderer holding the session.
+ */
+export interface LspIndentationRequest {
+  /**
+   * Gets the identifier the answer names.
+   */
+  readonly requestId: string;
+
+  /**
+   * Gets the session whose server asked.
+   */
+  readonly sessionId: string;
+
+  /**
+   * Gets the document asked about, as a `file:` URI.
+   */
+  readonly uri: string;
+}
+
+/**
+ * The renderer's answer to a {@link LspIndentationRequest}.
+ */
+export interface LspIndentationReply {
+  /**
+   * Gets the identifier of the request answered.
+   */
+  readonly requestId: string;
+
+  /**
+   * Gets the document's tab size, or null when no editor holds it.
+   */
+  readonly tabSize: number | null;
+
+  /**
+   * Gets whether the document indents with spaces, or null when no editor holds it.
+   */
+  readonly insertSpaces: boolean | null;
+}
+
+/**
+ * A server's question for the user (#1154) — `window/showMessageRequest` — as the main process forwards
+ * it to the renderer holding the session.
+ */
+export interface LspShowMessageRequest {
+  /**
+   * Gets the identifier the answer names.
+   */
+  readonly requestId: string;
+
+  /**
+   * Gets the session whose server asked.
+   */
+  readonly sessionId: string;
+
+  /**
+   * Gets the message type: 1 error, 2 warning, 3 info, 4 log.
+   */
+  readonly type: number;
+
+  /**
+   * Gets the message.
+   */
+  readonly message: string;
+
+  /**
+   * Gets the titles of the actions offered, in order.
+   */
+  readonly actions: readonly string[];
+}
+
+/**
+ * A server's request to show a document (#1211) — `window/showDocument` — as the main process forwards
+ * it to the renderer holding the session: gopls's Browse Documentation opens a page it serves itself.
+ */
+export interface LspShowDocumentRequest {
+  /**
+   * Gets the session whose server asked.
+   */
+  readonly sessionId: string;
+
+  /**
+   * Gets the document's URI: an `http:` or `https:` page, or a `file:`.
+   */
+  readonly uri: string;
+
+  /**
+   * Gets whether the page opens in the browser rather than in Studio: always so for a web page.
+   */
+  readonly external: boolean;
+
+  /**
+   * Gets the range to select in a file, zero-based as the protocol counts, or undefined for none.
+   */
+  readonly selection?: {
+    readonly start: { readonly line: number; readonly character: number };
+    readonly end: { readonly line: number; readonly character: number };
+  };
+}
+
+/**
+ * The renderer's answer to a {@link LspShowMessageRequest}.
+ */
+export interface LspShowMessageReply {
+  /**
+   * Gets the identifier of the request answered.
+   */
+  readonly requestId: string;
+
+  /**
+   * Gets the index of the action the user chose, or null when they dismissed the question.
+   */
+  readonly action: number | null;
+}
+
+/**
  * Answers an {@link LspApplyEditRequest}: the LSP `ApplyWorkspaceEditResult`, with its correlation
  * identifier.
  */
@@ -321,6 +632,14 @@ export interface LspExit {
    * a crash. Absent or false for a real exit.
    */
   readonly restarted?: boolean;
+
+  /**
+   * Gets the server's own account of why it stopped, when it gave one: the last error it logged or
+   * wrote to stderr before exiting, as one line. Absent when it exited silently or on request. A
+   * server that shuts itself down cleanly (exit code 0) over a protocol error looks identical to a
+   * deliberate stop without this.
+   */
+  readonly reason?: string;
 }
 
 /**
@@ -369,4 +688,80 @@ export interface LspSettings {
    * genuine preferences and a language served by exactly one server never needs an entry.
    */
   readonly languageServers: Readonly<Record<string, LspServerId>>;
+
+  /**
+   * Gets the user's values for the settings servers declare (#1143), keyed by server identifier and
+   * then by configuration section — what the server is answered with when it asks through
+   * `workspace/configuration`. A setting with no entry is answered with null, the server's default.
+   */
+  readonly serverSettings: Readonly<
+    Record<LspServerId, Readonly<Record<string, LspServerSettingValue>>>
+  >;
+}
+
+/**
+ * The value of a setting a server declares: a switch, or one of a choice's values.
+ */
+export type LspServerSettingValue = boolean | string;
+
+/**
+ * Describes one choice of a {@link LspServerSettingDescriptor} offered as a choice.
+ */
+export interface LspServerSettingOption {
+  /**
+   * Gets the value the server is answered with when this choice is made.
+   */
+  readonly value: LspServerSettingValue;
+
+  /**
+   * Gets the choice as the user reads it.
+   */
+  readonly label: string;
+}
+
+/**
+ * Describes a setting a language server declares (#1143): what the user sees in Settings › Language
+ * Providers, and the configuration section the server reads it from — whether it asks for it through
+ * `workspace/configuration`, is sent it in `workspace/didChangeConfiguration`, or is given it in its
+ * `initializationOptions` (#1204). Plain data, so a server contributed by a plugin declares its own the
+ * same way.
+ */
+export interface LspServerSettingDescriptor {
+  /**
+   * Gets the configuration section the server reads, such as
+   * `projects.dotnet_enable_automatic_restore` or `typescript.referencesCodeLens.enabled`. Dotted, so
+   * settings sent to a server as an object are nested by it: `{ typescript: { referencesCodeLens: … } }`.
+   */
+  readonly section: string;
+
+  /**
+   * Gets the setting's name, as the user reads it.
+   */
+  readonly label: string;
+
+  /**
+   * Gets what the setting does, in a sentence.
+   */
+  readonly description: string;
+
+  /**
+   * Gets the server's own default, shown while the user has set nothing.
+   */
+  readonly default: LspServerSettingValue;
+
+  /**
+   * Gets the choices, for a setting offered as a choice; undefined for a switch.
+   */
+  readonly options?: readonly LspServerSettingOption[];
+
+  /**
+   * Gets whether the setting is a finer one, offered folded away under "Advanced" (#1145).
+   */
+  readonly advanced?: boolean;
+
+  /**
+   * Gets whether the server reads the setting only when it starts (#1204), so a change to it restarts
+   * the server's sessions — which the setting's description says.
+   */
+  readonly startupOnly?: boolean;
 }

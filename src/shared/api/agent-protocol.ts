@@ -242,8 +242,13 @@ import { AiEvent } from './ai/ai-event-types';
  * a background task's report-back, instead of leaving Studio to infer one from silence. A harness sends
  * it only to a Studio whose `initialize` declared 1.17.0 or later, so an older build never sees a kind it
  * does not know.
+ *
+ * `1.18.0` adds an `audit` record's optional `sandboxed` (#1159), which says whether a shell command ran
+ * inside the OS sandbox, and the `Run outside the sandbox` permission a harness asks under for one that
+ * would not; and its optional `toolId` (#1160), the tool use it records, so the transcript can mark that
+ * call. Optional, so every published harness is unaffected: a record without them is audited as before.
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.17.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.18.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
@@ -409,6 +414,26 @@ export interface TurnRequest {
    * Gets the token budget for the turn.
    */
   readonly tokenCap: number;
+
+  /**
+   * Gets the most steps (model turns plus tool round-trips) the turn may take, or 0 for no limit.
+   * Optional: a host that predates it sends none, and a harness running its own loop then keeps its
+   * own default.
+   */
+  readonly maxSteps?: number;
+
+  /**
+   * Gets a value indicating whether a harness that runs shell commands refuses them where the machine
+   * has no OS sandbox, saying why. Optional: absent (an older host) means on.
+   */
+  readonly requireSandbox?: boolean;
+
+  /**
+   * Gets a value indicating whether a shell command that will run inside the OS sandbox goes ahead
+   * without asking. A command asking to leave the sandbox, or a tool set to Deny, is unaffected.
+   * Optional: absent means off.
+   */
+  readonly autoAllowSandboxedShell?: boolean;
 
   /**
    * Gets the session to resume, or null to start a new one. Ignored by a `stateless` harness.
@@ -674,6 +699,8 @@ export type HarnessMessage =
       readonly name: string;
       readonly detail: string;
       readonly source: string;
+      readonly sandboxed?: boolean;
+      readonly toolId?: string;
     }
   | {
       readonly type: 'turn.completed';

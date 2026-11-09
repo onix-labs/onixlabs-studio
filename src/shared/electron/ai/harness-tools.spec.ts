@@ -56,6 +56,12 @@ import {
   REMOVE_IMAGE,
   REMOVE_VOLUME,
   RUN_CONTAINER,
+  CREATE_DATABASE_QUERY,
+  LIST_DATABASE_CONNECTIONS,
+  LIST_DATABASE_OBJECTS,
+  LIST_DATABASE_QUERIES,
+  RUN_DATABASE_QUERY,
+  UPDATE_DATABASE_QUERY,
 } from '@shared/api/ai-types';
 import type { HarnessTool } from '@shared/api/agent-protocol';
 import type { AgentRunContext } from './agent-provider';
@@ -390,6 +396,62 @@ describe('describeOffer', () => {
     expect(requestPermission).toHaveBeenCalledWith(SEND_API_REQUEST, expect.any(String));
     expect(request).not.toHaveBeenCalled();
     expect(outcome.result).toBe('The user declined to run this tool.');
+  });
+
+  it('asksBeforeTheDatabaseExplorerRunsAQuery_showingTheQueryItself', async () => {
+    // Running a query reads the user's data, so the user is asked — and asked about the text that
+    // would run, looked up first, not about an opaque id.
+    const requestPermission: ReturnType<typeof vi.fn> = vi.fn((): Promise<boolean> =>
+      Promise.resolve(false),
+    );
+    const request: ReturnType<typeof vi.fn> = vi.fn((capability: string): Promise<unknown> =>
+      Promise.resolve(
+        capability === LIST_DATABASE_QUERIES
+          ? {
+              ok: true,
+              queries: [
+                { id: 'q1', title: 'Orders', connection: 'Shop', text: 'SELECT * FROM orders;' },
+              ],
+            }
+          : { ok: true },
+      ),
+    );
+    const { invokeTool } = await import('./harness-tools');
+
+    const outcome: { result: string | null } = await invokeTool(
+      contextFor({ surface: 'database', requestPermission, bridge: { request } }),
+      RUN_DATABASE_QUERY,
+      { id: 'q1' },
+    );
+
+    expect(requestPermission).toHaveBeenCalledWith(
+      RUN_DATABASE_QUERY,
+      expect.stringContaining('SELECT * FROM orders;'),
+    );
+    expect(request).not.toHaveBeenCalledWith(
+      RUN_DATABASE_QUERY,
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(outcome.result).toBe('The user declined to run this tool.');
+  });
+
+  it('letsTheDatabaseExplorersAgentReadStructure_butNotWriteOrRun_inChat', async () => {
+    const offer: { systemPrompt: string; tools: readonly HarnessTool[] } = await describeOffer(
+      contextFor({ surface: 'database', mode: 'chat' }),
+    );
+
+    expect(names(offer)).toEqual(
+      expect.arrayContaining([
+        LIST_DATABASE_CONNECTIONS,
+        LIST_DATABASE_OBJECTS,
+        LIST_DATABASE_QUERIES,
+      ]),
+    );
+    expect(names(offer)).not.toContain(CREATE_DATABASE_QUERY);
+    expect(names(offer)).not.toContain(UPDATE_DATABASE_QUERY);
+    expect(names(offer)).not.toContain(RUN_DATABASE_QUERY);
+    expect(offer.systemPrompt).toContain('docked to a Database Explorer tab');
   });
 
   it('keepsTheAiManagersAgentToModelsProfilesAndSkills_readingOnlyInChat', async () => {

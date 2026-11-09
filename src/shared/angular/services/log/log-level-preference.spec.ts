@@ -22,7 +22,7 @@ describe('LogLevelPreference', () => {
 
     TestBed.inject(LogLevelPreference);
     TestBed.tick();
-    TestBed.inject(Settings).set('application.logLevel', 'debug');
+    TestBed.inject(Settings).set('systemMonitor.logLevel', 'debug');
     TestBed.tick();
 
     expect(applied).toEqual(['auto', 'debug']);

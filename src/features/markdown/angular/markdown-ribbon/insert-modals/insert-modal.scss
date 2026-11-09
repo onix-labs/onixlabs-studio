@@ -14,46 +14,30 @@
   margin-block-end: 0.8rem;
 }
 
-.insert-modal__label {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--welcome-muted-foreground-color);
-}
-
-.insert-modal__input,
-.insert-modal__textarea {
-  inline-size: 100%;
-  padding: 0.45rem 0.6rem;
-  font: inherit;
-  color: var(--body-foreground-color);
-  background: var(--body-background-color);
-  border: 0.0625rem solid var(--dock-border-color);
-  border-radius: calc(0.5rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-
-  &:focus-visible {
-    border-color: var(--accent-color);
-    outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: 0;
-  }
-}
-
-.insert-modal__textarea {
-  min-block-size: 5rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  resize: vertical;
-}
-
 // A field paired with a trailing button (e.g. the image URL + Browse).
 .insert-modal__row {
   display: flex;
   gap: 0.5rem;
   align-items: flex-end;
+  margin-block-end: 0.8rem;
 
   .insert-modal__field {
     flex: 1;
     margin-block-end: 0;
   }
+}
+
+// The button beside a floating field stands as tall as the field.
+.insert-modal__row-button {
+  --control-height: 2.75rem;
+}
+
+// Two short fields sharing a line (e.g. a table's rows and columns).
+.insert-modal__pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-block-end: 0.8rem;
 }
 
 // A horizontal choice (e.g. the math inline/block toggle).
@@ -71,49 +55,10 @@
   cursor: default;
 }
 
+.insert-modal__search {
+  inline-size: 100%;
+}
+
 .insert-modal__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.6rem;
   margin-block-start: 0.4rem;
-}
-
-.insert-modal__button {
-  padding: 0.45rem 1rem;
-  font: inherit;
-  color: var(--body-foreground-color);
-  background: transparent;
-  border: 0.0625rem solid var(--dock-border-color);
-  border-radius: calc(0.5rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  cursor: default;
-  transition:
-    var(--hover-transition),
-    border-color 150ms ease-in-out;
-
-  &:hover,
-  &:focus-visible {
-    background: var(--accent-surface-background-color);
-    border-color: var(--accent-surface-border-color);
-    color: var(--accent-surface-foreground-color);
-    outline: none;
-  }
-
-  &:disabled {
-    opacity: 0.4;
-    cursor: default;
-    pointer-events: none;
-  }
-}
-
-.insert-modal__button--primary {
-  color: var(--gray-100);
-  background: var(--accent-color);
-  border-color: var(--accent-color);
-
-  &:hover,
-  &:focus-visible {
-    color: var(--gray-100);
-    background: var(--accent-color);
-  }
 }

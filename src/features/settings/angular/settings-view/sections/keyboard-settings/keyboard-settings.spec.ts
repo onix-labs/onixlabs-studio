@@ -2,34 +2,66 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
+import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
+import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { KeyboardSettingsSection } from './keyboard-settings';
 
 describe('KeyboardSettingsSection', () => {
   let fixture: ComponentFixture<KeyboardSettingsSection>;
   let keybindings: Keybindings;
+  let windows: FakeModalWindows;
 
   /**
-   * Finds the chord-capture button for the row at the given index.
-   * @param index The row index across all groups, in document order.
-   * @returns Returns the chord button element.
+   * Reads the keys a row's chord shows.
+   * @param id The catalogued command identifier.
+   * @returns Returns each key cap's text, or none when the command has no shortcut.
    */
-  function chordButton(index: number): HTMLButtonElement {
-    const buttons: NodeListOf<HTMLButtonElement> = (
-      fixture.nativeElement as HTMLElement
-    ).querySelectorAll('.keyboard__chord');
-    return buttons[index];
+  function keysOf(id: string): readonly string[] {
+    const chord: Element | null = (fixture.nativeElement as HTMLElement).querySelector(
+      `[data-testid="chord-${id}"]`,
+    );
+    return [...(chord?.querySelectorAll('kbd') ?? [])].map(
+      (key: Element): string => key.textContent ?? '',
+    );
+  }
+
+  /**
+   * Presses a row's Set Chord button.
+   * @param id The catalogued command identifier.
+   */
+  async function setChord(id: string): Promise<void> {
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLElement>(`[data-testid="set-chord-${id}"] button`)
+      ?.click();
+    await fixture.whenStable();
+  }
+
+  /**
+   * Finds an element in the open Set Chord dialog.
+   * @param testId The element's test id.
+   * @returns Returns the element, or null when the dialog is closed or lacks it.
+   */
+  function inDialog(testId: string): HTMLElement | null {
+    return windows.contentHost?.querySelector<HTMLElement>(`[data-testid="${testId}"]`) ?? null;
   }
 
   beforeEach(async (): Promise<void> => {
+    windows = new FakeModalWindows();
     await TestBed.configureTestingModule({
       imports: [KeyboardSettingsSection],
       providers: [
+        { provide: ModalWindows, useValue: windows },
         provideKeybindingCatalogue({
           view: 'Code Editor',
           bindings: [
             { id: 'code.save', description: 'Save the active document', chord: 'Mod+S' },
             { id: 'code.run', description: 'Run the active document', chord: 'Mod+R' },
           ],
+        }),
+        provideKeybindingCatalogue({
+          view: 'Application',
+          global: true,
+          bindings: [{ id: 'app.closeTab', description: 'Close the active tab', chord: 'Mod+W' }],
         }),
         provideKeybindingCatalogue({
           view: 'Terminal',
@@ -43,6 +75,7 @@ describe('KeyboardSettingsSection', () => {
 
     keybindings = TestBed.inject(Keybindings);
     fixture = TestBed.createComponent(KeyboardSettingsSection);
+    fixture.componentRef.setInput('view', 'Code Editor');
     await fixture.whenStable();
   });
 
@@ -50,68 +83,63 @@ describe('KeyboardSettingsSection', () => {
     window.localStorage.removeItem('settings');
   });
 
-  it('listsEveryCataloguedCommandGroupedByView', (): void => {
+  it('listsOnlyTheCommandsOfItsCapability_withEachChordAsKeyCaps', (): void => {
+    // Shortcuts live with their capability (Code › Keyboard), not in one list of every view.
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    const views: string[] = Array.from(element.querySelectorAll('.keyboard__view')).map(
-      (heading: Element): string => heading.textContent?.trim() ?? '',
+    expect(element.querySelectorAll('.keyboard__row').length).toBe(2);
+    expect(element.textContent).not.toContain('Clear the terminal');
+    expect(keysOf('code.save')).toEqual(['Ctrl', 'S']);
+    expect(element.querySelector('[data-testid="set-chord-code.save"]')?.textContent).toContain(
+      'Set Chord',
     );
-    expect(views).toEqual(['Code Editor', 'Terminal']);
-    expect(element.querySelectorAll('.keyboard__row').length).toBe(3);
-    expect(chordButton(0).textContent).toContain('Ctrl+S');
   });
 
-  it('capture_persistsTheChordAndShowsReset', async (): Promise<void> => {
-    chordButton(0).click();
+  it('appWidePage_listsTheApplicationCommands', async (): Promise<void> => {
+    fixture.componentRef.setInput('view', null);
     await fixture.whenStable();
-    expect(chordButton(0).textContent).toContain('Press a key combination');
 
-    chordButton(0).dispatchEvent(
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(element.querySelectorAll('.keyboard__row').length).toBe(1);
+    expect(element.textContent).toContain('Close the active tab');
+    expect(element.textContent).not.toContain('Save the active document');
+  });
+
+  it('conflict_whenAViewShortcutTakesAnApplicationChord_warnsOnBothPages', async (): Promise<void> => {
+    keybindings.setOverride('code.run', 'Mod+W');
+    await fixture.whenStable();
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(element.textContent).toContain('over an Application shortcut, this one wins');
+
+    fixture.componentRef.setInput('view', null);
+    await fixture.whenStable();
+    expect(element.textContent).toContain("A tab's own shortcut uses this key combination too");
+  });
+
+  it('setChord_opensTheDialogAndAcceptingAppliesTheChordAndShowsReset', async (): Promise<void> => {
+    await setChord('code.save');
+    expect(inDialog('chord-reading')).not.toBeNull();
+
+    inDialog('chord-reading')?.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'p', ctrlKey: true, altKey: true, cancelable: true }),
     );
     await fixture.whenStable();
+    inDialog('chord-accept')?.querySelector('button')?.click();
+    await fixture.whenStable();
 
-    expect(chordButton(0).textContent).toContain('Ctrl+Alt+P');
+    expect(keysOf('code.save')).toEqual(['Ctrl', 'Alt', 'P']);
+    expect(windows.openWindows).toBe(0);
     expect((fixture.nativeElement as HTMLElement).querySelector('.keyboard__reset')).not.toBeNull();
   });
 
-  it('capture_escapeCancelsWithoutChanging', async (): Promise<void> => {
-    chordButton(0).click();
+  it('clearedShortcut_showsNone', async (): Promise<void> => {
+    keybindings.clearChord('code.save');
     await fixture.whenStable();
 
-    chordButton(0).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
-    await fixture.whenStable();
-
-    expect(chordButton(0).textContent).toContain('Ctrl+S');
-    expect((fixture.nativeElement as HTMLElement).querySelector('.keyboard__reset')).toBeNull();
-  });
-
-  it('capture_backspaceRestoresTheDefault', async (): Promise<void> => {
-    keybindings.setOverride('code.save', 'Mod+Alt+P');
-    await fixture.whenStable();
-
-    chordButton(0).click();
-    await fixture.whenStable();
-    chordButton(0).dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Backspace', cancelable: true }),
-    );
-    await fixture.whenStable();
-
-    expect(chordButton(0).textContent).toContain('Ctrl+S');
-  });
-
-  it('capture_whenTerminalOverrideDropsShift_showsTheRejection', async (): Promise<void> => {
-    chordButton(2).click();
-    await fixture.whenStable();
-    chordButton(2).dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, cancelable: true }),
-    );
-    await fixture.whenStable();
-
-    const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    expect(element.querySelector('.keyboard__message--error')?.textContent).toContain(
-      'Ctrl and Shift',
-    );
-    expect(chordButton(2).textContent).toContain('Ctrl+Shift+K');
+    expect(keysOf('code.save')).toEqual([]);
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="chord-code.save"]')
+        ?.textContent,
+    ).toContain('None');
   });
 
   it('conflictingChords_surfaceAWarning', async (): Promise<void> => {
@@ -133,6 +161,6 @@ describe('KeyboardSettingsSection', () => {
       ?.click();
     await fixture.whenStable();
 
-    expect(chordButton(0).textContent).toContain('Ctrl+S');
+    expect(keysOf('code.save')).toEqual(['Ctrl', 'S']);
   });
 });

@@ -17,8 +17,8 @@ import type { RepositoryTrustQuestion } from '@shared/angular/services/repositor
  *
  * The wording says what is at stake in plain terms: a repository can hold settings and scripts that
  * its tool runs the moment it looks at the folder, so the question is about where the repository came
- * from, not about Studio. Not trusting is the safe answer and the first button, and closing the window
- * means the same thing.
+ * from, not about Studio. Trusting is the default, and not trusting is the quiet answer beside it,
+ * which turns red when pointed at. Closing the window means not trusting.
  */
 @Component({
   selector: 'app-repository-trust-modal',
@@ -29,19 +29,13 @@ import type { RepositoryTrustQuestion } from '@shared/angular/services/repositor
       <app-modal
         [open]="true"
         [width]="32"
+        [frameless]="true"
         ariaLabel="Do you trust this repository?"
         (dismiss)="declined.emit()"
       >
         <ng-template appModalContent>
           <div class="trust">
             <h2 class="trust__title">Do you trust this repository?</h2>
-
-            <dl class="trust__facts">
-              <dt>Repository</dt>
-              <dd>{{ pending.name }}</dd>
-              <dt>Folder</dt>
-              <dd class="trust__path">{{ pending.root }}</dd>
-            </dl>
 
             <p class="trust__body">
               A repository can hold settings and scripts that run on this computer the moment
@@ -52,9 +46,21 @@ import type { RepositoryTrustQuestion } from '@shared/angular/services/repositor
               can trust it later from the Repository panel.
             </p>
 
+            <dl class="trust__facts">
+              <dt>Repository</dt>
+              <dd>{{ pending.name }}</dd>
+              <dt>Folder</dt>
+              <dd class="trust__path">{{ pending.root }}</dd>
+            </dl>
+
             <app-button-row class="trust__actions">
-              <app-button variant="solid" label="Don't trust" (click)="declined.emit()" />
-              <app-button label="Trust" (click)="accepted.emit()" />
+              <app-button variant="solid" label="Trust" (click)="accepted.emit()" />
+              <app-button
+                variant="none"
+                tone="danger"
+                label="Don't trust"
+                (click)="declined.emit()"
+              />
             </app-button-row>
           </div>
         </ng-template>
@@ -80,10 +86,7 @@ import type { RepositoryTrustQuestion } from '@shared/angular/services/repositor
         gap: 0.3rem 0.9rem;
         margin: 0;
         font-size: 0.85rem;
-
-        dt {
-          color: var(--muted-foreground-color, var(--body-foreground-color));
-        }
+        color: var(--form-muted-foreground-color);
 
         dd {
           margin: 0;

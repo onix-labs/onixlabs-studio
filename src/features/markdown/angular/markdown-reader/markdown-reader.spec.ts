@@ -114,9 +114,9 @@ describe('Reader', () => {
     expect(reader.canRead()).toBe(true);
   });
 
-  it('voices_whenEngineSet_loadsOnlyEnhancedVoicesWithADefaultSelection', () => {
+  it('voices_whenEngineSet_loadsOnlyEnhancedVoicesLeavingTheSystemDefaultChosen', () => {
     expect(reader.voices().map((voice): string => voice.uri)).toEqual(['v1']);
-    expect(reader.selectedVoice()?.uri).toBe('v1');
+    expect(reader.selectedVoice()).toBeNull();
   });
 
   it('play_whenDocumentPublished_marksPlayingAndSpeaks', () => {

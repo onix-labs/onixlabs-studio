@@ -1,0 +1,43 @@
+<div class="dictionary">
+  <app-setting-row
+    label="Personal Dictionary"
+    description="Words never marked as misspelled, in Markdown review or in any text box. Shared with the system's own dictionary on macOS and Windows."
+  >
+    <div class="dictionary__add">
+      <app-text-field
+        placeholder="Add a word"
+        ariaLabel="Word to add to the personal dictionary"
+        data-testid="dictionary-word"
+        [(value)]="draft"
+        (enter)="add()"
+      />
+      <app-button
+        variant="ghost"
+        label="Add"
+        [icon]="Icon.PLUS"
+        [disabled]="draft().trim() === ''"
+        data-testid="dictionary-add"
+        (click)="add()"
+      />
+    </div>
+  </app-setting-row>
+
+  @if (spelling.words().length) {
+    <ul class="dictionary__list">
+      @for (word of spelling.words(); track word) {
+        <li class="dictionary__item">
+          <span class="dictionary__word">{{ word }}</span>
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.CLOSE"
+            [ariaLabel]="'Remove ' + word"
+            (click)="remove(word)"
+          />
+        </li>
+      }
+    </ul>
+  } @else {
+    <p class="dictionary__empty">No words yet.</p>
+  }
+</div>

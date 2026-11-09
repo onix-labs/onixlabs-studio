@@ -36,6 +36,17 @@ const REQUEST_TIMEOUT_MS: number = 60_000;
 const NETWORK_TIMEOUT_MS: number = 15 * 60_000;
 
 /**
+ * Specifies how much longer than the plugin's own git timeout the host waits, so the plugin reports
+ * the timeout in its own words rather than the host cutting it off first.
+ */
+const NETWORK_TIMEOUT_GRACE_MS: number = 30_000;
+
+/**
+ * Specifies the longest wait a timer can express, used when Git Network Timeout is No limit.
+ */
+const NO_TIMEOUT_MS: number = 2_147_483_647;
+
+/**
  * Specifies how long computed metadata policies are reused before being recomputed.
  */
 const POLICY_CACHE_MS: number = 2_000;
@@ -583,6 +594,55 @@ export class VersionControlHost {
   }
 
   /**
+   * Stages and commits files in a repository a new project has just made, and pushes them when it has
+   * a remote to go to. Like {@link initInChosenFolder} the folder is one the main process's own dialog
+   * chose, so it need not be an open workspace: nothing has opened it yet.
+   * @param pluginId The plugin to ask.
+   * @param directory The repository; must be absolute.
+   * @param paths The files, relative to it.
+   * @param message The commit message.
+   * @param push Whether to push the commit to its origin.
+   * @returns Returns null when it was done, or why it was not.
+   */
+  public async firstCommitInChosenFolder(
+    pluginId: string,
+    directory: string,
+    paths: readonly string[],
+    message: string,
+    push: boolean,
+  ): Promise<string | null> {
+    const descriptor: VersionControlDescriptor | undefined = this.options
+      .descriptors()
+      .find((candidate: VersionControlDescriptor): boolean => candidate.id === pluginId);
+    if (descriptor === undefined || !path.isAbsolute(directory)) {
+      return `No version-control plugin named ${pluginId} is installed.`;
+    }
+    const root: string = path.resolve(directory);
+    const staged: VersionControlResponse<'stage'> = await this.dispatch(descriptor, root, 'stage', {
+      paths,
+    });
+    if (!staged.ok) {
+      return staged.error;
+    }
+    const committed: VersionControlResponse<'commit'> = await this.dispatch(
+      descriptor,
+      root,
+      'commit',
+      { message },
+    );
+    if (!committed.ok) {
+      return committed.error;
+    }
+    if (!push) {
+      return null;
+    }
+    const pushed: VersionControlResponse<'push'> = await this.dispatch(descriptor, root, 'push', {
+      target: null,
+    });
+    return pushed.ok ? null : pushed.error;
+  }
+
+  /**
    * Gets a contributed plugin by id.
    * @param pluginId The plugin.
    * @returns Returns the descriptor, or undefined when no such plugin is contributed.
@@ -650,7 +710,7 @@ export class VersionControlHost {
       };
     }
     const timeoutMs: number = VCS_NETWORK_OPS.includes(op)
-      ? NETWORK_TIMEOUT_MS
+      ? networkTimeoutFor(params)
       : REQUEST_TIMEOUT_MS;
     if (!VCS_READ_OPS.includes(op)) {
       return plugin.client.request(op, root, params, timeoutMs);
@@ -814,4 +874,24 @@ function refused<Op extends VersionControlOp>(error: string): VersionControlResp
  */
 function untrusted<Op extends VersionControlOp>(error: string): VersionControlResponse<Op> {
   return { id: 0, ok: false, error, code: 'untrusted' };
+}
+
+/**
+ * Works out how long the host waits for a network operation: at least its own allowance, stretched
+ * to outlast the Git Network Timeout the request carries, and without end when that is No limit.
+ * @param params The request's parameters.
+ * @returns Returns the wait in milliseconds.
+ */
+function networkTimeoutFor(params: unknown): number {
+  const requested: unknown =
+    params !== null && typeof params === 'object'
+      ? (params as Record<string, unknown>)['timeoutMs']
+      : undefined;
+  if (typeof requested !== 'number' || !Number.isFinite(requested) || requested < 0) {
+    return NETWORK_TIMEOUT_MS;
+  }
+  if (requested === 0) {
+    return NO_TIMEOUT_MS;
+  }
+  return Math.max(NETWORK_TIMEOUT_MS, requested + NETWORK_TIMEOUT_GRACE_MS);
 }

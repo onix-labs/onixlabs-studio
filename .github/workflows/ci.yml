@@ -17,8 +17,10 @@ permissions:
   contents: read
 
 jobs:
+  # The unit suite is most of the gate's time, so it has a job to itself: a format or lint failure
+  # reports in a couple of minutes instead of waiting behind it.
   checks:
-    name: Format · Lint · Test · Build
+    name: Format · Lint · Build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -42,18 +44,10 @@ jobs:
         run: npm run format:check
 
       - name: Lint
+        env:
+          # Type-aware linting holds the whole program in memory, past Node's default heap.
+          NODE_OPTIONS: --max-old-space-size=6144
         run: npm run lint
-
-      - name: Test (with coverage thresholds)
-        run: npm run test:coverage
-
-      - name: Upload coverage report
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage-report
-          path: coverage/onixlabs-studio
-          retention-days: 14
 
       - name: Build renderer (Angular)
         run: npm run build
@@ -65,6 +59,61 @@ jobs:
       # notice a plugin that does not compile — including a harness somebody's agent runs on.
       - name: Typecheck the plugins
         run: npm run typecheck:plugins
+
+  test:
+    name: Unit tests (with coverage)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+      # The electron package has no install step: the first `require('electron')` downloads the
+      # ~100 MB binary from GitHub, blocking, and throws "Electron failed to install correctly" if the
+      # download fails. Specs import it (as a bare path string — nothing here launches Electron), so
+      # every run fetched it mid-suite and a releases outage failed whichever specs got there first.
+      # With an override the package names a path and fetches nothing.
+      ELECTRON_OVERRIDE_DIST_PATH: /opt/no-electron-binary
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node (version from .nvmrc)
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Every core of the runner: vitest.config.mjs lifts its workstation cap under GITHUB_ACTIONS.
+      - name: Test (with coverage thresholds)
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: coverage/onixlabs-studio
+          retention-days: 14
+
+  # The check the main/release ruleset requires, by this name (.github/rulesets): it stands for the
+  # two jobs above, so splitting them did not need the ruleset changing. `always()` makes it report a
+  # failure rather than be skipped — a skipped required check would leave the PR waiting for ever.
+  gate:
+    name: Format · Lint · Test · Build
+    needs: [checks, test]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Both halves passed
+        env:
+          CHECKS: ${{ needs.checks.result }}
+          TEST: ${{ needs.test.result }}
+        run: |
+          echo "Format · Lint · Build: $CHECKS · Unit tests: $TEST"
+          test "$CHECKS" = success && test "$TEST" = success
 
   e2e:
     name: E2E (Playwright + Electron)
@@ -85,6 +134,18 @@ jobs:
       # at startup), so no explicit rebuild step is needed.
       - name: Install dependencies
         run: npm ci
+
+      # The electron package downloads its binary on first use rather than at install, and here that
+      # was the first test's `electron.launch`: a GitHub releases outage read as agent.e2e.ts failing.
+      # Fetch it as a step of its own, retried because it is the one download from outside the runner.
+      - name: Install the Electron binary
+        run: |
+          for attempt in 1 2 3; do
+            npx install-electron && exit 0
+            echo "::warning::The Electron download failed (attempt $attempt of 3)"
+            sleep $((attempt * 20))
+          done
+          exit 1
 
       - name: Build renderer (Angular)
         run: npm run build

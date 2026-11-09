@@ -33,49 +33,91 @@
       />
     </div>
 
-    @if (issues().length > 0) {
-      <ul class="rv-list">
-        @for (issue of issues(); track issue.id) {
-          <li class="rv-card">
-            <button type="button" class="rv-card-head" (click)="onReveal(issue)">
-              <span class="rv-dot" [class]="'kind-' + issue.kind" aria-hidden="true"></span>
-              <span class="rv-kind" [class]="'kind-' + issue.kind">{{
-                kindLabel(issue.kind)
-              }}</span>
-              <span class="rv-rule">{{ issue.ruleName }}</span>
-            </button>
+    @if (current(); as issue) {
+      <div class="rv-heading">
+        <span class="rv-dot" [class]="'kind-' + issue.kind" aria-hidden="true"></span>
+        <span class="rv-rule">{{ issue.ruleName }}</span>
+        <span class="rv-position" data-testid="review-position"
+          >{{ position() }} of {{ issues().length }}</span
+        >
+        <app-button
+          variant="none"
+          size="small"
+          [icon]="Icon.CARET_LEFT"
+          ariaLabel="Previous issue"
+          [disabled]="position() <= 1"
+          (click)="onPrevious()"
+        />
+        <app-button
+          variant="none"
+          size="small"
+          [icon]="Icon.CARET_RIGHT"
+          ariaLabel="Next issue"
+          [disabled]="position() >= issues().length"
+          (click)="onNext()"
+        />
+      </div>
 
-            <p class="rv-context">
-              <span>{{ issue.before }}</span>
-              <span class="rv-flag" [class]="'kind-' + issue.kind">{{ issue.word }}</span>
-              <span>{{ issue.after }}</span>
-            </p>
-
-            <div class="rv-actions">
-              @for (suggestion of issue.suggestions; track suggestion; let first = $first) {
-                <app-button
-                  [variant]="first ? 'solid' : 'outline'"
-                  size="small"
-                  [icon]="first ? Icon.CHECK : undefined"
-                  [label]="suggestion"
-                  (click)="onApply(issue, suggestion)"
-                />
-              }
-              @if (canAddToDictionary(issue)) {
-                <app-button
-                  size="small"
-                  [icon]="Icon.DICTIONARY"
-                  label="Dictionary"
-                  (click)="onDictionary(issue)"
-                />
-              }
-              <app-button variant="none" size="small" label="Ignore" (click)="onIgnore(issue)" />
-            </div>
-          </li>
-        }
-      </ul>
+      <button
+        type="button"
+        class="rv-context"
+        data-testid="review-context"
+        (click)="onReveal(issue)"
+      >
+        <span>{{ issue.before }}</span>
+        <span class="rv-flag" [class]="'kind-' + issue.kind">{{ issue.word }}</span>
+        <span>{{ issue.after }}</span>
+      </button>
     } @else {
       <p class="rv-empty">No issues found.</p>
+    }
+
+    <div class="rv-actions">
+      @if (current(); as issue) {
+        <app-button
+          [variant]="suggestionRows().length > 0 ? 'ghost' : 'solid'"
+          size="small"
+          label="Ignore Once"
+          (click)="onIgnoreOnce(issue)"
+        />
+        <app-button variant="ghost" size="small" label="Ignore All" (click)="onIgnoreAll(issue)" />
+        @if (canAddToDictionary(issue)) {
+          <app-button variant="ghost" size="small" label="Add" (click)="onDictionary(issue)" />
+        }
+      }
+      <app-button
+        class="rv-undo"
+        variant="ghost"
+        size="small"
+        label="Undo"
+        [disabled]="!canUndo()"
+        (click)="onUndo()"
+      />
+    </div>
+
+    @if (current(); as issue) {
+      @if (suggestionRows().length > 0) {
+        <span class="rv-label" id="rv-suggestions-label">Suggestions</span>
+        <app-list-view
+          class="rv-suggestions"
+          role="group"
+          aria-labelledby="rv-suggestions-label"
+          [rows]="suggestionRows()"
+          [selectedId]="selectedSuggestion()"
+          (rowClick)="onSuggestion($event)"
+        >
+          <ng-template let-row>{{ row.id }}</ng-template>
+        </app-list-view>
+        <div class="rv-actions">
+          <app-button variant="solid" size="small" label="Change" (click)="onChange(issue)" />
+          <app-button
+            variant="ghost"
+            size="small"
+            label="Change All"
+            (click)="onChangeAll(issue)"
+          />
+        </div>
+      }
     }
   } @else if (hasSession() && !ready()) {
     <p class="rv-empty">Checking the document…</p>

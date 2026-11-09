@@ -144,3 +144,52 @@ select:focus-visible {
   opacity: 1;
   pointer-events: auto;
 }
+
+// Scroll Bars set to Always Show (Settings › Application › Accessibility): the native bars come back,
+// drawn slim to match the overlay ones, and the overlay layer stands down. Styling the WebKit bars is
+// what keeps them on screen on macOS, whose own bars hide at rest; `:where` keeps the rule at no
+// specificity, so an area that hides its bar outright (a tab strip) still does.
+:where(:root[data-scrollbars='always']) * {
+  scrollbar-width: auto;
+}
+
+:root[data-scrollbars='always'] {
+  ::-webkit-scrollbar {
+    display: block;
+    width: 0.625rem;
+    height: 0.625rem;
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border: 0.1875rem solid transparent;
+    border-radius: 1rem;
+    background: var(--scrollbar-thumb-color);
+    background-clip: padding-box;
+
+    &:hover {
+      background: var(--scrollbar-thumb-hover-color);
+      background-clip: padding-box;
+    }
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  .app-scrollbars {
+    display: none;
+  }
+}
+
+// Reduce Motion (Settings › Application › Accessibility): animations and transitions finish at once.
+// They still run, for a hundredth of a millisecond, so anything waiting on their end events still
+// hears them.
+:root[data-reduced-motion='true'] *,
+:root[data-reduced-motion='true'] *::before,
+:root[data-reduced-motion='true'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}

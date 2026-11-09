@@ -1,3 +1,6 @@
+import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
+import { RememberedState } from '@shared/angular/services/remembered-state/remembered-state';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
@@ -16,6 +19,7 @@ import {
 } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { TabList, TabListTab } from '@shared/angular/components/forms/tab-list/tab-list';
 import { EditorSearch } from '@shared/angular/components/search-view/editor-search';
 import { EditorSearchPanel } from '@shared/angular/components/search-view/editor-search-panel';
 import type { FindRequest } from '@shared/angular/components/find-panel/find-request';
@@ -54,6 +58,7 @@ import { ApiRequestOpener } from '../../api-request-opener/api-request-opener';
 import { ApiWorkspace } from '../../api-workspace/api-workspace';
 import { diagnosticsForBody } from './api-body-diagnostics';
 import { languageForBodyKind, languageForContentType } from './api-body-language';
+import { indentJson } from './indent-json';
 
 /**
  * The editor sections of a request, in the order the tab strip offers them.
@@ -129,6 +134,7 @@ let panelSequence: number = 0;
   selector: 'app-api-request-panel',
   imports: [
     Button,
+    TabList,
     CodeField,
     DecimalPipe,
     Dropdown,
@@ -140,6 +146,7 @@ let panelSequence: number = 0;
     PanelToolbar,
     PasswordField,
     PropertyGrid,
+    SettingRow,
     Textarea,
     TextField,
   ],
@@ -175,6 +182,16 @@ export class ApiRequestPanel implements FindHost {
    */
   private readonly elementRef: ElementRef<HTMLElement> =
     inject<ElementRef<HTMLElement>>(ElementRef);
+
+  /**
+   * Holds the settings behind the panel's defaults.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the choices the panel remembers from one request to the next.
+   */
+  private readonly remembered: RememberedState = inject(RememberedState);
 
   /**
    * Holds the panel's height in pixels as last observed, or null before it has one — while it is
@@ -234,18 +251,52 @@ export class ApiRequestPanel implements FindHost {
   /**
    * Holds the sections offered by the tab strip.
    */
-  protected readonly sections: readonly { readonly id: RequestSection; readonly label: string }[] =
-    SECTIONS;
+  protected readonly sectionTabs: readonly TabListTab[] = SECTIONS.map(
+    (item: { readonly id: RequestSection; readonly label: string }): TabListTab => ({
+      value: item.id,
+      label: item.label,
+    }),
+  );
 
   /**
    * Holds the section currently shown.
    */
-  protected readonly section: WritableSignal<RequestSection> = signal<RequestSection>('params');
+  protected readonly section: WritableSignal<RequestSection> =
+    this.remembered.acrossLaunches<RequestSection>('apiExplorer.requestSection', 'params');
 
   /**
    * Holds whether the response is shown as headers rather than as its body.
    */
-  protected readonly showResponseHeaders: WritableSignal<boolean> = signal<boolean>(false);
+  protected readonly showResponseHeaders: WritableSignal<boolean> =
+    this.remembered.acrossLaunches<boolean>('apiExplorer.showResponseHeaders', false);
+
+  /**
+   * Gets the choices for this request's own timeout.
+   */
+  protected readonly timeoutOptions: readonly DropdownOption[] = [
+    { value: '', label: 'As Settings Say' },
+    { value: '10', label: '10 Seconds' },
+    { value: '30', label: '30 Seconds' },
+    { value: '60', label: '1 Minute' },
+    { value: '300', label: '5 Minutes' },
+    { value: '0', label: 'No Limit' },
+  ];
+
+  /**
+   * Gets the choices for this request's own redirects.
+   */
+  protected readonly redirectOptions: readonly DropdownOption[] = [
+    { value: '', label: 'As Settings Say' },
+    { value: 'follow', label: 'Follow' },
+    { value: 'report', label: 'Do Not Follow' },
+  ];
+
+  /**
+   * Gets whether a long line of the response wraps.
+   */
+  protected readonly wrapResponse: Signal<boolean> = this.settings.value(
+    'apiExplorer.wrapResponseBody',
+  );
 
   /**
    * Gets the method options offered by the method picker.
@@ -569,14 +620,31 @@ export class ApiRequestPanel implements FindHost {
    */
   protected prettyBody(response: HttpResponse): string {
     const type: string = response.headers['content-type'] ?? '';
-    if (!type.includes('json')) {
+    if (!type.includes('json') || !this.settings.get('apiExplorer.prettyPrintJson')) {
       return response.body;
     }
     try {
-      return JSON.stringify(JSON.parse(response.body), null, 2);
+      JSON.parse(response.body);
     } catch {
       return response.body;
     }
+    return indentJson(response.body);
+  }
+
+  /**
+   * Sets this request's own timeout.
+   * @param value The choice: seconds, or the empty string for the setting's.
+   */
+  protected setTimeoutChoice(value: string): void {
+    this.update({ timeoutSeconds: value === '' ? undefined : Number(value) });
+  }
+
+  /**
+   * Sets whether this request follows redirects.
+   * @param value The choice, or the empty string for the setting's.
+   */
+  protected setRedirectChoice(value: string): void {
+    this.update({ followRedirects: value === '' ? undefined : value === 'follow' });
   }
 
   /**
