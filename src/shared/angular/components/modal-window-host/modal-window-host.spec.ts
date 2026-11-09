@@ -33,12 +33,21 @@ describe('ModalWindowHost', () => {
   });
 
   /**
-   * States the content wrapper's measurements, standing in for a layout jsdom does not perform.
+   * States the content wrapper's measurements and the panel's padding, standing in for a layout jsdom
+   * does not perform. The padding is stated rather than left to the stylesheet, which jsdom resolves
+   * differently from one version to the next.
    * @param scrollHeight The integer `scrollHeight` the engine would report.
    * @param rectHeight The fractional height the bounding rect would report.
+   * @param paddingStart The panel's leading block padding, in pixels.
+   * @param paddingEnd The panel's trailing block padding, in pixels.
    * @returns Returns the measured height the window would be fitted to.
    */
-  function measureWith(scrollHeight: number, rectHeight: number): number {
+  function measureWith(
+    scrollHeight: number,
+    rectHeight: number,
+    paddingStart: number = 0,
+    paddingEnd: number = 0,
+  ): number {
     const fixture: ComponentFixture<ModalWindowHost> = TestBed.createComponent(ModalWindowHost);
     fixture.detectChanges();
     const content: HTMLElement = (fixture.nativeElement as HTMLElement).querySelector(
@@ -46,6 +55,9 @@ describe('ModalWindowHost', () => {
     )!;
     Object.defineProperty(content, 'scrollHeight', { value: scrollHeight, configurable: true });
     content.getBoundingClientRect = (): DOMRect => ({ height: rectHeight }) as DOMRect;
+    const panel: HTMLElement = content.parentElement!;
+    panel.style.paddingBlockStart = `${paddingStart}px`;
+    panel.style.paddingBlockEnd = `${paddingEnd}px`;
     return fixture.componentInstance.measure();
   }
 
@@ -65,6 +77,12 @@ describe('ModalWindowHost', () => {
     // They answer different questions: the rect is this box, `scrollHeight` also covers a child that
     // overflows it. Whichever is larger is the one that has to fit.
     expect(measureWith(420, 300.4)).toBe(420);
+  });
+
+  it('measure_addsThePanelsBlockPadding', () => {
+    // The leading padding clears the window controls inset over the content; leaving it out fits the
+    // window short by exactly that much.
+    expect(measureWith(300, 300.4, 28, 16)).toBe(345);
   });
 
   it('measure_withNothingLaidOut_reportsNothing', () => {
