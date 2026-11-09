@@ -8,7 +8,7 @@
   "provision": {
     "kind": "npm",
     "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.pypi.lock.json",
-    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sha256": "f12516d725be0e4ec33b824e90d7335ab216c113174d3f19972e894ec3c34c86",
     "executablePath": "node_modules/@onixlabs/pypi/main.js"
   },
   "contributes": {

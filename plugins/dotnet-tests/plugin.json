@@ -8,7 +8,7 @@
   "provision": {
     "kind": "npm",
     "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.dotnet-tests.lock.json",
-    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sha256": "9e3d00f2c143501b007db442435c60e61c1be7b3651df108a19f6381b9ad59cd",
     "executablePath": "node_modules/@onixlabs/dotnet-tests/main.js"
   },
   "contributes": {

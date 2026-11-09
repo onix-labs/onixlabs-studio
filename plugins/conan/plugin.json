@@ -8,7 +8,7 @@
   "provision": {
     "kind": "npm",
     "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.conan.lock.json",
-    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sha256": "04176d9bbc35776d13f664283bd462c23074322dffc279797ecc28264b35d032",
     "executablePath": "node_modules/@onixlabs/conan/main.js"
   },
   "contributes": {

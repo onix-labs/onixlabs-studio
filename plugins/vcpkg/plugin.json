@@ -8,7 +8,7 @@
   "provision": {
     "kind": "npm",
     "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.vcpkg.lock.json",
-    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sha256": "44ac6691af4d061c9daa669309e5f9364b89e92e7ea843b4f986abd7182729ff",
     "executablePath": "node_modules/@onixlabs/vcpkg/main.js"
   },
   "contributes": {

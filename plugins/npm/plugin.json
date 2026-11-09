@@ -8,7 +8,7 @@
   "provision": {
     "kind": "npm",
     "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.npm.lock.json",
-    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sha256": "f9756c94868ecf638644a15e21e6eff5f292177c099d47988c5117b9a365ccdf",
     "executablePath": "node_modules/@onixlabs/npm/main.js"
   },
   "contributes": {
