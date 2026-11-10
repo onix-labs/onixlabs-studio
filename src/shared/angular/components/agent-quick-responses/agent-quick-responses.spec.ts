@@ -64,13 +64,47 @@ function rows(): readonly string[] {
 }
 
 /**
- * Finds the first row's second button, the one that does the other thing (#1420).
- * @returns Returns the button, or null.
+ * Opens the first row's own menu (#1420): Edit, the other of the two things picking does, and Delete.
+ * @param harness The mounted menu.
  */
-function alternateButton(): HTMLButtonElement | null {
-  return document.querySelector<HTMLButtonElement>(
-    '.quick-responses__item button:not(.quick-responses__select):not([aria-label^="Delete"])',
+function openRowMenu(harness: Harness): void {
+  document
+    .querySelector<HTMLButtonElement>('.quick-responses__item button[aria-label^="More actions"]')
+    ?.click();
+  TestBed.tick();
+  harness.fixture.detectChanges();
+}
+
+/**
+ * Finds an item of the open row menu by its label.
+ * @param label The item's label.
+ * @returns Returns the item, or null.
+ */
+function rowMenuItem(label: string): HTMLButtonElement | null {
+  return (
+    Array.from(document.querySelectorAll<HTMLButtonElement>('.app-menu-panel__item')).find(
+      (item: HTMLButtonElement): boolean =>
+        item.querySelector('.app-menu-panel__item-label')?.textContent?.trim() === label,
+    ) ?? null
   );
+}
+
+/**
+ * Reads the labels of the open row menu's items.
+ * @returns Returns the labels, in order.
+ */
+function rowMenuLabels(): readonly string[] {
+  return Array.from(document.querySelectorAll('.app-menu-panel__item-label')).map(
+    (label: Element): string => label.textContent?.trim() ?? '',
+  );
+}
+
+/**
+ * Finds the edit field a row turns into.
+ * @returns Returns its input, or null when no row is being edited.
+ */
+function editField(): HTMLInputElement | null {
+  return document.querySelector<HTMLInputElement>('.quick-responses__edit input');
 }
 
 describe('AgentQuickResponses', () => {
@@ -120,30 +154,120 @@ describe('AgentQuickResponses', () => {
   );
 
   it.each([
-    // The second button does the other thing; with a draft it is the explicit Add and Send.
+    // The row menu's other action; with a draft it is the explicit Add and Send.
     ['send', false, 'Insert for Editing', 'insert'],
     ['insert', false, 'Send Now', 'send'],
     ['send', true, 'Add and Send', 'send'],
     ['insert', true, 'Add and Send', 'send'],
   ] as const)(
-    'theSecondButton_withSetting %s_andDraft %s_is %s',
+    'rowMenu_withSetting %s_andDraft %s_offers %s',
     (setting: QuickResponseMode, hasDraft: boolean, label: string, mode: QuickResponseMode) => {
       const harness: Harness = open(['Okay'], setting, hasDraft);
 
-      expect(alternateButton()?.getAttribute('aria-label')).toBe(`${label}: Okay`);
-      alternateButton()?.click();
+      openRowMenu(harness);
+      expect(rowMenuLabels()).toEqual(['Edit', label, 'Delete']);
+      rowMenuItem(label)?.click();
+      harness.fixture.detectChanges();
 
       expect(harness.chosen).toEqual([{ text: 'Okay', mode }]);
+      // It acts and closes everything, as picking the row does.
+      expect(document.querySelector('.quick-responses__panel')).toBeNull();
     },
   );
 
-  it('theSecondButton_closesTheMenu_asPickingARowDoes', () => {
+  it('rowMenu_hasNoOtherButtonsOnTheRow', () => {
+    // #1420: the row carries the pick and one More Actions button; the rest is in its menu.
+    open(['Okay']);
+
+    const buttons: readonly string[] = Array.from(
+      document.querySelectorAll('.quick-responses__item button[aria-label]'),
+    ).map((button: Element): string => button.getAttribute('aria-label') ?? '');
+    expect(buttons).toEqual(['More actions: Okay']);
+  });
+
+  it('rowMenu_opensInTheOverlay_andInThePanelsOwnMenuStack', () => {
+    // What keeps it usable from a collapsed dock panel's flyout (#1057): a press in the overlay
+    // container is not a click away from the flyout, and a menu in the panel's own stack is not a
+    // click away from the panel.
     const harness: Harness = open(['Okay']);
 
-    alternateButton()?.click();
+    openRowMenu(harness);
+
+    const panel: Element | null = document.querySelector('.quick-responses__panel');
+    const rowMenu: Element | null = document.querySelector('.app-menu-panel');
+    expect(rowMenu?.closest('.cdk-overlay-container')).not.toBeNull();
+    expect(rowMenu?.getAttribute('data-cdk-menu-stack-id')).toBe(
+      panel?.getAttribute('data-cdk-menu-stack-id'),
+    );
+  });
+
+  it('edit_turnsTheRowIntoAField_andKeepsThePanelOpen', () => {
+    const harness: Harness = open(['Okay', 'Ship it']);
+
+    openRowMenu(harness);
+    rowMenuItem('Edit')?.click();
     harness.fixture.detectChanges();
 
-    expect(document.querySelector('.quick-responses__panel')).toBeNull();
+    expect(document.querySelector('.quick-responses__panel')).not.toBeNull();
+    expect(document.querySelector('.app-menu-panel')).toBeNull();
+    expect(editField()?.value).toBe('Okay');
+    expect(harness.chosen).toEqual([]);
+  });
+
+  it('edit_onEnter_savesInPlace', () => {
+    const harness: Harness = open(['Okay', 'Ship it']);
+    openRowMenu(harness);
+    rowMenuItem('Edit')?.click();
+    harness.fixture.detectChanges();
+    const field: HTMLInputElement = editField()!;
+
+    field.value = 'Okay, go ahead';
+    field.dispatchEvent(new Event('input'));
+    harness.fixture.detectChanges();
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    harness.fixture.detectChanges();
+
+    expect(editField()).toBeNull();
+    expect(rows()).toEqual(['Okay, go ahead', 'Ship it']);
+    expect(document.querySelector('.quick-responses__panel')).not.toBeNull();
+  });
+
+  it('edit_onEscape_leavesTheRowAsItWas_andThePanelOpen', () => {
+    const harness: Harness = open(['Okay']);
+    openRowMenu(harness);
+    rowMenuItem('Edit')?.click();
+    harness.fixture.detectChanges();
+    const field: HTMLInputElement = editField()!;
+
+    field.value = 'Something else';
+    field.dispatchEvent(new Event('input'));
+    harness.fixture.detectChanges();
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    harness.fixture.detectChanges();
+
+    expect(editField()).toBeNull();
+    expect(rows()).toEqual(['Okay']);
+    expect(document.querySelector('.quick-responses__panel')).not.toBeNull();
+  });
+
+  it('edit_toBlankOrADuplicate_keepsTheFieldOpen', () => {
+    const harness: Harness = open(['Okay', 'Ship it']);
+    openRowMenu(harness);
+    rowMenuItem('Edit')?.click();
+    harness.fixture.detectChanges();
+    const field: HTMLInputElement = editField()!;
+
+    field.value = 'Ship it';
+    field.dispatchEvent(new Event('input'));
+    harness.fixture.detectChanges();
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    harness.fixture.detectChanges();
+
+    expect(editField()?.value).toBe('Ship it');
+    expect(harness.library.responses().map((saved: QuickResponse): string => saved.text)).toEqual([
+      'Okay',
+      'Ship it',
+    ]);
   });
 
   it('add_whenTextIsEnteredInTheField_savesItAndClearsTheField', () => {
@@ -189,18 +313,19 @@ describe('AgentQuickResponses', () => {
     expect(document.querySelector('.quick-responses__list .quick-responses__item')).not.toBeNull();
   });
 
-  it('remove_whenTheRowDeleteIsClicked_dropsItFromTheList', () => {
-    const harness: Harness = open(['Okay']);
-    const deleteButton: HTMLButtonElement | null = document.querySelector<HTMLButtonElement>(
-      '.quick-responses__item button[aria-label^="Delete"]',
-    );
+  it('delete_dropsTheRow_andKeepsThePanelOpen', () => {
+    // Several can be cleared in a row, as the old Delete button allowed.
+    const harness: Harness = open(['Okay', 'Ship it']);
 
-    deleteButton?.click();
+    openRowMenu(harness);
+    rowMenuItem('Delete')?.click();
     harness.fixture.detectChanges();
 
-    expect(rows()).not.toContain('Okay');
+    expect(rows()).toEqual(['Ship it']);
     expect(
       harness.library.responses().map((saved: QuickResponse): string => saved.text),
     ).not.toContain('Okay');
+    expect(document.querySelector('.quick-responses__panel')).not.toBeNull();
+    expect(harness.chosen).toEqual([]);
   });
 });

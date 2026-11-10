@@ -2,10 +2,12 @@ import { CdkDrag, CdkDragDrop, CdkDragHandle, CdkDropList } from '@angular/cdk/d
 import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
   inject,
+  Injector,
   input,
   InputSignal,
   output,
@@ -18,6 +20,8 @@ import {
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { MenuKeepOpen } from '@shared/angular/components/menu/menu-keep-open';
+import { MenuPointerGuard } from '@shared/angular/components/menu/menu-pointer-guard';
 import { MENU_POSITIONS } from '@shared/angular/components/menu/menu-position';
 import { Icon } from '@shared/angular/icons/icon';
 import {
@@ -45,7 +49,7 @@ export interface QuickResponseChoice {
 }
 
 /**
- * Describes the second button on every row: the other of the two things picking a row does.
+ * Describes the row menu's other action: the other of the two things picking a row does.
  */
 interface AlternateAction {
   /**
@@ -66,7 +70,8 @@ interface AlternateAction {
 
 /**
  * The composer's quick-response menu: an icon button opening a drop-up of the user's saved one-line
- * replies, with a field at its foot for adding another and a delete control on every row.
+ * replies, with a field at its foot for adding another and, on every row, a small menu of what else
+ * the row can do: Edit, the other of the two things picking does, and Delete (#1420).
  *
  * Picking a response is reported to the host rather than acted on here, because what a saved reply
  * means depends on what is already in the composer — the menu's job is to say which one was chosen.
@@ -87,6 +92,8 @@ interface AlternateAction {
     CdkDrag,
     CdkDragHandle,
     CdkDropList,
+    MenuKeepOpen,
+    MenuPointerGuard,
   ],
   templateUrl: './agent-quick-responses.html',
   styleUrl: './agent-quick-responses.scss',
@@ -137,9 +144,33 @@ export class AgentQuickResponses {
     inject(Settings).value('ai.quickResponseMode');
 
   /**
-   * Holds the button that opens the menu, so the second button on a row can close it as picking does.
+   * Gets where a row's own menu opens: under its button, their trailing edges aligned, or above it
+   * where the window has no room below.
    */
-  private readonly trigger: Signal<CdkMenuTrigger> = viewChild.required(CdkMenuTrigger);
+  protected readonly rowMenuPosition: readonly ConnectedPosition[] = [
+    ...MENU_POSITIONS['down-end'],
+    ...MENU_POSITIONS['up-end'],
+  ];
+
+  /**
+   * Holds the response being edited in place, or null when none is.
+   */
+  protected readonly editingId: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds the text in the edit field.
+   */
+  protected readonly editDraft: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds the edit field, when a row is being edited, so it can take focus as it opens.
+   */
+  private readonly editField: Signal<TextField | undefined> = viewChild<TextField>('editField');
+
+  /**
+   * Holds the injector the edit field is focused after rendering through.
+   */
+  private readonly injector: Injector = inject(Injector);
 
   /**
    * Gets what picking a row does: added to a draft when there is one, otherwise the user's setting.
@@ -157,7 +188,7 @@ export class AgentQuickResponses {
       return { label: 'Add and Send', icon: Icon.SEND, mode: 'send' };
     }
     return this.setting() === 'send'
-      ? { label: 'Insert for Editing', icon: Icon.PENCIL, mode: 'insert' }
+      ? { label: 'Insert for Editing', icon: Icon.CURSOR_TEXT, mode: 'insert' }
       : { label: 'Send Now', icon: Icon.SEND, mode: 'send' };
   });
 
@@ -170,12 +201,45 @@ export class AgentQuickResponses {
   }
 
   /**
-   * Reports a row's second button to the host and closes the menu, as picking the row does.
+   * Reports the row menu's other action to the host. The menu item closes every menu as it fires, as
+   * picking the row does.
    * @param response The response.
    */
   protected chooseAlternate(response: QuickResponse): void {
     this.chosen.emit({ text: response.text, mode: this.alternate().mode });
-    this.trigger().close();
+  }
+
+  /**
+   * Turns a row into an edit field holding its text, closing only the row's own menu: the panel stays
+   * open, as it does for Delete, so the edit happens where the row was.
+   * @param response The response to edit.
+   * @param rowTrigger The trigger of the row's menu, closed as the edit starts.
+   */
+  protected startEdit(response: QuickResponse, rowTrigger: CdkMenuTrigger): void {
+    rowTrigger.close();
+    this.editDraft.set(response.text);
+    this.editingId.set(response.id);
+    afterNextRender((): void => this.editField()?.focus(), { injector: this.injector });
+  }
+
+  /**
+   * Saves the edit and returns the row to a pick. An edit the library refuses — blank, or the same as
+   * another saved response — keeps the field open with its text, so it can be corrected rather than
+   * retyped, as the add field does.
+   * @param response The response being edited.
+   */
+  protected saveEdit(response: QuickResponse): void {
+    if (this.library.update(response.id, this.editDraft())) {
+      this.cancelEdit();
+    }
+  }
+
+  /**
+   * Leaves the edit without saving it.
+   */
+  protected cancelEdit(): void {
+    this.editingId.set(null);
+    this.editDraft.set('');
   }
 
   /**
