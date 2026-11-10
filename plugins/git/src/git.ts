@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import {
   VERSION_CONTROL_CAPABILITIES,
   VERSION_CONTROL_PROTOCOL_VERSION,
+  VcsConflictResolution,
   VcsErrorCode,
   VcsFileVersion,
   VcsIdentity,
@@ -196,6 +197,35 @@ export function confinedPaths(root: string, paths: unknown): string[] | null {
   }
   return confined;
 }
+
+/**
+ * Names git's own word for one side of a conflict, for a resolution that takes a side (#1321).
+ *
+ * The user's side is their own work, and git's word for it depends on what is in flight. In a merge, a
+ * cherry-pick or a revert, `--ours` is the branch checked out — the user's. A rebase swaps them: it
+ * checks out the branch being replayed *onto* and applies the user's commits to it, so there `--ours`
+ * is the other side and the user's work is `--theirs`.
+ * @param resolution The side the user chose.
+ * @param kind The operation in flight.
+ * @returns Returns git's checkout flag for that side.
+ */
+export function gitSideFor(
+  resolution: 'yours' | 'theirs',
+  kind: VcsOperationState['kind'],
+): '--ours' | '--theirs' {
+  const swapped: boolean = kind === 'rebase';
+  return (resolution === 'yours') !== swapped ? '--ours' : '--theirs';
+}
+
+/**
+ * Lists how a conflicted file can be settled whole.
+ */
+const CONFLICT_RESOLUTIONS: readonly VcsConflictResolution[] = [
+  'yours',
+  'theirs',
+  'keepFile',
+  'deleteFile',
+];
 
 /**
  * Matches an extension an ignore rule may name: one segment, no dot, nothing a pattern would read as a
@@ -447,6 +477,8 @@ export class GitVersionControl {
         return this.ignore(root, params['rules']);
       case 'stopTracking':
         return this.stopTracking(root, params['paths']);
+      case 'resolveConflict':
+        return this.resolveConflict(root, params['path'], params['resolution']);
       case 'stage':
         return this.pathCommand(root, params['paths'], ['add', '-A'], ['add', '--']);
       case 'unstage':
@@ -834,6 +866,49 @@ export class GitVersionControl {
       return Promise.resolve(fail('Invalid path'));
     }
     return this.mutate(root, ['rm', '--cached', '-r', '--quiet', '--', ...confined]);
+  }
+
+  /**
+   * Settles one conflicted file whole and marks it resolved (#1321): takes the user's side or the other
+   * side's content, or — for a file one side deleted — keeps it as it stands or deletes it. Taking a
+   * side reads the operation in flight first, because a rebase swaps which side is the user's.
+   * @param root The repository root.
+   * @param candidate The repository-relative path.
+   * @param resolution How to settle it.
+   * @returns Returns the outcome.
+   */
+  private async resolveConflict(
+    root: string,
+    candidate: unknown,
+    resolution: unknown,
+  ): Promise<Outcome> {
+    const confined: string[] | null = confinedPaths(root, [candidate]);
+    if (
+      confined?.length !== 1 ||
+      path.resolve(root, confined[0]) === root ||
+      !(CONFLICT_RESOLUTIONS as readonly unknown[]).includes(resolution)
+    ) {
+      return fail('Invalid path or resolution');
+    }
+    const [file] = confined;
+    switch (resolution as VcsConflictResolution) {
+      case 'keepFile':
+        return this.mutate(root, ['add', '--', file]);
+      case 'deleteFile':
+        return this.mutate(root, ['rm', '--quiet', '--', file]);
+      default: {
+        const state: VcsOperationState = await this.operationState(root);
+        const side: '--ours' | '--theirs' = gitSideFor(
+          resolution as 'yours' | 'theirs',
+          state.kind,
+        );
+        const taken: GitRun = await this.git(root, ['checkout', side, '--', file]);
+        if (!taken.success) {
+          return fail(taken.error ?? 'git checkout failed');
+        }
+        return this.mutate(root, ['add', '--', file]);
+      }
+    }
   }
 
   /**

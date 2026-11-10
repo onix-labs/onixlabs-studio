@@ -75,8 +75,35 @@ class FakeWorkspaceGit {
     return this.record(`undo-add ${path}`);
   }
 
-  public markResolved(path: string): Promise<MutationResult> {
-    return this.record(`resolve ${path}`);
+  public markResolved(path: string, anyway?: boolean): Promise<MutationResult> {
+    return this.record(`resolve ${path}${anyway === true ? ' anyway' : ''}`);
+  }
+
+  public readonly refused: Set<string> = new Set<string>();
+  public readonly deleted: Set<string> = new Set<string>();
+  public settles: boolean = true;
+
+  public hasConflictsLeft(path: string): boolean {
+    return this.refused.has(path);
+  }
+
+  public canResolveConflict(path: string): boolean {
+    return this.settles && this.isConflicted(path);
+  }
+
+  public conflictKindOf(path: string): 'content' | 'deleted' | null {
+    if (!this.isConflicted(path)) {
+      return null;
+    }
+    return this.deleted.has(path) ? 'deleted' : 'content';
+  }
+
+  public conflictSides(): { yours: string | null; theirs: string | null } {
+    return { yours: 'main', theirs: 'topic' };
+  }
+
+  public resolveConflict(path: string, resolution: string): Promise<MutationResult> {
+    return this.record(`settle ${path} ${resolution}`);
   }
 
   public revert(files: readonly string[]): Promise<MutationResult> {
@@ -202,8 +229,51 @@ describe('ExplorerVcsMenu', () => {
     expect(labels(target('/ws/new.ts'))).toEqual(['Add to Version Control', 'Ignore']);
     expect(labels(target('/ws/added.ts'))).toEqual(['Undo Add']);
     expect(labels(target('/ws/edited.ts'))).toEqual(['Show Differences', 'Revert Changes']);
-    expect(labels(target('/ws/both.ts'))).toEqual(['Mark Resolved', 'Open in Repository']);
+    expect(labels(target('/ws/both.ts'))).toEqual([
+      'Mark Resolved',
+      'Keep main (Yours)',
+      'Keep topic (Theirs)',
+      'Open in Repository',
+    ]);
     expect(labels(target('/ws/same.ts'))).toEqual([]);
+  });
+
+  it('itemsFor_aConflictedFile_offersAnywayOnceRefused_andKeepOrDeleteForADeletedOne', () => {
+    // #1321.
+    git.states.set('/ws/both.ts', 'conflicted');
+    git.states.set('/ws/gone.ts', 'conflicted');
+    git.deleted.add('/ws/gone.ts');
+    git.refused.add('/ws/both.ts');
+
+    expect(labels(target('/ws/both.ts'))).toContain('Mark Resolved Anyway');
+    expect(labels(target('/ws/gone.ts'))).toEqual([
+      'Mark Resolved',
+      'Keep File',
+      'Delete File',
+      'Open in Repository',
+    ]);
+
+    git.settles = false;
+    expect(labels(target('/ws/both.ts'))).toEqual([
+      'Mark Resolved',
+      'Mark Resolved Anyway',
+      'Open in Repository',
+    ]);
+  });
+
+  it('run_aConflictCommand_reachesWorkspaceGit', async () => {
+    git.states.set('/ws/both.ts', 'conflicted');
+
+    menu.run('mark-resolved-anyway', [target('/ws/both.ts')]);
+    menu.run('keep-yours', [target('/ws/both.ts')]);
+    menu.run('delete-file', [target('/ws/both.ts')]);
+    await settle();
+
+    expect(git.calls).toEqual([
+      'resolve /ws/both.ts anyway',
+      'settle /ws/both.ts yours',
+      'settle /ws/both.ts deleteFile',
+    ]);
   });
 
   it('itemsFor_ignore_onAFileWithAnExtension_offersTheFileOrEveryFileLikeIt', () => {

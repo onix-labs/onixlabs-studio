@@ -79,11 +79,18 @@ class StubGenerator {
  */
 class StubRepository {
   /**
-   * Answers every capability as supported, as the real repository does while it is not yet known.
-   * @returns Returns true.
+   * Holds the capabilities a test withholds; every other one is supported.
    */
-  public supports(): boolean {
-    return true;
+  public readonly withheld: Set<string> = new Set<string>();
+
+  /**
+   * Answers every capability as supported, as the real repository does while it is not yet known,
+   * except those a test withholds.
+   * @param capability The capability.
+   * @returns Returns true unless it is withheld.
+   */
+  public supports(capability: string): boolean {
+    return !this.withheld.has(capability);
   }
 
   public readonly selectedCommit: WritableSignal<GitCommit | null> = signal<GitCommit | null>(null);
@@ -135,6 +142,44 @@ class StubRepository {
   public readonly canContinueOperation: Signal<boolean> = computed(
     (): boolean => this.operation().kind !== null && this.conflicted().length === 0,
   );
+
+  /**
+   * Mirrors the branch checked out, which names the user's side of a merge.
+   */
+  public readonly currentBranch: WritableSignal<{ name: string } | undefined> = signal<
+    { name: string } | undefined
+  >({ name: 'main' });
+
+  /**
+   * Mirrors how far through resolving the user is (#1321).
+   */
+  public readonly conflictProgress: WritableSignal<{ resolved: number; total: number }> = signal<{
+    resolved: number;
+    total: number;
+  }>({ resolved: 0, total: 0 });
+
+  /**
+   * Mirrors the two sides' names (#1321).
+   */
+  public readonly conflictSides: WritableSignal<{ yours: string | null; theirs: string | null }> =
+    signal<{ yours: string | null; theirs: string | null }>({ yours: 'main', theirs: 'topic' });
+
+  /**
+   * Mirrors the conflicts each refused file still holds (#1321).
+   */
+  public readonly conflictsLeft: WritableSignal<ReadonlyMap<string, number>> = signal<
+    ReadonlyMap<string, number>
+  >(new Map<string, number>());
+
+  public markResolved(file: GitFileChange, anyway: boolean = false): Promise<MutationResult> {
+    this.calls.push(`markResolved:${file.path}${anyway ? ':anyway' : ''}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public resolveConflict(file: GitFileChange, resolution: string): Promise<MutationResult> {
+    this.calls.push(`resolveConflict:${file.path}:${resolution}`);
+    return Promise.resolve({ success: true });
+  }
 
   public continueOperation(): Promise<MutationResult> {
     this.calls.push('continueOperation');
@@ -323,9 +368,83 @@ describe('CommitDetail', () => {
       ]);
 
       const banner: HTMLElement = host.querySelector('.detail__operation')!;
-      expect(banner.textContent).toContain('Rebasing “main”');
-      expect(banner.textContent).toContain('2 of 5');
+      // #1321: what is replayed onto what, by name, and which commit of how many.
+      expect(banner.textContent).toContain('Rebasing topic onto main — commit 2 of 5');
       expect(banner.textContent).toContain('1 file could not be merged automatically');
+      // The shared warning alert, not a hand-built box.
+      expect(banner.querySelector('app-alert.alert--warning')).not.toBeNull();
+    });
+
+    it('banner_namesWhatIsMergedIntoWhat_andCountsTheFilesResolved', () => {
+      repository.conflictProgress.set({ resolved: 2, total: 5 });
+      midOperation({ kind: 'merge', target: 'topic' }, ['both.ts']);
+
+      const banner: HTMLElement = host.querySelector('.detail__operation')!;
+      expect(banner.textContent).toContain('Merging topic into main');
+      expect(banner.textContent).toContain('2 of 5 files resolved');
+    });
+
+    it('aRefusedRow_saysHowManyConflictsAreLeft', () => {
+      repository.conflictsLeft.set(new Map<string, number>([['both.ts', 3]]));
+      midOperation({ kind: 'merge', target: 'topic' }, ['both.ts']);
+
+      expect(host.querySelector('.detail__conflicts-left')?.textContent?.trim()).toBe(
+        '3 conflicts left',
+      );
+    });
+
+    it('aConflictedRowsMenu_keepsASideByName_andOffersAnywayOnlyOnceRefused', () => {
+      midOperation({ kind: 'merge', target: 'topic' }, ['both.ts']);
+      const menuOf: (path: string) => string[] = (path: string): string[] =>
+        (
+          fixture.componentInstance as unknown as {
+            conflictMenu: (row: unknown) => readonly { label: string }[];
+          }
+        )
+          .conflictMenu({
+            id: path,
+            data: { kind: 'file', file: makeFile(path, 'conflicted') },
+          })
+          .map((item: { label: string }): string => item.label);
+
+      expect(menuOf('both.ts')).toEqual([
+        'Mark Resolved',
+        'Keep main (Yours)',
+        'Keep topic (Theirs)',
+      ]);
+
+      repository.conflictsLeft.set(new Map<string, number>([['both.ts', 1]]));
+      expect(menuOf('both.ts')).toContain('Mark Resolved Anyway');
+
+      repository.withheld.add('resolveConflicts');
+      expect(menuOf('both.ts')).toEqual(['Mark Resolved', 'Mark Resolved Anyway']);
+    });
+
+    it('aConflictedRowsMenu_runsWhatWasChosen', () => {
+      midOperation({ kind: 'merge', target: 'topic' }, ['both.ts']);
+      const choose: (itemId: string) => void = (itemId: string): void =>
+        (
+          fixture.componentInstance as unknown as {
+            onConflictMenu: (selection: unknown) => void;
+          }
+        ).onConflictMenu({
+          itemId,
+          row: { id: 'both.ts', data: { kind: 'file', file: makeFile('both.ts', 'conflicted') } },
+        });
+
+      choose('conflict.markResolvedAnyway');
+      choose('conflict.keepYours');
+      choose('conflict.keepTheirs');
+      choose('conflict.deleteFile');
+
+      expect(repository.calls).toEqual(
+        expect.arrayContaining([
+          'markResolved:both.ts:anyway',
+          'resolveConflict:both.ts:yours',
+          'resolveConflict:both.ts:theirs',
+          'resolveConflict:both.ts:deleteFile',
+        ]),
+      );
     });
 
     it('banner_isShownEvenWhenACommitIsSelected', () => {
@@ -399,8 +518,8 @@ describe('CommitDetail', () => {
 
       namedButton(host, 'Mark resolved').click();
 
-      // Staging a conflicted path is what tells git it is settled.
-      expect(repository.calls).toContain('stage:both.ts');
+      // Marking it resolved (which checks it for markers, then stages it) is what tells git it is settled.
+      expect(repository.calls).toContain('markResolved:both.ts');
     });
 
     it('theTreeHasNoConflictedGroup_whenNothingIsConflicted', () => {

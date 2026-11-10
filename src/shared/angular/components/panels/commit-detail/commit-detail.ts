@@ -12,7 +12,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Settings } from '@shared/angular/services/settings/settings';
-import { GitOperationKind, GitOperationState } from '@shared/api/source-control-channels';
+import { GitOperationKind } from '@shared/api/source-control-channels';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
@@ -27,7 +27,18 @@ import { Chip } from '@shared/angular/components/chip/chip';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
-import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
+import {
+  TreeMenuSelection,
+  TreeRow,
+  TreeView,
+} from '@shared/angular/components/tree-view/tree-view';
+import { Alert } from '@shared/angular/components/alert/alert';
+import { MenuItem } from '@shared/angular/components/menu/menu';
+import {
+  describeOperation,
+  keepSideLabel,
+  resolvedProgress,
+} from '@shared/angular/services/repository/conflict-resolution';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
@@ -58,15 +69,14 @@ interface GroupCheckState {
 type WorkingGroup = 'conflicted' | 'tracked' | 'untracked';
 
 /**
- * How each operation reads in the mid-operation banner's title.
+ * Identifies the conflicted-file row menu's commands (#1321).
  */
-const OPERATION_TITLES: Readonly<Record<GitOperationKind, string>> = {
-  merge: 'Merging',
-  'squash-merge': 'Squash merging',
-  rebase: 'Rebasing',
-  'cherry-pick': 'Cherry-picking',
-  revert: 'Reverting',
-};
+const ROW_MARK_RESOLVED: string = 'conflict.markResolved';
+const ROW_MARK_RESOLVED_ANYWAY: string = 'conflict.markResolvedAnyway';
+const ROW_KEEP_YOURS: string = 'conflict.keepYours';
+const ROW_KEEP_THEIRS: string = 'conflict.keepTheirs';
+const ROW_KEEP_FILE: string = 'conflict.keepFile';
+const ROW_DELETE_FILE: string = 'conflict.deleteFile';
 
 /**
  * The payload a working-tree row carries: a group header, or one changed file.
@@ -99,6 +109,7 @@ type WorkingRowData =
 @Component({
   selector: 'app-commit-detail',
   imports: [
+    Alert,
     Chip,
     Textarea,
     Button,
@@ -240,27 +251,65 @@ export class CommitDetail {
   protected readonly conflictedFiles: Signal<readonly GitFileChange[]> = this.repository.conflicted;
 
   /**
-   * Gets how the operation in flight is named, with what it is working towards.
+   * Gets what the operation in flight is doing, in the user's words: what is being merged into or
+   * rebased onto what, and for a rebase which commit of how many (#1321). What git did not name is left
+   * out rather than guessed.
    */
-  protected readonly operationTitle: Signal<string> = computed((): string => {
-    const state: GitOperationState = this.repository.operation();
-    if (state.kind === null) {
-      return '';
-    }
-    const verb: string = OPERATION_TITLES[state.kind];
-    return state.target === undefined ? verb : `${verb} “${state.target}”`;
+  protected readonly operationTitle: Signal<string> = computed((): string =>
+    describeOperation(this.repository.operation(), this.repository.currentBranch()?.name ?? null),
+  );
+
+  /**
+   * Gets how far through resolving the user is — "2 of 5 files resolved" — or null before any file has
+   * been seen conflicted.
+   */
+  protected readonly resolvedProgress: Signal<string | null> = computed((): string | null => {
+    const progress: { readonly resolved: number; readonly total: number } =
+      this.repository.conflictProgress();
+    return resolvedProgress(progress.resolved, progress.total);
   });
 
   /**
-   * Gets how far through a replayed operation this is, or null when it applies a single change and
-   * has no progress to report.
+   * Builds a conflicted file's row menu (#1321): Mark Resolved, and Mark Resolved Anyway once it has
+   * been refused for markers left in it; then keeping one side whole, named by its branch — or, for a
+   * file one side deleted, keeping or deleting it. Taking a side only where the plugin can.
+   * ⛔ No tones, no ellipses.
+   * @param row The row the menu opened on.
+   * @returns Returns the items, none for a row that is not a conflicted file.
    */
-  protected readonly operationProgress: Signal<string | null> = computed((): string | null => {
-    const state: GitOperationState = this.repository.operation();
-    return state.step === undefined || state.total === undefined
-      ? null
-      : `${state.step} of ${state.total}`;
-  });
+  protected readonly conflictMenu: (row: TreeRow) => readonly MenuItem[] = (
+    row: TreeRow,
+  ): readonly MenuItem[] => {
+    const entry: WorkingRowData = this.workingRowOf(row);
+    if (entry.kind !== 'file' || entry.file.status !== 'conflicted') {
+      return [];
+    }
+    const items: MenuItem[] = [{ id: ROW_MARK_RESOLVED, label: 'Mark Resolved', icon: Icon.CHECK }];
+    if (this.repository.conflictsLeft().has(entry.file.path)) {
+      items.push({ id: ROW_MARK_RESOLVED_ANYWAY, label: 'Mark Resolved Anyway' });
+    }
+    if (this.repository.supports('resolveConflicts')) {
+      items.push(
+        ...(entry.file.conflict === 'deleted'
+          ? [
+              { id: ROW_KEEP_FILE, label: 'Keep File', separator: true },
+              { id: ROW_DELETE_FILE, label: 'Delete File' },
+            ]
+          : [
+              {
+                id: ROW_KEEP_YOURS,
+                label: keepSideLabel('yours', this.repository.conflictSides()),
+                separator: true,
+              },
+              {
+                id: ROW_KEEP_THEIRS,
+                label: keepSideLabel('theirs', this.repository.conflictSides()),
+              },
+            ]),
+      );
+    }
+    return items;
+  };
 
   /**
    * Gets what the banner says to do next: resolve what is conflicted, or carry on now that nothing is.
@@ -569,7 +618,50 @@ export class CommitDetail {
    * @param file The conflicted file.
    */
   protected markResolved(file: GitFileChange): void {
-    void this.repository.stage(file);
+    void this.repository.markResolved(file);
+  }
+
+  /**
+   * Gets how many conflicts a file still held when Mark Resolved last refused it, for its row.
+   * @param file The conflicted file.
+   * @returns Returns the count, or null when it has not been refused.
+   */
+  protected conflictsLeftOf(file: GitFileChange): number | null {
+    return this.repository.conflictsLeft().get(file.path) ?? null;
+  }
+
+  /**
+   * Runs the command chosen from a conflicted file's row menu.
+   * @param selection The chosen item and the row it was chosen for.
+   */
+  protected onConflictMenu(selection: TreeMenuSelection): void {
+    const entry: WorkingRowData = this.workingRowOf(selection.row);
+    if (entry.kind !== 'file') {
+      return;
+    }
+    const file: GitFileChange = entry.file;
+    switch (selection.itemId) {
+      case ROW_MARK_RESOLVED:
+        void this.repository.markResolved(file);
+        break;
+      case ROW_MARK_RESOLVED_ANYWAY:
+        void this.repository.markResolved(file, true);
+        break;
+      case ROW_KEEP_YOURS:
+        void this.repository.resolveConflict(file, 'yours');
+        break;
+      case ROW_KEEP_THEIRS:
+        void this.repository.resolveConflict(file, 'theirs');
+        break;
+      case ROW_KEEP_FILE:
+        void this.repository.resolveConflict(file, 'keepFile');
+        break;
+      case ROW_DELETE_FILE:
+        void this.repository.resolveConflict(file, 'deleteFile');
+        break;
+      default:
+        break;
+    }
   }
 
   /**
