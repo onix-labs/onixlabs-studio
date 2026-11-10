@@ -230,16 +230,47 @@ export class AgentQuickResponses {
    */
   protected saveEdit(response: QuickResponse): void {
     if (this.library.update(response.id, this.editDraft())) {
-      this.cancelEdit();
+      this.cancelEdit(response.id);
     }
   }
 
   /**
-   * Leaves the edit without saving it.
+   * Leaves the edit without saving it. Given the row, the panel stays open and the row takes focus
+   * back: the edit field held focus, and the CDK closes a whole menu stack the moment focus leaves it
+   * — removing the field would otherwise dismiss the panel. Without one (the panel itself closing),
+   * there is nothing to keep.
+   * @param id The row being edited, when the panel stays open.
    */
-  protected cancelEdit(): void {
+  protected cancelEdit(id?: string): void {
+    if (id !== undefined) {
+      this.keepFocusInPanel(id);
+    }
     this.editingId.set(null);
     this.editDraft.set('');
+  }
+
+  /**
+   * Holds focus inside the panel across the edit field leaving it: first, at once, on something that
+   * stays — another row's pick, or the add field when the edited row is the only one; the panel
+   * itself cannot take focus, as the CDK gives a pop-up menu no tabindex — so the menu stack never
+   * sees focus go. Then, once the row is a pick again, on that row, where the keyboard left off.
+   * @param id The row being edited.
+   */
+  private keepFocusInPanel(id: string): void {
+    const active: Element | null = document.activeElement;
+    const panel: HTMLElement | null =
+      active === null ? null : active.closest<HTMLElement>('.quick-responses__panel');
+    if (panel === null) {
+      return;
+    }
+    panel
+      .querySelector<HTMLElement>('.quick-responses__select, .quick-responses__add input')
+      ?.focus();
+    afterNextRender(
+      (): void =>
+        panel.querySelector<HTMLElement>(`[data-response-id="${CSS.escape(id)}"]`)?.focus(),
+      { injector: this.injector },
+    );
   }
 
   /**

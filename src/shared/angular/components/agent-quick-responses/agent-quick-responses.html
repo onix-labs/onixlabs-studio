@@ -46,13 +46,14 @@
               [(value)]="editDraft"
               [ariaLabel]="'Edit quick response: ' + response.text"
               (enter)="saveEdit(response)"
-              (escape)="cancelEdit()"
+              (escape)="cancelEdit(response.id)"
               (keydown)="$event.stopPropagation()"
             />
           } @else {
             <button
               type="button"
               class="quick-responses__select"
+              [attr.data-response-id]="response.id"
               cdkMenuItem
               (cdkMenuItemTriggered)="choose(response)"
             >
@@ -66,7 +67,7 @@
               #rowTrigger="cdkMenuTriggerFor"
               variant="none"
               size="small"
-              [icon]="Icon.DOTS_THREE"
+              [icon]="Icon.DOTS_THREE_BOLD"
               [ariaLabel]="'More actions: ' + response.text"
               tooltip="More Actions"
               [cdkMenuTriggerFor]="rowMenu"

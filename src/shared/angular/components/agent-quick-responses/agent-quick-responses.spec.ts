@@ -250,6 +250,36 @@ describe('AgentQuickResponses', () => {
     expect(document.querySelector('.quick-responses__panel')).not.toBeNull();
   });
 
+  it.each([
+    ['Enter', 'Okay, go ahead'],
+    ['Escape', 'Okay'],
+  ])(
+    'edit_on %s_keepsThePanelOpen_onceTheMenuHasSeenFocusMove',
+    async (key: string, row: string) => {
+      // The bug Matthew found: the edit field held focus, and removing it took focus out of the
+      // menu, which the CDK answers — a tick later — by closing the whole stack.
+      const harness: Harness = open(['Okay', 'Ship it']);
+      openRowMenu(harness);
+      rowMenuItem('Edit')?.click();
+      harness.fixture.detectChanges();
+      TestBed.tick();
+      const field: HTMLInputElement = editField()!;
+      field.focus();
+      field.value = 'Okay, go ahead';
+      field.dispatchEvent(new Event('input'));
+      harness.fixture.detectChanges();
+
+      field.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      harness.fixture.detectChanges();
+      TestBed.tick();
+      await new Promise<void>((resolve: () => void): void => void setTimeout(resolve, 20));
+      harness.fixture.detectChanges();
+
+      expect(document.querySelector('.quick-responses__panel')).not.toBeNull();
+      expect(document.activeElement?.textContent?.trim()).toBe(row);
+    },
+  );
+
   it('edit_toBlankOrADuplicate_keepsTheFieldOpen', () => {
     const harness: Harness = open(['Okay', 'Ship it']);
     openRowMenu(harness);
