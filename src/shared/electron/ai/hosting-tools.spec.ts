@@ -60,7 +60,10 @@ const EVERYTHING: readonly HostingCapability[] = [
   'createIssue',
   'commentOnIssue',
   'setIssueState',
+  'editIssue',
   'subIssues',
+  'editSubIssues',
+  'editPullRequest',
   'ciRuns',
   'ciRerun',
   'ciCancel',
@@ -86,7 +89,26 @@ describe('offeredHostingTools', () => {
       'listIssueComments',
       'listSubIssues',
       'listCiRuns',
+      'listLabels',
     ]);
+  });
+
+  it('offersTheEdits_onlyWhereTheRepositoryAllowsThem', () => {
+    // #1156: a repository that lets the user read issues but not triage them gets no edit tools.
+    const reader: readonly string[] = offeredHostingTools(
+      contextOf(hostingOf(['issues', 'subIssues', 'pullRequests']).hosting),
+    ).map((spec) => spec.op);
+    const maintainer: readonly string[] = offeredHostingTools(
+      contextOf(hostingOf(EVERYTHING).hosting),
+    ).map((spec) => spec.op);
+
+    expect(reader).toContain('listLabels');
+    expect(reader).not.toContain('updateIssue');
+    expect(reader).not.toContain('addSubIssue');
+    expect(reader).not.toContain('updatePullRequest');
+    expect(maintainer).toEqual(
+      expect.arrayContaining(['updateIssue', 'addSubIssue', 'removeSubIssue', 'updatePullRequest']),
+    );
   });
 
   it('offersNothing_withoutAHostedRepository', () => {
@@ -104,13 +126,30 @@ describe('createHostingTools', () => {
       'hosting_list_issue_comments',
       'hosting_list_sub_issues',
       'hosting_list_ci_runs',
+      'hosting_list_labels',
       'hosting_create_issue',
       'hosting_comment_on_issue',
       'hosting_set_issue_state',
+      'hosting_update_issue',
+      'hosting_add_sub_issue',
+      'hosting_remove_sub_issue',
       'hosting_create_pull_request',
+      'hosting_update_pull_request',
       'hosting_rerun_ci_run',
       'hosting_cancel_ci_run',
     ]);
+  });
+
+  it('updateIssue_takesOnlyWhatChanges_andRefusesAnEmptyLabelList', async () => {
+    const tools: ToolSet = await createHostingTools(contextOf(hostingOf(EVERYTHING).hosting));
+    const schema: { safeParse: (value: unknown) => { success: boolean } } = tools[
+      'hosting_update_issue'
+    ].inputSchema as unknown as { safeParse: (value: unknown) => { success: boolean } };
+
+    expect(schema.safeParse({ issue: 3, addLabels: ['epic'] }).success).toBe(true);
+    expect(schema.safeParse({ issue: 3, milestone: null }).success).toBe(true);
+    expect(schema.safeParse({ issue: 3, addLabels: [] }).success).toBe(false);
+    expect(schema.safeParse({ issue: 3, title: '' }).success).toBe(false);
   });
 
   it('isEmpty_withoutAHostedRepository', async () => {
@@ -198,6 +237,16 @@ describe('hostingPromptAppendix', () => {
     expect(hostingPromptAppendix(context)).toContain('The user has blocked `gh` for agents');
     expect(hostingPromptAppendix(contextOf(hostingOf(['issues']).hosting))).not.toContain(
       'has blocked',
+    );
+  });
+
+  it('saysEditsAreCovered_onlyWhenAnEditToolIsOffered', () => {
+    // The agent's habit is to reach for the CLI to label or link issues (#1156).
+    expect(hostingPromptAppendix(contextOf(hostingOf(EVERYTHING).hosting))).toContain(
+      'Editing issues and pull requests is covered too',
+    );
+    expect(hostingPromptAppendix(contextOf(hostingOf(['issues']).hosting))).not.toContain(
+      'Editing issues',
     );
   });
 
