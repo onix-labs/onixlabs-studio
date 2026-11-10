@@ -49,11 +49,18 @@ import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markd
 import { AgentPerf } from '@shared/angular/services/agent-perf/agent-perf';
 import { Settings } from '@shared/angular/services/settings/settings';
 import type { SendMessageWith } from '@shared/angular/services/settings/settings-registry';
+import { formatElapsed } from '@shared/angular/services/time/time-format';
 
 /**
  * Holds the bytes in a megabyte, for the Size per Image setting.
  */
 const BYTES_PER_MB: number = 1024 * 1024;
+
+/**
+ * How long a running agent must go unheard before the run clock says so (#1419): long enough that a
+ * slow tool or a long thought does not raise it, short enough that a stall is plain.
+ */
+export const QUIET_AFTER_MS: number = 30_000;
 
 /**
  * The image media types accepted by the composer (the types the providers accept).
@@ -508,6 +515,27 @@ export class AgentComposer {
   private readonly host: ElementRef<HTMLElement> = inject(ElementRef) as ElementRef<HTMLElement>;
 
   /**
+   * Holds how long the running agent has been quiet, in milliseconds, written by the elapsed tick
+   * (#1419). Zero until the quiet spell is long enough to mention.
+   */
+  protected readonly quietMs: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Holds the latest moment the run counts as active even without an event from the agent: when it
+   * started, and every tick spent waiting on the user, since a run blocked on a decision is not
+   * stalled.
+   */
+  private activeFloor: number = 0;
+
+  /**
+   * Gets the stall hint appended to the run clock, such as ` · quiet for 1m 40s`, or empty while the
+   * agent is being heard from.
+   */
+  protected readonly quietLabel: Signal<string> = computed((): string =>
+    this.quietMs() >= QUIET_AFTER_MS ? ` · quiet for ${formatElapsed(this.quietMs())}` : '',
+  );
+
+  /**
    * Gets the elapsed-run readout (`m:ss`), shown beside the token meter while a run executes.
    */
   protected readonly elapsedLabel: Signal<string> = computed((): string => {
@@ -692,8 +720,14 @@ export class AgentComposer {
         if (running) {
           this.elapsedMs.set(0);
           this.hiddenElapsedMs = 0;
+          this.activeFloor = Date.now();
+          this.quietMs.set(0);
           this.elapsedTimer ??= setInterval((): void => {
             if (this.awaitingDecision()) {
+              this.activeFloor = Date.now();
+              if (this.onScreen() && this.quietMs() !== 0) {
+                this.quietMs.set(0);
+              }
               return;
             }
             // An off-screen composer accumulates silently: writing the signal from a hidden view
@@ -702,6 +736,8 @@ export class AgentComposer {
             if (this.onScreen()) {
               this.elapsedMs.update((value: number): number => value + 1000 + this.hiddenElapsedMs);
               this.hiddenElapsedMs = 0;
+              const heard: number = Math.max(this.agent.lastActivityAt() ?? 0, this.activeFloor);
+              this.quietMs.set(Date.now() - heard);
             } else {
               this.hiddenElapsedMs += 1000;
             }

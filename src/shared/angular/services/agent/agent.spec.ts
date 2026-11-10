@@ -503,6 +503,81 @@ describe('Agent', () => {
     expect(agent.tasks()[0].tokens).toBe(4200);
   });
 
+  it('timesEveryEntry_andAToolCallWhenItEnds_andHearsFromTheAgent', () => {
+    // #1419: entry times, tool durations and the last activity behind the run clock's stall hint.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-10T14:32:07Z'));
+    try {
+      agent.send('go');
+      const sent: number = Date.now();
+      vi.advanceTimersByTime(4000);
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'tool-start',
+        toolId: 'a',
+        name: 'Bash',
+        detail: 'ls',
+      });
+      const started: number = Date.now();
+      vi.advanceTimersByTime(12_400);
+      fireEvent({ requestId: 'run-1', kind: 'tool-end', toolId: 'a', ok: true, detail: '' });
+
+      const user: AgentItem | undefined = agent
+        .items()
+        .find((item: AgentItem): boolean => item.kind === 'user');
+      const tool: AgentItem | undefined = agent
+        .items()
+        .find((item: AgentItem): boolean => item.toolId === 'a');
+      expect(user?.createdAt).toBe(sent);
+      expect(tool?.createdAt).toBe(started);
+      expect(tool?.endedAt).toBe(started + 12_400);
+      expect(agent.lastActivityAt()).toBe(started + 12_400);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('timesABackgroundedToolCall_onlyWhenItsTaskSettles', () => {
+    agent.send('go');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'tool-start',
+      toolId: 'tool-9',
+      name: 'Bash',
+      detail: 'x',
+    });
+    startTask(sessionId, 'task-1', { toolId: 'tool-9' });
+    fireEvent({ requestId: 'run-1', kind: 'tool-end', toolId: 'tool-9', ok: true, detail: '' });
+    const card: () => AgentItem | undefined = (): AgentItem | undefined =>
+      agent.items().find((item: AgentItem): boolean => item.toolId === 'tool-9');
+
+    expect(card()?.endedAt).toBeUndefined();
+    expect(agent.tasks()[0].startedAt).toEqual(expect.any(Number));
+
+    fireEvent({
+      requestId: 'stale',
+      kind: 'task-updated',
+      agentSessionId: sessionId ?? null,
+      taskId: 'task-1',
+      status: 'completed',
+    } as unknown as AiEvent);
+
+    expect(card()?.endedAt).toEqual(expect.any(Number));
+  });
+
+  it('restore_keepsEachEntrysTime_andLeavesAnUntimedOneUntimed', () => {
+    agent.restore([
+      { id: 'item-1', kind: 'user', text: 'hi', createdAt: 1_700_000_000_000 },
+      { id: 'item-2', kind: 'assistant', text: 'hello' },
+    ]);
+
+    expect(agent.items().map((item: AgentItem): number | undefined => item.createdAt)).toEqual([
+      1_700_000_000_000,
+      undefined,
+    ]);
+  });
+
   it('marksACommandThatRanOutsideTheSandbox_andCountsIt', () => {
     agent.send('go');
     fireEvent({ requestId: 'run-1', kind: 'tool-start', toolId: 'a', name: 'Bash', detail: 'ls' });

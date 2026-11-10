@@ -437,19 +437,5 @@ export function entryAt(
   return best;
 }
 
-/**
- * Formats a duration the way the panel shows it.
- * @param ms The duration in milliseconds.
- * @returns Returns the text, such as `12 ms` or `1.4 s`.
- */
-export function formatDuration(ms: number | undefined): string {
-  if (ms === undefined) {
-    return '';
-  }
-  if (ms < 1000) {
-    return `${Math.round(ms)} ms`;
-  }
-  return ms < 60_000
-    ? `${(ms / 1000).toFixed(1)} s`
-    : `${Math.floor(ms / 60_000)} min ${Math.round((ms % 60_000) / 1000)} s`;
-}
+// The panel's duration formatter is shared with the agent transcript's tool durations (#1419).
+export { formatDuration } from '@shared/angular/services/time/time-format';

@@ -248,7 +248,8 @@ $agent-row-spacing: 0.85rem;
 
 .agent__row {
   display: grid;
-  grid-template-columns: $agent-node-size 1fr;
+  // The third column holds the entry's time (#1419); it is empty, and takes no room, without one.
+  grid-template-columns: $agent-node-size 1fr auto;
   gap: 0.75rem;
   // Node column included, so a rail entry's trailing edge lines up with a prompt card's.
   max-inline-size: var(--agent-entry-max-size);
@@ -677,4 +678,28 @@ $agent-row-spacing: 0.85rem;
 
 .agent__avatar {
   border-radius: calc(0.6rem * var(--border-radius-multiplier));
+}
+
+// When an entry arrived (#1419): muted, monospaced so the times line up down the transcript, and kept
+// to one line. On the rail it sits in the row's own trailing column, level with the entry's first line;
+// on a prompt it sits on the actions row under the bubble, always shown, unlike the actions.
+.agent__stamp {
+  flex: none;
+  color: var(--form-muted-foreground-color);
+  font-family: var(--font-mono);
+  font-size: text-size(0.7rem);
+  line-height: $agent-node-size;
+  white-space: nowrap;
+  opacity: 0.8;
+  user-select: none;
+
+  .agent__row > & {
+    grid-row: 1;
+    grid-column: 3;
+  }
+
+  .agent__msg-actions > & {
+    order: 1;
+    margin-inline-start: 0.35rem;
+  }
 }

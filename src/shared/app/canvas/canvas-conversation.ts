@@ -65,6 +65,7 @@ function mockAgent(running: boolean): Partial<Agent> {
     clear: ignore,
     setMode: ignore,
     setEffort: ignore,
+    lastActivityAt: (): number | null => null,
     dismissLoginPrompt: ignore,
     onLoginSucceeded: ignore,
     promptLogin: ignore,

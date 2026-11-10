@@ -103,6 +103,11 @@
                     (click)="composer.beginEdit(row.item!)"
                   />
                 }
+                @if (row.stamp) {
+                  <time class="agent__stamp" (pointerenter)="showWhen($event, row.stampAt!)">{{
+                    row.stamp
+                  }}</time>
+                }
               </span>
             </div>
           </div>
@@ -151,6 +156,14 @@
           <app-icon [icon]="row.nodeIcon" [class.agent__spin]="row.nodeSpin" />
         </span>
       </div>
+
+      <!-- When the entry arrived (#1419), muted at the row's trailing edge; placed in the grid's own
+           column by the stylesheet, so it lines up down the transcript whatever the entry holds. -->
+      @if (row.stamp) {
+        <time class="agent__stamp" (pointerenter)="showWhen($event, row.stampAt!)">{{
+          row.stamp
+        }}</time>
+      }
 
       <div class="agent__row-content">
         @switch (row.kind) {

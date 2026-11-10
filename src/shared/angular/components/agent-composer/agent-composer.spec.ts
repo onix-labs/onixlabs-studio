@@ -56,6 +56,7 @@ describe('AgentComposer', () => {
   let items: WritableSignal<readonly AgentItem[]>;
   let running: WritableSignal<boolean>;
   let awaiting: WritableSignal<boolean>;
+  let lastActivity: number | null;
   let queued: WritableSignal<readonly AgentQueuedMessage[]>;
   let removedQueued: string[];
   let rewinds: { id: string; text: string }[];
@@ -117,6 +118,7 @@ describe('AgentComposer', () => {
     items = signal<readonly AgentItem[]>([]);
     running = signal<boolean>(false);
     awaiting = signal<boolean>(false);
+    lastActivity = null;
     pendingContextTokens = signal<number>(0);
     contextTokens = signal<number>(0);
     contextWindow = signal<number>(0);
@@ -124,6 +126,7 @@ describe('AgentComposer', () => {
       // The composer hosts the conversation-scoped tasks menu, which reads the live-task list.
       tasks: signal<readonly AgentTask[]>([]),
       items,
+      lastActivityAt: (): number | null => lastActivity,
       isRunning: running,
       awaitingDecision: awaiting,
       pendingInput,
@@ -806,6 +809,57 @@ describe('AgentComposer', () => {
     component.onKeydown(new KeyboardEvent('keydown', { key: 'Escape' }));
     fixture.detectChanges();
     expect(host.querySelector('.agent__suggest')).toBeNull();
+  });
+
+  it('quiet_afterThirtySecondsUnheard_saysHowLong_andClearsWhenTheAgentSpeaks', () => {
+    // #1419: a stall shows on the run clock without reading timestamps.
+    vi.useFakeTimers();
+    try {
+      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+      const readout: () => string = (): string =>
+        host.querySelector('.agent__elapsed')?.textContent?.trim() ?? '';
+      running.set(true);
+      fixture.detectChanges();
+      lastActivity = Date.now();
+
+      vi.advanceTimersByTime(29_000);
+      fixture.detectChanges();
+      expect(readout()).not.toContain('quiet');
+
+      vi.advanceTimersByTime(71_000);
+      fixture.detectChanges();
+      expect(readout()).toBe('1:40 · quiet for 1m 40s');
+
+      lastActivity = Date.now();
+      vi.advanceTimersByTime(1000);
+      fixture.detectChanges();
+      expect(readout()).toBe('1:41');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('quiet_whileWaitingOnTheUser_isNotAStall', () => {
+    vi.useFakeTimers();
+    try {
+      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+      running.set(true);
+      fixture.detectChanges();
+      lastActivity = Date.now();
+      awaiting.set(true);
+      fixture.detectChanges();
+      vi.advanceTimersByTime(120_000);
+
+      // Answered: the wait counts as activity, so the clock does not report two minutes of quiet.
+      awaiting.set(false);
+      fixture.detectChanges();
+      vi.advanceTimersByTime(1000);
+      fixture.detectChanges();
+
+      expect(host.querySelector('.agent__elapsed')?.textContent).not.toContain('quiet');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('elapsed_whileRunning_ticksAndPausesWhileAwaitingTheUser', () => {
