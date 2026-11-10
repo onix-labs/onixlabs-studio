@@ -1,6 +1,13 @@
-import { BrowserWindow, ipcMain, IpcMainEvent, Menu, MenuItemConstructorOptions } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  IpcMainEvent,
+  Menu,
+  MenuItemConstructorOptions,
+} from 'electron';
 import { MenuChannel } from '@shared/api/menu-channels';
-import { AppMenuItem, AppMenuSection } from '@shared/api/menu-types';
+import { AppMenuItem, AppMenuSection, ApplicationMenuGroup } from '@shared/api/menu-types';
 import { logger } from '@shared/electron/logger';
 
 /**
@@ -130,15 +137,78 @@ export class MenuManager {
       return;
     }
     logger.trace('MenuManager.install', `Installing ${sections.length} menu section(s)`);
-    const template: MenuItemConstructorOptions[] = sections.map(
+    // macOS takes the bar's first menu as the application menu, named after the app. Without one of its
+    // own, the renderer's File menu would land there, and Quit (⌘Q), Hide and Services would be missing.
+    const moved: Record<ApplicationMenuGroup, AppMenuItem[]> = { about: [], settings: [] };
+    const published: MenuItemConstructorOptions[] = sections.map(
       (section: AppMenuSection): MenuItemConstructorOptions => ({
         label: section.label,
-        submenu: section.items.map((item: AppMenuItem): MenuItemConstructorOptions =>
-          this.buildItem(item),
-        ),
+        submenu: MenuManager.tidySeparators(
+          section.items.filter((item: AppMenuItem): boolean => {
+            const group: ApplicationMenuGroup | undefined = MenuManager.groupOf(item);
+            if (group === undefined) {
+              return true;
+            }
+            moved[group].push(item);
+            return false;
+          }),
+        ).map((item: AppMenuItem): MenuItemConstructorOptions => this.buildItem(item)),
       }),
     );
-    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+    const separator: MenuItemConstructorOptions = { type: 'separator' };
+    const applicationMenu: MenuItemConstructorOptions = {
+      label: app.name,
+      submenu: [
+        ...moved.about.map((item: AppMenuItem): MenuItemConstructorOptions => this.buildItem(item)),
+        ...(moved.about.length === 0 ? [] : [separator]),
+        ...moved.settings.map((item: AppMenuItem): MenuItemConstructorOptions =>
+          this.buildItem(item),
+        ),
+        ...(moved.settings.length === 0 ? [] : [separator]),
+        // The platform's own entries, handled natively. Quit goes through app.quit(), so before-quit
+        // still asks to save unsaved work and to confirm, as closing the window does.
+        { role: 'services' },
+        separator,
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        separator,
+        { role: 'quit' },
+      ],
+    };
+    Menu.setApplicationMenu(Menu.buildFromTemplate([applicationMenu, ...published]));
+  }
+
+  /**
+   * Reads which group of the application menu an item asks to move to. The renderer is untrusted
+   * input, so only the groups the menu has are honoured; anything else stays where it was published.
+   * @param item The published entry.
+   * @returns Returns the group, or undefined when the item stays in its own section.
+   */
+  private static groupOf(item: AppMenuItem): ApplicationMenuGroup | undefined {
+    const group: unknown = item.applicationMenu;
+    return group === 'about' || group === 'settings' ? group : undefined;
+  }
+
+  /**
+   * Collapses runs of separators and trims them from either end, so a section an entry has moved out of
+   * does not show two separators together or one hanging at its foot.
+   * @param items The section's remaining entries.
+   * @returns Returns the entries without redundant separators.
+   */
+  private static tidySeparators(items: readonly AppMenuItem[]): AppMenuItem[] {
+    const tidied: AppMenuItem[] = [];
+    for (const item of items) {
+      const isSeparator: boolean = item.kind === 'separator';
+      if (isSeparator && (tidied.length === 0 || tidied[tidied.length - 1].kind === 'separator')) {
+        continue;
+      }
+      tidied.push(item);
+    }
+    if (tidied.length > 0 && tidied[tidied.length - 1].kind === 'separator') {
+      tidied.pop();
+    }
+    return tidied;
   }
 
   /**

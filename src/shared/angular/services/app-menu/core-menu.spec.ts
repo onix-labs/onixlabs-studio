@@ -136,6 +136,19 @@ describe('CoreMenu', () => {
     expect(helped).toEqual(['documentation', 'issue', 'releases', 'about']);
   });
 
+  it('aboutAndSettings_askForMacOSsApplicationMenu', () => {
+    // On a Mac both live in the menu named after the app; the native bar moves them there (#1406),
+    // and the in-window menu leaves them in Help and File.
+    const find: (section: string, id: string) => MenuEntry | undefined = (
+      section: string,
+      id: string,
+    ): MenuEntry | undefined =>
+      itemsOf(section).find((entry: MenuEntry): boolean => entry.id === id);
+
+    expect(find('help', 'core.help.about')?.applicationMenu).toBe('about');
+    expect(find('file', 'core.file.settings')?.applicationMenu).toBe('settings');
+  });
+
   it('help_whenKeyboardShortcutsIsChosen_landsOnTheKeyboardSection', () => {
     // Opening Settings alone would land wherever it was last left, which is not what the label says.
     menu.dispatch('core.help.shortcuts');

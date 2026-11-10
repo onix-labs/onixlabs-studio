@@ -10,6 +10,12 @@
 export type AppMenuItemKind = 'command' | 'separator' | 'checkbox' | 'submenu';
 
 /**
+ * Identifies the group of macOS's application menu (the one named after the app) an entry moves to:
+ * `about` at the top, `settings` beneath it, ahead of the platform's own Services, Hide and Quit.
+ */
+export type ApplicationMenuGroup = 'about' | 'settings';
+
+/**
  * A single entry in a menu: a command, a separator, a checkbox, or a submenu of further entries.
  */
 export interface AppMenuItem {
@@ -53,6 +59,12 @@ export interface AppMenuItem {
    * reimplemented.
    */
   readonly role?: string;
+
+  /**
+   * Gets the group of macOS's application menu the item moves to, out of its own section, as About and
+   * Settings do on a Mac. Absent for an item that stays where it is; ignored on other platforms.
+   */
+  readonly applicationMenu?: ApplicationMenuGroup;
 
   /**
    * Gets a submenu's entries.
