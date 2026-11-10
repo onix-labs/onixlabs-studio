@@ -209,6 +209,8 @@ export type {
   AiPermissionReply,
   AiPermissionRemember,
   AiRevokePermissionGrant,
+  AiSetWorkspaceExclusions,
+  AiWorkspaceExclusions,
   AiInputReply,
   AiEditDecision,
   AiEditDecisionReply,

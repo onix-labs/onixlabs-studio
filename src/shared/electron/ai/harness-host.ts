@@ -1,3 +1,4 @@
+import { auditGrantSourceOf, type AuditGrantSource } from './agent-audit-log';
 import {
   AGENT_PROTOCOL_VERSION,
   HarnessAnswer,
@@ -201,7 +202,7 @@ export class HarnessHost {
     requestId: string,
     name: string,
     detail: string,
-    source: string,
+    source: AuditGrantSource,
     sandboxed?: boolean,
     toolId?: string,
   ) => void;
@@ -217,7 +218,7 @@ export class HarnessHost {
       requestId: string,
       name: string,
       detail: string,
-      source: string,
+      source: AuditGrantSource,
       sandboxed?: boolean,
       toolId?: string,
     ) => void,
@@ -548,7 +549,8 @@ export class HarnessHost {
           message.requestId,
           message.name,
           message.detail,
-          message.source,
+          // Nor to send a source this build knows (#1163); an unknown one claims nothing.
+          auditGrantSourceOf(message.source),
           // A harness is not trusted to send a boolean; anything else says nothing.
           typeof message.sandboxed === 'boolean' ? message.sandboxed : undefined,
           typeof message.toolId === 'string' ? message.toolId : undefined,

@@ -1,0 +1,122 @@
+<div class="excluded-commands">
+  <div class="excluded-commands__group">
+    <app-setting-row
+      label="Excluded Commands"
+      description="Commands that run outside the OS sandbox in every workspace, such as a toolchain that crashes inside it: a command (make build), or a command and :* for it and anything after it (npx ng:*, dotnet:*). They still ask for permission as any command does; only the sandbox is removed. Claude agents only: Codex cannot take one command out of its sandbox."
+    >
+      <span class="excluded-commands__entry">
+        <app-text-field
+          placeholder="npx ng:*"
+          ariaLabel="Command to exclude in every workspace"
+          [value]="drafts.global()"
+          (valueChange)="drafts.global.set($event)"
+          (enter)="add('global')"
+        />
+        <app-button variant="solid" [icon]="Icon.PLUS" label="Add" (click)="add('global')" />
+      </span>
+    </app-setting-row>
+    @if (error()?.kind === 'global') {
+      <p class="excluded-commands__error" role="alert">{{ error()?.text }}</p>
+    }
+    @if (entries('global').length) {
+      <ul class="excluded-commands__list">
+        @for (pattern of entries('global'); track $index) {
+          <li class="excluded-commands__item">
+            <span class="excluded-commands__pattern">{{ pattern }}</span>
+            <app-button
+              variant="none"
+              size="small"
+              [icon]="Icon.CLOSE"
+              [ariaLabel]="'Remove excluded command ' + pattern"
+              (click)="remove('global', $index)"
+            />
+          </li>
+        }
+      </ul>
+    }
+  </div>
+
+  @if (root()) {
+    <div class="excluded-commands__group">
+      <app-setting-row
+        label="Excluded Commands in This Workspace"
+        description="Commands that run outside the sandbox in this workspace only, for you alone. Kept in Studio's own data, so they never reach the repository."
+      >
+        <span class="excluded-commands__entry">
+          <app-text-field
+            placeholder="dotnet:*"
+            ariaLabel="Command to exclude in this workspace"
+            [value]="drafts.private()"
+            (valueChange)="drafts.private.set($event)"
+            (enter)="add('private')"
+          />
+          <app-button variant="solid" [icon]="Icon.PLUS" label="Add" (click)="add('private')" />
+        </span>
+      </app-setting-row>
+      @if (error()?.kind === 'private') {
+        <p class="excluded-commands__error" role="alert">{{ error()?.text }}</p>
+      }
+      @if (entries('private').length) {
+        <ul class="excluded-commands__list">
+          @for (pattern of entries('private'); track $index) {
+            <li class="excluded-commands__item">
+              <span class="excluded-commands__pattern">{{ pattern }}</span>
+              <app-button
+                variant="none"
+                size="small"
+                [icon]="Icon.CLOSE"
+                [ariaLabel]="'Remove workspace excluded command ' + pattern"
+                (click)="remove('private', $index)"
+              />
+            </li>
+          }
+        </ul>
+      }
+    </div>
+
+    <div class="excluded-commands__group">
+      <app-setting-row
+        label="Shared Excluded Commands"
+        description="Commands the team excludes in this workspace, kept in the repository's .studio/workspace.json. A list the repository brings, or one changed since, is ignored until you allow it here or in the agent panel."
+      >
+        <span class="excluded-commands__entry">
+          <app-text-field
+            placeholder="npm run e2e:*"
+            ariaLabel="Command to exclude for the team"
+            [value]="drafts.shared()"
+            (valueChange)="drafts.shared.set($event)"
+            (enter)="add('shared')"
+          />
+          <app-button variant="solid" [icon]="Icon.PLUS" label="Add" (click)="add('shared')" />
+        </span>
+      </app-setting-row>
+      @if (error()?.kind === 'shared') {
+        <p class="excluded-commands__error" role="alert">{{ error()?.text }}</p>
+      }
+      @if (entries('shared').length) {
+        @if (lists()?.sharedReviewed) {
+          <p class="excluded-commands__status">Allowed: these apply to agents in this workspace.</p>
+        } @else {
+          <p class="excluded-commands__status">
+            Not allowed yet: these are ignored until you allow them.
+            <app-button variant="ghost" size="small" label="Allow" (click)="allowShared()" />
+          </p>
+        }
+        <ul class="excluded-commands__list">
+          @for (pattern of entries('shared'); track $index) {
+            <li class="excluded-commands__item">
+              <span class="excluded-commands__pattern">{{ pattern }}</span>
+              <app-button
+                variant="none"
+                size="small"
+                [icon]="Icon.CLOSE"
+                [ariaLabel]="'Remove shared excluded command ' + pattern"
+                (click)="remove('shared', $index)"
+              />
+            </li>
+          }
+        </ul>
+      }
+    </div>
+  }
+</div>

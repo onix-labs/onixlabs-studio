@@ -108,6 +108,7 @@ const AI_PAGE_KEYS: Readonly<Partial<Record<SettingsSectionId, ReadonlySet<strin
     'ai.deniedWritePaths',
     'ai.allowedNetworkLocations',
     'ai.deniedNetworkLocations',
+    'ai.excludedCommands',
   ]),
 };
 

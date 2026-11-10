@@ -1528,7 +1528,7 @@ export class Agent {
    * tab's bound repository) when present, otherwise the open folder workspace, or null for neither.
    * @returns Returns the workspace root path, or null.
    */
-  private runWorkspaceRoot(): string | null {
+  public runWorkspaceRoot(): string | null {
     return this.workspaceRootResolver !== null
       ? this.workspaceRootResolver()
       : (this.workspace.root()?.path ?? null);
@@ -1590,6 +1590,7 @@ export class Agent {
       deniedWritePaths: this.settings.aiDeniedWritePaths(),
       allowedNetworkLocations: this.settings.aiAllowedNetworkLocations(),
       deniedNetworkLocations: this.settings.aiDeniedNetworkLocations(),
+      excludedCommands: this.settings.aiExcludedCommands(),
       tokenCap: this.settings.aiTokenCap(),
       maxSteps: this.settings.get('ai.maxStepsPerTurn'),
       requireSandbox: this.settings.get('ai.requireOsSandbox'),

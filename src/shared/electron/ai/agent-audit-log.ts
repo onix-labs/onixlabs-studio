@@ -9,7 +9,31 @@ import { join } from 'node:path';
  * The last bucket is deliberately coarse: auditing at execution (so classifier-auto-run commands are
  * captured, not just gated ones) means the exact grant path is no longer distinguishable.
  */
-export type AuditGrantSource = 'policy' | 'posture' | 'gated-or-auto';
+export type AuditGrantSource = 'policy' | 'posture' | 'gated-or-auto' | 'excluded';
+
+/**
+ * Lists every grant source, so one a harness sends can be checked rather than trusted. `excluded`
+ * (#1163) is a shell command the user excluded from the sandbox: it still went through the permission
+ * flow, and ran outside the sandbox because it was excluded.
+ */
+export const AUDIT_GRANT_SOURCES: readonly AuditGrantSource[] = [
+  'policy',
+  'posture',
+  'gated-or-auto',
+  'excluded',
+];
+
+/**
+ * Reads a grant source a harness sent. A harness is not trusted to send one this build knows, and an
+ * unknown source falls back to the ordinary path, which claims nothing about why it was allowed.
+ * @param value The source as sent.
+ * @returns Returns the source.
+ */
+export function auditGrantSourceOf(value: unknown): AuditGrantSource {
+  return (AUDIT_GRANT_SOURCES as readonly unknown[]).includes(value)
+    ? (value as AuditGrantSource)
+    : 'gated-or-auto';
+}
 
 /**
  * A single audit record: one granted mutating/exec agent action.

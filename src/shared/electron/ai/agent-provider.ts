@@ -196,6 +196,13 @@ export interface AgentRunContext {
   readonly deniedNetworkLocations: readonly string[];
 
   /**
+   * Gets the commands the run's sandbox runs outside it (#1163): the global list joined with the
+   * workspace's private list and, once reviewed, its shared one. Absent or empty for none. They still
+   * go through the permission flow; only the sandbox is removed.
+   */
+  readonly excludedCommands?: readonly string[];
+
+  /**
    * Gets the per-request token budget the turn is capped to, or 0 for no cap.
    */
   readonly tokenCap: number;

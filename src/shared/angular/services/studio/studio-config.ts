@@ -149,6 +149,30 @@ export class StudioConfig {
   }
 
   /**
+   * Gets the commands the focused workspace shares as excluded from agents' sandbox (#1163). Whether
+   * they apply is the main process's to say: only once the user has reviewed exactly this list.
+   */
+  public readonly sharedExcludedCommands: Signal<readonly string[]> = computed(
+    (): readonly string[] => this.current().workspace.excludedCommands ?? [],
+  );
+
+  /**
+   * Replaces the focused workspace's shared excluded commands, preserving the rest of the shared
+   * configuration, and persists to `workspace.json`.
+   * @param patterns The new list; empty removes the field.
+   * @returns Returns a promise that resolves once the write is issued.
+   */
+  public saveExcludedCommands(patterns: readonly string[]): Promise<void> {
+    const { version, runConfigurations, providerKind } = this.current().workspace;
+    return this.saveWorkspace({
+      version,
+      runConfigurations,
+      ...(providerKind === undefined ? {} : { providerKind }),
+      ...(patterns.length === 0 ? {} : { excludedCommands: patterns }),
+    });
+  }
+
+  /**
    * Reads the run configurations of a specific workspace root — which need not be the focused one.
    * For an agent docked in a background workspace, which must author THAT workspace's Run dropdown
    * rather than the one the user happens to be looking at.

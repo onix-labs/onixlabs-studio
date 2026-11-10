@@ -879,6 +879,44 @@ describe('AiManager', () => {
       expect(context.deniedWritePaths).toEqual(['.env', userData]);
     });
 
+    it('excludedCommands_joinTheGlobalList_withTheWorkspacesPrivateOne', async () => {
+      // #1163: the renderer sends only the global list; main adds the run's workspace's own.
+      await invoke(AiChannel.SetPrivateExclusions, { workspaceRoot: root, patterns: ['dotnet:*'] });
+
+      const context: AgentRunContext = await contextOf({
+        excludedCommands: ['npx ng :*', '*', 7, 'dotnet:*'],
+      });
+
+      expect(context.excludedCommands).toEqual(['npx ng:*', 'dotnet:*']);
+    });
+
+    it('excludedCommands_takeTheRepositorysSharedList_onlyOnceTheUserReviewedIt', async () => {
+      fs.mkdirSync(path.join(root, '.studio'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.studio', 'workspace.json'),
+        JSON.stringify({ version: 1, runConfigurations: [], excludedCommands: ['make build'] }),
+      );
+
+      expect((await contextOf()).excludedCommands).toEqual([]);
+
+      await invoke(AiChannel.ReviewSharedExclusions, {
+        workspaceRoot: root,
+        patterns: ['make build'],
+      });
+
+      expect((await contextOf({ requestId: 'r2' })).excludedCommands).toEqual(['make build']);
+    });
+
+    it('workspaceExclusions_areRefused_forAFolderThatIsNotAnOpenWorkspace', async () => {
+      expect(await invoke(AiChannel.GetWorkspaceExclusions, '/somewhere/else')).toBeNull();
+      expect(
+        await invoke(AiChannel.SetPrivateExclusions, {
+          workspaceRoot: 'relative',
+          patterns: ['rm:*'],
+        }),
+      ).toBeNull();
+    });
+
     it('allowedWritePaths_dropsRelativeEntries', async () => {
       const context: AgentRunContext = await contextOf({
         allowedWritePaths: ['relative', '/abs', 7],

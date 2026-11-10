@@ -28,6 +28,7 @@ import type {
   SandboxSettings,
 } from '@anthropic-ai/claude-agent-sdk';
 import { blockedCommandMessage, findBlockedCommand } from './blocked-commands';
+import { excludedCommandsOf, isExcludedCommand } from './excluded-commands';
 import {
   absolutePathsOf,
   CONFINED_WRITE_TOOLS,
@@ -284,6 +285,13 @@ export function sandboxFor(
       ...(allowLocalBinding ? { allowLocalBinding } : {}),
       ...(allowUnixSockets.length > 0 ? { allowUnixSockets: [...allowUnixSockets] } : {}),
     };
+  }
+  // The commands the user excluded (#1163): handed to the SDK, which runs them outside the sandbox and
+  // still through the permission flow. Kept to the patterns this harness understands, so the audit's
+  // "ran outside" and the sandbox's agree on every command.
+  const excluded: readonly string[] = excludedCommandsOf(turn);
+  if (excluded.length > 0) {
+    sandbox.excludedCommands = [...excluded];
   }
   return sandbox;
 }
@@ -829,12 +837,23 @@ export function buildOptions(
                   : turn.permissionPosture === 'prompt'
                     ? 'ask'
                     : (turn.toolPolicies[RUN_UNSANDBOXED] ?? 'ask');
+                // A command the user excluded (#1163) ran outside the sandbox without asking to: the
+                // SDK took it out, so it is recorded as unsandboxed, and why.
+                const excluded: boolean =
+                  raw === SHELL_TOOL &&
+                  !left &&
+                  isExcludedCommand(
+                    typeof ranInput['command'] === 'string' ? ranInput['command'] : '',
+                    excludedCommandsOf(turn),
+                  );
                 gate.audit(
                   turn.requestId,
                   displayName,
                   summarizeToolInput(post.tool_input),
-                  coarseGrantSource(policy, turn.permissionPosture, EDIT_TOOLS.includes(raw)),
-                  raw === SHELL_TOOL ? sandboxAvailable && !left : undefined,
+                  excluded
+                    ? 'excluded'
+                    : coarseGrantSource(policy, turn.permissionPosture, EDIT_TOOLS.includes(raw)),
+                  raw === SHELL_TOOL ? sandboxAvailable && !left && !excluded : undefined,
                   post.tool_use_id,
                 );
               } catch {
