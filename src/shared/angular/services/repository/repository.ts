@@ -7,7 +7,16 @@ import {
   RepositoryInfo,
   SourceControlCode,
 } from '@shared/api/source-control-channels';
-import { VersionControlCapability } from '@shared/api/version-control-protocol';
+import {
+  VcsConflictResolution,
+  VersionControlCapability,
+} from '@shared/api/version-control-protocol';
+import {
+  ConflictSides,
+  conflictSides,
+  conflictsLeftMessage,
+  countConflicts,
+} from './conflict-resolution';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -345,6 +354,26 @@ export class Repository {
   >([]);
 
   /**
+   * Holds the conflicts left in each file Mark Resolved refused, by path.
+   */
+  private readonly conflictsLeftSignal: WritableSignal<ReadonlyMap<string, number>> = signal<
+    ReadonlyMap<string, number>
+  >(new Map<string, number>());
+
+  /**
+   * Holds every path seen conflicted while the current operation (and, for a rebase, its current
+   * commit) has been in flight — what "N of M files resolved" counts against.
+   */
+  private readonly conflictSeenSignal: WritableSignal<ReadonlySet<string>> = signal<
+    ReadonlySet<string>
+  >(new Set<string>());
+
+  /**
+   * Holds which operation, and which commit of it, {@link conflictSeenSignal} was gathered for.
+   */
+  private conflictEpisode: string = '';
+
+  /**
    * Holds the multi-step operation the working tree is in the middle of.
    */
   private readonly operationSignal: WritableSignal<GitOperationState> = signal<GitOperationState>({
@@ -466,6 +495,31 @@ export class Repository {
    */
   public readonly canContinueOperation: Signal<boolean> = computed(
     (): boolean => this.operationSignal().kind !== null && this.conflictedSignal().length === 0,
+  );
+
+  /**
+   * Gets the conflicts each conflicted file still held when Mark Resolved last refused it, by path
+   * (#1321), so its row can say how many are left. A path drops out once it is no longer conflicted.
+   */
+  public readonly conflictsLeft: Signal<ReadonlyMap<string, number>> =
+    this.conflictsLeftSignal.asReadonly();
+
+  /**
+   * Gets how far through resolving the user is: the files that were conflicted while this operation
+   * (or, for a rebase, this commit of it) has been in flight, and how many of them are resolved.
+   */
+  public readonly conflictProgress: Signal<{ readonly resolved: number; readonly total: number }> =
+    computed((): { readonly resolved: number; readonly total: number } => {
+      const total: number = this.conflictSeenSignal().size;
+      return { resolved: total - this.conflictedSignal().length, total };
+    });
+
+  /**
+   * Gets the names of the two sides of the conflicts in flight, the user's own work as "yours"
+   * whatever git calls it.
+   */
+  public readonly conflictSides: Signal<ConflictSides> = computed((): ConflictSides =>
+    conflictSides(this.operationSignal(), this.currentBranch()?.name ?? null),
   );
 
   /**
@@ -803,8 +857,7 @@ export class Repository {
     }
     this.stagedSignal.set(status.staged);
     this.unstagedSignal.set(status.unstaged);
-    this.conflictedSignal.set(status.conflicted);
-    this.operationSignal.set(operation);
+    this.applyConflicts(status.conflicted, operation);
   }
 
   /**
@@ -832,8 +885,7 @@ export class Repository {
     this.commitsSignal.set([]);
     this.stagedSignal.set([]);
     this.unstagedSignal.set([]);
-    this.conflictedSignal.set([]);
-    this.operationSignal.set({ kind: null });
+    this.applyConflicts([], { kind: null });
     this.commitFilesSignal.set(new Map<string, readonly GitFileChange[]>());
     this.commitMessageSignal.set('');
     this.historyPathSignal.set(null);
@@ -875,8 +927,7 @@ export class Repository {
       }
       this.stagedSignal.set(status.staged);
       this.unstagedSignal.set(status.unstaged);
-      this.conflictedSignal.set(status.conflicted);
-      this.operationSignal.set(operation);
+      this.applyConflicts(status.conflicted, operation);
       this.commitsSignal.set(commits);
       this.branchesSignal.set(refs.branches);
       this.remotesSignal.set(refs.remotes);
@@ -1103,6 +1154,54 @@ export class Repository {
   public stageAll(): Promise<MutationResult> {
     return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
       provider.stage([]),
+    );
+  }
+
+  /**
+   * Marks a conflicted file resolved, which is what staging it means to git (#1321). The file is read
+   * first: one that still holds conflict markers is not staged, and its row is told how many are left,
+   * unless the user chose Mark Resolved Anyway for a file whose marker-like text is meant.
+   * @param file The conflicted file.
+   * @param anyway Whether to stage it whatever it still holds.
+   * @returns Returns the outcome; a refusal names the file and how many conflicts it holds.
+   */
+  public async markResolved(file: GitFileChange, anyway: boolean = false): Promise<MutationResult> {
+    const provider: SourceControlProvider | null = this.provider;
+    if (provider === null) {
+      return { success: false, error: 'No repository open' };
+    }
+    if (!anyway) {
+      const left: number = countConflicts(await provider.readWorkingFile(file.path));
+      if (left > 0) {
+        this.conflictsLeftSignal.set(
+          new Map<string, number>(this.conflictsLeftSignal()).set(file.path, left),
+        );
+        const name: string = file.path.slice(file.path.lastIndexOf('/') + 1);
+        this.log.info(
+          'Repository',
+          `Not marking '${file.path}' resolved: ${left} conflict(s) left`,
+        );
+        return { success: false, error: conflictsLeftMessage(name, left) };
+      }
+    }
+    this.log.trace('Repository', `Marking '${file.path}' resolved${anyway ? ' anyway' : ''}`);
+    return this.stage(file);
+  }
+
+  /**
+   * Settles a conflicted file whole and marks it resolved (#1321): the user's side, the other side, or
+   * for a file one side deleted, kept or deleted. The plugin does git's rebase swap.
+   * @param file The conflicted file.
+   * @param resolution How to settle it.
+   * @returns Returns the outcome.
+   */
+  public resolveConflict(
+    file: GitFileChange,
+    resolution: VcsConflictResolution,
+  ): Promise<MutationResult> {
+    this.log.info('Repository', `Settling '${file.path}' with ${resolution}`);
+    return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.resolveConflict(file.path, resolution),
     );
   }
 
@@ -1922,6 +2021,37 @@ export class Repository {
       return preferred;
     }
     return remotes[0]?.name ?? preferred;
+  }
+
+  /**
+   * Applies what a status read says is conflicted, and the operation in flight, keeping the tally of
+   * files seen conflicted for the progress line. A new operation, or a rebase moving to its next
+   * commit, starts the tally again: those are new conflicts, not more of the same ones.
+   * @param conflicted The conflicted files.
+   * @param operation The operation in flight.
+   */
+  private applyConflicts(conflicted: readonly GitFileChange[], operation: GitOperationState): void {
+    const episode: string =
+      operation.kind === null ? '' : `${operation.kind}:${operation.step ?? ''}`;
+    const paths: ReadonlySet<string> = new Set<string>(
+      conflicted.map((file: GitFileChange): string => file.path),
+    );
+    if (episode !== this.conflictEpisode) {
+      this.conflictEpisode = episode;
+      this.conflictSeenSignal.set(episode === '' ? new Set<string>() : paths);
+    } else if ([...paths].some((path: string): boolean => !this.conflictSeenSignal().has(path))) {
+      this.conflictSeenSignal.set(new Set<string>([...this.conflictSeenSignal(), ...paths]));
+    }
+    const left: ReadonlyMap<string, number> = this.conflictsLeftSignal();
+    if ([...left.keys()].some((path: string): boolean => !paths.has(path))) {
+      this.conflictsLeftSignal.set(
+        new Map<string, number>(
+          [...left].filter(([path]: [string, number]): boolean => paths.has(path)),
+        ),
+      );
+    }
+    this.conflictedSignal.set(conflicted);
+    this.operationSignal.set(operation);
   }
 
   /**

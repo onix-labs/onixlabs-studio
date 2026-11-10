@@ -1,3 +1,5 @@
+import type { VcsConflictKind } from '@shared/api/version-control-protocol';
+
 /**
  * Specifies the kind of reference a {@link GitRef} names.
  */
@@ -138,6 +140,13 @@ export interface GitFileChange {
    * when explicitly included in a commit. Omitted (falsy) for tracked changes.
    */
   readonly untracked?: boolean;
+
+  /**
+   * Gets what a conflicted file's conflict is (#1321): conflicting `content`, or one side having
+   * `deleted` the file. Absent for a file that is not conflicted, or from a plugin that does not say,
+   * in which case it is read as content.
+   */
+  readonly conflict?: VcsConflictKind;
 }
 
 /**

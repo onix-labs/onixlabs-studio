@@ -384,6 +384,23 @@
                     <code class="agent__action-cmd">{{ row.item!.toolDetail }}</code>
                   }
                   <ng-container [ngTemplateOutlet]="payloads" />
+                  <!-- A toolchain that cannot run in the sandbox at all crashes there; the fix is the
+                       user's to make, in one click, for this workspace only (#1163). -->
+                  @if (exclusionOffer(row.item!); as pattern) {
+                    <p class="agent__exclusion-offer">
+                      This looks like a crash the sandbox causes.
+                      <app-button
+                        variant="ghost"
+                        size="small"
+                        [label]="'Exclude ' + pattern + ' for This Workspace'"
+                        (click)="excludeForWorkspace(row.item!, pattern)"
+                      />
+                    </p>
+                  } @else if (row.item!.toolId && excludedFrom().has(row.item!.toolId)) {
+                    <p class="agent__exclusion-offer">
+                      Excluded for this workspace. Ask the agent to run it again.
+                    </p>
+                  }
                 </div>
               </details>
             }
@@ -407,5 +424,27 @@
   <!-- The command surface: a sibling component, not part of the transcript view, so typing in it does
        not re-check the message list's bindings. Sending re-pins the transcript to the tail; its Edit
        affordance on a user bubble drives the composer's edit mode through the template reference. -->
+  <!-- A repository's shared exclusions are ignored until the user allows them here (#1163): a clone
+       must not be able to take commands out of the sandbox on its own say-so. Not a modal: the user
+       can keep working, and the list stays ignored. -->
+  @if (pendingExclusions().length) {
+    <div class="agent__exclusion-review" role="status">
+      <p class="agent__exclusion-review-text">
+        This workspace's repository asks to run these commands outside the sandbox:
+        <code>{{ pendingExclusions().join(', ') }}</code
+        >. They are ignored until you allow them, and still ask for permission when they run.
+      </p>
+      <span class="agent__exclusion-review-actions">
+        <app-button variant="ghost" size="small" label="Allow" (click)="allowSharedExclusions()" />
+        <app-button
+          variant="ghost"
+          size="small"
+          label="Not Now"
+          (click)="postponeSharedExclusions()"
+        />
+      </span>
+    </div>
+  }
+
   <app-agent-composer #composer [tabId]="tabId()" [surface]="surface()" (sent)="onSent()" />
 </div>

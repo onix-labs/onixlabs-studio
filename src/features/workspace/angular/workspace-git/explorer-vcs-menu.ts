@@ -8,6 +8,8 @@ import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Repository } from '@shared/angular/services/repository/repository';
 import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
+import { keepSideLabel } from '@shared/angular/services/repository/conflict-resolution';
+import type { VcsConflictResolution } from '@shared/api/version-control-protocol';
 
 /**
  * Identifies the version-control commands an explorer row offers.
@@ -17,7 +19,22 @@ const ACTION_REVERT: string = 'revert-changes';
 const ACTION_ADD_TO_VCS: string = 'add-to-version-control';
 const ACTION_UNDO_ADD: string = 'undo-add';
 const ACTION_MARK_RESOLVED: string = 'mark-resolved';
+const ACTION_MARK_RESOLVED_ANYWAY: string = 'mark-resolved-anyway';
+const ACTION_KEEP_YOURS: string = 'keep-yours';
+const ACTION_KEEP_THEIRS: string = 'keep-theirs';
+const ACTION_KEEP_FILE: string = 'keep-file';
+const ACTION_DELETE_FILE: string = 'delete-file';
 const ACTION_OPEN_IN_REPOSITORY: string = 'open-in-repository';
+
+/**
+ * Maps the commands that settle a conflicted file whole onto the resolution each asks for (#1321).
+ */
+const RESOLUTIONS: Readonly<Record<string, VcsConflictResolution>> = {
+  [ACTION_KEEP_YOURS]: 'yours',
+  [ACTION_KEEP_THEIRS]: 'theirs',
+  [ACTION_KEEP_FILE]: 'keepFile',
+  [ACTION_DELETE_FILE]: 'deleteFile',
+};
 const ACTION_IGNORE: string = 'ignore';
 const ACTION_IGNORE_EXTENSION: string = 'ignore-extension';
 const ACTION_STOP_TRACKING: string = 'stop-tracking';
@@ -88,7 +105,9 @@ export interface ExplorerVcsTarget {
  * - added: Undo Add
  * - unchanged: Show History, Stop Tracking
  * - modified: Show Differences, Show History, Revert Changes, Stop Tracking
- * - conflicted: Mark Resolved, Open in Repository, Show History
+ * - conflicted: Mark Resolved (and Mark Resolved Anyway once refused for markers left in it), Keep
+ *   <branch> (Yours) / Keep <branch> (Theirs) — or Keep File / Delete File where one side deleted it —
+ *   Open in Repository, Show History
  * - a folder with edited files beneath it: Show History, Revert Changes, Stop Tracking
  *
  * Scoped per directory tab, beside the {@link WorkspaceGit} it reads.
@@ -188,6 +207,25 @@ export class ExplorerVcsMenu {
       every((target: ExplorerVcsTarget): boolean => this.git.isConflicted(target.path))
     ) {
       items.push({ id: ACTION_MARK_RESOLVED, label: 'Mark Resolved', icon: Icon.CHECK });
+      if (single !== null && this.git.hasConflictsLeft(single.path)) {
+        items.push({ id: ACTION_MARK_RESOLVED_ANYWAY, label: 'Mark Resolved Anyway' });
+      }
+      if (single !== null && this.git.canResolveConflict(single.path)) {
+        items.push(
+          ...(this.git.conflictKindOf(single.path) === 'deleted'
+            ? [
+                { id: ACTION_KEEP_FILE, label: 'Keep File' },
+                { id: ACTION_DELETE_FILE, label: 'Delete File' },
+              ]
+            : [
+                { id: ACTION_KEEP_YOURS, label: keepSideLabel('yours', this.git.conflictSides()) },
+                {
+                  id: ACTION_KEEP_THEIRS,
+                  label: keepSideLabel('theirs', this.git.conflictSides()),
+                },
+              ]),
+        );
+      }
       if (single !== null) {
         items.push({
           id: ACTION_OPEN_IN_REPOSITORY,
@@ -234,6 +272,18 @@ export class ExplorerVcsMenu {
         return true;
       case ACTION_MARK_RESOLVED:
         void this.report(this.git.markResolved(paths), `Could not mark ${named} resolved`);
+        return true;
+      case ACTION_MARK_RESOLVED_ANYWAY:
+        void this.report(this.git.markResolved(paths, true), `Could not mark ${named} resolved`);
+        return true;
+      case ACTION_KEEP_YOURS:
+      case ACTION_KEEP_THEIRS:
+      case ACTION_KEEP_FILE:
+      case ACTION_DELETE_FILE:
+        void this.report(
+          this.git.resolveConflict(first.path, RESOLUTIONS[itemId]),
+          `Could not settle ${named}`,
+        );
         return true;
       case ACTION_OPEN_IN_REPOSITORY:
         this.sourceControl.openInSourceControl();

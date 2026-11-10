@@ -5,7 +5,19 @@ import {
   RepositoryInfo,
   SourceControlClient,
 } from '@shared/api/source-control-channels';
-import type { VcsIgnoreRule, VersionControlCapability } from '@shared/api/version-control-protocol';
+import type {
+  VcsConflictKind,
+  VcsConflictResolution,
+  VcsIgnoreRule,
+  VersionControlCapability,
+} from '@shared/api/version-control-protocol';
+import type { GitOperationState } from '@shared/api/source-control-channels';
+import {
+  ConflictSides,
+  conflictSides,
+  conflictsLeftMessage,
+  countConflicts,
+} from '@shared/angular/services/repository/conflict-resolution';
 import { VersionControlPrompt } from '@shared/angular/services/plugins/version-control-prompt';
 import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
 import { Log } from '@shared/angular/services/log/log';
@@ -205,6 +217,35 @@ export class WorkspaceGit {
   private readonly restrictedRoot: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
+   * Holds what each conflicted file's conflict is, by absolute path (#1321).
+   */
+  private readonly conflictKinds: WritableSignal<ReadonlyMap<string, VcsConflictKind>> = signal<
+    ReadonlyMap<string, VcsConflictKind>
+  >(new Map<string, VcsConflictKind>());
+
+  /**
+   * Holds the conflicts each file Mark Resolved refused still held, by absolute path (#1321).
+   */
+  private readonly conflictsLeft: WritableSignal<ReadonlyMap<string, number>> = signal<
+    ReadonlyMap<string, number>
+  >(new Map<string, number>());
+
+  /**
+   * Holds the operation in flight, read only while something is conflicted, so the menu can name the
+   * two sides of a conflict (#1321).
+   */
+  private readonly operationSignal: WritableSignal<GitOperationState> = signal<GitOperationState>({
+    kind: null,
+  });
+
+  /**
+   * Gets the names of the two sides of the conflicts in flight, the user's own work as "yours".
+   */
+  public readonly conflictSides: Signal<ConflictSides> = computed((): ConflictSides =>
+    conflictSides(this.operationSignal(), this.branchSignal()),
+  );
+
+  /**
    * Gets the current branch, or null when detached or the folder is not a repository.
    */
   public readonly branch: Signal<string | null> = this.branchSignal.asReadonly();
@@ -333,8 +374,10 @@ export class WorkspaceGit {
         record(change.path, state, true);
       }
     }
+    const kinds: Map<string, VcsConflictKind> = new Map<string, VcsConflictKind>();
     for (const change of status.conflicted) {
       record(change.path, 'conflicted', true);
+      kinds.set(normalize(`${root}/${change.path}`), change.conflict ?? 'content');
     }
     // Ignored paths are not changes: they grey out, but no folder turns info because of one.
     for (const path of status.ignored ?? []) {
@@ -356,7 +399,30 @@ export class WorkspaceGit {
       this.revertable.set(revertable);
     }
     this.branchSignal.set(status.branch);
+    this.applyConflicts(kinds);
+    // Only a repository with something conflicted has sides to name, so the operation is read then.
+    const operation: GitOperationState =
+      kinds.size === 0 ? { kind: null } : await provider.getOperationState();
+    if (this.provider === provider) {
+      this.operationSignal.set(operation);
+    }
     this.statusReadSignal.set(true);
+  }
+
+  /**
+   * Applies which files are conflicted, dropping a refused file's count once it no longer is.
+   * @param kinds The conflicted files' kinds, by absolute path.
+   */
+  private applyConflicts(kinds: ReadonlyMap<string, VcsConflictKind>): void {
+    this.conflictKinds.set(kinds);
+    const left: ReadonlyMap<string, number> = this.conflictsLeft();
+    if ([...left.keys()].some((path: string): boolean => !kinds.has(path))) {
+      this.conflictsLeft.set(
+        new Map<string, number>(
+          [...left].filter(([path]: [string, number]): boolean => kinds.has(path)),
+        ),
+      );
+    }
   }
 
   /**
@@ -475,12 +541,102 @@ export class WorkspaceGit {
    * @param paths The absolute paths, files or folders, all inside the repository.
    * @returns Returns the outcome.
    */
-  public markResolved(paths: readonly string[]): Promise<MutationResult> {
+  public markResolved(paths: readonly string[], anyway: boolean = false): Promise<MutationResult> {
     return this.mutate(
-      'Marking resolved',
+      anyway ? 'Marking resolved anyway' : 'Marking resolved',
       paths,
+      async (
+        provider: SourceControlProvider,
+        relative: readonly string[],
+      ): Promise<MutationResult> => {
+        // A file still holding conflict markers is not staged unless the user says it is meant (#1321).
+        if (!anyway) {
+          const refused: MutationResult | null = await this.refuseWithMarkers(provider, relative);
+          if (refused !== null) {
+            return refused;
+          }
+        }
+        return provider.stage(relative);
+      },
+    );
+  }
+
+  /**
+   * Checks the conflicted files among paths for the markers git left in them, recording how many each
+   * still holds so the menu offers Mark Resolved Anyway.
+   * @param provider The repository's provider.
+   * @param relative The repository-relative paths.
+   * @returns Returns the refusal naming the first file still holding conflicts, or null when none does.
+   */
+  private async refuseWithMarkers(
+    provider: SourceControlProvider,
+    relative: readonly string[],
+  ): Promise<MutationResult | null> {
+    const root: string | null = this.boundRoot === null ? null : normalize(this.boundRoot);
+    if (root === null) {
+      return null;
+    }
+    const left: Map<string, number> = new Map<string, number>(this.conflictsLeft());
+    let refusal: MutationResult | null = null;
+    for (const path of relative) {
+      const absolute: string = normalize(`${root}/${path}`);
+      if (!this.conflictKinds().has(absolute)) {
+        continue;
+      }
+      const count: number = countConflicts(await provider.readWorkingFile(path));
+      if (count > 0) {
+        left.set(absolute, count);
+        refusal ??= {
+          success: false,
+          error: conflictsLeftMessage(path.slice(path.lastIndexOf('/') + 1), count),
+        };
+      }
+    }
+    this.conflictsLeft.set(left);
+    return refusal;
+  }
+
+  /**
+   * Gets whether Mark Resolved refused a path for the conflicts left in it, so the menu offers Mark
+   * Resolved Anyway (#1321).
+   * @param path The absolute file path.
+   * @returns Returns true when it was refused and is still conflicted.
+   */
+  public hasConflictsLeft(path: string): boolean {
+    return this.conflictsLeft().has(this.realKey(path));
+  }
+
+  /**
+   * Gets what a conflicted path's conflict is, or null when it is not conflicted (#1321).
+   * @param path The absolute file path.
+   * @returns Returns the kind.
+   */
+  public conflictKindOf(path: string): VcsConflictKind | null {
+    return this.conflictKinds().get(this.realKey(path)) ?? null;
+  }
+
+  /**
+   * Gets whether a conflicted file can be settled whole from the menu: the plugin can, and the path is
+   * conflicted (#1321).
+   * @param path The absolute file path.
+   * @returns Returns true when the menu offers keeping a side.
+   */
+  public canResolveConflict(path: string): boolean {
+    return this.supports('resolveConflicts') && this.isConflicted(path);
+  }
+
+  /**
+   * Settles a conflicted file whole and marks it resolved (#1321).
+   * @param path The absolute file path.
+   * @param resolution How to settle it.
+   * @returns Returns the outcome.
+   */
+  public resolveConflict(path: string, resolution: VcsConflictResolution): Promise<MutationResult> {
+    return this.mutate(
+      `Settling with ${resolution}`,
+      [path],
       (provider: SourceControlProvider, relative: readonly string[]): Promise<MutationResult> =>
-        provider.stage(relative),
+        provider.resolveConflict(relative[0], resolution),
     );
   }
 

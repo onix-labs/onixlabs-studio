@@ -161,6 +161,7 @@ describe('AgentComposer', () => {
       clear: (): void => void (clearedChats += 1),
       setMode: (value: AgentMode): void => void modeChanges.push(value),
       setEffort: (value: AiEffort | null): void => void effortChanges.push(value),
+      runWorkspaceRoot: (): string | null => null,
       attachContext: (ref: AgentContextRef): void => void attachedContext.push(ref),
       needsLogin: signal<boolean>(false),
       supportsSignIn: signInSupported,

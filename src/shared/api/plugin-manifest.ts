@@ -184,8 +184,13 @@ import { isTestAdapterCapability, TestAdapterCapability } from './test-adapter-p
  * Studio runs in a visible terminal, because core knows no test framework. Keyed by **marker** files as
  * package managers are, and likewise not a choice of one: every plugin whose marker a folder holds
  * applies. Adds only.
+ *
+ * `1.29.0` moves the hosting protocol to 1.4 (#1156), with the manifest's shape unchanged: the closed
+ * list of hosting capabilities gains `editIssue`, `editSubIssues` and `editPullRequest`, so agents can
+ * edit issues and pull requests through the plugin rather than the host's CLI. A manifest declaring
+ * one is refused by an older build, which is why this is a version. Adds only.
  */
-export const PLUGIN_API_VERSION: string = '1.28.0';
+export const PLUGIN_API_VERSION: string = '1.29.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the

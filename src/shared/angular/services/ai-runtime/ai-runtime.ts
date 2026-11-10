@@ -97,6 +97,11 @@ export interface AiRunOptions {
   readonly deniedNetworkLocations?: readonly string[];
 
   /**
+   * Gets the commands excluded from the sandbox in every workspace (#1163); main adds the workspace's.
+   */
+  readonly excludedCommands?: readonly string[];
+
+  /**
    * Gets the per-request token budget, or 0 for the provider default (no cap).
    */
   readonly tokenCap?: number;
@@ -313,6 +318,9 @@ export class AiRuntime {
       deniedWritePaths: options.deniedWritePaths ?? [],
       allowedNetworkLocations: options.allowedNetworkLocations ?? [],
       deniedNetworkLocations: options.deniedNetworkLocations ?? [],
+      ...((options.excludedCommands ?? []).length === 0
+        ? {}
+        : { excludedCommands: options.excludedCommands }),
       tokenCap: options.tokenCap ?? 0,
       ...(options.maxSteps === undefined ? {} : { maxSteps: options.maxSteps }),
       ...(options.requireSandbox === undefined ? {} : { requireSandbox: options.requireSandbox }),

@@ -821,6 +821,7 @@ export interface SettingsValues {
   readonly 'ai.deniedWritePaths': readonly string[];
   readonly 'ai.allowedNetworkLocations': readonly string[];
   readonly 'ai.deniedNetworkLocations': readonly string[];
+  readonly 'ai.excludedCommands': readonly string[];
   readonly 'ai.tokenCap': number;
   readonly 'ai.runTimeoutMinutes': number;
   readonly 'ai.agentSessionLifetime': number;
@@ -4926,6 +4927,17 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description:
           'Hosts the agent may never reach, even when the allowed list would permit them.',
         control: { kind: 'custom', component: 'ai-network-locations' },
+        default: [],
+      },
+      {
+        key: 'ai.excludedCommands',
+        title: 'Excluded Commands',
+        description:
+          'Commands that run outside the OS sandbox in every workspace, such as a toolchain that ' +
+          'crashes inside it (e.g. npx ng:*, dotnet:*). They still ask for permission as any ' +
+          'command does; only the sandbox is removed. Claude agents only: Codex cannot take one ' +
+          'command out of its sandbox.',
+        control: { kind: 'custom', component: 'ai-excluded-commands' },
         default: [],
       },
       {

@@ -486,6 +486,7 @@ export class AppMenu {
       ...(entry.enabled === undefined ? {} : { enabled: entry.enabled }),
       ...(entry.checked === undefined ? {} : { checked: entry.checked }),
       ...(entry.role === undefined ? {} : { role: entry.role }),
+      ...(entry.applicationMenu === undefined ? {} : { applicationMenu: entry.applicationMenu }),
       ...(entry.items === undefined ? {} : { items: entry.items.map(item) }),
     });
     return sections.map((section: MenuContribution): AppMenuSection => ({

@@ -1292,6 +1292,11 @@ export class Settings {
   );
 
   /**
+   * Gets the commands excluded from the agent's sandbox in every workspace (#1163).
+   */
+  public readonly aiExcludedCommands: Signal<readonly string[]> = this.value('ai.excludedCommands');
+
+  /**
    * Gets the hosts the agent may never reach.
    */
   public readonly aiDeniedNetworkLocations: Signal<readonly string[]> = this.value(
@@ -1779,6 +1784,14 @@ export class Settings {
    */
   public setAiAllowedNetworkLocations(locations: readonly string[]): void {
     this.set('ai.allowedNetworkLocations', [...locations]);
+  }
+
+  /**
+   * Replaces the commands excluded from the agent's sandbox in every workspace (#1163).
+   * @param patterns The patterns, in Bash permission-rule syntax.
+   */
+  public setAiExcludedCommands(patterns: readonly string[]): void {
+    this.set('ai.excludedCommands', [...patterns]);
   }
 
   /**

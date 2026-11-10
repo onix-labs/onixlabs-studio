@@ -25,6 +25,17 @@ describe('sandboxGuidance', () => {
     deniedNetworkLocations: [],
   };
 
+  it('sandboxGuidance_namesTheExcludedCommands_andHowToAskForOne', () => {
+    const guidance: string = sandboxGuidance(
+      { ...nothing, excludedCommands: ['npx ng:*', 'dotnet:*'] },
+      true,
+    );
+
+    expect(guidance).toContain('Excluded: npx ng:*, dotnet:* run outside the sandbox');
+    expect(guidance).toContain('ask them to, rather than setting the flag');
+    expect(sandboxGuidance(nothing, true)).not.toContain('Excluded:');
+  });
+
   it('sandboxGuidance_saysWhatHoldsByDefault', () => {
     const guidance: string = sandboxGuidance(nothing, true);
 
@@ -61,11 +72,12 @@ describe('sandboxGuidance', () => {
     expect(guidance).toContain('Security & Permissions');
   });
 
-  it('sandboxGuidance_promisesNoWayOutThatDoesNotExistYet', () => {
+  it('sandboxGuidance_promisesNoWayOutThatDoesNotExist', () => {
+    // A per-host `allowed_domains` is ignored outside auto mode. Excluding a command became real with
+    // #1163, so the guidance may now name it.
     const guidance: string = sandboxGuidance(nothing, true);
 
     expect(guidance).not.toContain('allowed_domains');
-    expect(guidance).not.toContain('exclude');
   });
 
   it('sandboxGuidance_saysLocalPortsAndDockerAreOutOfReachByDefault', () => {
@@ -264,6 +276,19 @@ describe('osSandboxAvailable', () => {
 });
 
 describe('shellRule', () => {
+  it('doesNotAutoAllowAnExcludedCommand_whichRunsOutsideTheSandbox', () => {
+    // #1163: Auto-Allow is for commands that stay inside the sandbox; an excluded one does not.
+    const settings: { autoAllowSandboxedShell: boolean; excludedCommands: string[] } = {
+      autoAllowSandboxedShell: true,
+      excludedCommands: ['npx ng:*'],
+    };
+
+    expect(shellRule('Bash', { command: 'npx ng build' }, settings, true)).toEqual({
+      kind: 'continue',
+    });
+    expect(shellRule('Bash', { command: 'ls' }, settings, true)).toEqual({ kind: 'allow' });
+  });
+
   it('leavesEveryOtherToolAlone', () => {
     expect(shellRule('Write', {}, {}, false)).toEqual({ kind: 'continue' });
   });

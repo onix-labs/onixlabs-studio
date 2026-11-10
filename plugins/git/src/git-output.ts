@@ -2,6 +2,7 @@ import {
   VcsBranch,
   VcsChangeStatus,
   VcsCommit,
+  VcsConflictKind,
   VcsFileChange,
   VcsRef,
   VcsRefs,
@@ -75,6 +76,17 @@ function change(
 }
 
 /**
+ * Reads what an unmerged entry's conflict is from its two-letter code. A `D` on either side (`DU`,
+ * `UD`, `DD`) means one side deleted the file, which is settled by keeping or deleting it rather than
+ * by taking one side's content; every other code (`UU`, `AA`, `AU`, `UA`) is conflicting content.
+ * @param code The entry's `XY` code.
+ * @returns Returns the conflict's kind.
+ */
+export function conflictKind(code: string): VcsConflictKind {
+  return code.includes('D') ? 'deleted' : 'content';
+}
+
+/**
  * Parses `git status --porcelain=v2 --branch --ignored -z` output into the branch header and the staged,
  * unstaged and conflicted changes. The NUL-delimited stream interleaves header lines, ordinary and
  * rename entries (whose rename form carries a second, separately-delimited path), unmerged entries and
@@ -137,7 +149,11 @@ export function parseStatus(output: string): VcsStatus {
     if (token.startsWith('u ')) {
       // Unmerged entries carry 10 metadata fields before the path. Git reports a conflicted path as
       // one of these INSTEAD of an ordinary or rename entry, so nothing here is also staged or unstaged.
-      conflicted.push(change(token.split(' ').slice(10).join(' '), 'conflicted'));
+      const fields: readonly string[] = token.split(' ');
+      conflicted.push({
+        ...change(fields.slice(10).join(' '), 'conflicted'),
+        conflict: conflictKind(fields[1] ?? ''),
+      });
       continue;
     }
 

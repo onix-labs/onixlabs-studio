@@ -1,9 +1,9 @@
 {
   "id": "onixlabs.github",
   "name": "GitHub",
-  "description": "GitHub hosting: pull requests with their checks, issues and comments, Actions runs (re-run and cancel), and your accounts and repositories — and, for you and your agents, opening issues and pull requests, commenting, and closing or reopening issues.",
+  "description": "GitHub hosting: pull requests with their checks, issues and comments, Actions runs (re-run and cancel), and your accounts and repositories — and, for you and your agents, opening, editing, labelling and closing issues, linking sub-issues, and opening and editing pull requests.",
   "version": "0.6.0",
-  "apiVersion": "1.17.0",
+  "apiVersion": "1.29.0",
   "detail": "Signs in with the GitHub CLI's login (gh auth login), or a token you add in Settings. Serves github.com.",
   "provision": {
     "kind": "npm",
@@ -29,7 +29,10 @@
           "createIssue",
           "commentOnIssue",
           "setIssueState",
+          "editIssue",
           "subIssues",
+          "editSubIssues",
+          "editPullRequest",
           "ciRuns",
           "ciRerun",
           "ciCancel"

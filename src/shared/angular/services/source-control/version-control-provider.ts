@@ -7,6 +7,7 @@ import {
   VcsCommit,
   VcsFileChange,
   VcsFileVersion,
+  VcsConflictResolution,
   VcsIgnoreRule,
   VcsStash,
   VcsStatus,
@@ -68,6 +69,7 @@ function toFileChange(change: VcsFileChange, target: DiffTarget): GitFileChange 
     modified: '',
     target,
     untracked: change.untracked,
+    ...(change.conflict === undefined ? {} : { conflict: change.conflict }),
   };
 }
 
@@ -310,6 +312,25 @@ export class VersionControlProvider implements SourceControlProvider {
    */
   public stopTracking(paths: readonly string[]): Promise<MutationResult> {
     return this.mutate('stopTracking', { paths });
+  }
+
+  /**
+   * Settles one conflicted file whole and marks it resolved.
+   * @param path The repository-relative path.
+   * @param resolution How to settle it.
+   * @returns Returns the outcome.
+   */
+  public resolveConflict(path: string, resolution: VcsConflictResolution): Promise<MutationResult> {
+    return this.mutate('resolveConflict', { path, resolution });
+  }
+
+  /**
+   * Reads a file as it stands on disk.
+   * @param path The repository-relative path.
+   * @returns Returns its content, empty when it cannot be read.
+   */
+  public readWorkingFile(path: string): Promise<string> {
+    return this.contents(path, { kind: 'working' });
   }
 
   /**
