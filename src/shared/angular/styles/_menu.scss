@@ -676,7 +676,7 @@
   overflow-y: auto;
 }
 
-// The row carries the hover surface so hovering anywhere on it — the delete control included —
+// The row carries the hover surface so hovering anywhere on it — its More Actions button included —
 // highlights the whole row.
 .quick-responses__item {
   display: flex;
@@ -693,7 +693,7 @@
   }
 }
 
-// The reply fills the row up to the delete control.
+// The reply fills the row up to its More Actions button.
 .quick-responses__select {
   display: flex;
   flex: 1;
@@ -717,6 +717,12 @@
   &:focus-visible {
     outline: none;
   }
+}
+
+// A row being edited in place (#1420): the field takes the reply's room, up to the row's end.
+.quick-responses__edit {
+  flex: 1;
+  min-inline-size: 0;
 }
 
 // One line, ellipsised where the panel's own width runs out.

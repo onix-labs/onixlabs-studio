@@ -81,6 +81,40 @@ export class AgentQuickResponses {
   }
 
   /**
+   * Rewrites a response in place, keeping its position. The text is flattened as an added one is, and
+   * an edit that would leave it blank, or repeat another saved response, is refused, leaving the
+   * response as it was.
+   * @param id The response's identifier.
+   * @param text The new text.
+   * @returns Returns true when the text changed or was already this; false when the edit was refused
+   * or the response no longer exists.
+   */
+  public update(id: string, text: string): boolean {
+    const line: string = AgentQuickResponses.flatten(text);
+    const responses: readonly QuickResponse[] = this.responsesState();
+    const current: QuickResponse | undefined = responses.find(
+      (response: QuickResponse): boolean => response.id === id,
+    );
+    if (current === undefined || line.length === 0) {
+      return false;
+    }
+    if (current.text === line) {
+      return true;
+    }
+    if (responses.some((response: QuickResponse): boolean => response.text === line)) {
+      return false;
+    }
+    this.responsesState.set(
+      responses.map((response: QuickResponse): QuickResponse =>
+        response.id === id ? { ...response, text: line } : response,
+      ),
+    );
+    this.persist();
+    this.log.info('AgentQuickResponses', 'Quick response edited', id);
+    return true;
+  }
+
+  /**
    * Deletes a response from the list.
    * @param id The response's identifier.
    */

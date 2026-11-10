@@ -986,6 +986,12 @@ export class Icon {
   public static readonly PENCIL: Icon = new Icon('ph-duotone ph-pencil-simple');
 
   /**
+   * Gets the text-cursor icon: put text where the user types, to edit before sending (#1420). Not the
+   * pencil, which means editing the thing itself.
+   */
+  public static readonly CURSOR_TEXT: Icon = new Icon('ph-duotone ph-cursor-text');
+
+  /**
    * Gets the upward-arrow (push) icon.
    */
   public static readonly ARROW_UP: Icon = new Icon('ph ph-arrow-up');

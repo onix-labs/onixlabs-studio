@@ -34,6 +34,40 @@ describe('AgentQuickResponses', () => {
     expect(texts(fresh).at(-1)).toBe('Ship it');
   });
 
+  it('update_rewritesInPlace_flattened_andPersists', () => {
+    // #1420: editing a row keeps its place in the user's order.
+    responses.add('Okay');
+    responses.add('Ship it');
+    const id: string = responses.responses()[0].id;
+
+    expect(responses.update(id, 'Okay,\n go ahead')).toBe(true);
+
+    expect(texts(responses)).toEqual(['Okay, go ahead', 'Ship it']);
+    expect(responses.responses()[0]?.id).toBe(id);
+    TestBed.resetTestingModule();
+    expect(texts(TestBed.inject(AgentQuickResponses))).toEqual(['Okay, go ahead', 'Ship it']);
+  });
+
+  it.each([
+    ['blank', '   '],
+    ['the same as another response', 'Ship it'],
+  ])('update_toSomething %s_isRefused_andChangesNothing', (_label: string, text: string) => {
+    responses.add('Okay');
+    responses.add('Ship it');
+
+    expect(responses.update(responses.responses()[0].id, text)).toBe(false);
+
+    expect(texts(responses)).toEqual(['Okay', 'Ship it']);
+  });
+
+  it('update_toItsOwnText_orOfAnUnknownId_isHandled', () => {
+    responses.add('Okay');
+
+    expect(responses.update(responses.responses()[0].id, ' Okay ')).toBe(true);
+    expect(responses.update('missing', 'Anything')).toBe(false);
+    expect(texts(responses)).toEqual(['Okay']);
+  });
+
   it('add_whenTheTextSpansLines_flattensItToOne', () => {
     responses.add('  Rebase   onto main\nthen push  ');
 
