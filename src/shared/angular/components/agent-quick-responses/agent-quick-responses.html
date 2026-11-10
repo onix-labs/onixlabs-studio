@@ -44,6 +44,17 @@
           >
             <span class="quick-responses__text">{{ response.text }}</span>
           </button>
+          <!-- The other of the two things picking a row does (#1420). Not a cdkMenuItem either, so it
+               sits beside Delete as the same atom; it closes the menu itself, as picking does. -->
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="alternate().icon"
+            [ariaLabel]="alternate().label + ': ' + response.text"
+            [tooltip]="alternate().label"
+            (pointerdown)="$event.preventDefault()"
+            (click)="chooseAlternate(response); $event.stopPropagation()"
+          />
           <!-- A plain icon button rather than a cdkMenuItem so deleting leaves the menu open, letting
                several be cleared in a row; the stopPropagation keeps the click from reaching the menu. -->
           <app-button

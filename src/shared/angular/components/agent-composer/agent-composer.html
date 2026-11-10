@@ -207,7 +207,10 @@
   <div class="agent__composer-footer">
     <div class="agent__composer-aids">
       <app-agent-composer-shortcuts />
-      <app-agent-quick-responses (chosen)="onQuickResponse($event)" />
+      <app-agent-quick-responses
+        [hasDraft]="draft().trim().length > 0"
+        (chosen)="onQuickResponse($event)"
+      />
       <app-button
         variant="none"
         [icon]="Icon.COMPOSER_OPEN_EDITOR"

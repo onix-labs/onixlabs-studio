@@ -4,11 +4,15 @@ import { ConnectedPosition } from '@angular/cdk/overlay';
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   inject,
+  input,
+  InputSignal,
   output,
   OutputEmitterRef,
   signal,
   Signal,
+  viewChild,
   WritableSignal,
 } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -20,6 +24,45 @@ import {
   AgentQuickResponses as QuickResponseLibrary,
   QuickResponse,
 } from '@shared/angular/services/agent-quick-responses/agent-quick-responses';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { QuickResponseMode } from '@shared/angular/services/settings/settings-registry';
+
+/**
+ * Describes a picked quick response and what to do with it (#1420): send it, or put it in the composer.
+ * With a draft already written, `send` means add the response and send the draft, and `insert` means
+ * add it and leave the draft unsent.
+ */
+export interface QuickResponseChoice {
+  /**
+   * Gets the response's text.
+   */
+  readonly text: string;
+
+  /**
+   * Gets whether the composer sends after taking the text, or only takes it.
+   */
+  readonly mode: QuickResponseMode;
+}
+
+/**
+ * Describes the second button on every row: the other of the two things picking a row does.
+ */
+interface AlternateAction {
+  /**
+   * Gets what the button does, as its label and tooltip.
+   */
+  readonly label: string;
+
+  /**
+   * Gets the button's icon.
+   */
+  readonly icon: Icon;
+
+  /**
+   * Gets the mode the button picks with.
+   */
+  readonly mode: QuickResponseMode;
+}
 
 /**
  * The composer's quick-response menu: an icon button opening a drop-up of the user's saved one-line
@@ -77,16 +120,62 @@ export class AgentQuickResponses {
   protected readonly menuPosition: readonly ConnectedPosition[] = MENU_POSITIONS['up-start'];
 
   /**
-   * Emitted with the text of the response the user picked.
+   * Gets whether the composer already holds a draft. A draft is never sent by a plain pick, so with one
+   * a row adds to it, and the row's second button is the explicit Add and Send.
    */
-  public readonly chosen: OutputEmitterRef<string> = output<string>();
+  public readonly hasDraft: InputSignal<boolean> = input<boolean>(false);
 
   /**
-   * Reports the picked response to the host.
+   * Emitted with the response the user picked and what to do with it.
+   */
+  public readonly chosen: OutputEmitterRef<QuickResponseChoice> = output<QuickResponseChoice>();
+
+  /**
+   * Holds the user's choice of what picking a response does in an empty composer.
+   */
+  private readonly setting: Signal<QuickResponseMode> =
+    inject(Settings).value('ai.quickResponseMode');
+
+  /**
+   * Holds the button that opens the menu, so the second button on a row can close it as picking does.
+   */
+  private readonly trigger: Signal<CdkMenuTrigger> = viewChild.required(CdkMenuTrigger);
+
+  /**
+   * Gets what picking a row does: added to a draft when there is one, otherwise the user's setting.
+   */
+  protected readonly pickMode: Signal<QuickResponseMode> = computed((): QuickResponseMode =>
+    this.hasDraft() ? 'insert' : this.setting(),
+  );
+
+  /**
+   * Gets the row's second button, which does the other thing: Add and Send with a draft, otherwise the
+   * opposite of the setting.
+   */
+  protected readonly alternate: Signal<AlternateAction> = computed((): AlternateAction => {
+    if (this.hasDraft()) {
+      return { label: 'Add and Send', icon: Icon.SEND, mode: 'send' };
+    }
+    return this.setting() === 'send'
+      ? { label: 'Insert for Editing', icon: Icon.PENCIL, mode: 'insert' }
+      : { label: 'Send Now', icon: Icon.SEND, mode: 'send' };
+  });
+
+  /**
+   * Reports a row's pick to the host, in the mode a plain pick has.
    * @param response The picked response.
    */
   protected choose(response: QuickResponse): void {
-    this.chosen.emit(response.text);
+    this.chosen.emit({ text: response.text, mode: this.pickMode() });
+  }
+
+  /**
+   * Reports a row's second button to the host and closes the menu, as picking the row does.
+   * @param response The response.
+   */
+  protected chooseAlternate(response: QuickResponse): void {
+    this.chosen.emit({ text: response.text, mode: this.alternate().mode });
+    this.trigger().close();
   }
 
   /**

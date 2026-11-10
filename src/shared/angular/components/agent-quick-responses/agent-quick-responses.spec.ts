@@ -4,7 +4,9 @@ import {
   AgentQuickResponses as QuickResponseLibrary,
   QuickResponse,
 } from '@shared/angular/services/agent-quick-responses/agent-quick-responses';
-import { AgentQuickResponses } from './agent-quick-responses';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { QuickResponseMode } from '@shared/angular/services/settings/settings-registry';
+import { AgentQuickResponses, QuickResponseChoice } from './agent-quick-responses';
 
 /**
  * The mounted menu together with what a test needs to drive it.
@@ -13,25 +15,37 @@ interface Harness {
   readonly fixture: ComponentFixture<AgentQuickResponses>;
   readonly host: HTMLElement;
   readonly library: QuickResponseLibrary;
-  readonly chosen: string[];
+  readonly chosen: QuickResponseChoice[];
 }
 
 /**
  * Mounts the menu over the given saved replies and opens it, since everything it does is inside the
  * flyout. Nothing is saved by default — that is how a first run finds it.
  * @param saved The replies to save before mounting.
+ * @param mode The Quick Responses setting, or the default when absent.
+ * @param hasDraft Whether the composer holds a draft.
  * @returns Returns the harness.
  */
-function open(saved: readonly string[] = []): Harness {
+function open(
+  saved: readonly string[] = [],
+  mode?: QuickResponseMode,
+  hasDraft: boolean = false,
+): Harness {
   TestBed.configureTestingModule({ imports: [AgentQuickResponses] });
   const library: QuickResponseLibrary = TestBed.inject(QuickResponseLibrary);
   for (const text of saved) {
     library.add(text);
   }
+  if (mode !== undefined) {
+    TestBed.inject(Settings).set('ai.quickResponseMode', mode);
+  }
   const fixture: ComponentFixture<AgentQuickResponses> =
     TestBed.createComponent(AgentQuickResponses);
-  const chosen: string[] = [];
-  fixture.componentInstance.chosen.subscribe((text: string): void => void chosen.push(text));
+  fixture.componentRef.setInput('hasDraft', hasDraft);
+  const chosen: QuickResponseChoice[] = [];
+  fixture.componentInstance.chosen.subscribe(
+    (choice: QuickResponseChoice): void => void chosen.push(choice),
+  );
   fixture.detectChanges();
   const host: HTMLElement = fixture.nativeElement as HTMLElement;
   host.querySelector('button')?.click();
@@ -46,6 +60,16 @@ function open(saved: readonly string[] = []): Harness {
 function rows(): readonly string[] {
   return Array.from(document.querySelectorAll('.quick-responses__text')).map(
     (row: Element): string => row.textContent?.trim() ?? '',
+  );
+}
+
+/**
+ * Finds the first row's second button, the one that does the other thing (#1420).
+ * @returns Returns the button, or null.
+ */
+function alternateButton(): HTMLButtonElement | null {
+  return document.querySelector<HTMLButtonElement>(
+    '.quick-responses__item button:not(.quick-responses__select):not([aria-label^="Delete"])',
   );
 }
 
@@ -70,12 +94,56 @@ describe('AgentQuickResponses', () => {
     );
   });
 
-  it('choose_whenARowIsClicked_reportsItsText', () => {
+  it('choose_whenARowIsClicked_reportsItsText_toSendByDefault', () => {
     const harness: Harness = open(['Okay']);
 
     document.querySelectorAll<HTMLButtonElement>('.quick-responses__select')[0]?.click();
 
-    expect(harness.chosen).toEqual(['Okay']);
+    expect(harness.chosen).toEqual([{ text: 'Okay', mode: 'send' }]);
+  });
+
+  it.each([
+    // A draft is never sent by a plain pick, whatever the setting.
+    ['send', false, 'send'],
+    ['insert', false, 'insert'],
+    ['send', true, 'insert'],
+    ['insert', true, 'insert'],
+  ] as const)(
+    'choose_withSetting %s_andDraft %s_picksTo %s',
+    (setting: QuickResponseMode, hasDraft: boolean, mode: QuickResponseMode) => {
+      const harness: Harness = open(['Okay'], setting, hasDraft);
+
+      document.querySelectorAll<HTMLButtonElement>('.quick-responses__select')[0]?.click();
+
+      expect(harness.chosen).toEqual([{ text: 'Okay', mode }]);
+    },
+  );
+
+  it.each([
+    // The second button does the other thing; with a draft it is the explicit Add and Send.
+    ['send', false, 'Insert for Editing', 'insert'],
+    ['insert', false, 'Send Now', 'send'],
+    ['send', true, 'Add and Send', 'send'],
+    ['insert', true, 'Add and Send', 'send'],
+  ] as const)(
+    'theSecondButton_withSetting %s_andDraft %s_is %s',
+    (setting: QuickResponseMode, hasDraft: boolean, label: string, mode: QuickResponseMode) => {
+      const harness: Harness = open(['Okay'], setting, hasDraft);
+
+      expect(alternateButton()?.getAttribute('aria-label')).toBe(`${label}: Okay`);
+      alternateButton()?.click();
+
+      expect(harness.chosen).toEqual([{ text: 'Okay', mode }]);
+    },
+  );
+
+  it('theSecondButton_closesTheMenu_asPickingARowDoes', () => {
+    const harness: Harness = open(['Okay']);
+
+    alternateButton()?.click();
+    harness.fixture.detectChanges();
+
+    expect(document.querySelector('.quick-responses__panel')).toBeNull();
   });
 
   it('add_whenTextIsEnteredInTheField_savesItAndClearsTheField', () => {
@@ -124,7 +192,7 @@ describe('AgentQuickResponses', () => {
   it('remove_whenTheRowDeleteIsClicked_dropsItFromTheList', () => {
     const harness: Harness = open(['Okay']);
     const deleteButton: HTMLButtonElement | null = document.querySelector<HTMLButtonElement>(
-      '.quick-responses__item app-button button',
+      '.quick-responses__item button[aria-label^="Delete"]',
     );
 
     deleteButton?.click();
