@@ -377,20 +377,68 @@ describe('AgentComposer', () => {
     expect(sent).toHaveLength(0);
   });
 
-  it('onQuickResponse_whenTheComposerIsEmpty_sendsItAsItStands', () => {
-    component.onQuickResponse('Looks good to me');
+  it('onQuickResponse_toSend_inAnEmptyComposer_sendsItAsItStands', () => {
+    component.onQuickResponse({ text: 'Looks good to me', mode: 'send' });
 
     expect(sent).toEqual(['Looks good to me']);
     expect(component.draft()).toBe('');
   });
 
-  it('onQuickResponse_whenADraftIsBeingWritten_appendsInsteadOfSending', () => {
+  it('onQuickResponse_toInsert_inAnEmptyComposer_leavesItThereToEdit', () => {
+    // #1420: Insert for Editing.
+    component.onQuickResponse({ text: 'Looks good to me', mode: 'insert' });
+
+    expect(sent).toEqual([]);
+    expect(component.draft()).toBe('Looks good to me');
+  });
+
+  it('onQuickResponse_toInsert_withADraft_appendsInsteadOfSending', () => {
     component.onInput('Yes');
 
-    component.onQuickResponse('and check the tests too');
+    component.onQuickResponse({ text: 'and check the tests too', mode: 'insert' });
 
     expect(sent).toEqual([]);
     expect(component.draft()).toBe('Yes and check the tests too');
+  });
+
+  it('onQuickResponse_toSend_withADraft_addsItAndSendsTheDraft', () => {
+    // The menu's explicit Add and Send: the only way a draft goes with a quick response.
+    component.onInput('Yes');
+
+    component.onQuickResponse({ text: 'and check the tests too', mode: 'send' });
+
+    expect(sent).toEqual(['Yes and check the tests too']);
+    expect(component.draft()).toBe('');
+  });
+
+  it.each([
+    ['in an empty composer', ''],
+    ['with a draft (Add and Send)', 'Yes'],
+  ])('onQuickResponse_toSend %s_leavesThePromptEmpty', (_label: string, draft: string) => {
+    // The bug Matthew found: the response went to the conversation AND stayed in the prompt, because
+    // it was written into the textarea and the draft cleared within one turn, so nothing re-rendered.
+    fixture.detectChanges();
+    if (draft.length > 0) {
+      component.onInput(draft);
+      fixture.detectChanges();
+    }
+
+    component.onQuickResponse({ text: 'Looks good to me', mode: 'send' });
+    fixture.detectChanges();
+
+    const area: HTMLTextAreaElement | null = (fixture.nativeElement as HTMLElement).querySelector(
+      'textarea',
+    );
+    expect(sent).toHaveLength(1);
+    expect(area?.value).toBe('');
+  });
+
+  it('insertText_overOnlyWhitespace_replacesIt', () => {
+    component.onInput('   ');
+
+    component.insertText('Okay');
+
+    expect(component.draft()).toBe('Okay');
   });
 
   it('historyKeys_whenAltArrowUpAndDown_walkSentPromptsAndRestoreTheDraft', () => {

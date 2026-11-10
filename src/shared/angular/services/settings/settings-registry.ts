@@ -252,6 +252,12 @@ export type DefaultReasoningEffort = 'provider' | 'low' | 'medium' | 'high';
 export type SendMessageWith = 'enter' | 'mod-enter' | 'shift-enter';
 
 /**
+ * Names what picking a quick response does in an empty composer (#1420): send it at once, or put it in
+ * the composer to be edited first. With a draft already written it is always added to the draft.
+ */
+export type QuickResponseMode = 'send' | 'insert';
+
+/**
  * How scroll bars are shown: slim bars that appear while an area is hovered or scrolled, or bars that
  * are always there.
  */
@@ -859,6 +865,7 @@ export interface SettingsValues {
   readonly 'ai.deleteConversationsAfterDays': number;
   readonly 'ai.deleteConversationsMode': AskOrAutomatic;
   readonly 'ai.sendMessageWith': SendMessageWith;
+  readonly 'ai.quickResponseMode': QuickResponseMode;
   readonly 'ai.maxImagesPerMessage': number;
   readonly 'ai.maxImageSizeMb': number;
   readonly 'ai.expandToolCalls': boolean;
@@ -5131,6 +5138,20 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'enter',
+      },
+      {
+        key: 'ai.quickResponseMode',
+        title: 'Quick Responses',
+        description:
+          'What picking a quick response does in an empty composer. With a draft, it is always added to the draft.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'send', label: 'Send Immediately' },
+            { value: 'insert', label: 'Insert for Editing' },
+          ],
+        },
+        default: 'send',
       },
       {
         key: 'ai.maxImagesPerMessage',
