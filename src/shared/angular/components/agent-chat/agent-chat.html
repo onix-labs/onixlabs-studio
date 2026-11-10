@@ -157,38 +157,44 @@
         </span>
       </div>
 
-      <!-- When the entry arrived (#1419), muted at the row's trailing edge; placed in the grid's own
-           column by the stylesheet, so it lines up down the transcript whatever the entry holds. -->
-      @if (row.stamp) {
-        <time class="agent__stamp" (pointerenter)="showWhen($event, row.stampAt!)">{{
-          row.stamp
-        }}</time>
-      }
-
       <div class="agent__row-content">
         @switch (row.kind) {
           @case ('assistant') {
-            <app-markdown-renderer class="agent__bubble agent__markdown" [text]="row.item!.text" />
-            <span class="agent__msg-actions">
-              <app-button
-                variant="none"
-                size="small"
-                [icon]="copiedId() === row.item!.id ? Icon.CHECK : Icon.COPY"
-                [label]="copiedId() === row.item!.id ? 'Copied' : 'Copy'"
-                ariaLabel="Copy response"
-                (click)="copy(row.item!)"
+            <!-- The response and its actions share a box as wide as the response, so the actions
+                 row spans it: Copy and Retry at its start, the time at its end. -->
+            <div class="agent__response">
+              <app-markdown-renderer
+                class="agent__bubble agent__markdown"
+                [text]="row.item!.text"
               />
-              @if (retryTarget()?.assistantId === row.item!.id) {
+              <span class="agent__msg-actions">
                 <app-button
                   variant="none"
                   size="small"
-                  [icon]="Icon.REFRESH"
-                  label="Retry"
-                  ariaLabel="Retry this turn"
-                  (click)="retryLast()"
+                  [icon]="copiedId() === row.item!.id ? Icon.CHECK : Icon.COPY"
+                  [label]="copiedId() === row.item!.id ? 'Copied' : 'Copy'"
+                  ariaLabel="Copy response"
+                  (click)="copy(row.item!)"
                 />
-              }
-            </span>
+                @if (retryTarget()?.assistantId === row.item!.id) {
+                  <app-button
+                    variant="none"
+                    size="small"
+                    [icon]="Icon.REFRESH"
+                    label="Retry"
+                    ariaLabel="Retry this turn"
+                    (click)="retryLast()"
+                  />
+                }
+                @if (row.stamp) {
+                  <time
+                    class="agent__stamp agent__stamp--end"
+                    (pointerenter)="showWhen($event, row.stampAt!)"
+                    >{{ row.stamp }}</time
+                  >
+                }
+              </span>
+            </div>
           }
           @case ('thinking') {
             <!-- The turn's reasoning, shown in its box rather than folded behind a caret: the
@@ -382,6 +388,17 @@
               </details>
             }
           }
+        }
+
+        <!-- When the entry arrived (#1419): under its box, at the box's trailing edge, shown on
+             hover, the same on every entry. A response carries it on its own actions row instead,
+             opposite Copy and Retry, which puts it in the same place. -->
+        @if (row.stamp && row.kind !== 'assistant') {
+          <time
+            class="agent__stamp agent__stamp--under"
+            (pointerenter)="showWhen($event, row.stampAt!)"
+            >{{ row.stamp }}</time
+          >
         }
       </div>
     </div>

@@ -248,8 +248,7 @@ $agent-row-spacing: 0.85rem;
 
 .agent__row {
   display: grid;
-  // The third column holds the entry's time (#1419); it is empty, and takes no room, without one.
-  grid-template-columns: $agent-node-size 1fr auto;
+  grid-template-columns: $agent-node-size 1fr;
   gap: 0.75rem;
   // Node column included, so a rail entry's trailing edge lines up with a prompt card's.
   max-inline-size: var(--agent-entry-max-size);
@@ -333,6 +332,20 @@ $agent-row-spacing: 0.85rem;
   align-items: flex-start;
   gap: 0.4rem;
   min-inline-size: 0;
+  // As wide as the entry it holds, not the column, so the entry's time (#1419) — its last item, at
+  // the trailing edge — sits under the entry's own box. A row holding a prompt card stays the full
+  // width the card needs (below).
+  justify-self: start;
+  max-inline-size: 100%;
+
+  &:has(
+    > app-agent-permission-card,
+    > app-agent-question-card,
+    > app-agent-edit-decision-card,
+    > app-agent-error-card
+  ) {
+    justify-self: stretch;
+  }
 
   // Never wider than the column, so long content wraps inside the entry rather than overflowing it.
   > * {
@@ -680,26 +693,62 @@ $agent-row-spacing: 0.85rem;
   border-radius: calc(0.6rem * var(--border-radius-multiplier));
 }
 
-// When an entry arrived (#1419): muted, monospaced so the times line up down the transcript, and kept
-// to one line. On the rail it sits in the row's own trailing column, level with the entry's first line;
-// on a prompt it sits on the actions row under the bubble, always shown, unlike the actions.
+// When an entry arrived (#1419): muted, in the type of the row's small action buttons (Copy, Edit,
+// Retry), with tabular figures, and kept to one line. The same on every entry in a conversation:
+// under the entry's box, at its trailing edge, revealed on hover as the row's actions are. A prompt
+// or a response has an actions row under its bubble, so the time sits at that row's far end; any
+// other entry has it as the last item under its box.
 .agent__stamp {
   flex: none;
   color: var(--form-muted-foreground-color);
-  font-family: var(--font-mono);
-  font-size: text-size(0.7rem);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
   line-height: $agent-node-size;
   white-space: nowrap;
   opacity: 0.8;
   user-select: none;
 
-  .agent__row > & {
-    grid-row: 1;
-    grid-column: 3;
+  // Under any other entry's box, at its trailing edge.
+  &.agent__stamp--under {
+    align-self: flex-end;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity 120ms ease-in-out;
+  }
+
+  .agent__row:hover > .agent__row-content > &.agent__stamp--under,
+  .agent__row:focus-within > .agent__row-content > &.agent__stamp--under {
+    opacity: 0.8;
   }
 
   .agent__msg-actions > & {
     order: 1;
     margin-inline-start: 0.35rem;
+    opacity: 0;
+    transition: opacity 120ms ease-in-out;
+  }
+
+  // A response's time sits at the far end of its actions row, opposite Copy and Retry.
+  .agent__msg-actions > &.agent__stamp--end {
+    margin-inline-start: auto;
+    padding-inline-start: 0.75rem;
+  }
+
+  .agent__message:hover .agent__msg-actions > &,
+  .agent__row:hover .agent__msg-actions > & {
+    opacity: 0.8;
+  }
+}
+
+// A response and its actions row, sharing the response's width so the row can span it.
+.agent__response {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+
+  > .agent__msg-actions {
+    align-self: stretch;
   }
 }
