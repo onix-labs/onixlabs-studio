@@ -410,6 +410,28 @@ describe('AgentComposer', () => {
     expect(component.draft()).toBe('');
   });
 
+  it.each([
+    ['in an empty composer', ''],
+    ['with a draft (Add and Send)', 'Yes'],
+  ])('onQuickResponse_toSend %s_leavesThePromptEmpty', (_label: string, draft: string) => {
+    // The bug Matthew found: the response went to the conversation AND stayed in the prompt, because
+    // it was written into the textarea and the draft cleared within one turn, so nothing re-rendered.
+    fixture.detectChanges();
+    if (draft.length > 0) {
+      component.onInput(draft);
+      fixture.detectChanges();
+    }
+
+    component.onQuickResponse({ text: 'Looks good to me', mode: 'send' });
+    fixture.detectChanges();
+
+    const area: HTMLTextAreaElement | null = (fixture.nativeElement as HTMLElement).querySelector(
+      'textarea',
+    );
+    expect(sent).toHaveLength(1);
+    expect(area?.value).toBe('');
+  });
+
   it('insertText_overOnlyWhitespace_replacesIt', () => {
     component.onInput('   ');
 

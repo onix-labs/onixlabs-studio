@@ -819,10 +819,15 @@ export class AgentComposer {
    * @param choice The picked response and what to do with it.
    */
   public onQuickResponse(choice: QuickResponseChoice): void {
-    this.insertText(choice.text);
     if (choice.mode === 'send') {
+      // The draft only, never the textarea: a text written into the textarea and then cleared by
+      // send() within one turn leaves the signal back where it was rendered, so nothing re-renders
+      // and the sent text stayed behind in the prompt.
+      this.draftText.set(AgentComposer.appended(this.draftText(), choice.text));
       this.send();
+      return;
     }
+    this.insertText(choice.text);
   }
 
   /**
@@ -833,12 +838,22 @@ export class AgentComposer {
    */
   public insertText(text: string): void {
     const current: string = this.draftText();
-    if (current.trim().length === 0) {
-      this.replaceComposerRange(0, current.length, text);
-      return;
+    this.replaceComposerRange(0, current.length, AgentComposer.appended(current, text));
+  }
+
+  /**
+   * Adds text to the end of a draft, separated by a space when the draft does not already end in
+   * one. A draft holding only whitespace counts as empty, and the text replaces it.
+   * @param draft The draft.
+   * @param text The text to add.
+   * @returns Returns the new draft.
+   */
+  private static appended(draft: string, text: string): string {
+    if (draft.trim().length === 0) {
+      return text;
     }
-    const separator: string = current.endsWith(' ') || current.endsWith('\n') ? '' : ' ';
-    this.replaceComposerRange(current.length, current.length, `${separator}${text}`);
+    const separator: string = draft.endsWith(' ') || draft.endsWith('\n') ? '' : ' ';
+    return `${draft}${separator}${text}`;
   }
 
   /**
