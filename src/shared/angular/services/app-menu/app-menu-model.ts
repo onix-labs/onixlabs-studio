@@ -1,4 +1,4 @@
-import { AppMenuItemKind } from '@shared/api/menu-types';
+import { AppMenuItemKind, ApplicationMenuGroup } from '@shared/api/menu-types';
 
 /**
  * A menu entry as the renderer authors it: the wire model plus the handler to run, which never leaves
@@ -52,6 +52,12 @@ export interface MenuEntry {
    * Gets a native role to defer to instead of running a handler.
    */
   readonly role?: string;
+
+  /**
+   * Gets the group of macOS's application menu the entry moves to on the native bar, as About and
+   * Settings do on a Mac. The in-window menu keeps it where it is authored.
+   */
+  readonly applicationMenu?: ApplicationMenuGroup;
 
   /**
    * Gets a submenu's entries.

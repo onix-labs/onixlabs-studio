@@ -33,6 +33,7 @@ const electron: {
 }));
 
 vi.mock('electron', () => ({
+  app: { name: 'ONIXLabs Studio' },
   ipcMain: {
     on: (channel: string, listener: Listener): void =>
       void electron.listeners.set(channel, listener),
@@ -183,8 +184,8 @@ describe('MenuManager', () => {
       {
         label: 'File',
         items: [
-          { kind: 'separator' },
           { kind: 'item', role: 'about', label: 'About' },
+          { kind: 'separator' },
           { kind: 'item', role: 'quit' },
           { kind: 'item', label: 'More', items: [{ kind: 'item', id: 'x', label: 'Deep' }] },
           { kind: 'checkbox', id: 'c', label: 'On', checked: true, accelerator: 'Cmd+K' },
@@ -194,10 +195,10 @@ describe('MenuManager', () => {
       },
     ]);
 
-    const items: NativeItem[] = electron.installed?.[0]?.submenu ?? [];
-    expect(electron.installed?.[0]?.label).toBe('File');
-    expect(items[0]).toEqual({ type: 'separator' });
-    expect(items[1]).toEqual({ role: 'about', label: 'About' });
+    const items: NativeItem[] = electron.installed?.[1]?.submenu ?? [];
+    expect(electron.installed?.[1]?.label).toBe('File');
+    expect(items[0]).toEqual({ role: 'about', label: 'About' });
+    expect(items[1]).toEqual({ type: 'separator' });
     expect(items[2]).toEqual({ role: 'quit' });
     expect(items[3]?.submenu?.[0]?.label).toBe('Deep');
     expect(items[4]).toMatchObject({ type: 'checkbox', checked: true, accelerator: 'Cmd+K' });
@@ -205,10 +206,111 @@ describe('MenuManager', () => {
     expect(items[6]).toEqual({ label: '', enabled: true });
   });
 
+  /**
+   * Lists an installed menu's entries by role, label or separator, for comparing whole menus.
+   * @param items The installed entries.
+   * @returns Returns one word per entry.
+   */
+  function shapeOf(items: readonly NativeItem[] | undefined): string[] {
+    return (items ?? []).map(
+      (item: NativeItem): string => item.role ?? item.label ?? item.type ?? '?',
+    );
+  }
+
+  it('setMenu_onMacOS_startsWithTheApplicationMenu', () => {
+    // The bug this guards (#1406): the published sections replaced the whole bar, so File became the
+    // application menu and ⌘Q, which comes from its Quit item, did nothing.
+    publish([
+      { id: 'file', label: 'File', items: [{ kind: 'item', id: 'file.open', label: 'Open' }] },
+    ]);
+
+    expect(electron.installed?.[0]?.label).toBe('ONIXLabs Studio');
+    expect(shapeOf(electron.installed?.[0]?.submenu)).toEqual([
+      'services',
+      'separator',
+      'hide',
+      'hideOthers',
+      'unhide',
+      'separator',
+      'quit',
+    ]);
+    expect(electron.installed?.[1]?.label).toBe('File');
+  });
+
+  it('setMenu_onMacOS_movesAboutAndSettingsIntoTheApplicationMenu', () => {
+    publish([
+      {
+        id: 'file',
+        label: 'File',
+        items: [
+          { kind: 'item', id: 'file.open', label: 'Open' },
+          { kind: 'separator' },
+          { kind: 'item', id: 'settings', label: 'Settings', applicationMenu: 'settings' },
+          { kind: 'separator' },
+          { kind: 'item', id: 'file.close', label: 'Close Tab' },
+        ],
+      },
+      {
+        id: 'help',
+        label: 'Help',
+        items: [
+          { kind: 'item', id: 'help.docs', label: 'Documentation' },
+          { kind: 'separator' },
+          { kind: 'item', id: 'about', label: 'About ONIXLabs Studio', applicationMenu: 'about' },
+        ],
+      },
+    ]);
+
+    // About leads and Settings follows, whatever order their sections were published in.
+    expect(shapeOf(electron.installed?.[0]?.submenu)).toEqual([
+      'About ONIXLabs Studio',
+      'separator',
+      'Settings',
+      'separator',
+      'services',
+      'separator',
+      'hide',
+      'hideOthers',
+      'unhide',
+      'separator',
+      'quit',
+    ]);
+    // The sections they left keep no doubled or trailing separator.
+    expect(shapeOf(electron.installed?.[1]?.submenu)).toEqual(['Open', 'separator', 'Close Tab']);
+    expect(shapeOf(electron.installed?.[2]?.submenu)).toEqual(['Documentation']);
+  });
+
+  it('click_onAnEntryMovedToTheApplicationMenu_stillSendsItsCommand', () => {
+    publish([
+      {
+        id: 'help',
+        label: 'Help',
+        items: [{ kind: 'item', id: 'about', label: 'About', applicationMenu: 'about' }],
+      },
+    ]);
+
+    electron.installed?.[0]?.submenu?.[0]?.click?.();
+
+    expect(sent).toEqual([[MenuChannel.Command, 'about']]);
+  });
+
+  it('setMenu_withAnApplicationMenuGroupItDoesNotHave_leavesTheEntryWhereItIs', () => {
+    publish([
+      {
+        id: 'file',
+        label: 'File',
+        items: [{ kind: 'item', id: 'odd', label: 'Odd', applicationMenu: 'preferences' }],
+      },
+    ]);
+
+    expect(shapeOf(electron.installed?.[1]?.submenu)).toEqual(['Odd']);
+    expect(shapeOf(electron.installed?.[0]?.submenu)).not.toContain('Odd');
+  });
+
   it('click_sendsTheCommandBackToTheRenderer', () => {
     publish([{ label: 'File', items: [{ kind: 'item', id: 'file.save', label: 'Save' }] }]);
 
-    electron.installed?.[0]?.submenu?.[0]?.click?.();
+    electron.installed?.[1]?.submenu?.[0]?.click?.();
 
     expect(sent).toEqual([[MenuChannel.Command, 'file.save']]);
   });
@@ -217,7 +319,7 @@ describe('MenuManager', () => {
     publish([{ label: 'File', items: [{ kind: 'item', id: 'file.save', label: 'Save' }] }]);
     hasWindow = false;
 
-    expect((): void => electron.installed?.[0]?.submenu?.[0]?.click?.()).not.toThrow();
+    expect((): void => electron.installed?.[1]?.submenu?.[0]?.click?.()).not.toThrow();
   });
 
   it.each([

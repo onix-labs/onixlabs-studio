@@ -177,6 +177,7 @@ export class CoreMenu {
               id: 'core.file.settings',
               label: 'Settings',
               binding: 'app.settings',
+              applicationMenu: 'settings',
               run: (): void => void this.tabs.open('settings'),
             },
             MENU_SEPARATOR,
@@ -253,6 +254,7 @@ export class CoreMenu {
             {
               id: 'core.help.about',
               label: 'About ONIXLabs Studio',
+              applicationMenu: 'about',
               run: (): void => void this.help.showAbout(),
             },
           ],
