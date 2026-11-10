@@ -53,6 +53,25 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
+  /**
+   * Holds the working-tree content each path reads as, for the conflict-marker check (#1321).
+   */
+  public workingFiles: Map<string, string> = new Map<string, string>();
+
+  /**
+   * Holds each conflicted file settled whole, with how.
+   */
+  public resolutions: [string, string][] = [];
+
+  public resolveConflict(path: string, resolution: string): Promise<MutationResult> {
+    this.resolutions.push([path, resolution]);
+    return Promise.resolve({ success: true });
+  }
+
+  public readWorkingFile(path: string): Promise<string> {
+    return Promise.resolve(this.workingFiles.get(path) ?? '');
+  }
+
   public constructor(public readonly root: string) {}
 
   /**
@@ -502,6 +521,72 @@ describe('Repository', () => {
     await repository.refresh();
 
     expect(repository.canContinueOperation()).toBe(true);
+  });
+
+  it('markResolved_refusesAFileStillHoldingConflicts_andSaysHowMany_untilAskedAnyway', async () => {
+    // #1321: staging a file with git's markers still in it would commit the markers.
+    provider.conflicted = [workingFile('src/both.ts')];
+    provider.operation = { kind: 'merge', target: 'topic' };
+    provider.workingFiles.set(
+      'src/both.ts',
+      '<<<<<<< HEAD\na\n=======\nb\n>>>>>>> topic\n<<<<<<< HEAD\nc\n=======\nd\n>>>>>>> topic\n',
+    );
+    await repository.refresh();
+
+    const refused: MutationResult = await repository.markResolved(repository.conflicted()[0]);
+
+    expect(refused.success).toBe(false);
+    expect(refused.error).toContain('both.ts still has 2 conflicts');
+    expect(provider.calls).not.toContain('stage:src/both.ts');
+    expect(repository.conflictsLeft().get('src/both.ts')).toBe(2);
+
+    await repository.markResolved(repository.conflicted()[0], true);
+
+    expect(provider.calls).toContain('stage:src/both.ts');
+  });
+
+  it('markResolved_stagesAFileWithNoMarkersLeft', async () => {
+    provider.conflicted = [workingFile('both.ts')];
+    provider.operation = { kind: 'merge', target: 'topic' };
+    provider.workingFiles.set('both.ts', 'settled\n');
+    await repository.refresh();
+
+    expect((await repository.markResolved(repository.conflicted()[0])).success).toBe(true);
+    expect(provider.calls).toContain('stage:both.ts');
+  });
+
+  it('resolveConflict_asksThePluginToSettleTheFileWhole', async () => {
+    provider.conflicted = [workingFile('both.ts')];
+    provider.operation = { kind: 'rebase', branch: 'topic', target: 'main' };
+    await repository.refresh();
+
+    await repository.resolveConflict(repository.conflicted()[0], 'yours');
+
+    expect(provider.resolutions).toEqual([['both.ts', 'yours']]);
+    // In a rebase the user's own work is the branch being replayed, whatever git calls it.
+    expect(repository.conflictSides()).toEqual({ yours: 'topic', theirs: 'main' });
+  });
+
+  it('conflictProgress_countsTheFilesResolved_andStartsAgainForTheRebasesNextCommit', async () => {
+    provider.operation = { kind: 'rebase', branch: 'topic', target: 'main', step: 1, total: 3 };
+    provider.conflicted = [workingFile('a.ts'), workingFile('b.ts'), workingFile('c.ts')];
+    await repository.refresh();
+    expect(repository.conflictProgress()).toEqual({ resolved: 0, total: 3 });
+
+    provider.conflicted = [workingFile('c.ts')];
+    await repository.refresh();
+    expect(repository.conflictProgress()).toEqual({ resolved: 2, total: 3 });
+
+    // The next commit's conflicts are new ones, not more of the same.
+    provider.operation = { kind: 'rebase', branch: 'topic', target: 'main', step: 2, total: 3 };
+    provider.conflicted = [workingFile('d.ts')];
+    await repository.refresh();
+    expect(repository.conflictProgress()).toEqual({ resolved: 0, total: 1 });
+
+    provider.operation = { kind: null };
+    provider.conflicted = [];
+    await repository.refresh();
+    expect(repository.conflictProgress()).toEqual({ resolved: 0, total: 0 });
   });
 
   it('refreshStatus_readsTheOperationTooSoAResolvedConflictIsNoticed', async () => {

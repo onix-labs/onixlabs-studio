@@ -9,6 +9,7 @@ import {
 import { VersionControlPrompt } from '@shared/angular/services/plugins/version-control-prompt';
 import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
 import { DirectoryChangeEvent } from '@shared/api/file-channels';
+import { GitOperationState } from '@shared/api/source-control-channels';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { GitFileChange } from '@shared/angular/services/repository/repository-data';
@@ -84,6 +85,8 @@ describe('WorkspaceGit', () => {
   let ignored: unknown[][];
   let untracked: string[][];
   let capabilities: string[];
+  let working: Map<string, string>;
+  let resolutions: string[];
   let watched: string[];
   let fireWatch: () => void;
   let trustAnswer: boolean;
@@ -152,10 +155,27 @@ describe('WorkspaceGit', () => {
     ignored = [];
     untracked = [];
     capabilities = ['stagingArea', 'ignore', 'stopTracking'];
+    working = new Map<string, string>();
+    resolutions = [];
     const provider: Pick<
       SourceControlProvider,
-      'getStatus' | 'stage' | 'unstage' | 'discard' | 'ignore' | 'stopTracking'
+      | 'getStatus'
+      | 'getOperationState'
+      | 'stage'
+      | 'unstage'
+      | 'discard'
+      | 'ignore'
+      | 'stopTracking'
+      | 'readWorkingFile'
+      | 'resolveConflict'
     > = {
+      getOperationState: (): Promise<GitOperationState> =>
+        Promise.resolve({ kind: 'merge', target: 'topic' }),
+      readWorkingFile: (path: string): Promise<string> => Promise.resolve(working.get(path) ?? ''),
+      resolveConflict: (path: string, resolution: string): Promise<MutationResult> => {
+        resolutions.push(`${path}:${resolution}`);
+        return Promise.resolve({ success: true });
+      },
       ignore: (rules: readonly unknown[]): Promise<MutationResult> => {
         ignored.push([...rules]);
         return Promise.resolve({ success: true });
@@ -415,6 +435,48 @@ describe('WorkspaceGit', () => {
 
     expect(unstaged).toEqual([['src/new.ts']]);
     expect(git.stateFor('/repo/src/new.ts')).toBe('untracked');
+  });
+
+  it('markResolved_refusesAFileStillHoldingConflicts_untilAskedAnyway', async () => {
+    // #1321: staging a file with its markers still in it would commit them.
+    status = { ...status, conflicted: [change('src/both.ts', 'conflicted')] };
+    working.set('src/both.ts', '<<<<<<< HEAD\na\n=======\nb\n>>>>>>> topic\n');
+    root.set(listing('/repo'));
+    await bind();
+
+    const refused: MutationResult = await git.markResolved(['/repo/src/both.ts']);
+
+    expect(refused).toMatchObject({ success: false });
+    expect(refused.error).toContain('both.ts still has 1 conflict');
+    expect(staged).toEqual([]);
+    expect(git.hasConflictsLeft('/repo/src/both.ts')).toBe(true);
+
+    await git.markResolved(['/repo/src/both.ts'], true);
+
+    expect(staged).toEqual([['src/both.ts']]);
+  });
+
+  it('aConflict_namesItsSides_andItsKind_andCanBeSettledWhole', async () => {
+    status = {
+      ...status,
+      branch: 'main',
+      conflicted: [
+        change('src/both.ts', 'conflicted'),
+        { ...change('src/gone.ts', 'conflicted'), conflict: 'deleted' },
+      ],
+    };
+    capabilities = [...capabilities, 'resolveConflicts'];
+    root.set(listing('/repo'));
+    await bind();
+
+    expect(git.conflictSides()).toEqual({ yours: 'main', theirs: 'topic' });
+    expect(git.conflictKindOf('/repo/src/both.ts')).toBe('content');
+    expect(git.conflictKindOf('/repo/src/gone.ts')).toBe('deleted');
+    expect(git.canResolveConflict('/repo/src/both.ts')).toBe(true);
+
+    await git.resolveConflict('/repo/src/both.ts', 'theirs');
+
+    expect(resolutions).toEqual(['src/both.ts:theirs']);
   });
 
   it('markResolved_stagesAConflictedFile', async () => {

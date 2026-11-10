@@ -26,7 +26,11 @@
 // keep a path out of version control. An addition: a 1.1 plugin simply does not offer them.
 // 1.3 (#1044) adds `log`'s optional `path`, behind `pathHistory`, so a file's or folder's history can be
 // read on its own. An addition: a plugin without the capability is never sent a path.
-export const VERSION_CONTROL_PROTOCOL_VERSION: string = '1.3';
+// 1.4 (#1321) adds `resolveConflict`, behind `resolveConflicts`, so a conflicted file can be settled
+// whole — the user's side, the other side, or for a file one side deleted, kept or deleted — and a
+// conflicted file change's optional `conflict`, which tells a deleted file from conflicting content.
+// Additions: a 1.3 plugin offers neither, and its conflicts read as content.
+export const VERSION_CONTROL_PROTOCOL_VERSION: string = '1.4';
 
 /**
  * Names one optional capability a version-control plugin can advertise.
@@ -110,7 +114,12 @@ export type VersionControlCapability =
    * Reading the history of one file or folder — only the commits that touched it, a file's followed
    * across renames where the system can (1.3, #1044).
    */
-  | 'pathHistory';
+  | 'pathHistory'
+
+  /**
+   * Settling a conflicted file whole, by taking one side of it (1.4, #1321).
+   */
+  | 'resolveConflicts';
 
 /**
  * Lists every optional capability. Closed on purpose, like a decoder's formats: a capability is the join
@@ -132,6 +141,7 @@ export const VERSION_CONTROL_CAPABILITIES: readonly VersionControlCapability[] =
   'ignore',
   'stopTracking',
   'pathHistory',
+  'resolveConflicts',
 ];
 
 /**
@@ -148,6 +158,7 @@ export const VCS_HANDSHAKE_CAPABILITIES: readonly VersionControlCapability[] = [
   'ignore',
   'stopTracking',
   'pathHistory',
+  'resolveConflicts',
 ];
 
 /**
@@ -236,7 +247,30 @@ export interface VcsFileChange {
    * Gets whether the file is not yet tracked at all.
    */
   readonly untracked?: boolean;
+
+  /**
+   * Gets what a conflicted file's conflict is (1.4, #1321): conflicting `content`, or one side having
+   * `deleted` the file the other changed. Absent for a file that is not conflicted, and from a plugin
+   * that predates it, whose conflicts are read as content.
+   */
+  readonly conflict?: VcsConflictKind;
 }
+
+/**
+ * Names what a conflicted file's conflict is: conflicting content, or a file one side deleted.
+ */
+export type VcsConflictKind = 'content' | 'deleted';
+
+/**
+ * Names how a conflicted file is settled whole (1.4, #1321).
+ *
+ * - `yours`: the user's own side. The plugin maps it onto the tool's own word, which for git swaps in a
+ *   rebase: there the user's work is the commit being replayed, not the branch being replayed onto.
+ * - `theirs`: the other side.
+ * - `keepFile`: for a file one side deleted, keep it as it stands on disk.
+ * - `deleteFile`: for a file one side deleted, delete it.
+ */
+export type VcsConflictResolution = 'yours' | 'theirs' | 'keepFile' | 'deleteFile';
 
 /**
  * Describes a repository's working-tree status.
@@ -794,6 +828,14 @@ export interface VersionControlOperations {
    */
   readonly stopTracking: { readonly params: Paths; readonly result: Done };
 
+  /**
+   * Settles one conflicted file whole and marks it resolved (1.4, #1321). Gated by `resolveConflicts`.
+   */
+  readonly resolveConflict: {
+    readonly params: { readonly path: string; readonly resolution: VcsConflictResolution };
+    readonly result: Done;
+  };
+
   readonly stash: {
     readonly params: {
       /**
@@ -982,6 +1024,7 @@ export const VCS_REPOSITORY_OPS: readonly VersionControlOp[] = [
   'commit',
   'ignore',
   'stopTracking',
+  'resolveConflict',
   'stash',
   'stashApply',
   'stashPop',
@@ -1066,6 +1109,7 @@ export const VCS_OP_CAPABILITY: Readonly<
   unstage: 'stagingArea',
   ignore: 'ignore',
   stopTracking: 'stopTracking',
+  resolveConflict: 'resolveConflicts',
   stash: 'stash',
   stashApply: 'stash',
   stashPop: 'stash',

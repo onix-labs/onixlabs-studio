@@ -290,43 +290,39 @@
   overflow-wrap: anywhere;
 }
 
-// The mid-operation banner. Edged like the error notice because it demands the same attention, but
-// it is not an error: it is a state with three ways out, and it carries them.
+// The mid-operation banner (#1321): the shared warning alert, flush under the tool strip, with the
+// three ways out beneath it. The repository stays stuck until the user acts, which is what warning is
+// for; the alert holds the text, so the buttons sit under it.
 .detail__operation {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin: 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--form-control-border-color);
-  border-left: 3px solid #f5a524;
-  border-radius: calc(4px * var(--border-radius-multiplier, 1));
-  background: var(--form-control-background-color);
+  padding: 0 8px 8px;
   font-size: 12px;
-}
 
-.detail__operation-summary {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.detail__operation-icon {
-  flex: 0 0 auto;
-  color: #f5a524;
+  app-alert {
+    font-size: 12px;
+  }
 }
 
 .detail__operation-title {
+  display: block;
   font-weight: 600;
 }
 
 .detail__operation-progress {
-  color: var(--form-muted-foreground-color);
+  display: block;
   font-variant-numeric: tabular-nums;
 }
 
 .detail__operation-message {
-  margin: 0;
-  color: var(--form-muted-foreground-color);
+  display: block;
   overflow-wrap: anywhere;
+}
+
+// How many conflicts a file Mark Resolved refused still holds (#1321).
+.detail__conflicts-left {
+  margin-inline-start: 0.4rem;
+  color: var(--warning-color);
+  font-size: 0.7rem;
 }
