@@ -15,6 +15,8 @@ import {
   HostingCapability,
   HostingCredentialRequest,
   HostingDescription,
+  HostedIssueEdit,
+  HostedPullRequestEdit,
 } from './protocol';
 
 /**
@@ -31,7 +33,10 @@ const CAPABILITIES: readonly HostingCapability[] = [
   'createIssue',
   'commentOnIssue',
   'setIssueState',
+  'editIssue',
   'subIssues',
+  'editSubIssues',
+  'editPullRequest',
   'ciRuns',
   'ciRerun',
   'ciCancel',
@@ -205,6 +210,8 @@ async function answer(op: string, params: unknown): Promise<Outcome<unknown>> {
       return typeof issue === 'number' ? github.listSubIssues(repository, issue) : malformed(op);
     case 'listCiRuns':
       return github.listCiRuns(repository, listOptions(params));
+    case 'listLabels':
+      return github.listLabels(repository);
     case 'rerunCiRun':
       return typeof runId === 'string'
         ? github.runCommand(repository, runId, 'rerun')
@@ -240,6 +247,29 @@ async function answer(op: string, params: unknown): Promise<Outcome<unknown>> {
         ? github.setIssueState(repository, issue, state, reason, duplicateOf)
         : malformed(op);
     }
+    case 'updateIssue': {
+      const edit: HostedIssueEdit | null = issueEditOf(params);
+      return typeof issue === 'number' && edit !== null
+        ? github.updateIssue(repository, issue, edit)
+        : malformed(op);
+    }
+    case 'addSubIssue':
+    case 'removeSubIssue': {
+      const subIssue: unknown = field(params, 'subIssue');
+      if (typeof issue !== 'number' || typeof subIssue !== 'number') {
+        return malformed(op);
+      }
+      return op === 'addSubIssue'
+        ? github.addSubIssue(repository, issue, subIssue)
+        : github.removeSubIssue(repository, issue, subIssue);
+    }
+    case 'updatePullRequest': {
+      const pullRequest: unknown = field(params, 'pullRequest');
+      const edit: HostedPullRequestEdit | null = pullRequestEditOf(params);
+      return typeof pullRequest === 'number' && edit !== null
+        ? github.updatePullRequest(repository, pullRequest, edit)
+        : malformed(op);
+    }
     case 'createPullRequest': {
       const title: unknown = field(params, 'title');
       const head: unknown = field(params, 'head');
@@ -262,6 +292,86 @@ async function answer(op: string, params: unknown): Promise<Outcome<unknown>> {
     default:
       return { ok: false, error: `GitHub does not answer ${op}.`, code: 'unsupported' };
   }
+}
+
+/**
+ * Reads an optional list of names out of untrusted parameters.
+ * @param params The parameters.
+ * @param key The list's property.
+ * @returns Returns the names, undefined when absent, or null when it is not a list of strings.
+ */
+function namesOf(params: unknown, key: string): readonly string[] | undefined | null {
+  const value: unknown = field(params, key);
+  if (value === undefined) {
+    return undefined;
+  }
+  return Array.isArray(value) && value.every((name: unknown): boolean => typeof name === 'string')
+    ? (value as readonly string[])
+    : null;
+}
+
+/**
+ * Reads an issue edit out of untrusted parameters, keeping only the fields it names.
+ * @param params The parameters.
+ * @returns Returns the edit, or null when a field is the wrong type.
+ */
+function issueEditOf(params: unknown): HostedIssueEdit | null {
+  const title: unknown = field(params, 'title');
+  const body: unknown = field(params, 'body');
+  const milestone: unknown = field(params, 'milestone');
+  const lists: Record<string, readonly string[] | undefined | null> = {
+    addLabels: namesOf(params, 'addLabels'),
+    removeLabels: namesOf(params, 'removeLabels'),
+    addAssignees: namesOf(params, 'addAssignees'),
+    removeAssignees: namesOf(params, 'removeAssignees'),
+  };
+  if (
+    (title !== undefined && typeof title !== 'string') ||
+    (body !== undefined && typeof body !== 'string') ||
+    (milestone !== undefined && milestone !== null && typeof milestone !== 'string') ||
+    Object.values(lists).some(
+      (list: readonly string[] | undefined | null): boolean => list === null,
+    )
+  ) {
+    return null;
+  }
+  const edit: Record<string, unknown> = {
+    ...(title === undefined ? {} : { title }),
+    ...(body === undefined ? {} : { body }),
+    ...(milestone === undefined ? {} : { milestone }),
+  };
+  for (const [key, list] of Object.entries(lists)) {
+    if (list !== undefined) {
+      edit[key] = list;
+    }
+  }
+  return edit;
+}
+
+/**
+ * Reads a pull request edit out of untrusted parameters, keeping only the fields it names.
+ * @param params The parameters.
+ * @returns Returns the edit, or null when a field is the wrong type.
+ */
+function pullRequestEditOf(params: unknown): HostedPullRequestEdit | null {
+  const title: unknown = field(params, 'title');
+  const body: unknown = field(params, 'body');
+  const base: unknown = field(params, 'base');
+  const draft: unknown = field(params, 'draft');
+  if (
+    (title !== undefined && typeof title !== 'string') ||
+    (body !== undefined && typeof body !== 'string') ||
+    (base !== undefined && typeof base !== 'string') ||
+    (draft !== undefined && typeof draft !== 'boolean')
+  ) {
+    return null;
+  }
+  return {
+    ...(title === undefined ? {} : { title }),
+    ...(body === undefined ? {} : { body }),
+    ...(base === undefined ? {} : { base }),
+    ...(draft === undefined ? {} : { draft }),
+  };
 }
 
 /**

@@ -21,7 +21,12 @@
 // additions, so a 1.1 plugin is still understood.
 // 1.3 (#890) adds the `duplicate` close reason, with `duplicateOf` naming the original issue. Studio
 // only asks a 1.3 plugin to close as a duplicate, so a 1.2 plugin is still understood.
-export const HOSTING_PROTOCOL_VERSION: string = '1.3';
+// 1.4 (#1156) adds the edits an agent otherwise reached for the host's CLI to make: `listLabels`,
+// `updateIssue` (title, body, labels, assignees, milestone), `addSubIssue` and `removeSubIssue`, and
+// `updatePullRequest` (title, body, base, draft), behind the `editIssue`, `editSubIssues` and
+// `editPullRequest` capabilities. Studio asks only a plugin that declares them, so a 1.3 plugin is still
+// understood.
+export const HOSTING_PROTOCOL_VERSION: string = '1.4';
 
 /**
  * Names one optional capability a hosting plugin can advertise.
@@ -79,9 +84,26 @@ export type HostingCapability =
   | 'setIssueState'
 
   /**
+   * Editing an issue, or the issue side of a pull request: its title, body, labels, assignees and
+   * milestone (since protocol 1.4).
+   */
+  | 'editIssue'
+
+  /**
    * Listing an issue's sub-issues.
    */
   | 'subIssues'
+
+  /**
+   * Adding an issue to another as a sub-issue, and removing it again (since protocol 1.4).
+   */
+  | 'editSubIssues'
+
+  /**
+   * Editing a pull (merge) request: its title, body, base branch and whether it is a draft (since
+   * protocol 1.4).
+   */
+  | 'editPullRequest'
 
   /**
    * Listing CI runs.
@@ -119,7 +141,10 @@ export const HOSTING_CAPABILITIES: readonly HostingCapability[] = [
   'createIssue',
   'commentOnIssue',
   'setIssueState',
+  'editIssue',
   'subIssues',
+  'editSubIssues',
+  'editPullRequest',
   'ciRuns',
   'ciRerun',
   'ciCancel',
@@ -478,6 +503,90 @@ export interface HostedIssue {
 }
 
 /**
+ * Describes a label a repository's issues and pull requests can carry (since protocol 1.4).
+ */
+export interface HostedLabel {
+  /**
+   * Gets its name, which is how an issue names it.
+   */
+  readonly name: string;
+
+  /**
+   * Gets what it is for, when the repository says.
+   */
+  readonly description?: string;
+}
+
+/**
+ * Describes an edit to an issue, or to the issue side of a pull request (since protocol 1.4). Every
+ * field is optional and only what is present changes: labels and assignees are added and removed by
+ * name rather than replaced, so an edit cannot drop one it did not mention.
+ */
+export interface HostedIssueEdit {
+  /**
+   * Gets the new title.
+   */
+  readonly title?: string;
+
+  /**
+   * Gets the new body, as the host's markdown.
+   */
+  readonly body?: string;
+
+  /**
+   * Gets the labels to add, by name. A plugin refuses a label the repository does not have rather than
+   * creating it.
+   */
+  readonly addLabels?: readonly string[];
+
+  /**
+   * Gets the labels to remove, by name.
+   */
+  readonly removeLabels?: readonly string[];
+
+  /**
+   * Gets the logins to assign.
+   */
+  readonly addAssignees?: readonly string[];
+
+  /**
+   * Gets the logins to unassign.
+   */
+  readonly removeAssignees?: readonly string[];
+
+  /**
+   * Gets the milestone to set, by title, or null to clear it.
+   */
+  readonly milestone?: string | null;
+}
+
+/**
+ * Describes an edit to a pull (merge) request itself (since protocol 1.4). Every field is optional and
+ * only what is present changes. Its labels, assignees and milestone are edited as an issue's are.
+ */
+export interface HostedPullRequestEdit {
+  /**
+   * Gets the new title.
+   */
+  readonly title?: string;
+
+  /**
+   * Gets the new description, as the host's markdown.
+   */
+  readonly body?: string;
+
+  /**
+   * Gets the branch it should now merge into.
+   */
+  readonly base?: string;
+
+  /**
+   * Gets whether it should be a draft: true converts it to one, false marks it ready for review.
+   */
+  readonly draft?: boolean;
+}
+
+/**
  * Says why an issue was closed: its work is done, it will not be done, or it repeats another issue
  * (since protocol 1.3).
  */
@@ -707,6 +816,15 @@ export interface HostingOperations {
   };
 
   /**
+   * Lists the labels a repository's issues and pull requests can carry (1.4, #1156), so an edit can
+   * choose from them. Gated by `issues`.
+   */
+  readonly listLabels: {
+    readonly params: RepositoryParams;
+    readonly result: readonly HostedLabel[];
+  };
+
+  /**
    * Opens an issue. Its body is the host's markdown.
    */
   readonly createIssue: {
@@ -733,6 +851,42 @@ export interface HostingOperations {
       readonly duplicateOf?: number;
     };
     readonly result: HostedIssue;
+  };
+
+  /**
+   * Edits an issue, or the issue side of a pull request, which shares its number (1.4, #1156). Only
+   * what the edit names changes.
+   */
+  readonly updateIssue: {
+    readonly params: IssueParams & HostedIssueEdit;
+    readonly result: HostedIssue;
+  };
+
+  /**
+   * Makes one issue a sub-issue of another (1.4, #1156). `issue` is the parent and `subIssue` the
+   * child's number; the result is the parent as it now is.
+   */
+  readonly addSubIssue: {
+    readonly params: IssueParams & { readonly subIssue: number };
+    readonly result: HostedIssue;
+  };
+
+  /**
+   * Takes a sub-issue off its parent (1.4, #1156), leaving both issues as they were otherwise. The
+   * result is the parent as it now is.
+   */
+  readonly removeSubIssue: {
+    readonly params: IssueParams & { readonly subIssue: number };
+    readonly result: HostedIssue;
+  };
+
+  /**
+   * Edits a pull (merge) request itself (1.4, #1156): title, description, base branch, draft. Its
+   * labels, assignees and milestone go through {@link HostingOperations.updateIssue}.
+   */
+  readonly updatePullRequest: {
+    readonly params: RepositoryParams & { readonly pullRequest: number } & HostedPullRequestEdit;
+    readonly result: HostedPullRequest;
   };
 
   /**
@@ -826,12 +980,17 @@ export const HOSTING_REPOSITORY_OPS: readonly HostingOp[] = [
   'listIssueComments',
   'listSubIssues',
   'listCiRuns',
+  'listLabels',
   'rerunCiRun',
   'cancelCiRun',
   'createIssue',
   'commentOnIssue',
   'setIssueState',
+  'updateIssue',
+  'addSubIssue',
+  'removeSubIssue',
   'createPullRequest',
+  'updatePullRequest',
 ];
 
 /**
@@ -846,7 +1005,11 @@ export const HOSTING_WRITE_OPS: readonly HostingOp[] = [
   'createIssue',
   'commentOnIssue',
   'setIssueState',
+  'updateIssue',
+  'addSubIssue',
+  'removeSubIssue',
   'createPullRequest',
+  'updatePullRequest',
 ];
 
 /**
@@ -864,6 +1027,7 @@ export const HOSTING_READ_OPS: readonly HostingOp[] = [
   'listIssueComments',
   'listSubIssues',
   'listCiRuns',
+  'listLabels',
   'listAgentTools',
 ];
 
@@ -880,12 +1044,17 @@ export const HOSTING_OP_CAPABILITY: Readonly<Partial<Record<HostingOp, HostingCa
   listIssueComments: 'issues',
   listSubIssues: 'subIssues',
   listCiRuns: 'ciRuns',
+  listLabels: 'issues',
   rerunCiRun: 'ciRerun',
   cancelCiRun: 'ciCancel',
   createIssue: 'createIssue',
   commentOnIssue: 'commentOnIssue',
   setIssueState: 'setIssueState',
+  updateIssue: 'editIssue',
+  addSubIssue: 'editSubIssues',
+  removeSubIssue: 'editSubIssues',
   createPullRequest: 'createPullRequest',
+  updatePullRequest: 'editPullRequest',
   listAgentTools: 'agentTools',
   invokeAgentTool: 'agentTools',
 };
