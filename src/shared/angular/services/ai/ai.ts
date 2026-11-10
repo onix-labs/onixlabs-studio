@@ -17,6 +17,8 @@ import type {
   AiProviderInfo,
   AiRemoteControlMode,
   AiRevokePermissionGrant,
+  AiSetWorkspaceExclusions,
+  AiWorkspaceExclusions,
   AiRunRequest,
   AiSetConnectionKeyRequest,
   AiSteerRequest,
@@ -88,6 +90,16 @@ function createClient(bridge: Bridge): AiClient {
       bridge.invoke(AiChannel.RevokePermissionGrant, request),
     takeNarrowedGrants: (): Promise<readonly string[]> =>
       bridge.invoke(AiChannel.TakeNarrowedGrants),
+    getWorkspaceExclusions: (workspaceRoot: string): Promise<AiWorkspaceExclusions | null> =>
+      bridge.invoke(AiChannel.GetWorkspaceExclusions, workspaceRoot),
+    setPrivateExclusions: (
+      request: AiSetWorkspaceExclusions,
+    ): Promise<AiWorkspaceExclusions | null> =>
+      bridge.invoke(AiChannel.SetPrivateExclusions, request),
+    reviewSharedExclusions: (
+      request: AiSetWorkspaceExclusions,
+    ): Promise<AiWorkspaceExclusions | null> =>
+      bridge.invoke(AiChannel.ReviewSharedExclusions, request),
     respondInput: (reply: AiInputReply): void => {
       bridge.send(AiChannel.InputReply, reply);
     },

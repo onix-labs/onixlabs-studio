@@ -17,6 +17,7 @@ import { SettingControl } from '../../setting-control/setting-control';
 import { AiProviderConfigurations } from './ai-provider-configurations/ai-provider-configurations';
 import { AiRemoteNotifications } from './ai-remote-notifications/ai-remote-notifications';
 import { AiToolPolicies } from './ai-tool-policies/ai-tool-policies';
+import { AiExcludedCommands } from './ai-excluded-commands/ai-excluded-commands';
 import { AiNetworkLocations } from './ai-network-locations/ai-network-locations';
 import { AiRememberedGrants } from './ai-remembered-grants/ai-remembered-grants';
 import { AiWritePaths } from './ai-write-paths/ai-write-paths';
@@ -43,6 +44,7 @@ export type AiSettingsView = 'general' | 'security' | 'provider';
     AiRemoteNotifications,
     AiToolPolicies,
     AiNetworkLocations,
+    AiExcludedCommands,
     AiRememberedGrants,
     AiWritePaths,
   ],

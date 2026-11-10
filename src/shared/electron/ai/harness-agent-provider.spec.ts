@@ -853,6 +853,24 @@ describe('toTurnRequest', () => {
     expect('blockedCommands' in plain).toBe(false);
   });
 
+  it('carriesTheExcludedCommands_onlyWhenThereAreAny', () => {
+    // 1.19.0 (#1163): omitted when empty, so a harness written before it sees the envelope it always
+    // did, and sandboxes every command.
+    const { context } = contextFor();
+
+    const turn: Record<string, unknown> = toTurnRequest({
+      ...context,
+      excludedCommands: ['npx ng:*'],
+    }) as unknown as Record<string, unknown>;
+    const plain: Record<string, unknown> = toTurnRequest(context) as unknown as Record<
+      string,
+      unknown
+    >;
+
+    expect(turn['excludedCommands']).toEqual(['npx ng:*']);
+    expect('excludedCommands' in plain).toBe(false);
+  });
+
   it('withholdsTheHarnessesOwnTools_fromATerminalOrAToolView_only', () => {
     // 1.16.0 (#965): a terminal's or a tool view's agent works through Studio's tools alone. Omitted
     // everywhere else, so those surfaces' envelopes are unchanged.

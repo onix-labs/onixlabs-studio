@@ -145,6 +145,48 @@ export interface AiRevokePermissionGrant {
 }
 
 /**
+ * Describes a workspace's excluded commands (#1163): the commands its agents run outside the sandbox.
+ * The global list lives in settings; these are the two lists kept for one workspace.
+ */
+export interface AiWorkspaceExclusions {
+  /**
+   * Gets the workspace these are for.
+   */
+  readonly workspaceRoot: string;
+
+  /**
+   * Gets the patterns only this user excludes in the workspace, kept in Studio's own data.
+   */
+  readonly private: readonly string[];
+
+  /**
+   * Gets the patterns the repository shares in `.studio/workspace.json`, whether or not they apply.
+   */
+  readonly shared: readonly string[];
+
+  /**
+   * Gets whether the shared list applies: true only when the user has reviewed exactly this list in
+   * this workspace. A list the repository brought, or one changed since, is ignored until reviewed.
+   */
+  readonly sharedReviewed: boolean;
+}
+
+/**
+ * Asks the main process to replace one of a workspace's own exclusion lists (#1163).
+ */
+export interface AiSetWorkspaceExclusions {
+  /**
+   * Gets the workspace.
+   */
+  readonly workspaceRoot: string;
+
+  /**
+   * Gets the new list.
+   */
+  readonly patterns: readonly string[];
+}
+
+/**
  * The renderer's answer to a permission request carried by an `AiPermissionEvent`.
  */
 export interface AiPermissionReply {

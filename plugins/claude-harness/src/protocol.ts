@@ -120,6 +120,12 @@ export interface TurnRequest {
    */
   readonly blockedCommands?: readonly string[];
   /**
+   * The command patterns the sandbox runs outside it, in Bash permission-rule syntax (protocol 1.19.0,
+   * #1163); absent from an older Studio, which means every command is sandboxed. They still go through
+   * the permission gate.
+   */
+  readonly excludedCommands?: readonly string[];
+  /**
    * Whether this harness's own tools are offered (protocol 1.16.0, #965). `'none'` keeps the model to
    * Studio's tools and its clarifying question; absent from an older Studio, which means `'all'`.
    */

@@ -5,6 +5,7 @@
 import { accessSync, constants, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
+import { excludedCommandsOf, isExcludedCommand } from './excluded-commands';
 
 /**
  * Names the SDK's shell tool, the only built-in the OS sandbox wraps.
@@ -75,6 +76,11 @@ export interface ShellRuleSettings {
    * means off.
    */
   readonly autoAllowSandboxedShell?: boolean;
+
+  /**
+   * Gets the commands the user excluded from the sandbox (#1163); absent means none.
+   */
+  readonly excludedCommands?: readonly string[];
 }
 
 /**
@@ -105,6 +111,11 @@ export interface SandboxScope {
    * Gets whether shell commands are refused where the machine has no OS sandbox; absent means on.
    */
   readonly requireSandbox?: boolean;
+
+  /**
+   * Gets the commands the user excluded from the sandbox (#1163); absent means none.
+   */
+  readonly excludedCommands?: readonly string[];
 }
 
 /**
@@ -301,9 +312,10 @@ function listed(entries: readonly string[]): string {
  * flag. Every line was checked against the CLI, not assumed (the host rule especially: a host off the
  * list is not refused, it reaches the permission gate).
  *
- * ⛔ Say only what is true today, in words that stay true. It does not point at excluded commands or a
- * per-host `allowed_domains`: the first does not exist yet (#1163) and the second is ignored outside
- * auto mode. A model told of a way out that is not there tries it, fails, and goes back to the flag.
+ * ⛔ Say only what is true today, in words that stay true. It does not point at a per-host
+ * `allowed_domains`, which is ignored outside auto mode. A model told of a way out that is not there
+ * tries it, fails, and goes back to the flag. Excluded commands (#1163) are real, so it names the ones
+ * this session has and says the user can exclude a command that cannot run inside.
  *
  * Lives here rather than in Studio's own instructions because it is about this harness's sandbox:
  * Codex declines to leave its sandbox at all, and a run with no shell has nothing to be told.
@@ -342,15 +354,31 @@ export function sandboxGuidance(
         : ''),
     localPortsLine(reach.localPorts),
     dockerSocketLine(reach.dockerSocket),
+    ...excludedLine(excludedCommandsOf(scope)),
     '',
     'Run commands in the sandbox. Do not set `dangerouslyDisableSandbox` because you expect a command',
     "to fail: try it first. Leaving the sandbox is the user's decision, not a routine step, and it",
     'removes the limits above. When a command does fail because of the sandbox, tell the user what was',
     'refused. They can widen the write paths, network locations, local ports and the Docker socket',
-    'under Settings > Artificial Intelligence > Security & Permissions. Set the flag only when they ask',
+    'under Settings > Artificial Intelligence > Security & Permissions. A toolchain that cannot run in',
+    'the sandbox at all (a crash naming dyld or SIGABRT) is one the user can exclude, for this',
+    'workspace or every one: ask them to, rather than setting the flag. Set the flag only when they ask',
     'you to, or when the refusal shows the command cannot work in the sandbox, and say why you are',
     'doing it.',
   ].join('\n');
+}
+
+/**
+ * Says which commands the user excluded from the sandbox, when there are any.
+ * @param excluded The session's excluded commands.
+ * @returns Returns the line, or none.
+ */
+function excludedLine(excluded: readonly string[]): readonly string[] {
+  return excluded.length === 0
+    ? []
+    : [
+        `- Excluded: ${listed(excluded)} run outside the sandbox, as the user chose; they still ask for permission as any command does.`,
+      ];
 }
 
 /**
@@ -437,7 +465,7 @@ export function osSandboxAvailable(
  * Applies the sandbox settings to one tool call. Only the shell is affected: with no OS sandbox and
  * Require OS Sandbox on, it is refused with the reason and the way out; with a sandbox and Auto-Allow
  * on, a command that stays inside it runs without asking. A command asking to leave the sandbox is
- * never auto-allowed — that is its own permission.
+ * never auto-allowed — that is its own permission — and nor is one the user excluded from it.
  * @param toolName The tool being called.
  * @param input The call's input.
  * @param settings The turn's sandbox settings.
@@ -466,7 +494,13 @@ export function shellRule(
   if (
     sandboxAvailable &&
     settings.autoAllowSandboxedShell === true &&
-    input['dangerouslyDisableSandbox'] !== true
+    input['dangerouslyDisableSandbox'] !== true &&
+    // An excluded command (#1163) runs outside the sandbox without the flag, so Auto-Allow, which is
+    // for commands that stay inside it, does not cover it: it asks as any shell command does.
+    !isExcludedCommand(
+      typeof input['command'] === 'string' ? input['command'] : '',
+      excludedCommandsOf(settings),
+    )
   ) {
     return { kind: 'allow' };
   }

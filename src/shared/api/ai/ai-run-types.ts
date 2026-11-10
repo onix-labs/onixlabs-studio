@@ -167,6 +167,13 @@ export interface AiRunRequest {
   readonly deniedNetworkLocations?: readonly string[];
 
   /**
+   * Gets the commands the user excludes from the sandbox in every workspace (Excluded Commands,
+   * #1163), as Bash permission-rule patterns (`npx ng:*`). Main joins them with the run's workspace's
+   * own lists. Absent or empty when the user has configured none.
+   */
+  readonly excludedCommands?: readonly string[];
+
+  /**
    * Gets the per-request token budget the turn is capped to, or 0 for the provider default (no cap).
    */
   readonly tokenCap: number;

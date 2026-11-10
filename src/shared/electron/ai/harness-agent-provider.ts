@@ -1,3 +1,4 @@
+import type { AuditGrantSource } from './agent-audit-log';
 import type {
   AiProposedChange,
   AgentContextRef,
@@ -352,7 +353,7 @@ export class HarnessAgentProvider implements AgentProvider {
         requestId: string,
         name: string,
         detail: string,
-        source: string,
+        source: AuditGrantSource,
         sandboxed?: boolean,
         toolId?: string,
       ): void => {
@@ -366,7 +367,7 @@ export class HarnessAgentProvider implements AgentProvider {
           );
           return;
         }
-        context.recordAudit(name, detail, source as never, sandboxed, toolId);
+        context.recordAudit(name, detail, source, sandboxed, toolId);
       },
     );
     const abort: () => void = (): void => host.abort(context.requestId);
@@ -731,7 +732,7 @@ export class HarnessAgentSession implements AgentSession {
         requestId: string,
         name: string,
         detail: string,
-        source: string,
+        source: AuditGrantSource,
         sandboxed?: boolean,
         toolId?: string,
       ): void => {
@@ -745,7 +746,7 @@ export class HarnessAgentSession implements AgentSession {
           );
           return;
         }
-        context.recordAudit(name, detail, source as never, sandboxed, toolId);
+        context.recordAudit(name, detail, source, sandboxed, toolId);
       },
     );
     this.host = host;
@@ -1043,6 +1044,11 @@ export function toTurnRequest(
     ...((context.blockedCommands ?? []).length === 0
       ? {}
       : { blockedCommands: [...context.blockedCommands] }),
+    // Left out when there are none (#1163), so a harness from before the field reads the request it
+    // always did.
+    ...((context.excludedCommands ?? []).length === 0
+      ? {}
+      : { excludedCommands: [...(context.excludedCommands ?? [])] }),
     // A terminal's or a tool view's agent works through Studio's tools alone (#965).
     ...(withholdsBuiltInTools(context.surface) ? { builtInTools: 'none' as const } : {}),
     images: context.images.map((image: AiImageRef): TurnImage => ({

@@ -247,8 +247,15 @@ import { AiEvent } from './ai/ai-event-types';
  * inside the OS sandbox, and the `Run outside the sandbox` permission a harness asks under for one that
  * would not; and its optional `toolId` (#1160), the tool use it records, so the transcript can mark that
  * call. Optional, so every published harness is unaffected: a record without them is audited as before.
+ *
+ * `1.19.0` adds a turn's optional `excludedCommands` (#1163): command patterns, in Bash permission-rule
+ * syntax, that the user declared may run outside the sandbox — the global list joined with the
+ * workspace's. They still go through the permission flow; only the sandbox is removed. It also adds the
+ * `excluded` source an `audit` record may give, for a shell command that ran outside the sandbox because
+ * it was excluded. Optional, so every published harness is unaffected: one written before it sandboxes
+ * every command, as before.
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.18.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.19.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
@@ -474,6 +481,14 @@ export interface TurnRequest {
    * ⚠️ Optional, so a harness written before it simply does not enforce it — the setting says which do.
    */
   readonly blockedCommands?: readonly string[];
+
+  /**
+   * Gets the command patterns the sandbox runs outside it (1.19.0, #1163), in Bash permission-rule
+   * syntax: an exact command (`make build`) or a prefix (`npx ng:*`). The user declared them, for this
+   * workspace or every one; the agent never decides. They still go through the permission flow. A
+   * harness with no way to run one command outside its sandbox ignores them. Absent or empty means none.
+   */
+  readonly excludedCommands?: readonly string[];
 
   /**
    * Gets whether the harness's own built-in tools are offered (1.16.0, #965). `'none'` withholds them

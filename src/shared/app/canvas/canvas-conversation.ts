@@ -65,6 +65,8 @@ function mockAgent(running: boolean): Partial<Agent> {
     clear: ignore,
     setMode: ignore,
     setEffort: ignore,
+    // The board runs no agent, so it works in no workspace and offers no exclusion (#1163).
+    runWorkspaceRoot: (): null => null,
     dismissLoginPrompt: ignore,
     onLoginSucceeded: ignore,
     promptLogin: ignore,

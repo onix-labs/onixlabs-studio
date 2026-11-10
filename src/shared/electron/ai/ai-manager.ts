@@ -28,6 +28,7 @@ import type {
   AiPermissionReply,
   AiProviderInfo,
   AiRevokePermissionGrant,
+  AiWorkspaceExclusions,
   AiRunRequest,
   AiToolPolicy,
   AiRunState,
@@ -94,6 +95,8 @@ import { RendererBridge } from './renderer-bridge';
 import { sanitizeLanguage, sanitizePromptExtra } from './prompt-guard';
 import { retirementFor, type Retirement } from './live-session-retirement';
 import { checkRunRoot, type OpenRoots, type RunRootCheck } from './run-root-guard';
+import { ExcludedCommandStore } from './excluded-command-store';
+import { sanitizeExcludedCommands } from '@shared/api/excluded-commands';
 import type { SkillOfferer } from './skills/skill-library';
 
 /**
@@ -306,6 +309,7 @@ const UNSANDBOXED_REASONS: Readonly<Record<AuditGrantSource, string>> = {
   policy: 'Ran outside the sandbox: its permission is set to Allowed.',
   posture: 'Ran outside the sandbox: Allow All is on.',
   'gated-or-auto': 'Ran outside the sandbox: you allowed it.',
+  excluded: 'Ran outside the sandbox: you excluded this command from it.',
 };
 
 /**
@@ -399,6 +403,11 @@ export class AiManager {
    * Holds the persisted permission rules (the broker's workspace/always grants).
    */
   private readonly rules: PermissionRuleStore = new PermissionRuleStore();
+
+  /**
+   * Holds each workspace's excluded commands (#1163): the private list, and the shared list reviewed.
+   */
+  private readonly exclusions: ExcludedCommandStore = new ExcludedCommandStore();
 
   /**
    * Holds the append-only audit log of granted agent actions (#308), created lazily on first grant so
@@ -597,6 +606,29 @@ export class AiManager {
     );
     ipcMain.handle(AiChannel.TakeNarrowedGrants, (): readonly string[] =>
       this.rules.takeNarrowed(),
+    );
+    ipcMain.handle(
+      AiChannel.GetWorkspaceExclusions,
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<AiWorkspaceExclusions | null> =>
+        this.isExclusionRoot(root) ? this.exclusions.describe(root) : Promise.resolve(null),
+    );
+    ipcMain.handle(
+      AiChannel.SetPrivateExclusions,
+      (_event: IpcMainInvokeEvent, request: unknown): Promise<AiWorkspaceExclusions | null> => {
+        const root: unknown = this.field(request, 'workspaceRoot');
+        return this.isExclusionRoot(root)
+          ? this.exclusions.setPrivate(root, this.field(request, 'patterns'))
+          : Promise.resolve(null);
+      },
+    );
+    ipcMain.handle(
+      AiChannel.ReviewSharedExclusions,
+      (_event: IpcMainInvokeEvent, request: unknown): Promise<AiWorkspaceExclusions | null> => {
+        const root: unknown = this.field(request, 'workspaceRoot');
+        return this.isExclusionRoot(root)
+          ? this.exclusions.reviewShared(root, this.field(request, 'patterns'))
+          : Promise.resolve(null);
+      },
     );
     ipcMain.on(AiChannel.InputReply, (_event: IpcMainEvent, reply: unknown): void => {
       logger.trace('AiManager.register', 'InputReply received');
@@ -1099,6 +1131,16 @@ export class AiManager {
     const deniedNetworkLocations: readonly string[] = sanitizeNetworkLocations(
       request.deniedNetworkLocations,
     );
+    // Excluded commands (#1163): the global list the renderer sends, joined here, in main, with the
+    // workspace's own — read for the run's root rather than whichever workspace has focus, and with the
+    // repository's shared list only once the user has reviewed exactly it.
+    const excludedCommands: readonly string[] = sanitizeExcludedCommands([
+      ...sanitizeExcludedCommands(request.excludedCommands),
+      ...(await this.exclusions.applying(request.workspaceRoot ?? null).catch((error: unknown) => {
+        logger.warn('AiManager.run', "Could not read the workspace's excluded commands", error);
+        return [];
+      })),
+    ]);
     const tokenCap: number =
       typeof request.tokenCap === 'number' && request.tokenCap > 0
         ? Math.floor(request.tokenCap)
@@ -1200,6 +1242,7 @@ export class AiManager {
       deniedWritePaths,
       allowedNetworkLocations,
       deniedNetworkLocations,
+      excludedCommands,
       tokenCap,
       maxSteps,
       requireSandbox,
@@ -2405,6 +2448,28 @@ export class AiManager {
       typeof record['text'] === 'string' &&
       record['text'].length > 0
     );
+  }
+
+  /**
+   * Determines whether a root an exclusion request names is one Studio keeps exclusions for: an
+   * absolute path that is an open workspace root or lies inside one, as a run's root must be.
+   * @param root The untrusted root.
+   * @returns Returns true when the request may proceed.
+   */
+  private isExclusionRoot(root: unknown): root is string {
+    return typeof root === 'string' && root !== '' && checkRunRoot(root, this.openRoots).ok;
+  }
+
+  /**
+   * Reads a property of an untrusted request.
+   * @param value The request.
+   * @param key The property.
+   * @returns Returns its value, or undefined.
+   */
+  private field(value: unknown, key: string): unknown {
+    return typeof value === 'object' && value !== null
+      ? (value as Record<string, unknown>)[key]
+      : undefined;
   }
 
   /**

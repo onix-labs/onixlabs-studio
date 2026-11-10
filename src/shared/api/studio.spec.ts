@@ -30,6 +30,27 @@ function config(id: string, name: string): RunConfiguration {
 }
 
 describe('parseWorkspace', () => {
+  it('keepsTheTeamsExcludedCommands_soASaveDoesNotDropThem', () => {
+    // #1163: every save goes through this parser, so a field it does not read is erased on save.
+    const parsed: StudioWorkspace = parseWorkspace({
+      version: 1,
+      runConfigurations: [],
+      excludedCommands: ['npx ng :*', '*', 'dotnet:*'],
+    });
+
+    expect(parsed.excludedCommands).toEqual(['npx ng:*', 'dotnet:*']);
+    expect(parseWorkspace(JSON.parse(serializeWorkspace(parsed))).excludedCommands).toEqual([
+      'npx ng:*',
+      'dotnet:*',
+    ]);
+  });
+
+  it('leavesExcludedCommandsOut_whenThereAreNone', () => {
+    expect('excludedCommands' in parseWorkspace({ version: 1, excludedCommands: ['*'] })).toBe(
+      false,
+    );
+  });
+
   it('defaultsWhenNotAnObject', () => {
     expect(parseWorkspace(null)).toEqual(defaultWorkspace());
     expect(parseWorkspace('nonsense')).toEqual(defaultWorkspace());

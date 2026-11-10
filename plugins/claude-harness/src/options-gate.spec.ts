@@ -618,6 +618,32 @@ describe('the permission gate', () => {
       expect(recorded.audits[0][2]).toBe('posture');
     });
 
+    it('auditsAnExcludedCommand_asRunOutsideTheSandbox_becauseItWasExcluded', async () => {
+      // #1163: the SDK takes an excluded command out of the sandbox without the flag, so a record
+      // reading "sandboxed" would hide it from the Unsandboxed badge.
+      recorded.turn = turn({ excludedCommands: ['npx ng:*'] });
+      const built: Options = buildOptions(
+        context(),
+        recorded.turn,
+        {} as never,
+        '',
+        null,
+        new AbortController(),
+      );
+
+      await hook(built, 'PostToolUse', {
+        tool_name: 'Bash',
+        tool_input: { command: 'npx ng test --watch=false' },
+      });
+      await hook(built, 'PostToolUse', { tool_name: 'Bash', tool_input: { command: 'npx ngrok' } });
+
+      expect(recorded.sandboxed).toEqual([false, osSandboxAvailable()]);
+      expect(recorded.audits.map((audit: string[]): string => audit[2])).toEqual([
+        'excluded',
+        'gated-or-auto',
+      ]);
+    });
+
     it('auditsTheToolUse_soTheTranscriptCanMarkTheRightCall', async () => {
       recorded.turn = turn();
       const built: Options = buildOptions(
@@ -858,6 +884,20 @@ describe('the permission gate', () => {
       );
       expect(sandbox.network?.deniedDomains).toEqual(
         expect.arrayContaining(['*.bad.com', 'bad.com']),
+      );
+    });
+
+    it('handsTheExcludedCommandsToTheSdk_keepingOnlyThePatternsItUnderstands', () => {
+      expect(
+        sandboxFor(turn({ excludedCommands: ['npx ng:*', '*', ':*', 'make  build', 'npx ng:*'] }))
+          .excludedCommands,
+      ).toEqual(['npx ng:*', 'make build']);
+      expect(sandboxFor(turn()).excludedCommands).toBeUndefined();
+    });
+
+    it('changesTheSignature_whenTheExcludedCommandsChange_soTheSessionReopens', () => {
+      expect(sandboxSignature(turn({ excludedCommands: ['dotnet:*'] }))).not.toBe(
+        sandboxSignature(turn()),
       );
     });
 

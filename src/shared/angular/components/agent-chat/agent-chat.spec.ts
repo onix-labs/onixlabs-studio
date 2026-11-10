@@ -20,6 +20,7 @@ import {
   AgentTask,
 } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import { AgentExclusions } from '@shared/angular/services/agent-exclusions/agent-exclusions';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { Search } from '@shared/angular/services/search/search';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -65,10 +66,17 @@ describe('AgentChat', () => {
   // The chat decides for itself whether it is on screen by watching its own host element, which jsdom
   // cannot answer; this puts those observations under the test's control.
   let observers: FakeIntersectionObserver;
+  // The workspace the agent works in, and what its excluded commands do (#1163).
+  let workspaceRoot: string | null;
+  let pendingShared: WritableSignal<readonly string[]>;
+  let exclusionCalls: string[];
 
   beforeEach(async () => {
     localStorage.clear();
     observers = FakeIntersectionObserver.install();
+    workspaceRoot = null;
+    pendingShared = signal<readonly string[]>([]);
+    exclusionCalls = [];
     conversationDraft = signal<string>('');
     tailRequest = signal<number>(0);
     topRequest = signal<number>(0);
@@ -158,6 +166,7 @@ describe('AgentChat', () => {
       clear: (): void => void (clearedChats += 1),
       setMode: (value: AgentMode): void => void modeChanges.push(value),
       setEffort: (value: AiEffort | null): void => void effortChanges.push(value),
+      runWorkspaceRoot: (): string | null => workspaceRoot,
       attachContext: (ref: AgentContextRef): void => void attachedContext.push(ref),
       needsLogin: signal<boolean>(false),
       supportsSignIn: signal<boolean>(false),
@@ -203,6 +212,27 @@ describe('AgentChat', () => {
         { provide: AgentEngine, useValue: engineStub },
         { provide: Workspace, useValue: workspaceStub },
         { provide: Search, useValue: searchStub },
+        {
+          provide: AgentExclusions,
+          useValue: {
+            pendingReview: (root: string | null): readonly string[] =>
+              root === null ? [] : pendingShared(),
+            refresh: (): Promise<void> => Promise.resolve(),
+            excludeForWorkspace: (root: string, pattern: string): Promise<void> => {
+              exclusionCalls.push(`exclude ${root} ${pattern}`);
+              return Promise.resolve();
+            },
+            review: (root: string, patterns: readonly string[]): Promise<void> => {
+              exclusionCalls.push(`review ${root} ${patterns.join(',')}`);
+              pendingShared.set([]);
+              return Promise.resolve();
+            },
+            snooze: (root: string): void => {
+              exclusionCalls.push(`snooze ${root}`);
+              pendingShared.set([]);
+            },
+          } as unknown as AgentExclusions,
+        },
         // A host conversation carrying the persistent composer draft, so the chat's draft is backed by
         // it exactly as it is in the app (the source of the survives-remount behaviour below).
         {
@@ -232,6 +262,110 @@ describe('AgentChat', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  describe('excluded commands (#1163)', () => {
+    /**
+     * Builds a failed shell call, as the transcript holds one.
+     * @param output What the command printed.
+     * @param overrides The fields to change.
+     * @returns Returns the item.
+     */
+    function failedShell(output: string, overrides: Partial<AgentItem> = {}): AgentItem {
+      return {
+        id: 't1',
+        kind: 'tool',
+        text: '',
+        toolId: 'toolu_1',
+        toolName: 'Bash',
+        toolDetail: 'npx ng test --watch=false',
+        toolState: 'error',
+        toolOutput: output,
+        ...overrides,
+      };
+    }
+
+    /**
+     * Reads the chat's protected exclusion offer.
+     * @param item The tool call.
+     * @returns Returns the pattern offered, or null.
+     */
+    function offerFor(item: AgentItem): string | null {
+      return (
+        component as unknown as { exclusionOffer: (item: AgentItem) => string | null }
+      ).exclusionOffer(item);
+    }
+
+    it('offersToExcludeACommand_thatCrashedTheWayTheSandboxMakesItCrash', () => {
+      workspaceRoot = '/work/studio';
+
+      expect(offerFor(failedShell('dyld[812]: Library not loaded\nAbort trap: 6'))).toBe(
+        'npx ng:*',
+      );
+    });
+
+    it.each<[string, Partial<AgentItem>, string]>([
+      ['anotherFailure', {}, 'npm ERR! missing script: test'],
+      ['aCommandThatRanOutside', { toolUnsandboxed: 'Ran outside.' }, 'Abort trap: 6'],
+      ['anotherTool', { toolName: 'Write' }, 'Abort trap: 6'],
+      ['aCommandThatSucceeded', { toolState: 'ok' }, 'Abort trap: 6'],
+    ])('offersNothing_for %s', (_label: string, overrides: Partial<AgentItem>, output: string) => {
+      workspaceRoot = '/work/studio';
+
+      expect(offerFor(failedShell(output, overrides))).toBeNull();
+    });
+
+    it('offersNothing_withoutAWorkspace', () => {
+      expect(offerFor(failedShell('Abort trap: 6'))).toBeNull();
+    });
+
+    it('excludesForThisWorkspaceOnly_andDoesNotOfferTheSameCallTwice', () => {
+      workspaceRoot = '/work/studio';
+      const item: AgentItem = failedShell('Abort trap: 6');
+
+      (
+        component as unknown as {
+          excludeForWorkspace: (item: AgentItem, pattern: string) => void;
+        }
+      ).excludeForWorkspace(item, 'npx ng:*');
+
+      expect(exclusionCalls).toEqual(['exclude /work/studio npx ng:*']);
+      expect(offerFor(item)).toBeNull();
+    });
+
+    it('asksAboveTheComposer_beforeARepositorysSharedListApplies', async () => {
+      workspaceRoot = '/work/studio';
+      pendingShared.set(['make build']);
+      fixture = TestBed.createComponent(AgentChat);
+      await fixture.whenStable();
+      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+      expect(host.querySelector('.agent__exclusion-review')?.textContent).toContain('make build');
+
+      const allow: HTMLButtonElement | undefined = [
+        ...host.querySelectorAll<HTMLButtonElement>('.agent__exclusion-review button'),
+      ].find((button: HTMLButtonElement): boolean => button.textContent?.trim() === 'Allow');
+      allow?.click();
+      await fixture.whenStable();
+
+      expect(exclusionCalls).toEqual(['review /work/studio make build']);
+      expect(host.querySelector('.agent__exclusion-review')).toBeNull();
+    });
+
+    it('notNow_putsTheReviewOff_withoutAllowingAnything', async () => {
+      workspaceRoot = '/work/studio';
+      pendingShared.set(['make build']);
+      fixture = TestBed.createComponent(AgentChat);
+      await fixture.whenStable();
+      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+      [...host.querySelectorAll<HTMLButtonElement>('.agent__exclusion-review button')]
+        .find((button: HTMLButtonElement): boolean => button.textContent?.trim() === 'Not Now')
+        ?.click();
+      await fixture.whenStable();
+
+      expect(exclusionCalls).toEqual(['snooze /work/studio']);
+    });
   });
 
   it('textScale_followsTheConversationTextSizeSetting', () => {

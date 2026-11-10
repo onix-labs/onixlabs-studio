@@ -7,6 +7,7 @@ import {
   computed,
   DestroyRef,
   effect,
+  EffectRef,
   ElementRef,
   HostListener,
   inject,
@@ -23,6 +24,8 @@ import type { AgentSurface, AiEditDecision, AiImageRef } from '@shared/api/ai-ty
 import { Agent, AgentItem, AgentItemKind } from '@shared/angular/services/agent/agent';
 import { formatTokens } from '@shared/angular/services/agent/token-format';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { AgentExclusions } from '@shared/angular/services/agent-exclusions/agent-exclusions';
+import { looksLikeSandboxCrash, suggestExcludedCommand } from '@shared/api/excluded-commands';
 import { ConversationTextSize } from '@shared/angular/services/settings/settings-registry';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentPerf } from '@shared/angular/services/agent-perf/agent-perf';
@@ -395,6 +398,39 @@ export class AgentChat implements OnInit {
    * view).
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the workspace's excluded commands (#1163): the one-click exclusion a sandbox crash offers,
+   * and the review a repository's shared list waits for.
+   */
+  private readonly exclusions: AgentExclusions = inject(AgentExclusions);
+
+  /**
+   * Holds the tool calls whose command the user excluded from this transcript, so the offer is not
+   * made twice.
+   */
+  protected readonly excludedFrom: WritableSignal<ReadonlySet<string>> = signal<
+    ReadonlySet<string>
+  >(new Set<string>());
+
+  /**
+   * Gets the shared exclusions the workspace's repository brings that are waiting for the user's
+   * review, shown above the composer until allowed or put off.
+   */
+  protected readonly pendingExclusions: Signal<readonly string[]> = computed(
+    (): readonly string[] => this.exclusions.pendingReview(this.exclusionRoot()),
+  );
+
+  /**
+   * Reads the workspace's exclusions whenever the agent's workspace changes, so a shared list waiting
+   * for review is offered before the first run rather than after it.
+   */
+  private readonly exclusionsLoad: EffectRef = effect((): void => {
+    const root: string | null = this.exclusionRoot();
+    if (root !== null) {
+      void this.exclusions.refresh(root);
+    }
+  });
 
   /**
    * Gets a value indicating whether tool calls render open (Expand Tool Calls).
@@ -1535,5 +1571,75 @@ export class AgentChat implements OnInit {
     }
     event.preventDefault();
     void this.shell.openExternal(href);
+  }
+
+  /**
+   * Gets the workspace this conversation's agent works in, whose exclusions apply to it. Read through
+   * each time rather than memoised: the agent resolves it from signals of its own.
+   * @returns Returns the workspace root, or null for none.
+   */
+  protected exclusionRoot(): string | null {
+    return this.agent.runWorkspaceRoot();
+  }
+
+  /**
+   * Gets the pattern to offer excluding, for a shell command that failed the way a toolchain does
+   * when it cannot run inside the sandbox at all (a crash naming dyld or SIGABRT), or null when there
+   * is nothing to offer: another tool, another failure, one that already ran outside, or no workspace.
+   * @param item The tool call.
+   * @returns Returns the pattern, or null.
+   */
+  protected exclusionOffer(item: AgentItem): string | null {
+    if (
+      item.toolName !== 'Bash' ||
+      item.toolState !== 'error' ||
+      item.toolUnsandboxed !== undefined ||
+      this.exclusionRoot() === null ||
+      (item.toolId !== undefined && this.excludedFrom().has(item.toolId)) ||
+      !looksLikeSandboxCrash(item.toolOutput ?? '')
+    ) {
+      return null;
+    }
+    return suggestExcludedCommand(item.toolDetail ?? '');
+  }
+
+  /**
+   * Excludes a crashed command's pattern for this workspace, for this user only: the private list,
+   * since one click is no place to decide for a team.
+   * @param item The tool call.
+   * @param pattern The pattern offered.
+   */
+  protected excludeForWorkspace(item: AgentItem, pattern: string): void {
+    const root: string | null = this.exclusionRoot();
+    if (root === null) {
+      return;
+    }
+    if (item.toolId !== undefined) {
+      const id: string = item.toolId;
+      this.excludedFrom.update((current: ReadonlySet<string>): ReadonlySet<string> =>
+        new Set<string>(current).add(id),
+      );
+    }
+    void this.exclusions.excludeForWorkspace(root, pattern);
+  }
+
+  /**
+   * Allows the workspace's shared exclusions as listed: they apply until the list changes.
+   */
+  protected allowSharedExclusions(): void {
+    const root: string | null = this.exclusionRoot();
+    if (root !== null) {
+      void this.exclusions.review(root, this.pendingExclusions());
+    }
+  }
+
+  /**
+   * Puts the review off for this session: the shared exclusions stay ignored.
+   */
+  protected postponeSharedExclusions(): void {
+    const root: string | null = this.exclusionRoot();
+    if (root !== null) {
+      this.exclusions.snooze(root);
+    }
   }
 }
