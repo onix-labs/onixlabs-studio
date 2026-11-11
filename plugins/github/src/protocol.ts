@@ -26,7 +26,10 @@
 // `updatePullRequest` (title, body, base, draft), behind the `editIssue`, `editSubIssues` and
 // `editPullRequest` capabilities. Studio asks only a plugin that declares them, so a 1.3 plugin is still
 // understood.
-export const HOSTING_PROTOCOL_VERSION: string = '1.4';
+// 1.5 (#887) adds a pull request's optional `headSha`, the commit its head pointed at, so a local
+// branch can be told merged by its pull request only while it still sits at that commit. An addition: a
+// 1.4 plugin sends none, and no branch is marked merged by its pull request.
+export const HOSTING_PROTOCOL_VERSION: string = '1.5';
 
 /**
  * Names one optional capability a hosting plugin can advertise.
@@ -419,6 +422,13 @@ export interface HostedPullRequest {
    * Gets the name of the branch it proposes.
    */
   readonly headRef: string;
+
+  /**
+   * Gets the commit its head points at — for a merged pull request, the head that was merged (since
+   * protocol 1.5). A local branch counts as merged by the pull request only while its tip is this
+   * commit: anything committed after would be lost by deleting it.
+   */
+  readonly headSha?: string;
 
   /**
    * Gets the ref to fetch from the repository's remote to check its head out — `refs/pull/N/head` on

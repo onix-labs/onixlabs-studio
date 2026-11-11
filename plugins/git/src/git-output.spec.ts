@@ -216,6 +216,19 @@ describe('git-output', () => {
       ]);
       expect(refs.tags).toEqual([{ name: 'v1.0', commit: 'CCC' }]);
     });
+
+    it('parseRefs_marksABranchWhoseUpstreamIsGone (#887)', () => {
+      // After a pull request is merged with its branch deleted, the upstream reads `[gone]`.
+      const output: string = [
+        ['refs/heads/feat/login', 'AAA', ' ', 'origin/feat/login', '[gone]'].join(US),
+        ['refs/heads/main', 'BBB', '*', 'origin/main', ''].join(US),
+      ].join('\n');
+
+      const refs: VcsRefs = parseRefs(output);
+
+      expect(refs.branches[0]).toMatchObject({ name: 'feat/login', upstreamGone: true });
+      expect(refs.branches[1].upstreamGone).toBeUndefined();
+    });
   });
 
   describe('parseRemoteUrls', () => {

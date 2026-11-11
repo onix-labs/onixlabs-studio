@@ -93,6 +93,13 @@ const IDLE: ForgeSection<never> = {
 const POLL_INTERVAL_MS: number = 60_000;
 
 /**
+ * How many of the most recently updated pull requests are read for their merges (#887): one page,
+ * which reaches back past every branch a person is likely still to have lying around, at the cost of a
+ * single request.
+ */
+const MERGED_PULL_REQUEST_LOOKBACK: number = 100;
+
+/**
  * Names the hosting lists Load More can grow.
  */
 export type ForgeListKind = 'pullRequests' | 'issues' | 'runs';
@@ -214,6 +221,22 @@ export class ForgeRepository {
    * Gets the issue section.
    */
   public readonly issues: Signal<ForgeSection<ForgeIssue>> = this.issueSection.asReadonly();
+
+  /**
+   * Holds the most recent pull requests of every state, read for their merges (#887).
+   */
+  private readonly mergedPullRequestSection: WritableSignal<ForgeSection<ForgePullRequest>> =
+    signal<ForgeSection<ForgePullRequest>>(IDLE);
+
+  /**
+   * Gets the repository's recently merged pull requests, for marking the local branches they merged.
+   */
+  public readonly mergedPullRequests: Signal<readonly ForgePullRequest[]> = computed(
+    (): readonly ForgePullRequest[] =>
+      this.mergedPullRequestSection().items.filter(
+        (pullRequest: ForgePullRequest): boolean => pullRequest.state === 'merged',
+      ),
+  );
 
   /**
    * Holds how many pages of each list Load More has asked for; one page is Hosting List Size items.
@@ -351,6 +374,22 @@ export class ForgeRepository {
         limit: this.limitFor('pullRequests'),
         state: this.listState(),
       }),
+    );
+  }
+
+  /**
+   * Reads one page of the repository's pull requests of every state into
+   * {@link mergedPullRequests}, for marking the local branches they merged (#887): a squash or rebase
+   * merge leaves a branch's tip unreachable from the default branch, so ancestry alone never finds it.
+   * Asks nothing of a repository whose hosting plugin does not list pull requests.
+   * @returns Returns a promise that resolves once the list has settled.
+   */
+  public loadMergedPullRequests(): Promise<void> {
+    if (!this.supports('pullRequests')) {
+      return Promise.resolve();
+    }
+    return this.load(this.mergedPullRequestSection, (reference: ForgeRepositoryRef) =>
+      this.forge.pullRequests(reference, { limit: MERGED_PULL_REQUEST_LOOKBACK, state: 'all' }),
     );
   }
 

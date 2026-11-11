@@ -102,6 +102,10 @@
   // Modal panel surface: an off-white card that lifts off the page (the body surface is far darker).
   --modal-panel-background-color: var(--gray-150);
 
+  // Merged work (#887): the purple a code host marks a merged pull request in, deepened for the light
+  // surface so a chip's text reads at about 4.9:1 on its own wash.
+  --merged-color: #6639ba;
+
   --welcome-muted-foreground-color: var(--gray-800);
 
   --agent-view-surface-color: var(--gray-150);

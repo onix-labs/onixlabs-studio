@@ -242,6 +242,17 @@ export interface GitBranch {
    * Gets the hash of the branch's tip commit.
    */
   readonly tip: string;
+
+  /**
+   * Gets the default branch this branch is already merged into by ancestry, when the version-control
+   * plugin found it so (#887).
+   */
+  readonly mergedInto?: string;
+
+  /**
+   * Gets whether the branch's upstream no longer exists on the remote (#887).
+   */
+  readonly upstreamGone?: boolean;
 }
 
 /**

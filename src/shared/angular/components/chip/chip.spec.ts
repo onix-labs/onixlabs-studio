@@ -39,7 +39,15 @@ describe('Chip (#882)', () => {
   });
 
   it('takesEachTone_asItsClass', () => {
-    for (const tone of ['accent', 'success', 'warning', 'danger', 'info', 'neutral'] as const) {
+    for (const tone of [
+      'accent',
+      'success',
+      'warning',
+      'danger',
+      'info',
+      'merged',
+      'neutral',
+    ] as const) {
       fixture.componentInstance.tone.set(tone);
       fixture.detectChanges();
       expect(chip().classList).toContain(`chip--${tone}`);
