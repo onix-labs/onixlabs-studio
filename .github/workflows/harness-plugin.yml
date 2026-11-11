@@ -38,6 +38,7 @@ on:
         'plugin-sqlite-engine-v*',
         'plugin-postgres-engine-v*',
         'plugin-neo4j-engine-v*',
+        'plugin-sqlserver-engine-v*',
         'plugin-npm-v*',
         'plugin-nuget-v*',
         'plugin-go-modules-v*',

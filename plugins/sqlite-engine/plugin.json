@@ -3,12 +3,12 @@
   "name": "SQLite",
   "description": "Connect the Database Explorer to SQLite database files.",
   "detail": "Opens SQLite database files on this machine with the SQLite built into Studio's own runtime; it installs nothing else.",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "apiVersion": "1.20.0",
   "provision": {
     "kind": "npm",
     "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/sqlite-engine.lock.json",
-    "sha256": "585cec746b987561bbbce21eb25598f4649b3e2455cec5c57302fc15ff1a3950",
+    "sha256": "69f7931cdb3aeef56306708374386b70d6cc8e25757c42c674d8309cbe67385c",
     "executablePath": "node_modules/@onixlabs/sqlite-engine/main.js"
   },
   "contributes": {
