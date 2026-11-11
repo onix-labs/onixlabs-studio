@@ -95,6 +95,9 @@ export function clientCapabilities(serverId?: string): ClientCapabilities {
       linkedEditingRange: { dynamicRegistration: false },
       // Expand and Shrink Selection grow by the compiler's syntax nodes (#1155).
       selectionRange: { dynamicRegistration: false },
+      // The colours written in a document, for swatches and the colour picker where Monaco has none of
+      // its own — HTML's styles, Svelte (#1214).
+      colorProvider: { dynamicRegistration: false },
       // Facts above types and members — Roslyn's reference counts (#1149) — each filled in as shown.
       codeLens: { dynamicRegistration: false },
       // Parameter names and inferred types set into the code (#1145); the tooltip — the parameter's
