@@ -192,6 +192,12 @@ export type CollapsedFolderSeparator = '/' | '.';
 export type ExplorerSortOrder = 'folders-first' | 'files-first' | 'mixed';
 
 /**
+ * Identifies how the explorers show the files version control ignores (#1252): greyed out, or not at
+ * all.
+ */
+export type ExplorerIgnoredFiles = 'greyed' | 'hidden';
+
+/**
  * Identifies how an explorer's row opens its file: one click, or two.
  */
 export type ExplorerOpenFilesWith = 'single' | 'double';
@@ -572,6 +578,7 @@ export interface SettingsValues {
   readonly 'workspaces.documentWellPlacement': DocumentWellPlacement;
   readonly 'workspaces.addStudioUserFileToGitignore': boolean;
   readonly 'workspaces.showErrorSquiggles': boolean;
+  readonly 'workspaces.ignoredFiles': ExplorerIgnoredFiles;
   readonly 'workspaces.sortOrder': ExplorerSortOrder;
   readonly 'workspaces.collapsedFolderSeparator': CollapsedFolderSeparator;
   readonly 'workspaces.openFilesWith': ExplorerOpenFilesWith;
@@ -1525,6 +1532,21 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description: 'Underline the name of a file with an error, and the folders above it.',
         control: { kind: 'toggle' },
         default: true,
+      },
+      {
+        key: 'workspaces.ignoredFiles',
+        title: 'Ignored Files',
+        description:
+          'How the files and folders version control ignores appear: greyed out, or left out of ' +
+          'the tree.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'greyed', label: 'Show Greyed' },
+            { value: 'hidden', label: 'Hide' },
+          ],
+        },
+        default: 'greyed',
       },
       {
         key: 'workspaces.sortOrder',

@@ -1,6 +1,7 @@
 import { signal, WritableSignal } from '@angular/core';
 import { EntryRename } from '@shared/angular/services/rename/entry-rename';
 import { ExplorerFilter } from '@shared/angular/services/explorer-filter/explorer-filter';
+import { ExplorerExclusions } from '@shared/angular/services/explorer-filter/explorer-exclusions';
 import { Diagnostic, Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
@@ -108,6 +109,12 @@ class FakeWorkspace {
     this.collapsesEmptyFolders.update((value: boolean): boolean => !value);
   }
 
+  public expandSkip: (path: string) => boolean = (): boolean => false;
+
+  public setExpandSkip(skip: (path: string) => boolean): void {
+    this.expandSkip = skip;
+  }
+
   public readonly filter: ExplorerFilter = freshFilter('test.files');
 
   public setChangesOnly(on: boolean): void {
@@ -213,6 +220,7 @@ describe('TreePanel', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [TreePanel],
+      providers: [ExplorerExclusions],
     }).compileComponents();
 
     fixture = TestBed.createComponent(TreePanel);
@@ -259,6 +267,7 @@ describe('TreePanel row context menu', () => {
   };
 
   beforeEach(async () => {
+    localStorage.removeItem('workspace.files.showHidden');
     workspace = new FakeWorkspace();
     shell = new FakeShell();
     opener = new FakeFileOpener();
@@ -278,6 +287,7 @@ describe('TreePanel row context menu', () => {
         { provide: Shell, useValue: shell },
         { provide: FileOpener, useValue: opener },
         { provide: Notifications, useValue: notifications },
+        ExplorerExclusions,
       ],
     }).compileComponents();
 
@@ -571,7 +581,7 @@ describe('TreePanel row context menu', () => {
     });
 
     it('contextMenuFor_aSelectedRow_offersWhatActsOnThemAll', () => {
-      expect(itemIds(a)).toEqual(['open', 'copy-path', 'copy-relative-path', 'delete']);
+      expect(itemIds(a)).toEqual(['open', 'copy-path', 'copy-relative-path', 'exclude', 'delete']);
       // A row outside the selection gets its own menu.
       expect(itemIds(src)).toContain('rename');
     });
@@ -579,7 +589,7 @@ describe('TreePanel row context menu', () => {
     it('contextMenuFor_aSelectionHoldingAFolder_offersNoOpen', () => {
       component.onRowSelect({ row: treeRow(src), mode: 'toggle' });
 
-      expect(itemIds(src)).toEqual(['copy-path', 'copy-relative-path', 'delete']);
+      expect(itemIds(src)).toEqual(['copy-path', 'copy-relative-path', 'exclude', 'delete']);
     });
 
     it('copyPaths_copiesOnePathPerLine', () => {
@@ -621,6 +631,7 @@ describe('TreePanel row context menu', () => {
       'copy-path',
       'copy-relative-path',
       'reveal',
+      'exclude',
       'rename',
       'delete',
     ]);
@@ -641,8 +652,102 @@ describe('TreePanel row context menu', () => {
       .contextMenuFor(treeRow(node('main.ts', '/ws/main.ts', 'file')))
       .filter((item: MenuItem): boolean => item.separator === true);
 
-    expect(separators).toHaveLength(2);
+    expect(separators).toHaveLength(3);
     expect(separators.every((item: MenuItem): boolean => item.label === '')).toBe(true);
+  });
+
+  describe('excluded, hidden and ignored entries (#1252)', () => {
+    const src: WorkspaceTreeNode = node('src', '/ws/src', 'directory');
+    const main: WorkspaceTreeNode = node('main.ts', '/ws/src/main.ts', 'file');
+    const dotfile: WorkspaceTreeNode = node('.env', '/ws/.env', 'file');
+    const readme: WorkspaceTreeNode = node('README.md', '/ws/README.md', 'file');
+
+    beforeEach(() => {
+      workspace.rows.set([
+        { node: src, depth: 0, expanded: true },
+        { node: main, depth: 1, expanded: false },
+        { node: dotfile, depth: 0, expanded: false },
+        { node: readme, depth: 0, expanded: false },
+      ]);
+    });
+
+    /**
+     * Gets the paths of the rows the tree shows.
+     * @returns Returns the paths.
+     */
+    function shown(): readonly string[] {
+      return (component as unknown as { rows: () => readonly TreeRow[] })
+        .rows()
+        .map((row: TreeRow): string => row.id);
+    }
+
+    /**
+     * Chooses an item from the toolbar's "…" menu.
+     * @param itemId The item.
+     */
+    function choose(itemId: string): void {
+      (component as unknown as { onMoreAction: (id: string) => void }).onMoreAction(itemId);
+    }
+
+    it('exclude_greysTheEntryWhileHiddenThingsShow_andOffersIncludeInstead', async () => {
+      component.onContextAction({ itemId: 'exclude', row: treeRow(src) });
+      await fixture.whenStable();
+
+      const row: TreeRow | undefined = (component as unknown as { rows: () => readonly TreeRow[] })
+        .rows()
+        .find((candidate: TreeRow): boolean => candidate.id === '/ws/src');
+      expect(row?.tone).toBe('muted');
+      expect(row?.hint).toBe('Excluded from the explorers, Expand All and Find');
+      expect(itemIds(src)).toContain('include');
+      expect(itemIds(src)).not.toContain('exclude');
+      // Inside an excluded folder there is nothing to include on its own.
+      expect(itemIds(main)).not.toContain('include');
+      expect(itemIds(main)).not.toContain('exclude');
+    });
+
+    it('include_bringsTheEntryBack', async () => {
+      component.onContextAction({ itemId: 'exclude', row: treeRow(src) });
+      component.onContextAction({ itemId: 'include', row: treeRow(src) });
+      await fixture.whenStable();
+
+      expect(itemIds(src)).toContain('exclude');
+      expect(
+        (component as unknown as { rows: () => readonly TreeRow[] }).rows()[0].tone,
+      ).toBeUndefined();
+    });
+
+    it('showHiddenFilesOff_leavesOutDotfilesAndExcludedEntriesAndWhatIsInThem', async () => {
+      component.onContextAction({ itemId: 'exclude', row: treeRow(src) });
+      await fixture.whenStable();
+      expect(shown()).toEqual(['/ws/src', '/ws/src/main.ts', '/ws/.env', '/ws/README.md']);
+
+      choose('show-hidden');
+
+      expect(shown()).toEqual(['/ws/README.md']);
+    });
+
+    it('expandAll_skipsExcludedFolders_andHiddenOnesWhileHidden', async () => {
+      component.onContextAction({ itemId: 'exclude', row: treeRow(src) });
+      await fixture.whenStable();
+
+      expect(workspace.expandSkip('/ws/src')).toBe(true);
+      expect(workspace.expandSkip('/ws/.github')).toBe(false);
+      choose('show-hidden');
+      expect(workspace.expandSkip('/ws/.github')).toBe(true);
+      expect(workspace.expandSkip('/ws/docs')).toBe(false);
+    });
+
+    it('ignoredFilesHide_leavesOutWhatVersionControlIgnores', () => {
+      vi.spyOn(TestBed.inject(WorkspaceGit), 'stateFor').mockImplementation(
+        (path: string): ExplorerScmState | null => (path === '/ws/.env' ? 'ignored' : null),
+      );
+      expect(shown()).toContain('/ws/.env');
+
+      TestBed.inject(Settings).set('workspaces.ignoredFiles', 'hidden');
+
+      expect(shown()).toEqual(['/ws/src', '/ws/src/main.ts', '/ws/README.md']);
+      TestBed.inject(Settings).set('workspaces.ignoredFiles', 'greyed');
+    });
   });
 
   it('contextMenuFor_delete_isNotColoured', () => {
@@ -761,6 +866,7 @@ describe('TreePanel row context menu', () => {
         'follow-active',
         'git-status',
         'collapse-empty-folders',
+        'show-hidden',
       ]);
     });
 
@@ -795,7 +901,7 @@ describe('TreePanel row context menu', () => {
       expect(workspace.collapsesEmptyFolders()).toBe(true);
       expect(
         moreItems()[0].children?.map((item: MenuItem): boolean | undefined => item.checked),
-      ).toEqual([false, false, true]);
+      ).toEqual([false, false, true, true]);
     });
 
     it('showGitStatus_off_dropsTheRowColours', async () => {

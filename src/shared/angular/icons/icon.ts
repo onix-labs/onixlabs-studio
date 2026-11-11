@@ -891,6 +891,17 @@ export class Icon {
   public static readonly GIT_IGNORE: Icon = new Icon('ph-duotone ph-eye-slash');
 
   /**
+   * Gets the icon of the explorers' Exclude command, which takes an entry out of the explorers,
+   * Expand All and Find (#1252).
+   */
+  public static readonly EXPLORER_EXCLUDE: Icon = new Icon('ph-duotone ph-prohibit');
+
+  /**
+   * Gets the icon of the explorers' Include command, which brings an excluded entry back (#1252).
+   */
+  public static readonly EXPLORER_INCLUDE: Icon = new Icon('ph-duotone ph-check-circle');
+
+  /**
    * Gets the icon of the explorers' Stop Tracking command, which takes a path out of version control
    * while keeping it on disk (#1043).
    */

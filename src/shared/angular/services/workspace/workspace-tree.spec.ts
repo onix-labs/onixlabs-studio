@@ -220,6 +220,21 @@ describe('Workspace tree resilience', () => {
         expect(shown()).toContain('/ws/lib/node_modules');
       });
 
+      it('expandAll_leavesClosedTheFoldersTheSkipNames', async () => {
+        // #1252: the tab's excluded folders, handed in by its exclusions.
+        disk.listings.set('/ws/lib', {
+          path: '/ws/lib',
+          name: 'lib',
+          entries: [{ name: 'generated', path: '/ws/lib/generated', type: 'directory' }],
+        });
+        service.setExpandSkip((path: string): boolean => path === '/ws/lib/generated');
+
+        await service.expandAll();
+
+        expect(disk.reads).toContain('/ws/lib');
+        expect(disk.reads).not.toContain('/ws/lib/generated');
+      });
+
       describe('while a slow folder is being read', () => {
         let finishRead: () => void;
         let expanding: Promise<void>;
