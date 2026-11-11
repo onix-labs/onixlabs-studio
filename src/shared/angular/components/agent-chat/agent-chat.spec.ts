@@ -1,4 +1,4 @@
-import { signal, WritableSignal } from '@angular/core';
+import { computed, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import type {
@@ -63,6 +63,7 @@ describe('AgentChat', () => {
   let tailRequest: WritableSignal<number>;
   let topRequest: WritableSignal<number>;
   let promptRequest: WritableSignal<number>;
+  let unsandboxedRequest: WritableSignal<number>;
   // The chat decides for itself whether it is on screen by watching its own host element, which jsdom
   // cannot answer; this puts those observations under the test's control.
   let observers: FakeIntersectionObserver;
@@ -81,6 +82,7 @@ describe('AgentChat', () => {
     tailRequest = signal<number>(0);
     topRequest = signal<number>(0);
     promptRequest = signal<number>(0);
+    unsandboxedRequest = signal<number>(0);
     compacted = 0;
     clearedChats = 0;
     modeChanges = [];
@@ -121,6 +123,10 @@ describe('AgentChat', () => {
       // The composer hosts the conversation-scoped tasks menu, which reads the live-task list.
       tasks: signal<readonly AgentTask[]>([]),
       items,
+      unsandboxedRuns: computed(
+        (): number =>
+          items().filter((item: AgentItem): boolean => item.toolUnsandboxed !== undefined).length,
+      ),
       isRunning: running,
       awaitingDecision: awaiting,
       pendingInput,
@@ -242,6 +248,7 @@ describe('AgentChat', () => {
             tailRequest: tailRequest.asReadonly(),
             topRequest: topRequest.asReadonly(),
             promptRequest: promptRequest.asReadonly(),
+            unsandboxedRequest: unsandboxedRequest.asReadonly(),
           } as unknown as AgentConversation,
         },
       ],
@@ -1252,6 +1259,70 @@ describe('AgentChat', () => {
     topRequest.set(2);
     TestBed.tick();
     expect(jumps).toBe(2);
+  });
+
+  it('unsandboxedRequest_stepsThroughTheCommandsThatRanOutside_wrappingRound', () => {
+    // #1160: each click of the status strip's count goes to the next such command and highlights it.
+    items.set([
+      {
+        id: 'item-1',
+        kind: 'tool',
+        text: '',
+        toolName: 'Bash',
+        toolState: 'ok',
+        toolUnsandboxed: 'r',
+      },
+      { id: 'item-2', kind: 'tool', text: '', toolName: 'Bash', toolState: 'ok' },
+      {
+        id: 'item-3',
+        kind: 'tool',
+        text: '',
+        toolName: 'Bash',
+        toolState: 'ok',
+        toolUnsandboxed: 'r',
+      },
+    ]);
+    fixture.detectChanges();
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const flashed: () => string | undefined = (): string | undefined =>
+      host.querySelector<HTMLElement>('.agent__row--flash')?.dataset['unsandboxed'];
+
+    unsandboxedRequest.set(1);
+    fixture.detectChanges();
+    expect(flashed()).toBe('item-1');
+
+    unsandboxedRequest.set(2);
+    fixture.detectChanges();
+    expect(flashed()).toBe('item-3');
+
+    // After the last, round to the first again.
+    unsandboxedRequest.set(3);
+    fixture.detectChanges();
+    expect(flashed()).toBe('item-1');
+    expect(host.querySelectorAll('.agent__row--flash')).toHaveLength(1);
+  });
+
+  it('unsandboxedRequest_marksOnlyTheRowsThatRanOutside', () => {
+    items.set([
+      {
+        id: 'item-1',
+        kind: 'tool',
+        text: '',
+        toolName: 'Bash',
+        toolState: 'ok',
+        toolUnsandboxed: 'r',
+      },
+      { id: 'item-2', kind: 'tool', text: '', toolName: 'Bash', toolState: 'ok' },
+    ]);
+    fixture.detectChanges();
+
+    expect(
+      [
+        ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+          '[data-unsandboxed]',
+        ),
+      ].map((row: HTMLElement): string | undefined => row.dataset['unsandboxed']),
+    ).toEqual(['item-1']);
   });
 
   it('promptRequest_whenASurfaceAsksForTheLastPrompt_scrollsThisTranscriptThere', () => {

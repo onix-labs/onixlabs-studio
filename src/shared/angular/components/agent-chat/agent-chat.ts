@@ -11,6 +11,7 @@ import {
   ElementRef,
   HostListener,
   inject,
+  Injector,
   input,
   InputSignal,
   OnInit,
@@ -366,6 +367,21 @@ export class AgentChat implements OnInit {
    * the same transcript.
    */
   private readonly agent: Agent = inject(Agent);
+
+  /**
+   * Holds the injector a step to the next unsandboxed run waits for a render through (#1160).
+   */
+  private readonly injector: Injector = inject(Injector);
+
+  /**
+   * Holds the item id of the unsandboxed run last stepped to, so the next step goes on from it (#1160).
+   */
+  private unsandboxedCursor: string | null = null;
+
+  /**
+   * Holds the timer that takes the step's highlight off its row.
+   */
+  private flashTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * Holds the global engine, read only for whether anything can run a turn at all.
@@ -1141,6 +1157,17 @@ export class AgentChat implements OnInit {
       });
     });
 
+    // A surface asking for the next command that ran outside the sandbox (#1160): the status strip's
+    // unsandboxed count, clicked.
+    effect((): void => {
+      const requested: number = this.conversation?.unsandboxedRequest() ?? 0;
+      untracked((): void => {
+        if (requested > 0) {
+          this.revealNextUnsandboxed();
+        }
+      });
+    });
+
     // Follow the tail: after each render that grows the transcript (streamed text, a new row, or the
     // working indicator), pin the list to the bottom while the preference is on and the reader has not
     // scrolled away. Reading the rendered rows re-runs this as the transcript streams.
@@ -1451,6 +1478,63 @@ export class AgentChat implements OnInit {
     // Measured against the container rather than passed to `scrollIntoView`, which would also scroll
     // whatever the panel itself sits inside.
     container.scrollTop = last.offsetTop - container.offsetTop;
+  }
+
+  /**
+   * Steps the transcript to the next command that ran outside the OS sandbox, wrapping round after the
+   * last, and highlights its row for a moment (#1160). Stops following the tail first, as the other
+   * jumps do.
+   *
+   * The rows are found in the DOM, in transcript order. When the window leaves some of those commands
+   * in older history, the window is opened to the whole conversation once and the step waits for that
+   * render, so every one of them can be reached; a command inside a collapsed sub-agent lane is not on
+   * screen to step to, and is passed over.
+   */
+  public revealNextUnsandboxed(): void {
+    this.following.set(false);
+    const container: HTMLElement | undefined = this.messagesRef()?.nativeElement;
+    if (container === undefined) {
+      return;
+    }
+    const rendered: number = container.querySelectorAll('[data-unsandboxed]').length;
+    if (rendered < this.agent.unsandboxedRuns() && this.earlierCount() > 0) {
+      this.windowSize.set(Number.MAX_SAFE_INTEGER);
+      afterNextRender((): void => this.stepToNextUnsandboxed(container), {
+        injector: this.injector,
+      });
+      return;
+    }
+    this.stepToNextUnsandboxed(container);
+  }
+
+  /**
+   * Scrolls to and highlights the unsandboxed run after the last one stepped to, or the first.
+   * @param container The transcript's scroller.
+   */
+  private stepToNextUnsandboxed(container: HTMLElement): void {
+    const rows: readonly HTMLElement[] = [
+      ...container.querySelectorAll<HTMLElement>('[data-unsandboxed]'),
+    ];
+    if (rows.length === 0) {
+      return;
+    }
+    const current: number = rows.findIndex(
+      (row: HTMLElement): boolean => row.dataset['unsandboxed'] === this.unsandboxedCursor,
+    );
+    const next: HTMLElement = rows[(current + 1) % rows.length];
+    this.unsandboxedCursor = next.dataset['unsandboxed'] ?? null;
+    // Measured against the container rather than passed to `scrollIntoView`, which would also scroll
+    // whatever the panel itself sits inside; a little space above keeps the row off the very edge.
+    container.scrollTop +=
+      next.getBoundingClientRect().top - container.getBoundingClientRect().top - 16;
+    for (const row of rows) {
+      row.classList.remove('agent__row--flash');
+    }
+    next.classList.add('agent__row--flash');
+    if (this.flashTimer !== null) {
+      clearTimeout(this.flashTimer);
+    }
+    this.flashTimer = setTimeout((): void => next.classList.remove('agent__row--flash'), 1600);
   }
 
   /**

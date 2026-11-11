@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { StatusStripSegments } from '@shared/angular/components/strips/status-strip/status-strip-segments/status-strip-segments';
 import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { AgentPhase } from '@shared/angular/services/agent/agent-controls';
 import { formatCost, formatTokens } from '@shared/angular/services/agent/token-format';
 import { StatusSegment } from '@shared/angular/services/status-bar/status-segment';
@@ -22,7 +23,8 @@ const PHASE_LABELS: Partial<Record<AgentPhase, string>> = {
  * conversation fills, what it has cost (on a connection billed by the token — a subscription's flat fee
  * has no per-turn cost, whatever the provider reports), any background tasks, and how many commands
  * have left the sandbox.
- * Read-only, like every segment of the window strip; the ribbon is where these are chosen.
+ * Read-only, like every segment of the window strip, except that count: clicking it steps the
+ * transcript to the next of those commands (#1160). The ribbon is where everything else is chosen.
  *
  * Mounted by the status strip through the active agent view's injector, so it reads that tab's own
  * {@link Agent}; it is destroyed when another tab is activated.
@@ -42,6 +44,14 @@ export class AgentStatusStrip {
    * Holds the owning tab's agent.
    */
   private readonly agent: Agent = inject(Agent);
+
+  /**
+   * Holds the owning tab's conversation, whose transcript the unsandboxed count steps through. Optional
+   * so the strip still stands up where no conversation is provided (tests).
+   */
+  private readonly conversation: AgentConversation | null = inject(AgentConversation, {
+    optional: true,
+  });
 
   /**
    * Gets the start-aligned segments: the connection, then the model.
@@ -118,7 +128,13 @@ export class AgentStatusStrip {
         segments.push({
           id: 'agent-unsandboxed',
           text: unsandboxed === 1 ? '1 run unsandboxed' : `${unsandboxed} runs unsandboxed`,
-          title: 'Commands in this conversation that ran outside the OS sandbox',
+          title:
+            this.conversation === null
+              ? 'Commands in this conversation that ran outside the OS sandbox'
+              : 'Commands in this conversation that ran outside the OS sandbox. Click to go to the next one.',
+          ...(this.conversation === null
+            ? {}
+            : { activate: (): void => this.conversation?.revealNextUnsandboxed() }),
         });
       }
       return segments;

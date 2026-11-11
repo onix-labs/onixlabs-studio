@@ -145,6 +145,7 @@
       [class.agent__row--down]="row.connectsDown"
       [class.agent__row--working]="row.kind === 'working'"
       [class.agent__unmeasured]="!isMeasured(row.id)"
+      [attr.data-unsandboxed]="row.item?.toolUnsandboxed !== undefined ? row.item?.id : null"
     >
       <div class="agent__node" aria-hidden="true">
         <span

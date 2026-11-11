@@ -255,6 +255,32 @@ $agent-row-spacing: 0.85rem;
   padding-block-end: $agent-row-spacing;
 }
 
+// The row the unsandboxed count just stepped to (#1160): an accent ring around the entry that fades,
+// so the eye finds it after the jump. With reduced motion it holds still, and the class coming off
+// after a moment is what takes it away.
+.agent__row--flash > .agent__row-content {
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  box-shadow: 0 0 0 0.125rem var(--accent-color);
+  animation: agent-row-flash 1.6s ease-out forwards;
+}
+
+@keyframes agent-row-flash {
+  0%,
+  40% {
+    box-shadow: 0 0 0 0.125rem var(--accent-color);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0.125rem transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent__row--flash > .agent__row-content {
+    animation: none;
+  }
+}
+
 // The working indicator is a single status line: centre it against its spinner node rather than
 // top-aligning it like the multi-line bubbles and actions. ⚠️ The content only — centring the row's
 // items would stop the node column stretching, and its connector would fall short like the rest did.
