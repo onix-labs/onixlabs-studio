@@ -18,6 +18,7 @@ import {
   conflictsLeftMessage,
   countConflicts,
 } from '@shared/angular/services/repository/conflict-resolution';
+import { ConflictContext } from '@shared/angular/services/repository/conflict-context';
 import { VersionControlPrompt } from '@shared/angular/services/plugins/version-control-prompt';
 import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
 import { Log } from '@shared/angular/services/log/log';
@@ -74,7 +75,7 @@ function normalize(value: string): string {
  * Scoped per directory tab (provided by the directory view).
  */
 @Service()
-export class WorkspaceGit {
+export class WorkspaceGit implements ConflictContext {
   /**
    * Holds the structured logger.
    */
@@ -243,6 +244,14 @@ export class WorkspaceGit {
    */
   public readonly conflictSides: Signal<ConflictSides> = computed((): ConflictSides =>
     conflictSides(this.operationSignal(), this.branchSignal()),
+  );
+
+  /**
+   * Gets whether git wrote the user's own work below a conflict's divider: in a rebase its `ours` is
+   * the branch being replayed onto, so the code editor's Keep Yours keeps the lower section (#1321).
+   */
+  public readonly conflictMarkersSwapped: Signal<boolean> = computed(
+    (): boolean => this.operationSignal().kind === 'rebase',
   );
 
   /**

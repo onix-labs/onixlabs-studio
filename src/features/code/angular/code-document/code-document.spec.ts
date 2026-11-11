@@ -18,6 +18,11 @@ import { Debugger, DebugLocation } from '@shared/angular/services/debug/debugger
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Printing, PrintPreparer } from '@shared/angular/services/printing/printing';
+import {
+  CONFLICT_CONTEXT,
+  ConflictContext,
+} from '@shared/angular/services/repository/conflict-context';
+import { ConflictSides } from '@shared/angular/services/repository/conflict-resolution';
 import { BreakpointGutter } from '../breakpoints/breakpoint-gutter';
 import { CodeDocumentEditor } from './code-document';
 
@@ -51,14 +56,44 @@ class StubTextEditor {
   public formatted: unknown[] = [];
   public decorations: unknown[][] = [];
   public decorationClears: number = 0;
+  public collections: number = 0;
   public editor: unknown = {
-    createDecorationsCollection: (): unknown => ({
-      set: (decorations: unknown[]): void => void this.decorations.push(decorations),
-      clear: (): void => {
-        this.decorationClears += 1;
-      },
-    }),
+    // Only the first collection is recorded: the current-execution line's, which the editor creates
+    // before the merge-conflict lens creates its own.
+    createDecorationsCollection: (): unknown => {
+      const recorded: boolean = this.collections === 0;
+      this.collections += 1;
+      return {
+        set: (decorations: unknown[]): void => {
+          if (recorded) {
+            this.decorations.push(decorations);
+          }
+        },
+        clear: (): void => {
+          if (recorded) {
+            this.decorationClears += 1;
+          }
+        },
+      };
+    },
+    // What the merge-conflict lens (#1321) reads and listens to. The file holds no conflicts unless a
+    // test puts some in `modelText`; the rows it draws are kept in `zones`.
+    getModel: (): unknown => ({ getValue: (): string => this.modelText }),
+    onDidChangeModelContent: (): unknown => ({ dispose: (): void => undefined }),
+    onKeyDown: (): unknown => ({ dispose: (): void => undefined }),
+    changeViewZones: (callback: (accessor: unknown) => void): void =>
+      callback({
+        addZone: (zone: { domNode: HTMLElement }): string => {
+          this.zones.push(zone.domNode);
+          return `zone-${this.zones.length}`;
+        },
+        removeZone: (): void => {
+          this.zones = [];
+        },
+      }),
   };
+  public modelText: string = '';
+  public zones: HTMLElement[] = [];
 
   public getEditor(): unknown {
     return this.editor;
@@ -114,6 +149,10 @@ describe('CodeDocumentEditor, wired to a pane', () => {
   let fixture: ComponentFixture<CodeDocumentEditor>;
   let gutter: FakeGutter;
   let stopped: WritableSignal<DebugLocation | null>;
+  let sides: WritableSignal<ConflictSides>;
+  let swapped: WritableSignal<boolean>;
+  let conflicted: WritableSignal<boolean>;
+  let markedResolved: string[][];
   let documents: Documents;
   let breakpoints: Breakpoints;
   let documentId: string;
@@ -176,6 +215,19 @@ describe('CodeDocumentEditor, wired to a pane', () => {
   beforeEach(() => {
     gutter = new FakeGutter();
     stopped = signal<DebugLocation | null>(null);
+    sides = signal<ConflictSides>({ yours: null, theirs: null });
+    swapped = signal<boolean>(false);
+    conflicted = signal<boolean>(false);
+    markedResolved = [];
+    const conflictContext: ConflictContext = {
+      conflictSides: sides,
+      conflictMarkersSwapped: swapped,
+      isConflicted: (): boolean => conflicted(),
+      markResolved: (paths: readonly string[]): Promise<{ success: boolean }> => {
+        markedResolved.push([...paths]);
+        return Promise.resolve({ success: true });
+      },
+    };
     TestBed.overrideComponent(CodeDocumentEditor, {
       remove: { imports: [TextEditor] },
       add: { imports: [StubTextEditor] },
@@ -184,6 +236,7 @@ describe('CodeDocumentEditor, wired to a pane', () => {
       providers: [
         { provide: BreakpointGutter, useValue: gutter },
         { provide: Debugger, useValue: { stoppedLocation: stopped } },
+        { provide: CONFLICT_CONTEXT, useValue: conflictContext },
       ],
     });
     documents = TestBed.inject(Documents);
@@ -192,6 +245,56 @@ describe('CodeDocumentEditor, wired to a pane', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  describe('merge conflicts (#1321)', () => {
+    const conflict: string = ['<<<<<<< HEAD', 'a', '=======', 'b', '>>>>>>> feature'].join('\n');
+
+    /**
+     * Renders the editor over a file holding one conflict and makes it ready.
+     * @returns Returns the rows drawn, as text.
+     */
+    async function readyWithConflict(): Promise<string[]> {
+      await render();
+      pane().modelText = conflict;
+      pane().ready.emit();
+      await fixture.whenStable();
+      return pane().zones.map((zone: HTMLElement): string => zone.textContent ?? '');
+    }
+
+    it('namesTheSides_fromTheRepository', async () => {
+      sides.set({ yours: 'main', theirs: 'feature' });
+
+      expect(await readyWithConflict()).toEqual([
+        'Keep main (Yours)·Keep feature (Theirs)·Keep Both',
+      ]);
+      expect(fixture.componentInstance.conflictCount()).toBe(1);
+    });
+
+    it('redrawsTheRows_whenTheRepositoryNamesTheSidesLater', async () => {
+      expect(await readyWithConflict()).toEqual(['Keep Yours·Keep Theirs·Keep Both']);
+
+      sides.set({ yours: 'feature', theirs: 'main' });
+      swapped.set(true);
+      await fixture.whenStable();
+
+      expect(pane().zones.map((zone: HTMLElement): string => zone.textContent ?? '')).toEqual([
+        'Keep feature (Yours)·Keep main (Theirs)·Keep Both',
+      ]);
+    });
+
+    it('offersMarkResolved_forAConflictedFileWithNoneLeft_andMarksThisFile', async () => {
+      conflicted.set(true);
+      await render();
+      pane().ready.emit();
+      await fixture.whenStable();
+
+      expect(pane().zones.map((zone: HTMLElement): string => zone.textContent ?? '')).toEqual([
+        'No conflicts left in this file.·Mark Resolved',
+      ]);
+      pane().zones[0].querySelector('button')?.click();
+      expect(markedResolved).toEqual([[path]]);
+    });
   });
 
   describe('lifecycle', () => {

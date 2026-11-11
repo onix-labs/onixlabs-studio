@@ -711,6 +711,23 @@ export class CodeDocumentPanel {
   }
 
   /**
+   * Gets how many merge conflicts the file holds, so the strip offers Previous Conflict and Next
+   * Conflict while there are any (#1321).
+   */
+  protected readonly conflictCount: Signal<number> = computed(
+    (): number => this.core()?.conflictCount() ?? 0,
+  );
+
+  /**
+   * Moves to the next or previous merge conflict in the file, as F7 and Shift+F7 do.
+   * @param direction Which way to go.
+   */
+  protected goToConflict(direction: 'next' | 'previous'): void {
+    this.log.info('code.document', 'Go to conflict', direction, this.documentId());
+    this.core()?.goToConflict(direction);
+  }
+
+  /**
    * Opens the find, as ⌘F does: the workspace's Search panel, scoped to this file and seeded from the
    * editor's selection.
    */

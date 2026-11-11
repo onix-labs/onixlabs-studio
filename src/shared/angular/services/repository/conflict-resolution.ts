@@ -19,27 +19,121 @@ export interface ConflictSides {
 }
 
 /**
- * Counts the conflicts git left in a file: each `<<<<<<<` that is followed, in order, by a `=======` and
+ * Locates one conflict git left in a file, by the 1-based lines of its markers (#1321).
+ *
+ * The section above the divider is git's `ours` and the one below it git's `theirs`, which is not
+ * always the user's own work against the other side's: in a rebase git swaps them (see
+ * {@link conflictSides}).
+ */
+export interface ConflictBlock {
+  /**
+   * Gets the line of the `<<<<<<<` opener.
+   */
+  readonly start: number;
+
+  /**
+   * Gets the line of a diff3 file's `|||||||` base marker, or null when the file has none.
+   */
+  readonly base: number | null;
+
+  /**
+   * Gets the line of the `=======` divider.
+   */
+  readonly divider: number;
+
+  /**
+   * Gets the line of the `>>>>>>>` closer.
+   */
+  readonly end: number;
+}
+
+/**
+ * Says which part of a conflict to keep: the section above the divider, the one below it, or both in
+ * the file's order. The base section of a diff3 file is never kept.
+ */
+export type ConflictChoice = 'top' | 'bottom' | 'both';
+
+/**
+ * Finds the conflicts git left in a file: each `<<<<<<<` that is followed, in order, by a `=======` and
  * a `>>>>>>>`, every marker at the start of its line. A whole block is required, so prose that merely
- * contains one of the markers — a `=======` under a heading, a document about git — counts as none.
- * A diff3 file's `|||||||` section sits between the opener and the divider and needs no handling.
+ * contains one of the markers — a `=======` under a heading, a document about git — is none. A diff3
+ * file's `|||||||` base section sits between the opener and the divider. An opener met inside an
+ * unfinished block starts over, as git never nests them.
+ * @param text The file's content.
+ * @returns Returns the conflicts, in the file's order.
+ */
+export function parseConflicts(text: string): readonly ConflictBlock[] {
+  const blocks: ConflictBlock[] = [];
+  let start: number | null = null;
+  let base: number | null = null;
+  let divider: number | null = null;
+  const lines: readonly string[] = text.split(/\r?\n/);
+  for (let index: number = 0; index < lines.length; index += 1) {
+    const line: string = lines[index];
+    const number: number = index + 1;
+    if (/^<{7}( |$)/.test(line)) {
+      start = number;
+      base = null;
+      divider = null;
+    } else if (start !== null && divider === null && base === null && /^\|{7}( |$)/.test(line)) {
+      base = number;
+    } else if (start !== null && divider === null && /^={7}$/.test(line)) {
+      divider = number;
+    } else if (start !== null && divider !== null && /^>{7}( |$)/.test(line)) {
+      blocks.push({ start, base, divider, end: number });
+      start = null;
+      base = null;
+      divider = null;
+    }
+  }
+  return blocks;
+}
+
+/**
+ * Counts the conflicts git left in a file, by {@link parseConflicts}'s rules: a whole block each, so
+ * prose that merely contains a marker counts as none.
  * @param text The file's content as it stands on disk.
  * @returns Returns the number of conflicts left in it.
  */
 export function countConflicts(text: string): number {
-  let count: number = 0;
-  let stage: 'outside' | 'ours' | 'theirs' = 'outside';
-  for (const line of text.split(/\r?\n/)) {
-    if (/^<{7}( |$)/.test(line)) {
-      stage = 'ours';
-    } else if (stage === 'ours' && /^={7}$/.test(line)) {
-      stage = 'theirs';
-    } else if (stage === 'theirs' && /^>{7}( |$)/.test(line)) {
-      count += 1;
-      stage = 'outside';
-    }
+  return parseConflicts(text).length;
+}
+
+/**
+ * Gives the lines that replace a conflict, markers and all, when one part of it is kept.
+ * @param lines The file's lines, in order (the first is line 1).
+ * @param block The conflict.
+ * @param choice Which part to keep.
+ * @returns Returns the lines to put in the conflict's place; empty when the kept part was empty.
+ */
+export function resolveConflictLines(
+  lines: readonly string[],
+  block: ConflictBlock,
+  choice: ConflictChoice,
+): readonly string[] {
+  // Lines are 1-based and `slice` is 0-based and end-exclusive, so a section from line a to line b
+  // (inclusive) is `slice(a - 1, b)`.
+  const top: readonly string[] = lines.slice(block.start, (block.base ?? block.divider) - 1);
+  const bottom: readonly string[] = lines.slice(block.divider, block.end - 1);
+  switch (choice) {
+    case 'top':
+      return top;
+    case 'bottom':
+      return bottom;
+    case 'both':
+      return [...top, ...bottom];
   }
-  return count;
+}
+
+/**
+ * Says which part of a conflict is the user's own work: the top in a merge, where git's `ours` is the
+ * branch checked out, and the bottom in a rebase, where git swaps the two.
+ * @param side Which side the user chose.
+ * @param swapped Whether git swapped the sections (a rebase).
+ * @returns Returns the part to keep.
+ */
+export function choiceForSide(side: 'yours' | 'theirs', swapped: boolean): ConflictChoice {
+  return (side === 'yours') !== swapped ? 'top' : 'bottom';
 }
 
 /**

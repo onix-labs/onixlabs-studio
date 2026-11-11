@@ -14,6 +14,7 @@ import {
   OutputEmitterRef,
   signal,
   Signal,
+  untracked,
   viewChild,
   WritableSignal,
 } from '@angular/core';
@@ -43,6 +44,16 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { BreakpointGutter } from '@features/code/angular/breakpoints/breakpoint-gutter';
 import { BreakpointGutterController } from '@features/code/angular/breakpoints/breakpoint-gutter-controller';
+import { ConflictLens, ConflictLensLabels } from '@features/code/angular/conflicts/conflict-lens';
+import {
+  CONFLICT_CONTEXT,
+  ConflictContext,
+} from '@shared/angular/services/repository/conflict-context';
+import {
+  ConflictSides,
+  keepSideLabel,
+} from '@shared/angular/services/repository/conflict-resolution';
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 
 /**
  * Display name given to a new, unsaved code document (matching the markdown editor).
@@ -122,6 +133,37 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
    * highlights the line the active workspace's debuggee is paused on.
    */
   private readonly debugger: Debugger = inject(Debugger);
+
+  /**
+   * Holds the repository's view of a merge or rebase stopped on conflicts, which names the sides and
+   * marks the file resolved (#1321), or null outside a view that holds a repository.
+   */
+  private readonly conflictContext: ConflictContext | null = inject(CONFLICT_CONTEXT, {
+    optional: true,
+  });
+
+  /**
+   * Holds the keyboard catalogue, read for Next Conflict and Previous Conflict's chords.
+   */
+  private readonly keybindings: Keybindings = inject(Keybindings);
+
+  /**
+   * Holds the lens drawing the file's merge conflicts once the editor is ready, or null before then.
+   */
+  private readonly conflictLens: WritableSignal<ConflictLens | null> = signal<ConflictLens | null>(
+    null,
+  );
+
+  /**
+   * Holds how many merge conflicts the file holds.
+   */
+  private readonly conflictCountSignal: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Gets how many merge conflicts the file holds, so the owning leaf can offer Next Conflict and
+   * Previous Conflict while there are any.
+   */
+  public readonly conflictCount: Signal<number> = this.conflictCountSignal.asReadonly();
 
   /**
    * Holds the shared Monaco loader, whose tokenizer colours the print mirror.
@@ -301,6 +343,17 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
       const path: string | null = document.filePath();
       controller.render(path === null ? [] : this.breakpoints.forPath(path));
     });
+    // Redraw the conflict rows when what they say changes: the sides' names, which way round the
+    // markers were written, or whether the file is still conflicted (the Mark Resolved offer).
+    effect((): void => {
+      const lens: ConflictLens | null = this.conflictLens();
+      if (lens === null) {
+        return;
+      }
+      this.conflictLabels();
+      this.isRepositoryConflicted();
+      untracked((): void => lens.refresh());
+    });
     // Mark the current-execution line when the active workspace's debuggee is paused in this document.
     effect((): void => {
       const location: DebugLocation | null = this.debugger.stoppedLocation();
@@ -371,6 +424,93 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
       this.breakpointGutter.detach(controller);
       this.breakpointController.set(null);
     }
+    this.conflictLens()?.dispose();
+    this.conflictLens.set(null);
+  }
+
+  /**
+   * Moves the caret to the next or previous merge conflict in the file, wrapping round (#1321).
+   * @param direction Which way to go.
+   * @returns Returns true when there was a conflict to move to.
+   */
+  public goToConflict(direction: 'next' | 'previous'): boolean {
+    return this.conflictLens()?.goTo(direction) ?? false;
+  }
+
+  /**
+   * Gets the labels of the conflict rows' commands: the sides by name where the repository knows them,
+   * "Keep Yours" and "Keep Theirs" outside one.
+   * @returns Returns the labels.
+   */
+  private conflictLabels(): ConflictLensLabels {
+    const sides: ConflictSides = this.conflictContext?.conflictSides() ?? {
+      yours: null,
+      theirs: null,
+    };
+    return {
+      yours: keepSideLabel('yours', sides),
+      theirs: keepSideLabel('theirs', sides),
+      swapped: this.conflictContext?.conflictMarkersSwapped() ?? false,
+    };
+  }
+
+  /**
+   * Gets whether the repository holds this file conflicted, so once its last conflict is settled it
+   * can be marked resolved from the editor.
+   * @returns Returns true when the file is conflicted in its repository.
+   */
+  private isRepositoryConflicted(): boolean {
+    const path: string | null = this.backingDocument()?.filePath() ?? null;
+    return path !== null && (this.conflictContext?.isConflicted(path) ?? false);
+  }
+
+  /**
+   * Marks this file resolved in its repository, logging a refusal rather than dropping it.
+   */
+  private markFileResolved(): void {
+    const path: string | null = this.backingDocument()?.filePath() ?? null;
+    const context: ConflictContext | null = this.conflictContext;
+    if (path === null || context === null) {
+      return;
+    }
+    this.log.info('code.document', 'Mark resolved from the editor', path);
+    void context.markResolved([path]).then((result: { success: boolean; error?: string }): void => {
+      if (!result.success) {
+        this.log.warn('code.document', 'Mark resolved was refused', path, result.error);
+      }
+    });
+  }
+
+  /**
+   * Draws the file's merge conflicts and binds Next Conflict and Previous Conflict to their catalogued
+   * chords. The chords are matched while the editor has focus rather than registered as a scope: an
+   * editor in a workspace's document well cannot register under the workspace tab's scope without
+   * displacing the workspace's own accelerators. They act only while the file has conflicts, so the
+   * keys keep any other meaning everywhere else.
+   * @param editor The ready editor.
+   */
+  private attachConflictLens(editor: MonacoApi.editor.IStandaloneCodeEditor): void {
+    this.conflictLens.set(
+      new ConflictLens(editor, {
+        labels: (): ConflictLensLabels =>
+          untracked((): ConflictLensLabels => this.conflictLabels()),
+        canMarkResolved: (): boolean => untracked((): boolean => this.isRepositoryConflicted()),
+        markResolved: (): void => this.markFileResolved(),
+        countChanged: (count: number): void => this.conflictCountSignal.set(count),
+      }),
+    );
+    editor.onKeyDown((event: MonacoApi.IKeyboardEvent): void => {
+      let direction: 'next' | 'previous' | null = null;
+      if (this.keybindings.matches(event.browserEvent, 'code.nextConflict')) {
+        direction = 'next';
+      } else if (this.keybindings.matches(event.browserEvent, 'code.previousConflict')) {
+        direction = 'previous';
+      }
+      if (direction !== null && this.goToConflict(direction)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    });
   }
 
   /**
@@ -478,6 +618,7 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
         ),
       );
       this.stoppedDecorations.set(editor.createDecorationsCollection([]));
+      this.attachConflictLens(editor);
     }
     this.ready.emit();
   }

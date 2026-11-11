@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  choiceForSide,
+  ConflictBlock,
   conflictSides,
   conflictsLeftMessage,
   countConflicts,
   describeOperation,
   keepSideLabel,
+  parseConflicts,
+  resolveConflictLines,
   resolvedProgress,
 } from './conflict-resolution';
 
@@ -124,5 +128,83 @@ describe('conflictsLeftMessage', () => {
     expect(conflictsLeftMessage('app.ts', 2)).toBe(
       'app.ts still has 2 conflicts. Resolve them, or choose Mark Resolved Anyway to stage it as it is.',
     );
+  });
+});
+
+describe('parseConflicts', () => {
+  it('locatesEachMarker_byItsLine', () => {
+    expect(parseConflicts(`a\n${CONFLICT}\nb`)).toEqual([
+      { start: 2, base: null, divider: 4, end: 6 },
+    ]);
+  });
+
+  it('findsADiff3BaseSection_betweenTheOpenerAndTheDivider', () => {
+    const text: string = [
+      '<<<<<<< HEAD',
+      'ours',
+      '||||||| merged common ancestor',
+      'base',
+      '=======',
+      'theirs',
+      '>>>>>>> feature',
+    ].join('\n');
+
+    expect(parseConflicts(text)).toEqual([{ start: 1, base: 3, divider: 5, end: 7 }]);
+  });
+
+  it.each([
+    ['a heading underline', 'Title\n=======\nText'],
+    ['an opener with no divider', '<<<<<<< HEAD\nours\n>>>>>>> feature'],
+    ['a marker that does not start its line', '  <<<<<<< HEAD\nx\n=======\ny\n>>>>>>> f'],
+    ['an eighth angle bracket', '<<<<<<<< HEAD\nx\n=======\ny\n>>>>>>> f'],
+  ])('countsNothing_for %s', (_label: string, text: string) => {
+    expect(parseConflicts(text)).toEqual([]);
+  });
+
+  it('startsOver_atAnOpenerInsideAnUnfinishedBlock', () => {
+    // Markers never nest; a stray opener belongs to the block that follows it.
+    const text: string = ['<<<<<<< HEAD', 'stray', CONFLICT].join('\n');
+
+    expect(parseConflicts(text)).toEqual([{ start: 3, base: null, divider: 5, end: 7 }]);
+  });
+
+  it('readsWindowsLineEndings', () => {
+    expect(countConflicts(CONFLICT.replace(/\n/g, '\r\n'))).toBe(1);
+  });
+});
+
+describe('resolveConflictLines', () => {
+  const lines: readonly string[] = [
+    '<<<<<<< HEAD',
+    'mine 1',
+    'mine 2',
+    '||||||| base',
+    'original',
+    '=======',
+    'theirs 1',
+    '>>>>>>> feature',
+  ];
+  const block: ConflictBlock = { start: 1, base: 4, divider: 6, end: 8 };
+
+  it.each([
+    ['top', ['mine 1', 'mine 2']],
+    ['bottom', ['theirs 1']],
+    ['both', ['mine 1', 'mine 2', 'theirs 1']],
+  ] as const)(
+    'keeps %s_andNeverTheBase',
+    (choice: 'top' | 'bottom' | 'both', kept: readonly string[]) => {
+      expect(resolveConflictLines(lines, block, choice)).toEqual(kept);
+    },
+  );
+});
+
+describe('choiceForSide', () => {
+  it('keepsTheTopForYours_inAMerge_andTheBottomInARebase', () => {
+    // In a rebase the branch being replayed onto is written above the divider: the user's own commit
+    // is below it.
+    expect(choiceForSide('yours', false)).toBe('top');
+    expect(choiceForSide('theirs', false)).toBe('bottom');
+    expect(choiceForSide('yours', true)).toBe('bottom');
+    expect(choiceForSide('theirs', true)).toBe('top');
   });
 });

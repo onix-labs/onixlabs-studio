@@ -1,0 +1,61 @@
+// Merge conflicts in the code editor (#1321): the sections a conflict holds, highlighted, and above each
+// conflict a row of Studio's own text buttons (Keep Yours, Keep Theirs, Keep Both). Monaco renders the
+// decorations and the rows' view zones into its own DOM, outside Angular's view encapsulation, so these
+// classes live in a global stylesheet.
+//
+// The user's own work takes the accent, the other side's the neutral grey: who wrote a section is not a
+// state, so the semantic state colours stay out of it. A diff3 base is fainter still, and the marker
+// lines carry the strongest tint of the three so the block's edges read at a glance.
+
+.conflict-lens__yours {
+  background-color: rgba(var(--accent-color-rgb), 0.12);
+}
+
+.conflict-lens__theirs {
+  background-color: rgba(var(--neutral-color-rgb), 0.18);
+}
+
+.conflict-lens__base {
+  background-color: rgba(var(--neutral-color-rgb), 0.08);
+}
+
+.conflict-lens__marker {
+  background-color: rgba(var(--neutral-color-rgb), 0.3);
+}
+
+// A row sits in the content area, so it lines up with the code beneath it. Quiet, like the rest of the
+// editor's chrome: muted text, the actions underlined only on hover.
+.conflict-lens {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 100%;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.conflict-lens__separator {
+  opacity: 0.6;
+}
+
+.conflict-lens__action {
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--accent-color);
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 1px solid var(--focus-ring-color);
+    outline-offset: 1px;
+  }
+}
