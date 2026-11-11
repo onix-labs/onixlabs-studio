@@ -12,6 +12,13 @@ import { detachedSpawnOptions, killProcessTree } from '../process-tree';
 const SERVER_LISTEN_TIMEOUT_MS: number = 15000;
 
 /**
+ * Matches the line a TCP debug server prints once it listens, capturing the host (when given) and the
+ * port: js-debug's `Debug server listening at 127.0.0.1:54321`, and Delve's `DAP server listening at:
+ * 127.0.0.1:54321`, with its colon (#1211).
+ */
+export const LISTENING_BANNER: RegExp = /listening at:?\s*(?:(.+):)?(\d+)/i;
+
+/**
  * The byte stream carrying one debug adapter's DAP messages, abstracted over how the adapter is reached:
  * a spawned process's standard streams (netcoredbg) or a TCP socket to a debug server (js-debug). The
  * {@link import('./dap-client').DapClient} frames and correlates DAP messages over whichever transport it
@@ -320,7 +327,8 @@ export class TcpServerTransport implements DapTransport {
       }, SERVER_LISTEN_TIMEOUT_MS);
       let announced: boolean = false;
       let banner: string = '';
-      // The server prints `Debug server listening at <host>:<port>` once ready; parse the port, then
+      // The server prints where it listens once ready — js-debug `Debug server listening at
+      // <host>:<port>`, Delve `DAP server listening at: <host>:<port>` (#1211); parse the port, then
       // connect. Its stderr is diagnostic only and drained so it cannot stall.
       child.stderr.resume();
       child.stdout.on('data', (chunk: Buffer): void => {
@@ -328,7 +336,7 @@ export class TcpServerTransport implements DapTransport {
           return;
         }
         banner += chunk.toString('utf8');
-        const match: RegExpExecArray | null = /listening at (?:(.+):)?(\d+)/i.exec(banner);
+        const match: RegExpExecArray | null = LISTENING_BANNER.exec(banner);
         if (match === null) {
           return;
         }

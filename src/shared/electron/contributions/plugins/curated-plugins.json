@@ -1199,6 +1199,61 @@
       }
     },
     {
+      "id": "delve",
+      "name": "Go Debugger (Delve)",
+      "description": "Debug Go programs and tests.",
+      "version": "1.27.2",
+      "apiVersion": "1.30.0",
+      "detail": "The Go project's own MIT-licensed debugger, spoken to over its DAP server. It builds what it debugs with your Go toolchain, so `go` must be on the PATH. On macOS it uses Apple’s debugserver, from Xcode or the Command Line Tools.",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/go-delve/delve/releases/download/v1.27.2/dlv_1.27.2_darwin_arm64.tar.gz",
+            "sha256": "c32fc68e11ff3820ba267ab12c96fa68e3804319f807fc5db4fba3b9d868df26",
+            "archive": "tar.gz",
+            "executablePath": "dlv"
+          },
+          "darwin-x64": {
+            "url": "https://github.com/go-delve/delve/releases/download/v1.27.2/dlv_1.27.2_darwin_amd64.tar.gz",
+            "sha256": "66992990307bd0328994960df0cbfa34ecfb16e9cd32f5cf6c83c34912e59cc3",
+            "archive": "tar.gz",
+            "executablePath": "dlv"
+          },
+          "linux-x64": {
+            "url": "https://github.com/go-delve/delve/releases/download/v1.27.2/dlv_1.27.2_linux_amd64.tar.gz",
+            "sha256": "30783eb68dc1598d965491cc97762270cd63ce13f09d0cac22faa7e3eafc1b9c",
+            "archive": "tar.gz",
+            "executablePath": "dlv"
+          },
+          "linux-arm64": {
+            "url": "https://github.com/go-delve/delve/releases/download/v1.27.2/dlv_1.27.2_linux_arm64.tar.gz",
+            "sha256": "b2969e00711f905d189784654e485ea5bc6c2eaa8c5d3effcb646487f4e0bb2f",
+            "archive": "tar.gz",
+            "executablePath": "dlv"
+          },
+          "win32-x64": {
+            "url": "https://github.com/go-delve/delve/releases/download/v1.27.2/dlv_1.27.2_windows_amd64.zip",
+            "sha256": "630b5b9b14c89becb1123790563111c70f7e0cf90820a666582ad1caba05dbd6",
+            "archive": "zip",
+            "executablePath": "dlv.exe"
+          }
+        }
+      },
+      "contributes": {
+        "debugAdapters": [
+          {
+            "id": "delve",
+            "displayName": "Go (Delve)",
+            "languages": ["go"],
+            "priority": 100,
+            "command": { "kind": "executable", "args": ["dap", "--listen=127.0.0.1:0"] },
+            "transport": "tcp-session"
+          }
+        ]
+      }
+    },
+    {
       "id": "js-debug",
       "name": "Node Debugger (js-debug)",
       "description": "Debug Node projects with Microsoft's js-debug.",

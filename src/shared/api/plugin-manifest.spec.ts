@@ -229,6 +229,32 @@ describe('parsePluginManifest', () => {
       expect(result.manifest?.contributes.debugAdapters?.[0]?.transport).toBe('tcp-server');
     });
 
+    it.each([
+      ['tcp-session', []],
+      ['tcp-socket', ["must be 'stdio', 'tcp-server' or 'tcp-session'"]],
+    ])('aDebugAdapterWithTransport %s (#1211)', (transport: string, messages: string[]) => {
+      // `tcp-session`: one ordinary session over the port the server announces, as Delve's is.
+      const result: ManifestResult = parsePluginManifest(
+        manifest({
+          contributes: {
+            debugAdapters: [
+              {
+                id: 'delve',
+                displayName: 'Go (Delve)',
+                languages: ['go'],
+                command: { kind: 'executable', args: ['dap', '--listen=127.0.0.1:0'] },
+                transport,
+              },
+            ],
+          },
+        }),
+      );
+
+      expect(result.errors.map((error: { message: string }): string => error.message)).toEqual(
+        messages,
+      );
+    });
+
     it('aDownloadNamingTheMembersToExtract', () => {
       const value: Record<string, unknown> = manifest();
       const downloads: Record<string, Record<string, unknown>> = (
