@@ -27,4 +27,11 @@ export enum ProjectChannel {
    * built yet.
    */
   ArtifactResolve = 'project:artifact-resolve',
+
+  /**
+   * Formats a document's text with the tool its project uses, for a language whose server does not
+   * format (#1212): Python with ruff, or black where the project configures it (invoke). Answers null
+   * when no project system formats the file.
+   */
+  DocumentFormat = 'project:document-format',
 }

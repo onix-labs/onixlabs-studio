@@ -1,5 +1,6 @@
 import {
   CompiledArtifact,
+  DocumentFormatResult,
   ProjectCapabilities,
   ProjectItems,
   ProjectModel,
@@ -102,6 +103,21 @@ export interface ProjectSystem {
    * @returns Returns the resolved target, or a reason it could not be resolved.
    */
   resolveDebugTarget?(configuration: RunConfiguration, root: string): Promise<DebugResolveResult>;
+
+  /**
+   * Formats a document's text with the tool its project uses, for a language whose server does not
+   * format (#1212). Optional: a provider whose files are formatted by their language server need not
+   * implement it.
+   * @param filePath The document's absolute path.
+   * @param text The document's text.
+   * @param root The absolute workspace root holding it.
+   * @returns Returns the outcome, or null when the file is not one this provider formats.
+   */
+  formatDocument?(
+    filePath: string,
+    text: string,
+    root: string,
+  ): Promise<DocumentFormatResult | null>;
 }
 
 /**

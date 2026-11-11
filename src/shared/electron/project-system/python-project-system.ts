@@ -2,6 +2,7 @@ import { Dirent, Stats } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import {
+  DocumentFormatResult,
   ProjectCapabilities,
   ProjectEntry,
   ProjectItemNode,
@@ -9,6 +10,7 @@ import {
   ProjectModel,
   ProjectNode,
 } from '@shared/api/project-system';
+import { formatPython } from './python-formatter';
 import { DebugResolveResult } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
 import { projectInterpreter } from '../provisioning/python-environment';
@@ -275,6 +277,22 @@ export class PythonProjectSystem implements ProjectSystem {
       tree,
       capabilities: this.capabilities,
     };
+  }
+
+  /**
+   * Formats a Python file's text (#1212) — ty and pyright do not format — with ruff, or with black
+   * where the project configures it: see {@link formatPython}.
+   * @param filePath The document's absolute path.
+   * @param text The document's text.
+   * @param root The absolute workspace root holding it.
+   * @returns Returns the outcome, or null for a file that is not Python.
+   */
+  public formatDocument(
+    filePath: string,
+    text: string,
+    root: string,
+  ): Promise<DocumentFormatResult | null> {
+    return /\.pyi?$/i.test(filePath) ? formatPython(filePath, text, root) : Promise.resolve(null);
   }
 
   /**

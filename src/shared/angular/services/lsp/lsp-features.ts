@@ -30,6 +30,9 @@ import {
   SEMANTIC_TOKEN_TYPES,
 } from '@shared/api/lsp-channels';
 import { Editors } from '@shared/angular/services/editors/editors';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
+import { ProjectChannel } from '@shared/api/project-channels';
+import type { DocumentFormatResult } from '@shared/api/project-system';
 import { cargoRunConfiguration } from './lsp-cargo-runnable';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { CodeSymbol, toCodeSymbols } from '@shared/angular/services/lsp/lsp-symbols';
@@ -1031,6 +1034,11 @@ export class LspFeatures {
    * Holds the editor registry used to map a model URI to its file path and back.
    */
   private readonly editors: Editors = inject(Editors);
+
+  /**
+   * Holds the notifications, which say why a document could not be formatted (#1212).
+   */
+  private readonly notifications: Notifications = inject(Notifications);
 
   /**
    * Holds the reader of each reference's line, for Find All References (#1014).
@@ -2562,6 +2570,43 @@ export class LspFeatures {
   }
 
   /**
+   * Formats a saved document with the tool its project uses, for a language whose server does not
+   * format (#1212), and says once, on a coalescing toast, why it could not when it cannot.
+   * @param model The model to format.
+   * @returns Returns one edit replacing the text, none when it is already formatted, or undefined when
+   * the document is not one a project system formats or it could not be formatted.
+   */
+  private async provideProjectFormatting(
+    model: MonacoApi.editor.ITextModel,
+  ): Promise<MonacoApi.languages.TextEdit[] | undefined> {
+    const path: string | null | undefined = this.editors.locate(model.uri.toString())?.path;
+    if (path === null || path === undefined || this.bridge === undefined) {
+      return undefined;
+    }
+    const text: string = model.getValue();
+    let result: DocumentFormatResult | null;
+    try {
+      result = await this.bridge.invoke(ProjectChannel.DocumentFormat, path, text);
+    } catch (error: unknown) {
+      this.log.warn('LspFeatures', 'Project formatting failed', error);
+      return undefined;
+    }
+    if (result === null) {
+      return undefined;
+    }
+    if (result.text === null) {
+      this.notifications.notify({
+        severity: 'warning',
+        title: 'Could Not Format the File',
+        detail: result.error ?? undefined,
+        key: 'project-format',
+      });
+      return undefined;
+    }
+    return result.text === text ? [] : [{ range: model.getFullModelRange(), text: result.text }];
+  }
+
+  /**
    * Asks the server serving a model to format it — the whole document, a range, or around a character
    * just typed — and maps its edits to Monaco's.
    * @param model The model to format.
@@ -2664,6 +2709,14 @@ export class LspFeatures {
       );
     }
     this.registerTriggerProviders(monaco);
+    // Python whose language server does not format (ty does not) is formatted by its project's tool,
+    // ruff or black (#1212). Registered first, so a server that does format registers later and wins.
+    monaco.languages.registerDocumentFormattingEditProvider('python', {
+      provideDocumentFormattingEdits: (
+        model: MonacoApi.editor.ITextModel,
+      ): Promise<MonacoApi.languages.TextEdit[] | undefined> =>
+        this.provideProjectFormatting(model),
+    });
     for (const language of FEATURE_LANGUAGES) {
       const hoverProvider: MonacoApi.languages.HoverProvider = {
         provideHover: (
