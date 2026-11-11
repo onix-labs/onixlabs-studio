@@ -496,7 +496,20 @@ describe('NodeProjectSystem declared sources (#899)', () => {
     async (_name: string, files: Readonly<Record<string, string>>) => {
       write(files);
 
-      expect(await load()).toEqual(expect.arrayContaining(['notes.txt', 'output/run.log']));
+      // Script, style and markup sources from the whole tree; notes, logs and images are left to
+      // the File Explorer (#899).
+      const listed: string[] = await load();
+      expect(listed).toEqual(
+        expect.arrayContaining([
+          'lib/generated.js',
+          'src/index.ts',
+          'index.html',
+          'pnpm-lock.yaml',
+        ]),
+      );
+      expect(listed).not.toContain('notes.txt');
+      expect(listed).not.toContain('output/run.log');
+      expect(listed).not.toContain('public/logo.png');
     },
   );
 

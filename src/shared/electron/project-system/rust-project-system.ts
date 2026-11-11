@@ -26,6 +26,7 @@ import {
 } from './cargo-debug-target';
 import type { DebugResolveResult } from '@shared/api/debug-channels';
 import type { RunConfiguration } from '@shared/api/studio';
+import { listProjectFiles, sourceFilter } from './project-listing';
 import { ProjectSystem } from './project-system';
 import { logger } from '../logger';
 
@@ -72,6 +73,15 @@ const SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set<string>(['target', 'nod
  * Explorer.
  */
 const MAX_ITEMS: number = 5_000;
+
+/**
+ * Keeps what a crate is built from when the fallback lists it (#899): Rust sources, the manifest and
+ * lockfile, and the toolchain pin.
+ */
+const RUST_SOURCE_FILES: (name: string) => boolean = sourceFilter(
+  ['.rs'],
+  ['Cargo.toml', 'Cargo.lock', 'rust-toolchain', 'rust-toolchain.toml', 'build.rs'],
+);
 
 /**
  * The lock file listed beside a crate's manifest when it has one.
@@ -258,7 +268,14 @@ export class RustProjectSystem implements ProjectSystem {
   public async loadProjectItems(projectPath: string): Promise<ProjectItems | null> {
     const tree: readonly ProjectItemNode[] | null =
       (await this.targetTree(projectPath)) ??
-      (await this.listDirectory(path.dirname(projectPath), { remaining: MAX_ITEMS }));
+      (await listProjectFiles(
+        path.dirname(projectPath),
+        { remaining: MAX_ITEMS },
+        {
+          skipDirectory: (name: string): boolean => this.isSkipped(name),
+          keepFile: RUST_SOURCE_FILES,
+        },
+      ));
     return tree === null ? null : { projectPath, tree };
   }
 
@@ -290,7 +307,13 @@ export class RustProjectSystem implements ProjectSystem {
     }
     const budget: { remaining: number } = { remaining: MAX_ITEMS };
     for (const directory of crateSourceDirectories(crateDirectory, sources)) {
-      files.push(...this.filesOf((await this.listDirectory(directory, budget)) ?? []));
+      files.push(
+        ...this.filesOf(
+          (await listProjectFiles(directory, budget, {
+            skipDirectory: (name: string): boolean => this.isSkipped(name),
+          })) ?? [],
+        ),
+      );
     }
     logger.debug(
       'RustProjectSystem',
@@ -519,46 +542,6 @@ export class RustProjectSystem implements ProjectSystem {
       }
     }
     return directories;
-  }
-
-  /**
-   * Lists one directory level as item nodes, recursing into subdirectories.
-   * @param directory The directory to list.
-   * @param budget The remaining file budget, decremented as files are added.
-   * @returns Returns the nodes, or null when the directory cannot be read.
-   */
-  private async listDirectory(
-    directory: string,
-    budget: { remaining: number },
-  ): Promise<readonly ProjectItemNode[] | null> {
-    let entries: Dirent[];
-    try {
-      entries = await fs.readdir(directory, { withFileTypes: true });
-    } catch {
-      return null;
-    }
-    const directories: Dirent[] = entries
-      .filter((entry: Dirent): boolean => entry.isDirectory() && !this.isSkipped(entry.name))
-      .sort((a: Dirent, b: Dirent): number => a.name.localeCompare(b.name));
-    const files: Dirent[] = entries
-      .filter((entry: Dirent): boolean => entry.isFile())
-      .sort((a: Dirent, b: Dirent): number => a.name.localeCompare(b.name));
-    const nodes: ProjectItemNode[] = [];
-    for (const child of directories) {
-      const full: string = path.join(directory, child.name);
-      const children: readonly ProjectItemNode[] | null = await this.listDirectory(full, budget);
-      if (children !== null && children.length > 0) {
-        nodes.push({ type: 'folder', name: child.name, path: full, children });
-      }
-    }
-    for (const file of files) {
-      if (budget.remaining <= 0) {
-        break;
-      }
-      budget.remaining -= 1;
-      nodes.push({ type: 'file', name: file.name, path: path.join(directory, file.name) });
-    }
-    return nodes;
   }
 
   /**
