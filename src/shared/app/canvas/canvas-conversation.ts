@@ -107,6 +107,7 @@ function mockAgent(running: boolean): Partial<Agent> {
         tailRequest: signal<number>(0),
         topRequest: signal<number>(0),
         promptRequest: signal<number>(0),
+        unsandboxedRequest: signal<number>(0),
       },
     },
     { provide: Workspace, useValue: { root: signal<{ path: string } | null>({ path: '/repo' }) } },

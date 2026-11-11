@@ -38,6 +38,12 @@ export interface StatusSegment {
    * Gets a menu the segment opens when clicked, or undefined for a segment that only shows its text.
    */
   readonly menu?: StatusSegmentMenu;
+
+  /**
+   * Gets what clicking the segment does, for a segment that acts at once rather than opening a menu —
+   * the unsandboxed-run count stepping to the next such run (#1160). Ignored when {@link menu} is set.
+   */
+  readonly activate?: () => void;
 }
 
 /**
