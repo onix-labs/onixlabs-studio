@@ -39,6 +39,7 @@ import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Chip } from '@shared/angular/components/chip/chip';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { AgentEditDecisionCard } from '@shared/angular/components/agent-cards/agent-edit-decision-card/agent-edit-decision-card';
 import { AgentWorkspaceCard } from '@shared/angular/components/agent-cards/agent-workspace-card/agent-workspace-card';
@@ -342,6 +343,7 @@ const CONVERSATION_TEXT_SCALES: Readonly<Record<ConversationTextSize, number>> =
   imports: [
     Button,
     AppIcon,
+    Chip,
     MarkdownRenderer,
     NgTemplateOutlet,
     AgentComposer,

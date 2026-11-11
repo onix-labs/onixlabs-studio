@@ -927,6 +927,9 @@ describe('AgentChat', () => {
     expect(badges.length).toBe(1);
     expect(badges[0].textContent?.trim()).toBe('Unsandboxed');
     expect(badges[0].title).toBe('Ran outside the sandbox: you allowed it.');
+    // A caution, so it is the shared chip in the warning tone (#1456), not a hand-made label.
+    expect(badges[0].tagName.toLowerCase()).toBe('app-chip');
+    expect(badges[0].classList).toContain('chip--warning');
   });
 
   it('backgroundedTool_rendersAsLive_withASpinningNode', () => {
