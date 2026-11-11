@@ -579,14 +579,9 @@ $agent-row-spacing: 0.85rem;
   color: var(--accent-color);
 }
 
-// Set apart by an outline, not by colour: it is a fact about the command, not an alarm.
+// A command that ran outside the sandbox is a caution, so its chip is in the warning tone (#1456).
 .agent__action-unsandboxed {
   flex: none;
-  padding-inline: 0.35rem;
-  border: 1px solid currentcolor;
-  border-radius: 0.25rem;
-  color: var(--body-foreground-color);
-  font-size: text-size(0.75rem);
 }
 
 .agent__lane-status {
