@@ -13,6 +13,7 @@ import type { RunConfiguration } from '@shared/api/studio';
 import { Log } from '@shared/angular/services/log/log';
 import { Builds } from '@shared/angular/services/tasks/builds';
 import { Debugger } from '@shared/angular/services/debug/debugger';
+import { TestAtLocation, TestRunMode, TestRuns } from '@shared/angular/services/tests/test-runs';
 import {
   type FoldingProvider,
   type LanguageOverrides,
@@ -578,6 +579,34 @@ const INFERRED_PROJECT: string = '/dev/null/';
 export const STUDIO_RUN_TESTS_COMMAND: string = 'studio.lsp.runTests';
 
 /**
+ * The Monaco command every Run Test and Debug Test lens runs (#1215), whichever server drew it: it
+ * runs the test through the workspace's Tests panel when the panel knows one on the lens's line, and
+ * otherwise runs the lens's own command. Its arguments are the model's URI, the lens's 1-based line,
+ * `run` or `debug`, and that command (or null for none).
+ */
+export const STUDIO_TEST_LENS_COMMAND: string = 'studio.lsp.testLens';
+
+/**
+ * Says whether a test lens runs its test or debugs it: Roslyn marks a Debug Test lens in its argument,
+ * rust-analyzer gives it its own command, and every other server says so in the title.
+ * @param command The lens's command.
+ * @returns Returns how the lens runs its test.
+ */
+export function testLensMode(command: LspCommand): TestRunMode {
+  const argument: unknown = command.arguments?.[0];
+  if (
+    command.command === RUST_DEBUG_SINGLE_COMMAND ||
+    (typeof argument === 'object' &&
+      argument !== null &&
+      (argument as { attachDebugger?: unknown }).attachDebugger === true) ||
+    /\bdebug\b/i.test(command.title)
+  ) {
+    return 'debug';
+  }
+  return 'run';
+}
+
+/**
  * The `_vs_textEditFormat` of an auto-insert whose text is a snippet (#1148): Roslyn's doc-comment
  * skeleton, `$0` marking where the caret goes.
  */
@@ -998,6 +1027,12 @@ export class LspFeatures {
    * Holds the active workspace's debugger, which a Debug lens launches through (#1210).
    */
   private readonly debugger: Debugger = inject(Debugger);
+
+  /**
+   * Holds the run/debug-a-test seam, which a test lens runs through when the workspace's Tests panel
+   * knows the test (#1215).
+   */
+  private readonly testRuns: TestRuns = inject(TestRuns);
 
   /**
    * Holds the structured logger.
@@ -1591,6 +1626,108 @@ export class LspFeatures {
   }
 
   /**
+   * Runs one of Studio's own lens and completion commands: the one dispatcher Monaco calls them
+   * through, so a test lens can fall back to whichever of them its server's lens maps to (#1215).
+   * @param monaco The Monaco API.
+   * @param id The command.
+   * @param args Its arguments.
+   */
+  private async runLensCommand(
+    monaco: typeof MonacoApi,
+    id: string,
+    args: readonly unknown[],
+  ): Promise<void> {
+    switch (id) {
+      case STUDIO_RUN_TESTS_COMMAND: {
+        // A Run Test lens runs its tests on the session serving its document (#1150).
+        const model: MonacoApi.editor.ITextModel | undefined = this.modelWithUri(monaco, args[0]);
+        if (model !== undefined) {
+          this.resolve(model)?.runTests?.(args[1]);
+        }
+        return;
+      }
+      case STUDIO_RUN_LENS_COMMAND:
+        // A rust-analyzer Run lens runs in the active workspace's run terminal (#1210). Pressed again,
+        // it replaces the run it started, as a run configuration does.
+        this.builds.runConfiguration(args[0] as RunConfiguration, [], { restart: true });
+        return;
+      case STUDIO_DEBUG_LENS_COMMAND:
+        // A Debug lens builds what its Run lens would run and launches it under CodeLLDB (#1210), in
+        // the active workspace's debugger: one session at a time, as from the ribbon.
+        if (this.debugger.running()) {
+          this.log.info('LspFeatures', 'Debug lens ignored: a debug session is already running');
+          return;
+        }
+        this.debugger.launch(args[0] as RunConfiguration);
+        return;
+      case STUDIO_LSP_COMMAND:
+        // A completion's or lens's server command, run on its session (#1021).
+        await this.runCompletionCommand(args[0], args[1]);
+        return;
+      case STUDIO_TEST_LENS_COMMAND:
+        await this.runTestLens(monaco, args);
+        return;
+      default:
+        return;
+    }
+  }
+
+  /**
+   * Runs a Run Test or Debug Test lens (#1215): through the workspace's Tests panel when the panel
+   * knows a test on the lens's line — a debug only when the test's adapter can debug it — and
+   * otherwise through the lens's own command, as before.
+   * @param monaco The Monaco API.
+   * @param args The model's URI, the lens's 1-based line, `run` or `debug`, and the lens's own
+   * command or null.
+   */
+  private async runTestLens(monaco: typeof MonacoApi, args: readonly unknown[]): Promise<void> {
+    const [modelUri, line, mode, fallback] = args;
+    const runMode: TestRunMode = mode === 'debug' ? 'debug' : 'run';
+    const model: MonacoApi.editor.ITextModel | undefined = this.modelWithUri(monaco, modelUri);
+    const document: string | undefined = model === undefined ? undefined : this.resolve(model)?.uri;
+    if (document !== undefined && typeof line === 'number') {
+      // The session's own file URI, not the model's: a model's URI need not be a path.
+      const path: string = this.uriToPath(document);
+      const test: TestAtLocation | null = this.testRuns.testAt(path, line);
+      if (
+        test !== null &&
+        (runMode === 'run' || test.debuggable) &&
+        (await this.testRuns.run(path, test, runMode))
+      ) {
+        return;
+      }
+    }
+    const command: { id?: unknown; arguments?: unknown } | null =
+      typeof fallback === 'object' ? fallback : null;
+    if (
+      typeof command?.id === 'string' &&
+      command.id.length > 0 &&
+      command.id !== STUDIO_TEST_LENS_COMMAND
+    ) {
+      await this.runLensCommand(
+        monaco,
+        command.id,
+        Array.isArray(command.arguments) ? (command.arguments as readonly unknown[]) : [],
+      );
+    }
+  }
+
+  /**
+   * Finds the open model a lens command names by its URI.
+   * @param monaco The Monaco API.
+   * @param uri The model's URI, untrusted.
+   * @returns Returns the model, or undefined when none is open with that URI.
+   */
+  private modelWithUri(
+    monaco: typeof MonacoApi,
+    uri: unknown,
+  ): MonacoApi.editor.ITextModel | undefined {
+    return monaco.editor
+      .getModels()
+      .find((candidate: MonacoApi.editor.ITextModel): boolean => candidate.uri.toString() === uri);
+  }
+
+  /**
    * Determines whether a lens is of a kind its language shows (#1215). A lens not yet filled in has no
    * kind yet, and is shown until it is.
    * @param switches The language's code-lens switches.
@@ -1635,6 +1772,52 @@ export class LspFeatures {
    * offered.
    */
   private lensCommand(
+    model: MonacoApi.editor.ITextModel,
+    ref: LspDocumentRef,
+    lens: unknown,
+  ): { command?: MonacoApi.languages.Command } | null {
+    const mapped: { command?: MonacoApi.languages.Command } | null = this.serverLensCommand(
+      model,
+      ref,
+      lens,
+    );
+    const command: LspCommand | null = toCommand((lens as { command?: unknown } | null)?.command);
+    const line: number | undefined = (lens as { range?: LspRange } | null)?.range?.start.line;
+    if (
+      mapped === null ||
+      command === null ||
+      line === undefined ||
+      codeLensKind(command.command, command.title) !== 'tests'
+    ) {
+      return mapped;
+    }
+    // A Run Test or Debug Test lens goes through the workspace's Tests panel when the panel knows the
+    // test it sits on (#1215): the run then shows in the Tests terminal and its result in the panel,
+    // whichever server drew the lens. Otherwise the lens does what it did before.
+    return {
+      command: {
+        id: STUDIO_TEST_LENS_COMMAND,
+        title: command.title,
+        arguments: [
+          model.uri.toString(),
+          line + 1,
+          testLensMode(command),
+          mapped.command?.id ? mapped.command : null,
+        ],
+      },
+    };
+  }
+
+  /**
+   * Maps a lens's command to what the server or Studio's own lens commands do with it, before a test
+   * lens is offered to the Tests panel ({@link lensCommand}).
+   * @param model The model the lens is in.
+   * @param ref The document's session.
+   * @param lens The server's lens, untrusted.
+   * @returns Returns the lens's command, nothing for a lens not yet filled in, or null for a lens not
+   * offered.
+   */
+  private serverLensCommand(
     model: MonacoApi.editor.ITextModel,
     ref: LspDocumentRef,
     lens: unknown,
@@ -2322,46 +2505,21 @@ export class LspFeatures {
       (model: MonacoApi.editor.ITextModel): boolean =>
         this.resolve(model)?.structure?.folding === true,
     );
-    // A completion's server command, run when the completion is accepted (#1021).
-    // A Run Test lens runs its tests on the session serving its document (#1150).
-    monaco.editor.registerCommand(
+    // Studio's own lens commands (#1150, #1210, #1215), each run through one dispatcher so a test lens
+    // can fall back to any of them.
+    for (const id of [
       STUDIO_RUN_TESTS_COMMAND,
-      (_accessor: unknown, modelUri: unknown, lens: unknown): void => {
-        const model: MonacoApi.editor.ITextModel | undefined = monaco.editor
-          .getModels()
-          .find(
-            (candidate: MonacoApi.editor.ITextModel): boolean =>
-              candidate.uri.toString() === modelUri,
-          );
-        if (model !== undefined) {
-          this.resolve(model)?.runTests?.(lens);
-        }
-      },
-    );
-    // A rust-analyzer Run lens runs in the active workspace's run terminal (#1210). Pressed again, it
-    // replaces the run it started, as a run configuration does.
-    monaco.editor.registerCommand(
       STUDIO_RUN_LENS_COMMAND,
-      (_accessor: unknown, configuration: RunConfiguration): void =>
-        this.builds.runConfiguration(configuration, [], { restart: true }),
-    );
-    // A Debug lens builds what its Run lens would run and launches it under CodeLLDB (#1210), in the
-    // active workspace's debugger: one session at a time, as from the ribbon.
-    monaco.editor.registerCommand(
       STUDIO_DEBUG_LENS_COMMAND,
-      (_accessor: unknown, configuration: RunConfiguration): void => {
-        if (this.debugger.running()) {
-          this.log.info('LspFeatures', 'Debug lens ignored: a debug session is already running');
-          return;
-        }
-        this.debugger.launch(configuration);
-      },
-    );
-    monaco.editor.registerCommand(
       STUDIO_LSP_COMMAND,
-      (_accessor: unknown, sessionId: unknown, command: unknown): void =>
-        void this.runCompletionCommand(sessionId, command),
-    );
+      STUDIO_TEST_LENS_COMMAND,
+    ]) {
+      monaco.editor.registerCommand(
+        id,
+        (_accessor: unknown, ...args: unknown[]): void =>
+          void this.runLensCommand(monaco, id, args),
+      );
+    }
     this.registerTriggerProviders(monaco);
     for (const language of FEATURE_LANGUAGES) {
       const hoverProvider: MonacoApi.languages.HoverProvider = {
