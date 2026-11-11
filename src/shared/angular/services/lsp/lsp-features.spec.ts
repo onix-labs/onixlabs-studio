@@ -33,7 +33,10 @@ import {
   LspRenameSupport,
   STUDIO_LSP_COMMAND,
   opensBlockAt,
+  testLensMode,
 } from './lsp-features';
+import type { LspCommand } from './lsp-features';
+import { TestAtLocation, TestRunMode, TestRuns } from '@shared/angular/services/tests/test-runs';
 import type { HierarchyNode, HierarchySource } from '@shared/angular/services/hierarchy/hierarchy';
 import type { LspCompletionSupport, LspSignatureHelpSupport } from './lsp-completion';
 import { readFileSync } from 'node:fs';
@@ -1433,9 +1436,12 @@ describe('LspFeatures', () => {
           { lenses: { command: { id: string; arguments: unknown[] } }[] } | undefined;
 
       const command: { id: string; arguments: unknown[] } | undefined = list?.lenses[0].command;
-      expect(command?.id).toBe('studio.lsp.runLens');
+      // A Run Tests lens goes through the Tests panel first (#1215); with no panel knowing the test, it
+      // falls back to running as a run configuration.
+      expect(command?.id).toBe('studio.lsp.testLens');
+      expect((command?.arguments[3] as { id: string } | null)?.id).toBe('studio.lsp.runLens');
 
-      captured.commands?.get('studio.lsp.runLens')?.(undefined, ...(command?.arguments ?? []));
+      captured.commands?.get('studio.lsp.testLens')?.(undefined, ...(command?.arguments ?? []));
 
       expect(run).toHaveBeenCalledWith(
         expect.objectContaining({ program: 'cargo', args: ['test', '--', 'tests'], cwd: '/root' }),
@@ -1475,9 +1481,11 @@ describe('LspFeatures', () => {
         (await provider?.provideCodeLenses(owned)) as unknown as
           { lenses: { command: { id: string; arguments: unknown[] } }[] } | undefined;
       const command: { id: string; arguments: unknown[] } | undefined = list?.lenses[0].command;
-      expect(command?.id).toBe('studio.lsp.debugLens');
+      expect(command?.id).toBe('studio.lsp.testLens');
+      expect(command?.arguments[2]).toBe('debug');
+      expect((command?.arguments[3] as { id: string } | null)?.id).toBe('studio.lsp.debugLens');
 
-      captured.commands?.get('studio.lsp.debugLens')?.(undefined, ...(command?.arguments ?? []));
+      captured.commands?.get('studio.lsp.testLens')?.(undefined, ...(command?.arguments ?? []));
 
       expect(launch).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1492,7 +1500,7 @@ describe('LspFeatures', () => {
       // One session at a time: pressed while one runs, it starts nothing.
       launch.mockClear();
       state.set('running');
-      captured.commands?.get('studio.lsp.debugLens')?.(undefined, ...(command?.arguments ?? []));
+      captured.commands?.get('studio.lsp.testLens')?.(undefined, ...(command?.arguments ?? []));
       expect(launch).not.toHaveBeenCalled();
     });
 
@@ -1591,7 +1599,12 @@ describe('LspFeatures', () => {
           title: 'Restore',
           arguments: ['/root::typescript', { title: 'Restore', command: 'dotnet.restore.project' }],
         },
-        { id: '', title: 'Debug test' },
+        // A test lens with no command of its own still offers its test to the Tests panel (#1215).
+        {
+          id: 'studio.lsp.testLens',
+          title: 'Debug test',
+          arguments: [MODEL_URI, 9, 'debug', null],
+        },
       ]);
     });
 
@@ -1630,9 +1643,13 @@ describe('LspFeatures', () => {
         list?.lenses as { command?: { id: string; title: string; arguments?: unknown[] } }[];
 
       expect(lenses.map((lens) => lens.command?.title)).toEqual(['Run Test', 'Debug Test']);
-      expect(lenses[1]?.command?.id).toBe('studio.lsp.runTests');
-      expect(lenses[0]?.command?.id).toBe('studio.lsp.runTests');
-      captured.commands?.get('studio.lsp.runTests')?.(
+      // Through the Tests panel first (#1215); with no panel knowing the test, the session runs it.
+      expect(lenses.map((lens) => lens.command?.id)).toEqual([
+        'studio.lsp.testLens',
+        'studio.lsp.testLens',
+      ]);
+      expect(lenses.map((lens) => lens.command?.arguments?.[2])).toEqual(['run', 'debug']);
+      captured.commands?.get('studio.lsp.testLens')?.(
         undefined,
         ...(lenses[0]?.command?.arguments ?? []),
       );
@@ -1654,10 +1671,95 @@ describe('LspFeatures', () => {
         ?.get('csharp')
         ?.provideCodeLenses(owned);
 
+      // Nothing on the session runs it, but the Tests panel still may (#1215).
       expect((list?.lenses[0] as { command?: unknown }).command).toEqual({
-        id: '',
+        id: 'studio.lsp.testLens',
         title: 'Run Test',
+        arguments: [MODEL_URI, 9, 'run', null],
       });
+    });
+
+    it('aTestLens_whoseTestTheTestsPanelKnows_runsThroughThePanel_notTheServer (#1215)', async () => {
+      codeLensSupport = { resolve: false };
+      testsRun = [];
+      responses['textDocument/codeLens'] = [
+        {
+          ...(LENS as object),
+          command: { title: 'Run Test', command: 'dotnet.test.run', arguments: [{}] },
+        },
+        {
+          ...(LENS as object),
+          command: {
+            title: 'Debug Test',
+            command: 'dotnet.test.run',
+            arguments: [{ attachDebugger: true }],
+          },
+        },
+      ];
+      const model: unknown = { ...(owned as object), uri: { toString: (): string => MODEL_URI } };
+      openModels.push(model);
+      const features: LspFeatures = await build();
+      const panelRuns: string[] = [];
+      let debuggable: boolean = false;
+      TestBed.inject(TestRuns).register({
+        root: (): string => '/root',
+        testAt: (_path: string, line: number): TestAtLocation | null =>
+          line === 9
+            ? {
+                pluginId: 'onixlabs.dotnet-tests',
+                id: 't1',
+                label: 'Adds',
+                kind: 'test',
+                debuggable,
+              }
+            : null,
+        run: (test: TestAtLocation, mode: TestRunMode): Promise<boolean> => {
+          panelRuns.push(`${mode} ${test.id}`);
+          return Promise.resolve(true);
+        },
+      });
+      features.enableCodeLens('csharp');
+      const list: { lenses: { command?: { arguments?: unknown[] } }[] } | undefined =
+        (await captured.codeLens?.get('csharp')?.provideCodeLenses(model)) as unknown as
+          { lenses: { command?: { arguments?: unknown[] } }[] } | undefined;
+      const press: (index: number) => Promise<void> = async (index: number): Promise<void> => {
+        captured.commands?.get('studio.lsp.testLens')?.(
+          undefined,
+          ...(list?.lenses[index]?.command?.arguments ?? []),
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+      };
+
+      await press(0);
+      // A test its adapter cannot debug is debugged by the server's own Debug lens, as before.
+      await press(1);
+      debuggable = true;
+      await press(1);
+
+      expect(panelRuns).toEqual(['run t1', 'debug t1']);
+      expect(testsRun).toEqual([{ attachDebugger: true }]);
+    });
+
+    it.each([
+      [
+        'a Run Test lens',
+        { title: 'Run Test', command: 'dotnet.test.run', arguments: [{}] },
+        'run',
+      ],
+      [
+        "Roslyn's Debug Test lens",
+        { title: 'Debug Test', command: 'dotnet.test.run', arguments: [{ attachDebugger: true }] },
+        'debug',
+      ],
+      [
+        "rust-analyzer's Debug lens",
+        { title: '⚙︎ Debug', command: 'rust-analyzer.debugSingle' },
+        'debug',
+      ],
+      ["gopls's debug test lens", { title: 'debug test', command: 'gopls.run_tests' }, 'debug'],
+    ])('testLensMode_of %s_is %s', (_label: string, command: object, mode: string) => {
+      expect(testLensMode(command as LspCommand)).toBe(mode);
     });
 
     it('askNothing_forADocumentWhoseServerShowsNone', async () => {
