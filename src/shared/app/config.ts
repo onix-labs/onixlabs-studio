@@ -32,6 +32,7 @@ import {
 import { CoreMenu } from '@shared/angular/services/app-menu/core-menu';
 import { Spelling } from '@shared/angular/services/spelling/spelling';
 import { APPLICATION_KEYBINDINGS } from '@shared/angular/services/app-menu/core-keybindings';
+import { EDITOR_KEYBINDINGS } from '@shared/angular/services/monaco/monaco-keybindings';
 import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
 import { provideAgentFeature } from '@features/agent/angular/agent.feature';
 import { provideBinaryFeature } from '@features/binary/angular/binary.feature';
@@ -131,6 +132,9 @@ export const config: ApplicationConfig = {
     // The menu's own commands (Open File, Settings, Close Tab), catalogued ahead of every feature so
     // Application › Keyboard lists them and the menu shows whatever chord is in effect.
     provideKeybindingCatalogue(APPLICATION_KEYBINDINGS),
+    // Every editor's own shortcuts (#1036): find, go to, navigation, problems, quick fix, rename,
+    // completions, the context menu and the diff editor's steps. Monaco takes its chords from these.
+    provideKeybindingCatalogue(EDITOR_KEYBINDINGS),
     // Stand up the terminal feature: register its view + ribbon with the shell and eagerly register
     // its agent terminal capabilities. The one line that enumerates the terminal feature here.
     provideTerminalFeature(),

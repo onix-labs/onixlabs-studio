@@ -22,6 +22,7 @@ import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { Log } from '@shared/angular/services/log/log';
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
@@ -99,6 +100,11 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the keybinding registry, read for Next and Previous Difference's chords (#1036).
+   */
+  private readonly keybindings: Keybindings = inject(Keybindings);
 
   /**
    * Holds the find router both sides are attached to, so ⌘F in either reaches the workspace's Search
@@ -445,7 +451,7 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
     );
     this.attachFind(this.editor);
     this.attachGoTo(this.editor);
-    this.attachReader(this.editor, monaco);
+    this.attachReader(this.editor);
     this.attachContextMenu(this.editor);
     // Studio's hover card over either side, drawn in this pane's window (#1020).
     this.findDetachers.push(
@@ -505,19 +511,28 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
   }
 
   /**
-   * Binds F7 / ⇧F7 on both sides to Studio's accessible change reader (#1026), which steps through the
-   * changes one at a time — in place of Monaco's accessible diff viewer, whose chords #1024 removed.
-   * Bound per editor, so the keys belong to this diff alone and only while one of its sides has focus.
+   * Binds Next and Previous Difference (F7 / ⇧F7 by default) on both sides to Studio's accessible
+   * change reader (#1026), which steps through the changes one at a time — in place of Monaco's
+   * accessible diff viewer, whose chords #1024 removed. The chords come from the keybinding registry
+   * (#1036), so they can be rebound, and are matched per editor, so they belong to this diff alone and
+   * only while one of its sides has focus.
    * @param editor The diff editor.
-   * @param monaco The loaded Monaco API.
    */
-  private attachReader(
-    editor: MonacoApi.editor.IStandaloneDiffEditor,
-    monaco: typeof MonacoApi,
-  ): void {
+  private attachReader(editor: MonacoApi.editor.IStandaloneDiffEditor): void {
     for (const side of [editor.getOriginalEditor(), editor.getModifiedEditor()]) {
-      side.addCommand(monaco.KeyCode.F7, (): void => this.stepReader(1));
-      side.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.F7, (): void => this.stepReader(-1));
+      side.onKeyDown((event: MonacoApi.IKeyboardEvent): void => {
+        let direction: 1 | -1 | null = null;
+        if (this.keybindings.matches(event.browserEvent, 'diff.nextDifference')) {
+          direction = 1;
+        } else if (this.keybindings.matches(event.browserEvent, 'diff.previousDifference')) {
+          direction = -1;
+        }
+        if (direction !== null) {
+          event.preventDefault();
+          event.stopPropagation();
+          this.stepReader(direction);
+        }
+      });
     }
   }
 

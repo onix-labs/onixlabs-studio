@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { KeybindingCatalogueEntry, provideKeybindingCatalogue } from './keybinding-catalogue';
 import { Keybindings, ResolvedBinding } from './keybindings';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { Studio } from '@shared/angular/services/studio/studio';
 
 /**
  * Builds a keyboard event carrying the Ctrl-based `Mod` modifier used off macOS, where the tests run
@@ -388,5 +389,88 @@ describe('Keybindings', () => {
     keybindings.clearOverride('code.save');
 
     expect(keybindings.chordFor('code.save')).toBe('Mod+S');
+  });
+
+  it('control_offMac_isMod', (): void => {
+    expect(keybindings.normalizeChord('Control+Space')).toBe('Mod+Space');
+    expect(keybindings.normalizeChord('alt+control+h')).toBe('Mod+Alt+H');
+  });
+
+  it('sequences_normalizeFormatAndSplitStepByStep', (): void => {
+    expect(keybindings.normalizeChord(' mod+k   i+mod ')).toBe('Mod+K Mod+I');
+    expect(keybindings.formatChord('Mod+K Mod+I')).toBe('Ctrl+K Ctrl+I');
+    expect(keybindings.chordKeys('Mod+K Mod+I')).toEqual(['Ctrl', 'K', ',', 'Ctrl', 'I']);
+    // Electron's menus cannot show a sequence.
+    expect(keybindings.toAccelerator('Mod+K Mod+I')).toBe('');
+  });
+
+  it('validateOverride_checksEveryStepOfASequence', (): void => {
+    expect(keybindings.validateOverride('code.save', 'Mod+K Mod+I')).toBeNull();
+    expect(keybindings.validateOverride('code.save', 'Mod+K Mod+C')).not.toBeNull();
+    expect(keybindings.validateOverride('terminal.clear', 'Mod+Shift+K Mod+I')).not.toBeNull();
+    expect(keybindings.validateOverride('terminal.clear', 'Mod+Shift+K Mod+Shift+I')).toBeNull();
+  });
+});
+
+describe('Keybindings on macOS', () => {
+  let keybindings: Keybindings;
+
+  /**
+   * Configures the registry on macOS with a binding that has its own macOS chord, one that only
+   * macOS has, and one written with the Control key.
+   */
+  beforeEach((): void => {
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: Studio, useValue: { platform: 'darwin' } },
+        provideKeybindingCatalogue({
+          view: 'Text Editor',
+          bindings: [
+            {
+              id: 'editor.goToLine',
+              description: 'Go to Line',
+              chord: 'Mod+G',
+              macChord: 'Control+G',
+            },
+            { id: 'editor.macOnly', description: 'Mac only', chord: '', macChord: 'Alt+Escape' },
+            { id: 'editor.suggest', description: 'Suggest', chord: 'Control+Space' },
+          ],
+        }),
+      ],
+    });
+    keybindings = TestBed.inject(Keybindings);
+  });
+
+  afterEach((): void => {
+    window.localStorage.removeItem('settings');
+  });
+
+  it('takesTheMacChord_asTheDefault', (): void => {
+    expect(keybindings.chordFor('editor.goToLine')).toBe('Control+G');
+    expect(keybindings.chordFor('editor.macOnly')).toBe('Alt+Escape');
+    const goToLine: ResolvedBinding | undefined = keybindings
+      .resolvedCatalogue()
+      .find((binding: ResolvedBinding): boolean => binding.id === 'editor.goToLine');
+    expect(goToLine?.defaultChord).toBe('Control+G');
+    expect(goToLine?.overridden).toBe(false);
+  });
+
+  it('keepsControl_apartFromCommand', (): void => {
+    expect(keybindings.normalizeChord('shift+control+mod+h')).toBe('Mod+Control+Shift+H');
+    expect(keybindings.formatChord('Control+Space')).toBe('⌃Space');
+    expect(keybindings.chordKeys('Mod+Control+G')).toEqual(['⌘', '⌃', 'G']);
+    expect(keybindings.toAccelerator('Control+G')).toBe('Ctrl+G');
+  });
+
+  it('readsTheControlKey_fromAnEvent', (): void => {
+    const event: KeyboardEvent = new KeyboardEvent('keydown', { key: 'g', ctrlKey: true });
+    expect(keybindings.chordFromEvent(event)).toBe('Control+G');
+    expect(keybindings.matches(event, 'editor.goToLine')).toBe(true);
+    expect(
+      keybindings.matches(
+        new KeyboardEvent('keydown', { key: 'g', metaKey: true }),
+        'editor.goToLine',
+      ),
+    ).toBe(false);
   });
 });

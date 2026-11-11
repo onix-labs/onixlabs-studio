@@ -1,5 +1,6 @@
 import type * as MonacoApi from 'monaco-editor';
 import { FIND_PASSTHROUGH_CONTEXT_KEY, focusedEditor } from './monaco-find-commands';
+import type { EditorKeybinding } from './monaco-keybindings';
 
 /**
  * Lists every Monaco command that opens Monaco's code-action widget, or asks for code actions to apply
@@ -156,30 +157,26 @@ interface MonacoCodeActionSet {
  * go-to and navigation chords do: a fence is a few lines inside a document, with nothing to fix.
  * @param monaco The Monaco instance.
  * @param onQuickFix Receives the editor when ⌘. or any route to Monaco's code-action widget runs.
+ * @returns Returns the command to bind, its chord from the keybinding registry (#1036): ⌘. (Ctrl+.)
+ * by default.
  */
 export function installQuickFixCommands(
   monaco: typeof MonacoApi,
   onQuickFix: (editor: MonacoApi.editor.ICodeEditor) => void,
-): void {
+): readonly EditorKeybinding[] {
   monaco.editor.registerCommand(STUDIO_QUICK_FIX_COMMAND, (): void => {
     const focused: MonacoApi.editor.ICodeEditor | undefined = focusedEditor(monaco);
     if (focused !== undefined) {
       onQuickFix(focused);
     }
   });
-  monaco.editor.addKeybindingRules([
-    // A removal with no chord drops every chord the command has, whichever platform Monaco runs on.
-    ...MONACO_CODE_ACTION_COMMANDS.map((command: string): MonacoApi.editor.IKeybindingRule => ({
+  // A removal with no chord drops every chord the command has, whichever platform Monaco runs on.
+  monaco.editor.addKeybindingRules(
+    MONACO_CODE_ACTION_COMMANDS.map((command: string): MonacoApi.editor.IKeybindingRule => ({
       keybinding: 0,
       command: `-${command}`,
     })),
-    {
-      // ⌘ on macOS and Ctrl elsewhere: Monaco reads CtrlCmd per platform.
-      keybinding: monaco.KeyMod.CtrlCmd | monaco.KeyCode.Period,
-      command: STUDIO_QUICK_FIX_COMMAND,
-      when: `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`,
-    },
-  ]);
+  );
   let replaced: boolean = false;
   monaco.editor.onDidCreateEditor((editor: MonacoApi.editor.ICodeEditor): void => {
     editor.updateOptions(QUICK_FIX_EDITOR_OPTIONS);
@@ -188,6 +185,13 @@ export function installQuickFixCommands(
     }
     removeLightbulb(editor);
   });
+  return [
+    {
+      id: 'editor.quickFix',
+      command: STUDIO_QUICK_FIX_COMMAND,
+      when: `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`,
+    },
+  ];
 }
 
 /**

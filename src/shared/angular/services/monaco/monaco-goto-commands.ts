@@ -1,6 +1,7 @@
 import type * as MonacoApi from 'monaco-editor';
 import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
 import { FIND_PASSTHROUGH_CONTEXT_KEY, focusedEditor } from './monaco-find-commands';
+import type { EditorKeybinding } from './monaco-keybindings';
 
 /**
  * Lists every Monaco command that opens its own quick-input box to go somewhere in the document
@@ -33,14 +34,14 @@ export const STUDIO_GO_TO_LINE_COMMAND: string = 'studio.goToLine';
  * A markdown code fence sets the find passthrough context key, and the chords pass through it too: a
  * fence is a few lines inside a markdown document, which has no symbols or lines of its own to go to.
  * @param monaco The Monaco instance.
- * @param isMac Whether the host is macOS, which decides the Go to Line chord.
  * @param onGoTo Receives the focused editor and the mode when one of Studio's commands runs.
+ * @returns Returns the commands to bind, their chords from the keybinding registry (#1036): Go to
+ * Symbol (⌘⇧O) and Go to Line (⌃G on macOS, Ctrl+G elsewhere) by default.
  */
 export function installGoToCommands(
   monaco: typeof MonacoApi,
-  isMac: boolean,
   onGoTo: (editor: MonacoApi.editor.ICodeEditor, mode: GoToMode) => void,
-): void {
+): readonly EditorKeybinding[] {
   const run: (mode: GoToMode) => () => void =
     (mode: GoToMode): (() => void) =>
     (): void => {
@@ -52,24 +53,15 @@ export function installGoToCommands(
   monaco.editor.registerCommand(STUDIO_GO_TO_SYMBOL_COMMAND, run('symbol'));
   monaco.editor.registerCommand(STUDIO_GO_TO_LINE_COMMAND, run('line'));
   const when: string = `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`;
-  monaco.editor.addKeybindingRules([
-    // A removal with no chord drops every chord the command has, whichever platform Monaco runs on.
-    ...MONACO_GOTO_COMMANDS.map((command: string): MonacoApi.editor.IKeybindingRule => ({
+  // A removal with no chord drops every chord the command has, whichever platform Monaco runs on.
+  monaco.editor.addKeybindingRules(
+    MONACO_GOTO_COMMANDS.map((command: string): MonacoApi.editor.IKeybindingRule => ({
       keybinding: 0,
       command: `-${command}`,
     })),
-    {
-      keybinding: monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyO,
-      command: STUDIO_GO_TO_SYMBOL_COMMAND,
-      when,
-    },
-    {
-      // ⌃G on macOS is the Control key, which Monaco names WinCtrl; CtrlCmd would make it ⌘G.
-      keybinding: isMac
-        ? monaco.KeyMod.WinCtrl | monaco.KeyCode.KeyG
-        : monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyG,
-      command: STUDIO_GO_TO_LINE_COMMAND,
-      when,
-    },
-  ]);
+  );
+  return [
+    { id: 'editor.goToSymbol', command: STUDIO_GO_TO_SYMBOL_COMMAND, when },
+    { id: 'editor.goToLine', command: STUDIO_GO_TO_LINE_COMMAND, when },
+  ];
 }

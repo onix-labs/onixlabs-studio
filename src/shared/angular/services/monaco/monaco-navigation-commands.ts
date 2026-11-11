@@ -4,6 +4,7 @@ import type {
   ReferenceListKind,
 } from '@shared/angular/services/references/reference-list';
 import { FIND_PASSTHROUGH_CONTEXT_KEY, focusedEditor } from './monaco-find-commands';
+import type { EditorKeybinding } from './monaco-keybindings';
 
 /**
  * Names where Studio's navigation takes an editor: to the definition of the symbol at the caret, or to
@@ -155,6 +156,8 @@ interface DefinitionLinkContribution extends MonacoApi.editor.IEditorContributio
  * @param isMac Whether the host is macOS, which decides the ⌘-click modifier (⌘ there, Ctrl elsewhere).
  * @param onNavigate Receives the editor and the mode when F12, ⇧F12 or a ⌘-click runs.
  * @param onPlaces Receives the editor, what the list lists and the places when a lens brings its own.
+ * @returns Returns the commands to bind, their chords from the keybinding registry (#1036): F12, ⇧F12,
+ * ⌘F12, ⌃⌥H, ⌃⇧H and ⌘K ⌘O by default.
  */
 export function installNavigationCommands(
   monaco: typeof MonacoApi,
@@ -165,7 +168,7 @@ export function installNavigationCommands(
     kind: ReferenceListKind,
     places: readonly CodeLocation[],
   ) => void,
-): void {
+): readonly EditorKeybinding[] {
   const run: (mode: NavigationMode) => () => void =
     (mode: NavigationMode): (() => void) =>
     (): void => {
@@ -234,48 +237,25 @@ export function installNavigationCommands(
     },
   );
   const when: string = `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`;
-  const control: number = isMac ? monaco.KeyMod.WinCtrl : monaco.KeyMod.CtrlCmd;
-  monaco.editor.addKeybindingRules([
-    // A removal with no chord drops every chord the command has, whichever platform Monaco runs on.
-    ...MONACO_NAVIGATION_COMMANDS.map((command: string): MonacoApi.editor.IKeybindingRule => ({
+  // A removal with no chord drops every chord the command has, whichever platform Monaco runs on.
+  monaco.editor.addKeybindingRules(
+    MONACO_NAVIGATION_COMMANDS.map((command: string): MonacoApi.editor.IKeybindingRule => ({
       keybinding: 0,
       command: `-${command}`,
     })),
-    { keybinding: monaco.KeyCode.F12, command: STUDIO_GO_TO_DEFINITION_COMMAND, when },
-    {
-      keybinding: monaco.KeyMod.Shift | monaco.KeyCode.F12,
-      command: STUDIO_FIND_REFERENCES_COMMAND,
-      when,
-    },
-    {
-      keybinding: monaco.KeyMod.CtrlCmd | monaco.KeyCode.F12,
-      command: STUDIO_GO_TO_IMPLEMENTATION_COMMAND,
-      when,
-    },
-    // The control key itself on every platform: ⌃ on a Mac (Monaco's WinCtrl), Ctrl elsewhere.
-    {
-      keybinding: control | monaco.KeyMod.Alt | monaco.KeyCode.KeyH,
-      command: STUDIO_CALL_HIERARCHY_COMMAND,
-      when,
-    },
-    {
-      keybinding: control | monaco.KeyMod.Shift | monaco.KeyCode.KeyH,
-      command: STUDIO_TYPE_HIERARCHY_COMMAND,
-      when,
-    },
-    {
-      keybinding: monaco.KeyMod.chord(
-        monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
-        monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyO,
-      ),
-      command: STUDIO_SWITCH_SOURCE_HEADER_COMMAND,
-      when,
-    },
-  ]);
+  );
   monaco.editor.onDidCreateEditor((editor: MonacoApi.editor.ICodeEditor): void => {
     editor.updateOptions(NAVIGATION_EDITOR_OPTIONS);
     takeOverDefinitionClicks(editor, isMac, onNavigate);
   });
+  return [
+    { id: 'editor.goToDefinition', command: STUDIO_GO_TO_DEFINITION_COMMAND, when },
+    { id: 'editor.findReferences', command: STUDIO_FIND_REFERENCES_COMMAND, when },
+    { id: 'editor.goToImplementation', command: STUDIO_GO_TO_IMPLEMENTATION_COMMAND, when },
+    { id: 'editor.callHierarchy', command: STUDIO_CALL_HIERARCHY_COMMAND, when },
+    { id: 'editor.typeHierarchy', command: STUDIO_TYPE_HIERARCHY_COMMAND, when },
+    { id: 'editor.switchSourceHeader', command: STUDIO_SWITCH_SOURCE_HEADER_COMMAND, when },
+  ];
 }
 
 /**

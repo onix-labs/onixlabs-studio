@@ -13,16 +13,7 @@ import {
   UNUSUAL_LINE_TERMINATORS_CONTRIBUTION,
   WIDGET_GUARD_EDITOR_OPTIONS,
 } from './monaco-widget-guard';
-
-/**
- * Monaco's `KeyMod.Shift`, as the fake instance numbers it.
- */
-const SHIFT: number = 1024;
-
-/**
- * Monaco's `KeyCode.F10`, as the fake instance numbers it.
- */
-const F10: number = 68;
+import type { EditorKeybinding } from './monaco-keybindings';
 
 /**
  * Monaco's `EditorOption.readOnly`, as the fake instance numbers it.
@@ -38,6 +29,7 @@ interface Installed {
   readonly menus: MonacoApi.editor.ICodeEditor[];
   readonly readOnlyEdits: MonacoApi.editor.ICodeEditor[];
   readonly questions: string[];
+  bindings: readonly EditorKeybinding[];
   create(editor: MonacoApi.editor.ICodeEditor): void;
 }
 
@@ -313,11 +305,10 @@ function install(
     menus: [],
     readOnlyEdits: [],
     questions: [],
+    bindings: [],
     create: (editor: MonacoApi.editor.ICodeEditor): void => onCreate?.(editor),
   };
   const fake: typeof MonacoApi = {
-    KeyMod: { Shift: SHIFT },
-    KeyCode: { F10 },
     editor: {
       EditorOption: { readOnly: READ_ONLY_OPTION },
       getEditors: (): readonly MonacoApi.editor.ICodeEditor[] => editors,
@@ -330,7 +321,7 @@ function install(
       },
     },
   } as unknown as typeof MonacoApi;
-  installWidgetGuard(fake, {
+  installed.bindings = installWidgetGuard(fake, {
     showContextMenu: (editor: MonacoApi.editor.ICodeEditor): void =>
       void installed.menus.push(editor),
     readOnlyEdit: (editor: MonacoApi.editor.ICodeEditor): void =>
@@ -363,16 +354,19 @@ describe('installWidgetGuard (#1024)', () => {
     document.body.replaceChildren();
   });
 
-  it('removesEveryGuardedChord_andBindsStudiosMenuToShiftF10_outsideACodeFence', () => {
+  it('removesEveryGuardedChord_andHandsStudiosMenuToTheRegistry_outsideACodeFence', () => {
     const installed: Installed = install([]);
 
-    expect(installed.rules).toEqual([
-      ...MONACO_WIDGET_GUARD_COMMANDS.map((command: string): MonacoApi.editor.IKeybindingRule => ({
+    expect(installed.rules).toEqual(
+      MONACO_WIDGET_GUARD_COMMANDS.map((command: string): MonacoApi.editor.IKeybindingRule => ({
         keybinding: 0,
         command: `-${command}`,
       })),
+    );
+    // ⇧F10 is the registry's default now (#1036).
+    expect(installed.bindings).toEqual([
       {
-        keybinding: SHIFT | F10,
+        id: 'editor.showContextMenu',
         command: STUDIO_SHOW_CONTEXT_MENU_COMMAND,
         when: `editorTextFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`,
       },

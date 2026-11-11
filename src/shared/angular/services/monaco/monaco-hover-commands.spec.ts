@@ -12,16 +12,7 @@ import {
   STUDIO_PREVIOUS_PROBLEM_COMMAND,
   STUDIO_SHOW_HOVER_COMMAND,
 } from './monaco-hover-commands';
-
-/**
- * Monaco's key modifiers and codes, as the fake instance numbers them.
- */
-const CTRL_CMD: number = 2048;
-const SHIFT: number = 1024;
-const ALT: number = 512;
-const KEY_K: number = 41;
-const KEY_I: number = 39;
-const F8: number = 66;
+import type { EditorKeybinding } from './monaco-keybindings';
 
 /**
  * Adds Monaco's hover DOM to the page, as Monaco's own widgets would: what every stand-in contribution
@@ -205,6 +196,7 @@ interface Installed {
   readonly rules: MonacoApi.editor.IKeybindingRule[];
   readonly commands: Map<string, () => void>;
   readonly handled: Handled;
+  bindings: readonly EditorKeybinding[];
   create(editor: MonacoApi.editor.ICodeEditor): void;
 }
 
@@ -220,16 +212,10 @@ function install(editors: readonly MonacoApi.editor.ICodeEditor[]): Installed {
     rules: [],
     commands: new Map(),
     handled,
+    bindings: [],
     create: (editor: MonacoApi.editor.ICodeEditor): void => onCreate?.(editor),
   };
   const fake: typeof MonacoApi = {
-    KeyMod: {
-      CtrlCmd: CTRL_CMD,
-      Shift: SHIFT,
-      Alt: ALT,
-      chord: (first: number, second: number): number => first | (second << 16),
-    },
-    KeyCode: { KeyK: KEY_K, KeyI: KEY_I, F8 },
     editor: {
       getEditors: (): readonly MonacoApi.editor.ICodeEditor[] => editors,
       registerCommand: (id: string, handler: () => void): void =>
@@ -241,7 +227,7 @@ function install(editors: readonly MonacoApi.editor.ICodeEditor[]): Installed {
       },
     },
   } as unknown as typeof MonacoApi;
-  installHoverCommands(fake, {
+  installed.bindings = installHoverCommands(fake, {
     showHover: (editor: MonacoApi.editor.ICodeEditor, position?: MonacoApi.IPosition): void =>
       void handled.shown.push(position === undefined ? { editor } : { editor, position }),
     goToProblem: (editor: MonacoApi.editor.ICodeEditor, direction: ProblemDirection): void =>
@@ -312,7 +298,7 @@ describe('installHoverCommands (#1020)', () => {
     document.body.innerHTML = '';
   });
 
-  it('removesMonacosHoverAndProblemChords_andBindsStudios_outsideACodeFence', () => {
+  it('removesMonacosHoverAndProblemChords_andHandsStudiosToTheRegistry_outsideACodeFence', () => {
     const installed: Installed = install([]);
     const when: string = `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`;
 
@@ -322,15 +308,14 @@ describe('installHoverCommands (#1020)', () => {
       { keybinding: 0, command: '-editor.action.marker.prev' },
       { keybinding: 0, command: '-editor.action.marker.nextInFiles' },
       { keybinding: 0, command: '-editor.action.marker.prevInFiles' },
-      {
-        keybinding: CTRL_CMD | KEY_K | ((CTRL_CMD | KEY_I) << 16),
-        command: STUDIO_SHOW_HOVER_COMMAND,
-        when,
-      },
-      { keybinding: F8, command: STUDIO_NEXT_PROBLEM_COMMAND, when },
-      { keybinding: ALT | F8, command: STUDIO_NEXT_PROBLEM_COMMAND, when },
-      { keybinding: SHIFT | F8, command: STUDIO_PREVIOUS_PROBLEM_COMMAND, when },
-      { keybinding: SHIFT | ALT | F8, command: STUDIO_PREVIOUS_PROBLEM_COMMAND, when },
+    ]);
+    // The chords come from the keybinding registry (#1036), so they can be rebound.
+    expect(installed.bindings).toEqual([
+      { id: 'editor.showHover', command: STUDIO_SHOW_HOVER_COMMAND, when },
+      { id: 'editor.nextProblem', command: STUDIO_NEXT_PROBLEM_COMMAND, when },
+      { id: 'editor.nextProblemAlternative', command: STUDIO_NEXT_PROBLEM_COMMAND, when },
+      { id: 'editor.previousProblem', command: STUDIO_PREVIOUS_PROBLEM_COMMAND, when },
+      { id: 'editor.previousProblemAlternative', command: STUDIO_PREVIOUS_PROBLEM_COMMAND, when },
     ]);
     expect(MONACO_MARKER_COMMANDS).toHaveLength(4);
   });
