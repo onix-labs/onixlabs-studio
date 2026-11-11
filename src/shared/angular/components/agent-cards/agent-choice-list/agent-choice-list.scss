@@ -6,15 +6,23 @@
   gap: 0.5rem;
 }
 
+// Never shorter than the dial it holds, so nothing in the row can squeeze it (#1457).
 .agent__ask-option {
   display: flex;
   align-items: flex-start;
   gap: 0.6rem;
+  min-block-size: 1.25rem;
 }
 
+// The dial's box is stated, not left to a line box, and nudged onto the label's first line by a whole
+// pixel (0.125rem) rather than 0.05rem: a sub-pixel offset left the 1px bottom border straddling two
+// device pixels, where it could rasterise away, so the box was intermittently drawn clipped at the
+// bottom (#1457).
 .agent__ask-option-dial {
   flex: none;
-  margin-block-start: 0.05rem;
+  align-self: flex-start;
+  block-size: 1.1rem;
+  margin-block-start: 0.125rem;
 }
 
 .agent__ask-option-text {
