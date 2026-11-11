@@ -41,6 +41,8 @@ function mockAgent(running: boolean): Partial<Agent> {
     contextWindow: signal<number>(1_000_000),
     costUsd: signal<number>(1.42),
     billedPerToken: signal<boolean>(true),
+    // The board runs no commands, so none left the sandbox (#1160).
+    unsandboxedRuns: signal<number>(0),
     provider: signal<string>(PROVIDER.id),
     mode: signal<'agent'>('agent'),
     effort: signal(null),

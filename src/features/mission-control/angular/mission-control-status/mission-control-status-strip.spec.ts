@@ -26,13 +26,20 @@ function trailingOf(fixture: ComponentFixture<MissionControlStatusStrip>): strin
  * @param running Whether the agent is running.
  * @param cost What the agent has cost, in US dollars.
  * @param billedPerToken Whether the agent's connection is billed by the token.
+ * @param unsandboxed How many of the conversation's commands ran outside the sandbox.
  * @returns Returns the host.
  */
-function host(running: boolean, cost: number = 0, billedPerToken: boolean = true): AgentHost {
+function host(
+  running: boolean,
+  cost: number = 0,
+  billedPerToken: boolean = true,
+  unsandboxed: number = 0,
+): AgentHost {
   const agent: Agent = {
     isRunning: signal<boolean>(running),
     costUsd: signal<number>(cost),
     billedPerToken: signal<boolean>(billedPerToken),
+    unsandboxedRuns: signal<number>(unsandboxed),
   } as unknown as Agent;
   return { agent } as unknown as AgentHost;
 }
@@ -82,5 +89,21 @@ describe('MissionControlStatusStrip (#882)', () => {
     fixture.detectChanges();
 
     expect(trailingOf(fixture)).toEqual(['3 agents', '$0.10']);
+  });
+
+  it('totalsTheUnsandboxedRuns_acrossEveryConversation_andSaysNothingWithNone', () => {
+    // #1160: each conversation's strip counts its own; Mission Control shows the sum.
+    hosts.set([host(false, 0, true, 2), host(false, 0, true, 1), host(false)]);
+    fixture.detectChanges();
+
+    expect(trailingOf(fixture)).toEqual(['3 agents', '3 runs unsandboxed']);
+
+    hosts.set([host(false, 0, true, 1)]);
+    fixture.detectChanges();
+    expect(trailingOf(fixture)).toEqual(['1 agent', '1 run unsandboxed']);
+
+    hosts.set([host(false)]);
+    fixture.detectChanges();
+    expect(trailingOf(fixture)).toEqual(['1 agent']);
   });
 });
