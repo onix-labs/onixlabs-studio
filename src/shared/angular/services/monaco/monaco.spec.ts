@@ -68,22 +68,6 @@ describe('Monaco', () => {
     monaco = TestBed.inject(Monaco);
   });
 
-  it('getLanguageForExtension_whenKnownExtension_returnsLanguage', () => {
-    expect(monaco.getLanguageForExtension('.ts')).toBe('typescript');
-  });
-
-  it('getLanguageForExtension_whenNoLeadingDot_returnsLanguage', () => {
-    expect(monaco.getLanguageForExtension('md')).toBe('markdown');
-  });
-
-  it('getLanguageForExtension_whenMixedCase_returnsLanguage', () => {
-    expect(monaco.getLanguageForExtension('.JSON')).toBe('json');
-  });
-
-  it('getLanguageForExtension_whenUnknownExtension_returnsPlaintext', () => {
-    expect(monaco.getLanguageForExtension('.unknown')).toBe('plaintext');
-  });
-
   it('getLanguageForFileName_whenTheNameIsTheType_returnsLanguage', () => {
     // `Dockerfile` is the canonical spelling and carries no extension, so an extension-only lookup
     // calls it plaintext — which would mean the editor never asks for a Dockerfile language server.

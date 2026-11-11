@@ -13,7 +13,6 @@ import type { FindMode } from '@shared/angular/components/find-panel/find-reques
 import {
   extensionForLanguage,
   LanguageInfo,
-  languageForExtension,
   languageForFileName,
   supportedLanguages,
 } from './monaco-languages';
@@ -448,22 +447,15 @@ export class Monaco {
   }
 
   /**
-   * Resolves the Monaco language identifier for a file extension.
-   * @param extension The file extension, with or without a leading dot.
-   * @returns Returns the Monaco language identifier, or `plaintext` when the extension is unknown.
-   */
-  public getLanguageForExtension(extension: string): string {
-    return languageForExtension(extension);
-  }
-
-  /**
-   * Resolves the Monaco language identifier for a file name, honouring the files whose whole name is
-   * their type (`Dockerfile`) as well as those identified by extension.
+   * Resolves the Monaco language identifier for a file through the one shared resolver (#1068):
+   * whole file names that are their type (`Dockerfile`, `nuget.config`), then the ending, then — for
+   * an ending such as `.config` that says nothing certain — the content, when it is given.
    * @param fileName The file name, with or without a path.
+   * @param content The file's text, when the caller has it.
    * @returns Returns the Monaco language identifier, or `plaintext` when nothing matches.
    */
-  public getLanguageForFileName(fileName: string): string {
-    return languageForFileName(fileName);
+  public getLanguageForFileName(fileName: string, content?: string): string {
+    return languageForFileName(fileName, content);
   }
 
   /**
