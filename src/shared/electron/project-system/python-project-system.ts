@@ -13,6 +13,7 @@ import { DebugResolveResult } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
 import { projectInterpreter } from '../provisioning/python-environment';
 import { buildItemTree, EvaluatedItem } from './item-tree';
+import { listProjectFiles, sourceFilter } from './project-listing';
 import { ProjectSystem } from './project-system';
 import { declaredPackagePaths, declaresBuildSystem } from './pyproject-layout';
 import { logger } from '../logger';
@@ -80,6 +81,38 @@ const SKIPPED_PACKAGE_DIRECTORIES: ReadonlySet<string> = new Set<string>([
  * effectively the whole repository) cannot balloon the Solution Explorer.
  */
 const MAX_ITEMS: number = 5_000;
+
+/**
+ * Matches the Python sources, stubs and Cython files, and the project's manifests and lockfiles.
+ */
+const PYTHON_SOURCES: (name: string) => boolean = sourceFilter(
+  ['.py', '.pyi', '.pyx', '.pxd'],
+  [
+    'pyproject.toml',
+    'setup.py',
+    'setup.cfg',
+    'Pipfile',
+    'Pipfile.lock',
+    'uv.lock',
+    'poetry.lock',
+    'tox.ini',
+  ],
+);
+
+/**
+ * Matches pip requirements files, which are named by pattern (`requirements-dev.txt`).
+ */
+const REQUIREMENTS_FILE: RegExp = /^requirements.*\.txt$/;
+
+/**
+ * Keeps what a project is built from when the fallback lists it (#899): its sources, manifests,
+ * lockfiles and requirements.
+ * @param name The file's name.
+ * @returns Returns true when the file is listed.
+ */
+function isPythonSourceFile(name: string): boolean {
+  return PYTHON_SOURCES(name) || REQUIREMENTS_FILE.test(name);
+}
 
 /**
  * The manifest that declares what a project packages.
@@ -324,7 +357,14 @@ export class PythonProjectSystem implements ProjectSystem {
     const directory: string = path.dirname(projectPath);
     const tree: readonly ProjectItemNode[] | null =
       (await this.declaredTree(projectPath, directory)) ??
-      (await this.listDirectory(directory, { remaining: MAX_ITEMS }));
+      (await listProjectFiles(
+        directory,
+        { remaining: MAX_ITEMS },
+        {
+          skipDirectory: (name: string): boolean => this.isSkipped(name, false),
+          keepFile: isPythonSourceFile,
+        },
+      ));
     return tree === null ? null : { projectPath, tree };
   }
 
@@ -401,7 +441,11 @@ export class PythonProjectSystem implements ProjectSystem {
       return [full];
     }
     return kind.isDirectory()
-      ? this.filesOf((await this.listDirectory(full, budget, true)) ?? [])
+      ? this.filesOf(
+          (await listProjectFiles(full, budget, {
+            skipDirectory: (name: string): boolean => this.isSkipped(name, true),
+          })) ?? [],
+        )
       : [];
   }
 
@@ -467,54 +511,6 @@ export class PythonProjectSystem implements ProjectSystem {
       }
     }
     return null;
-  }
-
-  /**
-   * Lists one directory level as item nodes, recursing into subdirectories.
-   * @param directory The directory to list.
-   * @param budget The remaining file budget, decremented as files are added.
-   * @param isPackage Whether the directory is inside a declared package.
-   * @returns Returns the nodes, or null when the directory cannot be read.
-   */
-  private async listDirectory(
-    directory: string,
-    budget: { remaining: number },
-    isPackage: boolean = false,
-  ): Promise<readonly ProjectItemNode[] | null> {
-    let entries: Dirent[];
-    try {
-      entries = await fs.readdir(directory, { withFileTypes: true });
-    } catch {
-      return null;
-    }
-    const directories: Dirent[] = entries
-      .filter(
-        (entry: Dirent): boolean => entry.isDirectory() && !this.isSkipped(entry.name, isPackage),
-      )
-      .sort((a: Dirent, b: Dirent): number => a.name.localeCompare(b.name));
-    const files: Dirent[] = entries
-      .filter((entry: Dirent): boolean => entry.isFile())
-      .sort((a: Dirent, b: Dirent): number => a.name.localeCompare(b.name));
-    const nodes: ProjectItemNode[] = [];
-    for (const child of directories) {
-      const full: string = path.join(directory, child.name);
-      const children: readonly ProjectItemNode[] | null = await this.listDirectory(
-        full,
-        budget,
-        isPackage,
-      );
-      if (children !== null && children.length > 0) {
-        nodes.push({ type: 'folder', name: child.name, path: full, children });
-      }
-    }
-    for (const file of files) {
-      if (budget.remaining <= 0) {
-        break;
-      }
-      budget.remaining -= 1;
-      nodes.push({ type: 'file', name: file.name, path: path.join(directory, file.name) });
-    }
-    return nodes;
   }
 
   /**

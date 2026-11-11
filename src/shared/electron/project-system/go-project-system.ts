@@ -1,5 +1,4 @@
 import { execFile } from 'node:child_process';
-import { Dirent } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
@@ -13,6 +12,7 @@ import {
   ProjectNode,
 } from '@shared/api/project-system';
 import { buildGoPackageTree, GoPackage, goListArguments, parseGoPackages } from './go-list';
+import { listProjectFiles, sourceFilter } from './project-listing';
 import { ProjectSystem } from './project-system';
 import { logger } from '../logger';
 
@@ -57,6 +57,15 @@ const SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set<string>(['vendor', 'nod
  * Explorer.
  */
 const MAX_ITEMS: number = 5_000;
+
+/**
+ * Keeps what a module is built from when the fallback lists it (#899): Go and assembly sources, and
+ * the module and workspace files with their checksums.
+ */
+const GO_SOURCE_FILES: (name: string) => boolean = sourceFilter(
+  ['.go', '.s'],
+  ['go.mod', 'go.sum', 'go.work', 'go.work.sum'],
+);
 
 /**
  * The files of a module that belong to it without being in any package.
@@ -276,53 +285,21 @@ export class GoProjectSystem implements ProjectSystem {
   }
 
   /**
-   * Lists the module's files straight from its directory, skipping the vendored dependency tree.
+   * Lists the module's files straight from its directory when `go` cannot describe it (#899): Go
+   * sources and the module's own manifests only, skipping the vendored dependency tree, so an output
+   * folder the skip list does not name can never crowd the sources out of the budget.
    * @param directory The module's directory.
    * @returns Returns the contents, or null when the directory cannot be read.
    */
   private async listing(directory: string): Promise<readonly ProjectItemNode[] | null> {
-    const budget: { remaining: number } = { remaining: MAX_ITEMS };
-    return this.listDirectory(directory, budget);
-  }
-
-  /**
-   * Lists one directory level as item nodes, recursing into subdirectories.
-   * @param directory The directory to list.
-   * @param budget The remaining file budget, decremented as files are added.
-   * @returns Returns the nodes, or null when the directory cannot be read.
-   */
-  private async listDirectory(
-    directory: string,
-    budget: { remaining: number },
-  ): Promise<readonly ProjectItemNode[] | null> {
-    let entries: Dirent[];
-    try {
-      entries = await fs.readdir(directory, { withFileTypes: true });
-    } catch {
-      return null;
-    }
-    const directories: Dirent[] = entries
-      .filter((entry: Dirent): boolean => entry.isDirectory() && !this.isSkipped(entry.name))
-      .sort((a: Dirent, b: Dirent): number => a.name.localeCompare(b.name));
-    const files: Dirent[] = entries
-      .filter((entry: Dirent): boolean => entry.isFile())
-      .sort((a: Dirent, b: Dirent): number => a.name.localeCompare(b.name));
-    const nodes: ProjectItemNode[] = [];
-    for (const child of directories) {
-      const full: string = path.join(directory, child.name);
-      const children: readonly ProjectItemNode[] | null = await this.listDirectory(full, budget);
-      if (children !== null && children.length > 0) {
-        nodes.push({ type: 'folder', name: child.name, path: full, children });
-      }
-    }
-    for (const file of files) {
-      if (budget.remaining <= 0) {
-        break;
-      }
-      budget.remaining -= 1;
-      nodes.push({ type: 'file', name: file.name, path: path.join(directory, file.name) });
-    }
-    return nodes;
+    return listProjectFiles(
+      directory,
+      { remaining: MAX_ITEMS },
+      {
+        skipDirectory: (name: string): boolean => this.isSkipped(name),
+        keepFile: GO_SOURCE_FILES,
+      },
+    );
   }
 
   /**
