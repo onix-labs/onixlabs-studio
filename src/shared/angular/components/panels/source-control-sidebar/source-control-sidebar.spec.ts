@@ -153,6 +153,11 @@ class FakeProvider implements SourceControlProvider {
    * Holds the remotes reported by {@link getRefs}. A second one is what turns a push command into a
    * submenu, so it has to be drivable.
    */
+  /**
+   * Holds further local branches a test adds to the fixture's two.
+   */
+  public extraBranches: readonly GitBranch[] = [];
+
   public remoteEntries: readonly GitRemote[] = [
     {
       name: 'origin',
@@ -189,6 +194,7 @@ class FakeProvider implements SourceControlProvider {
       branches: [
         { name: 'main', current: true, upstream: 'origin/main', ahead: 1, behind: 0, tip: 'c2' },
         { name: 'develop', current: false, upstream: undefined, ahead: 0, behind: 2, tip: 'c1' },
+        ...this.extraBranches,
       ],
       remotes: [...this.remoteEntries],
       tags: [...this.tagEntries],
@@ -461,6 +467,23 @@ class FakeForgeRepository {
 
   public readonly pullRequests: Signal<ForgeSection<ForgePullRequest>> = this.section.asReadonly();
   public readonly issues: Signal<ForgeSection<ForgeIssue>> = this.issueSection.asReadonly();
+
+  /**
+   * Holds the repository's merged pull requests, which mark the local branches they merged (#887).
+   */
+  public readonly mergedPullRequests: WritableSignal<readonly ForgePullRequest[]> = signal<
+    readonly ForgePullRequest[]
+  >([]);
+
+  /**
+   * Counts the reads of the merged pull requests.
+   */
+  public mergedLoads: number = 0;
+
+  public loadMergedPullRequests(): Promise<void> {
+    this.mergedLoads += 1;
+    return Promise.resolve();
+  }
 
   /**
    * Holds which pull requests and issues are listed, and records the lists Load More was asked for.
@@ -936,6 +959,81 @@ describe('SourceControlSidebar', () => {
       'Not tracking a remote branch',
     );
     expect(main.querySelectorAll('.rail__delta')[1].getAttribute('title')).toContain('origin/main');
+  });
+
+  describe('merged branches (#887)', () => {
+    /**
+     * Finds a branch row.
+     * @param name The branch.
+     * @returns Returns the row.
+     */
+    function branchRow(name: string): HTMLElement {
+      return [
+        ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.tree-row'),
+      ].find(
+        (candidate: HTMLElement): boolean => candidate.dataset['treeId'] === `branch:${name}`,
+      )!;
+    }
+
+    it('dimsABranchMergedByAncestry_andTagsItMerged_sayingWhere', async () => {
+      provider.extraBranches = [
+        { name: 'done', current: false, ahead: 0, behind: 0, tip: 'd1', mergedInto: 'main' },
+      ];
+      await repository.refresh();
+      fixture.detectChanges();
+
+      const row: HTMLElement = branchRow('done');
+      const tag: HTMLElement | null = row.querySelector('app-chip.chip--merged');
+      expect(tag?.textContent?.trim()).toBe('Merged');
+      expect(tag?.getAttribute('title')).toBe(
+        'Merged locally: everything on it is already in main',
+      );
+      expect(row.querySelector('.tree-name')?.classList.contains('rail__muted')).toBe(true);
+      expect(branchRow('develop').querySelector('app-chip.chip--merged')).toBeNull();
+    });
+
+    it('tagsABranchItsMergedPullRequestLeftAtTheSameCommit_andNotOneWithMoreSince', async () => {
+      provider.extraBranches = [
+        { name: 'squashed', current: false, ahead: 0, behind: 0, tip: 's1' },
+        { name: 'continued', current: false, ahead: 0, behind: 0, tip: 'c9' },
+      ];
+      forge.mergedPullRequests.set([
+        pullRequest({ number: 885, headRef: 'squashed', headSha: 's1', state: 'merged' }),
+        pullRequest({ number: 886, headRef: 'continued', headSha: 'c8', state: 'merged' }),
+      ]);
+      await repository.refresh();
+      fixture.detectChanges();
+
+      expect(
+        branchRow('squashed').querySelector('app-chip.chip--merged')?.getAttribute('title'),
+      ).toBe('Merged via pull request #885');
+      // ⛔ `continued` has work after what #886 merged, so it is not marked.
+      expect(branchRow('continued').querySelector('app-chip.chip--merged')).toBeNull();
+    });
+
+    it('marksABranchWhoseUpstreamIsGone', async () => {
+      provider.extraBranches = [
+        {
+          name: 'deleted-upstream',
+          current: false,
+          upstream: 'origin/deleted-upstream',
+          ahead: 0,
+          behind: 0,
+          tip: 'g1',
+          upstreamGone: true,
+        },
+      ];
+      await repository.refresh();
+      fixture.detectChanges();
+
+      const tag: HTMLElement | null = branchRow('deleted-upstream').querySelector('app-chip');
+      expect(tag?.textContent?.trim()).toBe('Gone');
+      expect(tag?.getAttribute('title')).toContain('no longer exists on the remote');
+    });
+
+    it('readsTheMergedPullRequests_onceAHostingPluginServesTheRepository', () => {
+      expect(forge.mergedLoads).toBeGreaterThan(0);
+    });
   });
 
   it('onRowClick_whenSectionRowClicked_togglesTheSection', () => {

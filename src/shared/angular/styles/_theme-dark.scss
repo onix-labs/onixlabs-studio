@@ -100,6 +100,11 @@
   // round — its card is the half-step DARKER than its near-white fields.
   --modal-panel-background-color: var(--gray-850);
 
+  // Merged work (#887): the purple a code host marks a merged pull request in, lifted for the dark
+  // surface so a chip's text reads at about 4.3:1 on its own wash (GitHub's light-theme purple manages
+  // only 2.6:1 here).
+  --merged-color: #bc8cff;
+
   --welcome-muted-foreground-color: var(--gray-550);
 
   --agent-view-surface-color: var(--gray-800);

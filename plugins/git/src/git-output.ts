@@ -280,6 +280,8 @@ export function parseRefs(output: string): VcsRefs {
         ahead: counts.ahead,
         behind: counts.behind,
         tip: objectName,
+        // `[gone]`: the upstream was deleted on the remote, as after a merged pull request (#887).
+        ...((track ?? '').includes('gone') ? { upstreamGone: true } : {}),
       });
     } else if (refName.startsWith('refs/remotes/')) {
       const short: string = refName.slice('refs/remotes/'.length);

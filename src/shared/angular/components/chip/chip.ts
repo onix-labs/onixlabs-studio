@@ -4,9 +4,10 @@ import { Icon } from '@shared/angular/icons/icon';
 
 /**
  * The meaning a {@link Chip} carries, which colours it: the active accent, one of the fixed semantic
- * colours, or a neutral grey for structure — a chip that labels rather than judges.
+ * colours, or a neutral grey for structure — a chip that labels rather than judges. `merged` is the
+ * purple a code host marks merged work in, for a branch whose work is already in (#887).
  */
-export type ChipTone = 'accent' | 'success' | 'warning' | 'danger' | 'info' | 'neutral';
+export type ChipTone = 'accent' | 'success' | 'warning' | 'danger' | 'info' | 'merged' | 'neutral';
 
 /**
  * A small label for a status or a category: a diff's "Modified", an issue's "Open", a branch on a
@@ -35,6 +36,7 @@ export type ChipTone = 'accent' | 'success' | 'warning' | 'danger' | 'info' | 'n
     '[class.chip--warning]': "tone() === 'warning'",
     '[class.chip--danger]': "tone() === 'danger'",
     '[class.chip--info]': "tone() === 'info'",
+    '[class.chip--merged]': "tone() === 'merged'",
     '[class.chip--neutral]': "tone() === 'neutral'",
   },
 })

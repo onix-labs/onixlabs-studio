@@ -673,11 +673,110 @@ export class GitVersionControl {
     const parsed: VcsRefs = parseRefs(refs.stdout);
     return ok({
       ...parsed,
+      branches: await this.markMerged(root, parsed),
       remotes: mergeRemoteUrls(
         parsed.remotes,
         parseRemoteUrls(remotes.success ? remotes.stdout : ''),
       ),
     });
+  }
+
+  /**
+   * Marks the local branches already merged into the default branch by ancestry (#887): those whose
+   * tip the default branch reaches, through a merge commit or a fast-forward. The default branch is the
+   * one the remote's `HEAD` names (`origin/main`, checked against the remote-tracking branch, so a merge
+   * on the host counts once fetched), or else a local `main` or `master`.
+   *
+   * Two are never marked: the default branch itself, and a branch sitting exactly at the default
+   * branch's tip, which is as likely a branch just created as one just fast-forwarded. A squash or
+   * rebase merge leaves the tip unreachable, so it is not found here; the hosting plugin's merged pull
+   * requests find those. Best-effort: when the default branch cannot be found or asked, no branch is
+   * marked rather than the listing failing.
+   * @param root The repository root.
+   * @param refs The parsed refs.
+   * @returns Returns the local branches, with `mergedInto` set on the merged ones.
+   */
+  private async markMerged(root: string, refs: VcsRefs): Promise<VcsRefs['branches']> {
+    const target: { ref: string; name: string; tip: string } | null = await this.defaultBranch(
+      root,
+      refs,
+    );
+    if (target === null) {
+      return refs.branches;
+    }
+    const merged: GitRun = await this.git(root, [
+      'for-each-ref',
+      `--merged=${target.ref}`,
+      '--format=%(refname)',
+      'refs/heads',
+    ]);
+    if (!merged.success) {
+      return refs.branches;
+    }
+    const names: ReadonlySet<string> = new Set<string>(
+      merged.stdout
+        .split('\n')
+        .map((line: string): string => line.trim())
+        .filter((line: string): boolean => line.startsWith('refs/heads/'))
+        .map((line: string): string => line.slice('refs/heads/'.length)),
+    );
+    return refs.branches.map((branch: VcsRefs['branches'][number]) =>
+      names.has(branch.name) && branch.name !== target.name && branch.tip !== target.tip
+        ? { ...branch, mergedInto: target.name }
+        : branch,
+    );
+  }
+
+  /**
+   * Finds the default branch to measure merges against: the remote-tracking branch a remote's `HEAD`
+   * points at (the first remote that has one, `origin` first), or else a local `main` or `master`.
+   * @param root The repository root.
+   * @param refs The parsed refs.
+   * @returns Returns the ref to ask against, the branch's short name and its tip, or null for none.
+   */
+  private async defaultBranch(
+    root: string,
+    refs: VcsRefs,
+  ): Promise<{ ref: string; name: string; tip: string } | null> {
+    const remotes: readonly string[] = [
+      ...refs.remotes.filter(
+        (remote: VcsRefs['remotes'][number]): boolean => remote.name === 'origin',
+      ),
+      ...refs.remotes.filter(
+        (remote: VcsRefs['remotes'][number]): boolean => remote.name !== 'origin',
+      ),
+    ].map((remote: VcsRefs['remotes'][number]): string => remote.name);
+    for (const remote of remotes) {
+      const head: GitRun = await this.git(root, [
+        'symbolic-ref',
+        '--quiet',
+        '--short',
+        `refs/remotes/${remote}/HEAD`,
+      ]);
+      const tracking: string = head.success ? head.stdout.trim() : '';
+      const branch: VcsRefs['remotes'][number]['branches'][number] | undefined = refs.remotes
+        .find((candidate: VcsRefs['remotes'][number]): boolean => candidate.name === remote)
+        ?.branches.find(
+          (candidate: VcsRefs['remotes'][number]['branches'][number]): boolean =>
+            candidate.name === tracking,
+        );
+      if (branch !== undefined && tracking.startsWith(`${remote}/`)) {
+        return {
+          ref: `refs/remotes/${tracking}`,
+          name: tracking.slice(remote.length + 1),
+          tip: branch.commit,
+        };
+      }
+    }
+    for (const name of ['main', 'master']) {
+      const local: VcsRefs['branches'][number] | undefined = refs.branches.find(
+        (branch: VcsRefs['branches'][number]): boolean => branch.name === name,
+      );
+      if (local !== undefined) {
+        return { ref: `refs/heads/${name}`, name, tip: local.tip };
+      }
+    }
+    return null;
   }
 
   /**

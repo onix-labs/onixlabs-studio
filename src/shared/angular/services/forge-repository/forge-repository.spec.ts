@@ -404,6 +404,24 @@ describe('ForgeRepository', () => {
       expect(section.message).toBeNull();
     });
 
+    it('loadMergedPullRequests_readsEveryState_andKeepsOnlyTheMergedOnes (#887)', async () => {
+      forge.pullRequestResult = {
+        ok: true,
+        value: [
+          { ...pullRequest(), number: 1, state: 'open' },
+          { ...pullRequest(), number: 2, state: 'merged' },
+          { ...pullRequest(), number: 3, state: 'closed' },
+        ],
+      };
+
+      await service.loadMergedPullRequests();
+
+      expect(forge.options['pullRequests'].at(-1)).toEqual({ limit: 100, state: 'all' });
+      expect(
+        service.mergedPullRequests().map((pull: ForgePullRequest): number => pull.number),
+      ).toEqual([2]);
+    });
+
     it('reportsNoForge_whenTheRemoteIsNotOnOne', async () => {
       forge.forgeUrls = [];
 
