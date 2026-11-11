@@ -218,7 +218,7 @@
                     [gridlineTone]="gridlineTone()"
                     [selectedIds]="selectedRows()"
                     emptyText="No rows"
-                    (rowClick)="onRowClick($event)"
+                    (rowSelect)="onRowSelect($event)"
                   >
                     <ng-template appTableRow let-row>
                       <td class="results__index">{{ row.data.index }}</td>

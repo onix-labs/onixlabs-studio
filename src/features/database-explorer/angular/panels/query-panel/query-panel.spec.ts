@@ -403,6 +403,7 @@ describe('QueryPanel', () => {
     setConnection(id: string): void;
     setDatabase(name: string): void;
     onRowClick(row: TableRow): void;
+    onRowSelect(select: { row: TableRow; toggle: boolean; range: boolean }): void;
     readonly resultTabs: () => readonly { value: string; badge?: number }[];
     readonly resultView: () => string;
     readonly resultsDefaultSize: () => number | null;
@@ -823,17 +824,79 @@ describe('QueryPanel', () => {
       ['Export to CSV', true],
       ['Export to XLSX', true],
       ['Export to JSON', true],
+      ['Export to Markdown', true],
+      ['Copy Selected Rows', true],
     ]);
   });
 
-  it('moreItems_withAResult_offerTheExports', async () => {
+  it('moreItems_withAResult_offerTheExports_andCopyOnlyOnceARowIsSelected', async () => {
     await ranQuery();
-
-    expect(
+    const enabled: () => readonly string[] = (): readonly string[] =>
       panel()
         .moreItems()
-        .every((item: MenuItem): boolean => item.disabled === false),
-    ).toBe(true);
+        .filter((item: MenuItem): boolean => item.disabled === false)
+        .map((item: MenuItem): string => item.label);
+
+    expect(enabled()).toEqual([
+      'Export to CSV',
+      'Export to XLSX',
+      'Export to JSON',
+      'Export to Markdown',
+    ]);
+
+    panel().onRowSelect({ row: { id: '0', data: {} }, toggle: false, range: false });
+
+    expect(enabled()).toContain('Copy Selected Rows');
+  });
+
+  it('exportToMarkdown_writesATable', async () => {
+    await ranQuery();
+
+    panel().onMoreAction('export-markdown');
+    await vi.waitFor((): void => {
+      expect(notes).toHaveLength(1);
+    });
+
+    expect(files.dialogs).toEqual(['Users.md']);
+    expect(files.writes[0]?.content).toBe('| id | name |\n| --- | --- |\n| 1 | Ada |\n| 2 |  |\n');
+    expect(notes[0]).toMatchObject({ severity: 'info', title: 'Exported 2 rows to Markdown' });
+  });
+
+  it('rowSelect_withCmdOrCtrl_addsAndRemovesRows_andShiftExtendsARange', async () => {
+    await ranQuery();
+    const pick: (id: string, toggle: boolean, range: boolean) => void = (
+      id: string,
+      toggle: boolean,
+      range: boolean,
+    ): void => panel().onRowSelect({ row: { id, data: {} }, toggle, range });
+
+    pick('0', false, false);
+    pick('1', false, true);
+    expect([...panel().selectedRows()].sort()).toEqual(['0', '1']);
+
+    pick('0', true, false);
+    expect([...panel().selectedRows()]).toEqual(['1']);
+
+    pick('0', true, false);
+    expect([...panel().selectedRows()].sort()).toEqual(['0', '1']);
+
+    pick('1', false, false);
+    expect([...panel().selectedRows()]).toEqual(['1']);
+  });
+
+  it('copySelectedRows_putsThemOnTheClipboardAsTabSeparatedText_inGridOrder', async () => {
+    await ranQuery();
+    const writeText: ReturnType<typeof vi.fn> = vi.fn((): Promise<void> => Promise.resolve());
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    panel().onRowSelect({ row: { id: '1', data: {} }, toggle: false, range: false });
+    panel().onRowSelect({ row: { id: '0', data: {} }, toggle: true, range: false });
+
+    panel().onMoreAction('copy-rows');
+    await vi.waitFor((): void => {
+      expect(writeText).toHaveBeenCalled();
+    });
+
+    expect(writeText).toHaveBeenCalledWith('id\tname\n1\tAda\n2\t\n');
   });
 
   it('exportToCsv_writesEveryRowWithAByteOrderMarkAndSaysSo', async () => {
