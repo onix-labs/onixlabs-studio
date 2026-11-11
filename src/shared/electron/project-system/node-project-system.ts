@@ -14,6 +14,7 @@ import { DebugResolveResult } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
 import { buildItemTree, EvaluatedItem } from './item-tree';
 import { publishedRoots, readTsconfigSources, TsconfigSources } from './node-sources';
+import { listProjectFiles, sourceFilter } from './project-listing';
 import { ProjectSystem } from './project-system';
 import { parseWorkspacePatterns, splitWorkspacePattern } from './node-workspaces';
 import { logger } from '../logger';
@@ -96,6 +97,33 @@ const SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set<string>([
  * effectively the whole repository) cannot balloon the Solution Explorer.
  */
 const MAX_ITEMS: number = 5_000;
+
+/**
+ * Keeps what a package is built from when the fallback lists it (#899): script, style and markup
+ * sources, JSON (the manifest and configuration among it), and the lockfiles that are not JSON.
+ */
+const NODE_SOURCE_FILES: (name: string) => boolean = sourceFilter(
+  [
+    '.js',
+    '.mjs',
+    '.cjs',
+    '.jsx',
+    '.ts',
+    '.mts',
+    '.cts',
+    '.tsx',
+    '.vue',
+    '.svelte',
+    '.astro',
+    '.css',
+    '.scss',
+    '.sass',
+    '.less',
+    '.html',
+    '.json',
+  ],
+  ['yarn.lock', 'pnpm-lock.yaml', '.npmrc', '.nvmrc'],
+);
 
 /**
  * The folders that hold a package's tests, which `files` leaves out because it does not publish them
@@ -298,7 +326,17 @@ export class NodeProjectSystem implements ProjectSystem {
     const directory: string = path.dirname(projectPath);
     const tree: readonly ProjectItemNode[] | null =
       (await this.declaredTree(projectPath, directory)) ??
-      (await this.listDirectory(directory, { remaining: MAX_ITEMS }, true));
+      (await listProjectFiles(
+        directory,
+        { remaining: MAX_ITEMS },
+        {
+          skipDirectory: (name: string): boolean => this.isSkipped(name),
+          keepFile: NODE_SOURCE_FILES,
+          // A nested package.json below the package's own folder marks another workspace package.
+          isSeparate: (full: string, depth: number): Promise<boolean> =>
+            depth > 0 ? this.holdsManifest(full) : Promise.resolve(false),
+        },
+      ));
     return tree === null ? null : { projectPath, tree };
   }
 
@@ -381,7 +419,13 @@ export class NodeProjectSystem implements ProjectSystem {
     if (!kind.isDirectory() || (await this.readManifest(path.join(full, MANIFEST))) !== null) {
       return [];
     }
-    return this.filesOf((await this.listDirectory(full, budget, false, true)) ?? []);
+    return this.filesOf(
+      (await listProjectFiles(full, budget, {
+        // Inside a declared source folder a name like `build` is a folder of sources, not an output.
+        skipDirectory: (name: string): boolean => name.startsWith('.') || name === 'node_modules',
+        isSeparate: (directory: string): Promise<boolean> => this.holdsManifest(directory),
+      })) ?? [],
+    );
   }
 
   /**
@@ -410,68 +454,6 @@ export class NodeProjectSystem implements ProjectSystem {
     return nodes.flatMap((node: ProjectItemNode): readonly string[] =>
       node.type === 'file' ? [node.path] : this.filesOf(node.children),
     );
-  }
-
-  /**
-   * Lists one directory level as item nodes, recursing into subdirectories. A subdirectory holding
-   * its own package.json is skipped (it belongs to another workspace package) unless this is the
-   * package's own root level's direct child scan starting point.
-   * @param directory The directory to list.
-   * @param budget The remaining file budget, decremented as files are added.
-   * @param isRoot Whether this is the package's own directory (nested manifests only prune below it).
-   * @param isSources Whether the directory is inside a declared source folder, where a name like
-   * `build` is a folder of sources and not an output.
-   * @returns Returns the nodes, or null when the directory cannot be read.
-   */
-  private async listDirectory(
-    directory: string,
-    budget: { remaining: number },
-    isRoot: boolean,
-    isSources: boolean = false,
-  ): Promise<readonly ProjectItemNode[] | null> {
-    let entries: Dirent[];
-    try {
-      entries = await fs.readdir(directory, { withFileTypes: true });
-    } catch {
-      return null;
-    }
-    const directories: Dirent[] = entries
-      .filter(
-        (entry: Dirent): boolean =>
-          entry.isDirectory() &&
-          (isSources
-            ? !entry.name.startsWith('.') && entry.name !== 'node_modules'
-            : !this.isSkipped(entry.name)),
-      )
-      .sort((a: Dirent, b: Dirent): number => a.name.localeCompare(b.name));
-    const files: Dirent[] = entries
-      .filter((entry: Dirent): boolean => entry.isFile())
-      .sort((a: Dirent, b: Dirent): number => a.name.localeCompare(b.name));
-    const nodes: ProjectItemNode[] = [];
-    for (const child of directories) {
-      const full: string = path.join(directory, child.name);
-      // A nested manifest marks another workspace package; leave its contents to its own node.
-      if (!isRoot && (await this.readManifest(path.join(full, MANIFEST))) !== null) {
-        continue;
-      }
-      const children: readonly ProjectItemNode[] | null = await this.listDirectory(
-        full,
-        budget,
-        false,
-        isSources,
-      );
-      if (children !== null && children.length > 0) {
-        nodes.push({ type: 'folder', name: child.name, path: full, children });
-      }
-    }
-    for (const file of files) {
-      if (budget.remaining <= 0) {
-        break;
-      }
-      budget.remaining -= 1;
-      nodes.push({ type: 'file', name: file.name, path: path.join(directory, file.name) });
-    }
-    return nodes;
   }
 
   /**
@@ -509,6 +491,15 @@ export class NodeProjectSystem implements ProjectSystem {
       }
     }
     return [...directories];
+  }
+
+  /**
+   * Determines whether a directory holds its own package.json, which makes it another package.
+   * @param directory The directory's absolute path.
+   * @returns Returns true when it holds a readable manifest.
+   */
+  private async holdsManifest(directory: string): Promise<boolean> {
+    return (await this.readManifest(path.join(directory, MANIFEST))) !== null;
   }
 
   /**

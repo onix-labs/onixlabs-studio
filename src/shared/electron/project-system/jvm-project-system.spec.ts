@@ -443,8 +443,14 @@ describe('JvmProjectSystem.loadProjectItems source sets (#899)', () => {
   });
 
   it('fallsBackToTheListing_forAModuleWithNoSources', async () => {
-    write({ 'pom.xml': '<project/>' });
+    // A source outside any standard source set: the fallback, which reads the tree, still lists it.
+    write({ 'pom.xml': '<project/>', 'scripts/Release.java': '' });
 
-    expect(await load('pom.xml')).toEqual(expect.arrayContaining(['notes.txt', 'output/run.log']));
+    // Sources and the build's manifests only; notes, logs and class files are left to the File
+    // Explorer (#899).
+    const listed: string[] = await load('pom.xml');
+    expect(listed).toEqual(expect.arrayContaining(['scripts/Release.java', 'pom.xml']));
+    expect(listed).not.toContain('notes.txt');
+    expect(listed).not.toContain('output/run.log');
   });
 });

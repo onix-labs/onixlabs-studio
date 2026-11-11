@@ -20,6 +20,7 @@ import {
   writeCodeModelQuery,
 } from './cmake-file-api';
 import { buildItemTree, EvaluatedItem } from './item-tree';
+import { listProjectFiles } from './project-listing';
 import { ProjectSystem } from './project-system';
 import { logger } from '../logger';
 
@@ -286,8 +287,14 @@ export class CppProjectSystem implements ProjectSystem {
         return { projectPath, tree: buildTargetTree(projectPath, targets) };
       }
     }
-    const budget: { remaining: number } = { remaining: MAX_ITEMS };
-    const tree: readonly ProjectItemNode[] | null = await this.listDirectory(directory, budget);
+    const tree: readonly ProjectItemNode[] | null = await listProjectFiles(
+      directory,
+      { remaining: MAX_ITEMS },
+      {
+        skipDirectory: (name: string): boolean => this.isSkipped(name),
+        keepFile: (name: string): boolean => this.isBuildFile(name),
+      },
+    );
     return tree === null ? null : { projectPath, tree };
   }
 
@@ -360,44 +367,6 @@ export class CppProjectSystem implements ProjectSystem {
       MAKEFILE_PATTERN.test(name),
     );
     return makefile === undefined ? null : path.join(root, makefile);
-  }
-
-  /**
-   * Lists one directory level as item nodes, recursing into subdirectories.
-   * @param directory The directory to list.
-   * @param budget The remaining file budget, decremented as files are added.
-   * @returns Returns the nodes, or null when the directory cannot be read.
-   */
-  private async listDirectory(
-    directory: string,
-    budget: { remaining: number },
-  ): Promise<readonly ProjectItemNode[] | null> {
-    const entries: Dirent[] | null = await this.readDir(directory);
-    if (entries === null) {
-      return null;
-    }
-    const directories: Dirent[] = entries
-      .filter((entry: Dirent): boolean => entry.isDirectory() && !this.isSkipped(entry.name))
-      .sort((a: Dirent, b: Dirent): number => a.name.localeCompare(b.name));
-    const files: Dirent[] = entries
-      .filter((entry: Dirent): boolean => entry.isFile() && this.isBuildFile(entry.name))
-      .sort((a: Dirent, b: Dirent): number => a.name.localeCompare(b.name));
-    const nodes: ProjectItemNode[] = [];
-    for (const child of directories) {
-      const full: string = path.join(directory, child.name);
-      const children: readonly ProjectItemNode[] | null = await this.listDirectory(full, budget);
-      if (children !== null && children.length > 0) {
-        nodes.push({ type: 'folder', name: child.name, path: full, children });
-      }
-    }
-    for (const file of files) {
-      if (budget.remaining <= 0) {
-        break;
-      }
-      budget.remaining -= 1;
-      nodes.push({ type: 'file', name: file.name, path: path.join(directory, file.name) });
-    }
-    return nodes;
   }
 
   /**

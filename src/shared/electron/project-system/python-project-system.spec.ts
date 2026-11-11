@@ -233,6 +233,8 @@ describe('PythonProjectSystem.loadProjectItems (#899)', () => {
       'uv.lock': '',
       'notes.txt': '',
       'output/run.log': '',
+      // A script no package declares: only the fallback listing, which reads the tree, finds it.
+      'scripts/deploy.py': '',
       'build/lib/acme.py': '',
       '.venv/lib/x.py': '',
     });
@@ -336,7 +338,15 @@ describe('PythonProjectSystem.loadProjectItems (#899)', () => {
   ])('fallsBackToTheListing_whenTheProject %s', async (_name: string, toml: string) => {
     write({ 'pyproject.toml': toml });
 
-    expect(await load()).toEqual(expect.arrayContaining(['notes.txt', 'output/run.log']));
+    // Python sources, requirements and lockfiles from the whole tree; notes and logs are left to the
+    // File Explorer (#899).
+    const listed: string[] = await load();
+    expect(listed).toEqual(
+      expect.arrayContaining(['scripts/deploy.py', 'acme/__init__.py', 'requirements-dev.txt']),
+    );
+    expect(listed).toEqual(expect.arrayContaining(['uv.lock', 'pyproject.toml']));
+    expect(listed).not.toContain('notes.txt');
+    expect(listed).not.toContain('output/run.log');
   });
 
   it('refusesADeclaredPathOutsideTheProject', async () => {
@@ -372,7 +382,8 @@ describe('PythonProjectSystem.loadProjectItems (#899)', () => {
       path.join(root, 'requirements.txt'),
     );
 
-    expect(flat(items!.tree)).toContain('notes.txt');
+    expect(flat(items!.tree)).toContain('scripts/deploy.py');
+    expect(flat(items!.tree)).not.toContain('notes.txt');
   });
 
   it('isNull_whenTheProjectCannotBeRead', async () => {

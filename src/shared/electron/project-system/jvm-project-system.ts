@@ -1,4 +1,4 @@
-import { Dirent, Stats } from 'node:fs';
+import { Stats } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import {
@@ -11,6 +11,7 @@ import {
 } from '@shared/api/project-system';
 import { buildItemTree, EvaluatedItem } from './item-tree';
 import { gradleSourceDirectories, mavenSourceDirectories } from './jvm-source-sets';
+import { listProjectFiles, sourceFilter } from './project-listing';
 import { ProjectSystem } from './project-system';
 import { logger } from '../logger';
 
@@ -61,6 +62,15 @@ const SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set<string>([
  * effectively the whole repository) cannot balloon the Solution Explorer.
  */
 const MAX_ITEMS: number = 5_000;
+
+/**
+ * Keeps what a module is built from when the fallback lists it (#899): JVM-language sources, Gradle
+ * scripts, and the build's manifests and version catalog.
+ */
+const JVM_SOURCE_FILES: (name: string) => boolean = sourceFilter(
+  ['.java', '.kt', '.kts', '.scala', '.groovy', '.gradle'],
+  ['pom.xml', 'gradle.properties', 'libs.versions.toml'],
+);
 
 /**
  * The folder both Gradle and Maven keep source sets under by convention, one folder per set: `src/main`,
@@ -231,7 +241,17 @@ export class JvmProjectSystem implements ProjectSystem {
     const directory: string = path.dirname(projectPath);
     const tree: readonly ProjectItemNode[] | null =
       (await this.sourceSetTree(projectPath, directory)) ??
-      (await this.listDirectory(directory, { remaining: MAX_ITEMS }, true));
+      (await listProjectFiles(
+        directory,
+        { remaining: MAX_ITEMS },
+        {
+          skipDirectory: (name: string): boolean => this.isSkipped(name, false),
+          keepFile: JVM_SOURCE_FILES,
+          // A nested manifest below the module's own folder marks another module.
+          isSeparate: (full: string, depth: number): Promise<boolean> =>
+            depth > 0 ? this.holdsManifest(full) : Promise.resolve(false),
+        },
+      ));
     return tree === null ? null : { projectPath, tree };
   }
 
@@ -304,7 +324,12 @@ export class JvmProjectSystem implements ProjectSystem {
     if (!isDirectory) {
       return [];
     }
-    return this.filesOf((await this.listDirectory(full, budget, false, true)) ?? []);
+    return this.filesOf(
+      (await listProjectFiles(full, budget, {
+        skipDirectory: (name: string): boolean => this.isSkipped(name, true),
+        isSeparate: (directory: string): Promise<boolean> => this.holdsManifest(directory),
+      })) ?? [],
+    );
   }
 
   /**
@@ -439,63 +464,6 @@ export class JvmProjectSystem implements ProjectSystem {
       return 'maven';
     }
     return null;
-  }
-
-  /**
-   * Lists one directory level as item nodes, recursing into subdirectories. A subdirectory holding its
-   * own manifest is skipped below the module root (it belongs to another module).
-   * @param directory The directory to list.
-   * @param budget The remaining file budget, decremented as files are added.
-   * @param isRoot Whether this is the module's own directory (nested manifests only prune below it).
-   * @param isSources Whether the directory is inside a source set, where a name like `build` is a
-   * package and not an output: `org/acme/build/Task.java` must not disappear.
-   * @returns Returns the nodes, or null when the directory cannot be read.
-   */
-  private async listDirectory(
-    directory: string,
-    budget: { remaining: number },
-    isRoot: boolean,
-    isSources: boolean = false,
-  ): Promise<readonly ProjectItemNode[] | null> {
-    let entries: Dirent[];
-    try {
-      entries = await fs.readdir(directory, { withFileTypes: true });
-    } catch {
-      return null;
-    }
-    const directories: Dirent[] = entries
-      .filter(
-        (entry: Dirent): boolean => entry.isDirectory() && !this.isSkipped(entry.name, isSources),
-      )
-      .sort((a: Dirent, b: Dirent): number => a.name.localeCompare(b.name));
-    const files: Dirent[] = entries
-      .filter((entry: Dirent): boolean => entry.isFile())
-      .sort((a: Dirent, b: Dirent): number => a.name.localeCompare(b.name));
-    const nodes: ProjectItemNode[] = [];
-    for (const child of directories) {
-      const full: string = path.join(directory, child.name);
-      // A nested manifest marks another module; leave its contents to its own node.
-      if (!isRoot && (await this.holdsManifest(full))) {
-        continue;
-      }
-      const children: readonly ProjectItemNode[] | null = await this.listDirectory(
-        full,
-        budget,
-        false,
-        isSources,
-      );
-      if (children !== null && children.length > 0) {
-        nodes.push({ type: 'folder', name: child.name, path: full, children });
-      }
-    }
-    for (const file of files) {
-      if (budget.remaining <= 0) {
-        break;
-      }
-      budget.remaining -= 1;
-      nodes.push({ type: 'file', name: file.name, path: path.join(directory, file.name) });
-    }
-    return nodes;
   }
 
   /**
