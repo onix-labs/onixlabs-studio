@@ -1,19 +1,13 @@
-<!--
-DRAFT of `.claude/skills/new-language-server/SKILL.md` (#1206). The agent sandbox can't write to
-`.claude/skills`, so this needs Matthew's approval to move there. Move it as is: everything below
-this comment is the skill file.
--->
-
 ---
-
 name: new-language-server
 description: Add a language server to ONIXLabs Studio end to end — descriptor, probe, settings, client-command wiring, specs, live check and capability-matrix row. Use when asked to add, support or improve a language (F#, OCaml, Zig, …) or a language server, or to close a gap in a server's parity epic.
 ---
 
 # Adding a language server to Studio
 
-Follow `docs/language-servers/adding-a-server.md`; it's the reference. This skill is the checklist. Do
-the steps in order, and don't skip the probe.
+Follow `docs/language-servers/adding-a-server.md` (also on the wiki as
+[Language Servers — Adding a server](https://github.com/onix-labs/onixlabs-studio/wiki/Language-Servers-Adding-a-Server));
+it's the reference. This skill is the checklist. Do the steps in order, and don't skip the probe.
 
 ## Before you start
 
@@ -26,9 +20,9 @@ the steps in order, and don't skip the probe.
 
 1. **Descriptor.**
    - Prefer a curated manifest entry in `src/shared/electron/contributions/plugins/curated-plugins.json` (archive or npm provision; `executable`, `node` or `python` command).
-   - Use a code-first descriptor in `language-server-catalogue.ts` only for a computation (build, per-workspace data, a derived `postInitialize`).
+   - Use a code-first descriptor in `src/shared/electron/lsp/language-server-catalogue.ts` only for a computation (build, per-workspace data, a derived `postInitialize`).
    - The `id` names the implementation, not the language.
-   - Add any new file extension to `monaco-languages.ts`.
+   - Add any new file extension to `src/shared/angular/services/monaco/monaco-languages.ts`.
    - Bump the index `revision`. Keep `apiVersion` low. Leave other entries' layout byte for byte.
 2. **Install into a scratch profile** as the provisioner does: verified download, or `npm ci --ignore-scripts` from the pinned lockfile, then the `.studio-install-complete` marker.
 3. **Fixture** under `.cache/<lang>-fixture`, with `@probe` markers: two modules referencing each other, an interface and an implementation, a test, a deliberate error.
@@ -40,10 +34,10 @@ the steps in order, and don't skip the probe.
    - Use the server's own defaults unless a feature is otherwise unreachable; say so in the PR.
    - Labels are Title Case.
    - A server that never asks gets `pull: false`.
-   - A lens switch goes in `CODE_LENS_SERVER_SWITCHES`, not on the server's page.
+   - A lens switch goes in `CODE_LENS_SERVER_SWITCHES` (`src/shared/angular/services/lsp/code-lens-kinds.ts`), not on the server's page.
 7. **Wire what isn't generic:**
-   - client commands in `lsp-features.ts` (`lensCommand`, code actions) and `codeLensKind`;
-   - experimental client capabilities in `lsp-client-capabilities.ts`;
+   - client commands in `src/shared/angular/services/lsp/lsp-features.ts` (`lensCommand`, code actions) and `codeLensKind`;
+   - experimental client capabilities in `src/shared/electron/lsp/lsp-client-capabilities.ts`;
    - custom requests only where advertised.
 8. **Specs.** Build from the real curated entry. Assert the answered, pushed and start-up shapes, and which settings restart the server. Run single specs only: `npx ng test --watch=false --include <file>`.
 9. **Live check** in a second instance on a scratch profile, against the fixture, feature by feature.
