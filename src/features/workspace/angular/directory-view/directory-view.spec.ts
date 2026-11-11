@@ -116,6 +116,100 @@ describe('DirectoryView', () => {
     expect(scopedWorkspace.rootName()).toBe('ws');
   });
 
+  describe('panels Studio adds on its own (#1253: add once, and respect closing)', () => {
+    /**
+     * The calls the view makes when a project model or a package model appears.
+     */
+    interface Syncs {
+      syncSolutionPanel(hasModel: boolean): void;
+      syncPackagesPanel(hasModel: boolean): void;
+    }
+
+    let view: ComponentFixture<DirectoryView>;
+    let dock: DockState;
+    let syncs: Syncs;
+
+    beforeEach(() => {
+      localStorage.removeItem('workspace.autoAddedPanels');
+      TestBed.inject(Workspaces).setInitial('tab-ws', ROOT_LISTING);
+      view = TestBed.createComponent(DirectoryView);
+      view.componentRef.setInput('tabId', 'tab-ws');
+      view.detectChanges();
+      dock = view.debugElement.injector.get(DockState);
+      syncs = view.componentInstance as unknown as Syncs;
+    });
+
+    afterEach(() => {
+      localStorage.removeItem('workspace.autoAddedPanels');
+    });
+
+    it.each([
+      ['solution', (s: Syncs, has: boolean): void => s.syncSolutionPanel(has)],
+      ['packages', (s: Syncs, has: boolean): void => s.syncPackagesPanel(has)],
+    ])(
+      '%s_isAddedTheFirstTimeTheWorkspaceQualifies',
+      (panel: string, sync: (s: Syncs, has: boolean) => void) => {
+        dock.removeFromLayout(panel);
+
+        sync(syncs, false);
+        expect(collectPanelIds(dock.layout())).not.toContain(panel);
+
+        sync(syncs, true);
+        expect(collectPanelIds(dock.layout())).toContain(panel);
+      },
+    );
+
+    it.each([
+      ['solution', (s: Syncs, has: boolean): void => s.syncSolutionPanel(has)],
+      ['packages', (s: Syncs, has: boolean): void => s.syncPackagesPanel(has)],
+    ])(
+      '%s_onceClosed_isNotAddedAgain_evenWhenTheWorkspaceIsOpenedAfresh',
+      (panel: string, sync: (s: Syncs, has: boolean) => void) => {
+        dock.removeFromLayout(panel);
+        sync(syncs, true);
+        dock.removeFromLayout(panel);
+
+        // The same workspace in a new view, as after closing and reopening it.
+        const reopened: ComponentFixture<DirectoryView> = TestBed.createComponent(DirectoryView);
+        TestBed.inject(Workspaces).setInitial('tab-ws-2', ROOT_LISTING);
+        reopened.componentRef.setInput('tabId', 'tab-ws-2');
+        reopened.detectChanges();
+        const reopenedDock: DockState = reopened.debugElement.injector.get(DockState);
+        reopenedDock.removeFromLayout(panel);
+        sync(reopened.componentInstance as unknown as Syncs, true);
+
+        expect(collectPanelIds(reopenedDock.layout())).not.toContain(panel);
+        sync(syncs, true);
+        expect(collectPanelIds(dock.layout())).not.toContain(panel);
+      },
+    );
+
+    it('aLayoutWithoutThePanel_staysWithoutIt', () => {
+      dock.removeFromLayout('solution');
+      syncs.syncSolutionPanel(true);
+      expect(collectPanelIds(dock.layout())).toContain('solution');
+
+      // Applying a layout that leaves it out: a saved layout wins over adding it again.
+      dock.reset();
+      dock.removeFromLayout('solution');
+      syncs.syncSolutionPanel(true);
+
+      expect(collectPanelIds(dock.layout())).not.toContain('solution');
+    });
+
+    it('aPanelTheLayoutAlreadyHolds_isRecorded_soClosingItIsRespected', () => {
+      dock.removeFromLayout('packages');
+      const anchor: StackNode | null = findStackOfPanel(dock.layout(), 'errors');
+      dock.tabInto(anchor!.id, 'packages');
+
+      syncs.syncPackagesPanel(true);
+      dock.removeFromLayout('packages');
+      syncs.syncPackagesPanel(true);
+
+      expect(collectPanelIds(dock.layout())).not.toContain('packages');
+    });
+  });
+
   describe('the References panel (#1014)', () => {
     it('aListWhileActive_tabsThePanelBesideTheErrorList_bringsItForward_andShowsTheList', async () => {
       fixture.componentRef.setInput('isActive', true);
