@@ -7,16 +7,7 @@ import {
   QUICK_FIX_EDITOR_OPTIONS,
   STUDIO_QUICK_FIX_COMMAND,
 } from './monaco-quick-fix-commands';
-
-/**
- * Monaco's `KeyMod.CtrlCmd`, as the fake instance numbers it.
- */
-const CTRL_CMD: number = 2048;
-
-/**
- * Monaco's `KeyCode.Period`, as the fake instance numbers it.
- */
-const PERIOD: number = 89;
+import type { EditorKeybinding } from './monaco-keybindings';
 
 /**
  * What a fake Monaco instance was asked to do.
@@ -25,6 +16,7 @@ interface Installed {
   readonly rules: MonacoApi.editor.IKeybindingRule[];
   readonly commands: Map<string, () => void>;
   readonly fixed: MonacoApi.editor.ICodeEditor[];
+  bindings: readonly EditorKeybinding[];
   create(editor: MonacoApi.editor.ICodeEditor): void;
 }
 
@@ -107,11 +99,10 @@ function install(editors: readonly MonacoApi.editor.ICodeEditor[]): Installed {
     rules: [],
     commands: new Map(),
     fixed: [],
+    bindings: [],
     create: (editor: MonacoApi.editor.ICodeEditor): void => onCreate?.(editor),
   };
   const fake: typeof MonacoApi = {
-    KeyMod: { CtrlCmd: CTRL_CMD },
-    KeyCode: { Period: PERIOD },
     editor: {
       getEditors: (): readonly MonacoApi.editor.ICodeEditor[] => editors,
       registerCommand: (id: string, handler: () => void): void =>
@@ -123,7 +114,7 @@ function install(editors: readonly MonacoApi.editor.ICodeEditor[]): Installed {
       },
     },
   } as unknown as typeof MonacoApi;
-  installQuickFixCommands(
+  installed.bindings = installQuickFixCommands(
     fake,
     (editor: MonacoApi.editor.ICodeEditor): void => void installed.fixed.push(editor),
   );
@@ -185,7 +176,7 @@ describe('installQuickFixCommands (#1016)', () => {
     FakeCodeActionController.opened = [];
   });
 
-  it('removesEveryCodeActionChord_andBindsStudiosQuickFixToCmdPeriod_outsideACodeFence', () => {
+  it('removesEveryCodeActionChord_andHandsStudiosQuickFixToTheRegistry_outsideACodeFence', () => {
     const installed: Installed = install([]);
 
     expect(installed.rules).toEqual([
@@ -196,8 +187,11 @@ describe('installQuickFixCommands (#1016)', () => {
       { keybinding: 0, command: '-editor.action.organizeImports' },
       { keybinding: 0, command: '-editor.action.autoFix' },
       { keybinding: 0, command: '-editor.action.fixAll' },
+    ]);
+    // ⌘. is the registry's default now (#1036).
+    expect(installed.bindings).toEqual([
       {
-        keybinding: CTRL_CMD | PERIOD,
+        id: 'editor.quickFix',
         command: STUDIO_QUICK_FIX_COMMAND,
         when: `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`,
       },

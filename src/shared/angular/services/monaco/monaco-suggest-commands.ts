@@ -1,5 +1,6 @@
 import type * as MonacoApi from 'monaco-editor';
 import { focusedEditor } from './monaco-find-commands';
+import type { EditorKeybinding } from './monaco-keybindings';
 
 /**
  * Names Monaco's Trigger Suggest action (#1021): ⌃Space on macOS (with ⌥Esc and ⌘I), Ctrl+Space and
@@ -192,11 +193,6 @@ const INSERT_NO_AFTER_UNDO_STOP: number = 2;
  * Holds Monaco's `suggest` model state `Idle`.
  */
 const SUGGEST_IDLE: number = 0;
-
-/**
- * Monaco's `KeyMod.WinCtrl`: the Control key on macOS, where `CtrlCmd` is ⌘.
- */
-const WIN_CTRL: number = 256;
 
 /**
  * One completion Monaco's suggest model holds — its private `CompletionItem` — with only what Studio
@@ -973,22 +969,21 @@ export class StudioParameterHintsWidget {
  * Each instance (the main window's, and each child window's) has its own keybinding service, so each is
  * prepared once, as it loads.
  * @param monaco The Monaco instance.
- * @param isMac Whether the host is macOS, which decides the Trigger Suggest chords.
  * @param suggest Resolves the completion list's presenter as it is needed.
  * @param hints Resolves the signature card's presenter as it is needed.
  * @param suppressed Determines whether a document's word-based suggestions are left out of the list.
  * @param wordSuggestions Reads a language's Monaco `wordBasedSuggestions`, written as an editor of it
  * takes focus.
+ * @returns Returns the commands to bind through the keybinding registry: {@link SUGGEST_KEYBINDINGS}.
  */
 export function installSuggestCommands(
   monaco: typeof MonacoApi,
-  isMac: boolean,
   suggest: () => SuggestPresenter,
   hints: () => ParameterHintsPresenter,
   suppressed: WordSuggestionsSuppressed = (): boolean => false,
   wordSuggestions: (language: string) => WordSuggestionsOption = (): WordSuggestionsOption =>
     'currentDocument',
-): void {
+): readonly EditorKeybinding[] {
   const focused: (run: (editor: MonacoApi.editor.ICodeEditor) => void) => () => void =
     (run: (editor: MonacoApi.editor.ICodeEditor) => void): (() => void) =>
     (): void => {
@@ -1045,12 +1040,13 @@ export function installSuggestCommands(
     STUDIO_PARAMETER_HINTS_HIDE_COMMAND,
     focused((editor: MonacoApi.editor.ICodeEditor): void => hintsContribution(editor)?.cancel?.()),
   );
-  monaco.editor.addKeybindingRules(suggestKeybindingRules(monaco, isMac));
+  monaco.editor.addKeybindingRules(suggestKeybindingRules(monaco));
   monaco.editor.onDidCreateEditor((editor: MonacoApi.editor.ICodeEditor): void => {
     takeOverSuggestWidget(editor, suggest, suppressed);
     takeOverParameterHintsWidget(editor, hints);
     followWordSuggestions(editor, wordSuggestions);
   });
+  return SUGGEST_KEYBINDINGS;
 }
 
 /**
@@ -1075,24 +1071,49 @@ export function followWordSuggestions(
 }
 
 /**
- * Builds the keybinding rules of {@link installSuggestCommands}.
+ * Lists the commands {@link installSuggestCommands} binds through the keybinding registry (#1036):
+ * Show Completions (⌃Space, ⌘I, and ⌥Esc on macOS; Ctrl+Space and Ctrl+I elsewhere) and Show Parameter
+ * Hints (⌘⇧Space). The keys that move within an open list or card stay with
+ * {@link suggestKeybindingRules}: they are the widget's own navigation, not shortcuts.
+ */
+export const SUGGEST_KEYBINDINGS: readonly EditorKeybinding[] = [
+  {
+    id: 'editor.triggerSuggest',
+    command: STUDIO_TRIGGER_SUGGEST_COMMAND,
+    when: 'editorTextFocus && !editorReadonly',
+  },
+  {
+    id: 'editor.triggerSuggestAlternative',
+    command: STUDIO_TRIGGER_SUGGEST_COMMAND,
+    when: 'editorTextFocus && !editorReadonly',
+  },
+  {
+    id: 'editor.triggerSuggestEscape',
+    command: STUDIO_TRIGGER_SUGGEST_COMMAND,
+    when: 'editorTextFocus && !editorReadonly',
+  },
+  {
+    id: 'editor.triggerParameterHints',
+    command: STUDIO_TRIGGER_PARAMETER_HINTS_COMMAND,
+    when: 'editorTextFocus',
+  },
+];
+
+/**
+ * Builds the fixed keybinding rules of {@link installSuggestCommands}: the removal of Monaco's trigger
+ * chords, and the keys that move within an open completion list or signature card. The trigger chords
+ * themselves are {@link SUGGEST_KEYBINDINGS}, taken from the keybinding registry.
  * @param monaco The Monaco instance, whose key codes the rules use.
- * @param isMac Whether the host is macOS.
  * @returns Returns the rules, removals first.
  */
 export function suggestKeybindingRules(
   monaco: typeof MonacoApi,
-  isMac: boolean,
 ): MonacoApi.editor.IKeybindingRule[] {
   const { KeyMod, KeyCode }: typeof MonacoApi = monaco;
-  const trigger: string = 'editorTextFocus && !editorReadonly';
   const listKeys: string = `${SUGGEST_VISIBLE_CONTEXT_KEY} && !${COMPOSING_CONTEXT_KEY}`;
   const acceptKeys: string = `${listKeys} && ${SUGGEST_FOCUSED_CONTEXT_KEY}`;
   const cardKeys: string = `${PARAMETER_HINTS_VISIBLE_CONTEXT_KEY} && !${SUGGEST_VISIBLE_CONTEXT_KEY} && !${COMPOSING_CONTEXT_KEY}`;
   const overloadKeys: string = `${cardKeys} && ${PARAMETER_HINTS_MULTIPLE_CONTEXT_KEY}`;
-  const triggerChords: readonly number[] = isMac
-    ? [WIN_CTRL | KeyCode.Space, KeyMod.Alt | KeyCode.Escape, KeyMod.CtrlCmd | KeyCode.KeyI]
-    : [KeyMod.CtrlCmd | KeyCode.Space, KeyMod.CtrlCmd | KeyCode.KeyI];
   const rule: (
     keybinding: number,
     command: string,
@@ -1106,14 +1127,6 @@ export function suggestKeybindingRules(
     // A removal with no chord drops every chord the command has, whichever platform Monaco runs on.
     { keybinding: 0, command: `-${MONACO_TRIGGER_SUGGEST_COMMAND}` },
     { keybinding: 0, command: `-${MONACO_TRIGGER_PARAMETER_HINTS_COMMAND}` },
-    ...triggerChords.map((chord: number): MonacoApi.editor.IKeybindingRule =>
-      rule(chord, STUDIO_TRIGGER_SUGGEST_COMMAND, trigger),
-    ),
-    rule(
-      KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.Space,
-      STUDIO_TRIGGER_PARAMETER_HINTS_COMMAND,
-      'editorTextFocus',
-    ),
     rule(KeyCode.DownArrow, STUDIO_SUGGEST_NEXT_COMMAND, listKeys),
     rule(KeyCode.UpArrow, STUDIO_SUGGEST_PREVIOUS_COMMAND, listKeys),
     rule(KeyCode.PageDown, STUDIO_SUGGEST_NEXT_PAGE_COMMAND, listKeys),
