@@ -300,6 +300,21 @@ export class Workspace {
   public readonly collapsesEmptyFolders: Signal<boolean> = this.collapsingEmptyFolders.on;
 
   /**
+   * Holds the predicate naming the folders Expand All leaves closed beyond the fixed skip list: the
+   * ones the developer excluded or the tree hides (#1252). Set by the tab's exclusions, which depend on
+   * this service, so it is handed in rather than injected.
+   */
+  private expandSkip: (path: string) => boolean = (): boolean => false;
+
+  /**
+   * Sets the predicate naming the folders Expand All leaves closed beyond the fixed skip list.
+   * @param skip The predicate, given a folder's absolute path.
+   */
+  public setExpandSkip(skip: (path: string) => boolean): void {
+    this.expandSkip = skip;
+  }
+
+  /**
    * Toggles whether a chain of folders holding only one another shows as a single row.
    */
   public toggleCollapseEmptyFolders(): void {
@@ -1301,7 +1316,11 @@ export class Workspace {
       if (node.type !== 'directory') {
         return;
       }
-      if (EXPAND_SKIPPED_DIRECTORIES.has(node.name) || visited >= EXPAND_DIRECTORY_CAP) {
+      if (
+        EXPAND_SKIPPED_DIRECTORIES.has(node.name) ||
+        this.expandSkip(node.path) ||
+        visited >= EXPAND_DIRECTORY_CAP
+      ) {
         return;
       }
       visited += 1;

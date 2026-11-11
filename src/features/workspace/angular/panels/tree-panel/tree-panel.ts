@@ -61,6 +61,10 @@ import {
 import { Button } from '@shared/angular/components/forms/button/button';
 import { PanelStatus } from '@shared/angular/components/panel-status/panel-status';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
+import {
+  EXCLUDED_ROW_FIELDS,
+  ExplorerExclusions,
+} from '@shared/angular/services/explorer-filter/explorer-exclusions';
 
 /**
  * Identifies the row context-menu actions the panel offers.
@@ -74,15 +78,18 @@ const ACTION_COPY_RELATIVE: string = 'copy-relative-path';
 const ACTION_REVEAL: string = 'reveal';
 const ACTION_RENAME: string = 'rename';
 const ACTION_DELETE: string = 'delete';
+const ACTION_EXCLUDE: string = 'exclude';
+const ACTION_INCLUDE: string = 'include';
 
 /**
- * Identifies the toolbar "…" menu's commands: the options submenu and its two switches, and the
+ * Identifies the toolbar "…" menu's commands: the options submenu and its switches, and the
  * commands that act on the whole tree or its root.
  */
 const ACTION_OPTIONS: string = 'options';
 const ACTION_FOLLOW: string = 'follow-active';
 const ACTION_GIT_STATUS: string = 'git-status';
 const ACTION_COLLAPSE_EMPTY_FOLDERS: string = 'collapse-empty-folders';
+const ACTION_SHOW_HIDDEN: string = 'show-hidden';
 const ACTION_OPEN_ROOT: string = 'open-root';
 const ACTION_COPY_ROOT: string = 'copy-workspace-path';
 const ACTION_REFRESH: string = 'refresh';
@@ -214,6 +221,11 @@ export class TreePanel {
   private readonly vcsMenu: ExplorerVcsMenu = inject(ExplorerVcsMenu);
 
   /**
+   * Holds the files and folders the workspace excludes, and whether hidden ones show (#1252).
+   */
+  private readonly exclusions: ExplorerExclusions = inject(ExplorerExclusions);
+
+  /**
    * Holds the structured logger for workspace tree actions.
    */
   private readonly log: Log = inject(Log);
@@ -272,6 +284,8 @@ export class TreePanel {
       expanded: row.expanded,
       // How version control sees the path, in colour (#860) — unless the colours are switched off.
       ...(this.workspace.showsGitStatus() ? scmRowFields(this.git.stateFor(row.node.path)) : {}),
+      // An excluded entry shows only while hidden things do, greyed so it can be included again.
+      ...(this.exclusions.isExcluded(row.node.path) ? EXCLUDED_ROW_FIELDS : {}),
       // An error in the file, or beneath the folder, squiggles its name as an editor would.
       ...(this.settings.value('workspaces.showErrorSquiggles')() &&
       this.problems.has(row.node.path, 'error')
@@ -361,15 +375,23 @@ export class TreePanel {
 
   /**
    * Gets the workspace's rows the tree shows: all of them, or — narrowed — the files matching any kind
-   * ticked and the folders on the way to them.
+   * ticked and the folders on the way to them. Hidden things — dotfiles and excluded entries — show
+   * only while Show Hidden Files is on, and ignored ones only while Ignored Files shows them greyed
+   * (#1252).
    */
   private readonly shownRows: Signal<readonly WorkspaceTreeRow[]> = computed(
     (): readonly WorkspaceTreeRow[] => {
-      const rows: readonly WorkspaceTreeRow[] = this.workspace.rows();
       const kinds: ReadonlySet<ExplorerFilterKind> = this.filterKinds();
-      return kinds.size === 0
-        ? rows
-        : rows.filter((row: WorkspaceTreeRow): boolean => this.matches(row.node.path, kinds));
+      const showsHidden: boolean = this.exclusions.showsHidden();
+      const hidesIgnored: boolean = this.settings.value('workspaces.ignoredFiles')() === 'hidden';
+      return this.workspace.rows().filter((row: WorkspaceTreeRow): boolean => {
+        const path: string = row.node.path;
+        return (
+          (showsHidden || (!this.exclusions.isHidden(path) && !this.exclusions.isExcluded(path))) &&
+          (!hidesIgnored || this.git.stateFor(path) !== 'ignored') &&
+          (kinds.size === 0 || this.matches(path, kinds))
+        );
+      });
     },
   );
 
@@ -505,6 +527,11 @@ export class TreePanel {
           label: 'Collapse Empty Folders',
           checked: this.workspace.collapsesEmptyFolders(),
         },
+        {
+          id: ACTION_SHOW_HIDDEN,
+          label: 'Show Hidden Files',
+          checked: this.exclusions.showsHidden(),
+        },
       ],
     },
     { id: 'tree-more.sep-create', label: '', separator: true },
@@ -531,6 +558,9 @@ export class TreePanel {
         return;
       case ACTION_COLLAPSE_EMPTY_FOLDERS:
         this.workspace.toggleCollapseEmptyFolders();
+        return;
+      case ACTION_SHOW_HIDDEN:
+        this.exclusions.toggleShowHidden();
         return;
       case ACTION_NEW_FILE:
       case ACTION_NEW_FOLDER:
@@ -727,6 +757,7 @@ export class TreePanel {
       { id: ACTION_COPY_RELATIVE, label: 'Copy Relative Path', icon: Icon.COPY },
       { id: ACTION_REVEAL, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
       ...this.versionControlItems([node]),
+      ...this.exclusionItems([node]),
       { id: 'tree-menu.sep-writes', label: '', separator: true },
       { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL },
       { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH },
@@ -753,10 +784,37 @@ export class TreePanel {
       { id: ACTION_COPY_PATH, label: 'Copy Paths', icon: Icon.COPY },
       { id: ACTION_COPY_RELATIVE, label: 'Copy Relative Paths', icon: Icon.COPY },
       ...this.versionControlItems(targets),
+      ...this.exclusionItems(targets),
       { id: 'tree-menu.sep-writes', label: '', separator: true },
       { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH },
     );
     return items;
+  }
+
+  /**
+   * Builds Exclude, or Include when every entry is listed already, under a separator (#1252). An entry
+   * inside an excluded folder offers neither: it comes back when the folder is included.
+   * @param nodes The row's node, or the selected nodes.
+   * @returns Returns the items.
+   */
+  private exclusionItems(nodes: readonly WorkspaceTreeNode[]): readonly MenuItem[] {
+    const paths: readonly string[] = nodes.map((node: WorkspaceTreeNode): string => node.path);
+    if (paths.some((path: string): boolean => !this.exclusions.canExclude(path))) {
+      return [];
+    }
+    if (paths.every((path: string): boolean => this.exclusions.isListed(path))) {
+      return [
+        { id: 'tree-menu.sep-exclude', label: '', separator: true },
+        { id: ACTION_INCLUDE, label: 'Include', icon: Icon.EXPLORER_INCLUDE },
+      ];
+    }
+    if (paths.some((path: string): boolean => this.exclusions.isExcluded(path))) {
+      return [];
+    }
+    return [
+      { id: 'tree-menu.sep-exclude', label: '', separator: true },
+      { id: ACTION_EXCLUDE, label: 'Exclude', icon: Icon.EXPLORER_EXCLUDE },
+    ];
   }
 
   /**
@@ -825,6 +883,12 @@ export class TreePanel {
       case ACTION_DELETE:
         this.requestDelete([node]);
         return;
+      case ACTION_EXCLUDE:
+        void this.exclusions.exclude([node.path]);
+        return;
+      case ACTION_INCLUDE:
+        void this.exclusions.include([node.path]);
+        return;
       default:
         return;
     }
@@ -858,6 +922,12 @@ export class TreePanel {
         return;
       case ACTION_DELETE:
         this.requestDelete(targets);
+        return;
+      case ACTION_EXCLUDE:
+        void this.exclusions.exclude(targets.map((node: WorkspaceTreeNode): string => node.path));
+        return;
+      case ACTION_INCLUDE:
+        void this.exclusions.include(targets.map((node: WorkspaceTreeNode): string => node.path));
         return;
       default:
         return;

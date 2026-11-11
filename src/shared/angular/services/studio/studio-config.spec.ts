@@ -200,6 +200,78 @@ describe('StudioConfig', () => {
     expect(studio.runConfigurations().map((c) => c.id)).toEqual(['x']);
   });
 
+  it('saveExcludedCommands_keepsTheExcludedFiles', async () => {
+    // #1252: each list replaces only itself, so saving one never drops the other.
+    bridge.snapshot = {
+      workspace: { version: 1, runConfigurations: [], excludedFiles: ['dist'] },
+      user: { version: 1 },
+    };
+    const studio: StudioConfig = build();
+    rootPath.set('/root');
+    await settle();
+
+    await studio.saveExcludedCommands(['make build']);
+
+    expect(bridge.saves[0].payload).toEqual({
+      version: 1,
+      runConfigurations: [],
+      excludedFiles: ['dist'],
+      excludedCommands: ['make build'],
+    });
+  });
+
+  it('excludedFiles_loadedForTheFocusedRoot_andSavedKeepingTheRest', async () => {
+    bridge.snapshot = {
+      workspace: {
+        version: 1,
+        runConfigurations: [config('a', 'A')],
+        excludedCommands: ['make build'],
+        excludedFiles: ['dist'],
+      },
+      user: { version: 1 },
+    };
+    const studio: StudioConfig = build();
+    expect(studio.loadedRoot()).toBeNull();
+    rootPath.set('/root');
+    await settle();
+
+    expect(studio.loadedRoot()).toBe('/root');
+    expect(studio.excludedFiles()).toEqual(['dist']);
+    expect(await studio.loadExcludedFiles('/root')).toEqual(['dist']);
+
+    await studio.saveExcludedFilesFor('/root', ['dist', 'docs']);
+    expect(studio.excludedFiles()).toEqual(['dist', 'docs']);
+    expect(bridge.saves[0]).toEqual({
+      channel: StudioChannel.SaveWorkspace,
+      root: '/root',
+      payload: {
+        version: 1,
+        runConfigurations: [config('a', 'A')],
+        excludedCommands: ['make build'],
+        excludedFiles: ['dist', 'docs'],
+      },
+    });
+
+    await studio.saveExcludedFilesFor('/root', []);
+    expect('excludedFiles' in (bridge.saves[1].payload as object)).toBe(false);
+  });
+
+  it('saveExcludedFilesFor_anotherRoot_writesItsOwnFile_leavingTheFocusedOneAlone', async () => {
+    bridge.snapshot = sampleSnapshot();
+    const studio: StudioConfig = build();
+    rootPath.set('/root');
+    await settle();
+
+    await studio.saveExcludedFilesFor('/other', ['build']);
+
+    expect(bridge.saves[0].root).toBe('/other');
+    expect(bridge.saves[0].payload).toEqual({
+      ...sampleSnapshot().workspace,
+      excludedFiles: ['build'],
+    });
+    expect(studio.excludedFiles()).toEqual([]);
+  });
+
   it('persistsAndAppliesASelectionThroughTheUserChannel', async () => {
     bridge.snapshot = sampleSnapshot();
     const studio: StudioConfig = build();
