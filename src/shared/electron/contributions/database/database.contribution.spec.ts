@@ -5,6 +5,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseChannel } from '@shared/api/database-channels';
 import type {
   CompletionName,
+  ExplainOutcome,
   ConnectOutcome,
   DatabaseEngineInfo,
   ExecuteOutcome,
@@ -231,6 +232,7 @@ describe('DatabaseContribution', () => {
         DatabaseChannel.Action,
         DatabaseChannel.Names,
         DatabaseChannel.Transaction,
+        DatabaseChannel.Explain,
         DatabaseChannel.SecretsMachineSealing,
         DatabaseChannel.SecretsUnlock,
         DatabaseChannel.SecretsSeal,
@@ -479,6 +481,50 @@ describe('DatabaseContribution', () => {
       await fake.invoke(DatabaseChannel.Names, { session, scope: { kind: 'objects' } }),
     ).toEqual([]);
     expect(sqlite.ops()).not.toContain('names');
+  });
+
+  it('explain_asksTheEngineHoldingTheSession_underTheEnginesOwnId', async () => {
+    // #1099.
+    sqlite.engineInfo = engineInfo(['cancel', 'explain']);
+    const plans: ExplainOutcome = {
+      plans: [
+        {
+          statement: 'select 1',
+          line: 1,
+          root: { operator: 'QUERY PLAN', children: [] },
+          raw: '[]',
+        },
+      ],
+      failed: false,
+    };
+    sqlite.answers['explain'] = (): Promise<unknown> =>
+      Promise.resolve({ ok: true, result: plans });
+    const session: string = await connect();
+
+    expect(
+      await fake.invoke<ExplainOutcome>(DatabaseChannel.Explain, {
+        session,
+        text: 'select 1',
+        analyze: true,
+      }),
+    ).toEqual(plans);
+    expect(sqlite.calls.at(-1)).toEqual({
+      op: 'explain',
+      params: { session: 'engine-session', text: 'select 1', analyze: true },
+    });
+  });
+
+  it('explain_saysItCannot_forAnEngineWithoutTheCapability_orAClosedSession', async () => {
+    sqlite.engineInfo = engineInfo(['cancel']);
+    const session: string = await connect();
+
+    expect(await fake.invoke(DatabaseChannel.Explain, { session, text: 'select 1' })).toMatchObject(
+      { plans: [], failed: true, message: 'This engine cannot explain a query.' },
+    );
+    expect(sqlite.ops()).not.toContain('explain');
+    expect(
+      await fake.invoke(DatabaseChannel.Explain, { session: 'nope', text: 'select 1' }),
+    ).toMatchObject({ failed: true, message: 'The connection is closed. Connect again.' });
   });
 
   it('names_answersNone_forASessionThatIsClosed_orAPluginThatCannotBeReached', async () => {
