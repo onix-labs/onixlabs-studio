@@ -432,6 +432,8 @@ describe('SetupWizard', () => {
         'Code Hosting',
         'Database Engines',
         'Package Managers',
+        // #1351: once test adapters were in the curated index, they got their step too.
+        'Test Frameworks',
         'Security',
         'Terminal',
         'Summary',

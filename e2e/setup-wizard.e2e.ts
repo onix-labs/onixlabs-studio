@@ -64,6 +64,7 @@ test.describe('setup wizard', () => {
       'Code Hosting',
       'Database Engines',
       'Package Managers',
+      'Test Frameworks',
       'Security',
       'Terminal',
       'Summary',
