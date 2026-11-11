@@ -94,8 +94,14 @@ import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language
 import { Shell } from '@shared/angular/services/shell/shell';
 import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
 import { CodeLensServerSync } from './code-lens-server-sync';
-import { LspStatus } from './lsp-status';
+import { LOAD_STALL_MS, LspStatus } from './lsp-status';
 import { completionSupportOf, signatureHelpSupportOf } from './lsp-completion';
+
+/**
+ * Matches the work-done progress a server reports while it loads the workspace (#1211): gopls's
+ * "Setting up workspace". Only these are timed for a stalled load.
+ */
+const LOADING_PROGRESS: RegExp = /^setting up workspace\b/i;
 
 /**
  * The configuration section of the setting that chooses whether a server restores packages by itself
@@ -1284,6 +1290,15 @@ export class LspClient implements OnDestroy {
   >();
 
   /**
+   * Holds, per session, a timer for each work-done token that loads the workspace (#1211), keyed by
+   * token: when one outlasts {@link LOAD_STALL_MS}, the server's row says it is still loading.
+   */
+  private readonly loadTimers: Map<string, Map<string, ReturnType<typeof setTimeout>>> = new Map<
+    string,
+    Map<string, ReturnType<typeof setTimeout>>
+  >();
+
+  /**
    * Holds whether this client's sessions are currently suspended (its view hidden long enough to
    * release its servers), so {@link resume} knows there is something to bring back.
    */
@@ -1644,6 +1659,7 @@ export class LspClient implements OnDestroy {
     this.loadingSessions.delete(sessionId);
     this.serverProblemTexts.delete(sessionId);
     this.progressTitles.delete(sessionId);
+    this.clearLoadTimers(sessionId);
     this.clearPostLoadPulls(sessionId);
     this.clearRecolor(sessionId);
   }
@@ -3093,6 +3109,59 @@ export class LspClient implements OnDestroy {
   }
 
   /**
+   * Starts timing a work-done token that loads the workspace (#1211): if it has not ended after
+   * {@link LOAD_STALL_MS}, the server's row says it is still loading and offers Restart and Show Log.
+   * Nothing is ended; the server keeps loading.
+   * @param sessionId The session.
+   * @param token The token.
+   */
+  private startLoadTimer(sessionId: string, token: string): void {
+    const timers: Map<string, ReturnType<typeof setTimeout>> = this.loadTimers.get(sessionId) ??
+    new Map<string, ReturnType<typeof setTimeout>>();
+    this.loadTimers.set(sessionId, timers);
+    clearTimeout(timers.get(token));
+    timers.set(
+      token,
+      setTimeout((): void => {
+        if (this.progressTitles.get(sessionId)?.has(token) === true) {
+          this.status.setLoadStalled(sessionId, true);
+        }
+      }, LOAD_STALL_MS),
+    );
+  }
+
+  /**
+   * Stops timing a token that has ended (#1211), and says the load is no longer stalled once no other
+   * loading token of the session's is still going.
+   * @param sessionId The session.
+   * @param token The token.
+   */
+  private endLoadTimer(sessionId: string, token: string): void {
+    const timers: Map<string, ReturnType<typeof setTimeout>> | undefined =
+      this.loadTimers.get(sessionId);
+    if (!timers?.has(token)) {
+      return;
+    }
+    clearTimeout(timers.get(token));
+    timers.delete(token);
+    if (timers.size === 0) {
+      this.loadTimers.delete(sessionId);
+      this.status.setLoadStalled(sessionId, false);
+    }
+  }
+
+  /**
+   * Stops timing every loading token of a session whose server has gone (#1211).
+   * @param sessionId The session.
+   */
+  private clearLoadTimers(sessionId: string): void {
+    for (const timer of this.loadTimers.get(sessionId)?.values() ?? []) {
+      clearTimeout(timer);
+    }
+    this.loadTimers.delete(sessionId);
+  }
+
+  /**
    * Folds a `$/progress` notification into the session's status row. Each work-done token keeps its
    * `begin` title so later `report`s (which carry only a message or percentage) still read as "what";
    * the row shows the most recently reported token, and clears once every token has ended.
@@ -3128,6 +3197,7 @@ export class LspClient implements OnDestroy {
       candidate.value;
     if (value.kind === 'end') {
       tokens.delete(token);
+      this.endLoadTimer(sessionId, token);
       this.status.setProgress(
         sessionId,
         tokens.size === 0 ? null : [...tokens.values()][tokens.size - 1],
@@ -3136,6 +3206,9 @@ export class LspClient implements OnDestroy {
     }
     if (value.kind === 'begin' && typeof value.title === 'string') {
       tokens.set(token, value.title);
+      if (LOADING_PROGRESS.test(value.title)) {
+        this.startLoadTimer(sessionId, token);
+      }
     }
     const title: string | undefined = tokens.get(token);
     if (title === undefined) {

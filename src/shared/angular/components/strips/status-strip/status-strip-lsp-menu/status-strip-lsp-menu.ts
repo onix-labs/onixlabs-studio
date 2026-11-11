@@ -4,6 +4,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { Icon } from '@shared/angular/icons/icon';
 import { LspServer, LspServerState, LspStatus } from '@shared/angular/services/lsp/lsp-status';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
+import { Output } from '@shared/angular/services/output/output';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { MENU_POSITIONS } from '@shared/angular/components/menu/menu-position';
 import { Button } from '@shared/angular/components/forms/button/button';
@@ -40,6 +41,11 @@ export class StatusStripLspMenu {
   private readonly activeWorkspace: ActiveWorkspace = inject(ActiveWorkspace);
 
   /**
+   * Holds the Output panel, where each language server's log is a channel.
+   */
+  private readonly output: Output = inject(Output);
+
+  /**
    * Gets the language servers running for the active workspace, or an empty list when it runs none.
    */
   protected readonly servers: Signal<readonly LspServer[]> = computed((): readonly LspServer[] => {
@@ -74,6 +80,14 @@ export class StatusStripLspMenu {
   }
 
   /**
+   * Shows a server's log in the Output panel (#1211), for a server that may be stuck.
+   * @param server The server.
+   */
+  protected showLog(server: LspServer): void {
+    this.output.show(`lsp:${server.serverId}`);
+  }
+
+  /**
    * Gets the icon for a server state.
    * @param state The server state.
    * @returns Returns the matching icon.
@@ -95,6 +109,10 @@ export class StatusStripLspMenu {
    * @returns Returns the status text.
    */
   protected statusText(server: LspServer): string {
+    // A workspace load past two minutes (#1211) says so, whatever the state, naming what it is on.
+    if (server.loadStalled) {
+      return `Still loading after two minutes${server.progress === undefined ? '' : ` — ${server.progress}`}`;
+    }
     switch (server.state) {
       case 'starting':
         // What the server says it is doing beats a generic label; a stall is worth saying; only then
