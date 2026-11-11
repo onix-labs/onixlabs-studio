@@ -238,6 +238,7 @@ export function structureSupportOf(capabilities: unknown): LspStructureSupport {
         documentHighlightProvider?: unknown;
         linkedEditingRangeProvider?: unknown;
         selectionRangeProvider?: unknown;
+        colorProvider?: unknown;
         semanticTokensProvider?: { range?: unknown; legend?: unknown };
       }
     | undefined = capabilities as typeof caps;
@@ -250,6 +251,7 @@ export function structureSupportOf(capabilities: unknown): LspStructureSupport {
       semanticLegendOf(capabilities) !== null &&
       (range === true || (typeof range === 'object' && range !== null)),
     selectionRanges: isOffered(caps?.selectionRangeProvider),
+    colors: isOffered(caps?.colorProvider),
   };
 }
 

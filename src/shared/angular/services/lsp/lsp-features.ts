@@ -467,7 +467,26 @@ export interface LspStructureSupport {
    * Expand and Shrink Selection grow and shrink by (#1155).
    */
   readonly selectionRanges: boolean;
+
+  /**
+   * Gets whether it finds the colours written in a document and the ways to write a colour picked in
+   * their place (`textDocument/documentColor`, `textDocument/colorPresentation`) — swatches and the
+   * colour picker in HTML's `<style>` and `style=`, and in Svelte (#1214). Absent from a support built
+   * before colours were read.
+   */
+  readonly colors?: boolean;
 }
+
+/**
+ * The languages Monaco colours itself, through its own CSS and JSON workers: a server's colours there
+ * would only show every swatch twice, so they are not asked for (#1214).
+ */
+const MONACO_COLOR_LANGUAGES: ReadonlySet<string> = new Set<string>([
+  'css',
+  'scss',
+  'less',
+  'json',
+]);
 
 /**
  * Describes how a server shows facts above a document's types and members (#1149): code lenses —
@@ -1957,6 +1976,24 @@ export class LspFeatures {
           this.provideDocumentHighlights(monaco, model, position),
       });
     }
+    if (
+      support.colors === true &&
+      !MONACO_COLOR_LANGUAGES.has(language) &&
+      !registered.has(`${language}:colors`)
+    ) {
+      registered.add(`${language}:colors`);
+      monaco.languages.registerColorProvider(language, {
+        provideDocumentColors: (
+          model: MonacoApi.editor.ITextModel,
+        ): Promise<MonacoApi.languages.IColorInformation[] | undefined> =>
+          this.provideDocumentColors(model),
+        provideColorPresentations: (
+          model: MonacoApi.editor.ITextModel,
+          color: MonacoApi.languages.IColorInformation,
+        ): Promise<MonacoApi.languages.IColorPresentation[] | undefined> =>
+          this.provideColorPresentations(model, color),
+      });
+    }
     if (support.linkedEditing && !registered.has(`${language}:linkedEditing`)) {
       registered.add(`${language}:linkedEditing`);
       monaco.languages.registerLinkedEditingRangeProvider(language, {
@@ -2101,6 +2138,112 @@ export class LspFeatures {
       });
     }
     return ranges;
+  }
+
+  /**
+   * Asks the server serving a document for the colours written in it, each with its range, for the
+   * editor's swatches and colour picker (#1214).
+   * @param model The model.
+   * @returns Returns the colours, or undefined when no server serving the model finds colours.
+   */
+  private async provideDocumentColors(
+    model: MonacoApi.editor.ITextModel,
+  ): Promise<MonacoApi.languages.IColorInformation[] | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || this.bridge === undefined || ref.structure?.colors !== true) {
+      return undefined;
+    }
+    await ref.sync?.(model.getValue());
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/documentColor',
+        { textDocument: { uri: ref.uri } },
+      );
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(result)) {
+      return undefined;
+    }
+    const colors: MonacoApi.languages.IColorInformation[] = [];
+    for (const entry of result as readonly ({ range?: LspRange; color?: unknown } | null)[]) {
+      const color: MonacoApi.languages.IColor | null = toColor(entry?.color);
+      if (entry?.range !== undefined && color !== null) {
+        colors.push({ range: this.toRange(entry.range), color });
+      }
+    }
+    return colors;
+  }
+
+  /**
+   * Asks the server serving a document how a colour picked in the colour picker should be written in
+   * a colour's place (`rgb(…)`, `#rrggbb`, `hsl(…)`), the first of which the picker writes (#1214).
+   * @param model The model.
+   * @param color The colour picked, with the range it replaces.
+   * @returns Returns the ways to write it, or undefined when the server gave none.
+   */
+  private async provideColorPresentations(
+    model: MonacoApi.editor.ITextModel,
+    color: MonacoApi.languages.IColorInformation,
+  ): Promise<MonacoApi.languages.IColorPresentation[] | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || this.bridge === undefined || ref.structure?.colors !== true) {
+      return undefined;
+    }
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/colorPresentation',
+        {
+          textDocument: { uri: ref.uri },
+          color: color.color,
+          range: toLspRange(color.range),
+        },
+      );
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(result)) {
+      return undefined;
+    }
+    const presentations: MonacoApi.languages.IColorPresentation[] = [];
+    for (const entry of result as readonly ({
+      label?: unknown;
+      textEdit?: { range?: LspRange; newText?: unknown };
+      additionalTextEdits?: readonly { range?: LspRange; newText?: unknown }[];
+    } | null)[]) {
+      if (typeof entry?.label !== 'string') {
+        continue;
+      }
+      const edit: MonacoApi.languages.TextEdit | null = this.toTextEdit(entry.textEdit);
+      const additional: MonacoApi.languages.TextEdit[] = (entry.additionalTextEdits ?? [])
+        .map((candidate): MonacoApi.languages.TextEdit | null => this.toTextEdit(candidate))
+        .filter((candidate): candidate is MonacoApi.languages.TextEdit => candidate !== null);
+      presentations.push({
+        label: entry.label,
+        ...(edit === null ? {} : { textEdit: edit }),
+        ...(additional.length === 0 ? {} : { additionalTextEdits: additional }),
+      });
+    }
+    return presentations;
+  }
+
+  /**
+   * Turns a server's text edit into Monaco's.
+   * @param edit The server's edit, untrusted.
+   * @returns Returns the edit, or null when it is not one.
+   */
+  private toTextEdit(
+    edit: { range?: LspRange; newText?: unknown } | undefined,
+  ): MonacoApi.languages.TextEdit | null {
+    return edit?.range === undefined || typeof edit.newText !== 'string'
+      ? null
+      : { range: this.toRange(edit.range), text: edit.newText };
   }
 
   /**
@@ -4150,6 +4293,38 @@ export function opensBlockAt(model: MonacoApi.editor.ITextModel, line: number): 
  */
 function toLspPosition(position: MonacoApi.IPosition): LspPosition {
   return { line: position.lineNumber - 1, character: position.column - 1 };
+}
+
+/**
+ * Converts a one-based editor span to a zero-based protocol range.
+ * @param range The editor span.
+ * @returns Returns the protocol range.
+ */
+function toLspRange(range: MonacoApi.IRange): LspRange {
+  return {
+    start: toLspPosition({ lineNumber: range.startLineNumber, column: range.startColumn }),
+    end: toLspPosition({ lineNumber: range.endLineNumber, column: range.endColumn }),
+  };
+}
+
+/**
+ * Reads a protocol colour — red, green, blue and alpha, each from 0 to 1 — as Monaco's, which has the
+ * same shape.
+ * @param value The server's colour, untrusted.
+ * @returns Returns the colour, or null when it is not one.
+ */
+export function toColor(value: unknown): MonacoApi.languages.IColor | null {
+  const color: { red?: unknown; green?: unknown; blue?: unknown; alpha?: unknown } | null =
+    typeof value === 'object' && value !== null ? value : null;
+  const channel: (raw: unknown) => number | null = (raw: unknown): number | null =>
+    typeof raw === 'number' && raw >= 0 && raw <= 1 ? raw : null;
+  const red: number | null = channel(color?.red);
+  const green: number | null = channel(color?.green);
+  const blue: number | null = channel(color?.blue);
+  const alpha: number | null = channel(color?.alpha);
+  return red === null || green === null || blue === null || alpha === null
+    ? null
+    : { red, green, blue, alpha };
 }
 
 /**
