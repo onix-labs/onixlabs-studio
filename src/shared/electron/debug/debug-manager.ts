@@ -13,7 +13,7 @@ import {
 } from '@shared/api/debug-channels';
 import { WorkspaceContext } from '../workspace-context';
 import { DapClient, DebugAdapterConnection } from './dap-client';
-import { StdioTransport } from './dap-transport';
+import { StdioTransport, TcpServerTransport } from './dap-transport';
 import {
   DebugAdapterRegistry,
   DebugAdapterResolution,
@@ -233,6 +233,11 @@ export class DebugManager {
     if (spec.transport === 'tcp-server') {
       logger.debug('DebugManager', `Using compound js-debug session for ${spec.command}`);
       return new JsDebugSession(spec, rootPath);
+    }
+    if (spec.transport === 'tcp-session') {
+      // One ordinary session over the port the server announces (Delve's `dlv dap`, #1211).
+      logger.debug('DebugManager', `Using TCP session adapter connection for ${spec.command}`);
+      return new DapClient(new TcpServerTransport(spec.command, spec.args, spec.env, rootPath));
     }
     logger.debug('DebugManager', `Using stdio adapter connection for ${spec.command}`);
     return new DapClient(new StdioTransport(spec.command, spec.args, spec.env, rootPath));

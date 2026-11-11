@@ -118,7 +118,8 @@ describe('GoProjectSystem', () => {
     // Go has a target (GOOS/GOARCH) axis but no Debug/Release build-configuration axis.
     expect(provider.capabilities.buildConfigurations).toEqual([]);
     expect(provider.capabilities.target?.kind).toBe('arch');
-    expect(provider.capabilities.debug).toBeNull();
+    // Delve, installed from the Plugin Manager (#1211).
+    expect(provider.capabilities.debug).toEqual({ adapter: 'delve' });
   });
 
   it('ownsGoModManifestsOnly', () => {
