@@ -23,6 +23,7 @@ import {
 import type { AgentSurface, AiEditDecision, AiImageRef } from '@shared/api/ai-types';
 import { Agent, AgentItem, AgentItemKind } from '@shared/angular/services/agent/agent';
 import { formatTokens } from '@shared/angular/services/agent/token-format';
+import { clockTime, formatDuration, fullTime } from '@shared/angular/services/time/time-format';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { AgentExclusions } from '@shared/angular/services/agent-exclusions/agent-exclusions';
 import { looksLikeSandboxCrash, suggestExcludedCommand } from '@shared/api/excluded-commands';
@@ -271,6 +272,18 @@ interface TranscriptRow {
    * Gets the precomputed raw input/output payload views for a tool row, or undefined for other kinds.
    */
   readonly payloads?: RowPayloads;
+
+  /**
+   * Gets the muted time shown at the row's trailing edge (#1419): when the entry arrived, such as
+   * `14:32:07`, and for a finished tool call how long it took first (`12.4 s · 14:32:07`). Undefined
+   * for an entry saved before entries were timed, and for the synthetic working row.
+   */
+  readonly stamp?: string;
+
+  /**
+   * Gets when the entry arrived, in epoch milliseconds, which hovering the stamp spells out in full.
+   */
+  readonly stampAt?: number;
 }
 
 /**
@@ -961,10 +974,14 @@ export class AgentChat implements OnInit {
           const next: RailEntry | undefined = entries[index + 1];
           const lane: LaneInfo | undefined =
             row.kind === 'tool' && row.item !== null ? laneFor(row.item, build) : undefined;
+          const stampAt: number | undefined = row.item?.createdAt;
           return {
             id: row.item?.id ?? 'working',
             kind: row.kind,
             item: row.item,
+            ...(row.item === null || stampAt === undefined
+              ? {}
+              : { stamp: stampFor(row.item, stampAt), stampAt }),
             timeline,
             connectsUp: timeline && previous !== undefined && onRail(previous.kind),
             connectsDown: timeline && next !== undefined && onRail(next.kind),
@@ -1445,6 +1462,17 @@ export class AgentChat implements OnInit {
   }
 
   /**
+   * Spells out when an entry arrived as its stamp is hovered (#1419): the full date and time, and how
+   * long ago. Written on hover rather than bound, so "how long ago" is true when it is read rather than
+   * when the row was last rendered.
+   * @param event The pointer entering the stamp.
+   * @param at When the entry arrived, in epoch milliseconds.
+   */
+  protected showWhen(event: PointerEvent, at: number): void {
+    (event.currentTarget as HTMLElement).title = fullTime(at);
+  }
+
+  /**
    * Copies a transcript item's raw text (the markdown source, not the rendered HTML) to the
    * clipboard, flashing a transient "Copied" state on its button.
    * @param item The user or assistant item to copy.
@@ -1642,4 +1670,18 @@ export class AgentChat implements OnInit {
       this.exclusions.snooze(root);
     }
   }
+}
+
+/**
+ * Builds a row's stamp (#1419): the clock time it arrived, and for a tool call that has finished, how
+ * long it took first.
+ * @param item The row's transcript entry.
+ * @param createdAt When it arrived, in epoch milliseconds.
+ * @returns Returns the stamp, such as `14:32:07` or `12.4 s · 14:32:07`.
+ */
+function stampFor(item: AgentItem, createdAt: number): string {
+  const time: string = clockTime(createdAt);
+  return item.kind === 'tool' && item.endedAt !== undefined
+    ? `${formatDuration(Math.max(0, item.endedAt - createdAt))} · ${time}`
+    : time;
 }

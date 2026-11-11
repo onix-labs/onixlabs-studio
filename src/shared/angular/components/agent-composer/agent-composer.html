@@ -21,7 +21,7 @@
               : 'Elapsed run time'
           "
         >
-          {{ elapsedLabel() }}{{ awaitingDecision() ? ' ⏸' : '' }}
+          {{ elapsedLabel() }}{{ awaitingDecision() ? ' ⏸' : '' }}{{ quietLabel() }}
         </span>
         <span class="agent__composer-sep">|</span>
       }

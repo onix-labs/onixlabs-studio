@@ -11,6 +11,8 @@
     [tooltip]="triggerTitle()"
     [cdkMenuTriggerFor]="menu"
     [cdkMenuPosition]="menuPosition"
+    (cdkMenuOpened)="clock.start()"
+    (cdkMenuClosed)="clock.stop()"
   />
 }
 

@@ -264,6 +264,47 @@ describe('AgentChat', () => {
     expect(component).toBeTruthy();
   });
 
+  it('stamps_eachTimedEntry_withItsClockTime_andAFinishedToolCallWithItsDuration', () => {
+    // #1419. Built from local time, as the stamp is, so the test holds in any time zone.
+    const at: number = new Date(2026, 10, 10, 14, 32, 7).getTime();
+    items.set([
+      { id: 'item-1', kind: 'user', text: 'Fix the login redirect', createdAt: at },
+      {
+        id: 'item-2',
+        kind: 'tool',
+        text: '',
+        toolId: 't1',
+        toolName: 'Bash',
+        toolState: 'ok',
+        createdAt: at + 4000,
+        endedAt: at + 16_400,
+      },
+      // Saved before entries were timed: no stamp rather than a made-up one.
+      { id: 'item-3', kind: 'assistant', text: 'Done.' },
+    ]);
+    fixture.detectChanges();
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    expect(
+      Array.from(host.querySelectorAll('.agent__stamp')).map(
+        (stamp: Element): string => stamp.textContent?.trim() ?? '',
+      ),
+    ).toEqual(['14:32:07', '12.4 s · 14:32:11']);
+  });
+
+  it('stamp_whenHovered_spellsOutTheDateAndHowLongAgo', () => {
+    const at: number = Date.now() - 4 * 60_000;
+    items.set([{ id: 'item-1', kind: 'assistant', text: 'Done.', createdAt: at }]);
+    fixture.detectChanges();
+    const stamp: HTMLElement = (fixture.nativeElement as HTMLElement).querySelector(
+      '.agent__stamp',
+    )!;
+
+    stamp.dispatchEvent(new PointerEvent('pointerenter'));
+
+    expect(stamp.title).toContain('4 minutes ago');
+  });
+
   describe('excluded commands (#1163)', () => {
     /**
      * Builds a failed shell call, as the transcript holds one.
