@@ -8,15 +8,18 @@ import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contrib
 import { MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { PluginManagerAgentPanelState } from '../plugin-manager-agent/plugin-manager-agent-panel-state';
+import { PluginUpdateAll } from '../plugin-update-all/plugin-update-all';
 
 /**
- * The contextual ribbon shown while a Plugin Manager tab is active: reloading the catalogue. Searching,
+ * The contextual ribbon shown while a Plugin Manager tab is active: reloading the catalogue, and
+ * updating every plugin with an update waiting (#1451). Searching,
  * filtering and sorting live beside the list they act on — the side panel and the table's column
  * headers (#950).
  *
  * ⛔ Installing and removing stay on the rows they act on. A strip button would need a selection model
  * to know which plugin it meant, and a list where the action is somewhere else is a list you have to
- * look away from to use.
+ * look away from to use. Update All is the exception because it means every row with an update, and
+ * still asks each plugin's terms as its row would.
  */
 @Component({
   selector: 'app-plugin-manager-ribbon',
@@ -40,6 +43,16 @@ export class PluginManagerRibbon {
    * Gets whether an operation is in flight, disabling the action.
    */
   protected readonly busy: Signal<boolean> = this.plugins.busy;
+
+  /**
+   * Holds the Update All runner (#1451).
+   */
+  private readonly updates: PluginUpdateAll = inject(PluginUpdateAll);
+
+  /**
+   * Gets whether Update All can be pressed: at least one plugin has an update, and nothing is running.
+   */
+  protected readonly updateAllEnabled: Signal<boolean> = this.updates.enabled;
 
   /**
    * Holds whether the docked agent is showing (#968).
@@ -66,6 +79,12 @@ export class PluginManagerRibbon {
             label: 'Refresh',
             run: (): void => this.onRefresh(),
           },
+          {
+            id: 'plugins.updateAll',
+            label: 'Update All',
+            enabled: this.updateAllEnabled(),
+            run: (): void => this.onUpdateAll(),
+          },
         ],
       },
     ],
@@ -76,6 +95,13 @@ export class PluginManagerRibbon {
    */
   protected onRefresh(): void {
     void this.plugins.refresh();
+  }
+
+  /**
+   * Updates every plugin with an update waiting, asking each one's terms as its row would.
+   */
+  protected onUpdateAll(): void {
+    void this.updates.updateAll();
   }
 
   /**
