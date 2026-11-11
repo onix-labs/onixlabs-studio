@@ -31,13 +31,25 @@
              so the flyout stays open: the point of pressing Restart is to watch the row go
              Starting… → Ready, which it cannot do from a closed menu. Same pattern as the tasks and
              notifications flyouts. -->
+        <!-- A server stuck starting or loading (#1211) also offers its log, to see what it is doing. -->
+        @if (server.stalled || server.loadStalled) {
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.OUTPUT"
+            ariaLabel="Show language server log"
+            tooltip="Show Log"
+            (pointerdown)="$event.preventDefault()"
+            (click)="showLog(server); $event.stopPropagation()"
+          />
+        }
         <app-button
           variant="none"
           size="small"
           [icon]="Icon.RESTART"
           ariaLabel="Restart language server"
           tooltip="Restart"
-          [disabled]="server.state === 'starting' && !server.stalled"
+          [disabled]="server.state === 'starting' && !server.stalled && !server.loadStalled"
           (pointerdown)="$event.preventDefault()"
           (click)="restart(server); $event.stopPropagation()"
         />
