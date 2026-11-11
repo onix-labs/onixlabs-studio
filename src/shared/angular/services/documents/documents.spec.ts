@@ -173,6 +173,32 @@ describe('Documents', () => {
     expect(await documents.saveAs(id)).toBe(false);
   });
 
+  it('opening_aConfigFile_readsItsContent_toChooseItsLanguage (#1068)', () => {
+    // `.config` says nothing certain, so the text decides: XML when it reads as XML.
+    const xml: string = documents.createWellDocument({
+      path: '/ws/settings.config',
+      name: 'settings.config',
+      extension: '.config',
+      content: '<?xml version="1.0"?>\n<configuration />',
+    });
+    const ini: string = documents.createWellDocument({
+      path: '/ws/other.config',
+      name: 'other.config',
+      extension: '.config',
+      content: 'key = value',
+    });
+    const project: string = documents.createWellDocument({
+      path: '/ws/App.csproj',
+      name: 'App.csproj',
+      extension: '.csproj',
+      content: '<Project />',
+    });
+
+    expect(documents.get(xml)?.language()).toBe('xml');
+    expect(documents.get(ini)?.language()).toBe('plaintext');
+    expect(documents.get(project)?.language()).toBe('xml');
+  });
+
   it('anOrdinaryWellDocument_isEditable', () => {
     const id: string = documents.createWellDocument(SAMPLE_FILE);
 
