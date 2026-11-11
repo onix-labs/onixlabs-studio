@@ -8,6 +8,7 @@
  */
 
 import { sanitizeExcludedCommands } from './excluded-commands';
+import { sanitizeExcludedFiles } from './excluded-files';
 
 /**
  * The name of the folder holding a workspace's persisted studio configuration.
@@ -196,6 +197,12 @@ export interface StudioWorkspace {
    * exactly this list in the workspace.
    */
   readonly excludedCommands?: readonly string[];
+
+  /**
+   * Gets the files and folders excluded from the explorers, Expand All and Find (#1252), as canonical
+   * workspace-relative paths, or undefined for none.
+   */
+  readonly excludedFiles?: readonly string[];
 }
 
 /**
@@ -477,12 +484,14 @@ export function parseWorkspace(raw: unknown): StudioWorkspace {
         )
     : [];
   const excludedCommands: readonly string[] = sanitizeExcludedCommands(record['excludedCommands']);
+  const excludedFiles: readonly string[] = sanitizeExcludedFiles(record['excludedFiles']);
   return {
     version,
     runConfigurations,
     providerKind: optionalString(record, 'providerKind'),
     // Kept only when there are some, so a workspace without them writes the file it always did.
     ...(excludedCommands.length === 0 ? {} : { excludedCommands }),
+    ...(excludedFiles.length === 0 ? {} : { excludedFiles }),
   };
 }
 

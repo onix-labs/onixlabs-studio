@@ -59,6 +59,10 @@ import { Shell } from '@shared/angular/services/shell/shell';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
 import {
+  EXCLUDED_ROW_FIELDS,
+  ExplorerExclusions,
+} from '@shared/angular/services/explorer-filter/explorer-exclusions';
+import {
   TreeSelectGesture,
   TreeSelection,
 } from '@shared/angular/components/tree-view/tree-selection';
@@ -95,6 +99,14 @@ const ACTION_RENAME: string = 'rename';
  * Identifies the Delete action on a file or a folder on disk, or on several.
  */
 const ACTION_DELETE: string = 'delete';
+
+/**
+ * Identifies the Exclude and Include actions on what a row stands for on disk (#1252), and the Show
+ * Hidden Files switch.
+ */
+const ACTION_EXCLUDE: string = 'exclude';
+const ACTION_INCLUDE: string = 'include';
+const ACTION_SHOW_HIDDEN: string = 'show-hidden';
 
 /**
  * Prefixes the context-menu id of a capability action run against a single project, so the handler can
@@ -247,6 +259,11 @@ export class SolutionPanel {
   private readonly workspace: Workspace = inject(Workspace);
 
   /**
+   * Holds the files and folders the workspace excludes, and whether hidden things show (#1252).
+   */
+  private readonly exclusions: ExplorerExclusions = inject(ExplorerExclusions);
+
+  /**
    * Holds the rename a file or folder on disk commits through, which brings what refers to it along.
    */
   private readonly entryRename: EntryRename = inject(EntryRename);
@@ -331,6 +348,11 @@ export class SolutionPanel {
           label: 'Collapse Empty Folders',
           checked: this.solution.collapsesEmptyFolders(),
         },
+        {
+          id: ACTION_SHOW_HIDDEN,
+          label: 'Show Hidden Files',
+          checked: this.exclusions.showsHidden(),
+        },
       ],
     },
     { id: ACTION_OPEN_ROOT, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
@@ -383,6 +405,7 @@ export class SolutionPanel {
       if (vcs.length > 0) {
         items.push({ id: 'solution-menu.sep-vcs', label: '', separator: true }, ...vcs);
       }
+      items.push(...this.exclusionItems([row]));
       // A file, or a folder on disk, is renamed and deleted as the File Explorer does it. A project
       // and a solution folder are what the solution declares, and keep their own commands.
       if (onDisk(row)) {
@@ -666,6 +689,8 @@ export class SolutionPanel {
       // How version control sees what the row stands for, in colour (#860) — when the Solution
       // Explorer shows source-control state at all.
       ...(this.solution.showsGitStatus() ? scmRowFields(this.scmStateFor(row)) : {}),
+      // An excluded entry shows only while hidden things do, greyed so it can be included again.
+      ...(this.isExcludedRow(row) ? EXCLUDED_ROW_FIELDS : {}),
       // An error in what the row stands for, or anywhere beneath it, squiggles its name.
       ...(this.settings.value('workspaces.showErrorSquiggles')() && this.hasProblems(row, 'error')
         ? { squiggle: true }
@@ -775,19 +800,120 @@ export class SolutionPanel {
   /**
    * Gets the solution's rows the tree shows: all of them, or — narrowed — the files matching any kind
    * ticked and the projects and folders on the way to them. The root row stays, since it heads the
-   * tree.
+   * tree. Hidden things — dotfiles and excluded entries — show only while Show Hidden Files is on, and
+   * ignored ones only while Ignored Files shows them greyed (#1252); a row left out takes everything
+   * beneath it along.
    */
   private readonly shownRows: Signal<readonly SolutionRow[]> = computed(
     (): readonly SolutionRow[] => {
-      const rows: readonly SolutionRow[] = this.solution.rows();
       const kinds: ReadonlySet<ExplorerFilterKind> = this.filterKinds();
-      return kinds.size === 0
-        ? rows
-        : rows.filter(
-            (row: SolutionRow): boolean => row.kind === 'solution' || this.matches(row, kinds),
-          );
+      const showsHidden: boolean = this.exclusions.showsHidden();
+      const hidesIgnored: boolean = this.settings.value('workspaces.ignoredFiles')() === 'hidden';
+      const shown: SolutionRow[] = [];
+      let leftOutDepth: number = Number.POSITIVE_INFINITY;
+      for (const row of this.solution.rows()) {
+        if (row.depth > leftOutDepth) {
+          continue;
+        }
+        leftOutDepth = Number.POSITIVE_INFINITY;
+        if (row.kind === 'solution') {
+          shown.push(row);
+          continue;
+        }
+        const hidden: boolean =
+          !showsHidden &&
+          (this.isExcludedRow(row) || (row.path !== null && this.exclusions.isHidden(row.path)));
+        if (hidden || (hidesIgnored && this.scmStateFor(row) === 'ignored')) {
+          leftOutDepth = row.depth;
+          continue;
+        }
+        if (kinds.size === 0 || this.matches(row, kinds)) {
+          shown.push(row);
+        }
+      }
+      return shown;
     },
   );
+
+  /**
+   * Gets the path a row is excluded by (#1252): a file's or folder's own, or a project's directory —
+   * the project file is what it opens, but the directory is what it stands for. A solution folder and
+   * the root stand for no one path, and cannot be excluded.
+   * @param row The row.
+   * @returns Returns the path, or null when the row cannot be excluded.
+   */
+  private exclusionPathOf(row: SolutionRow): string | null {
+    if (row.path === null) {
+      return null;
+    }
+    if (onDisk(row)) {
+      return row.path;
+    }
+    return row.kind === 'project' ? row.path.replace(/[\\/][^\\/]*$/, '') : null;
+  }
+
+  /**
+   * Determines whether what a row stands for is excluded.
+   * @param row The row.
+   * @returns Returns true when it is.
+   */
+  private isExcludedRow(row: SolutionRow): boolean {
+    const path: string | null = this.exclusionPathOf(row);
+    return path !== null && this.exclusions.isExcluded(path);
+  }
+
+  /**
+   * Builds Exclude, or Include when every row's entry is listed already, under a separator (#1252).
+   * Rows that cannot be excluded, or sit inside an excluded folder, offer neither.
+   * @param rows The row, or the selected rows.
+   * @returns Returns the items.
+   */
+  private exclusionItems(rows: readonly SolutionRow[]): readonly MenuItem[] {
+    const paths: readonly (string | null)[] = rows.map((row: SolutionRow): string | null =>
+      this.exclusionPathOf(row),
+    );
+    if (
+      paths.length === 0 ||
+      paths.some(
+        (path: string | null): boolean => path === null || !this.exclusions.canExclude(path),
+      )
+    ) {
+      return [];
+    }
+    const resolved: readonly string[] = paths as readonly string[];
+    if (resolved.every((path: string): boolean => this.exclusions.isListed(path))) {
+      return [
+        { id: 'solution-menu.sep-exclude', label: '', separator: true },
+        { id: ACTION_INCLUDE, label: 'Include', icon: Icon.EXPLORER_INCLUDE },
+      ];
+    }
+    if (resolved.some((path: string): boolean => this.exclusions.isExcluded(path))) {
+      return [];
+    }
+    return [
+      { id: 'solution-menu.sep-exclude', label: '', separator: true },
+      { id: ACTION_EXCLUDE, label: 'Exclude', icon: Icon.EXPLORER_EXCLUDE },
+    ];
+  }
+
+  /**
+   * Runs Exclude or Include on rows, when that is the command chosen.
+   * @param itemId The chosen item.
+   * @param rows The rows it was chosen for.
+   * @returns Returns true when the command was one of the two.
+   */
+  private runExclusion(itemId: string, rows: readonly SolutionRow[]): boolean {
+    if (itemId !== ACTION_EXCLUDE && itemId !== ACTION_INCLUDE) {
+      return false;
+    }
+    const paths: string[] = rows
+      .map((row: SolutionRow): string | null => this.exclusionPathOf(row))
+      .filter((path: string | null): path is string => path !== null);
+    void (itemId === ACTION_EXCLUDE
+      ? this.exclusions.exclude(paths)
+      : this.exclusions.include(paths));
+    return true;
+  }
 
   /**
    * Holds the rows the filter opened to lead to what it shows, so clearing it closes exactly those,
@@ -926,6 +1052,9 @@ export class SolutionPanel {
       case ACTION_COLLAPSE_EMPTY_FOLDERS:
         this.solution.toggleCollapseEmptyFolders();
         return;
+      case ACTION_SHOW_HIDDEN:
+        this.exclusions.toggleShowHidden();
+        return;
       case ACTION_OPEN_ROOT: {
         const root: string | undefined = this.model()?.root;
         if (root !== undefined) {
@@ -962,6 +1091,9 @@ export class SolutionPanel {
     }
     if (selection.itemId === ACTION_DELETE) {
       this.requestDelete([row]);
+      return;
+    }
+    if (this.runExclusion(selection.itemId, [row])) {
       return;
     }
     const path: string | null = this.pathFor(row);
@@ -1049,6 +1181,7 @@ export class SolutionPanel {
     if (vcs.length > 0) {
       items.push({ id: 'solution-menu.sep-vcs', label: '', separator: true }, ...vcs);
     }
+    items.push(...this.exclusionItems(targets));
     if (targets.every((row: SolutionRow): boolean => onDisk(row))) {
       items.push(
         { id: 'solution-menu.sep-edit', label: '', separator: true },
@@ -1070,7 +1203,7 @@ export class SolutionPanel {
     if (paths.length !== targets.length) {
       return;
     }
-    if (this.vcsMenu.run(itemId, this.vcsTargets(targets))) {
+    if (this.vcsMenu.run(itemId, this.vcsTargets(targets)) || this.runExclusion(itemId, targets)) {
       return;
     }
     switch (itemId) {

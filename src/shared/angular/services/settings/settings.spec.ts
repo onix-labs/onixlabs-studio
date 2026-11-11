@@ -46,6 +46,15 @@ describe('Settings', () => {
     expect(service.get('textEditor.printMargin')).toBe('wide');
   });
 
+  it('ignoredFiles_showsThemGreyedUntilSetToHide (#1252)', () => {
+    const service: Settings = TestBed.inject(Settings);
+    expect(service.get('workspaces.ignoredFiles')).toBe('greyed');
+
+    service.set('workspaces.ignoredFiles', 'hidden');
+
+    expect(service.value('workspaces.ignoredFiles')()).toBe('hidden');
+  });
+
   it('updateTextEditorSettings_whenCalled_updatesGlobalSettings', () => {
     const service: Settings = TestBed.inject(Settings);
 

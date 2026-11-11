@@ -3,6 +3,8 @@ import type { MockInstance } from 'vitest';
 import { EntryRename } from '@shared/angular/services/rename/entry-rename';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { ExplorerFilter } from '@shared/angular/services/explorer-filter/explorer-filter';
+import { ExplorerExclusions } from '@shared/angular/services/explorer-filter/explorer-exclusions';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Diagnostic, Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import {
@@ -259,9 +261,17 @@ describe('SolutionPanel', () => {
         { provide: BuildRunner, useValue: builds },
         { provide: Notifications, useValue: notifications },
         { provide: EntryRename, useValue: { rename: (): void => undefined } },
+        ExplorerExclusions,
       ],
     }).compileComponents();
 
+    localStorage.removeItem('workspace.files.showHidden');
+    // The solution's folder is the open workspace, so its entries can be excluded (#1252).
+    (
+      TestBed.inject(Workspace) as unknown as {
+        rootListing: WritableSignal<{ path: string; name: string; entries: [] } | null>;
+      }
+    ).rootListing.set({ path: '/root', name: 'root', entries: [] });
     fixture = TestBed.createComponent(SolutionPanel);
     component = fixture.componentInstance;
     fixture.componentRef.setInput('panel', panel);
@@ -574,6 +584,8 @@ describe('SolutionPanel', () => {
         'open',
         'copy-path',
         'copy-relative-path',
+        'solution-menu.sep-exclude',
+        'exclude',
         'solution-menu.sep-edit',
         'delete',
       ]);
@@ -591,6 +603,8 @@ describe('SolutionPanel', () => {
         'copy-path',
         'copy-relative-path',
         'reveal',
+        'solution-menu.sep-exclude',
+        'exclude',
         'solution-menu.sep-edit',
         'rename',
         'delete',
@@ -613,6 +627,8 @@ describe('SolutionPanel', () => {
         'reveal',
         'solution-menu.sep-vcs',
         'show-diff',
+        'solution-menu.sep-exclude',
+        'exclude',
         'solution-menu.sep-edit',
         'rename',
         'delete',
@@ -642,7 +658,14 @@ describe('SolutionPanel', () => {
 
     it('contextMenuFor_aProject_offersEditProjectFileRatherThanOpen', () => {
       const ids: string[] = menuIds(makeRow({ kind: 'project', path: '/root/A/A.csproj' }));
-      expect(ids).toEqual(['edit-project', 'copy-path', 'copy-relative-path', 'reveal']);
+      expect(ids).toEqual([
+        'edit-project',
+        'copy-path',
+        'copy-relative-path',
+        'reveal',
+        'solution-menu.sep-exclude',
+        'exclude',
+      ]);
     });
 
     it('contextMenuFor_theWorkspaceRoot_offersThePathActionsAgainstTheSolutionRoot', () => {
@@ -702,10 +725,95 @@ describe('SolutionPanel', () => {
         'copy-path',
         'copy-relative-path',
         'reveal',
+        'solution-menu.sep-exclude',
+        'exclude',
         'solution-menu.sep-edit',
         'rename',
         'delete',
       ]);
+    });
+
+    describe('excluded, hidden and ignored entries (#1252)', () => {
+      const root: SolutionRow = makeRow({ key: 'root', kind: 'solution', path: null });
+      const a: SolutionRow = makeRow({
+        key: 'a',
+        kind: 'project',
+        depth: 1,
+        expandable: true,
+        expanded: true,
+        path: '/root/A/A.csproj',
+        scmPaths: ['/root/A/A.csproj', '/root/A'],
+      });
+      const g: SolutionRow = makeRow({ key: 'g', kind: 'file', depth: 2, path: '/root/A/g.cs' });
+      const env: SolutionRow = makeRow({
+        key: 'env',
+        kind: 'file',
+        depth: 2,
+        path: '/root/A/.env',
+      });
+      const b: SolutionRow = makeRow({
+        key: 'b',
+        kind: 'project',
+        depth: 1,
+        path: '/root/B/B.csproj',
+      });
+
+      beforeEach(() => {
+        solution.model.set(model);
+        solution.rows.set([root, a, g, env, b]);
+      });
+
+      /**
+       * Gets the keys of the rows the tree shows.
+       * @returns Returns the keys.
+       */
+      function shown(): readonly string[] {
+        return (component as unknown as { rows: () => readonly TreeRow[] })
+          .rows()
+          .map((row: TreeRow): string => row.id);
+      }
+
+      it('excludeAProject_excludesItsDirectory_andGreysItWhileHiddenThingsShow', async () => {
+        component.onContextAction({ itemId: 'exclude', row: treeRow(a) });
+        await fixture.whenStable();
+
+        expect(TestBed.inject(ExplorerExclusions).paths()).toEqual(['A']);
+        const rows: readonly TreeRow[] = (
+          component as unknown as { rows: () => readonly TreeRow[] }
+        ).rows();
+        expect(rows.find((row: TreeRow): boolean => row.id === 'a')?.tone).toBe('muted');
+        expect(rows.find((row: TreeRow): boolean => row.id === 'g')?.tone).toBe('muted');
+        expect(menuIds(a)).toContain('include');
+        expect(menuIds(g)).not.toContain('exclude');
+      });
+
+      it('showHiddenFilesOff_leavesOutExcludedProjectsWithTheirContents_andDotfiles', async () => {
+        expect(shown()).toEqual(['root', 'a', 'g', 'env', 'b']);
+        component.onContextAction({ itemId: 'exclude', row: treeRow(a) });
+        await fixture.whenStable();
+
+        component.onMoreAction('show-hidden');
+        expect(shown()).toEqual(['root', 'b']);
+
+        component.onContextAction({ itemId: 'include', row: treeRow(a) });
+        await fixture.whenStable();
+        expect(shown()).toEqual(['root', 'a', 'g', 'b']);
+      });
+
+      it('ignoredFilesHide_leavesOutWhatVersionControlIgnores', () => {
+        vi.spyOn(TestBed.inject(WorkspaceGit), 'stateFor').mockImplementation(
+          (path: string): ExplorerScmState | null => (path === '/root/A/g.cs' ? 'ignored' : null),
+        );
+        TestBed.inject(Settings).set('workspaces.ignoredFiles', 'hidden');
+
+        expect(shown()).toEqual(['root', 'a', 'env', 'b']);
+        TestBed.inject(Settings).set('workspaces.ignoredFiles', 'greyed');
+      });
+
+      it('theRootAndASolutionFolder_cannotBeExcluded', () => {
+        expect(menuIds(root)).not.toContain('exclude');
+        expect(menuIds(makeRow({ kind: 'folder', path: null }))).not.toContain('exclude');
+      });
     });
 
     it('contextMenuFor_aLogicalFolderInsideAProject_offersNothing', () => {
@@ -856,6 +964,8 @@ describe('SolutionPanel', () => {
         'copy-path',
         'copy-relative-path',
         'reveal',
+        'solution-menu.sep-exclude',
+        'exclude',
       ]);
     });
 
@@ -869,6 +979,8 @@ describe('SolutionPanel', () => {
         'copy-path',
         'copy-relative-path',
         'reveal',
+        'solution-menu.sep-exclude',
+        'exclude',
       ]);
     });
 
@@ -881,6 +993,8 @@ describe('SolutionPanel', () => {
         'copy-path',
         'copy-relative-path',
         'reveal',
+        'solution-menu.sep-exclude',
+        'exclude',
         'solution-menu.sep-edit',
         'rename',
         'delete',
@@ -898,6 +1012,8 @@ describe('SolutionPanel', () => {
         'copy-path',
         'copy-relative-path',
         'reveal',
+        'solution-menu.sep-exclude',
+        'exclude',
       ]);
     });
 
@@ -914,7 +1030,8 @@ describe('SolutionPanel', () => {
 
       // One rule, standing on its own between Edit Project File and the verbs — a separator replaces
       // the item it is on rather than decorating it, so a flagged Build would be a rule and no Build.
-      expect(separators).toHaveLength(1);
+      // The second rule heads Exclude, at the end.
+      expect(separators).toHaveLength(2);
       expect(items[1]).toBe(separators[0]);
       expect(items[2].id).toBe('project-action:build');
     });
@@ -925,8 +1042,9 @@ describe('SolutionPanel', () => {
       expect(
         component
           .contextMenuFor(treeRow(makeRow({ kind: 'project', path: project.path })))
-          .filter((item: MenuItem): boolean => item.separator === true),
-      ).toEqual([]);
+          .filter((item: MenuItem): boolean => item.separator === true)
+          .map((item: MenuItem): string => item.id),
+      ).toEqual(['solution-menu.sep-exclude']);
     });
 
     it('onContextAction_aVerb_runsItAgainstThatProjectAloneAndSelectsTheRow', () => {
@@ -1091,6 +1209,7 @@ describe('SolutionPanel', () => {
         'follow-active',
         'git-status',
         'collapse-empty-folders',
+        'show-hidden',
       ]);
     });
 
@@ -1100,6 +1219,7 @@ describe('SolutionPanel', () => {
         'follow-active': true,
         'git-status': true,
         'collapse-empty-folders': false,
+        'show-hidden': true,
       });
 
       solution.followsActiveDocument.set(false);
@@ -1108,6 +1228,7 @@ describe('SolutionPanel', () => {
         'follow-active': false,
         'git-status': true,
         'collapse-empty-folders': false,
+        'show-hidden': true,
       });
     });
 

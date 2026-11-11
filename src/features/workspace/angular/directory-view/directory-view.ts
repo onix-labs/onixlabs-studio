@@ -16,6 +16,7 @@ import {
 } from '@angular/core';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
 import { Log } from '@shared/angular/services/log/log';
+import { ExplorerExclusions } from '@shared/angular/services/explorer-filter/explorer-exclusions';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AGENT_RUN_OWNER } from '@shared/angular/services/agent/agent-run-owner';
@@ -272,6 +273,8 @@ const AGENT_OPEN: OpenOptions = { background: true };
     WorkspaceGit,
     // The explorers' version-control commands (#1041), beside the status they read.
     ExplorerVcsMenu,
+    // The files and folders the explorers, Expand All and Find leave out (#1252).
+    ExplorerExclusions,
     Repository,
     // The Repository panel's worktrees, per view beside its Repository: "the current worktree" is
     // the checkout this view shows, which a container keeps one view alive for each of.

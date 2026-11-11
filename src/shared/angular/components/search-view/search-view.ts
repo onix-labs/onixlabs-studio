@@ -33,6 +33,7 @@ import { ReplaceFailure, ReplaceResponse, SearchFileFilter } from '@shared/api/s
 import { SearchAdapter, SearchReplaceOutcome } from './search-adapter';
 import { SearchResultsTree } from './search-results-tree';
 import { FindOptions } from '@shared/angular/services/find-options/find-options';
+import { ExplorerExclusions } from '@shared/angular/services/explorer-filter/explorer-exclusions';
 
 /**
  * Labels each scope as the scope dropdown offers it (#1007).
@@ -191,6 +192,14 @@ export class SearchView implements OnDestroy {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the workspace's excluded files and folders (#1252), left out of a search on disk unless
+   * Search Excluded Files and Folders is on; null outside a workspace tab.
+   */
+  private readonly exclusions: ExplorerExclusions | null = inject(ExplorerExclusions, {
+    optional: true,
+  });
+
+  /**
    * Gets the chosen scope.
    */
   protected readonly scope: Signal<FindScope> = computed((): FindScope => this.adapter().scope());
@@ -269,7 +278,8 @@ export class SearchView implements OnDestroy {
   protected readonly searchIgnored: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
-   * Holds whether the folders Studio leaves out of every search are searched.
+   * Holds whether the folders Studio leaves out of every search are searched, and the workspace's own
+   * excluded files and folders.
    */
   protected readonly searchExcluded: WritableSignal<boolean> = signal<boolean>(false);
 
@@ -547,9 +557,12 @@ export class SearchView implements OnDestroy {
    * @returns Returns the filter.
    */
   private fileFilter(): SearchFileFilter {
+    const excluded: readonly string[] = this.searchExcluded()
+      ? []
+      : (this.exclusions?.searchGlobs() ?? []);
     return {
       include: patternsIn(this.filesToInclude()),
-      exclude: patternsIn(this.filesToExclude()),
+      exclude: [...patternsIn(this.filesToExclude()), ...excluded],
       ignored: this.searchIgnored(),
       excluded: this.searchExcluded(),
       hidden: this.searchHidden(),
