@@ -4,9 +4,10 @@
 //
 // The go command reads each from the process environment first and from its own environment file
 // second — the file `go env -w` writes, at `os.UserConfigDir()/go/env` unless `GOENV` names another.
-// This plugin does the same. ⚠️ Studio hands a plugin an allow-listed environment, and today that list
-// carries none of these variables, so in practice the file is what is read: a value exported only in a
-// shell profile is not seen. `go env -w GOPRIVATE=…` is how a user makes it visible.
+// This plugin does the same. Studio hands a plugin an allow-listed environment; since #1423 that list
+// carries `GOPROXY`, `GOPRIVATE`, `GONOPROXY` and `GONOSUMDB`, so a value exported in a shell profile
+// is seen as well as one written with `go env -w`. ⚠️ `GOAUTH` and `NETRC` are not on it, so for those
+// the file is still what is read.
 
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
