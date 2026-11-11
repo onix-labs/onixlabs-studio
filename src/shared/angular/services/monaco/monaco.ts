@@ -37,6 +37,7 @@ import { editorAppearanceOptions } from './editor-appearance-options';
 import { editorSuggestOptions, wordSuggestionsOption } from './editor-suggest-options';
 import { editorTypingOptions } from './editor-typing-options';
 import { registerAsmLanguage } from './monaco-asm-language';
+import { registerCsharpLanguage } from './monaco-csharp-language';
 import { registerScssLanguage } from './monaco-scss-language';
 import { registerCypherLanguage } from './monaco-cypher-language';
 import { registerDocCommentRules } from './monaco-doc-comment-rules';
@@ -785,6 +786,7 @@ export class Monaco {
     defineThemes(window.monaco, this.settings.textEditorAccentSelection());
     registerAsmLanguage(window.monaco);
     registerScssLanguage(window.monaco);
+    registerCsharpLanguage(window.monaco);
     registerCypherLanguage(window.monaco);
     registerDocCommentRules(window.monaco);
     this.foldingRefreshers.push(
@@ -1083,6 +1085,7 @@ export class Monaco {
       defineThemes(monaco, this.settings.textEditorAccentSelection());
       registerAsmLanguage(monaco, target);
       registerScssLanguage(monaco, target);
+      registerCsharpLanguage(monaco, target);
       registerCypherLanguage(monaco, target);
       registerDocCommentRules(monaco);
       this.foldingRefreshers.push(

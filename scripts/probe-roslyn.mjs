@@ -16,6 +16,7 @@
 //   node scripts/probe-roslyn.mjs --solution ~/src/app/app.slnx
 //   node scripts/probe-roslyn.mjs --solution app.slnx --file src/Program.cs --server <path> --out x.json
 //   node scripts/probe-roslyn.mjs --solution app.slnx --verbose      # print the server's errors
+//   node scripts/probe-roslyn.mjs --solution app.slnx --profile <scratch dir>  # not the user's profile
 
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
@@ -35,7 +36,7 @@ function option(name) {
 const solution = option('solution');
 if (solution === null) {
   console.error(
-    'Usage: node scripts/probe-roslyn.mjs --solution <path.sln|path.slnx> [--file <path.cs>] [--server <path>] [--out <file.json>] [--verbose]',
+    'Usage: node scripts/probe-roslyn.mjs --solution <path.sln|path.slnx> [--file <path.cs>] [--server <path>] [--profile <dir>] [--out <file.json>] [--verbose]',
   );
   exit(2);
 }
@@ -55,5 +56,7 @@ const args = [
 ];
 if (option('file') !== null) args.push('--file', path.resolve(option('file')));
 if (option('server') !== null) args.push('--server-path', path.resolve(option('server')));
+// A scratch profile keeps the probe out of the user's own Studio profile (its settings and log folder).
+if (option('profile') !== null) args.push('--profile', path.resolve(option('profile')));
 if (argv.includes('--verbose')) args.push('--errors');
 exit(spawnSync(process.execPath, args, { stdio: 'inherit' }).status ?? 1);
