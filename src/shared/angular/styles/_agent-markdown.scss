@@ -402,6 +402,37 @@ app-agent-chat .agent__markdown {
   }
 }
 
+// The user's own message sits on the accent colour, where the surfaces above (a shade off the grey
+// reply bubble) read as grey boxes pasted on (#1454). Inside it, the markdown tokens are repointed to
+// washes of the bubble's own text colour, so a quote, a table or inline code tints the accent rather
+// than covering it, whatever the accent and the theme.
+app-agent-chat .agent__message--user .agent__markdown {
+  --agent-markdown-surface-color: color-mix(in srgb, currentColor 14%, transparent);
+  --agent-markdown-outline-color: color-mix(in srgb, currentColor 40%, transparent);
+  --agent-markdown-rule-color: color-mix(in srgb, currentColor 45%, transparent);
+
+  pre {
+    background: color-mix(in srgb, currentColor 12%, transparent);
+  }
+
+  li::marker {
+    color: currentColor;
+  }
+
+  .markdown-task {
+    border-color: currentColor;
+  }
+
+  .markdown-task--done {
+    background: currentColor;
+    border-color: currentColor;
+
+    &::after {
+      border-color: var(--accent-color);
+    }
+  }
+}
+
 [data-theme-mode='dark'] app-agent-chat .agent__markdown {
   .github-alert-note {
     background: rgba(59, 130, 246, 0.15);
