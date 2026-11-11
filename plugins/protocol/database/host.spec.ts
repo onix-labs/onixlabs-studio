@@ -8,6 +8,7 @@ import {
   DatabaseValue,
   ExecuteOutcome,
   ExecuteRequest,
+  ExplainOutcome,
   NamesScope,
   NodeActionOutcome,
 } from './protocol';
@@ -63,6 +64,7 @@ class FakeSession implements EngineSession {
   public readonly cancelled: string[] = [];
   public closed: number = 0;
   public names?: (scope: NamesScope, database?: string) => Promise<readonly CompletionName[]>;
+  public explain?: (text: string, database?: string, analyze?: boolean) => Promise<ExplainOutcome>;
   public expandAnswer: () => Promise<readonly DatabaseNode[]> = (): Promise<
     readonly DatabaseNode[]
   > => Promise.resolve([{ path: 'p', label: 'Tables', icon: 'folder', leaf: false }]);
@@ -517,6 +519,38 @@ describe('serve', (): void => {
     const session: string = await connect();
     const outcome: { failed: boolean } = await call('transaction', { session, action: 'commit' });
     expect(outcome.failed).toBe(true);
+  });
+
+  it('explain_passesTheTextDatabaseAndAnalyzeThrough_toTheSession', async (): Promise<void> => {
+    // #1099.
+    const session: string = await connect();
+    const asked: unknown[][] = [];
+    engine.sessions[0].explain = (...args: unknown[]): Promise<ExplainOutcome> => {
+      asked.push(args);
+      return Promise.resolve({ plans: [], failed: false });
+    };
+
+    expect(
+      await call('explain', { session, text: 'select 1', database: 'shop', analyze: true }),
+    ).toEqual({ plans: [], failed: false });
+    expect(asked).toEqual([['select 1', 'shop', true]]);
+  });
+
+  it('explain_answersAFailure_forAnEngineThatCannot_orOneThatThrows', async (): Promise<void> => {
+    const session: string = await connect();
+
+    expect(await call('explain', { session, text: 'select 1' })).toMatchObject({
+      plans: [],
+      failed: true,
+    });
+
+    engine.sessions[0].explain = (): Promise<ExplainOutcome> =>
+      Promise.reject(new Error('Planner exploded.'));
+    expect(await call('explain', { session, text: 'select 1' })).toEqual({
+      plans: [],
+      failed: true,
+      message: 'Planner exploded.',
+    });
   });
 
   it('cancel_ofAnUnknownExecution_isHarmless', async (): Promise<void> => {

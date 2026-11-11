@@ -33,11 +33,13 @@ import {
   DatabaseNode,
   DatabaseValue,
   ExecuteRequest,
+  ExplainOutcome,
   GraphNodeValue,
   GraphRelationshipValue,
   NamesScope,
   NodeActionOutcome,
   QueryMessage,
+  QueryPlan,
   TransactionAction,
   TransactionOutcome,
   TreeOptions,
@@ -55,6 +57,7 @@ import {
   splitQualifiedName,
   maxResultRows,
 } from '../../protocol/database/engine';
+import { neo4jPlanTree, plainPlan } from './neo4j-plan';
 
 /**
  * The folders under a Neo4j database: what a graph's schema is made of, instead of tables.
@@ -87,7 +90,15 @@ export class Neo4jEngine implements DatabaseEngine {
     displayName: 'Neo4j',
     language: 'cypher',
     queryExtension: 'cypher',
-    capabilities: ['cancel', 'multipleDatabases', 'script', 'graph', 'completion', 'transactions'],
+    capabilities: [
+      'cancel',
+      'multipleDatabases',
+      'script',
+      'graph',
+      'completion',
+      'transactions',
+      'explain',
+    ],
     connectionFields: [
       {
         id: 'uri',
@@ -588,6 +599,62 @@ class Neo4jSession implements EngineSession {
     const open: OpenTransaction | undefined = this.transactions.get(database);
     this.transactions.delete(database);
     await open?.session.close().catch((): void => undefined);
+  }
+
+  /**
+   * Says how Neo4j would run each statement, with `EXPLAIN`, in a Bolt session of its own so no open
+   * manual transaction is touched. Analyzing uses `PROFILE`, which runs the statement, so each profiled
+   * statement runs in a transaction that is rolled back: its writes are undone.
+   * @param cypher The text, one statement or several.
+   * @param database The database, or the connection's own.
+   * @param analyze Whether to run the statements and report what actually happened.
+   * @returns Returns a promise resolving the plans, up to the first statement that cannot be planned.
+   */
+  public async explain(
+    cypher: string,
+    database?: string,
+    analyze?: boolean,
+  ): Promise<ExplainOutcome> {
+    const plans: QueryPlan[] = [];
+    const session: Session = this.querySession(database ?? this.database);
+    try {
+      for (const statement of splitStatements(cypher, 1, true)) {
+        let transaction: Transaction | null = null;
+        try {
+          let plan: unknown;
+          if (analyze === true) {
+            transaction = session.beginTransaction();
+            const result: QueryResult = await transaction.run(`PROFILE ${statement.text}`);
+            plan = result.summary.queryProfile || result.summary.profile;
+          } else {
+            const result: QueryResult = await session.run(`EXPLAIN ${statement.text}`);
+            plan = result.summary.plan;
+          }
+          if (plan === false || plan === undefined) {
+            return {
+              plans,
+              failed: true,
+              message: 'The server returned no plan for this statement.',
+            };
+          }
+          plans.push({
+            statement: statement.text,
+            line: statement.line,
+            root: neo4jPlanTree(plan),
+            raw: JSON.stringify(plainPlan(plan), null, 2),
+          });
+        } catch (error: unknown) {
+          return { plans, failed: true, message: describeError(error) };
+        } finally {
+          if (transaction?.isOpen() === true) {
+            await transaction.rollback().catch((): void => undefined);
+          }
+        }
+      }
+      return { plans, failed: false };
+    } finally {
+      await session.close().catch((): void => undefined);
+    }
   }
 
   /**

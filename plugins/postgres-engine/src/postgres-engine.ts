@@ -8,9 +8,11 @@ import {
   DatabaseNodeAction,
   DatabaseValue,
   ExecuteRequest,
+  ExplainOutcome,
   NamesScope,
   NodeActionOutcome,
   QueryMessage,
+  QueryPlan,
   ResultColumn,
   ResultColumnKey,
   ResultColumnKeyKind,
@@ -33,6 +35,7 @@ import {
   quoteIdentifier,
   text,
 } from '../../protocol/database/engine';
+import { postgresPlanTree } from './postgres-plan';
 
 /**
  * The type oids whose text is kept as written rather than parsed into a JavaScript `Date`, which would
@@ -144,7 +147,14 @@ export class PostgresEngine implements DatabaseEngine {
     displayName: 'PostgreSQL',
     language: 'pgsql',
     queryExtension: 'sql',
-    capabilities: ['cancel', 'multipleDatabases', 'script', 'completion', 'transactions'],
+    capabilities: [
+      'cancel',
+      'multipleDatabases',
+      'script',
+      'completion',
+      'transactions',
+      'explain',
+    ],
     connectionFields: [
       {
         id: 'host',
@@ -867,6 +877,57 @@ class PostgresSession implements EngineSession {
       return { failed: true, message: describeError(error) };
     } finally {
       await this.endClient(target);
+    }
+  }
+
+  /**
+   * Says how PostgreSQL would run each statement, with `EXPLAIN (FORMAT JSON)`, over a short-lived
+   * client of its own so neither the tree's client nor an open manual transaction is touched. Analyzing
+   * runs the statement, so each analyzed statement runs inside a transaction that is rolled back: its
+   * writes are undone, though a sequence it advanced stays advanced, as PostgreSQL never rolls those
+   * back.
+   * @param sql The text, one statement or several.
+   * @param database The database, or the connection's own.
+   * @param analyze Whether to run the statements and report what actually happened.
+   * @returns Returns a promise resolving the plans, up to the first statement that cannot be planned.
+   */
+  public async explain(sql: string, database?: string, analyze?: boolean): Promise<ExplainOutcome> {
+    const plans: QueryPlan[] = [];
+    let client: pg.Client;
+    try {
+      client = await this.newClient(database ?? this.settings.database);
+    } catch (error: unknown) {
+      return { plans, failed: true, message: describeError(error) };
+    }
+    try {
+      for (const statement of splitStatements(sql)) {
+        try {
+          if (analyze === true) {
+            await client.query('begin');
+          }
+          const result: pg.QueryArrayResult = await client.query({
+            text: `explain (${analyze === true ? 'analyze, ' : ''}format json) ${statement.text}`,
+            rowMode: 'array',
+          });
+          const cell: unknown = result.rows[0]?.[0];
+          const document: unknown = typeof cell === 'string' ? JSON.parse(cell) : cell;
+          plans.push({
+            statement: statement.text,
+            line: statement.line,
+            root: postgresPlanTree(document),
+            raw: JSON.stringify(document, null, 2),
+          });
+        } catch (error: unknown) {
+          return { plans, failed: true, message: describeError(error) };
+        } finally {
+          if (analyze === true) {
+            await client.query('rollback').catch((): void => undefined);
+          }
+        }
+      }
+      return { plans, failed: false };
+    } finally {
+      await client.end().catch((): void => undefined);
     }
   }
 

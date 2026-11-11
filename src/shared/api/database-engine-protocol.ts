@@ -17,11 +17,16 @@
 // secrets included — at `connect`, and asks for further pages of a large result with `fetch` rather
 // than receiving every row in one line.
 
+// 1.5 (#1099) adds the `explain` capability and request: a statement's plan as a common tree of steps
+// (operator, detail, estimated cost and rows, actual rows and time when analyzed, and the engine's own
+// facts), with the engine's raw plan beside it. Studio only asks an engine that declares `explain`, so
+// a 1.4 engine is still spoken to.
+
 /**
  * The protocol version this build speaks. A plugin answering with a different major version is
  * refused; a newer minor is accepted, and its additions go unused.
  */
-export const DATABASE_ENGINE_PROTOCOL: string = '1.4';
+export const DATABASE_ENGINE_PROTOCOL: string = '1.5';
 
 /**
  * The capabilities an engine may declare. A closed list: Studio only offers what it knows how to
@@ -34,9 +39,11 @@ export const DATABASE_ENGINE_PROTOCOL: string = '1.4';
  * - `graph` — results may carry nodes, relationships and paths, so the Graph view is offered.
  * - `transactions` — an execution can leave a transaction open for a later `transaction` request to
  *   commit or roll back (protocol 1.4).
+ * - `explain` — the engine can say how it would run a statement, as a tree of plan steps, through the
+ *   `explain` request (protocol 1.5, #1099).
  */
 export type DatabaseEngineCapability =
-  'cancel' | 'multipleDatabases' | 'script' | 'graph' | 'completion' | 'transactions';
+  'cancel' | 'multipleDatabases' | 'script' | 'graph' | 'completion' | 'transactions' | 'explain';
 
 /**
  * The kinds of connection field an engine may ask for. A closed list, rendered by Studio's own form
@@ -822,6 +829,13 @@ export interface DatabaseEngineOperations {
     readonly params: TransactionRequest;
     readonly result: TransactionOutcome;
   };
+
+  /**
+   * Says how the engine would run each statement of the text, as a tree of plan steps (protocol 1.5,
+   * #1099), for an engine that declares `explain`. A database error is part of the outcome, never a
+   * failed request.
+   */
+  readonly explain: { readonly params: ExplainRequest; readonly result: ExplainOutcome };
 }
 
 /**
@@ -867,6 +881,139 @@ export interface TransactionOutcome {
    * Gets what happened, fit to show.
    */
   readonly message: string;
+}
+
+/**
+ * Asks an engine how it would run some text (protocol 1.5, #1099).
+ */
+export interface ExplainRequest {
+  /**
+   * Gets the session.
+   */
+  readonly session: string;
+
+  /**
+   * Gets the text, one statement or several.
+   */
+  readonly text: string;
+
+  /**
+   * Gets the database to plan it against, for an engine that reaches several.
+   */
+  readonly database?: string;
+
+  /**
+   * Gets whether to run the statements and report what actually happened (`EXPLAIN ANALYZE`,
+   * `PROFILE`) rather than only the planner's estimates. ⚠️ Analyzing executes the statements, writes
+   * included, so a caller asks the user first wherever running them would.
+   */
+  readonly analyze?: boolean;
+}
+
+/**
+ * One step of a query plan: what the engine does, its estimates, and the steps feeding it.
+ */
+export interface PlanNode {
+  /**
+   * Gets the step's operator, in the engine's own words: `Seq Scan`, `SEARCH users USING INDEX`,
+   * `NodeByLabelScan`.
+   */
+  readonly operator: string;
+
+  /**
+   * Gets what it works on and how, when the engine says: a table, an index, a condition.
+   */
+  readonly detail?: string;
+
+  /**
+   * Gets the planner's estimated cost, in the engine's own units.
+   */
+  readonly cost?: number;
+
+  /**
+   * Gets the planner's estimated row count.
+   */
+  readonly estimatedRows?: number;
+
+  /**
+   * Gets the rows the step actually produced, when the plan was analyzed.
+   */
+  readonly actualRows?: number;
+
+  /**
+   * Gets the time the step took, in milliseconds, when the plan was analyzed and the engine times it.
+   */
+  readonly time?: number;
+
+  /**
+   * Gets everything else the engine reports about the step, as name and value pairs to show.
+   */
+  readonly properties?: readonly PlanProperty[];
+
+  /**
+   * Gets the steps feeding this one, in the engine's order.
+   */
+  readonly children: readonly PlanNode[];
+}
+
+/**
+ * One fact about a plan step, fit to show as it is.
+ */
+export interface PlanProperty {
+  /**
+   * Gets its name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets its value, as text.
+   */
+  readonly value: string;
+}
+
+/**
+ * The plan of one statement.
+ */
+export interface QueryPlan {
+  /**
+   * Gets the statement's text.
+   */
+  readonly statement: string;
+
+  /**
+   * Gets the line it starts on, counting from 1, within the text sent.
+   */
+  readonly line: number;
+
+  /**
+   * Gets the plan's top step.
+   */
+  readonly root: PlanNode;
+
+  /**
+   * Gets the engine's own plan, as it gave it (JSON or text), for a view that shows it raw.
+   */
+  readonly raw: string;
+}
+
+/**
+ * What explaining some text came to. A database error is an answer, never a failed request.
+ */
+export interface ExplainOutcome {
+  /**
+   * Gets the plan of each statement, in order, up to the one that failed.
+   */
+  readonly plans: readonly QueryPlan[];
+
+  /**
+   * Gets whether a statement could not be explained.
+   */
+  readonly failed: boolean;
+
+  /**
+   * Gets why, when one could not, fit to show.
+   */
+  readonly message?: string;
 }
 
 /**

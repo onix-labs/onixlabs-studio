@@ -31,6 +31,12 @@ export enum DatabaseChannel {
   Transaction = 'database:transaction',
 
   /**
+   * Says how an engine would run some text, as a plan per statement (invoke, protocol 1.5). An engine
+   * without the `explain` capability answers that it cannot.
+   */
+  Explain = 'database:explain',
+
+  /**
    * Closes a session (invoke).
    */
   Disconnect = 'database:disconnect',
