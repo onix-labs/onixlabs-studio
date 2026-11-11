@@ -44,7 +44,14 @@ complete client, so a feature Studio does not ask for yet still shows as offered
 ## Sources
 
 - `clangd`: probed 2026-10-29, report `.cache/lsp-probe/clangd/22.1.6.json`
-- `csharp`: #1139, checked feature by feature in a second instance against .cache/roslyn-fixture
+- `csharp`: #1139, checked feature by feature in a second instance against .cache/roslyn-fixture.
+  C# 15 / .NET 11 (#1450): Roslyn 5.13.0-1.26514.10 probed 2026-11-11 against a `net11.0` fixture
+  using every C# 15 feature (`with(...)`, `union`, `closed`, extension indexers, labeled jumps, static
+  interface members). The project loads; diagnostics match `dotnet build` (CS8509, CS8121, CS8655, no
+  false errors); semantic tokens classify `union`, `closed`, `with` and `extension` as keywords and
+  labels as labels; hover, definition, completion and rename work on union cases and extension
+  indexers; IDE0410 offers its fix. The server runs on a machine with only the .NET 11 runtime (its
+  own `rollForward: Major`). Not yet seen in the app.
 - `vscode-css-language-server`: probed 2026-10-29, report `.cache/lsp-probe/vscode-css-language-server/4.10.0.with-settings.json`
 - `dockerfile-language-server`: probed 2026-11-08, report `.cache/lsp-probe/dockerfile-language-server/0.15.0.json`
 - `go`: probed 2026-11-08, report `.cache/lsp-probe/go/v0.23.0.studio-defaults.json`
