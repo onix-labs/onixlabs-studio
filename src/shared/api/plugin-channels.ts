@@ -77,9 +77,7 @@ export type PluginSlot =
 /**
  * The slots in the order the application presents them — the Plugin Manager's categories and the
  * setup wizard's plugin steps both walk this list, so the two surfaces agree on what comes first.
- *
- * `test-adapter` is not listed yet: the curated index offers no test adapter until the first one is
- * released (#802), and listing it would put an empty step in the wizard.
+ * `test-adapter` joined once the curated index carried test adapters (#1351, released in #1408).
  */
 export const PLUGIN_SLOTS: readonly PluginSlot[] = [
   'language-server',
@@ -91,6 +89,7 @@ export const PLUGIN_SLOTS: readonly PluginSlot[] = [
   'agent-harness',
   'database-engine',
   'package-manager',
+  'test-adapter',
 ];
 
 /**

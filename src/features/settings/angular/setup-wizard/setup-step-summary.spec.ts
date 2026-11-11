@@ -213,6 +213,15 @@ describe('SetupStepSummary', () => {
     expect(decoders?.classList.contains('env__item--unset')).toBe(true);
   });
 
+  it('render_listsTestFrameworksAmongThePlugins', async () => {
+    // #1351: test adapters are a plugin category like the rest, so the summary reports them too.
+    await render();
+
+    expect(row('Test Frameworks')?.querySelector('.env__detail')?.textContent?.trim()).toBe(
+      'None installed',
+    );
+  });
+
   it('render_anUnsetIdentity_leadsBackToTheSystemsIdentityStep', async () => {
     await render();
 
