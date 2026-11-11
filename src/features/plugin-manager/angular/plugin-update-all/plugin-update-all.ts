@@ -3,6 +3,7 @@ import type { PluginSummary } from '@shared/api/plugin-channels';
 import { canUpdate } from '@shared/angular/components/plugin-action/plugin-action-rules';
 import { Log } from '@shared/angular/services/log/log';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
+import { PluginConsent } from '@shared/angular/services/plugins/plugin-consent';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 
 /**
@@ -28,12 +29,12 @@ interface UpdateFailure {
 /**
  * Updates every installed plugin that has a newer version waiting (#1451).
  *
- * Each update takes the same path as the row's own Update: the plugin's terms are asked through the
- * consent window first, because an update is new code and consent one surface could skip is not
- * consent. The plugins are taken one at a time, in catalogue order. A plugin whose terms are declined is
- * skipped; one that fails does not stop the rest, and every failure is reported together in one
- * notification at the end. Success adds nothing beyond what a single update shows: the rows update in
- * place.
+ * The terms are asked once, for the whole batch (Matthew's ruling on #1451): one window lists every
+ * plugin with its version before and after, and accepting it is the same consent each plugin's own
+ * Update would ask. Cancelling updates nothing. After that the plugins are updated one at a time, in
+ * catalogue order, with no further windows. One that fails does not stop the rest, and every failure is
+ * reported together in one notification at the end. Success adds nothing beyond what a single update
+ * shows: the rows update in place.
  */
 @Service()
 export class PluginUpdateAll {
@@ -41,6 +42,11 @@ export class PluginUpdateAll {
    * Holds the plugin client every update goes through.
    */
   private readonly plugins: Plugins = inject(Plugins);
+
+  /**
+   * Holds the consent seam the batch's terms are asked through.
+   */
+  private readonly consent: PluginConsent = inject(PluginConsent);
 
   /**
    * Holds the notification store, for the failures.
@@ -77,8 +83,8 @@ export class PluginUpdateAll {
   );
 
   /**
-   * Updates every plugin with an update waiting, one at a time, through the same consent the row's
-   * Update asks. Pressing it again while it runs does nothing.
+   * Asks once whether to update every plugin with an update waiting and, if accepted, updates them one
+   * at a time. Pressing it again while it runs does nothing.
    * @returns Returns a promise that resolves once every update has been tried.
    */
   public async updateAll(): Promise<void> {
@@ -92,18 +98,20 @@ export class PluginUpdateAll {
       return;
     }
     this.runningState.set(true);
-    this.log.info('PluginUpdateAll', `Updating ${targets.length} plugin(s)`);
     const failures: UpdateFailure[] = [];
     try {
+      if (!(await this.consent.requestBatch(targets))) {
+        this.log.info('PluginUpdateAll', 'Update All declined');
+        return;
+      }
+      this.log.info('PluginUpdateAll', `Updating ${targets.length} plugin(s)`);
       for (const plugin of targets) {
-        const outcome: 'installed' | 'declined' | 'failed' = await this.plugins.installWithConsent(
-          plugin.id,
-        );
-        if (outcome === 'failed') {
-          failures.push({
-            name: plugin.name,
-            reason: this.plugins.error() ?? 'the update did not finish',
-          });
+        // Consent was given for the batch, so each install goes ahead without asking again. The
+        // install clears the last error as it starts and records one if it fails.
+        await this.plugins.install(plugin.id);
+        const error: string | null = this.plugins.error();
+        if (error !== null) {
+          failures.push({ name: plugin.name, reason: error });
         }
       }
     } finally {
