@@ -307,6 +307,27 @@ export interface ProjectOperationResult {
 }
 
 /**
+ * The outcome of formatting a document with the tool its project uses (#1212): the formatted text, or
+ * why it could not be formatted.
+ */
+export interface DocumentFormatResult {
+  /**
+   * Gets the document's formatted text, or null when it could not be formatted.
+   */
+  readonly text: string | null;
+
+  /**
+   * Gets why it could not be formatted (the tool is not installed, the code does not parse), or null.
+   */
+  readonly error: string | null;
+
+  /**
+   * Gets the tool that formatted it, or would have (`ruff`, `black`).
+   */
+  readonly formatter: string;
+}
+
+/**
  * A logical project model for a workspace root.
  */
 export interface ProjectModel {

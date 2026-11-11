@@ -381,3 +381,11 @@ describe('PythonProjectSystem.loadProjectItems (#899)', () => {
     ).toBeNull();
   });
 });
+
+describe('PythonProjectSystem.formatDocument', () => {
+  it('leavesAFileThatIsNotPythonToOthers', async () => {
+    expect(
+      await new PythonProjectSystem().formatDocument('/w/notes.md', '# notes', '/w'),
+    ).toBeNull();
+  });
+});

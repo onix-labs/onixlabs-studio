@@ -1273,5 +1273,36 @@ describe('WorkspaceManager', () => {
       expect(declines).toHaveBeenCalledWith(file, undefined);
       expect(answers).toHaveBeenCalledWith(file, undefined);
     });
+
+    it('formatDocument_asksEachSystemInTurn_withTheFilesRoot', async () => {
+      const file: string = inWorkspace('app.py');
+      const formatted: unknown = { text: 'x = 1\n', error: null, formatter: 'ruff' };
+      const declines: Mock = vi.fn().mockResolvedValue(null);
+      const answers: Mock = vi.fn().mockResolvedValue(formatted);
+      vi.spyOn(projectSystems, 'all').mockReturnValue([
+        {},
+        { formatDocument: declines },
+        { formatDocument: answers },
+      ] as never);
+
+      expect(await invoke(ProjectChannel.DocumentFormat, file, 'x=1')).toBe(formatted);
+
+      expect(declines).toHaveBeenCalledWith(file, 'x=1', workspaceRoot);
+      expect(answers).toHaveBeenCalledWith(file, 'x=1', workspaceRoot);
+    });
+
+    it('formatDocument_refusesAFileOutsideTheWorkspaceAndATextThatIsNotOne', async () => {
+      const formats: Mock = vi.fn().mockResolvedValue({ text: '', error: null, formatter: 'ruff' });
+      vi.spyOn(projectSystems, 'all').mockReturnValue([{ formatDocument: formats }] as never);
+
+      expect(await invoke(ProjectChannel.DocumentFormat, outside, 'x=1')).toBeNull();
+      expect(await invoke(ProjectChannel.DocumentFormat, 7, 'x=1')).toBeNull();
+      expect(await invoke(ProjectChannel.DocumentFormat, inWorkspace('a.py'), 7)).toBeNull();
+      expect(
+        await invoke(ProjectChannel.DocumentFormat, inWorkspace('a.py'), 'x'.repeat(10_485_761)),
+      ).toBeNull();
+
+      expect(formats).not.toHaveBeenCalled();
+    });
   });
 });
