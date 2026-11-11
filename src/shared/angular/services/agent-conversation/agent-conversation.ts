@@ -349,6 +349,17 @@ export class AgentConversation implements AgentSessionHandle {
   public readonly promptRequest: Signal<number> = this.promptRequestState.asReadonly();
 
   /**
+   * Holds how many times a surface has asked this conversation's transcript to step to the next
+   * command that ran outside the OS sandbox (#1160).
+   */
+  private readonly unsandboxedRequestState: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Gets the running count of step-to-the-next-unsandboxed-run requests.
+   */
+  public readonly unsandboxedRequest: Signal<number> = this.unsandboxedRequestState.asReadonly();
+
+  /**
    * Holds the id of the conversation currently open, or null for an unsaved/new conversation.
    */
   private readonly currentIdState: WritableSignal<string | null> = signal<string | null>(null);
@@ -532,6 +543,14 @@ export class AgentConversation implements AgentSessionHandle {
    */
   public scrollToLastPrompt(): void {
     this.promptRequestState.update((count: number): number => count + 1);
+  }
+
+  /**
+   * Steps this conversation's transcript to the next command that ran outside the OS sandbox,
+   * wrapping round after the last (#1160): what clicking the status strip's unsandboxed count does.
+   */
+  public revealNextUnsandboxed(): void {
+    this.unsandboxedRequestState.update((count: number): number => count + 1);
   }
 
   /**
