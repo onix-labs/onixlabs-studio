@@ -13,6 +13,7 @@ import {
   MONACO_TRIGGER_PARAMETER_HINTS_COMMAND,
   MONACO_TRIGGER_SUGGEST_COMMAND,
 } from './monaco-suggest-commands';
+import type { EditorKeybinding } from './monaco-keybindings';
 
 /**
  * Names Monaco's Show Editor Context Menu action, which opens Monaco's right-click menu at the caret
@@ -329,26 +330,26 @@ export interface WidgetGuardHandlers {
  * @param monaco The Monaco instance.
  * @param handlers Receive the editor when ⇧F10 runs, when a read-only editor is edited, and when a
  * document holds unusual line terminators.
+ * @returns Returns the command to bind, its chord from the keybinding registry (#1036): ⇧F10 by
+ * default.
  */
-export function installWidgetGuard(monaco: typeof MonacoApi, handlers: WidgetGuardHandlers): void {
+export function installWidgetGuard(
+  monaco: typeof MonacoApi,
+  handlers: WidgetGuardHandlers,
+): readonly EditorKeybinding[] {
   monaco.editor.registerCommand(STUDIO_SHOW_CONTEXT_MENU_COMMAND, (): void => {
     const focused: MonacoApi.editor.ICodeEditor | undefined = focusedEditor(monaco);
     if (focused !== undefined) {
       handlers.showContextMenu(focused);
     }
   });
-  monaco.editor.addKeybindingRules([
-    // A removal with no chord drops every chord the command has, whichever platform Monaco runs on.
-    ...MONACO_WIDGET_GUARD_COMMANDS.map((command: string): MonacoApi.editor.IKeybindingRule => ({
+  // A removal with no chord drops every chord the command has, whichever platform Monaco runs on.
+  monaco.editor.addKeybindingRules(
+    MONACO_WIDGET_GUARD_COMMANDS.map((command: string): MonacoApi.editor.IKeybindingRule => ({
       keybinding: 0,
       command: `-${command}`,
     })),
-    {
-      keybinding: monaco.KeyMod.Shift | monaco.KeyCode.F10,
-      command: STUDIO_SHOW_CONTEXT_MENU_COMMAND,
-      when: `editorTextFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`,
-    },
-  ]);
+  );
   let picker: boolean = false;
   let find: boolean = false;
   let hints: boolean = false;
@@ -362,6 +363,13 @@ export function installWidgetGuard(monaco: typeof MonacoApi, handlers: WidgetGua
     readOnly ||= takeOverReadOnlyMessage(editor, handlers);
     terminators ||= takeOverUnusualLineTerminators(monaco, editor, handlers);
   });
+  return [
+    {
+      id: 'editor.showContextMenu',
+      command: STUDIO_SHOW_CONTEXT_MENU_COMMAND,
+      when: `editorTextFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`,
+    },
+  ];
 }
 
 /**

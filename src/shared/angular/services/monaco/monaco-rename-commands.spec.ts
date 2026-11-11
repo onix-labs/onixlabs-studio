@@ -7,11 +7,7 @@ import {
   RENAME_CONTRIBUTION,
   STUDIO_RENAME_SYMBOL_COMMAND,
 } from './monaco-rename-commands';
-
-/**
- * Monaco's `KeyCode.F2`, as the fake instance numbers it.
- */
-const F2: number = 60;
+import type { EditorKeybinding } from './monaco-keybindings';
 
 /**
  * What a fake Monaco instance was asked to do.
@@ -20,6 +16,7 @@ interface Installed {
   readonly rules: MonacoApi.editor.IKeybindingRule[];
   readonly commands: Map<string, () => void>;
   readonly renamed: MonacoApi.editor.ICodeEditor[];
+  bindings: readonly EditorKeybinding[];
   create(editor: MonacoApi.editor.ICodeEditor): void;
 }
 
@@ -66,10 +63,10 @@ function install(editors: readonly MonacoApi.editor.ICodeEditor[]): Installed {
     rules: [],
     commands: new Map(),
     renamed: [],
+    bindings: [],
     create: (editor: MonacoApi.editor.ICodeEditor): void => onCreate?.(editor),
   };
   const fake: typeof MonacoApi = {
-    KeyCode: { F2 },
     editor: {
       getEditors: (): readonly MonacoApi.editor.ICodeEditor[] => editors,
       registerCommand: (id: string, handler: () => void): void =>
@@ -81,7 +78,7 @@ function install(editors: readonly MonacoApi.editor.ICodeEditor[]): Installed {
       },
     },
   } as unknown as typeof MonacoApi;
-  installRenameCommands(
+  installed.bindings = installRenameCommands(
     fake,
     (editor: MonacoApi.editor.ICodeEditor): void => void installed.renamed.push(editor),
   );
@@ -123,13 +120,14 @@ describe('installRenameCommands (#1015)', () => {
     FakeRenameController.opened = 0;
   });
 
-  it('removesMonacosRenameChord_andBindsStudiosRenameToF2_outsideACodeFence', () => {
+  it('removesMonacosRenameChord_andHandsStudiosRenameToTheRegistry_outsideACodeFence', () => {
     const installed: Installed = install([]);
 
-    expect(installed.rules).toEqual([
-      { keybinding: 0, command: `-${MONACO_RENAME_COMMAND}` },
+    expect(installed.rules).toEqual([{ keybinding: 0, command: `-${MONACO_RENAME_COMMAND}` }]);
+    // F2 is the registry's default now (#1036).
+    expect(installed.bindings).toEqual([
       {
-        keybinding: F2,
+        id: 'editor.renameSymbol',
         command: STUDIO_RENAME_SYMBOL_COMMAND,
         when: `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`,
       },

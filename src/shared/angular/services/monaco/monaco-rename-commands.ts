@@ -1,5 +1,6 @@
 import type * as MonacoApi from 'monaco-editor';
 import { FIND_PASSTHROUGH_CONTEXT_KEY, focusedEditor } from './monaco-find-commands';
+import type { EditorKeybinding } from './monaco-keybindings';
 
 /**
  * Names Monaco's Rename Symbol action (#1015), which opens Monaco's own rename box under the symbol.
@@ -52,32 +53,33 @@ interface RenameContribution extends MonacoApi.editor.IEditorContribution {
  * go-to and navigation chords do: a fence is a few lines inside a document, with no symbols to rename.
  * @param monaco The Monaco instance.
  * @param onRename Receives the editor when F2 or any route to Monaco's rename runs.
+ * @returns Returns the command to bind, its chord from the keybinding registry (#1036): F2 by default.
  */
 export function installRenameCommands(
   monaco: typeof MonacoApi,
   onRename: (editor: MonacoApi.editor.ICodeEditor) => void,
-): void {
+): readonly EditorKeybinding[] {
   monaco.editor.registerCommand(STUDIO_RENAME_SYMBOL_COMMAND, (): void => {
     const focused: MonacoApi.editor.ICodeEditor | undefined = focusedEditor(monaco);
     if (focused !== undefined) {
       onRename(focused);
     }
   });
-  monaco.editor.addKeybindingRules([
-    // A removal with no chord drops every chord the command has, whichever platform Monaco runs on.
-    { keybinding: 0, command: `-${MONACO_RENAME_COMMAND}` },
-    {
-      keybinding: monaco.KeyCode.F2,
-      command: STUDIO_RENAME_SYMBOL_COMMAND,
-      when: `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`,
-    },
-  ]);
+  // A removal with no chord drops every chord the command has, whichever platform Monaco runs on.
+  monaco.editor.addKeybindingRules([{ keybinding: 0, command: `-${MONACO_RENAME_COMMAND}` }]);
   let replaced: boolean = false;
   monaco.editor.onDidCreateEditor((editor: MonacoApi.editor.ICodeEditor): void => {
     if (!replaced) {
       replaced = takeOverRename(editor, onRename);
     }
   });
+  return [
+    {
+      id: 'editor.renameSymbol',
+      command: STUDIO_RENAME_SYMBOL_COMMAND,
+      when: `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`,
+    },
+  ];
 }
 
 /**

@@ -12,6 +12,7 @@ import {
   STUDIO_FIND_COMMAND,
   STUDIO_FIND_REPLACE_COMMAND,
 } from './monaco-find-commands';
+import type { EditorKeybinding } from './monaco-keybindings';
 import {
   installGoToCommands,
   MONACO_GOTO_COMMANDS,
@@ -336,16 +337,17 @@ describe('installFindCommands', () => {
     readonly rules: MonacoApi.editor.IKeybindingRule[];
     readonly commands: Map<string, () => void>;
     readonly found: { editor: MonacoApi.editor.ICodeEditor; mode: FindMode }[];
+    bindings: readonly EditorKeybinding[];
   }
 
   /**
    * Installs the find commands into a fake Monaco instance holding the given editors.
-   * @param isMac Whether to install as macOS.
+   * @param _isMac Whether to install as macOS (the chords no longer depend on it: #1036).
    * @param editors The editors the instance holds.
    * @returns Returns what the instance was asked to do.
    */
-  function install(isMac: boolean, editors: readonly MonacoApi.editor.ICodeEditor[]): Installed {
-    const installed: Installed = { rules: [], commands: new Map(), found: [] };
+  function install(_isMac: boolean, editors: readonly MonacoApi.editor.ICodeEditor[]): Installed {
+    const installed: Installed = { rules: [], commands: new Map(), found: [], bindings: [] };
     const fake: typeof MonacoApi = {
       KeyMod: { CtrlCmd: 2048, Alt: 512 },
       KeyCode: { KeyF: 36, KeyH: 38 },
@@ -357,8 +359,10 @@ describe('installFindCommands', () => {
           void installed.rules.push(...rules),
       },
     } as unknown as typeof MonacoApi;
-    installFindCommands(fake, isMac, (editor: MonacoApi.editor.ICodeEditor, mode: FindMode) =>
-      installed.found.push({ editor, mode }),
+    installed.bindings = installFindCommands(
+      fake,
+      (editor: MonacoApi.editor.ICodeEditor, mode: FindMode) =>
+        installed.found.push({ editor, mode }),
     );
     return installed;
   }
@@ -402,29 +406,29 @@ describe('installFindCommands', () => {
     }
   });
 
-  it('bindsStudioFindToModF_andReplaceToModAltF_onMac', () => {
+  it('handsStudiosFindAndReplace_toTheRegistry_withTheFindPassthroughKept', () => {
+    // #1036: the chords (⌘F; ⌘⌥F on macOS, Ctrl+H elsewhere) come from the keybinding registry —
+    // see monaco-keybindings.spec.ts — and the installer binds no chord of Studio's itself. A markdown
+    // code fence still passes ⌘F through to the document's own find.
     const installed: Installed = install(true, []);
 
-    expect(installed.rules).toContainEqual({
-      keybinding: 2048 | 36,
-      command: STUDIO_FIND_COMMAND,
-      when: `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`,
-    });
-    expect(installed.rules).toContainEqual({
-      keybinding: 2048 | 512 | 36,
-      command: STUDIO_FIND_REPLACE_COMMAND,
-      when: `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`,
-    });
-  });
-
-  it('bindsStudioReplaceToCtrlH_onWindowsAndLinux', () => {
-    const installed: Installed = install(false, []);
-
-    expect(installed.rules).toContainEqual({
-      keybinding: 2048 | 38,
-      command: STUDIO_FIND_REPLACE_COMMAND,
-      when: `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`,
-    });
+    expect(installed.bindings).toEqual([
+      {
+        id: 'editor.find',
+        command: STUDIO_FIND_COMMAND,
+        when: `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`,
+      },
+      {
+        id: 'editor.findReplace',
+        command: STUDIO_FIND_REPLACE_COMMAND,
+        when: `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`,
+      },
+    ]);
+    expect(
+      installed.rules.filter(
+        (rule: MonacoApi.editor.IKeybindingRule): boolean => rule.command?.startsWith('-') !== true,
+      ),
+    ).toEqual([]);
   });
 
   it('theCommands_handTheFocusedEditorOn_withTheirMode', () => {
@@ -458,6 +462,7 @@ describe('installGoToCommands', () => {
     readonly rules: MonacoApi.editor.IKeybindingRule[];
     readonly commands: Map<string, () => void>;
     readonly opened: { editor: MonacoApi.editor.ICodeEditor; mode: GoToMode }[];
+    bindings: readonly EditorKeybinding[];
   }
 
   /**
@@ -472,12 +477,12 @@ describe('installGoToCommands', () => {
 
   /**
    * Installs the go-to commands into a fake Monaco instance holding the given editors.
-   * @param isMac Whether to install as macOS.
+   * @param _isMac Whether to install as macOS (the chords no longer depend on it: #1036).
    * @param editors The editors the instance holds.
    * @returns Returns what the instance was asked to do.
    */
-  function install(isMac: boolean, editors: readonly MonacoApi.editor.ICodeEditor[]): Installed {
-    const installed: Installed = { rules: [], commands: new Map(), opened: [] };
+  function install(_isMac: boolean, editors: readonly MonacoApi.editor.ICodeEditor[]): Installed {
+    const installed: Installed = { rules: [], commands: new Map(), opened: [], bindings: [] };
     const fake: typeof MonacoApi = {
       KeyMod: KEYS,
       KeyCode: { KeyG: 37, KeyO: 45 },
@@ -489,8 +494,10 @@ describe('installGoToCommands', () => {
           void installed.rules.push(...rules),
       },
     } as unknown as typeof MonacoApi;
-    installGoToCommands(fake, isMac, (editor: MonacoApi.editor.ICodeEditor, mode: GoToMode) =>
-      installed.opened.push({ editor, mode }),
+    installed.bindings = installGoToCommands(
+      fake,
+      (editor: MonacoApi.editor.ICodeEditor, mode: GoToMode) =>
+        installed.opened.push({ editor, mode }),
     );
     return installed;
   }
@@ -525,35 +532,15 @@ describe('installGoToCommands', () => {
     }
   });
 
-  it('bindsGoToSymbolToCmdShiftO_andGoToLineToControlG_onMac', () => {
+  it('handsGoToSymbolAndGoToLine_toTheRegistry', () => {
+    // #1036: ⌘⇧O and ⌃G (Ctrl+G elsewhere) come from the registry — see monaco-keybindings.spec.ts.
     const installed: Installed = install(true, []);
 
-    expect(installed.rules).toContainEqual({
-      keybinding: KEYS.CtrlCmd | KEYS.Shift | 45,
-      command: STUDIO_GO_TO_SYMBOL_COMMAND,
-      when,
-    });
-    // ⌃G is the Control key on macOS, which Monaco names WinCtrl — not ⌘G.
-    expect(installed.rules).toContainEqual({
-      keybinding: KEYS.WinCtrl | 37,
-      command: STUDIO_GO_TO_LINE_COMMAND,
-      when,
-    });
-  });
-
-  it('bindsGoToSymbolToCtrlShiftO_andGoToLineToCtrlG_onWindowsAndLinux', () => {
-    const installed: Installed = install(false, []);
-
-    expect(installed.rules).toContainEqual({
-      keybinding: KEYS.CtrlCmd | KEYS.Shift | 45,
-      command: STUDIO_GO_TO_SYMBOL_COMMAND,
-      when,
-    });
-    expect(installed.rules).toContainEqual({
-      keybinding: KEYS.CtrlCmd | 37,
-      command: STUDIO_GO_TO_LINE_COMMAND,
-      when,
-    });
+    expect(installed.bindings).toEqual([
+      { id: 'editor.goToSymbol', command: STUDIO_GO_TO_SYMBOL_COMMAND, when },
+      { id: 'editor.goToLine', command: STUDIO_GO_TO_LINE_COMMAND, when },
+    ]);
+    expect(KEYS.WinCtrl).toBe(256);
   });
 
   it('theCommands_handTheFocusedEditorOn_withTheirMode', () => {

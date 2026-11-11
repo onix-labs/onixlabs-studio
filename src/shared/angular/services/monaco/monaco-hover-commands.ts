@@ -1,5 +1,6 @@
 import type * as MonacoApi from 'monaco-editor';
 import { FIND_PASSTHROUGH_CONTEXT_KEY, focusedEditor } from './monaco-find-commands';
+import type { EditorKeybinding } from './monaco-keybindings';
 
 /**
  * Names Monaco's Show Hover action (#1020), which opens Monaco's hover widget at the caret. Its chord
@@ -255,11 +256,13 @@ const INERT_HOVER_WIDGET: Readonly<Record<string, unknown>> = Object.freeze({
  * @param monaco The Monaco instance.
  * @param handlers Receive the editor when Studio's commands, or any route into Monaco's hover or
  * problem peek, run.
+ * @returns Returns the commands to bind, their chords from the keybinding registry (#1036): ⌘K ⌘I,
+ * F8 and ⌥F8, ⇧F8 and ⇧⌥F8 by default.
  */
 export function installHoverCommands(
   monaco: typeof MonacoApi,
   handlers: HoverCommandHandlers,
-): void {
+): readonly EditorKeybinding[] {
   const focused: (run: (editor: MonacoApi.editor.ICodeEditor) => void) => () => void =
     (run: (editor: MonacoApi.editor.ICodeEditor) => void): (() => void) =>
     (): void => {
@@ -290,32 +293,14 @@ export function installHoverCommands(
       keybinding: 0,
       command: `-${command}`,
     })),
-    {
-      // ⌘ on macOS and Ctrl elsewhere: Monaco reads CtrlCmd per platform.
-      keybinding: monaco.KeyMod.chord(
-        monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
-        monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI,
-      ),
-      command: STUDIO_SHOW_HOVER_COMMAND,
-      when,
-    },
-    { keybinding: monaco.KeyCode.F8, command: STUDIO_NEXT_PROBLEM_COMMAND, when },
-    {
-      keybinding: monaco.KeyMod.Alt | monaco.KeyCode.F8,
-      command: STUDIO_NEXT_PROBLEM_COMMAND,
-      when,
-    },
-    {
-      keybinding: monaco.KeyMod.Shift | monaco.KeyCode.F8,
-      command: STUDIO_PREVIOUS_PROBLEM_COMMAND,
-      when,
-    },
-    {
-      keybinding: monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.F8,
-      command: STUDIO_PREVIOUS_PROBLEM_COMMAND,
-      when,
-    },
   ]);
+  const keybindings: readonly EditorKeybinding[] = [
+    { id: 'editor.showHover', command: STUDIO_SHOW_HOVER_COMMAND, when },
+    { id: 'editor.nextProblem', command: STUDIO_NEXT_PROBLEM_COMMAND, when },
+    { id: 'editor.nextProblemAlternative', command: STUDIO_NEXT_PROBLEM_COMMAND, when },
+    { id: 'editor.previousProblem', command: STUDIO_PREVIOUS_PROBLEM_COMMAND, when },
+    { id: 'editor.previousProblemAlternative', command: STUDIO_PREVIOUS_PROBLEM_COMMAND, when },
+  ];
   let hover: boolean = false;
   let glyph: boolean = false;
   let markers: boolean = false;
@@ -325,6 +310,7 @@ export function installHoverCommands(
     glyph ||= takeOverGlyphHover(editor);
     markers ||= takeOverMarkerNavigation(editor, handlers);
   });
+  return keybindings;
 }
 
 /**
