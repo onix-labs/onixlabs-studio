@@ -89,8 +89,18 @@
 }
 
 // The action buttons sit below the content, aligned to the trailing edge of the card.
+// Actions wrap onto a further row, still trailing, when they don't fit side by side (#1455): a row
+// that can't wrap overflows, and a right-aligned row overflows out of the card's leading edge. A
+// single label wider than the card is held to its width, where the button atom ellipsises it.
 .toast__actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 0.375rem;
+  min-inline-size: 0;
+
+  > app-button {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
 }
