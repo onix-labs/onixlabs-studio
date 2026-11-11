@@ -160,6 +160,21 @@ export const CODE_LENS_SERVER_SWITCHES: readonly CodeLensServerSwitch[] = [
     serverDefault: false,
   },
   {
+    // svelte-language-server reads VS Code's TypeScript lens switches, pushed (#1214).
+    serverId: 'svelte-language-server',
+    section: 'typescript.referencesCodeLens.enabled',
+    language: 'svelte',
+    kind: 'references',
+    serverDefault: false,
+  },
+  {
+    serverId: 'svelte-language-server',
+    section: 'typescript.implementationsCodeLens.enabled',
+    language: 'svelte',
+    kind: 'implementations',
+    serverDefault: false,
+  },
+  {
     serverId: 'java',
     section: 'java.referencesCodeLens.enabled',
     language: 'java',

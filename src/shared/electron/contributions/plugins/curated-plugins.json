@@ -495,8 +495,49 @@
             "command": {
               "kind": "node"
             },
+            "settings": [
+              {
+                "section": "typescript.inlayHints.parameterNames.enabled",
+                "label": "Parameter Names",
+                "description": "In a component's TypeScript, show the name of the parameter each argument is passed to, before the argument: for literal arguments only, or for all of them.",
+                "default": "none",
+                "options": [
+                  { "value": "none", "label": "Off" },
+                  { "value": "literals", "label": "Literals" },
+                  { "value": "all", "label": "All arguments" }
+                ]
+              },
+              {
+                "section": "typescript.inlayHints.variableTypes.enabled",
+                "label": "Variable Types",
+                "description": "In a component's TypeScript, show the type the compiler infers for a variable that does not name one.",
+                "default": false
+              },
+              {
+                "section": "typescript.inlayHints.functionLikeReturnTypes.enabled",
+                "label": "Return Types",
+                "description": "In a component's TypeScript, show the return type the compiler infers for a function that does not name one.",
+                "default": false,
+                "advanced": true
+              },
+              {
+                "section": "typescript.inlayHints.parameterTypes.enabled",
+                "label": "Parameter Types",
+                "description": "In a component's TypeScript, show the type the compiler infers for a parameter that does not name one, such as in a callback.",
+                "default": false,
+                "advanced": true
+              },
+              {
+                "section": "typescript.inlayHints.propertyDeclarationTypes.enabled",
+                "label": "Property Types",
+                "description": "In a component's TypeScript, show the type the compiler infers for a class property that does not name one.",
+                "default": false,
+                "advanced": true
+              }
+            ],
             "settingsDelivery": {
-              "pull": false
+              "pull": false,
+              "push": ["typescript"]
             }
           }
         ]
