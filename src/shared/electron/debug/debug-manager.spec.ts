@@ -81,6 +81,44 @@ function handle(message) {
 setInterval(() => undefined, 1000);
 `;
 
+/**
+ * A debug adapter that serves one DAP session on a TCP port it announces as Delve's `dlv dap` does
+ * (#1211), recording its pid.
+ */
+const TCP_ADAPTER: string = `
+const fs = require('node:fs');
+const net = require('node:net');
+fs.appendFileSync(process.argv[2], process.pid + '\\n');
+const server = net.createServer((socket) => {
+  let seq = 1;
+  const write = (message) => {
+    const body = JSON.stringify(Object.assign({ seq: seq++ }, message));
+    socket.write('Content-Length: ' + Buffer.byteLength(body) + '\\r\\n\\r\\n' + body);
+  };
+  let buffer = Buffer.alloc(0);
+  socket.on('data', (chunk) => {
+    buffer = Buffer.concat([buffer, chunk]);
+    for (;;) {
+      const end = buffer.indexOf('\\r\\n\\r\\n');
+      if (end === -1) return;
+      const length = Number(/Content-Length: (\\d+)/.exec(buffer.toString('utf8', 0, end))[1]);
+      if (buffer.length < end + 4 + length) return;
+      const message = JSON.parse(buffer.toString('utf8', end + 4, end + 4 + length));
+      buffer = buffer.subarray(end + 4 + length);
+      if (message.command === 'initialize') {
+        write({ type: 'response', request_seq: message.seq, success: true, command: 'initialize', body: { supportsConfigurationDoneRequest: true, overTcp: true } });
+        write({ type: 'event', event: 'initialized' });
+      } else if (message.type === 'request') {
+        write({ type: 'response', request_seq: message.seq, success: true, command: message.command });
+      }
+    }
+  });
+});
+server.listen(0, '127.0.0.1', () => {
+  console.log('DAP server listening at: 127.0.0.1:' + server.address().port);
+});
+`;
+
 describe.skipIf(process.platform === 'win32')('DebugManager', () => {
   let scratch: string = '';
   let root: string = '';
@@ -126,10 +164,13 @@ describe.skipIf(process.platform === 'win32')('DebugManager', () => {
    * @param sessionId The session.
    * @returns Returns the outcome.
    */
-  function start(sessionId: string = 'session'): Promise<DebugStartResult> {
+  function start(
+    sessionId: string = 'session',
+    adapterId: string = 'fake',
+  ): Promise<DebugStartResult> {
     return invoke(DebugChannel.Start, {
       sessionId,
-      adapterId: 'fake',
+      adapterId,
       rootPath: root,
     }) as Promise<DebugStartResult>;
   }
@@ -190,6 +231,14 @@ describe.skipIf(process.platform === 'win32')('DebugManager', () => {
     const registry: unknown = {
       resolve: async (adapterId: string): Promise<DebugAdapterResolution> => {
         await gate;
+        if (adapterId === 'tcp') {
+          const tcpScript: string = path.join(scratch, 'tcp-adapter.cjs');
+          writeFileSync(tcpScript, TCP_ADAPTER);
+          return {
+            spec: { command, args: [tcpScript, pids], transport: 'tcp-session' },
+            error: null,
+          };
+        }
         return adapterId === 'unknown'
           ? { spec: null, error: null }
           : adapterId === 'absent'
@@ -239,6 +288,23 @@ describe.skipIf(process.platform === 'win32')('DebugManager', () => {
       );
       expect(sentOn<DebugEventMessage>(DebugChannel.Event)[0]).toMatchObject({
         sessionId: 'session',
+        event: 'initialized',
+      });
+    });
+
+    it('aTcpSessionAdapter_isSpokenToOverThePortItAnnounces (#1211)', async () => {
+      // As Delve's `dlv dap --listen=127.0.0.1:0`: one ordinary session, not js-debug's tree.
+      const result: DebugStartResult = await start('session', 'tcp');
+
+      expect(result).toEqual({
+        success: true,
+        capabilities: { supportsConfigurationDoneRequest: true, overTcp: true },
+      });
+      await until(
+        (): boolean => sentOn<DebugEventMessage>(DebugChannel.Event).length > 0,
+        'the initialized event',
+      );
+      expect(sentOn<DebugEventMessage>(DebugChannel.Event)[0]).toMatchObject({
         event: 'initialized',
       });
     });

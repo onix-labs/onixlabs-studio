@@ -27,10 +27,11 @@ export interface DebugAdapterSpec {
 
   /**
    * Gets how the adapter is spoken to: `stdio` spawns it and uses its standard streams (netcoredbg);
-   * `tcp-server` spawns a debug server and connects over TCP, hosting a tree of sessions (js-debug).
-   * Defaults to `stdio` when omitted.
+   * `tcp-server` spawns a debug server and connects over TCP, hosting a tree of sessions (js-debug);
+   * `tcp-session` spawns a server that announces its port and speaks one session over it (Delve,
+   * #1211). Defaults to `stdio` when omitted.
    */
-  readonly transport?: 'stdio' | 'tcp-server';
+  readonly transport?: 'stdio' | 'tcp-server' | 'tcp-session';
 }
 
 /**

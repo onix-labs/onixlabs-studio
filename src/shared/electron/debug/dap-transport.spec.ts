@@ -277,6 +277,22 @@ describe.skipIf(process.platform === 'win32')('dap transports', () => {
       await until((): boolean => received === 'framed', 'the bytes');
     });
 
+    it('connects_toTheServerDelveAnnounces_withItsColonAfterAt (#1211)', async () => {
+      // `dlv dap --listen=127.0.0.1:0` prints exactly this.
+      let connected: boolean = false;
+      const port: number = await listening((): void => {
+        connected = true;
+      });
+      const tcp: Watched<TcpServerTransport> = server(
+        `console.log('DAP server listening at: 127.0.0.1:${port}');${idle}`,
+      );
+
+      await tcp.transport.start();
+
+      expect(tcp.transport.port).toBe(port);
+      await until((): boolean => connected, 'the connection');
+    });
+
     it('rejectsStart_atOnce_whenTheServerDiesBeforeAnnouncing', async () => {
       const tcp: Watched<TcpServerTransport> = server(`process.exit(2);`);
 

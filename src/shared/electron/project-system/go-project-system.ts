@@ -11,6 +11,9 @@ import {
   ProjectModel,
   ProjectNode,
 } from '@shared/api/project-system';
+import type { DebugResolveResult } from '@shared/api/debug-channels';
+import type { RunConfiguration } from '@shared/api/studio';
+import { goDebugTarget } from './go-debug-target';
 import { buildGoPackageTree, GoPackage, goListArguments, parseGoPackages } from './go-list';
 import { listProjectFiles, sourceFilter } from './project-listing';
 import { ProjectSystem } from './project-system';
@@ -19,8 +22,8 @@ import { logger } from '../logger';
 /**
  * The Go project system's root-independent capabilities: the Build/Clean/Rebuild actions the `go`
  * toolchain supports, no build-configuration axis (Go has no Debug/Release profile), a GOOS/GOARCH
- * target axis, and no debug adapter yet — a Go DAP adapter (Delve) is a later phase, so the ribbon's
- * Debug button stays inert until one is provisioned.
+ * target axis, and Delve as its debugger (#1211), installed from the Plugin Manager like CodeLLDB for
+ * Rust.
  */
 const GO_CAPABILITIES: ProjectCapabilities = {
   actions: ['build', 'clean', 'rebuild'],
@@ -36,7 +39,7 @@ const GO_CAPABILITIES: ProjectCapabilities = {
       { id: 'windows/amd64', name: 'Windows (x64)' },
     ],
   },
-  debug: null,
+  debug: { adapter: 'delve' },
   // This ecosystem has no solution folders, so there is nothing to rename.
   renamesSolutionFolders: false,
 };
@@ -198,6 +201,20 @@ export class GoProjectSystem implements ProjectSystem {
     const tree: readonly ProjectItemNode[] | null =
       (await this.packageTree(projectPath, directory)) ?? (await this.listing(directory));
     return tree === null ? null : { projectPath, tree };
+  }
+
+  /**
+   * Resolves a run configuration into what Delve launches (#1211): see {@link goDebugTarget}. Delve
+   * builds the program itself, so nothing is built here first.
+   * @param configuration The run configuration being launched under the debugger.
+   * @param root The absolute workspace root.
+   * @returns Returns the launch target, or a reason it could not be resolved.
+   */
+  public resolveDebugTarget(
+    configuration: RunConfiguration,
+    root: string,
+  ): Promise<DebugResolveResult> {
+    return Promise.resolve(goDebugTarget(configuration, root));
   }
 
   /**
