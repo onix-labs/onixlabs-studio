@@ -647,7 +647,7 @@ export class Documents implements UnsavedWorkSource {
     this.markEntriesChanged();
     entry.filePath.set(fileInfo.path);
     entry.fileName.set(fileInfo.name);
-    entry.language.set(this.monaco.getLanguageForFileName(fileInfo.name));
+    entry.language.set(this.monaco.getLanguageForFileName(fileInfo.name, fileInfo.content));
     entry.content.set(fileInfo.content);
     entry.original.set(fileInfo.content);
     entry.encoding.set(fileInfo.encoding ?? ASSUMED_ENCODING);
@@ -677,7 +677,7 @@ export class Documents implements UnsavedWorkSource {
     this.markEntriesChanged();
     entry.filePath.set(fileInfo.path);
     entry.fileName.set(fileInfo.name);
-    entry.language.set(this.monaco.getLanguageForFileName(fileInfo.name));
+    entry.language.set(this.monaco.getLanguageForFileName(fileInfo.name, fileInfo.content));
     entry.content.set(fileInfo.content);
     entry.original.set(fileInfo.content);
     entry.encoding.set(fileInfo.encoding ?? ASSUMED_ENCODING);
@@ -719,7 +719,7 @@ export class Documents implements UnsavedWorkSource {
     this.markEntriesChanged();
     entry.filePath.set(fileInfo.path);
     entry.fileName.set(fileInfo.name);
-    entry.language.set(this.monaco.getLanguageForFileName(fileInfo.name));
+    entry.language.set(this.monaco.getLanguageForFileName(fileInfo.name, fileInfo.content));
     entry.content.set(fileInfo.content);
     entry.original.set(fileInfo.content);
     entry.encoding.set(fileInfo.encoding ?? ASSUMED_ENCODING);
@@ -948,7 +948,7 @@ export class Documents implements UnsavedWorkSource {
     // The new path may sit under a different `.editorconfig`, whose rules this write must follow.
     await this.refreshEditorConfig(id, targetPath);
     await this.prepareForSave(id, entry);
-    const language: string = this.monaco.getLanguageForExtension(this.extname(targetPath));
+    const language: string = this.monaco.getLanguageForFileName(targetPath, entry.content());
     const hadBom: boolean = entry.hasBom();
     if (this.startsWithBom(entry, language)) {
       entry.hasBom.set(true);
@@ -1420,7 +1420,7 @@ export class Documents implements UnsavedWorkSource {
    * @param entry The document's entry, already re-pointed at its new path.
    */
   private redetectLanguage(id: string, entry: DocumentEntry): void {
-    entry.language.set(this.monaco.getLanguageForFileName(entry.fileName()));
+    entry.language.set(this.monaco.getLanguageForFileName(entry.fileName(), entry.content()));
     if (this.dockPanels.get(id) === undefined) {
       return;
     }
