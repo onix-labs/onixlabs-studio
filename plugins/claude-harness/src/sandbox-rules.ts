@@ -160,13 +160,14 @@ export interface ReachSettings {
 const NO_REACH: SandboxReach = { localPorts: 'ask', dockerSocket: 'ask' };
 
 /**
- * Decides one opening, in the design note's order: Denied, then the posture, then the level.
+ * Decides one opening: Denied, then an explicit Allowed, then the posture.
  *
- * Prompt All keeps an Allowed opening closed, because it asks for everything that isn't Denied (D4,
- * #1158) and these have no prompt yet. Allow All opens an Ask only because it may leave the sandbox
+ * An explicit Allowed opens it under every posture, Prompt All included (ruled on #1162, 2026-11-11):
+ * these have no prompt yet, so under D4 an Allowed on the default posture would otherwise do nothing
+ * and the setting would look broken. Allow All opens an Ask only because it may leave the sandbox
  * anyway, so opening it gives nothing away. It does not when leaving the sandbox is itself Denied: the
  * Docker socket reaches a daemon that can mount the host, so a user who keeps agents in the sandbox
- * must not have that opened for them by a posture.
+ * must not have that opened for them by a posture — though their own explicit Allowed still stands.
  *
  * Only macOS has these knobs. The SDK ignores both on Linux, where the sandbox has no local network and
  * cannot filter sockets by path, so nothing opens there and the agent must not be told otherwise.
@@ -183,12 +184,15 @@ function reachLevel(
   if (level === 'deny') {
     return 'deny';
   }
-  if (platform !== 'darwin' || settings.permissionPosture === 'prompt') {
+  if (platform !== 'darwin') {
     return 'ask';
+  }
+  if (level === 'allow') {
+    return 'allow';
   }
   const posture: boolean =
     settings.permissionPosture === 'auto-all' && settings.toolPolicies[RUN_UNSANDBOXED] !== 'deny';
-  return level === 'allow' || posture ? 'allow' : 'ask';
+  return posture ? 'allow' : 'ask';
 }
 
 /**
