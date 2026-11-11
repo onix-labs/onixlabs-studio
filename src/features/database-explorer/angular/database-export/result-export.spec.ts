@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { inflateRawSync } from 'node:zlib';
 import { DatabaseValue, ResultColumn } from '@shared/api/database-engine-protocol';
-import { toJson, toCsv, toXlsx } from './result-export';
+import { toJson, toCsv, toMarkdown, toTsv, toXlsx } from './result-export';
 
 /**
  * One file read back out of a zip archive.
@@ -234,6 +234,44 @@ describe('toCsv options', () => {
 
   it('writes a NULL as the text chosen', () => {
     expect(toCsv(columns, [[null, 2]], { nullText: 'NULL' })).toBe('a,b\r\nNULL,2\r\n');
+  });
+});
+
+describe('toMarkdown', () => {
+  it('writesAHeaderADividerAndOneLinePerRow', () => {
+    expect(
+      toMarkdown(COLUMNS, [
+        [1, 'Ada'],
+        [2, null],
+      ]),
+    ).toBe('| id | name |\n| --- | --- |\n| 1 | Ada |\n| 2 |  |\n');
+  });
+
+  it('keepsACellFromBreakingTheTable', () => {
+    // A pipe would start a new column, a line break a new row.
+    expect(toMarkdown(COLUMNS, [[1, 'a | b\nc\\d']])).toBe(
+      '| id | name |\n| --- | --- |\n| 1 | a \\| b<br>c\\\\d |\n',
+    );
+  });
+
+  it('writesANullAsTheTextItIsGiven', () => {
+    expect(toMarkdown(COLUMNS, [[1, null]], 'NULL')).toContain('| 1 | NULL |');
+  });
+});
+
+describe('toTsv', () => {
+  it('writesAHeaderAndATabBetweenCells_asASpreadsheetPastesIt', () => {
+    expect(
+      toTsv(COLUMNS, [
+        [1, 'Ada'],
+        [2, null],
+      ]),
+    ).toBe('id\tname\n1\tAda\n2\t\n');
+  });
+
+  it('turnsATabOrLineBreakInACellIntoASpace', () => {
+    // The format cannot quote one, and either would shift every cell after it.
+    expect(toTsv(COLUMNS, [[1, 'a\tb\r\nc']])).toBe('id\tname\n1\ta b c\n');
   });
 });
 

@@ -10,6 +10,7 @@ import {
   TableGroupDef,
   TableRow,
   TableRowDef,
+  TableRowSelect,
   TableRowSize,
   TableSort,
 } from './table';
@@ -29,6 +30,7 @@ import {
       [gridlineTone]="gridlineTone()"
       emptyText="Nothing here."
       (rowClick)="onRow($event)"
+      (rowSelect)="selects.push($event)"
       (sortChange)="onSort($event)"
     >
       <ng-template appTableGroup let-row>
@@ -61,6 +63,7 @@ class TestHost {
     signal<TableGridlineTone>('light');
   public readonly clicked: TableRow[] = [];
   public readonly sorts: (TableSort | null)[] = [];
+  public readonly selects: TableRowSelect[] = [];
 
   public onRow(row: TableRow): void {
     this.clicked.push(row);
@@ -124,6 +127,29 @@ describe('Table', () => {
       .nativeElement as HTMLElement;
     firstDataRow.click();
     expect(component.clicked.map((row: TableRow): string => row.id)).toEqual(['r1']);
+  });
+
+  it('reports a row click with its modifier keys, for a consumer selecting several rows', () => {
+    const [first, second] = fixture.debugElement
+      .queryAll(By.css('.table-row'))
+      .map((row): HTMLElement => row.nativeElement as HTMLElement);
+    first.dispatchEvent(new MouseEvent('click', { bubbles: true, metaKey: true }));
+    second.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+    first.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+
+    expect(
+      component.selects.map((select: TableRowSelect): readonly [string, boolean, boolean] => [
+        select.row.id,
+        select.toggle,
+        select.range,
+      ]),
+    ).toEqual([
+      ['r1', true, false],
+      ['r2', false, true],
+      ['r1', true, false],
+    ]);
+    // A plain row click is still reported as one.
+    expect(component.clicked.map((row: TableRow): string => row.id)).toEqual(['r1', 'r2', 'r1']);
   });
 
   it('shows the empty text when there are no rows', () => {

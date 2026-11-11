@@ -20,7 +20,14 @@ import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { FileWriteResult } from '@shared/api/file-channels';
-import { CsvOptions, toCsv, toJson, toXlsx } from '../../database-export/result-export';
+import {
+  CsvOptions,
+  toCsv,
+  toJson,
+  toMarkdown,
+  toTsv,
+  toXlsx,
+} from '../../database-export/result-export';
 import { ExportRows } from '../../database-workspace/database-workspace';
 import {
   DatabaseEngineInfo,
@@ -41,7 +48,13 @@ import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
-import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
+import {
+  Table,
+  TableColumn,
+  TableRow,
+  TableRowDef,
+  TableRowSelect,
+} from '@shared/angular/components/table/table';
 import { TabList, TabListTab } from '@shared/angular/components/forms/tab-list/tab-list';
 import { TextEditor, TextEditorCursor } from '@shared/angular/components/text-editor/text-editor';
 import {
@@ -342,11 +355,17 @@ export class QueryPanel {
   );
 
   /**
-   * Holds the selected grid row.
+   * Holds the selected grid rows: one by a click, more with ⌘ or Ctrl (one at a time) and Shift (a
+   * range from the anchor).
    */
   protected readonly selectedRows: WritableSignal<ReadonlySet<string>> = signal<
     ReadonlySet<string>
   >(new Set<string>());
+
+  /**
+   * Holds the row a Shift-click extends the selection from: the last row clicked without Shift.
+   */
+  private selectionAnchor: number | null = null;
 
   /**
    * Gets the query, or undefined once it has been deleted from under the tab.
@@ -476,6 +495,13 @@ export class QueryPanel {
       { id: EXPORT_CSV, label: 'Export to CSV', icon: Icon.EXPORT, disabled: none },
       { id: EXPORT_XLSX, label: 'Export to XLSX', icon: Icon.EXPORT, disabled: none },
       { id: EXPORT_JSON, label: 'Export to JSON', icon: Icon.EXPORT, disabled: none },
+      { id: EXPORT_MARKDOWN, label: 'Export to Markdown', icon: Icon.EXPORT, disabled: none },
+      {
+        id: COPY_ROWS,
+        label: 'Copy Selected Rows',
+        icon: Icon.COPY,
+        disabled: none || this.selectedRows().size === 0,
+      },
     ];
   });
 
@@ -957,8 +983,38 @@ export class QueryPanel {
    * @param id The item's id.
    */
   protected onMoreAction(id: string): void {
-    if (id === EXPORT_CSV || id === EXPORT_XLSX || id === EXPORT_JSON) {
-      void this.exportResult(id === EXPORT_CSV ? 'csv' : id === EXPORT_XLSX ? 'xlsx' : 'json');
+    const format: ExportFormat | undefined = EXPORT_FORMATS[id];
+    if (format !== undefined) {
+      void this.exportResult(format);
+    } else if (id === COPY_ROWS) {
+      void this.copySelectedRows();
+    }
+  }
+
+  /**
+   * Copies the selected rows to the clipboard as tab-separated text with a header row, as a
+   * spreadsheet pastes it, in the order they appear in the grid.
+   */
+  private async copySelectedRows(): Promise<void> {
+    const set: ResultSet | undefined = this.resultSet();
+    if (set === undefined) {
+      return;
+    }
+    const rows: readonly (readonly DatabaseValue[])[] = [...this.selectedRows()]
+      .map(Number)
+      .sort((a: number, b: number): number => a - b)
+      .map((index: number): readonly DatabaseValue[] | undefined => set.rows[index])
+      .filter(
+        (row: readonly DatabaseValue[] | undefined): row is readonly DatabaseValue[] =>
+          row !== undefined,
+      );
+    if (rows.length === 0) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(toTsv(set.columns, rows, this.csvOptions().nullText));
+    } catch {
+      this.notifications.notify({ severity: 'error', title: 'The rows could not be copied' });
     }
   }
 
@@ -967,7 +1023,7 @@ export class QueryPanel {
    * user chooses, and says how it went.
    * @param format The file format.
    */
-  private async exportResult(format: 'csv' | 'xlsx' | 'json'): Promise<void> {
+  private async exportResult(format: ExportFormat): Promise<void> {
     const resultSet: ResultSet | undefined = this.resultSet();
     const title: string = this.query()?.title ?? 'Results';
     if (resultSet === undefined) {
@@ -994,19 +1050,24 @@ export class QueryPanel {
           )
         : format === 'json'
           ? await this.fileSystem.write(path, toJson(gathered.columns, gathered.rows))
-          : await this.fileSystem.writeBytes(path, await toXlsx(gathered.columns, gathered.rows));
+          : format === 'md'
+            ? await this.fileSystem.write(
+                path,
+                toMarkdown(gathered.columns, gathered.rows, this.csvOptions().nullText),
+              )
+            : await this.fileSystem.writeBytes(path, await toXlsx(gathered.columns, gathered.rows));
     const rows: string = `${gathered.rows.length.toLocaleString()} row${gathered.rows.length === 1 ? '' : 's'}`;
     if (!result.success) {
       this.notifications.notify({
         severity: 'error',
-        title: `The export to ${format.toUpperCase()} failed`,
+        title: `The export to ${FORMAT_NAMES[format]} failed`,
         detail: result.error ?? path,
       });
       return;
     }
     this.notifications.notify({
       severity: gathered.complete ? 'info' : 'warning',
-      title: `Exported ${rows} to ${format.toUpperCase()}`,
+      title: `Exported ${rows} to ${FORMAT_NAMES[format]}`,
       detail: gathered.complete
         ? path
         : `${path} — only the rows already loaded: the connection closed before the rest could be read.`,
@@ -1134,14 +1195,49 @@ export class QueryPanel {
   protected chooseResult(index: number): void {
     this.resultIndex.set(index);
     this.selectedRows.set(new Set<string>());
+    this.selectionAnchor = null;
   }
 
   /**
-   * Selects a grid row, and shows it in Properties.
-   * @param row The clicked row.
+   * Selects grid rows from a click: the row alone, or with ⌘ or Ctrl added to or removed from the
+   * selection, or with Shift the range from the anchor to it. The clicked row shows in Properties.
+   * @param select The click.
    */
-  protected onRowClick(row: TableRow): void {
-    this.selectedRows.set(new Set<string>([row.id]));
+  protected onRowSelect(select: TableRowSelect): void {
+    const index: number = Number(select.row.id);
+    if (select.range && this.selectionAnchor !== null) {
+      const from: number = Math.min(this.selectionAnchor, index);
+      const to: number = Math.max(this.selectionAnchor, index);
+      this.selectedRows.set(
+        new Set<string>(
+          Array.from(
+            { length: to - from + 1 },
+            (_value: unknown, at: number): string => `${from + at}`,
+          ),
+        ),
+      );
+    } else if (select.toggle) {
+      const next: Set<string> = new Set<string>(this.selectedRows());
+      if (!next.delete(select.row.id)) {
+        next.add(select.row.id);
+      }
+      this.selectedRows.set(next);
+      this.selectionAnchor = index;
+    } else {
+      this.selectionAnchor = index;
+    }
+    this.onRowClick(select.row, select.range || select.toggle);
+  }
+
+  /**
+   * Shows a clicked grid row in Properties, selecting it alone unless the click extended the selection.
+   * @param row The clicked row.
+   * @param extending Whether the click added to the selection rather than replacing it.
+   */
+  protected onRowClick(row: TableRow, extending: boolean = false): void {
+    if (!extending) {
+      this.selectedRows.set(new Set<string>([row.id]));
+    }
     const set: ResultSet | undefined = this.resultSet();
     const cells: readonly DatabaseValue[] | undefined = set?.rows[Number(row.id)];
     if (set === undefined || cells === undefined) {
@@ -1281,3 +1377,30 @@ function completionKind(
 const EXPORT_CSV: string = 'export-csv';
 const EXPORT_XLSX: string = 'export-xlsx';
 const EXPORT_JSON: string = 'export-json';
+const EXPORT_MARKDOWN: string = 'export-markdown';
+const COPY_ROWS: string = 'copy-rows';
+
+/**
+ * Names a file format a result set is exported to, by its extension.
+ */
+type ExportFormat = 'csv' | 'xlsx' | 'json' | 'md';
+
+/**
+ * What each export format is called in a notification.
+ */
+const FORMAT_NAMES: Readonly<Record<ExportFormat, string>> = {
+  csv: 'CSV',
+  xlsx: 'XLSX',
+  json: 'JSON',
+  md: 'Markdown',
+};
+
+/**
+ * The export each menu item writes.
+ */
+const EXPORT_FORMATS: Readonly<Record<string, ExportFormat>> = {
+  [EXPORT_CSV]: 'csv',
+  [EXPORT_XLSX]: 'xlsx',
+  [EXPORT_JSON]: 'json',
+  [EXPORT_MARKDOWN]: 'md',
+};
