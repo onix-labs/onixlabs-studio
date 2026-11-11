@@ -1,0 +1,11 @@
+{
+  "name": "@onixlabs/sqlserver-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Connect the Database Explorer to SQL Server and Azure SQL.",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}
