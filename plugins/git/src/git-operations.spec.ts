@@ -497,6 +497,88 @@ describe('GitVersionControl operations', () => {
       expect(answer.error).toBeTruthy();
     });
 
+    describe('the SSH command (#1433)', () => {
+      /**
+       * Starts an endpoint over a git that records every invocation's arguments and the
+       * `GIT_SSH_COMMAND` it inherited, then runs the real git.
+       * @returns Returns the endpoint and the log's path.
+       */
+      async function recording(): Promise<{ vcs: GitVersionControl; log: string }> {
+        const log: string = path.join(base, 'git.log');
+        const wrapper: string = path.join(base, 'recording-git');
+        await fs.writeFile(
+          wrapper,
+          `#!/bin/sh\nprintf 'ARGS %s\\nSSH %s\\n' "$*" "\${GIT_SSH_COMMAND-<unset>}" >> '${log}'\nexec git "$@"\n`,
+        );
+        await fs.chmod(wrapper, 0o755);
+        const recorded: GitVersionControl = new GitVersionControl();
+        await recorded.start({ mode: 'custom', path: wrapper });
+        return { vcs: recorded, log };
+      }
+
+      /**
+       * Fetches through a recording git and reads back the fetch's own invocation.
+       * @returns Returns the fetch's arguments and the SSH command it inherited.
+       */
+      async function fetchRecorded(): Promise<{ args: string; ssh: string }> {
+        const { vcs: recorded, log } = await recording();
+        const answer: Answer = await (
+          recorded.request.bind(recorded) as unknown as (
+            op: string,
+            root: string,
+            params: unknown,
+          ) => Promise<Answer>
+        )('fetch', repo, {});
+        recorded.dispose();
+        expect(answer.ok).toBe(true);
+        const lines: readonly string[] = (await fs.readFile(log, 'utf8')).split('\n');
+        const at: number = lines.findIndex(
+          (line: string): boolean => line.startsWith('ARGS ') && / fetch\b|^ARGS fetch/.test(line),
+        );
+        return { args: lines[at] ?? '', ssh: lines[at + 1] ?? '' };
+      }
+
+      it(
+        'withNeitherSet_fetchesWithTheNonInteractiveCommand_withoutSettingTheEnvironment',
+        SLOW,
+        async () => {
+          await remote();
+          delete process.env['GIT_SSH_COMMAND'];
+          delete process.env['GIT_SSH'];
+
+          const { args, ssh } = await fetchRecorded();
+
+          expect(args).toContain(
+            '-c core.sshCommand=ssh -o BatchMode=yes -o ConnectTimeout=10 fetch',
+          );
+          expect(ssh).toBe('SSH <unset>');
+        },
+      );
+
+      it('withCoreSshCommandConfigured_fetchesWithTheUsersOwn', SLOW, async () => {
+        await remote();
+        delete process.env['GIT_SSH_COMMAND'];
+        delete process.env['GIT_SSH'];
+        await git(repo, 'config', 'core.sshCommand', 'ssh -i ~/.ssh/work_key');
+
+        const { args, ssh } = await fetchRecorded();
+
+        // Nothing of Studio's outranks it: no -c, and no GIT_SSH_COMMAND.
+        expect(args).not.toContain('core.sshCommand');
+        expect(ssh).toBe('SSH <unset>');
+      });
+
+      it('withGitSshCommandExported_fetchesWithTheUsersOwn', SLOW, async () => {
+        await remote();
+        process.env['GIT_SSH_COMMAND'] = 'ssh -i ~/.ssh/my_key';
+
+        const { args, ssh } = await fetchRecorded();
+
+        expect(args).not.toContain('core.sshCommand');
+        expect(ssh).toBe('SSH ssh -i ~/.ssh/my_key');
+      });
+    });
+
     it('anOperationThatOverrunsItsTimeout_failsRatherThanHangs', SLOW, async () => {
       await remote();
       const slow: string = path.join(base, 'slow-git');
