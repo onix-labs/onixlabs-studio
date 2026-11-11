@@ -15,6 +15,7 @@ import {
   VcsResult,
 } from './protocol';
 import {
+  BATCH_SSH_COMMAND,
   commitOptions,
   confinedPaths,
   gitSideFor,
@@ -22,6 +23,7 @@ import {
   ignoreLine,
   isSafeOperand,
   MAX_READ_FILE_BYTES,
+  networkArgs,
   networkTimeout,
   pullOptions,
   revisionSpec,
@@ -54,6 +56,32 @@ function git(cwd: string, ...args: string[]): Promise<string> {
     );
   });
 }
+
+describe('networkArgs (#1433)', () => {
+  const fetch: readonly string[] = ['fetch', '--prune'];
+
+  it('givesTheNonInteractiveCommand_onlyWhenTheUserHasNone', () => {
+    expect(networkArgs(fetch, {}, null)).toEqual([
+      '-c',
+      `core.sshCommand=${BATCH_SSH_COMMAND}`,
+      'fetch',
+      '--prune',
+    ]);
+    expect(BATCH_SSH_COMMAND).toBe('ssh -o BatchMode=yes -o ConnectTimeout=10');
+  });
+
+  it.each([
+    ['GIT_SSH_COMMAND exported', { GIT_SSH_COMMAND: 'ssh -i key' }, null],
+    ['GIT_SSH exported', { GIT_SSH: '/usr/local/bin/plink' }, null],
+    ['core.sshCommand configured', {}, 'ssh -i ~/.ssh/work\n'],
+  ])('leavesTheArgumentsAlone_with %s', (_label: string, env: NodeJS.ProcessEnv, configured) => {
+    expect(networkArgs(fetch, env, configured)).toBe(fetch);
+  });
+
+  it('treatsABlankValue_asNoneSet', () => {
+    expect(networkArgs(fetch, { GIT_SSH_COMMAND: ' ' }, '\n')).toHaveLength(4);
+  });
+});
 
 describe('revisionSpec', () => {
   it('neverDoublesTheSeparatorForTheIndexOrOurSide', () => {

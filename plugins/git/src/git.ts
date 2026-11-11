@@ -73,12 +73,41 @@ const MAX_LOG_LIMIT: number = 5000;
 /**
  * Holds the environment overlay applied to network git invocations so they never block on an
  * interactive prompt: with no usable credentials git fails fast rather than hanging until the
- * timeout. Credentials still come from the user's credential helper and ssh-agent.
+ * timeout. Credentials still come from the user's credential helper and ssh-agent. It deliberately
+ * sets no SSH command: `GIT_SSH_COMMAND` outranks the user's own `core.sshCommand`, so setting it
+ * here replaced their key, binary or wrapper (#1433). See {@link networkArgs}.
  */
 const GIT_NETWORK_ENV: NodeJS.ProcessEnv = {
   GIT_TERMINAL_PROMPT: '0',
-  GIT_SSH_COMMAND: 'ssh -o BatchMode=yes -o ConnectTimeout=10',
 };
+
+/**
+ * Holds the SSH command a network invocation uses when the user has set none of their own: it can
+ * neither prompt (BatchMode) nor wait on an unreachable host for long.
+ */
+export const BATCH_SSH_COMMAND: string = 'ssh -o BatchMode=yes -o ConnectTimeout=10';
+
+/**
+ * Builds a network invocation's arguments so the user's own SSH command always wins. Git takes its SSH
+ * command from `GIT_SSH_COMMAND`, then `GIT_SSH`, then the `core.sshCommand` config; when the user has
+ * set any of them, it is left alone. Only when they have set none is {@link BATCH_SSH_COMMAND} given,
+ * as a one-off `-c core.sshCommand`, which nothing of theirs outranks because they have nothing.
+ * @param args The git arguments.
+ * @param env The environment git inherits.
+ * @param configured The repository's `core.sshCommand`, or null when it has none.
+ * @returns Returns the arguments to run.
+ */
+export function networkArgs(
+  args: readonly string[],
+  env: NodeJS.ProcessEnv,
+  configured: string | null,
+): readonly string[] {
+  const own: boolean =
+    (env['GIT_SSH_COMMAND'] ?? '').trim() !== '' ||
+    (env['GIT_SSH'] ?? '').trim() !== '' ||
+    (configured ?? '').trim() !== '';
+  return own ? args : ['-c', `core.sshCommand=${BATCH_SSH_COMMAND}`, ...args];
+}
 
 /**
  * Holds the environment overlay applied to merges, rebases, and the commands that finish them. Every
@@ -1290,7 +1319,7 @@ export class GitVersionControl {
     const target: string = path.resolve(directory);
     const cloned: GitRun = await this.git(
       path.dirname(target),
-      [
+      await this.withSshCommand(path.dirname(target), [
         'clone',
         ...(params['recurseSubmodules'] === true ? ['--recurse-submodules'] : []),
         // A shallow clone otherwise fetches the default branch alone, and the branch checked out next
@@ -1299,7 +1328,7 @@ export class GitVersionControl {
         '--',
         url,
         path.basename(target),
-      ],
+      ]),
       GIT_CLONE_TIMEOUT_MS,
       GIT_NETWORK_ENV,
     );
@@ -1398,11 +1427,32 @@ export class GitVersionControl {
     args: readonly string[],
     timeoutMs: number = GIT_NETWORK_TIMEOUT_MS,
   ): Promise<Outcome> {
-    const run: GitRun = await this.git(root, args, timeoutMs, GIT_NETWORK_ENV);
+    const run: GitRun = await this.git(
+      root,
+      await this.withSshCommand(root, args),
+      timeoutMs,
+      GIT_NETWORK_ENV,
+    );
     if (!run.success) {
       debug('GitVersionControl', `Network git ${args[0]} failed`);
     }
     return run.success ? ok(DONE) : fail(networkFailureMessage(run));
+  }
+
+  /**
+   * Gives a network invocation the non-interactive SSH command unless the user has one of their own
+   * (see {@link networkArgs}), reading `core.sshCommand` as git would for that directory: the
+   * repository's own config, then the global and system ones.
+   * @param cwd The directory git runs in.
+   * @param args The git arguments.
+   * @returns Returns a promise resolving the arguments to run.
+   */
+  private async withSshCommand(cwd: string, args: readonly string[]): Promise<readonly string[]> {
+    if (networkArgs(args, process.env, null) === args) {
+      return args;
+    }
+    const configured: GitRun = await this.git(cwd, ['config', '--get', 'core.sshCommand']);
+    return networkArgs(args, process.env, configured.success ? configured.stdout : null);
   }
 
   /**
