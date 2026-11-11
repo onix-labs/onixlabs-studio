@@ -75,13 +75,13 @@ export const GATEABLE_TOOLS: readonly GateableTool[] = [
     name: LOCAL_NETWORK,
     label: 'Local Network',
     description:
-      'Let sandboxed commands bind and connect to ports on this machine, which reaches anything listening here. Ask and Deny keep them refused, Deny also tells the agent not to try, and Prompt All refuses them even at Allow. Applies to Claude on macOS.',
+      'Let sandboxed commands bind and connect to ports on this machine, which reaches anything listening here. Allow opens them under every posture. Ask keeps them refused, except that Allow All opens them unless Run Outside the Sandbox is denied. Deny keeps them refused and tells the agent not to try. Applies to Claude on macOS.',
   },
   {
     name: DOCKER_SOCKET,
     label: 'Docker Socket',
     description:
-      "Let sandboxed commands reach the container engine, which can read and change whatever a container can mount. Ask and Deny keep it refused, Deny also tells the agent not to try, and Prompt All refuses it even at Allow. Finds Docker Desktop's socket and DOCKER_HOST. Applies to Claude on macOS.",
+      "Let sandboxed commands reach the container engine, which can read and change whatever a container can mount. Allow opens it under every posture. Ask keeps it refused, except that Allow All opens it unless Run Outside the Sandbox is denied. Deny keeps it refused and tells the agent not to try. Finds Docker Desktop's socket and DOCKER_HOST. Applies to Claude on macOS.",
   },
   { name: 'WebFetch', label: 'Fetch a URL', description: 'Retrieve the contents of a web page.' },
   { name: 'WebSearch', label: 'Web Search', description: 'Search the web.' },

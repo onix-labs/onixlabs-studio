@@ -149,7 +149,8 @@ describe('sandboxReach', () => {
 
   it.each<[ReachSettings['permissionPosture'], 'allow' | 'deny' | undefined, ReachLevel]>([
     ['prompt', undefined, 'ask'],
-    ['prompt', 'allow', 'ask'],
+    // Ruled on #1162 (2026-11-11): an explicit Allowed opens it even under Prompt All.
+    ['prompt', 'allow', 'allow'],
     ['prompt', 'deny', 'deny'],
     ['auto-edits', undefined, 'ask'],
     ['auto-edits', 'allow', 'allow'],
@@ -171,10 +172,22 @@ describe('sandboxReach', () => {
     });
   });
 
-  it('anExplicitAllow_standsEvenWhenLeavingTheSandboxIsDenied', () => {
-    expect(sandboxReach(settings('auto-all', 'allow', 'deny'), 'darwin').dockerSocket).toBe(
-      'allow',
-    );
+  it.each<ReachSettings['permissionPosture']>(['prompt', 'auto-edits', 'auto-all'])(
+    'anExplicitAllow_standsEvenWhenLeavingTheSandboxIsDenied_under %s',
+    (posture: ReachSettings['permissionPosture']) => {
+      expect(sandboxReach(settings(posture, 'allow', 'deny'), 'darwin')).toEqual({
+        localPorts: 'allow',
+        dockerSocket: 'allow',
+      });
+    },
+  );
+
+  it('anExplicitAllow_opensNothing_offMacOS', () => {
+    // The SDK has neither knob on Linux, so the agent must not be told they are open.
+    expect(sandboxReach(settings('prompt', 'allow'), 'linux')).toEqual({
+      localPorts: 'ask',
+      dockerSocket: 'ask',
+    });
   });
 
   it('decidesEachPermissionOnItsOwn', () => {
