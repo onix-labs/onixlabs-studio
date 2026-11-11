@@ -20,6 +20,8 @@ import {
   NamesRequest,
   NamesScope,
   ResultSet,
+  ExplainOutcome,
+  ExplainRequest,
   TransactionOutcome,
   TransactionRequest,
   TreeOptions,
@@ -275,6 +277,24 @@ export function serve(engine: DatabaseEngine): void {
           return outcome ?? { failed: true, message: 'This engine has no transactions to end.' };
         } catch (error: unknown) {
           return { failed: true, message: describeError(error) };
+        }
+      }
+      case 'explain': {
+        const request: ExplainRequest = params as unknown as ExplainRequest;
+        if (typeof request.text !== 'string') {
+          throw new Error('explain needs the text to plan.');
+        }
+        try {
+          const outcome: ExplainOutcome | undefined = await session(params).explain?.(
+            request.text,
+            typeof request.database === 'string' ? request.database : undefined,
+            request.analyze === true,
+          );
+          return (
+            outcome ?? { plans: [], failed: true, message: 'This engine cannot explain a query.' }
+          );
+        } catch (error: unknown) {
+          return { plans: [], failed: true, message: describeError(error) };
         }
       }
       default:

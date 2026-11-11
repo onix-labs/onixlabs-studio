@@ -5,7 +5,13 @@
  * @vitest-environment node
  */
 import { afterEach, beforeEach, describe, expect, it, Mock, vi } from 'vitest';
-import { CompletionName, DatabaseNode, NodeActionOutcome } from '../../protocol/database/protocol';
+import {
+  CompletionName,
+  DatabaseNode,
+  ExplainOutcome,
+  NodeActionOutcome,
+  QueryPlan,
+} from '../../protocol/database/protocol';
 import {
   encodePath,
   EngineExecution,
@@ -400,7 +406,14 @@ describe('PostgresEngine', (): void => {
       displayName: 'PostgreSQL',
       language: 'pgsql',
       queryExtension: 'sql',
-      capabilities: ['cancel', 'multipleDatabases', 'script', 'completion', 'transactions'],
+      capabilities: [
+        'cancel',
+        'multipleDatabases',
+        'script',
+        'completion',
+        'transactions',
+        'explain',
+      ],
     });
     expect(engine.info.connectionFields.map((field: { id: string }): string => field.id)).toEqual([
       'host',
@@ -1065,6 +1078,68 @@ describe('PostgresEngine', (): void => {
     expect(
       pgMock.clients.filter((client: FakeClient): boolean => client.config['database'] === 'shop'),
     ).toHaveLength(2);
+  });
+
+  it('explain_plansEachStatementAsJson_onAClientOfItsOwn_thatItThenCloses', async (): Promise<void> => {
+    // #1099. A client of its own, so neither the tree's nor an open transaction's is touched.
+    pgMock.respond = (_: FakeClient, call: QueryCall): FakeResult =>
+      metadata([[[{ Plan: { 'Node Type': 'Seq Scan', 'Relation Name': call.text.slice(-6) } }]]]);
+    const session: EngineSession = await open();
+
+    const outcome: ExplainOutcome = await session.explain!(
+      'select * from orders;\nselect * from people',
+    );
+
+    const planner: FakeClient = pgMock.clients[1];
+    expect(planner.queries.map((call: QueryCall): string => call.text)).toEqual([
+      'explain (format json) select * from orders',
+      'explain (format json) select * from people',
+    ]);
+    expect(planner.ended).toBe(true);
+    expect(pgMock.clients[0].ended).toBe(false);
+    expect(outcome.failed).toBe(false);
+    expect(outcome.plans.map((plan: QueryPlan) => [plan.line, plan.root.detail])).toEqual([
+      [1, 'on orders'],
+      [2, 'on people'],
+    ]);
+  });
+
+  it('explain_analyzed_runsEachStatementInATransactionItRollsBack', async (): Promise<void> => {
+    // Analyzing runs the statement; rolling back undoes what it wrote.
+    pgMock.respond = (_: FakeClient, call: QueryCall): FakeResult =>
+      call.text.startsWith('explain')
+        ? metadata([[[{ Plan: { 'Node Type': 'Delete', 'Actual Rows': 0 } }]]])
+        : metadata([]);
+    const session: EngineSession = await open();
+
+    const outcome: ExplainOutcome = await session.explain!('delete from orders', undefined, true);
+
+    expect(pgMock.clients[1].queries.map((call: QueryCall): string => call.text)).toEqual([
+      'begin',
+      'explain (analyze, format json) delete from orders',
+      'rollback',
+    ]);
+    expect(outcome.plans[0]?.root).toMatchObject({ operator: 'Delete', actualRows: 0 });
+  });
+
+  it('explain_ofAStatementThatCannotBePlanned_saysWhy_andStillRollsBack', async (): Promise<void> => {
+    pgMock.respond = (_: FakeClient, call: QueryCall): FakeResult => {
+      if (call.text.startsWith('explain')) {
+        throw new Error('syntax error at or near "selec"');
+      }
+      return metadata([]);
+    };
+    const session: EngineSession = await open();
+
+    const outcome: ExplainOutcome = await session.explain!('selec 1', undefined, true);
+
+    expect(outcome).toEqual({
+      plans: [],
+      failed: true,
+      message: 'syntax error at or near "selec"',
+    });
+    expect(pgMock.clients[1].queries.at(-1)?.text).toBe('rollback');
+    expect(pgMock.clients[1].ended).toBe(true);
   });
 
   it('cancel_ignoresAnExecutionThatIsNotRunning', async (): Promise<void> => {
