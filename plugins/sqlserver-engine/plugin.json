@@ -1,0 +1,28 @@
+{
+  "id": "sqlserver-engine",
+  "name": "SQL Server",
+  "description": "Connect the Database Explorer to SQL Server and Azure SQL.",
+  "detail": "Connects to SQL Server and Azure SQL over the network with `tedious`, a pure-JavaScript client; it installs no database and no native code. Splits scripts at GO like SSMS, and shows PRINT and RAISERROR in Messages.",
+  "version": "0.1.0",
+  "apiVersion": "1.23.0",
+  "provision": {
+    "kind": "npm",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/sqlserver-engine.lock.json",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "executablePath": "node_modules/@onixlabs/sqlserver-engine/main.js"
+  },
+  "contributes": {
+    "databaseEngines": [
+      {
+        "id": "sqlserver",
+        "displayName": "SQL Server",
+        "priority": 80,
+        "command": {
+          "kind": "node"
+        },
+        "entryPoint": "node_modules/@onixlabs/sqlserver-engine/main.js"
+      }
+    ]
+  },
+  "requires": []
+}
