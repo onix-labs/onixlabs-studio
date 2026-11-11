@@ -1704,6 +1704,7 @@ describe('LspClient', () => {
         linkedEditing: false,
         rangeTokens: false,
         selectionRanges: false,
+        colors: false,
       };
       expect(features.structureEnabled).toEqual([['typescript', expected]]);
       expect(features.resolver?.('/root/src/a.ts')?.structure).toEqual(expected);

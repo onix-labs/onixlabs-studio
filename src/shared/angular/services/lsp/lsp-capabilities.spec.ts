@@ -165,6 +165,7 @@ describe('structureSupportOf (#1147)', () => {
       linkedEditing: true,
       rangeTokens: true,
       selectionRanges: true,
+      colors: false,
     });
     expect(structureSupportOf({ semanticTokensProvider: { range: true } })).toEqual({
       folding: false,
@@ -172,6 +173,7 @@ describe('structureSupportOf (#1147)', () => {
       linkedEditing: false,
       rangeTokens: false,
       selectionRanges: false,
+      colors: false,
     });
     expect(structureSupportOf(undefined)).toEqual({
       folding: false,
@@ -179,7 +181,15 @@ describe('structureSupportOf (#1147)', () => {
       linkedEditing: false,
       rangeTokens: false,
       selectionRanges: false,
+      colors: false,
     });
+  });
+
+  it('readsColours_asTheHtmlServerAdvertisesThem (#1214)', () => {
+    // vscode-html-language-server 4.10.0 advertises `colorProvider: {}`.
+    expect(structureSupportOf({ colorProvider: {} }).colors).toBe(true);
+    expect(structureSupportOf({ colorProvider: true }).colors).toBe(true);
+    expect(structureSupportOf({ colorProvider: false }).colors).toBe(false);
   });
 });
 

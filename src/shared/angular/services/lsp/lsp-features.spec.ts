@@ -118,6 +118,8 @@ interface FakeStructureProvider {
     model: unknown,
     range: unknown,
   ): Promise<{ data: Uint32Array } | null>;
+  provideDocumentColors?(model: unknown): Promise<unknown>;
+  provideColorPresentations?(model: unknown, color: unknown): Promise<unknown>;
 }
 
 /**
@@ -235,6 +237,9 @@ function fakeMonacoNamespace(
       },
       registerSelectionRangeProvider: (language: string, provider: unknown): void => {
         (captured.structure ??= new Map()).set(`${language}:selectionRanges`, provider);
+      },
+      registerColorProvider: (language: string, provider: unknown): void => {
+        (captured.structure ??= new Map()).set(`${language}:colors`, provider);
       },
       registerDocumentFormattingEditProvider: (language: string, provider: unknown): unknown =>
         captureFormatter(captured, `${language}:document`, provider),
@@ -1801,6 +1806,106 @@ describe('LspFeatures', () => {
         'csharp:selectionRanges',
         'go:folding',
       ]);
+    });
+
+    it('colors_areAskedFor_onlyWhereMonacoHasNoneOfItsOwn (#1214)', async () => {
+      const features: LspFeatures = await build();
+      const colors: LspStructureSupport = { ...ALL, colors: true };
+      for (const language of ['html', 'svelte', 'css', 'scss', 'less', 'json']) {
+        features.enableStructure(language, colors);
+      }
+      features.enableStructure('csharp', ALL);
+
+      // Monaco's own CSS and JSON workers already colour those: a server's swatches would show twice.
+      expect(
+        [...(captured.structure?.keys() ?? [])].filter((key: string): boolean =>
+          key.endsWith(':colors'),
+        ),
+      ).toEqual(['html:colors', 'svelte:colors']);
+    });
+
+    it('colors_mapTheServersColours_leavingOutAnyItCannotRead (#1214)', async () => {
+      structureSupport = { ...ALL, colors: true };
+      const at: (line: number) => unknown = (line: number): unknown => ({
+        start: { line, character: 7 },
+        end: { line, character: 14 },
+      });
+      responses['textDocument/documentColor'] = [
+        { range: at(0), color: { red: 1, green: 0, blue: 0, alpha: 1 } },
+        { range: at(1), color: { red: 2, green: 0, blue: 0, alpha: 1 } },
+        { range: at(2), color: 'red' },
+        { color: { red: 0, green: 0, blue: 1, alpha: 0.5 } },
+      ];
+      const features: LspFeatures = await build();
+      features.enableStructure('html', { ...ALL, colors: true });
+
+      const found: unknown = await captured.structure
+        ?.get('html:colors')
+        ?.provideDocumentColors?.(owned);
+
+      expect(requests.at(-1)?.method).toBe('textDocument/documentColor');
+      expect(found).toEqual([
+        {
+          range: { startLineNumber: 1, startColumn: 8, endLineNumber: 1, endColumn: 15 },
+          color: { red: 1, green: 0, blue: 0, alpha: 1 },
+        },
+      ]);
+    });
+
+    it('colorPresentations_askHowToWriteThePickedColour_inItsPlace (#1214)', async () => {
+      structureSupport = { ...ALL, colors: true };
+      responses['textDocument/colorPresentation'] = [
+        {
+          label: 'rgb(255, 0, 0)',
+          textEdit: {
+            range: { start: { line: 0, character: 7 }, end: { line: 0, character: 14 } },
+            newText: 'rgb(255, 0, 0)',
+          },
+        },
+        { label: '#ff0000' },
+        { textEdit: { newText: 'no label' } },
+      ];
+      const features: LspFeatures = await build();
+      features.enableStructure('html', { ...ALL, colors: true });
+      const picked: unknown = {
+        range: { startLineNumber: 1, startColumn: 8, endLineNumber: 1, endColumn: 15 },
+        color: { red: 1, green: 0, blue: 0, alpha: 1 },
+      };
+
+      const presentations: unknown = await captured.structure
+        ?.get('html:colors')
+        ?.provideColorPresentations?.(owned, picked);
+
+      expect(requests.at(-1)).toMatchObject({
+        method: 'textDocument/colorPresentation',
+        params: {
+          color: { red: 1, green: 0, blue: 0, alpha: 1 },
+          range: { start: { line: 0, character: 7 }, end: { line: 0, character: 14 } },
+        },
+      });
+      expect(presentations).toEqual([
+        {
+          label: 'rgb(255, 0, 0)',
+          textEdit: {
+            range: { startLineNumber: 1, startColumn: 8, endLineNumber: 1, endColumn: 15 },
+            text: 'rgb(255, 0, 0)',
+          },
+        },
+        { label: '#ff0000' },
+      ]);
+    });
+
+    it('colors_whereTheServerFindsNone_askNothing (#1214)', async () => {
+      structureSupport = ALL;
+      const features: LspFeatures = await build();
+      features.enableStructure('html', { ...ALL, colors: true });
+
+      expect(
+        await captured.structure?.get('html:colors')?.provideDocumentColors?.(owned),
+      ).toBeUndefined();
+      expect(requests.filter((request) => request.method === 'textDocument/documentColor')).toEqual(
+        [],
+      );
     });
 
     it('linkedEditing_asksTheServerForTheRangesEditedTogether', async () => {
