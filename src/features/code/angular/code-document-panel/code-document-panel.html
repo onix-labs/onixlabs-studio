@@ -89,6 +89,24 @@
       tooltip="Find"
       (click)="find()"
     />
+    <!-- While the file holds merge conflicts (#1321): step between them, as F7 and Shift+F7 do. -->
+    @if (conflictCount() > 0) {
+      <span class="document-panel__divider" aria-hidden="true"></span>
+      <app-button
+        variant="none"
+        [icon]="Icon.ARROW_UP"
+        ariaLabel="Previous Conflict"
+        [tooltip]="'Previous Conflict (' + conflictCount() + ' left)'"
+        (click)="goToConflict('previous')"
+      />
+      <app-button
+        variant="none"
+        [icon]="Icon.ARROW_DOWN"
+        ariaLabel="Next Conflict"
+        [tooltip]="'Next Conflict (' + conflictCount() + ' left)'"
+        (click)="goToConflict('next')"
+      />
+    }
     <!-- The file's diff, beside it or in its place (the Workspaces setting decides). Greyed, with the
          reason, while the file has no changes. -->
     @if (documentSwitch(); as change) {

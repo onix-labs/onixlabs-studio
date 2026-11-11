@@ -1,4 +1,13 @@
-import { Component, forwardRef, input, InputSignal, output, OutputEmitterRef } from '@angular/core';
+import {
+  Component,
+  forwardRef,
+  input,
+  InputSignal,
+  output,
+  OutputEmitterRef,
+  signal,
+  WritableSignal,
+} from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { CodeDocumentEditor } from '@features/code/angular/code-document/code-document';
 import { TextEditorCursor } from '@shared/angular/components/text-editor/text-editor';
@@ -46,6 +55,26 @@ class StandInEditor {
   public readonly cursorChange: OutputEmitterRef<TextEditorCursor> = output<TextEditorCursor>();
   public readonly eolChange: OutputEmitterRef<string> = output<string>();
   public readonly selectionChange: OutputEmitterRef<boolean> = output<boolean>();
+
+  /**
+   * Gets how many merge conflicts the stand-in reports; a test sets it.
+   */
+  public static readonly conflicts: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Gets the merge conflicts the stand-in reports, as the real editor's signal does.
+   */
+  public readonly conflictCount: WritableSignal<number> = StandInEditor.conflicts;
+
+  /**
+   * Records a move to a merge conflict.
+   * @param direction Which way.
+   * @returns Returns true, as when there is a conflict to move to.
+   */
+  public goToConflict(direction: 'next' | 'previous'): boolean {
+    StandInEditor.moves.actions.push(`conflict:${direction}`);
+    return true;
+  }
 
   /**
    * Gets a pane whose editor records where it is sent.
@@ -122,6 +151,7 @@ describe('CodeDocumentPanel', () => {
     StandInEditor.moves.position = null;
     StandInEditor.moves.focused = false;
     StandInEditor.moves.actions = [];
+    StandInEditor.conflicts.set(0);
     await TestBed.configureTestingModule({
       imports: [CodeDocumentPanel],
       providers: [
@@ -241,6 +271,22 @@ describe('CodeDocumentPanel', () => {
     expect(opened).toEqual([
       { mode: 'find', scope: 'file', seed: undefined, filePath: null, selection: null },
     ]);
+  });
+
+  it('theStrip_offersPreviousAndNextConflict_onlyWhileTheFileHasConflicts', async () => {
+    // #1321: the steps between conflicts sit on the document's own strip, and only when there are any.
+    const fixture: ComponentFixture<CodeDocumentPanel> = await built();
+    const strip: () => HTMLElement = (): HTMLElement =>
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.document-panel__strip')!;
+
+    expect(strip().querySelector('button[aria-label="Next Conflict"]')).toBeNull();
+
+    StandInEditor.conflicts.set(3);
+    fixture.detectChanges();
+    strip().querySelector<HTMLButtonElement>('button[aria-label="Next Conflict"]')?.click();
+    strip().querySelector<HTMLButtonElement>('button[aria-label="Previous Conflict"]')?.click();
+
+    expect(StandInEditor.moves.actions).toEqual(['conflict:next', 'conflict:previous']);
   });
 
   it('theMenusGoToItems_openStudiosGoTo_throughTheRouter_neverMonacosActions', async () => {

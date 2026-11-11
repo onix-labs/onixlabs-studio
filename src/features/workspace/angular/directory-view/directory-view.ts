@@ -171,6 +171,7 @@ import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-s
 import { WorktreeRepository } from '@features/workspace/angular/worktree/worktree-repository';
 import { WorktreeDialogs } from '@features/workspace/angular/worktree/worktree-dialogs/worktree-dialogs';
 import { REPOSITORY_WORKTREES } from '@shared/angular/services/repository-worktrees/repository-worktrees';
+import { CONFLICT_CONTEXT } from '@shared/angular/services/repository/conflict-context';
 import { OpenOptions } from '@shared/angular/services/tabs/tab';
 import { TERMINAL_PATH_LINKS } from '@shared/angular/services/terminal-path-links/terminal-path-links';
 import { WorkspaceTerminalPathLinks } from '@shared/angular/services/terminal-path-links/workspace-terminal-path-links';
@@ -272,6 +273,9 @@ const AGENT_OPEN: OpenOptions = { background: true };
     PackageExplorer,
     FileOpener,
     WorkspaceGit,
+    // The code editors' view of a merge or rebase stopped on conflicts (#1321): what the sides are
+    // called and Mark Resolved, through a seam so the code feature names no workspace service.
+    { provide: CONFLICT_CONTEXT, useExisting: WorkspaceGit },
     // The explorers' version-control commands (#1041), beside the status they read.
     ExplorerVcsMenu,
     // The files and folders the explorers, Expand All and Find leave out (#1252).

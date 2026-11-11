@@ -13,5 +13,13 @@ export const CODE_KEYBINDINGS: KeybindingCatalogueEntry = {
     { id: 'code.saveAs', description: 'Save the active document as…', chord: 'Mod+Shift+S' },
     { id: 'code.print', description: 'Print the active document', chord: 'Mod+P' },
     { id: 'code.run', description: 'Run the active document', chord: 'Mod+R' },
+    // Merge conflicts (#1321): the keys diff tools use for the next and previous difference. Matched
+    // only while the editor has focus and the file has conflicts.
+    { id: 'code.nextConflict', description: 'Go to the next merge conflict', chord: 'F7' },
+    {
+      id: 'code.previousConflict',
+      description: 'Go to the previous merge conflict',
+      chord: 'Shift+F7',
+    },
   ],
 };
