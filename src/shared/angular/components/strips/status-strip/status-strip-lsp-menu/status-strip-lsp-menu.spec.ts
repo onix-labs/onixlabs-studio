@@ -2,6 +2,7 @@ import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { LspServer, LspStatus } from '@shared/angular/services/lsp/lsp-status';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
+import { Output } from '@shared/angular/services/output/output';
 import { StatusStripLspMenu } from './status-strip-lsp-menu';
 
 describe('StatusStripLspMenu', () => {
@@ -64,6 +65,7 @@ describe('StatusStripLspMenu', () => {
       rootPath: '/root',
       state: 'ready',
       stalled: false,
+      loadStalled: false,
       problem: 'Failed to load workspaces.',
     };
     const menu: { statusText(server: LspServer): string } = fixture.componentInstance as never;
@@ -85,6 +87,39 @@ describe('StatusStripLspMenu', () => {
       'Parsing includes — a.cpp',
     );
     expect(text({ activity: 'Parsing includes — a.cpp', notice: 'Said once' })).toBe('Said once');
+  });
+
+  it('statusText_ofAServerStillLoadingAfterTwoMinutes_saysSo_namingWhatItIsOn (#1211)', () => {
+    const text: (server: Partial<LspServer>) => string = (server: Partial<LspServer>): string =>
+      (
+        fixture.componentInstance as unknown as { statusText(server: LspServer): string }
+      ).statusText({ state: 'ready', ...server } as LspServer);
+
+    expect(
+      text({ loadStalled: true, progress: 'Setting up workspace — Loading packages...' }),
+    ).toBe('Still loading after two minutes — Setting up workspace — Loading packages...');
+    expect(text({ loadStalled: true, state: 'starting' })).toBe('Still loading after two minutes');
+  });
+
+  it('aServerStillLoading_offersShowLog_andRestart_andShowLogOpensItsChannel (#1211)', () => {
+    let shown: string | undefined;
+    TestBed.inject(Output).show = (channel: string): void => {
+      shown = channel;
+    };
+    status.register('/root::go', {
+      serverId: 'go',
+      rootPath: '/root',
+      restart: (): void => undefined,
+    });
+    rootPath.set('/root');
+    fixture.detectChanges();
+    const menu: { showLog(server: LspServer): void } = fixture.componentInstance as never;
+
+    status.setLoadStalled('/root::go', true);
+    menu.showLog(status.servers()[0]);
+
+    expect(status.servers()[0].loadStalled).toBe(true);
+    expect(shown).toBe('lsp:go');
   });
 
   it('restart_delegatesToTheStatusRegistry', () => {
