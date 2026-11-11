@@ -24,7 +24,11 @@
 // whole — the user's side, the other side, or for a file one side deleted, kept or deleted — and a
 // conflicted file change's optional `conflict`, which tells a deleted file from conflicting content.
 // Additions: a 1.3 plugin offers neither, and its conflicts read as content.
-export const VERSION_CONTROL_PROTOCOL_VERSION: string = '1.4';
+// 1.5 (#887) adds a local branch's optional `mergedInto` (the default branch its tip is already
+// reachable from) and `upstreamGone` (its upstream was deleted on the remote), so the Repository panel
+// can mark branches that are safe to clean up. Additions: a 1.4 plugin sends neither, and no branch is
+// marked.
+export const VERSION_CONTROL_PROTOCOL_VERSION: string = '1.5';
 
 /**
  * Names one optional capability a version-control plugin can advertise.
@@ -421,6 +425,21 @@ export interface VcsBranch {
    * Gets the identifier of the commit the branch points at.
    */
   readonly tip: string;
+
+  /**
+   * Gets the default branch this branch is already merged into, by ancestry: its tip is reachable from
+   * that branch (a merge commit or a fast-forward). Absent when it is not, when it is the default
+   * branch itself, and from a plugin before protocol 1.5. A squash or rebase merge leaves the tip
+   * unreachable, so it is never found here; the hosting plugin's merged pull requests find those.
+   */
+  readonly mergedInto?: string;
+
+  /**
+   * Gets whether the branch's upstream no longer exists on the remote (`[gone]`), as after a pull request
+   * merged with its branch deleted. A hint, not proof: a branch can be deleted without being merged.
+   * Absent when the upstream exists or there is none.
+   */
+  readonly upstreamGone?: boolean;
 }
 
 /**

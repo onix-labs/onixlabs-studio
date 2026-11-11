@@ -1671,6 +1671,7 @@ function toPullRequest(pull: RawPullRequest, checks: HostedCheckStatus): HostedP
           : 'closed'
         : 'open',
     headRef: asString(pull.head?.ref),
+    ...(asString(pull.head?.sha).length === 0 ? {} : { headSha: asString(pull.head?.sha) }),
     // GitHub publishes every pull request's head under this ref on the base repository, which is
     // what makes a fork's pull request checkoutable at all.
     fetchRef: `refs/pull/${asNumber(pull.number)}/head`,

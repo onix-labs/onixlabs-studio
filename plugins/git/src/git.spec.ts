@@ -515,6 +515,51 @@ describe('GitVersionControl', () => {
     expect(refs.remotes).toEqual([]);
   });
 
+  it('refs_marksTheBranchesMainAlreadyContains_byAncestry (#887)', GIT_TEST_TIMEOUT, async () => {
+    // `done` is merged with a merge commit; `wip` has work main lacks; `fresh` sits at main's tip,
+    // which is as likely a branch just made as one just merged, so it is left unmarked.
+    await git(repo, 'checkout', '-b', 'done');
+    await fs.writeFile(path.join(repo, 'done.txt'), 'done\n', 'utf8');
+    await git(repo, 'add', '.');
+    await git(repo, 'commit', '-m', 'done');
+    await git(repo, 'checkout', 'main');
+    await git(repo, 'merge', '--no-ff', '-m', 'merge done', 'done');
+    await git(repo, 'checkout', '-b', 'wip');
+    await fs.writeFile(path.join(repo, 'wip.txt'), 'wip\n', 'utf8');
+    await git(repo, 'add', '.');
+    await git(repo, 'commit', '-m', 'wip');
+    await git(repo, 'checkout', 'main');
+    await git(repo, 'branch', 'fresh');
+
+    const refs: VcsRefs = await result('refs', {});
+    const mergedInto: Record<string, string | undefined> = Object.fromEntries(
+      refs.branches.map((branch) => [branch.name, branch.mergedInto]),
+    );
+
+    expect(mergedInto).toEqual({ done: 'main', fresh: undefined, main: undefined, wip: undefined });
+  });
+
+  it(
+    'refs_measuresAgainstTheRemotesDefaultBranch_whenThereIsOne (#887)',
+    GIT_TEST_TIMEOUT,
+    async () => {
+      await fs.writeFile(path.join(repo, 'README.md'), 'two\n', 'utf8');
+      await git(repo, 'commit', '-am', 'second');
+      const clone: string = path.join(base, 'clone');
+      await git(base, 'clone', repo, clone);
+      // A local branch left at an older commit that origin/main already contains.
+      await git(clone, 'branch', 'old', 'HEAD~1');
+
+      const response: VersionControlResponse<'refs'> = await vcs.request('refs', clone, {});
+
+      expect(
+        response.ok && response.result.branches.find((branch) => branch.name === 'old'),
+      ).toMatchObject({
+        mergedInto: 'main',
+      });
+    },
+  );
+
   it('clone_makesACheckoutOnANewBranch_andResolveRootFindsIt', GIT_TEST_TIMEOUT, async () => {
     const target: string = path.join(base, 'checkout');
 

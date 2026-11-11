@@ -60,6 +60,21 @@
         </span>
       }
 
+      <!-- A local branch whose work is already in the default branch (#887): dimmed by `muted`, and
+           tagged in the merged purple GitHub uses, saying on hover where its work went. -->
+      @if (node.merged; as merged) {
+        <app-chip class="rail__tag" tone="merged" [title]="merged">Merged</app-chip>
+      }
+      <!-- Its upstream was deleted on the remote, as after a merged pull request. A hint, not proof. -->
+      @if (node.upstreamGone) {
+        <app-chip
+          class="rail__tag"
+          tone="neutral"
+          title="Its upstream branch no longer exists on the remote"
+          >Gone</app-chip
+        >
+      }
+
       @if (node.note; as note) {
         <!-- Why what is beneath this heading is not current. Muted and beside the label rather than a
              row of its own, so stale data stays readable instead of being pushed down by an apology. -->

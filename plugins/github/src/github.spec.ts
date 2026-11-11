@@ -844,6 +844,9 @@ describe('GitHubHosting', () => {
             draft: false,
             state: 'open',
             headRef: 'feature/thing',
+            // The commit the head points at (#887), so a merged pull request can mark only the local
+            // branch still sitting at what it merged.
+            headSha: 'abc123',
             fetchRef: 'refs/pull/7/head',
             checks: 'succeeded',
           },
@@ -1306,6 +1309,7 @@ describe('writing', () => {
         draft: true,
         state: 'open',
         headRef: 'feat/851',
+        headSha: 'abc',
         fetchRef: 'refs/pull/851/head',
         checks: 'none',
       },
