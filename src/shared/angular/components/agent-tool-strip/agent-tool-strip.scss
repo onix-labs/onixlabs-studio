@@ -22,14 +22,6 @@ app-button {
 // The Engine field sizes to its content but shrinks before anything else does; the dropdown's
 // full-width variant drops the select's content-width floor so the shrink (and its ellipsis) can
 // actually happen.
-// Separates the session actions, the Provider and model field and the attach button from one another.
-.strip__divider {
-  flex: 0 0 auto;
-  inline-size: 0.0625rem;
-  block-size: 1rem;
-  background: var(--dock-border-color);
-}
-
 .strip__field {
   flex: 0 1 auto;
   min-inline-size: 0;
