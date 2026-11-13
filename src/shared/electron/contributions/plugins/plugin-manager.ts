@@ -3,6 +3,7 @@ import { logger } from '../../logger';
 import { HandPlacedPluginError, PluginContext, PluginDescriptor } from './plugin-catalogue';
 import { PluginInstallEvents } from './plugin-install-events';
 import { PluginInstallRecord, PluginStore } from './plugin-store';
+import { installFailureMessage, takeInstallFailure } from '../../provisioning/install-failure';
 
 /**
  * Owns the plugin model's first two layers: the catalogue of what is **available**, and the state of
@@ -139,6 +140,9 @@ export class PluginManager {
     this.setBusy(id, true);
     try {
       logger.info('PluginManager', `Installing ${id}`);
+      // A reason left by an earlier attempt, or by provisioning outside the Plugin Manager, is not this
+      // attempt's: only what this install records may explain it.
+      takeInstallFailure(id);
       const installedPath: string | null = await descriptor.install(this.context);
       if (installedPath === null) {
         logger.warn('PluginManager', `Install failed for ${id}`);
@@ -149,8 +153,9 @@ export class PluginManager {
           // installed*, and using it as the reason put the plugin's own description in front of the
           // user as though it explained the failure: a 404 on a release asset read back as "The full
           // Claude agent: sessions held open across turns, sub-agents…". A truthful generic beats a
-          // fluent wrong one, and the log carries the detail the descriptor cannot.
-          error: `${descriptor.name} could not be installed. The application log records what failed.`,
+          // fluent wrong one. The provisioner recorded why it gave up, and that is what is said; with
+          // nothing recorded, the truthful generic stands.
+          error: installFailureMessage(descriptor.name, takeInstallFailure(id)),
         };
       }
       // Installs are version-scoped, so installing a newer entry leaves the version it replaced beside

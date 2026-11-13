@@ -5,6 +5,7 @@ import { logger } from '../logger';
 import { platformKey } from './archive-provision';
 import { isComplete, markComplete } from './archive-provisioner';
 import { downloadTo, extractArchive, integrityOf, sha256Of } from './download';
+import { classifyInstallError, recordInstallFailure } from './install-failure';
 import {
   LockfilePackage,
   LockfileProvision,
@@ -218,6 +219,7 @@ export class LockfileProvisioner {
       }
       if (target !== null && !existsSync(target)) {
         logger.warn(this.logName, `Installed ${provision.id} but its entry point is missing`);
+        recordInstallFailure(provision.id, { kind: 'broken' });
         await fs.rm(directory, { recursive: true, force: true });
         return null;
       }
@@ -228,6 +230,7 @@ export class LockfileProvisioner {
       return target ?? directory;
     } catch (error: unknown) {
       logger.error(this.logName, `Failed to provision ${provision.id}`, error);
+      recordInstallFailure(provision.id, classifyInstallError(error));
       await fs.rm(directory, { recursive: true, force: true }).catch((): void => undefined);
       return null;
     }
@@ -254,6 +257,7 @@ export class LockfileProvisioner {
       const packages: readonly LockfilePackage[] | null = parseLockfileDocument(bundled);
       if (packages === null) {
         logger.error(this.logName, `Bundled lockfile for ${provision.id} cannot be honoured`);
+        recordInstallFailure(provision.id, { kind: 'broken' });
         return null;
       }
       logger.info(this.logName, `Using the lockfile compiled in for ${provision.id}`);
@@ -267,6 +271,7 @@ export class LockfileProvisioner {
         this.logName,
         `Lockfile checksum mismatch for ${provision.id}: expected ${provision.sha256}, got ${digest}`,
       );
+      recordInstallFailure(provision.id, { kind: 'mismatch' });
       return null;
     }
     const packages: readonly LockfilePackage[] | null = parseLockfile(
@@ -275,6 +280,7 @@ export class LockfileProvisioner {
     await fs.rm(file, { force: true });
     if (packages === null) {
       logger.error(this.logName, `Lockfile for ${provision.id} is not one this can honour`);
+      recordInstallFailure(provision.id, { kind: 'broken' });
       return null;
     }
     return packages;
@@ -302,6 +308,7 @@ export class LockfileProvisioner {
         this.logName,
         `Refusing to install ${id}: ${entry.path} resolves outside the install directory`,
       );
+      recordInstallFailure(id, { kind: 'broken' });
       return false;
     }
     await fs.mkdir(destination, { recursive: true });
@@ -313,6 +320,7 @@ export class LockfileProvisioner {
         this.logName,
         `Integrity mismatch installing ${id}: ${entry.path} expected ${entry.integrity}, got ${actual}`,
       );
+      recordInstallFailure(id, { kind: 'mismatch' });
       return false;
     }
     // npm tarballs are rooted at `package/`, and the lockfile's paths assume that root is gone.

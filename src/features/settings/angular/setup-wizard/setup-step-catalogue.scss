@@ -49,14 +49,9 @@
   inline-size: 6.5rem;
 }
 
-.catalogue__empty,
-.catalogue__error {
+.catalogue__empty {
   margin: 0;
   font-size: 0.78rem;
   line-height: 1.5;
   color: var(--settings-muted-foreground-color);
-}
-
-.catalogue__error {
-  color: var(--danger-color, #f87171);
 }

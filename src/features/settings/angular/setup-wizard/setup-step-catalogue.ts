@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import type { PluginContribution, PluginSlot, PluginSummary } from '@shared/api/plugin-channels';
 import { PluginAction } from '@shared/angular/components/plugin-action/plugin-action';
+import { PluginInstallError } from '@shared/angular/components/plugin-install-error/plugin-install-error';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 
 /**
@@ -48,7 +49,7 @@ function rank(plugin: PluginSummary): number {
  */
 @Component({
   selector: 'app-setup-step-catalogue',
-  imports: [PluginAction],
+  imports: [PluginAction, PluginInstallError],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './setup-step-catalogue.scss',
   template: `
@@ -70,9 +71,7 @@ function rank(plugin: PluginSummary): number {
       </ul>
     }
 
-    @if (plugins.error(); as failure) {
-      <p class="catalogue__error">{{ failure }}</p>
-    }
+    <app-plugin-install-error />
   `,
 })
 export class SetupStepCatalogue {

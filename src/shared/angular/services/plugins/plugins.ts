@@ -40,6 +40,12 @@ export class Plugins {
   private readonly lastError: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
+   * Holds the plugin whose install the last action was and failed, cleared when the next action
+   * starts.
+   */
+  private readonly lastFailedInstall: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
    * Gets the known plugins with their current state.
    */
   public readonly plugins: Signal<readonly PluginSummary[]> = this.known.asReadonly();
@@ -53,6 +59,12 @@ export class Plugins {
    * Gets the last action's error, or null when the last action succeeded.
    */
   public readonly error: Signal<string | null> = this.lastError.asReadonly();
+
+  /**
+   * Gets the plugin whose install just failed, so it can be tried again; null when the last action was
+   * not a failed install.
+   */
+  public readonly failedInstall: Signal<string | null> = this.lastFailedInstall.asReadonly();
 
   /**
    * Initializes the service, loading the plugin list and following changes the main process pushes.
@@ -181,6 +193,7 @@ export class Plugins {
    */
   private async act(channel: PluginChannel, id: string): Promise<void> {
     this.lastError.set(null);
+    this.lastFailedInstall.set(null);
     this.working.set(true);
     try {
       const result: PluginActionResult | undefined = await this.bridge?.invoke<PluginActionResult>(
@@ -189,6 +202,7 @@ export class Plugins {
       );
       if (result !== undefined && !result.success) {
         this.lastError.set(result.error);
+        this.lastFailedInstall.set(channel === PluginChannel.Install ? id : null);
         this.log.warn('Plugins', `Action on '${id}' failed: ${result.error ?? 'unknown'}`);
       }
     } finally {
