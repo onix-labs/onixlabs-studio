@@ -1,4 +1,9 @@
 import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
+import {
+  ShellFamily,
+  TerminalListing,
+  TerminalLocation,
+} from '@features/terminal/angular/terminal-commands/shell-commands';
 
 /**
  * Defines the commands the terminal ribbon can invoke on the active terminal.
@@ -8,6 +13,12 @@ export interface TerminalCommandHandler {
    * Gets a value indicating whether scroll lock is engaged, freezing the viewport as output streams.
    */
   readonly scrollLocked: Signal<boolean>;
+
+  /**
+   * Gets the command dialect of the shell the terminal is running, which decides the commands the
+   * ribbon's listings and locations write.
+   */
+  readonly shellFamily: Signal<ShellFamily>;
 
   /**
    * Clears the terminal screen.
@@ -43,14 +54,10 @@ export interface TerminalCommandHandler {
   paste(): void;
 
   /**
-   * Runs a directory listing (`ls`) in the terminal.
+   * Lists the terminal's current directory the given way, in the running shell's own command.
+   * @param listing The listing wanted.
    */
-  list(): void;
-
-  /**
-   * Runs a detailed directory listing (`ls -la`) in the terminal.
-   */
-  listAll(): void;
+  list(listing: TerminalListing): void;
 
   /**
    * Opens the terminal's working directory in the operating system's file manager.
@@ -58,14 +65,11 @@ export interface TerminalCommandHandler {
   open(): void;
 
   /**
-   * Changes the terminal's working directory to the user's home directory.
+   * Changes the terminal's working directory to the given location, in the running shell's own
+   * command. Does nothing when the shell cannot go there.
+   * @param location The location wanted.
    */
-  home(): void;
-
-  /**
-   * Changes the terminal's working directory to the file-system root.
-   */
-  root(): void;
+  goTo(location: TerminalLocation): void;
 
   /**
    * Sets whether scroll lock is engaged on the terminal.
@@ -111,6 +115,13 @@ export class TerminalCommands {
    */
   public readonly scrollLocked: Signal<boolean> = computed(
     (): boolean => this.handler()?.scrollLocked() ?? false,
+  );
+
+  /**
+   * Gets the command dialect of the active terminal's shell, or null when no terminal is active.
+   */
+  public readonly shellFamily: Signal<ShellFamily | null> = computed(
+    (): ShellFamily | null => this.handler()?.shellFamily() ?? null,
   );
 
   /**
@@ -175,17 +186,11 @@ export class TerminalCommands {
   }
 
   /**
-   * Invokes the list command on the active terminal.
+   * Lists the active terminal's current directory the given way.
+   * @param listing The listing wanted.
    */
-  public list(): void {
-    this.handler()?.list();
-  }
-
-  /**
-   * Invokes the detailed list command on the active terminal.
-   */
-  public listAll(): void {
-    this.handler()?.listAll();
+  public list(listing: TerminalListing): void {
+    this.handler()?.list(listing);
   }
 
   /**
@@ -196,17 +201,11 @@ export class TerminalCommands {
   }
 
   /**
-   * Invokes the home command on the active terminal.
+   * Changes the active terminal's working directory to the given location.
+   * @param location The location wanted.
    */
-  public home(): void {
-    this.handler()?.home();
-  }
-
-  /**
-   * Invokes the root command on the active terminal.
-   */
-  public root(): void {
-    this.handler()?.root();
+  public goTo(location: TerminalLocation): void {
+    this.handler()?.goTo(location);
   }
 
   /**
