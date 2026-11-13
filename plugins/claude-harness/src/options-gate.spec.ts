@@ -1003,8 +1003,10 @@ describe('the permission gate', () => {
       );
     });
 
-    it('changes_whenCertificateChecksAreAllowed', () => {
-      expect(sandboxSignature(turn({ toolPolicies: { [CERTIFICATE_CHECKS]: 'allow' } }))).not.toBe(
+    it('changes_whenCertificateChecksAreDenied', () => {
+      // Denied rather than Allowed: Allowed opens nothing off macOS, so on a Linux runner it would
+      // leave the signature as it was. Denied tells the agent something new on every platform.
+      expect(sandboxSignature(turn({ toolPolicies: { [CERTIFICATE_CHECKS]: 'deny' } }))).not.toBe(
         sandboxSignature(turn()),
       );
     });
