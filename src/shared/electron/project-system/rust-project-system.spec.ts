@@ -439,7 +439,13 @@ describe.skipIf(process.platform === 'win32')('RustProjectSystem.loadProjectItem
       path.join(root, 'Cargo.toml'),
     );
 
-    expect(flat(items!.tree)).toEqual(expect.arrayContaining(['notes.txt', 'output/run.log']));
+    // The crate's Rust sources from the tree, outside any target included; notes and logs are left
+    // to the File Explorer (#899).
+    expect(flat(items!.tree)).toEqual(
+      expect.arrayContaining(['crates/member/src/lib.rs', 'src/lib.rs', 'Cargo.toml']),
+    );
+    expect(flat(items!.tree)).not.toContain('notes.txt');
+    expect(flat(items!.tree)).not.toContain('output/run.log');
   });
 
   it('fallsBackToTheListing_whenThereIsNoCargo', async () => {
@@ -450,7 +456,7 @@ describe.skipIf(process.platform === 'win32')('RustProjectSystem.loadProjectItem
       path.join(root, 'Cargo.toml'),
     );
 
-    expect(flat(items!.tree)).toContain('notes.txt');
+    expect(flat(items!.tree)).toContain('crates/member/src/lib.rs');
   });
 
   it('triesCargoHome_afterThePath', async () => {
@@ -465,6 +471,7 @@ describe.skipIf(process.platform === 'win32')('RustProjectSystem.loadProjectItem
       path.join(root, 'Cargo.toml'),
     );
 
-    expect(flat(items!.tree)).not.toContain('notes.txt');
+    // Cargo answered: only the targets' sources, never the fallback's walk of the tree.
+    expect(flat(items!.tree)).not.toContain('crates/member/src/lib.rs');
   });
 });

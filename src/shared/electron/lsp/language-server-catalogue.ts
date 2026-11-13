@@ -735,7 +735,8 @@ const CSHARP: LanguageServerDescriptor = {
     );
     if (dotnet === null) {
       return unavailable(
-        '.NET SDK 10+ not found — set its path in Settings or install the .NET 10 SDK.',
+        // Any SDK from 10 on will do: the server rolls forward onto a newer runtime, such as .NET 11.
+        '.NET SDK 10 or later not found — set its path in Settings or install the latest .NET SDK.',
       );
     }
     // The installed server, whichever version it is — never a download. Installing and updating are

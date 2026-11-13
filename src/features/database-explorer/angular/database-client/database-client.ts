@@ -15,6 +15,8 @@ import {
   FetchRequest,
   NamesRequest,
   NodeActionOutcome,
+  ExplainOutcome,
+  ExplainRequest,
   TransactionOutcome,
   TransactionRequest,
   TreeOptions,
@@ -184,6 +186,18 @@ export class DatabaseClient {
     return (
       this.bridge?.invoke<TransactionOutcome>(DatabaseChannel.Transaction, request) ??
       Promise.resolve({ failed: true, message: UNAVAILABLE })
+    );
+  }
+
+  /**
+   * Asks how the connection's engine would run some text, as a plan per statement.
+   * @param request The request.
+   * @returns Returns a promise resolving the plans.
+   */
+  public explain(request: ExplainRequest): Promise<ExplainOutcome> {
+    return (
+      this.bridge?.invoke<ExplainOutcome>(DatabaseChannel.Explain, request) ??
+      Promise.resolve({ plans: [], failed: true, message: UNAVAILABLE })
     );
   }
 

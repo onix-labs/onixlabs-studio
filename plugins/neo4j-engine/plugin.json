@@ -3,12 +3,12 @@
   "name": "Neo4j",
   "description": "Connect the Database Explorer to Neo4j graph databases.",
   "detail": "Connects to Neo4j over Bolt with the official JavaScript driver; it installs no database and no native code.",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "apiVersion": "1.20.0",
   "provision": {
     "kind": "npm",
-    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/neo4j-engine.lock.json",
-    "sha256": "0dd029a56e9aa83016ef7b3ac473aa5d3172f91ee51421ead3b82e38236ec431",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-neo4j-engine-v1.4.0/src/shared/electron/contributions/plugins/lockfiles/neo4j-engine.lock.json",
+    "sha256": "ae8a58fefd496532e536937aa155f83bdc6a418035c4e55111eb047e8fd8fbde",
     "executablePath": "node_modules/@onixlabs/neo4j-engine/main.js"
   },
   "contributes": {

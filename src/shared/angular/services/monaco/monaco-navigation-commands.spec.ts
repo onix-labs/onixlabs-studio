@@ -17,41 +17,7 @@ import {
   STUDIO_LOCATIONS_LENS_COMMAND,
   STUDIO_REFERENCES_LENS_COMMAND,
 } from './monaco-navigation-commands';
-
-/**
- * The key codes the fake instance names, as Monaco numbers them.
- */
-const KEYS: { CtrlCmd: number; Shift: number; Alt: number; WinCtrl: number } = {
-  CtrlCmd: 2048,
-  Shift: 1024,
-  Alt: 512,
-  WinCtrl: 256,
-};
-
-/**
- * Monaco's `KeyCode.F12`, as the fake instance numbers it.
- */
-const F12: number = 70;
-
-/**
- * Monaco's `KeyCode.KeyH`, as the fake instance numbers it.
- */
-const KEY_H: number = 38;
-
-/**
- * Monaco's `KeyCode.KeyK` and `KeyCode.KeyO`, as the fake instance numbers them.
- */
-const KEY_K: number = 41;
-const KEY_O: number = 45;
-
-/**
- * Stands in for Monaco's `KeyMod.chord`, keeping both halves readable in a rule.
- * @param first The first press.
- * @param second The second press.
- * @returns Returns the two as one number.
- */
-const chord: (first: number, second: number) => number = (first: number, second: number): number =>
-  first + second * 65536;
+import type { EditorKeybinding } from './monaco-keybindings';
 
 /**
  * Monaco's mouse-target types the specs click on.
@@ -70,6 +36,7 @@ interface Installed {
     kind: string;
     places: readonly unknown[];
   }[];
+  bindings: readonly EditorKeybinding[];
   create(editor: MonacoApi.editor.ICodeEditor): void;
 }
 
@@ -109,11 +76,10 @@ function install(isMac: boolean, editors: readonly MonacoApi.editor.ICodeEditor[
     commands: new Map(),
     navigated: [],
     listed: [],
+    bindings: [],
     create: (editor: MonacoApi.editor.ICodeEditor): void => onCreate?.(editor),
   };
   const fake: typeof MonacoApi = {
-    KeyMod: { ...KEYS, chord },
-    KeyCode: { F12, KeyH: KEY_H, KeyK: KEY_K, KeyO: KEY_O },
     editor: {
       getEditors: (): readonly MonacoApi.editor.ICodeEditor[] => editors,
       registerCommand: (id: string, handler: () => void): void =>
@@ -125,7 +91,7 @@ function install(isMac: boolean, editors: readonly MonacoApi.editor.ICodeEditor[
       },
     },
   } as unknown as typeof MonacoApi;
-  installNavigationCommands(
+  installed.bindings = installNavigationCommands(
     fake,
     isMac,
     (editor: MonacoApi.editor.ICodeEditor, mode: NavigationMode): void =>
@@ -244,69 +210,26 @@ describe('installNavigationCommands (#1014)', () => {
     }
   });
 
-  it('bindsGoToDefinitionToF12_andFindReferencesToShiftF12_onEveryPlatform', () => {
+  it('handsItsShortcutsToTheRegistry_andLeavesTypeDefinitionUnbound_onEveryPlatform (#1036)', () => {
+    // The chords (F12, ⇧F12, ⌘F12, ⌃⌥H, ⌃⇧H, ⌘K ⌘O) are the registry's defaults now, checked in
+    // monaco-keybindings.spec.
     for (const isMac of [true, false]) {
       const installed: Installed = install(isMac, []);
 
-      expect(installed.rules).toContainEqual({
-        keybinding: F12,
-        command: STUDIO_GO_TO_DEFINITION_COMMAND,
-        when,
-      });
-      expect(installed.rules).toContainEqual({
-        keybinding: KEYS.Shift | F12,
-        command: STUDIO_FIND_REFERENCES_COMMAND,
-        when,
-      });
-    }
-  });
-
-  it('bindsGoToImplementationToCmdF12_andLeavesTypeDefinitionUnbound_onEveryPlatform (#1142)', () => {
-    for (const isMac of [true, false]) {
-      const installed: Installed = install(isMac, []);
-
-      expect(installed.rules).toContainEqual({
-        keybinding: KEYS.CtrlCmd | F12,
-        command: STUDIO_GO_TO_IMPLEMENTATION_COMMAND,
-        when,
-      });
+      expect(installed.bindings).toEqual([
+        { id: 'editor.goToDefinition', command: STUDIO_GO_TO_DEFINITION_COMMAND, when },
+        { id: 'editor.findReferences', command: STUDIO_FIND_REFERENCES_COMMAND, when },
+        { id: 'editor.goToImplementation', command: STUDIO_GO_TO_IMPLEMENTATION_COMMAND, when },
+        { id: 'editor.callHierarchy', command: STUDIO_CALL_HIERARCHY_COMMAND, when },
+        { id: 'editor.typeHierarchy', command: STUDIO_TYPE_HIERARCHY_COMMAND, when },
+        { id: 'editor.switchSourceHeader', command: STUDIO_SWITCH_SOURCE_HEADER_COMMAND, when },
+      ]);
       expect(
         installed.rules.some(
           (rule: MonacoApi.editor.IKeybindingRule): boolean =>
             rule.command === STUDIO_GO_TO_TYPE_DEFINITION_COMMAND,
         ),
       ).toBe(false);
-    }
-  });
-
-  it('bindsTheHierarchiesToTheControlKey_withAltOrShiftH_onEveryPlatform (#1153)', () => {
-    // ⌃ on a Mac is Monaco's WinCtrl; elsewhere Ctrl is its CtrlCmd.
-    for (const [isMac, control] of [
-      [true, KEYS.WinCtrl],
-      [false, KEYS.CtrlCmd],
-    ] as const) {
-      const installed: Installed = install(isMac, []);
-
-      expect(installed.rules).toContainEqual({
-        keybinding: control | KEYS.Alt | KEY_H,
-        command: STUDIO_CALL_HIERARCHY_COMMAND,
-        when,
-      });
-      expect(installed.rules).toContainEqual({
-        keybinding: control | KEYS.Shift | KEY_H,
-        command: STUDIO_TYPE_HIERARCHY_COMMAND,
-        when,
-      });
-    }
-  });
-
-  it('bindsSwitchHeaderSourceToCmdKCmdO_onEveryPlatform (#1213)', () => {
-    for (const isMac of [true, false]) {
-      expect(install(isMac, []).rules).toContainEqual({
-        keybinding: chord(KEYS.CtrlCmd | KEY_K, KEYS.CtrlCmd | KEY_O),
-        command: STUDIO_SWITCH_SOURCE_HEADER_COMMAND,
-        when,
-      });
     }
   });
 

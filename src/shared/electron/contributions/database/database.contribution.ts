@@ -15,6 +15,8 @@ import {
   FetchRequest,
   NamesRequest,
   NodeActionOutcome,
+  ExplainOutcome,
+  ExplainRequest,
   TransactionOutcome,
   TransactionRequest,
   TreeOptions,
@@ -159,6 +161,11 @@ export class DatabaseContribution implements MainContribution {
       DatabaseChannel.Transaction,
       (_event: IpcMainInvokeEvent, ...args: unknown[]): Promise<TransactionOutcome> =>
         this.transaction(args[0] as TransactionRequest),
+    );
+    context.handle(
+      DatabaseChannel.Explain,
+      (_event: IpcMainInvokeEvent, ...args: unknown[]): Promise<ExplainOutcome> =>
+        this.explain(args[0] as ExplainRequest),
     );
     context.handle(
       DatabaseChannel.Names,
@@ -461,6 +468,30 @@ export class DatabaseContribution implements MainContribution {
       { ...request, session: target.open.session },
     );
     return outcome.ok ? outcome.result : { failed: true, message: outcome.error };
+  }
+
+  /**
+   * Asks an engine how it would run some text, for an engine that declares `explain`. One that does
+   * not, or a session that has closed, answers that it cannot rather than failing the request.
+   * @param request The request, naming this host's session.
+   * @returns Returns a promise resolving the plans.
+   */
+  private async explain(request: ExplainRequest): Promise<ExplainOutcome> {
+    const target: { client: DatabaseEngineClient; open: OpenSession } | null = this.target(
+      request.session,
+    );
+    if (target === null) {
+      return { plans: [], failed: true, message: 'The connection is closed. Connect again.' };
+    }
+    const info: DatabaseEngineInfo | null = await target.client.info();
+    if (info?.capabilities.includes('explain') !== true) {
+      return { plans: [], failed: true, message: 'This engine cannot explain a query.' };
+    }
+    const outcome: DatabaseEngineOutcome<ExplainOutcome> = await target.client.call('explain', {
+      ...request,
+      session: target.open.session,
+    });
+    return outcome.ok ? outcome.result : { plans: [], failed: true, message: outcome.error };
   }
 
   /**

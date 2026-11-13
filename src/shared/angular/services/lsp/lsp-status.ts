@@ -25,6 +25,13 @@ const READINESS_WATCHDOG_MS: number = 120_000;
 const STALLED_DETAIL: string = 'Still starting after two minutes — restart if it seems stuck.';
 
 /**
+ * How long a server may keep loading the workspace — gopls's "Setting up workspace" — before its row
+ * says it is still loading and offers Restart and Show Log (#1211). The same two minutes as the
+ * readiness watchdog; nothing is ended when it passes.
+ */
+export const LOAD_STALL_MS: number = 120_000;
+
+/**
  * How long a server's passing notice (#1154) — an information-level `window/showMessage` — stays on its
  * row before the row goes back to saying how the server is.
  */
@@ -80,6 +87,12 @@ interface ServerEntry {
    * Gets whether the server has been starting for longer than the watchdog allows.
    */
   readonly stalled: boolean;
+
+  /**
+   * Gets whether the server has been loading the workspace for longer than {@link LOAD_STALL_MS}
+   * (#1211), or undefined for not.
+   */
+  readonly loadStalled?: boolean;
 
   /**
    * Gets what the server last told the user in passing, while it is still showing, or undefined.
@@ -162,6 +175,13 @@ export interface LspServer {
    * menu can offer a restart for a server that may be stuck without declaring it failed.
    */
   readonly stalled: boolean;
+
+  /**
+   * Gets whether the server has been loading the workspace for longer than {@link LOAD_STALL_MS}
+   * (#1211) — gopls still on "Setting up workspace" — so the menu says it is still loading and offers
+   * Restart and Show Log. Nothing is ended: it keeps waiting.
+   */
+  readonly loadStalled: boolean;
 
   /**
    * Gets what the server last told the user in passing (#1154) — an information-level message — for a
@@ -262,6 +282,7 @@ export class LspStatus {
         progress: entry.progress,
         activity: entry.activity,
         stalled: entry.stalled,
+        loadStalled: entry.loadStalled === true,
         notice: entry.notice,
         problem: entry.problem,
         analysis: entry.analysis,
@@ -389,6 +410,25 @@ export class LspStatus {
   }
 
   /**
+   * Records that a server has been loading the workspace for longer than {@link LOAD_STALL_MS}, or that
+   * the load has finished (#1211). Ignored when the session is not tracked.
+   * @param sessionId The session the server is keyed by.
+   * @param stalled Whether the load has gone on that long.
+   */
+  public setLoadStalled(sessionId: string, stalled: boolean): void {
+    const current: ServerEntry | undefined = this.entries().get(sessionId);
+    if (current === undefined || (current.loadStalled === true) === stalled) {
+      return;
+    }
+    if (stalled) {
+      this.log.warn('LspStatus', `Server '${current.serverId}' still loading after two minutes`);
+    }
+    const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
+    next.set(sessionId, { ...current, loadStalled: stalled });
+    this.entries.set(next);
+  }
+
+  /**
    * Records how far a server's analysis of the whole workspace has got (#1182). Ignored when the
    * session is not tracked.
    * @param sessionId The session the server is keyed by.
@@ -435,7 +475,7 @@ export class LspStatus {
       detail,
       progress: undefined,
       stalled: false,
-      ...(gone ? { activity: undefined, activityUri: undefined } : {}),
+      ...(gone ? { activity: undefined, activityUri: undefined, loadStalled: false } : {}),
     });
     this.entries.set(next);
     this.log.debug('LspStatus', `Server '${current.serverId}' -> ${state}`, sessionId);

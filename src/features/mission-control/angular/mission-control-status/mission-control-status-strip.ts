@@ -13,9 +13,9 @@ import { StatusSegment } from '@shared/angular/services/status-bar/status-segmen
  * Mission Control's status-strip readout (#882): totals across every agent in the app, at the end of
  * the strip. First how many agents there are — always shown, so it is the last to drop out of a narrow
  * strip — then, each only while it applies, how many are working, how many are waiting on an answer,
- * and what they have cost together — counting only agents on a connection billed by the token, since a
- * subscription is a flat fee whatever its provider reports a turn would have cost. The tiles say which
- * agent is which; this is the sum.
+ * how many commands ran outside the OS sandbox (#1160), and what they have cost together — counting
+ * only agents on a connection billed by the token, since a subscription is a flat fee whatever its
+ * provider reports a turn would have cost. The tiles say which agent is which; this is the sum.
  *
  * Waiting is read as the Mission Control rail reads it — from the outstanding requests — and an agent
  * waiting is not also counted as working, so the two counts never overlap.
@@ -53,8 +53,10 @@ export class MissionControlStatusStrip {
       );
       let working: number = 0;
       let waitingCount: number = 0;
+      let unsandboxed: number = 0;
       let cost: number = 0;
       for (const host of hosts) {
+        unsandboxed += host.agent.unsandboxedRuns();
         if (waiting.has(host.agent)) {
           waitingCount += 1;
         } else if (host.agent.isRunning()) {
@@ -73,6 +75,15 @@ export class MissionControlStatusStrip {
       }
       if (waitingCount > 0) {
         segments.push({ id: 'mission-waiting', text: `${waitingCount} waiting for you` });
+      }
+      // The sum of what each conversation's own strip reports; which commands they were is in each
+      // conversation's transcript, badged.
+      if (unsandboxed > 0) {
+        segments.push({
+          id: 'mission-unsandboxed',
+          text: unsandboxed === 1 ? '1 run unsandboxed' : `${unsandboxed} runs unsandboxed`,
+          title: 'Commands, across every conversation, that ran outside the OS sandbox',
+        });
       }
       if (cost > 0) {
         segments.push({

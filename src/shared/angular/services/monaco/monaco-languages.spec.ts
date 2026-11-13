@@ -2,6 +2,8 @@ import {
   extensionForLanguage,
   LanguageInfo,
   languageForExtension,
+  languageForFileName,
+  readsAsXml,
   supportedLanguages,
 } from './monaco-languages';
 
@@ -67,5 +69,80 @@ describe('monaco-languages', () => {
 
     expect(languages.length).toBeGreaterThan(0);
     expect(names).toEqual(sorted);
+  });
+
+  describe('the shared resolver (#1068)', () => {
+    it.each([
+      'MyApp.csproj',
+      'Lib.fsproj',
+      'Old.vbproj',
+      'Common.props',
+      'Build.targets',
+      'Package.nuspec',
+      'Strings.resx',
+      'MainWindow.xaml',
+      'App.axaml',
+      'Studio.slnx',
+      'logo.svg',
+      'Info.plist',
+      'schema.xsd',
+      'page.xsl',
+      'page.xslt',
+    ])('colours %s_asXml_byItsEnding', (name: string) => {
+      expect(languageForFileName(name)).toBe('xml');
+    });
+
+    it.each([
+      'nuget.config',
+      'NuGet.Config',
+      'web.config',
+      'app.config',
+      'packages.config',
+      'Directory.Build.props',
+      'Directory.Build.targets',
+      'directory.packages.props',
+    ])('colours %s_asXml_byItsWholeName_whateverItsContent', (name: string) => {
+      // These are XML whatever their text says: an empty or half-written one is still XML.
+      expect(languageForFileName(`/repo/${name}`, 'not xml at all')).toBe('xml');
+    });
+
+    it('colours aConfigFile_asXml_onlyWhenItReadsAsXml', () => {
+      expect(
+        languageForFileName('settings.config', '<?xml version="1.0"?>\n<configuration/>'),
+      ).toBe('xml');
+      expect(languageForFileName('settings.config', '<configuration>\n</configuration>')).toBe(
+        'xml',
+      );
+      expect(languageForFileName('settings.config', 'key = value\n')).toBe('plaintext');
+    });
+
+    it('leaves aConfigFile_asPlainText_whenTheCallerHasNoContent', () => {
+      // A name-only caller (a diff row, a suggested Save As) cannot check, so it does not guess.
+      expect(languageForFileName('settings.config')).toBe('plaintext');
+    });
+
+    it('putsAWholeNameBeforeTheEnding_andTheEndingBeforeTheContent', () => {
+      // `nuget.config` is XML by name; a `.json` stays JSON even when its text starts with `<`.
+      expect(languageForFileName('nuget.config')).toBe('xml');
+      expect(languageForFileName('data.json', '<oops>')).toBe('json');
+    });
+
+    it('keepsTheEarlierRules', () => {
+      expect(languageForFileName('Dockerfile')).toBe('dockerfile');
+      expect(languageForFileName('main.ts')).toBe('typescript');
+      expect(languageForFileName('.gitignore')).toBe('plaintext');
+      expect(extensionForLanguage('xml')).toBe('.xml');
+    });
+
+    it.each([
+      ['<?xml version="1.0"?>', true],
+      ['\uFEFF<configuration/>', true],
+      ['  \n\t<root/>', true],
+      ['{ "a": 1 }', false],
+      ['', false],
+      ['# <not xml>', false],
+    ])('readsAsXml(%j)_is %s', (content: string, expected: boolean) => {
+      expect(readsAsXml(content)).toBe(expected);
+    });
   });
 });

@@ -97,6 +97,22 @@ describe('git-output', () => {
       ]);
     });
 
+    it('parseStatus_withUnmergedEntries_saysWhetherOneSideDeletedTheFile', () => {
+      // #1321: a D on either side means one side deleted the file; it is kept or deleted, not merged.
+      const output: string = [
+        '# branch.head main',
+        'u UU N... 100644 100644 100644 100644 1111111 2222222 3333333 both.ts',
+        'u UD N... 100644 100644 000000 100644 1111111 2222222 0000000 deleted-by-them.ts',
+        'u DU N... 100644 000000 100644 100644 1111111 0000000 3333333 deleted-by-us.ts',
+      ].join(NUL);
+
+      expect(
+        parseStatus(output).conflicted.map(
+          (file: VcsFileChange): string | undefined => file.conflict,
+        ),
+      ).toEqual(['content', 'deleted', 'deleted']);
+    });
+
     it('parseStatus_withNoUnmergedEntries_reportsNoConflicts', () => {
       const status: VcsStatus = parseStatus(
         ['# branch.head main', '1 M. N... 100644 100644 100644 a b src/staged.ts'].join(NUL),
@@ -199,6 +215,19 @@ describe('git-output', () => {
         { name: 'origin', url: '', branches: [{ name: 'origin/main', commit: 'AAA' }] },
       ]);
       expect(refs.tags).toEqual([{ name: 'v1.0', commit: 'CCC' }]);
+    });
+
+    it('parseRefs_marksABranchWhoseUpstreamIsGone (#887)', () => {
+      // After a pull request is merged with its branch deleted, the upstream reads `[gone]`.
+      const output: string = [
+        ['refs/heads/feat/login', 'AAA', ' ', 'origin/feat/login', '[gone]'].join(US),
+        ['refs/heads/main', 'BBB', '*', 'origin/main', ''].join(US),
+      ].join('\n');
+
+      const refs: VcsRefs = parseRefs(output);
+
+      expect(refs.branches[0]).toMatchObject({ name: 'feat/login', upstreamGone: true });
+      expect(refs.branches[1].upstreamGone).toBeUndefined();
     });
   });
 

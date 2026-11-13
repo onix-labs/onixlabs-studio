@@ -60,6 +60,32 @@ describe('pluginEnvironment', () => {
     }
   });
 
+  it.each([
+    ['GOPROXY', 'https://goproxy.corp.example'],
+    ['GOPRIVATE', 'git.corp.example/*'],
+    ['GONOSUMDB', 'git.corp.example/*'],
+    ['GONOPROXY', 'git.corp.example/*'],
+    ['GOFLAGS', '-mod=mod'],
+    ['CARGO_HOME', '/Users/me/.cargo-alt'],
+    ['PIP_INDEX_URL', 'https://pypi.corp.example/simple'],
+    ['PIP_EXTRA_INDEX_URL', 'https://pypi.extra.example/simple'],
+    ['PIP_CONFIG_FILE', '/Users/me/pip.conf'],
+  ])('passes %s_toThePackageManagerPlugins', (name: string, value: string) => {
+    // #1423: a registry setting made in the shell reaches the plugin that resolves packages. Without
+    // GOPRIVATE, a shell-only private module was looked up on proxy.golang.org.
+    expect(pluginEnvironment(undefined, { [name]: value })).toEqual({ [name]: value });
+  });
+
+  it.each([
+    ['GOOGLE_APPLICATION_CREDENTIALS'],
+    ['GOPATH_SECRET'],
+    ['PIP_PASSWORD'],
+    ['CARGO_REGISTRY_TOKEN'],
+  ])('doesNotPass %s_theLookAlikesOfTheRegistrySettings', (name: string) => {
+    // By exact name, never a prefix: `GO*` would hand a plugin the user's cloud credentials.
+    expect(isPluginVariable(name)).toBe(false);
+  });
+
   it('drawsFromThisProcessByDefault', () => {
     expect(pluginEnvironment()['PATH']).toBe(process.env['PATH']);
     expect(pluginEnvironment()['NODE_OPTIONS']).toBeUndefined();

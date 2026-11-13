@@ -66,6 +66,11 @@ export class StudioConfig {
     signal<StudioSnapshot>(emptySnapshot());
 
   /**
+   * Holds the root the current snapshot was loaded for, or null when it is the empty snapshot.
+   */
+  private readonly loadedFor: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
    * Holds the generation of the current load, so a stale load (the root changed while it was in flight)
    * does not apply its results.
    */
@@ -146,6 +151,78 @@ export class StudioConfig {
    */
   public saveRunConfigurations(configurations: readonly RunConfiguration[]): Promise<void> {
     return this.saveWorkspace({ ...this.current().workspace, runConfigurations: configurations });
+  }
+
+  /**
+   * Gets the commands the focused workspace shares as excluded from agents' sandbox (#1163). Whether
+   * they apply is the main process's to say: only once the user has reviewed exactly this list.
+   */
+  public readonly sharedExcludedCommands: Signal<readonly string[]> = computed(
+    (): readonly string[] => this.current().workspace.excludedCommands ?? [],
+  );
+
+  /**
+   * Replaces the focused workspace's shared excluded commands, preserving the rest of the shared
+   * configuration, and persists to `workspace.json`.
+   * @param patterns The new list; empty removes the field.
+   * @returns Returns a promise that resolves once the write is issued.
+   */
+  public saveExcludedCommands(patterns: readonly string[]): Promise<void> {
+    return this.saveWorkspace(withList(this.current().workspace, 'excludedCommands', patterns));
+  }
+
+  /**
+   * Gets the root the current snapshot was loaded for, or null before one has loaded (or when no
+   * folder is open). A tab compares it with its own root, so it never reads another workspace's
+   * snapshot while the focused one is still loading.
+   */
+  public readonly loadedRoot: Signal<string | null> = computed((): string | null =>
+    this.loadedFor(),
+  );
+
+  /**
+   * Gets the files and folders the focused workspace excludes (#1252), as workspace-relative paths.
+   */
+  public readonly excludedFiles: Signal<readonly string[]> = computed(
+    (): readonly string[] => this.current().workspace.excludedFiles ?? [],
+  );
+
+  /**
+   * Reads the excluded files and folders of a specific workspace root, which need not be the focused
+   * one.
+   * @param root The workspace root.
+   * @returns Returns the root's excluded paths (empty when it has none, or outside Electron).
+   */
+  public async loadExcludedFiles(root: string): Promise<readonly string[]> {
+    if (root === this.loadedFor()) {
+      return this.excludedFiles();
+    }
+    const snapshot: StudioSnapshot | null = await this.loadSnapshot(root);
+    return snapshot?.workspace.excludedFiles ?? [];
+  }
+
+  /**
+   * Replaces the excluded files and folders of a specific workspace root, preserving the rest of its
+   * shared configuration. The loaded root goes through {@link saveWorkspace}, so its snapshot updates at
+   * once and a later save of its run configurations keeps the list; another root is written directly.
+   * @param root The workspace root.
+   * @param paths The new list; empty removes the field.
+   * @returns Returns a promise that resolves once the write is issued.
+   */
+  public async saveExcludedFilesFor(root: string, paths: readonly string[]): Promise<void> {
+    if (root === this.loadedFor() && root === this.activeWorkspace.rootPath()) {
+      return this.saveWorkspace(withList(this.current().workspace, 'excludedFiles', paths));
+    }
+    if (this.bridge === undefined) {
+      return;
+    }
+    const snapshot: StudioSnapshot = (await this.loadSnapshot(root)) ?? emptySnapshot();
+    this.log.info('StudioConfig', `Saved excluded files for '${root}'`, paths.length);
+    await this.bridge.invoke(
+      StudioChannel.SaveWorkspace,
+      root,
+      withList(snapshot.workspace, 'excludedFiles', paths),
+    );
   }
 
   /**
@@ -311,6 +388,7 @@ export class StudioConfig {
     const generation: number = ++this.generation;
     if (this.bridge === undefined || root === null) {
       this.current.set(emptySnapshot());
+      this.loadedFor.set(null);
       return;
     }
     const snapshot: StudioSnapshot | null = await this.bridge.invoke<StudioSnapshot | null>(
@@ -321,6 +399,7 @@ export class StudioConfig {
       return;
     }
     this.current.set(snapshot ?? emptySnapshot());
+    this.loadedFor.set(root);
     this.log.debug('StudioConfig', `Loaded .studio snapshot for '${root}'`, snapshot !== null);
   }
 
@@ -352,4 +431,26 @@ export class StudioConfig {
     const segments: string[] = directory.split(/[\\/]/);
     return segments[segments.length - 1] === STUDIO_DIR;
   }
+}
+
+/**
+ * Replaces one of the shared configuration's optional lists, keeping every other field; an empty list
+ * removes the field, so a workspace without one writes the file it always did.
+ * @param workspace The shared configuration.
+ * @param key The list to replace.
+ * @param list The new list.
+ * @returns Returns the new shared configuration.
+ */
+function withList(
+  workspace: StudioWorkspace,
+  key: 'excludedCommands' | 'excludedFiles',
+  list: readonly string[],
+): StudioWorkspace {
+  const next: { -readonly [K in keyof StudioWorkspace]: StudioWorkspace[K] } = { ...workspace };
+  if (list.length === 0) {
+    Reflect.deleteProperty(next, key);
+  } else {
+    next[key] = list;
+  }
+  return next;
 }

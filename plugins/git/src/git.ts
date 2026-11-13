@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import {
   VERSION_CONTROL_CAPABILITIES,
   VERSION_CONTROL_PROTOCOL_VERSION,
+  VcsConflictResolution,
   VcsErrorCode,
   VcsFileVersion,
   VcsIdentity,
@@ -72,12 +73,41 @@ const MAX_LOG_LIMIT: number = 5000;
 /**
  * Holds the environment overlay applied to network git invocations so they never block on an
  * interactive prompt: with no usable credentials git fails fast rather than hanging until the
- * timeout. Credentials still come from the user's credential helper and ssh-agent.
+ * timeout. Credentials still come from the user's credential helper and ssh-agent. It deliberately
+ * sets no SSH command: `GIT_SSH_COMMAND` outranks the user's own `core.sshCommand`, so setting it
+ * here replaced their key, binary or wrapper (#1433). See {@link networkArgs}.
  */
 const GIT_NETWORK_ENV: NodeJS.ProcessEnv = {
   GIT_TERMINAL_PROMPT: '0',
-  GIT_SSH_COMMAND: 'ssh -o BatchMode=yes -o ConnectTimeout=10',
 };
+
+/**
+ * Holds the SSH command a network invocation uses when the user has set none of their own: it can
+ * neither prompt (BatchMode) nor wait on an unreachable host for long.
+ */
+export const BATCH_SSH_COMMAND: string = 'ssh -o BatchMode=yes -o ConnectTimeout=10';
+
+/**
+ * Builds a network invocation's arguments so the user's own SSH command always wins. Git takes its SSH
+ * command from `GIT_SSH_COMMAND`, then `GIT_SSH`, then the `core.sshCommand` config; when the user has
+ * set any of them, it is left alone. Only when they have set none is {@link BATCH_SSH_COMMAND} given,
+ * as a one-off `-c core.sshCommand`, which nothing of theirs outranks because they have nothing.
+ * @param args The git arguments.
+ * @param env The environment git inherits.
+ * @param configured The repository's `core.sshCommand`, or null when it has none.
+ * @returns Returns the arguments to run.
+ */
+export function networkArgs(
+  args: readonly string[],
+  env: NodeJS.ProcessEnv,
+  configured: string | null,
+): readonly string[] {
+  const own: boolean =
+    (env['GIT_SSH_COMMAND'] ?? '').trim() !== '' ||
+    (env['GIT_SSH'] ?? '').trim() !== '' ||
+    (configured ?? '').trim() !== '';
+  return own ? args : ['-c', `core.sshCommand=${BATCH_SSH_COMMAND}`, ...args];
+}
 
 /**
  * Holds the environment overlay applied to merges, rebases, and the commands that finish them. Every
@@ -196,6 +226,35 @@ export function confinedPaths(root: string, paths: unknown): string[] | null {
   }
   return confined;
 }
+
+/**
+ * Names git's own word for one side of a conflict, for a resolution that takes a side (#1321).
+ *
+ * The user's side is their own work, and git's word for it depends on what is in flight. In a merge, a
+ * cherry-pick or a revert, `--ours` is the branch checked out — the user's. A rebase swaps them: it
+ * checks out the branch being replayed *onto* and applies the user's commits to it, so there `--ours`
+ * is the other side and the user's work is `--theirs`.
+ * @param resolution The side the user chose.
+ * @param kind The operation in flight.
+ * @returns Returns git's checkout flag for that side.
+ */
+export function gitSideFor(
+  resolution: 'yours' | 'theirs',
+  kind: VcsOperationState['kind'],
+): '--ours' | '--theirs' {
+  const swapped: boolean = kind === 'rebase';
+  return (resolution === 'yours') !== swapped ? '--ours' : '--theirs';
+}
+
+/**
+ * Lists how a conflicted file can be settled whole.
+ */
+const CONFLICT_RESOLUTIONS: readonly VcsConflictResolution[] = [
+  'yours',
+  'theirs',
+  'keepFile',
+  'deleteFile',
+];
 
 /**
  * Matches an extension an ignore rule may name: one segment, no dot, nothing a pattern would read as a
@@ -447,6 +506,8 @@ export class GitVersionControl {
         return this.ignore(root, params['rules']);
       case 'stopTracking':
         return this.stopTracking(root, params['paths']);
+      case 'resolveConflict':
+        return this.resolveConflict(root, params['path'], params['resolution']);
       case 'stage':
         return this.pathCommand(root, params['paths'], ['add', '-A'], ['add', '--']);
       case 'unstage':
@@ -641,11 +702,110 @@ export class GitVersionControl {
     const parsed: VcsRefs = parseRefs(refs.stdout);
     return ok({
       ...parsed,
+      branches: await this.markMerged(root, parsed),
       remotes: mergeRemoteUrls(
         parsed.remotes,
         parseRemoteUrls(remotes.success ? remotes.stdout : ''),
       ),
     });
+  }
+
+  /**
+   * Marks the local branches already merged into the default branch by ancestry (#887): those whose
+   * tip the default branch reaches, through a merge commit or a fast-forward. The default branch is the
+   * one the remote's `HEAD` names (`origin/main`, checked against the remote-tracking branch, so a merge
+   * on the host counts once fetched), or else a local `main` or `master`.
+   *
+   * Two are never marked: the default branch itself, and a branch sitting exactly at the default
+   * branch's tip, which is as likely a branch just created as one just fast-forwarded. A squash or
+   * rebase merge leaves the tip unreachable, so it is not found here; the hosting plugin's merged pull
+   * requests find those. Best-effort: when the default branch cannot be found or asked, no branch is
+   * marked rather than the listing failing.
+   * @param root The repository root.
+   * @param refs The parsed refs.
+   * @returns Returns the local branches, with `mergedInto` set on the merged ones.
+   */
+  private async markMerged(root: string, refs: VcsRefs): Promise<VcsRefs['branches']> {
+    const target: { ref: string; name: string; tip: string } | null = await this.defaultBranch(
+      root,
+      refs,
+    );
+    if (target === null) {
+      return refs.branches;
+    }
+    const merged: GitRun = await this.git(root, [
+      'for-each-ref',
+      `--merged=${target.ref}`,
+      '--format=%(refname)',
+      'refs/heads',
+    ]);
+    if (!merged.success) {
+      return refs.branches;
+    }
+    const names: ReadonlySet<string> = new Set<string>(
+      merged.stdout
+        .split('\n')
+        .map((line: string): string => line.trim())
+        .filter((line: string): boolean => line.startsWith('refs/heads/'))
+        .map((line: string): string => line.slice('refs/heads/'.length)),
+    );
+    return refs.branches.map((branch: VcsRefs['branches'][number]) =>
+      names.has(branch.name) && branch.name !== target.name && branch.tip !== target.tip
+        ? { ...branch, mergedInto: target.name }
+        : branch,
+    );
+  }
+
+  /**
+   * Finds the default branch to measure merges against: the remote-tracking branch a remote's `HEAD`
+   * points at (the first remote that has one, `origin` first), or else a local `main` or `master`.
+   * @param root The repository root.
+   * @param refs The parsed refs.
+   * @returns Returns the ref to ask against, the branch's short name and its tip, or null for none.
+   */
+  private async defaultBranch(
+    root: string,
+    refs: VcsRefs,
+  ): Promise<{ ref: string; name: string; tip: string } | null> {
+    const remotes: readonly string[] = [
+      ...refs.remotes.filter(
+        (remote: VcsRefs['remotes'][number]): boolean => remote.name === 'origin',
+      ),
+      ...refs.remotes.filter(
+        (remote: VcsRefs['remotes'][number]): boolean => remote.name !== 'origin',
+      ),
+    ].map((remote: VcsRefs['remotes'][number]): string => remote.name);
+    for (const remote of remotes) {
+      const head: GitRun = await this.git(root, [
+        'symbolic-ref',
+        '--quiet',
+        '--short',
+        `refs/remotes/${remote}/HEAD`,
+      ]);
+      const tracking: string = head.success ? head.stdout.trim() : '';
+      const branch: VcsRefs['remotes'][number]['branches'][number] | undefined = refs.remotes
+        .find((candidate: VcsRefs['remotes'][number]): boolean => candidate.name === remote)
+        ?.branches.find(
+          (candidate: VcsRefs['remotes'][number]['branches'][number]): boolean =>
+            candidate.name === tracking,
+        );
+      if (branch !== undefined && tracking.startsWith(`${remote}/`)) {
+        return {
+          ref: `refs/remotes/${tracking}`,
+          name: tracking.slice(remote.length + 1),
+          tip: branch.commit,
+        };
+      }
+    }
+    for (const name of ['main', 'master']) {
+      const local: VcsRefs['branches'][number] | undefined = refs.branches.find(
+        (branch: VcsRefs['branches'][number]): boolean => branch.name === name,
+      );
+      if (local !== undefined) {
+        return { ref: `refs/heads/${name}`, name, tip: local.tip };
+      }
+    }
+    return null;
   }
 
   /**
@@ -834,6 +994,49 @@ export class GitVersionControl {
       return Promise.resolve(fail('Invalid path'));
     }
     return this.mutate(root, ['rm', '--cached', '-r', '--quiet', '--', ...confined]);
+  }
+
+  /**
+   * Settles one conflicted file whole and marks it resolved (#1321): takes the user's side or the other
+   * side's content, or — for a file one side deleted — keeps it as it stands or deletes it. Taking a
+   * side reads the operation in flight first, because a rebase swaps which side is the user's.
+   * @param root The repository root.
+   * @param candidate The repository-relative path.
+   * @param resolution How to settle it.
+   * @returns Returns the outcome.
+   */
+  private async resolveConflict(
+    root: string,
+    candidate: unknown,
+    resolution: unknown,
+  ): Promise<Outcome> {
+    const confined: string[] | null = confinedPaths(root, [candidate]);
+    if (
+      confined?.length !== 1 ||
+      path.resolve(root, confined[0]) === root ||
+      !(CONFLICT_RESOLUTIONS as readonly unknown[]).includes(resolution)
+    ) {
+      return fail('Invalid path or resolution');
+    }
+    const [file] = confined;
+    switch (resolution as VcsConflictResolution) {
+      case 'keepFile':
+        return this.mutate(root, ['add', '--', file]);
+      case 'deleteFile':
+        return this.mutate(root, ['rm', '--quiet', '--', file]);
+      default: {
+        const state: VcsOperationState = await this.operationState(root);
+        const side: '--ours' | '--theirs' = gitSideFor(
+          resolution as 'yours' | 'theirs',
+          state.kind,
+        );
+        const taken: GitRun = await this.git(root, ['checkout', side, '--', file]);
+        if (!taken.success) {
+          return fail(taken.error ?? 'git checkout failed');
+        }
+        return this.mutate(root, ['add', '--', file]);
+      }
+    }
   }
 
   /**
@@ -1215,7 +1418,7 @@ export class GitVersionControl {
     const target: string = path.resolve(directory);
     const cloned: GitRun = await this.git(
       path.dirname(target),
-      [
+      await this.withSshCommand(path.dirname(target), [
         'clone',
         ...(params['recurseSubmodules'] === true ? ['--recurse-submodules'] : []),
         // A shallow clone otherwise fetches the default branch alone, and the branch checked out next
@@ -1224,7 +1427,7 @@ export class GitVersionControl {
         '--',
         url,
         path.basename(target),
-      ],
+      ]),
       GIT_CLONE_TIMEOUT_MS,
       GIT_NETWORK_ENV,
     );
@@ -1323,11 +1526,32 @@ export class GitVersionControl {
     args: readonly string[],
     timeoutMs: number = GIT_NETWORK_TIMEOUT_MS,
   ): Promise<Outcome> {
-    const run: GitRun = await this.git(root, args, timeoutMs, GIT_NETWORK_ENV);
+    const run: GitRun = await this.git(
+      root,
+      await this.withSshCommand(root, args),
+      timeoutMs,
+      GIT_NETWORK_ENV,
+    );
     if (!run.success) {
       debug('GitVersionControl', `Network git ${args[0]} failed`);
     }
     return run.success ? ok(DONE) : fail(networkFailureMessage(run));
+  }
+
+  /**
+   * Gives a network invocation the non-interactive SSH command unless the user has one of their own
+   * (see {@link networkArgs}), reading `core.sshCommand` as git would for that directory: the
+   * repository's own config, then the global and system ones.
+   * @param cwd The directory git runs in.
+   * @param args The git arguments.
+   * @returns Returns a promise resolving the arguments to run.
+   */
+  private async withSshCommand(cwd: string, args: readonly string[]): Promise<readonly string[]> {
+    if (networkArgs(args, process.env, null) === args) {
+      return args;
+    }
+    const configured: GitRun = await this.git(cwd, ['config', '--get', 'core.sshCommand']);
+    return networkArgs(args, process.env, configured.success ? configured.stdout : null);
   }
 
   /**

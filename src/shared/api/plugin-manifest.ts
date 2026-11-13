@@ -184,8 +184,18 @@ import { isTestAdapterCapability, TestAdapterCapability } from './test-adapter-p
  * Studio runs in a visible terminal, because core knows no test framework. Keyed by **marker** files as
  * package managers are, and likewise not a choice of one: every plugin whose marker a folder holds
  * applies. Adds only.
+ *
+ * `1.29.0` moves the hosting protocol to 1.4 (#1156), with the manifest's shape unchanged: the closed
+ * list of hosting capabilities gains `editIssue`, `editSubIssues` and `editPullRequest`, so agents can
+ * edit issues and pull requests through the plugin rather than the host's CLI. A manifest declaring
+ * one is refused by an older build, which is why this is a version. Adds only.
+ *
+ * `1.30.0` adds a debug adapter's `tcp-session` transport (#1211): a server that announces the port it
+ * listens on and speaks one ordinary DAP session over it, as Delve's `dlv dap` does — unlike
+ * `tcp-server`, whose server hosts js-debug's tree of sessions. A manifest naming it is refused by an
+ * older build, which is why this is a version. Adds only.
  */
-export const PLUGIN_API_VERSION: string = '1.28.0';
+export const PLUGIN_API_VERSION: string = '1.30.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -1197,9 +1207,12 @@ export interface ManifestDebugAdapter {
   readonly command: ManifestCommand;
 
   /**
-   * Gets how the adapter is spoken to, or undefined for the default of standard streams.
+   * Gets how the adapter is spoken to, or undefined for the default of standard streams: `stdio`, its
+   * standard streams; `tcp-server`, a debug server hosting a tree of sessions (js-debug); `tcp-session`
+   * (1.30.0), a server that announces the port it listens on and speaks one ordinary session over it
+   * (Delve's `dlv dap`).
    */
-  readonly transport?: 'stdio' | 'tcp-server';
+  readonly transport?: 'stdio' | 'tcp-server' | 'tcp-session';
 
   /**
    * Gets this contribution's own entry point within the installed payload, or undefined to use the
@@ -1786,8 +1799,13 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
         errors,
       );
       const transport: unknown = entry['transport'];
-      if (transport !== undefined && transport !== 'stdio' && transport !== 'tcp-server') {
-        errors.add(`${path}.transport`, "must be 'stdio' or 'tcp-server'");
+      if (
+        transport !== undefined &&
+        transport !== 'stdio' &&
+        transport !== 'tcp-server' &&
+        transport !== 'tcp-session'
+      ) {
+        errors.add(`${path}.transport`, "must be 'stdio', 'tcp-server' or 'tcp-session'");
       }
       debugAdapters.push({
         id: readId(entry, 'id', `${path}.`, errors),

@@ -1,3 +1,5 @@
+import type { VcsConflictKind } from '@shared/api/version-control-protocol';
+
 /**
  * Specifies the kind of reference a {@link GitRef} names.
  */
@@ -138,6 +140,13 @@ export interface GitFileChange {
    * when explicitly included in a commit. Omitted (falsy) for tracked changes.
    */
   readonly untracked?: boolean;
+
+  /**
+   * Gets what a conflicted file's conflict is (#1321): conflicting `content`, or one side having
+   * `deleted` the file. Absent for a file that is not conflicted, or from a plugin that does not say,
+   * in which case it is read as content.
+   */
+  readonly conflict?: VcsConflictKind;
 }
 
 /**
@@ -233,6 +242,17 @@ export interface GitBranch {
    * Gets the hash of the branch's tip commit.
    */
   readonly tip: string;
+
+  /**
+   * Gets the default branch this branch is already merged into by ancestry, when the version-control
+   * plugin found it so (#887).
+   */
+  readonly mergedInto?: string;
+
+  /**
+   * Gets whether the branch's upstream no longer exists on the remote (#887).
+   */
+  readonly upstreamGone?: boolean;
 }
 
 /**

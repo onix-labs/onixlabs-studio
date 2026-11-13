@@ -6,6 +6,7 @@ import {
   DatabaseNode,
   DatabaseValue,
   ExecuteRequest,
+  ExplainOutcome,
   NamesScope,
   NodeActionOutcome,
   QueryMessage,
@@ -126,6 +127,16 @@ export interface EngineSession {
    * @returns Returns a promise resolving what it came to.
    */
   transaction?(action: TransactionAction, database?: string): Promise<TransactionOutcome>;
+
+  /**
+   * Says how the engine would run each statement of some text, for an engine that declares `explain`
+   * (protocol 1.5). A database error is part of the outcome; it never rejects for one.
+   * @param text The text, one statement or several.
+   * @param database The database to plan it against, when the engine reaches several.
+   * @param analyze Whether to run the statements and report what actually happened.
+   * @returns Returns a promise resolving the plans.
+   */
+  explain?(text: string, database?: string, analyze?: boolean): Promise<ExplainOutcome>;
 
   /**
    * Closes the connection.

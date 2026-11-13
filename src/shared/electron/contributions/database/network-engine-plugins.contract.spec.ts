@@ -40,9 +40,9 @@ interface NetworkEnginePlugin {
 }
 
 /**
- * The network engines (#1096). Neither contract needs a server: the protocol is spoken across the real
- * process boundary as far as a server would take over, and the rest is proved by the engines' own specs
- * with their drivers mocked.
+ * The network engines (#1096; SQL Server joined in #1437). No contract needs a server: the protocol is
+ * spoken across the real process boundary as far as a server would take over, and the rest is proved
+ * by the engines' own specs with their drivers mocked.
  */
 const PLUGINS: readonly NetworkEnginePlugin[] = [
   {
@@ -65,6 +65,18 @@ const PLUGINS: readonly NetworkEnginePlugin[] = [
       database: 'neo4j',
       user: 'neo4j',
       password: 'unused',
+    }),
+  },
+  {
+    name: 'sqlserver-engine',
+    language: 'sql',
+    unreachable: (port: number): Readonly<Record<string, string>> => ({
+      host: '127.0.0.1',
+      port: String(port),
+      authentication: 'sql',
+      user: 'sa',
+      password: 'unused',
+      database: 'master',
     }),
   },
 ];
@@ -157,7 +169,7 @@ describe.each(PLUGINS)('$name contract', (plugin: NetworkEnginePlugin) => {
 
     it('pinsALockfileFromTheDirectoryLockfilesLiveIn', () => {
       expect((manifest.provision as { lockfileUrl: string }).lockfileUrl).toBe(
-        'https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/' +
+        `https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-${plugin.name}-v${manifest.version}/` +
           `src/shared/electron/contributions/plugins/lockfiles/${plugin.name}.lock.json`,
       );
     });

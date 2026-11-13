@@ -573,4 +573,38 @@ describe('LspServerRegistry: the lighter servers (#1214)', () => {
   it.each(['svelte-language-server', 'sqls'])('%s_isNeverToldToAskAgain', (id: string) => {
     expect(curated(id).pullsSettings(id)).toBe(false);
   });
+
+  it('svelte_isPushedItsTypeScriptHintsAndLensSwitches_asVsCodeSpellsThem (#1214)', () => {
+    // Probed against svelte-language-server 0.18.4: pushed these, a component gives code lenses and
+    // inlay hints; pushed nothing, it gives none. It reads VS Code's TypeScript keys, not tsserver's.
+    const entry: unknown = (CURATED.plugins as readonly { id: string }[]).find(
+      (plugin: { id: string }): boolean => plugin.id === 'svelte-language-server',
+    );
+    const registry: InstanceType<typeof LspServerRegistry> = new LspServerRegistry(
+      '/electron',
+      userSettings({
+        'svelte-language-server': {
+          // What Code › Code Lenses stores for Svelte's references switch when it is on.
+          'typescript.referencesCodeLens.enabled': true,
+          'typescript.inlayHints.parameterNames.enabled': 'all',
+        },
+      }).manager,
+    );
+    for (const descriptor of toLanguageServerDescriptors(parsePluginManifest(entry).manifest!)) {
+      registry.register(descriptor);
+    }
+
+    expect(registry.pushedSettingsOf('svelte-language-server')).toEqual({
+      typescript: {
+        referencesCodeLens: { enabled: true },
+        inlayHints: {
+          parameterNames: { enabled: 'all' },
+          variableTypes: { enabled: false },
+          functionLikeReturnTypes: { enabled: false },
+          parameterTypes: { enabled: false },
+          propertyDeclarationTypes: { enabled: false },
+        },
+      },
+    });
+  });
 });

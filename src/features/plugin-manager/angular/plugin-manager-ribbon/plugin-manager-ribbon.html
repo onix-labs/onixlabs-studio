@@ -6,6 +6,12 @@
       [disabled]="busy()"
       (action)="onRefresh()"
     />
+    <app-ribbon-strip-button
+      [icon]="Icon.DOWNLOAD_DUOTONE"
+      label="Update All"
+      [disabled]="!updateAllEnabled()"
+      (action)="onUpdateAll()"
+    />
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Agent">

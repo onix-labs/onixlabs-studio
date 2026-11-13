@@ -4,6 +4,8 @@ import { FindQuery, FindResultItem } from '@shared/angular/components/find-panel
 import { FindRequest, FindScope } from '@shared/angular/components/find-panel/find-request';
 import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
+import { ExplorerExclusions } from '@shared/angular/services/explorer-filter/explorer-exclusions';
+import { SearchFileFilter } from '@shared/api/search-channels';
 import { SearchAdapter, SearchReplaceOutcome } from './search-adapter';
 import { SearchView } from './search-view';
 
@@ -284,5 +286,55 @@ describe('SearchView (#1007)', () => {
     fixture.destroy();
 
     expect(adapter.matches()).toEqual([]);
+  });
+});
+
+describe('SearchView excluded files (#1252)', () => {
+  let fixture: ComponentFixture<SearchView>;
+
+  beforeEach(async () => {
+    const adapter: FakeAdapter = new FakeAdapter();
+    adapter.onDisk.set(true);
+    await TestBed.configureTestingModule({
+      imports: [SearchView],
+      providers: [
+        { provide: Notifications, useValue: { notify: (): void => undefined } },
+        { provide: ExplorerExclusions, useValue: { searchGlobs: signal(['/dist', '/dist/**']) } },
+      ],
+    }).compileComponents();
+    fixture = TestBed.createComponent(SearchView);
+    fixture.componentRef.setInput('adapter', adapter);
+    fixture.componentRef.setInput('scopes', ['workspace']);
+    await fixture.whenStable();
+  });
+
+  /**
+   * Reads one of the view's protected or private members.
+   * @param name The member.
+   * @returns Returns its value.
+   */
+  function member<T>(name: string): T {
+    return (fixture.componentInstance as unknown as Record<string, T>)[name];
+  }
+
+  /**
+   * Builds the file filter a search on disk would send.
+   * @returns Returns the filter.
+   */
+  function fileFilter(): SearchFileFilter {
+    return member<() => SearchFileFilter>('fileFilter').call(fixture.componentInstance);
+  }
+
+  it('leavesTheWorkspacesExcludedPathsOut_besideWhatTheFieldExcludes', () => {
+    member<WritableSignal<string>>('filesToExclude').set('*.log');
+
+    expect(fileFilter().exclude).toEqual(['*.log', '/dist', '/dist/**']);
+  });
+
+  it('searchExcludedFilesAndFolders_searchesThemToo', () => {
+    member<WritableSignal<boolean>>('searchExcluded').set(true);
+
+    expect(fileFilter().exclude).toEqual([]);
+    expect(fileFilter().excluded).toBe(true);
   });
 });

@@ -1,5 +1,5 @@
 {
-  "revision": 66,
+  "revision": 69,
   "plugins": [
     {
       "id": "pyright",
@@ -495,8 +495,58 @@
             "command": {
               "kind": "node"
             },
+            "settings": [
+              {
+                "section": "typescript.inlayHints.parameterNames.enabled",
+                "label": "Parameter Names",
+                "description": "In a component's TypeScript, show the name of the parameter each argument is passed to, before the argument: for literal arguments only, or for all of them.",
+                "default": "none",
+                "options": [
+                  {
+                    "value": "none",
+                    "label": "Off"
+                  },
+                  {
+                    "value": "literals",
+                    "label": "Literals"
+                  },
+                  {
+                    "value": "all",
+                    "label": "All arguments"
+                  }
+                ]
+              },
+              {
+                "section": "typescript.inlayHints.variableTypes.enabled",
+                "label": "Variable Types",
+                "description": "In a component's TypeScript, show the type the compiler infers for a variable that does not name one.",
+                "default": false
+              },
+              {
+                "section": "typescript.inlayHints.functionLikeReturnTypes.enabled",
+                "label": "Return Types",
+                "description": "In a component's TypeScript, show the return type the compiler infers for a function that does not name one.",
+                "default": false,
+                "advanced": true
+              },
+              {
+                "section": "typescript.inlayHints.parameterTypes.enabled",
+                "label": "Parameter Types",
+                "description": "In a component's TypeScript, show the type the compiler infers for a parameter that does not name one, such as in a callback.",
+                "default": false,
+                "advanced": true
+              },
+              {
+                "section": "typescript.inlayHints.propertyDeclarationTypes.enabled",
+                "label": "Property Types",
+                "description": "In a component's TypeScript, show the type the compiler infers for a class property that does not name one.",
+                "default": false,
+                "advanced": true
+              }
+            ],
             "settingsDelivery": {
-              "pull": false
+              "pull": false,
+              "push": ["typescript"]
             }
           }
         ]
@@ -1199,6 +1249,64 @@
       }
     },
     {
+      "id": "delve",
+      "name": "Go Debugger (Delve)",
+      "description": "Debug Go programs and tests.",
+      "version": "1.27.2",
+      "apiVersion": "1.30.0",
+      "detail": "The Go project's own MIT-licensed debugger, spoken to over its DAP server. It builds what it debugs with your Go toolchain, so `go` must be on the PATH. On macOS it uses Apple’s debugserver, from Xcode or the Command Line Tools.",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/go-delve/delve/releases/download/v1.27.2/dlv_1.27.2_darwin_arm64.tar.gz",
+            "sha256": "c32fc68e11ff3820ba267ab12c96fa68e3804319f807fc5db4fba3b9d868df26",
+            "archive": "tar.gz",
+            "executablePath": "dlv"
+          },
+          "darwin-x64": {
+            "url": "https://github.com/go-delve/delve/releases/download/v1.27.2/dlv_1.27.2_darwin_amd64.tar.gz",
+            "sha256": "66992990307bd0328994960df0cbfa34ecfb16e9cd32f5cf6c83c34912e59cc3",
+            "archive": "tar.gz",
+            "executablePath": "dlv"
+          },
+          "linux-x64": {
+            "url": "https://github.com/go-delve/delve/releases/download/v1.27.2/dlv_1.27.2_linux_amd64.tar.gz",
+            "sha256": "30783eb68dc1598d965491cc97762270cd63ce13f09d0cac22faa7e3eafc1b9c",
+            "archive": "tar.gz",
+            "executablePath": "dlv"
+          },
+          "linux-arm64": {
+            "url": "https://github.com/go-delve/delve/releases/download/v1.27.2/dlv_1.27.2_linux_arm64.tar.gz",
+            "sha256": "b2969e00711f905d189784654e485ea5bc6c2eaa8c5d3effcb646487f4e0bb2f",
+            "archive": "tar.gz",
+            "executablePath": "dlv"
+          },
+          "win32-x64": {
+            "url": "https://github.com/go-delve/delve/releases/download/v1.27.2/dlv_1.27.2_windows_amd64.zip",
+            "sha256": "630b5b9b14c89becb1123790563111c70f7e0cf90820a666582ad1caba05dbd6",
+            "archive": "zip",
+            "executablePath": "dlv.exe"
+          }
+        }
+      },
+      "contributes": {
+        "debugAdapters": [
+          {
+            "id": "delve",
+            "displayName": "Go (Delve)",
+            "languages": ["go"],
+            "priority": 100,
+            "command": {
+              "kind": "executable",
+              "args": ["dap", "--listen=127.0.0.1:0"]
+            },
+            "transport": "tcp-session"
+          }
+        ]
+      }
+    },
+    {
       "id": "js-debug",
       "name": "Node Debugger (js-debug)",
       "description": "Debug Node projects with Microsoft's js-debug.",
@@ -1570,7 +1678,7 @@
       "apiVersion": "1.19.0",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/docker-engine.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-docker-engine-v30.3.0/src/shared/electron/contributions/plugins/lockfiles/docker-engine.lock.json",
         "sha256": "423a8ab0f744d1d67fdf839f6dcac468c42e2598563147a240a3f3dab28d0110",
         "executablePath": "node_modules/@onixlabs/docker-engine/main.js"
       },
@@ -1612,7 +1720,7 @@
       "apiVersion": "1.19.0",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/podman-engine.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-podman-engine-v7.3.0/src/shared/electron/contributions/plugins/lockfiles/podman-engine.lock.json",
         "sha256": "ebfed83beababbccef030deedf64b93e7eb0cfeeec795af07f4ffafc9c1aeb4a",
         "executablePath": "node_modules/@onixlabs/podman-engine/main.js"
       },
@@ -1654,12 +1762,12 @@
       "name": "SQLite",
       "description": "Connect the Database Explorer to SQLite database files.",
       "detail": "Opens SQLite database files on this machine with the SQLite built into Studio's own runtime; it installs nothing else.",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "apiVersion": "1.20.0",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/sqlite-engine.lock.json",
-        "sha256": "585cec746b987561bbbce21eb25598f4649b3e2455cec5c57302fc15ff1a3950",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-sqlite-engine-v1.4.0/src/shared/electron/contributions/plugins/lockfiles/sqlite-engine.lock.json",
+        "sha256": "69f7931cdb3aeef56306708374386b70d6cc8e25757c42c674d8309cbe67385c",
         "executablePath": "node_modules/@onixlabs/sqlite-engine/main.js"
       },
       "contributes": {
@@ -1682,12 +1790,12 @@
       "name": "PostgreSQL",
       "description": "Connect the Database Explorer to PostgreSQL servers.",
       "detail": "Connects to PostgreSQL servers over the network with `pg`, a pure-JavaScript client; it installs no database and no native code.",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "apiVersion": "1.20.0",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/postgres-engine.lock.json",
-        "sha256": "7160ad682ac35de9ba84fa974ebd9ecd620e0b12e3249e69ffc6c76b7399238d",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-postgres-engine-v1.4.0/src/shared/electron/contributions/plugins/lockfiles/postgres-engine.lock.json",
+        "sha256": "90288c8dea77003dfc5792ed2cc8360ee88b5fbf64c04ffc28f49368c2cd9693",
         "executablePath": "node_modules/@onixlabs/postgres-engine/main.js"
       },
       "contributes": {
@@ -1710,12 +1818,12 @@
       "name": "Neo4j",
       "description": "Connect the Database Explorer to Neo4j graph databases.",
       "detail": "Connects to Neo4j over Bolt with the official JavaScript driver; it installs no database and no native code.",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "apiVersion": "1.20.0",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/neo4j-engine.lock.json",
-        "sha256": "0dd029a56e9aa83016ef7b3ac473aa5d3172f91ee51421ead3b82e38236ec431",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-neo4j-engine-v1.4.0/src/shared/electron/contributions/plugins/lockfiles/neo4j-engine.lock.json",
+        "sha256": "ae8a58fefd496532e536937aa155f83bdc6a418035c4e55111eb047e8fd8fbde",
         "executablePath": "node_modules/@onixlabs/neo4j-engine/main.js"
       },
       "contributes": {
@@ -1734,16 +1842,44 @@
       "requires": []
     },
     {
+      "id": "sqlserver-engine",
+      "name": "SQL Server",
+      "description": "Connect the Database Explorer to SQL Server and Azure SQL.",
+      "detail": "Connects to SQL Server and Azure SQL over the network with `tedious`, a pure-JavaScript client; it installs no database and no native code. Splits scripts at GO like SSMS, and shows PRINT and RAISERROR in Messages.",
+      "version": "0.1.0",
+      "apiVersion": "1.23.0",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-sqlserver-engine-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/sqlserver-engine.lock.json",
+        "sha256": "1cde5c4db0c874850a288d6fe635db57c5b0bc575e4135fcc7bdecb7381adf85",
+        "executablePath": "node_modules/@onixlabs/sqlserver-engine/main.js"
+      },
+      "contributes": {
+        "databaseEngines": [
+          {
+            "id": "sqlserver",
+            "displayName": "SQL Server",
+            "priority": 80,
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/sqlserver-engine/main.js"
+          }
+        ]
+      },
+      "requires": []
+    },
+    {
       "id": "onixlabs.git",
       "name": "Git",
       "description": "Git version control: status, history, diffs, commits, branches, remotes, tags, stashes, merges, rebases, worktree checkouts, ignore rules and per-file history.",
-      "version": "0.8.0",
+      "version": "0.9.0",
       "apiVersion": "1.14.0",
       "detail": "Drives the git installed on your machine, or one you point it at in Settings. Needs git 2.23 or later.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.git.lock.json",
-        "sha256": "f366462fd317801e6e9b6f4db9f2bc4f71480107df54062ccf7d20225bcd8197",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-git-v0.9.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.git.lock.json",
+        "sha256": "b538e5dce3bcad767d66f603694de1b745a6e78766b0ba0095d95651026c38cc",
         "executablePath": "node_modules/@onixlabs/git/main.js"
       },
       "contributes": {
@@ -1780,14 +1916,14 @@
     {
       "id": "onixlabs.github",
       "name": "GitHub",
-      "description": "GitHub hosting: pull requests with their checks, issues and comments, Actions runs (re-run and cancel), and your accounts and repositories — and, for you and your agents, opening issues and pull requests, commenting, and closing or reopening issues.",
-      "version": "0.6.0",
-      "apiVersion": "1.17.0",
+      "description": "GitHub hosting: pull requests with their checks, issues and comments, Actions runs (re-run and cancel), and your accounts and repositories — and, for you and your agents, opening, editing, labelling and closing issues, linking sub-issues, and opening and editing pull requests.",
+      "version": "0.7.0",
+      "apiVersion": "1.29.0",
       "detail": "Signs in with the GitHub CLI's login (gh auth login), or a token you add in Settings. Serves github.com.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.github.lock.json",
-        "sha256": "36aa0017eee38be9ea584be7619af481cb76915554d0521a56e48eccc9a90fc0",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-github-v0.7.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.github.lock.json",
+        "sha256": "fcd268b3840227eccbdc91f8dc5ec5a03f535f7299b18d32268e776e4f18a1a3",
         "executablePath": "node_modules/@onixlabs/github/main.js"
       },
       "contributes": {
@@ -1808,7 +1944,10 @@
               "createIssue",
               "commentOnIssue",
               "setIssueState",
+              "editIssue",
               "subIssues",
+              "editSubIssues",
+              "editPullRequest",
               "ciRuns",
               "ciRerun",
               "ciCancel"
@@ -1827,13 +1966,13 @@
       "id": "onixlabs.claude-harness",
       "name": "Claude",
       "description": "Runs Claude through Anthropic's Agent SDK in its own process, over Studio's agent protocol.",
-      "version": "0.19.0",
+      "version": "0.21.0",
       "apiVersion": "1.12.0",
       "detail": "The full Claude agent: sessions held open across turns, sub-agents, background tasks, slash commands, per-tool policy, write confinement, the OS sandbox, model discovery, and Remote Control through claude.ai/code. Authenticates with your local `claude` login, or with an Anthropic API key set on the connection. Downloads around 200MB: the SDK ships its Claude Code CLI as a native binary, and one platform's is fetched.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.claude-harness.lock.json",
-        "sha256": "2e87cf6c07e83cec47b0c40a726aa010006a447fb151656d4abdbec2fea50388",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-claude-harness-v0.21.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.claude-harness.lock.json",
+        "sha256": "193df61c2466e33d1b0d0feaabd1e808b500f60cd9be1af51ccccf44c969a6b5",
         "executablePath": "node_modules/@onixlabs/claude-harness/main.js"
       },
       "contributes": {
@@ -1897,7 +2036,7 @@
       "detail": "Holds a Codex thread open across turns, so a conversation keeps its context. Streams replies, reasoning, shell commands, file changes and web searches into the transcript, and asks you through Studio's permission card before a command runs or a file changes, under your posture and per-tool settings. Authenticates through your local Codex login, or through an API key configured against the connection.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.codex-harness.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-codex-harness-v0.9.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.codex-harness.lock.json",
         "sha256": "d6d4bb4d13720bbc1e70f00bf779bfb02c00ca0a9ed11d3123f586f14fc10a2a",
         "executablePath": "node_modules/@onixlabs/codex-harness/main.js"
       },
@@ -1951,7 +2090,7 @@
       "detail": "The general-purpose harness: point a connection at any model API and this runs it. Studio supplies the tools for the turn's surface and runs them on the model's behalf, so an agent on Ollama has the same capabilities as one on Claude. Asks the endpoint what models it offers. Authenticates with the API key configured against the connection; a local Ollama server needs none. Around 2MB — the SDK is pure JavaScript and ships inside the plugin.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.ai-sdk-harness.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-ai-sdk-harness-v0.5.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.ai-sdk-harness.lock.json",
         "sha256": "c1f2af712bcc1b8dd5ab0f195b4011a27185b355da1b46a16ffdd9dff0d27213",
         "executablePath": "node_modules/@onixlabs/ai-sdk-harness/main.js"
       },
@@ -2074,7 +2213,7 @@
       "detail": "Reads package.json, your lockfile and .npmrc. Installing and updating run through the npm, pnpm or Yarn on your machine, in a terminal you can see.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.npm.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-npm-v0.1.1/src/shared/electron/contributions/plugins/lockfiles/onixlabs.npm.lock.json",
         "sha256": "8e951db189bb344a5af923491992cadddde5459a8204f4b44ee5d74c34a7f448",
         "executablePath": "node_modules/@onixlabs/npm/main.js"
       },
@@ -2112,7 +2251,7 @@
       "detail": "Reads your project files, restore output and nuget.config. Adding and updating run through the dotnet on your machine, in a terminal you can see.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.nuget.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-nuget-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.nuget.lock.json",
         "sha256": "e0e7e46512c79930ae7dc366d0a614b284ba67be76445b84af8216c0241e8bfa",
         "executablePath": "node_modules/@onixlabs/nuget/main.js"
       },
@@ -2150,7 +2289,7 @@
       "detail": "Reads go.mod, go.work, go.sum and your Go environment (GOPROXY, GOPRIVATE). Adding, updating and removing run through the go on your machine, in a terminal you can see.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.go-modules.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-go-modules-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.go-modules.lock.json",
         "sha256": "e5b53fbafab1b6b31bd0fb3454e15b855ab2ba91a83948777fea57b02673a348",
         "executablePath": "node_modules/@onixlabs/go-modules/main.js"
       },
@@ -2188,7 +2327,7 @@
       "detail": "Reads vcpkg.json and vcpkg-configuration.json, and the vcpkg registry's published baselines. Adding a port and installing run through the vcpkg on your machine, in a terminal you can see.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.vcpkg.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-vcpkg-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.vcpkg.lock.json",
         "sha256": "44ac6691af4d061c9daa669309e5f9364b89e92e7ea843b4f986abd7182729ff",
         "executablePath": "node_modules/@onixlabs/vcpkg/main.js"
       },
@@ -2218,7 +2357,7 @@
       "detail": "Reads conanfile.txt, conanfile.py (as text, never run), conan.lock and your Conan remotes. Installing runs through the conan on your machine, in a terminal you can see.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.conan.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-conan-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.conan.lock.json",
         "sha256": "04176d9bbc35776d13f664283bd462c23074322dffc279797ecc28264b35d032",
         "executablePath": "node_modules/@onixlabs/conan/main.js"
       },
@@ -2248,7 +2387,7 @@
       "detail": "Reads your Cargo.toml files, Cargo.lock and Cargo's own config and credentials. Adding, updating and removing run through the cargo on your machine, in a terminal you can see.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.cargo.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-cargo-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.cargo.lock.json",
         "sha256": "6a36ac9c68fc42baf3d4229d76889bf32dd90b0cae4f085435944a8ad81069e7",
         "executablePath": "node_modules/@onixlabs/cargo/main.js"
       },
@@ -2286,7 +2425,7 @@
       "detail": "Reads pyproject.toml, requirements files, Pipfile, setup.cfg, your lockfile or virtual environment, and pip.conf. Never runs Python. Changes run through the uv, Poetry, Pipenv or pip on your machine, in a terminal you can see.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.pypi.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-pypi-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.pypi.lock.json",
         "sha256": "f12516d725be0e4ec33b824e90d7335ab216c113174d3f19972e894ec3c34c86",
         "executablePath": "node_modules/@onixlabs/pypi/main.js"
       },
@@ -2324,7 +2463,7 @@
       "detail": "Reads your POMs, Gradle build scripts, version catalog, Gradle lockfiles, ~/.m2/settings.xml and gradle.properties. Neither Maven nor Gradle has a command that adds a dependency, so this plugin only resolves them, through the mvn or gradle on your machine, in a terminal you can see.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.maven.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-maven-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.maven.lock.json",
         "sha256": "8aead4409d15bc0819d5e45ba8da35a4815c032c22316f8f54e54ee5f47e128a",
         "executablePath": "node_modules/@onixlabs/maven/main.js"
       },
@@ -2356,13 +2495,13 @@
       "id": "onixlabs.dotnet-tests",
       "name": ".NET Tests",
       "description": ".NET tests in the Tests panel: xUnit, NUnit and MSTest, found in your test projects and run through dotnet test.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "apiVersion": "1.28.0",
       "detail": "Finds tests by reading your project files and C# sources, without building anything. Running them uses the .NET SDK on your machine, in a terminal you can see.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.dotnet-tests.lock.json",
-        "sha256": "9e3d00f2c143501b007db442435c60e61c1be7b3651df108a19f6381b9ad59cd",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-dotnet-tests-v0.1.1/src/shared/electron/contributions/plugins/lockfiles/onixlabs.dotnet-tests.lock.json",
+        "sha256": "5b921582548a687435c43cac4f96d9c325979d1898b193ed46655a6c048245ec",
         "executablePath": "node_modules/@onixlabs/dotnet-tests/main.js"
       },
       "contributes": {
@@ -2391,7 +2530,7 @@
       "detail": "Reads package.json and your test files to find tests, without running anything. Running them uses the Vitest, Jest or Playwright your project installs, in a terminal you can see.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.js-tests.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-js-tests-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.js-tests.lock.json",
         "sha256": "1d2f3b3a9e6e218b04455aa47d7afa67341ca6dde2793728cce90a497b14b64b",
         "executablePath": "node_modules/@onixlabs/js-tests/main.js"
       },
@@ -2421,7 +2560,7 @@
       "detail": "Reads your test files to find tests, without starting Python. Running them uses the project's own virtual environment (.venv or venv) when it has one, else python3, with pytest installed there, in a terminal you can see.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.python-tests.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-python-tests-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.python-tests.lock.json",
         "sha256": "51ddd6f12c230e90d0dacb54311a55976b175ddbe606544c15e166d9228825d9",
         "executablePath": "node_modules/@onixlabs/python-tests/main.js"
       },
@@ -2459,7 +2598,7 @@
       "detail": "Reads your crates' sources to list their tests; running them uses the cargo on your machine, in a terminal you can see.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.rust-tests.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-rust-tests-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.rust-tests.lock.json",
         "sha256": "100ebc43686007a81aafc04c4fcd096965144a0df4637eed5be726b9178ace51",
         "executablePath": "node_modules/@onixlabs/rust-tests/main.js"
       },
@@ -2489,7 +2628,7 @@
       "detail": "Reads your packages' _test.go files to list their tests; running them uses the go on your machine, in a terminal you can see.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.go-tests.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-go-tests-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.go-tests.lock.json",
         "sha256": "dde2d14e763577183aa636e2d79ba30ca3b5262165d0f2fba1a957a427f284dd",
         "executablePath": "node_modules/@onixlabs/go-tests/main.js"
       },
@@ -2519,7 +2658,7 @@
       "detail": "Reads your test sources to list their tests; running them uses your Gradle or Maven wrapper, or the one on your machine, in a terminal you can see.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.jvm-tests.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-jvm-tests-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.jvm-tests.lock.json",
         "sha256": "e9aaf8744c0e1182a6c2d229e831baf5bb5b456e9019b6f66a1d3c8f2574d95d",
         "executablePath": "node_modules/@onixlabs/jvm-tests/main.js"
       },
@@ -2549,7 +2688,7 @@
       "detail": "Asks ctest which tests a configured build directory declares, which runs none of them; running them uses the ctest on your machine, in a terminal you can see.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.ctest.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-ctest-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.ctest.lock.json",
         "sha256": "010b447bed7042ba0fd93dd85a7c3b56e3c197be52b50c5465d400fbce0f7a31",
         "executablePath": "node_modules/@onixlabs/ctest/main.js"
       },

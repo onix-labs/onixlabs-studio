@@ -1,11 +1,20 @@
 import { CdkMenu, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
-import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  DestroyRef,
+  inject,
+  Signal,
+} from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { MENU_POSITIONS } from '@shared/angular/components/menu/menu-position';
 import { Icon } from '@shared/angular/icons/icon';
 import { Agent, AgentTask } from '@shared/angular/services/agent/agent';
+import { MenuClock } from '@shared/angular/services/time/menu-clock';
+import { taskTiming } from '@shared/angular/services/time/time-format';
 
 /**
  * The composer's own task indicator: a spinning icon button beside the quick-response button while
@@ -74,21 +83,20 @@ export class AgentTasksMenu {
   }
 
   /**
-   * Formats a task's elapsed time coarsely — the drop-up is a progress cue, not a stopwatch.
-   * @param durationMs The task's elapsed milliseconds, as last reported.
-   * @returns Returns the formatted duration.
+   * Holds the clock the open drop-up's running times tick by (#1419). It ticks only while the drop-up
+   * is open.
    */
-  protected elapsed(durationMs: number): string {
-    const seconds: number = Math.floor(durationMs / 1000);
-    if (seconds < 60) {
-      return `${seconds}s`;
-    }
-    const minutes: number = Math.floor(seconds / 60);
-    return minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h`;
+  protected readonly clock: MenuClock = new MenuClock();
+
+  /**
+   * Initializes a new instance of the {@link AgentTasksMenu} class, stopping the clock with the view.
+   */
+  public constructor() {
+    inject(DestroyRef).onDestroy((): void => this.clock.stop());
   }
 
   /**
-   * Builds the secondary line for a task: what it last did and what it has spent. No owner name, since
+   * Builds the secondary line for a task: what it last did, when it started and how long it has run. No owner name, since
    * every row belongs to the conversation the composer is part of.
    * @param task The task to describe.
    * @returns Returns the joined detail, or an empty string when nothing is known yet.
@@ -98,8 +106,9 @@ export class AgentTasksMenu {
     if (task.lastToolName !== undefined) {
       parts.push(task.lastToolName);
     }
-    if (task.durationMs > 0) {
-      parts.push(this.elapsed(task.durationMs));
+    const timing: string = taskTiming(task.startedAt, task.durationMs, this.clock.now());
+    if (timing.length > 0) {
+      parts.push(timing);
     }
     return parts.join(' · ');
   }

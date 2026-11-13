@@ -22,9 +22,10 @@ import { argv, exit, stdout } from 'node:process';
 
 const INDEX = 'src/shared/electron/contributions/plugins/curated-plugins.json';
 
-// A first-party lockfile is published straight out of this repository, so its pinned URL is this prefix
-// plus a path in the working tree.
-const OWN = 'https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/';
+// A first-party lockfile is published straight out of this repository, so its pinned URL is this prefix,
+// a ref (the plugin's release tag, or `main` for the third-party servers' lockfiles), and a path in the
+// working tree.
+const OWN = /^https:\/\/raw\.githubusercontent\.com\/onix-labs\/onixlabs-studio\/[^/]+\/(.+)$/;
 
 /**
  * Gets the platform key for the machine running this, matching the main process's own.
@@ -37,7 +38,7 @@ function platformKey() {
 /**
  * Resolves a pinned URL that this repository itself publishes to the file in the working tree.
  *
- * A lockfile pinned at `raw.githubusercontent.com/…/main/…` is not a third-party artifact — it is a
+ * A lockfile pinned at `raw.githubusercontent.com/…/<ref>/…` is not a third-party artifact — it is a
  * file in this checkout, served verbatim once merged. Hashing the checkout rather than fetching `main`
  * is both more useful and more correct on a branch: it proves the pin matches the document being
  * proposed, where fetching would either check the *previous* revision or, for a lockfile added by the
@@ -50,10 +51,11 @@ function platformKey() {
  * @returns {string|null} Returns the local path, or null when the URL is somebody else's.
  */
 function localPath(url) {
-  if (!url.startsWith(OWN)) {
+  const match = OWN.exec(url);
+  if (match === null) {
     return null;
   }
-  const path = url.slice(OWN.length);
+  const path = match[1];
   return existsSync(path) ? path : null;
 }
 

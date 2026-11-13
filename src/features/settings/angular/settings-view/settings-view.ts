@@ -91,6 +91,7 @@ const AI_PAGE_KEYS: Readonly<Partial<Record<SettingsSectionId, ReadonlySet<strin
     'ai.deleteConversationsMode',
     'ai.maxLiveSessions',
     'ai.sendMessageWith',
+    'ai.quickResponseMode',
     'ai.maxImagesPerMessage',
     'ai.maxImageSizeMb',
     'ai.expandToolCalls',
@@ -108,6 +109,7 @@ const AI_PAGE_KEYS: Readonly<Partial<Record<SettingsSectionId, ReadonlySet<strin
     'ai.deniedWritePaths',
     'ai.allowedNetworkLocations',
     'ai.deniedNetworkLocations',
+    'ai.excludedCommands',
   ]),
 };
 

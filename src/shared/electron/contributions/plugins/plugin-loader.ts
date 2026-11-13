@@ -324,12 +324,12 @@ function hostOf(url: string): string | null {
  * synchronously while listing plugins and must never trigger a download. A plugin whose lockfile is
  * only published reports no count rather than a wrong one.
  * @param manifest The validated manifest.
- * @param bundled Resolves a compiled-in lockfile for a URL.
+ * @param bundled Resolves a compiled-in lockfile for a URL and its pinned hash.
  * @returns Returns the origin, or undefined when it cannot be described.
  */
 export function toOrigin(
   manifest: PluginManifest,
-  bundled: (url: string) => unknown = (): null => null,
+  bundled: (url: string, sha256: string) => unknown = (): null => null,
 ): PluginOrigin | undefined {
   if (manifest.provision.kind === 'archive') {
     const hosts: string[] = [];
@@ -342,7 +342,7 @@ export function toOrigin(
     return { hosts, packageCount: 1 };
   }
   const packages: readonly LockfilePackage[] | null = parseLockfileDocument(
-    bundled(manifest.provision.lockfileUrl),
+    bundled(manifest.provision.lockfileUrl, manifest.provision.sha256),
   );
   if (packages === null) {
     return undefined;

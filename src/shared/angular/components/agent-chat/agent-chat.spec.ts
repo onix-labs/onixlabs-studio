@@ -1,4 +1,4 @@
-import { signal, WritableSignal } from '@angular/core';
+import { computed, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import type {
@@ -20,6 +20,7 @@ import {
   AgentTask,
 } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import { AgentExclusions } from '@shared/angular/services/agent-exclusions/agent-exclusions';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { Search } from '@shared/angular/services/search/search';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -62,17 +63,26 @@ describe('AgentChat', () => {
   let tailRequest: WritableSignal<number>;
   let topRequest: WritableSignal<number>;
   let promptRequest: WritableSignal<number>;
+  let unsandboxedRequest: WritableSignal<number>;
   // The chat decides for itself whether it is on screen by watching its own host element, which jsdom
   // cannot answer; this puts those observations under the test's control.
   let observers: FakeIntersectionObserver;
+  // The workspace the agent works in, and what its excluded commands do (#1163).
+  let workspaceRoot: string | null;
+  let pendingShared: WritableSignal<readonly string[]>;
+  let exclusionCalls: string[];
 
   beforeEach(async () => {
     localStorage.clear();
     observers = FakeIntersectionObserver.install();
+    workspaceRoot = null;
+    pendingShared = signal<readonly string[]>([]);
+    exclusionCalls = [];
     conversationDraft = signal<string>('');
     tailRequest = signal<number>(0);
     topRequest = signal<number>(0);
     promptRequest = signal<number>(0);
+    unsandboxedRequest = signal<number>(0);
     compacted = 0;
     clearedChats = 0;
     modeChanges = [];
@@ -113,6 +123,10 @@ describe('AgentChat', () => {
       // The composer hosts the conversation-scoped tasks menu, which reads the live-task list.
       tasks: signal<readonly AgentTask[]>([]),
       items,
+      unsandboxedRuns: computed(
+        (): number =>
+          items().filter((item: AgentItem): boolean => item.toolUnsandboxed !== undefined).length,
+      ),
       isRunning: running,
       awaitingDecision: awaiting,
       pendingInput,
@@ -158,6 +172,7 @@ describe('AgentChat', () => {
       clear: (): void => void (clearedChats += 1),
       setMode: (value: AgentMode): void => void modeChanges.push(value),
       setEffort: (value: AiEffort | null): void => void effortChanges.push(value),
+      runWorkspaceRoot: (): string | null => workspaceRoot,
       attachContext: (ref: AgentContextRef): void => void attachedContext.push(ref),
       needsLogin: signal<boolean>(false),
       supportsSignIn: signal<boolean>(false),
@@ -203,6 +218,27 @@ describe('AgentChat', () => {
         { provide: AgentEngine, useValue: engineStub },
         { provide: Workspace, useValue: workspaceStub },
         { provide: Search, useValue: searchStub },
+        {
+          provide: AgentExclusions,
+          useValue: {
+            pendingReview: (root: string | null): readonly string[] =>
+              root === null ? [] : pendingShared(),
+            refresh: (): Promise<void> => Promise.resolve(),
+            excludeForWorkspace: (root: string, pattern: string): Promise<void> => {
+              exclusionCalls.push(`exclude ${root} ${pattern}`);
+              return Promise.resolve();
+            },
+            review: (root: string, patterns: readonly string[]): Promise<void> => {
+              exclusionCalls.push(`review ${root} ${patterns.join(',')}`);
+              pendingShared.set([]);
+              return Promise.resolve();
+            },
+            snooze: (root: string): void => {
+              exclusionCalls.push(`snooze ${root}`);
+              pendingShared.set([]);
+            },
+          } as unknown as AgentExclusions,
+        },
         // A host conversation carrying the persistent composer draft, so the chat's draft is backed by
         // it exactly as it is in the app (the source of the survives-remount behaviour below).
         {
@@ -212,6 +248,7 @@ describe('AgentChat', () => {
             tailRequest: tailRequest.asReadonly(),
             topRequest: topRequest.asReadonly(),
             promptRequest: promptRequest.asReadonly(),
+            unsandboxedRequest: unsandboxedRequest.asReadonly(),
           } as unknown as AgentConversation,
         },
       ],
@@ -232,6 +269,151 @@ describe('AgentChat', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('stamps_eachTimedEntry_withItsClockTime_andAFinishedToolCallWithItsDuration', () => {
+    // #1419. Built from local time, as the stamp is, so the test holds in any time zone.
+    const at: number = new Date(2026, 10, 10, 14, 32, 7).getTime();
+    items.set([
+      { id: 'item-1', kind: 'user', text: 'Fix the login redirect', createdAt: at },
+      {
+        id: 'item-2',
+        kind: 'tool',
+        text: '',
+        toolId: 't1',
+        toolName: 'Bash',
+        toolState: 'ok',
+        createdAt: at + 4000,
+        endedAt: at + 16_400,
+      },
+      // Saved before entries were timed: no stamp rather than a made-up one.
+      { id: 'item-3', kind: 'assistant', text: 'Done.' },
+    ]);
+    fixture.detectChanges();
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    expect(
+      Array.from(host.querySelectorAll('.agent__stamp')).map(
+        (stamp: Element): string => stamp.textContent?.trim() ?? '',
+      ),
+    ).toEqual(['14:32:07', '12.4 s · 14:32:11']);
+  });
+
+  it('stamp_whenHovered_spellsOutTheDateAndHowLongAgo', () => {
+    const at: number = Date.now() - 4 * 60_000;
+    items.set([{ id: 'item-1', kind: 'assistant', text: 'Done.', createdAt: at }]);
+    fixture.detectChanges();
+    const stamp: HTMLElement = (fixture.nativeElement as HTMLElement).querySelector(
+      '.agent__stamp',
+    )!;
+
+    stamp.dispatchEvent(new PointerEvent('pointerenter'));
+
+    expect(stamp.title).toContain('4 minutes ago');
+  });
+
+  describe('excluded commands (#1163)', () => {
+    /**
+     * Builds a failed shell call, as the transcript holds one.
+     * @param output What the command printed.
+     * @param overrides The fields to change.
+     * @returns Returns the item.
+     */
+    function failedShell(output: string, overrides: Partial<AgentItem> = {}): AgentItem {
+      return {
+        id: 't1',
+        kind: 'tool',
+        text: '',
+        toolId: 'toolu_1',
+        toolName: 'Bash',
+        toolDetail: 'npx ng test --watch=false',
+        toolState: 'error',
+        toolOutput: output,
+        ...overrides,
+      };
+    }
+
+    /**
+     * Reads the chat's protected exclusion offer.
+     * @param item The tool call.
+     * @returns Returns the pattern offered, or null.
+     */
+    function offerFor(item: AgentItem): string | null {
+      return (
+        component as unknown as { exclusionOffer: (item: AgentItem) => string | null }
+      ).exclusionOffer(item);
+    }
+
+    it('offersToExcludeACommand_thatCrashedTheWayTheSandboxMakesItCrash', () => {
+      workspaceRoot = '/work/studio';
+
+      expect(offerFor(failedShell('dyld[812]: Library not loaded\nAbort trap: 6'))).toBe(
+        'npx ng:*',
+      );
+    });
+
+    it.each<[string, Partial<AgentItem>, string]>([
+      ['anotherFailure', {}, 'npm ERR! missing script: test'],
+      ['aCommandThatRanOutside', { toolUnsandboxed: 'Ran outside.' }, 'Abort trap: 6'],
+      ['anotherTool', { toolName: 'Write' }, 'Abort trap: 6'],
+      ['aCommandThatSucceeded', { toolState: 'ok' }, 'Abort trap: 6'],
+    ])('offersNothing_for %s', (_label: string, overrides: Partial<AgentItem>, output: string) => {
+      workspaceRoot = '/work/studio';
+
+      expect(offerFor(failedShell(output, overrides))).toBeNull();
+    });
+
+    it('offersNothing_withoutAWorkspace', () => {
+      expect(offerFor(failedShell('Abort trap: 6'))).toBeNull();
+    });
+
+    it('excludesForThisWorkspaceOnly_andDoesNotOfferTheSameCallTwice', () => {
+      workspaceRoot = '/work/studio';
+      const item: AgentItem = failedShell('Abort trap: 6');
+
+      (
+        component as unknown as {
+          excludeForWorkspace: (item: AgentItem, pattern: string) => void;
+        }
+      ).excludeForWorkspace(item, 'npx ng:*');
+
+      expect(exclusionCalls).toEqual(['exclude /work/studio npx ng:*']);
+      expect(offerFor(item)).toBeNull();
+    });
+
+    it('asksAboveTheComposer_beforeARepositorysSharedListApplies', async () => {
+      workspaceRoot = '/work/studio';
+      pendingShared.set(['make build']);
+      fixture = TestBed.createComponent(AgentChat);
+      await fixture.whenStable();
+      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+      expect(host.querySelector('.agent__exclusion-review')?.textContent).toContain('make build');
+
+      const allow: HTMLButtonElement | undefined = [
+        ...host.querySelectorAll<HTMLButtonElement>('.agent__exclusion-review button'),
+      ].find((button: HTMLButtonElement): boolean => button.textContent?.trim() === 'Allow');
+      allow?.click();
+      await fixture.whenStable();
+
+      expect(exclusionCalls).toEqual(['review /work/studio make build']);
+      expect(host.querySelector('.agent__exclusion-review')).toBeNull();
+    });
+
+    it('notNow_putsTheReviewOff_withoutAllowingAnything', async () => {
+      workspaceRoot = '/work/studio';
+      pendingShared.set(['make build']);
+      fixture = TestBed.createComponent(AgentChat);
+      await fixture.whenStable();
+      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+      [...host.querySelectorAll<HTMLButtonElement>('.agent__exclusion-review button')]
+        .find((button: HTMLButtonElement): boolean => button.textContent?.trim() === 'Not Now')
+        ?.click();
+      await fixture.whenStable();
+
+      expect(exclusionCalls).toEqual(['snooze /work/studio']);
+    });
   });
 
   it('textScale_followsTheConversationTextSizeSetting', () => {
@@ -745,6 +927,9 @@ describe('AgentChat', () => {
     expect(badges.length).toBe(1);
     expect(badges[0].textContent?.trim()).toBe('Unsandboxed');
     expect(badges[0].title).toBe('Ran outside the sandbox: you allowed it.');
+    // A caution, so it is the shared chip in the warning tone (#1456), not a hand-made label.
+    expect(badges[0].tagName.toLowerCase()).toBe('app-chip');
+    expect(badges[0].classList).toContain('chip--warning');
   });
 
   it('backgroundedTool_rendersAsLive_withASpinningNode', () => {
@@ -1077,6 +1262,70 @@ describe('AgentChat', () => {
     topRequest.set(2);
     TestBed.tick();
     expect(jumps).toBe(2);
+  });
+
+  it('unsandboxedRequest_stepsThroughTheCommandsThatRanOutside_wrappingRound', () => {
+    // #1160: each click of the status strip's count goes to the next such command and highlights it.
+    items.set([
+      {
+        id: 'item-1',
+        kind: 'tool',
+        text: '',
+        toolName: 'Bash',
+        toolState: 'ok',
+        toolUnsandboxed: 'r',
+      },
+      { id: 'item-2', kind: 'tool', text: '', toolName: 'Bash', toolState: 'ok' },
+      {
+        id: 'item-3',
+        kind: 'tool',
+        text: '',
+        toolName: 'Bash',
+        toolState: 'ok',
+        toolUnsandboxed: 'r',
+      },
+    ]);
+    fixture.detectChanges();
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const flashed: () => string | undefined = (): string | undefined =>
+      host.querySelector<HTMLElement>('.agent__row--flash')?.dataset['unsandboxed'];
+
+    unsandboxedRequest.set(1);
+    fixture.detectChanges();
+    expect(flashed()).toBe('item-1');
+
+    unsandboxedRequest.set(2);
+    fixture.detectChanges();
+    expect(flashed()).toBe('item-3');
+
+    // After the last, round to the first again.
+    unsandboxedRequest.set(3);
+    fixture.detectChanges();
+    expect(flashed()).toBe('item-1');
+    expect(host.querySelectorAll('.agent__row--flash')).toHaveLength(1);
+  });
+
+  it('unsandboxedRequest_marksOnlyTheRowsThatRanOutside', () => {
+    items.set([
+      {
+        id: 'item-1',
+        kind: 'tool',
+        text: '',
+        toolName: 'Bash',
+        toolState: 'ok',
+        toolUnsandboxed: 'r',
+      },
+      { id: 'item-2', kind: 'tool', text: '', toolName: 'Bash', toolState: 'ok' },
+    ]);
+    fixture.detectChanges();
+
+    expect(
+      [
+        ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+          '[data-unsandboxed]',
+        ),
+      ].map((row: HTMLElement): string | undefined => row.dataset['unsandboxed']),
+    ).toEqual(['item-1']);
   });
 
   it('promptRequest_whenASurfaceAsksForTheLastPrompt_scrollsThisTranscriptThere', () => {

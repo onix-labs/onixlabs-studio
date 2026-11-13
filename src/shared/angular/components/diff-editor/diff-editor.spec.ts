@@ -5,7 +5,9 @@ import type * as MonacoApi from 'monaco-editor';
 import type { MockInstance } from 'vitest';
 import { EditorContextMenuHost } from '@shared/angular/components/editor-context-menu/editor-context-menu-host';
 import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
+import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { EDITOR_KEYBINDINGS } from '@shared/angular/services/monaco/monaco-keybindings';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { HoverCards } from '@shared/angular/services/hover/hover-cards';
 import { ColourPickers } from '@shared/angular/services/colour-picker/colour-pickers';
@@ -43,21 +45,30 @@ describe('DiffEditor', () => {
 });
 
 /**
- * The chords the stand-in Monaco knows, as the reader binds them (#1026).
+ * The key listeners attached to the stand-in sides.
  */
-const STAND_IN_KEYS: { KeyCode: { F7: number }; KeyMod: { Shift: number } } = {
-  KeyCode: { F7: 65 },
-  KeyMod: { Shift: 1024 },
-};
+let keyListeners: ((event: MonacoApi.IKeyboardEvent) => void)[];
 
 /**
- * The commands bound on the stand-in sides, by chord.
+ * Presses a key on one stand-in side, as Monaco reports it to that side's key listener.
+ * @param side The side: 0 for the original, 1 for the modified.
+ * @param key The key.
+ * @param shiftKey Whether Shift is held.
+ * @returns Returns whether the listener handled the key.
  */
-let boundCommands: Map<number, () => void>;
+function pressOnSide(side: 0 | 1, key: string, shiftKey: boolean = false): boolean {
+  let handled: boolean = false;
+  keyListeners[side]({
+    browserEvent: new KeyboardEvent('keydown', { key, shiftKey }),
+    preventDefault: (): void => void (handled = true),
+    stopPropagation: (): void => undefined,
+  } as unknown as MonacoApi.IKeyboardEvent);
+  return handled;
+}
 
 describe('DiffEditor over a stand-in Monaco diff editor (#1012)', () => {
   beforeEach(() => {
-    boundCommands = new Map<number, () => void>();
+    keyListeners = [];
   });
 
   it('attachesBothSidesToTheRightClickMenu_withTheHostInItsOwnView_andDetachesOnDestroy', async () => {
@@ -67,9 +78,9 @@ describe('DiffEditor over a stand-in Monaco diff editor (#1012)', () => {
           dispose: (): void => undefined,
         }),
         getPosition: (): null => null,
-        addCommand: (chord: number, handler: () => void): null => {
-          boundCommands.set(chord, handler);
-          return null;
+        onKeyDown: (listener: (event: MonacoApi.IKeyboardEvent) => void): MonacoApi.IDisposable => {
+          keyListeners.push(listener);
+          return { dispose: (): void => undefined };
         },
         focus: (): void => undefined,
       }) as unknown as MonacoApi.editor.ICodeEditor;
@@ -93,11 +104,13 @@ describe('DiffEditor over a stand-in Monaco diff editor (#1012)', () => {
       updateOptions: (): void => undefined,
       dispose: (): void => undefined,
     };
-    await TestBed.configureTestingModule({ imports: [DiffEditor] }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [DiffEditor],
+      providers: [provideKeybindingCatalogue(EDITOR_KEYBINDINGS)],
+    }).compileComponents();
     const monaco: Monaco = TestBed.inject(Monaco);
     vi.spyOn(monaco, 'ensureLoaded').mockResolvedValue(undefined);
     vi.spyOn(monaco, 'getMonaco').mockReturnValue({
-      ...STAND_IN_KEYS,
       editor: {
         createDiffEditor: (): unknown => diff,
         createModel: (): unknown => ({ dispose: (): void => undefined }),
@@ -140,15 +153,16 @@ describe('DiffEditor over a stand-in Monaco diff editor (#1012)', () => {
     ]);
     expect(attachPickers.mock.calls[0][1].get(DiffEditor)).toBe(fixture.componentInstance);
 
-    // #1026: F7 / ⇧F7 are bound on the sides and open Studio's change reader — here, with no diff
-    // computed, to say there are no changes; Esc closes it.
-    expect([...boundCommands.keys()].sort()).toEqual([65, 1024 | 65].sort());
+    // #1026: F7 / ⇧F7 on either side open Studio's change reader — here, with no diff computed, to say
+    // there are no changes; Esc closes it. The chords are the registry's (#1036).
+    expect(keyListeners).toHaveLength(2);
+    expect(pressOnSide(0, 'F8')).toBe(false);
     // The text arrives once the editor is ready, as a document's does, so the effect builds the models.
     fixture.componentRef.setInput('modified', 'changed');
     await fixture.whenStable();
     const modelsBefore: number = modelsSet;
     expect(modelsBefore).toBeGreaterThan(1);
-    boundCommands.get(65)?.();
+    expect(pressOnSide(0, 'F7')).toBe(true);
     fixture.detectChanges();
     await fixture.whenStable();
     // Stepping the reader never rebuilds the models — which would put the caret back at the top.
@@ -164,6 +178,12 @@ describe('DiffEditor over a stand-in Monaco diff editor (#1012)', () => {
     expect(
       (fixture.nativeElement as HTMLElement).querySelector('app-diff-change-reader'),
     ).toBeNull();
+    // ⇧F7 on the other side opens it too.
+    expect(pressOnSide(1, 'F7', true)).toBe(true);
+    fixture.detectChanges();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('app-diff-change-reader'),
+    ).not.toBeNull();
 
     fixture.destroy();
     expect(detached).toBe(2);
@@ -178,7 +198,7 @@ describe('DiffEditor over a stand-in Monaco diff editor (#1012)', () => {
           dispose: (): void => undefined,
         }),
         getPosition: (): null => null,
-        addCommand: (): null => null,
+        onKeyDown: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
         focus: (): void => undefined,
       }) as unknown as MonacoApi.editor.ICodeEditor;
     const original: MonacoApi.editor.ICodeEditor = side();
@@ -199,7 +219,6 @@ describe('DiffEditor over a stand-in Monaco diff editor (#1012)', () => {
     const monaco: Monaco = TestBed.inject(Monaco);
     vi.spyOn(monaco, 'ensureLoaded').mockResolvedValue(undefined);
     vi.spyOn(monaco, 'getMonaco').mockReturnValue({
-      ...STAND_IN_KEYS,
       editor: {
         createDiffEditor: (
           _host: HTMLElement,

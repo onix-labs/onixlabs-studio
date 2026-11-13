@@ -7,9 +7,11 @@ import {
   computed,
   DestroyRef,
   effect,
+  EffectRef,
   ElementRef,
   HostListener,
   inject,
+  Injector,
   input,
   InputSignal,
   OnInit,
@@ -22,7 +24,10 @@ import {
 import type { AgentSurface, AiEditDecision, AiImageRef } from '@shared/api/ai-types';
 import { Agent, AgentItem, AgentItemKind } from '@shared/angular/services/agent/agent';
 import { formatTokens } from '@shared/angular/services/agent/token-format';
+import { clockTime, formatDuration, fullTime } from '@shared/angular/services/time/time-format';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { AgentExclusions } from '@shared/angular/services/agent-exclusions/agent-exclusions';
+import { looksLikeSandboxCrash, suggestExcludedCommand } from '@shared/api/excluded-commands';
 import { ConversationTextSize } from '@shared/angular/services/settings/settings-registry';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentPerf } from '@shared/angular/services/agent-perf/agent-perf';
@@ -34,6 +39,7 @@ import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Chip } from '@shared/angular/components/chip/chip';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { AgentEditDecisionCard } from '@shared/angular/components/agent-cards/agent-edit-decision-card/agent-edit-decision-card';
 import { AgentWorkspaceCard } from '@shared/angular/components/agent-cards/agent-workspace-card/agent-workspace-card';
@@ -268,6 +274,18 @@ interface TranscriptRow {
    * Gets the precomputed raw input/output payload views for a tool row, or undefined for other kinds.
    */
   readonly payloads?: RowPayloads;
+
+  /**
+   * Gets the muted time shown at the row's trailing edge (#1419): when the entry arrived, such as
+   * `14:32:07`, and for a finished tool call how long it took first (`12.4 s · 14:32:07`). Undefined
+   * for an entry saved before entries were timed, and for the synthetic working row.
+   */
+  readonly stamp?: string;
+
+  /**
+   * Gets when the entry arrived, in epoch milliseconds, which hovering the stamp spells out in full.
+   */
+  readonly stampAt?: number;
 }
 
 /**
@@ -325,6 +343,7 @@ const CONVERSATION_TEXT_SCALES: Readonly<Record<ConversationTextSize, number>> =
   imports: [
     Button,
     AppIcon,
+    Chip,
     MarkdownRenderer,
     NgTemplateOutlet,
     AgentComposer,
@@ -350,6 +369,21 @@ export class AgentChat implements OnInit {
    * the same transcript.
    */
   private readonly agent: Agent = inject(Agent);
+
+  /**
+   * Holds the injector a step to the next unsandboxed run waits for a render through (#1160).
+   */
+  private readonly injector: Injector = inject(Injector);
+
+  /**
+   * Holds the item id of the unsandboxed run last stepped to, so the next step goes on from it (#1160).
+   */
+  private unsandboxedCursor: string | null = null;
+
+  /**
+   * Holds the timer that takes the step's highlight off its row.
+   */
+  private flashTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * Holds the global engine, read only for whether anything can run a turn at all.
@@ -395,6 +429,39 @@ export class AgentChat implements OnInit {
    * view).
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the workspace's excluded commands (#1163): the one-click exclusion a sandbox crash offers,
+   * and the review a repository's shared list waits for.
+   */
+  private readonly exclusions: AgentExclusions = inject(AgentExclusions);
+
+  /**
+   * Holds the tool calls whose command the user excluded from this transcript, so the offer is not
+   * made twice.
+   */
+  protected readonly excludedFrom: WritableSignal<ReadonlySet<string>> = signal<
+    ReadonlySet<string>
+  >(new Set<string>());
+
+  /**
+   * Gets the shared exclusions the workspace's repository brings that are waiting for the user's
+   * review, shown above the composer until allowed or put off.
+   */
+  protected readonly pendingExclusions: Signal<readonly string[]> = computed(
+    (): readonly string[] => this.exclusions.pendingReview(this.exclusionRoot()),
+  );
+
+  /**
+   * Reads the workspace's exclusions whenever the agent's workspace changes, so a shared list waiting
+   * for review is offered before the first run rather than after it.
+   */
+  private readonly exclusionsLoad: EffectRef = effect((): void => {
+    const root: string | null = this.exclusionRoot();
+    if (root !== null) {
+      void this.exclusions.refresh(root);
+    }
+  });
 
   /**
    * Gets a value indicating whether tool calls render open (Expand Tool Calls).
@@ -925,10 +992,14 @@ export class AgentChat implements OnInit {
           const next: RailEntry | undefined = entries[index + 1];
           const lane: LaneInfo | undefined =
             row.kind === 'tool' && row.item !== null ? laneFor(row.item, build) : undefined;
+          const stampAt: number | undefined = row.item?.createdAt;
           return {
             id: row.item?.id ?? 'working',
             kind: row.kind,
             item: row.item,
+            ...(row.item === null || stampAt === undefined
+              ? {}
+              : { stamp: stampFor(row.item, stampAt), stampAt }),
             timeline,
             connectsUp: timeline && previous !== undefined && onRail(previous.kind),
             connectsDown: timeline && next !== undefined && onRail(next.kind),
@@ -1084,6 +1155,17 @@ export class AgentChat implements OnInit {
       untracked((): void => {
         if (requested > 0) {
           this.scrollToLastPrompt();
+        }
+      });
+    });
+
+    // A surface asking for the next command that ran outside the sandbox (#1160): the status strip's
+    // unsandboxed count, clicked.
+    effect((): void => {
+      const requested: number = this.conversation?.unsandboxedRequest() ?? 0;
+      untracked((): void => {
+        if (requested > 0) {
+          this.revealNextUnsandboxed();
         }
       });
     });
@@ -1401,11 +1483,79 @@ export class AgentChat implements OnInit {
   }
 
   /**
+   * Steps the transcript to the next command that ran outside the OS sandbox, wrapping round after the
+   * last, and highlights its row for a moment (#1160). Stops following the tail first, as the other
+   * jumps do.
+   *
+   * The rows are found in the DOM, in transcript order. When the window leaves some of those commands
+   * in older history, the window is opened to the whole conversation once and the step waits for that
+   * render, so every one of them can be reached; a command inside a collapsed sub-agent lane is not on
+   * screen to step to, and is passed over.
+   */
+  public revealNextUnsandboxed(): void {
+    this.following.set(false);
+    const container: HTMLElement | undefined = this.messagesRef()?.nativeElement;
+    if (container === undefined) {
+      return;
+    }
+    const rendered: number = container.querySelectorAll('[data-unsandboxed]').length;
+    if (rendered < this.agent.unsandboxedRuns() && this.earlierCount() > 0) {
+      this.windowSize.set(Number.MAX_SAFE_INTEGER);
+      afterNextRender((): void => this.stepToNextUnsandboxed(container), {
+        injector: this.injector,
+      });
+      return;
+    }
+    this.stepToNextUnsandboxed(container);
+  }
+
+  /**
+   * Scrolls to and highlights the unsandboxed run after the last one stepped to, or the first.
+   * @param container The transcript's scroller.
+   */
+  private stepToNextUnsandboxed(container: HTMLElement): void {
+    const rows: readonly HTMLElement[] = [
+      ...container.querySelectorAll<HTMLElement>('[data-unsandboxed]'),
+    ];
+    if (rows.length === 0) {
+      return;
+    }
+    const current: number = rows.findIndex(
+      (row: HTMLElement): boolean => row.dataset['unsandboxed'] === this.unsandboxedCursor,
+    );
+    const next: HTMLElement = rows[(current + 1) % rows.length];
+    this.unsandboxedCursor = next.dataset['unsandboxed'] ?? null;
+    // Measured against the container rather than passed to `scrollIntoView`, which would also scroll
+    // whatever the panel itself sits inside; a little space above keeps the row off the very edge.
+    container.scrollTop +=
+      next.getBoundingClientRect().top - container.getBoundingClientRect().top - 16;
+    for (const row of rows) {
+      row.classList.remove('agent__row--flash');
+    }
+    next.classList.add('agent__row--flash');
+    if (this.flashTimer !== null) {
+      clearTimeout(this.flashTimer);
+    }
+    this.flashTimer = setTimeout((): void => next.classList.remove('agent__row--flash'), 1600);
+  }
+
+  /**
    * Re-pins the transcript to the tail when the composer dispatches a message, even if the reader had
    * scrolled up to read back.
    */
   public onSent(): void {
     this.following.set(true);
+  }
+
+  /**
+   * Spells out when an entry arrived as its stamp is hovered (#1419): the full date and time, and how
+   * long ago. Written on hover rather than bound, so "how long ago" is true when it is read rather than
+   * when the row was last rendered.
+   * @param event The pointer entering the stamp.
+   * @param at When the entry arrived, in epoch milliseconds.
+   */
+  protected showWhen(event: PointerEvent, at: number): void {
+    (event.currentTarget as HTMLElement).title = fullTime(at);
   }
 
   /**
@@ -1536,4 +1686,88 @@ export class AgentChat implements OnInit {
     event.preventDefault();
     void this.shell.openExternal(href);
   }
+
+  /**
+   * Gets the workspace this conversation's agent works in, whose exclusions apply to it. Read through
+   * each time rather than memoised: the agent resolves it from signals of its own.
+   * @returns Returns the workspace root, or null for none.
+   */
+  protected exclusionRoot(): string | null {
+    return this.agent.runWorkspaceRoot();
+  }
+
+  /**
+   * Gets the pattern to offer excluding, for a shell command that failed the way a toolchain does
+   * when it cannot run inside the sandbox at all (a crash naming dyld or SIGABRT), or null when there
+   * is nothing to offer: another tool, another failure, one that already ran outside, or no workspace.
+   * @param item The tool call.
+   * @returns Returns the pattern, or null.
+   */
+  protected exclusionOffer(item: AgentItem): string | null {
+    if (
+      item.toolName !== 'Bash' ||
+      item.toolState !== 'error' ||
+      item.toolUnsandboxed !== undefined ||
+      this.exclusionRoot() === null ||
+      (item.toolId !== undefined && this.excludedFrom().has(item.toolId)) ||
+      !looksLikeSandboxCrash(item.toolOutput ?? '')
+    ) {
+      return null;
+    }
+    return suggestExcludedCommand(item.toolDetail ?? '');
+  }
+
+  /**
+   * Excludes a crashed command's pattern for this workspace, for this user only: the private list,
+   * since one click is no place to decide for a team.
+   * @param item The tool call.
+   * @param pattern The pattern offered.
+   */
+  protected excludeForWorkspace(item: AgentItem, pattern: string): void {
+    const root: string | null = this.exclusionRoot();
+    if (root === null) {
+      return;
+    }
+    if (item.toolId !== undefined) {
+      const id: string = item.toolId;
+      this.excludedFrom.update((current: ReadonlySet<string>): ReadonlySet<string> =>
+        new Set<string>(current).add(id),
+      );
+    }
+    void this.exclusions.excludeForWorkspace(root, pattern);
+  }
+
+  /**
+   * Allows the workspace's shared exclusions as listed: they apply until the list changes.
+   */
+  protected allowSharedExclusions(): void {
+    const root: string | null = this.exclusionRoot();
+    if (root !== null) {
+      void this.exclusions.review(root, this.pendingExclusions());
+    }
+  }
+
+  /**
+   * Puts the review off for this session: the shared exclusions stay ignored.
+   */
+  protected postponeSharedExclusions(): void {
+    const root: string | null = this.exclusionRoot();
+    if (root !== null) {
+      this.exclusions.snooze(root);
+    }
+  }
+}
+
+/**
+ * Builds a row's stamp (#1419): the clock time it arrived, and for a tool call that has finished, how
+ * long it took first.
+ * @param item The row's transcript entry.
+ * @param createdAt When it arrived, in epoch milliseconds.
+ * @returns Returns the stamp, such as `14:32:07` or `12.4 s · 14:32:07`.
+ */
+function stampFor(item: AgentItem, createdAt: number): string {
+  const time: string = clockTime(createdAt);
+  return item.kind === 'tool' && item.endedAt !== undefined
+    ? `${formatDuration(Math.max(0, item.endedAt - createdAt))} · ${time}`
+    : time;
 }

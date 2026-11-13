@@ -255,6 +255,32 @@ $agent-row-spacing: 0.85rem;
   padding-block-end: $agent-row-spacing;
 }
 
+// The row the unsandboxed count just stepped to (#1160): an accent ring around the entry that fades,
+// so the eye finds it after the jump. With reduced motion it holds still, and the class coming off
+// after a moment is what takes it away.
+.agent__row--flash > .agent__row-content {
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  box-shadow: 0 0 0 0.125rem var(--accent-color);
+  animation: agent-row-flash 1.6s ease-out forwards;
+}
+
+@keyframes agent-row-flash {
+  0%,
+  40% {
+    box-shadow: 0 0 0 0.125rem var(--accent-color);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0.125rem transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent__row--flash > .agent__row-content {
+    animation: none;
+  }
+}
+
 // The working indicator is a single status line: centre it against its spinner node rather than
 // top-aligning it like the multi-line bubbles and actions. ⚠️ The content only — centring the row's
 // items would stop the node column stretching, and its connector would fall short like the rest did.
@@ -332,6 +358,20 @@ $agent-row-spacing: 0.85rem;
   align-items: flex-start;
   gap: 0.4rem;
   min-inline-size: 0;
+  // As wide as the entry it holds, not the column, so the entry's time (#1419) — its last item, at
+  // the trailing edge — sits under the entry's own box. A row holding a prompt card stays the full
+  // width the card needs (below).
+  justify-self: start;
+  max-inline-size: 100%;
+
+  &:has(
+    > app-agent-permission-card,
+    > app-agent-question-card,
+    > app-agent-edit-decision-card,
+    > app-agent-error-card
+  ) {
+    justify-self: stretch;
+  }
 
   // Never wider than the column, so long content wraps inside the entry rather than overflowing it.
   > * {
@@ -539,14 +579,9 @@ $agent-row-spacing: 0.85rem;
   color: var(--accent-color);
 }
 
-// Set apart by an outline, not by colour: it is a fact about the command, not an alarm.
+// A command that ran outside the sandbox is a caution, so its chip is in the warning tone (#1456).
 .agent__action-unsandboxed {
   flex: none;
-  padding-inline: 0.35rem;
-  border: 1px solid currentcolor;
-  border-radius: 0.25rem;
-  color: var(--body-foreground-color);
-  font-size: text-size(0.75rem);
 }
 
 .agent__lane-status {
@@ -677,4 +712,101 @@ $agent-row-spacing: 0.85rem;
 
 .agent__avatar {
   border-radius: calc(0.6rem * var(--border-radius-multiplier));
+}
+
+// When an entry arrived (#1419): muted, in the type of the row's small action buttons (Copy, Edit,
+// Retry), with tabular figures, and kept to one line. The same on every entry in a conversation:
+// under the entry's box, at its trailing edge, revealed on hover as the row's actions are. A prompt
+// or a response has an actions row under its bubble, so the time sits at that row's far end; any
+// other entry has it as the last item under its box.
+.agent__stamp {
+  flex: none;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  line-height: $agent-node-size;
+  white-space: nowrap;
+  opacity: 0.8;
+  user-select: none;
+
+  // Under any other entry's box, at its trailing edge.
+  &.agent__stamp--under {
+    align-self: flex-end;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity 120ms ease-in-out;
+  }
+
+  .agent__row:hover > .agent__row-content > &.agent__stamp--under,
+  .agent__row:focus-within > .agent__row-content > &.agent__stamp--under {
+    opacity: 0.8;
+  }
+
+  .agent__msg-actions > & {
+    order: 1;
+    margin-inline-start: 0.35rem;
+    opacity: 0;
+    transition: opacity 120ms ease-in-out;
+  }
+
+  // A response's time sits at the far end of its actions row, opposite Copy and Retry.
+  .agent__msg-actions > &.agent__stamp--end {
+    margin-inline-start: auto;
+    padding-inline-start: 0.75rem;
+  }
+
+  .agent__message:hover .agent__msg-actions > &,
+  .agent__row:hover .agent__msg-actions > & {
+    opacity: 0.8;
+  }
+}
+
+// A response and its actions row, sharing the response's width so the row can span it.
+.agent__response {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+
+  > .agent__msg-actions {
+    align-self: stretch;
+  }
+}
+
+// The one-click exclusion under a shell command the sandbox crashed (#1163): a sentence and a ghost
+// button, quiet like the rest of a tool's detail.
+.agent__exclusion-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0 0;
+  color: var(--body-foreground-color);
+  font-size: text-size(0.8125rem);
+}
+
+// A repository's shared exclusions waiting for review, above the composer (#1163). Bordered rather
+// than coloured: it asks a question, it is not an alarm.
+.agent__exclusion-review {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0.75rem 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 0.0625rem solid var(--agent-view-border-color);
+  border-radius: calc(0.375rem * var(--border-radius-multiplier, 1));
+  corner-shape: var(--app-corner-shape, squircle);
+  font-size: text-size(0.8125rem);
+}
+
+.agent__exclusion-review-text {
+  flex: 1 1 16rem;
+  margin: 0;
+}
+
+.agent__exclusion-review-actions {
+  display: flex;
+  gap: 0.25rem;
 }

@@ -173,7 +173,7 @@ describe('the Git plugin is installable', () => {
 
   it('pinsALockfileFromTheDirectoryLockfilesLiveIn', () => {
     expect((manifest.provision as { lockfileUrl: string }).lockfileUrl).toBe(
-      'https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/' +
+      `https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-git-v${manifest.version}/` +
         'src/shared/electron/contributions/plugins/lockfiles/onixlabs.git.lock.json',
     );
   });

@@ -118,7 +118,8 @@ describe('GoProjectSystem', () => {
     // Go has a target (GOOS/GOARCH) axis but no Debug/Release build-configuration axis.
     expect(provider.capabilities.buildConfigurations).toEqual([]);
     expect(provider.capabilities.target?.kind).toBe('arch');
-    expect(provider.capabilities.debug).toBeNull();
+    // Delve, installed from the Plugin Manager (#1211).
+    expect(provider.capabilities.debug).toEqual({ adapter: 'delve' });
   });
 
   it('ownsGoModManifestsOnly', () => {
@@ -147,6 +148,9 @@ describe.skipIf(process.platform === 'win32')('GoProjectSystem.loadProjectItems 
     writeFileSync(path.join(root, 'build.log'), '');
     mkdirSync(path.join(root, 'output'));
     writeFileSync(path.join(root, 'output', 'widget'), '');
+    // A Go source no package declares: only the fallback listing, which reads the tree, finds it.
+    mkdirSync(path.join(root, 'tools'));
+    writeFileSync(path.join(root, 'tools', 'gen.go'), '//go:build ignore\n');
   });
 
   afterEach(() => {
@@ -212,14 +216,9 @@ describe.skipIf(process.platform === 'win32')('GoProjectSystem.loadProjectItems 
       path.join(root, 'go.mod'),
     );
 
-    expect(paths(items!.tree)).toEqual([
-      'output/',
-      'output/widget',
-      'build.log',
-      'go.mod',
-      'go.sum',
-      'main.go',
-    ]);
+    // Sources and the module's files only (#899): the build output and its log are left to the File
+    // Explorer, so they can never crowd the sources out of the listing's budget.
+    expect(paths(items!.tree)).toEqual(['tools/', 'tools/gen.go', 'go.mod', 'go.sum', 'main.go']);
   });
 
   it('fallsBackToTheListing_whenThereIsNoToolchain', async () => {
@@ -230,7 +229,8 @@ describe.skipIf(process.platform === 'win32')('GoProjectSystem.loadProjectItems 
       path.join(root, 'go.mod'),
     );
 
-    expect(paths(items!.tree)).toContain('build.log');
+    expect(paths(items!.tree)).toContain('tools/gen.go');
+    expect(paths(items!.tree)).not.toContain('build.log');
   });
 
   it('triesTheToolchainUnderGoroot_first', async () => {

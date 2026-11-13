@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Agent, AgentTask } from '@shared/angular/services/agent/agent';
@@ -56,6 +56,25 @@ function mount(initial: readonly AgentTask[]): Harness {
 }
 
 describe('AgentTasksMenu', () => {
+  it('open_showsWhenEachTaskStarted_andHowLongItHasRun', () => {
+    // #1419: timed from when Studio saw the task start, not the provider's report. The ticking itself
+    // is MenuClock's, tested there: the CDK closes an open menu as soon as fake timers run.
+    vi.useFakeTimers();
+    try {
+      const started: number = new Date(2026, 10, 10, 14, 32, 0).getTime();
+      vi.setSystemTime(started + 192_000);
+      const harness: Harness = mount([task('t1', { startedAt: started, lastToolName: 'Bash' })]);
+      harness.host.querySelector('button')?.click();
+      harness.fixture.detectChanges();
+
+      expect(document.querySelector('.tasks-menu__item-detail')?.textContent?.trim()).toBe(
+        'Bash · Started 14:32 · 3m 12s',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('render_withNoTasks_showsNoTrigger_soTheComposerStaysQuiet', () => {
     const harness: Harness = mount([]);
 

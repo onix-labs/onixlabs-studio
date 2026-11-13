@@ -15,7 +15,10 @@ import {
   HostedIdentity,
   HostedIssue,
   HostedIssueComment,
+  HostedIssueEdit,
+  HostedLabel,
   HostedPullRequest,
+  HostedPullRequestEdit,
   HostedRepository,
   HostedRepositoryRef,
   HostingAuthMode,
@@ -55,6 +58,12 @@ const REPOSITORY_PAGE_LIMIT: number = 10;
  * The API version header GitHub asks integrations to pin.
  */
 const API_VERSION: string = '2022-11-28';
+
+/**
+ * The most labels or milestones an edit reads when it checks a name against what the repository has:
+ * three pages, far more than a repository keeps.
+ */
+const NAME_LIST_LIMIT: number = 300;
 
 /**
  * The check-run conclusions that mean the user has something to fix.
@@ -150,6 +159,7 @@ interface RawRepository {
  * The raw pull-request shape, as much of it as this reads.
  */
 interface RawPullRequest {
+  readonly node_id?: unknown;
   readonly number?: unknown;
   readonly title?: unknown;
   readonly html_url?: unknown;
@@ -179,6 +189,22 @@ interface RawIssue {
   readonly closed_at?: unknown;
   readonly comments?: unknown;
   readonly milestone?: { readonly title?: unknown } | null;
+}
+
+/**
+ * The raw label shape, as much of it as this reads.
+ */
+interface RawLabel {
+  readonly name?: unknown;
+  readonly description?: unknown;
+}
+
+/**
+ * The raw milestone shape, as much of it as this reads.
+ */
+interface RawMilestone {
+  readonly number?: unknown;
+  readonly title?: unknown;
 }
 
 /**
@@ -303,6 +329,18 @@ export function originFor(host: string): string {
   return host === 'github.com' || host === 'www.github.com'
     ? 'https://api.github.com'
     : `https://${host}/api/v3`;
+}
+
+/**
+ * Resolves a host to its GraphQL endpoint: on github.com's API host, and under `/api/graphql` — not
+ * `/api/v3` — on a GitHub Enterprise server.
+ * @param host The host.
+ * @returns Returns the endpoint's URL.
+ */
+export function graphqlUrlFor(host: string): string {
+  return host === 'github.com' || host === 'www.github.com'
+    ? 'https://api.github.com/graphql'
+    : `https://${host}/api/graphql`;
 }
 
 /**
@@ -559,8 +597,11 @@ export class GitHubHosting {
           'createPullRequest',
           'ciRuns',
           ...(issues ? (['issues', 'subIssues', 'createIssue', 'commentOnIssue'] as const) : []),
-          ...(issues && canTriage ? (['setIssueState'] as const) : []),
-          ...(canPush ? (['ciRerun', 'ciCancel'] as const) : []),
+          ...(issues && canTriage ? (['setIssueState', 'editSubIssues'] as const) : []),
+          // Labels, assignees and milestones take triage, on issues and pull requests alike, so editing
+          // is offered on the pull requests of a repository with Issues turned off too.
+          ...(canTriage ? (['editIssue'] as const) : []),
+          ...(canPush ? (['ciRerun', 'ciCancel', 'editPullRequest'] as const) : []),
         ],
       },
     };
@@ -821,6 +862,253 @@ export class GitHubHosting {
   }
 
   /**
+   * Lists the labels a repository's issues and pull requests can carry.
+   * @param repository The repository.
+   * @returns Returns the labels.
+   */
+  public async listLabels(
+    repository: HostedRepositoryRef,
+  ): Promise<Outcome<readonly HostedLabel[]>> {
+    const listed: Outcome<readonly unknown[]> = await this.getPages(
+      repository.host,
+      `${repoPath(repository)}/labels`,
+      NAME_LIST_LIMIT,
+      (body: unknown): readonly unknown[] => (Array.isArray(body) ? body : []),
+    );
+    if (!listed.ok) {
+      return listed;
+    }
+    return {
+      ok: true,
+      result: (listed.result as readonly RawLabel[])
+        .map((label: RawLabel): HostedLabel => {
+          const description: string = asString(label.description);
+          return {
+            name: asString(label.name),
+            ...(description.length === 0 ? {} : { description }),
+          };
+        })
+        .filter((label: HostedLabel): boolean => label.name.length > 0),
+    };
+  }
+
+  /**
+   * Edits an issue, or a pull request's issue side, changing only what the edit names. Labels and
+   * assignees are added to and removed from what the issue has now, so one it did not mention is kept;
+   * a label or milestone the repository does not have is refused, naming those it does, rather than
+   * created by mistake.
+   * @param repository The repository.
+   * @param issue The issue's or pull request's number.
+   * @param edit What to change.
+   * @returns Returns the issue as it now is.
+   */
+  public async updateIssue(
+    repository: HostedRepositoryRef,
+    issue: number,
+    edit: HostedIssueEdit,
+  ): Promise<Outcome<HostedIssue>> {
+    if (edit.title?.trim().length === 0) {
+      return { ok: false, error: 'An issue needs a title.', code: 'refused' };
+    }
+    const patch: Record<string, unknown> = {
+      ...(edit.title === undefined ? {} : { title: edit.title }),
+      ...(edit.body === undefined ? {} : { body: edit.body }),
+    };
+    const touchesLabels: boolean =
+      (edit.addLabels?.length ?? 0) > 0 || (edit.removeLabels?.length ?? 0) > 0;
+    const touchesAssignees: boolean =
+      (edit.addAssignees?.length ?? 0) > 0 || (edit.removeAssignees?.length ?? 0) > 0;
+    if (touchesLabels || touchesAssignees) {
+      const read: Outcome<unknown> = await this.get(
+        repository.host,
+        `${repoPath(repository)}/issues/${issueNumber(issue)}`,
+      );
+      if (!read.ok) {
+        return read;
+      }
+      const current: HostedIssue = toIssue((read.result as RawIssue | null) ?? {});
+      if (touchesLabels) {
+        const added: Outcome<readonly string[]> = await this.knownLabels(
+          repository,
+          edit.addLabels ?? [],
+        );
+        if (!added.ok) {
+          return added;
+        }
+        patch['labels'] = merged(current.labels, added.result, edit.removeLabels ?? []);
+      }
+      if (touchesAssignees) {
+        patch['assignees'] = merged(
+          current.assignees,
+          edit.addAssignees ?? [],
+          edit.removeAssignees ?? [],
+        );
+      }
+    }
+    if (edit.milestone !== undefined) {
+      const milestone: Outcome<number | null> =
+        edit.milestone === null
+          ? { ok: true, result: null }
+          : await this.milestoneNumber(repository, edit.milestone);
+      if (!milestone.ok) {
+        return milestone;
+      }
+      patch['milestone'] = milestone.result;
+    }
+    if (Object.keys(patch).length === 0) {
+      return { ok: false, error: 'The edit names nothing to change.', code: 'refused' };
+    }
+    const sent: Outcome<unknown> = await this.send(
+      repository.host,
+      'PATCH',
+      `${repoPath(repository)}/issues/${issueNumber(issue)}`,
+      patch,
+    );
+    return sent.ok ? { ok: true, result: toIssue(sent.result ?? {}) } : sent;
+  }
+
+  /**
+   * Makes one issue a sub-issue of another. GitHub takes the child by its internal id, so it is read
+   * first, which also refuses a child that does not exist before anything is changed.
+   * @param repository The repository.
+   * @param issue The parent's number.
+   * @param subIssue The child's number.
+   * @returns Returns the parent as it now is.
+   */
+  public async addSubIssue(
+    repository: HostedRepositoryRef,
+    issue: number,
+    subIssue: number,
+  ): Promise<Outcome<HostedIssue>> {
+    return this.editSubIssue(repository, issue, subIssue, 'POST', 'sub_issues');
+  }
+
+  /**
+   * Takes a sub-issue off its parent.
+   * @param repository The repository.
+   * @param issue The parent's number.
+   * @param subIssue The child's number.
+   * @returns Returns the parent as it now is.
+   */
+  public async removeSubIssue(
+    repository: HostedRepositoryRef,
+    issue: number,
+    subIssue: number,
+  ): Promise<Outcome<HostedIssue>> {
+    return this.editSubIssue(repository, issue, subIssue, 'DELETE', 'sub_issue');
+  }
+
+  /**
+   * Adds or removes a sub-issue: the two share everything but the method and the endpoint's name.
+   * @param repository The repository.
+   * @param issue The parent's number.
+   * @param subIssue The child's number.
+   * @param method POST to add, DELETE to remove.
+   * @param endpoint GitHub's name for the endpoint: `sub_issues` to add, `sub_issue` to remove.
+   * @returns Returns the parent as it now is.
+   */
+  private async editSubIssue(
+    repository: HostedRepositoryRef,
+    issue: number,
+    subIssue: number,
+    method: 'POST' | 'DELETE',
+    endpoint: 'sub_issues' | 'sub_issue',
+  ): Promise<Outcome<HostedIssue>> {
+    if (issueNumber(issue) === 0 || issueNumber(subIssue) === 0) {
+      return { ok: false, error: 'Name both the parent issue and its sub-issue.', code: 'refused' };
+    }
+    if (issue === subIssue) {
+      return { ok: false, error: 'An issue cannot be its own sub-issue.', code: 'refused' };
+    }
+    const child: Outcome<number> = await this.issueId(repository, subIssue);
+    if (!child.ok) {
+      return child;
+    }
+    const sent: Outcome<unknown> = await this.send(
+      repository.host,
+      method,
+      `${repoPath(repository)}/issues/${issueNumber(issue)}/${endpoint}`,
+      { sub_issue_id: child.result },
+    );
+    return sent.ok ? { ok: true, result: toIssue(sent.result ?? {}) } : sent;
+  }
+
+  /**
+   * Resolves the labels an edit adds to the repository's own names, refusing any it does not have.
+   * GitHub matches label names without regard to case, so this does too, and sends the repository's
+   * spelling.
+   * @param repository The repository.
+   * @param wanted The labels to add.
+   * @returns Returns the repository's names for them, or why one was refused.
+   */
+  private async knownLabels(
+    repository: HostedRepositoryRef,
+    wanted: readonly string[],
+  ): Promise<Outcome<readonly string[]>> {
+    if (wanted.length === 0) {
+      return { ok: true, result: [] };
+    }
+    const listed: Outcome<readonly HostedLabel[]> = await this.listLabels(repository);
+    if (!listed.ok) {
+      return listed;
+    }
+    const names: readonly string[] = listed.result.map((label: HostedLabel): string => label.name);
+    const resolved: string[] = [];
+    for (const name of wanted) {
+      const match: string | undefined = names.find(
+        (candidate: string): boolean => candidate.toLowerCase() === name.toLowerCase(),
+      );
+      if (match === undefined) {
+        return {
+          ok: false,
+          error: `${repository.owner}/${repository.name} has no label “${name}”. Its labels are: ${names.join(', ') || '(none)'}.`,
+          code: 'refused',
+        };
+      }
+      resolved.push(match);
+    }
+    return { ok: true, result: resolved };
+  }
+
+  /**
+   * Resolves a milestone's title to the number GitHub takes, among the repository's open milestones.
+   * @param repository The repository.
+   * @param title The milestone's title.
+   * @returns Returns its number, or why it was refused.
+   */
+  private async milestoneNumber(
+    repository: HostedRepositoryRef,
+    title: string,
+  ): Promise<Outcome<number>> {
+    const listed: Outcome<readonly unknown[]> = await this.getPages(
+      repository.host,
+      `${repoPath(repository)}/milestones?state=open`,
+      NAME_LIST_LIMIT,
+      (body: unknown): readonly unknown[] => (Array.isArray(body) ? body : []),
+    );
+    if (!listed.ok) {
+      return listed;
+    }
+    const milestones: readonly RawMilestone[] = listed.result as readonly RawMilestone[];
+    const match: RawMilestone | undefined = milestones.find(
+      (milestone: RawMilestone): boolean =>
+        asString(milestone.title).toLowerCase() === title.toLowerCase(),
+    );
+    if (match === undefined || typeof match.number !== 'number') {
+      const titles: string = milestones
+        .map((milestone: RawMilestone): string => asString(milestone.title))
+        .filter((name: string): boolean => name.length > 0)
+        .join(', ');
+      return {
+        ok: false,
+        error: `${repository.owner}/${repository.name} has no open milestone “${title}”. Its open milestones are: ${titles || '(none)'}.`,
+        code: 'refused',
+      };
+    }
+    return { ok: true, result: match.number };
+  }
+
+  /**
    * Opens a pull request from `head` into `base`.
    * @param repository The repository.
    * @param request What to open: its title, branches, body and whether it is a draft.
@@ -861,6 +1149,75 @@ export class GitHubHosting {
     );
     // Checks start only after it is opened, so a fresh pull request has none to report yet.
     return sent.ok ? { ok: true, result: toPullRequest(sent.result ?? {}, 'none') } : sent;
+  }
+
+  /**
+   * Edits a pull request, changing only what the edit names. Its title, description and base go
+   * through the REST API; whether it is a draft can only be changed through GraphQL, by the pull
+   * request's node id, and only when it is not already what was asked.
+   * @param repository The repository.
+   * @param pullRequest The pull request's number.
+   * @param edit What to change.
+   * @returns Returns the pull request as it now is.
+   */
+  public async updatePullRequest(
+    repository: HostedRepositoryRef,
+    pullRequest: number,
+    edit: HostedPullRequestEdit,
+  ): Promise<Outcome<HostedPullRequest>> {
+    if (edit.title?.trim().length === 0) {
+      return { ok: false, error: 'A pull request needs a title.', code: 'refused' };
+    }
+    if (edit.base?.trim().length === 0) {
+      return { ok: false, error: 'Name the branch it should merge into.', code: 'refused' };
+    }
+    const patch: Record<string, unknown> = {
+      ...(edit.title === undefined ? {} : { title: edit.title }),
+      ...(edit.body === undefined ? {} : { body: edit.body }),
+      ...(edit.base === undefined ? {} : { base: edit.base }),
+    };
+    if (Object.keys(patch).length === 0 && edit.draft === undefined) {
+      return { ok: false, error: 'The edit names nothing to change.', code: 'refused' };
+    }
+    const path: string = `${repoPath(repository)}/pulls/${issueNumber(pullRequest)}`;
+    let pull: RawPullRequest;
+    if (Object.keys(patch).length > 0) {
+      const sent: Outcome<unknown> = await this.send(repository.host, 'PATCH', path, patch);
+      if (!sent.ok) {
+        return sent;
+      }
+      pull = (sent.result as RawPullRequest | null) ?? {};
+    } else {
+      const read: Outcome<unknown> = await this.get(repository.host, path);
+      if (!read.ok) {
+        return read;
+      }
+      pull = (read.result as RawPullRequest | null) ?? {};
+    }
+    if (edit.draft !== undefined && edit.draft !== (pull.draft === true)) {
+      const nodeId: string = asString(pull.node_id);
+      if (nodeId.length === 0) {
+        return {
+          ok: false,
+          error: `GitHub did not say which pull request #${pullRequest} is.`,
+          code: 'not-found',
+        };
+      }
+      const mutation: string = edit.draft
+        ? 'mutation($id: ID!) { convertPullRequestToDraft(input: { pullRequestId: $id }) { clientMutationId } }'
+        : 'mutation($id: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $id }) { clientMutationId } }';
+      const changed: Outcome<unknown> = await this.graphql(repository.host, mutation, {
+        id: nodeId,
+      });
+      if (!changed.ok) {
+        return changed;
+      }
+      pull = { ...pull, draft: edit.draft };
+    }
+    const sha: string = asString(pull.head?.sha);
+    const checks: HostedCheckStatus =
+      sha.length === 0 ? 'none' : await this.checksFor(repository, sha);
+    return { ok: true, result: toPullRequest(pull, checks) };
   }
 
   /**
@@ -964,14 +1321,65 @@ export class GitHubHosting {
     path: string,
     body?: unknown,
   ): Promise<Outcome<unknown>> {
+    return this.sendTo(host, method, `${originFor(host)}${path}`, body);
+  }
+
+  /**
+   * Performs a GraphQL request: the only way to change some things, such as whether a pull request is
+   * a draft. GraphQL answers a failed operation with 200 and an `errors` list, so that is read too.
+   * @param host The host.
+   * @param query The query or mutation.
+   * @param variables Its variables.
+   * @returns Returns the response's `data`, or why the request failed.
+   */
+  private async graphql(
+    host: string,
+    query: string,
+    variables: Readonly<Record<string, unknown>>,
+  ): Promise<Outcome<unknown>> {
+    const sent: Outcome<unknown> = await this.sendTo(host, 'POST', graphqlUrlFor(host), {
+      query,
+      variables,
+    });
+    if (!sent.ok) {
+      return sent;
+    }
+    const answer: { readonly data?: unknown; readonly errors?: unknown } =
+      (sent.result as { readonly data?: unknown; readonly errors?: unknown } | null) ?? {};
+    if (Array.isArray(answer.errors) && answer.errors.length > 0) {
+      const first: { readonly message?: unknown; readonly type?: unknown } =
+        (answer.errors[0] as { readonly message?: unknown; readonly type?: unknown } | null) ?? {};
+      return {
+        ok: false,
+        error: asString(first.message, 'GitHub refused the change.'),
+        ...(asString(first.type) === 'FORBIDDEN' ? { code: 'forbidden' as const } : {}),
+      };
+    }
+    return { ok: true, result: answer.data ?? null };
+  }
+
+  /**
+   * Performs an authenticated write to a full URL with an optional JSON body.
+   * @param host The host, whose credential is used.
+   * @param method The method.
+   * @param url The URL.
+   * @param body The body, when there is one.
+   * @returns Returns the parsed response body, or why the request failed.
+   */
+  private async sendTo(
+    host: string,
+    method: string,
+    url: string,
+    body?: unknown,
+  ): Promise<Outcome<unknown>> {
     const credential: ResolvedCredential | null = await this.auth.resolve(host);
     if (credential === null) {
       return notSignedIn(host, this.auth.choiceFor(host));
     }
-    debug('github', `${method} ${host}${path}`);
+    debug('github', `${method} ${url}`);
     let response: HttpResponse;
     try {
-      response = await this.http(`${originFor(host)}${path}`, {
+      response = await this.http(url, {
         method,
         headers: {
           ...headers(credential.token),
@@ -1114,6 +1522,33 @@ function nameOf(user: RawUser): string | null {
 }
 
 /**
+ * Adds and removes names from a list, as an edit to an issue's labels or assignees does: what it has
+ * now, without the removed (matched regardless of case, as GitHub matches them), with the added, and
+ * each name once.
+ * @param current What the issue has now.
+ * @param added The names to add.
+ * @param removed The names to remove.
+ * @returns Returns the new list.
+ */
+export function merged(
+  current: readonly string[],
+  added: readonly string[],
+  removed: readonly string[],
+): readonly string[] {
+  const gone: ReadonlySet<string> = new Set(
+    removed.map((name: string): string => name.toLowerCase()),
+  );
+  const result: string[] = [];
+  for (const name of [...current, ...added]) {
+    const key: string = name.toLowerCase();
+    if (!gone.has(key) && !result.some((kept: string): boolean => kept.toLowerCase() === key)) {
+      result.push(name);
+    }
+  }
+  return result;
+}
+
+/**
  * Validates an issue number before it reaches a request path: anything that is not a positive whole
  * number becomes zero, which GitHub answers with a plain 404.
  * @param value The number.
@@ -1236,6 +1671,7 @@ function toPullRequest(pull: RawPullRequest, checks: HostedCheckStatus): HostedP
           : 'closed'
         : 'open',
     headRef: asString(pull.head?.ref),
+    ...(asString(pull.head?.sha).length === 0 ? {} : { headSha: asString(pull.head?.sha) }),
     // GitHub publishes every pull request's head under this ref on the base repository, which is
     // what makes a fork's pull request checkoutable at all.
     fetchRef: `refs/pull/${asNumber(pull.number)}/head`,

@@ -112,6 +112,7 @@ describe('HarnessHost', () => {
   let audits: string[];
   let sandboxed: (boolean | undefined)[];
   let toolIds: (string | undefined)[];
+  let sources: string[];
   let host: HarnessHostType;
 
   beforeEach(() => {
@@ -119,17 +120,19 @@ describe('HarnessHost', () => {
     audits = [];
     sandboxed = [];
     toolIds = [];
+    sources = [];
     host = new HarnessHost(
       transport,
       (
         requestId: string,
         name: string,
         _detail: string,
-        _source: string,
+        source: string,
         ran?: boolean,
         toolId?: string,
       ): void => {
         audits.push(`${requestId}:${name}`);
+        sources.push(source);
         sandboxed.push(ran);
         toolIds.push(toolId);
       },
@@ -762,6 +765,19 @@ describe('HarnessHost', () => {
 
     // Neither is guessed at. A harness is another program, possibly one Studio downloaded.
     expect(transport.sent).toEqual([]);
+  });
+
+  it.each<[unknown, string]>([
+    ['excluded', 'excluded'],
+    ['posture', 'posture'],
+    ['root', 'gated-or-auto'],
+    [7, 'gated-or-auto'],
+  ])('audit_withTheSource %s_isRecordedAs %s', (source: unknown, expected: string) => {
+    // #1163: a harness is not trusted to send a source this build knows; an unknown one claims
+    // nothing about why the action was allowed.
+    transport.emit({ type: 'audit', requestId: 'r1', name: 'Bash', detail: 'ls', source });
+
+    expect(sources).toEqual([expected]);
   });
 
   it('audit_isAttributedToTheTurnThatRanTheAction', () => {

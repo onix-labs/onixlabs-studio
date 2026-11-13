@@ -14,6 +14,7 @@ import {
 import type { GateContext } from './options';
 import type { TurnRequest } from './protocol';
 import {
+  CERTIFICATE_CHECKS,
   DOCKER_SOCKET,
   LOCAL_NETWORK,
   osSandboxAvailable,
@@ -528,6 +529,7 @@ describe('the permission gate', () => {
           toolPolicies: {
             [LOCAL_NETWORK]: 'deny',
             [DOCKER_SOCKET]: 'deny',
+            [CERTIFICATE_CHECKS]: 'deny',
             [RUN_UNSANDBOXED]: 'deny',
             WebSearch: 'deny',
           },
@@ -616,6 +618,32 @@ describe('the permission gate', () => {
 
       expect(recorded.sandboxed).toEqual([false]);
       expect(recorded.audits[0][2]).toBe('posture');
+    });
+
+    it('auditsAnExcludedCommand_asRunOutsideTheSandbox_becauseItWasExcluded', async () => {
+      // #1163: the SDK takes an excluded command out of the sandbox without the flag, so a record
+      // reading "sandboxed" would hide it from the Unsandboxed badge.
+      recorded.turn = turn({ excludedCommands: ['npx ng:*'] });
+      const built: Options = buildOptions(
+        context(),
+        recorded.turn,
+        {} as never,
+        '',
+        null,
+        new AbortController(),
+      );
+
+      await hook(built, 'PostToolUse', {
+        tool_name: 'Bash',
+        tool_input: { command: 'npx ng test --watch=false' },
+      });
+      await hook(built, 'PostToolUse', { tool_name: 'Bash', tool_input: { command: 'npx ngrok' } });
+
+      expect(recorded.sandboxed).toEqual([false, osSandboxAvailable()]);
+      expect(recorded.audits.map((audit: string[]): string => audit[2])).toEqual([
+        'excluded',
+        'gated-or-auto',
+      ]);
     });
 
     it('auditsTheToolUse_soTheTranscriptCanMarkTheRightCall', async () => {
@@ -861,6 +889,20 @@ describe('the permission gate', () => {
       );
     });
 
+    it('handsTheExcludedCommandsToTheSdk_keepingOnlyThePatternsItUnderstands', () => {
+      expect(
+        sandboxFor(turn({ excludedCommands: ['npx ng:*', '*', ':*', 'make  build', 'npx ng:*'] }))
+          .excludedCommands,
+      ).toEqual(['npx ng:*', 'make build']);
+      expect(sandboxFor(turn()).excludedCommands).toBeUndefined();
+    });
+
+    it('changesTheSignature_whenTheExcludedCommandsChange_soTheSessionReopens', () => {
+      expect(sandboxSignature(turn({ excludedCommands: ['dotnet:*'] }))).not.toBe(
+        sandboxSignature(turn()),
+      );
+    });
+
     it('addsNoFilesystemOrNetworkRules_whenThereAreNone', () => {
       const sandbox: ReturnType<typeof sandboxFor> = sandboxFor(turn());
 
@@ -872,26 +914,66 @@ describe('the permission gate', () => {
       const sockets: readonly string[] = ['/real/docker.sock'];
 
       expect(
-        sandboxFor(turn(), null, { localPorts: 'allow', dockerSocket: 'allow' }, sockets).network,
+        sandboxFor(
+          turn(),
+          null,
+          { localPorts: 'allow', dockerSocket: 'allow', certificateChecks: 'ask' },
+          sockets,
+        ).network,
       ).toEqual({ allowLocalBinding: true, allowUnixSockets: ['/real/docker.sock'] });
       expect(
-        sandboxFor(turn(), null, { localPorts: 'allow', dockerSocket: 'ask' }, sockets).network,
+        sandboxFor(
+          turn(),
+          null,
+          { localPorts: 'allow', dockerSocket: 'ask', certificateChecks: 'ask' },
+          sockets,
+        ).network,
       ).toEqual({ allowLocalBinding: true });
       expect(
-        sandboxFor(turn(), null, { localPorts: 'ask', dockerSocket: 'allow' }, sockets).network,
+        sandboxFor(
+          turn(),
+          null,
+          { localPorts: 'ask', dockerSocket: 'allow', certificateChecks: 'ask' },
+          sockets,
+        ).network,
       ).toEqual({ allowUnixSockets: ['/real/docker.sock'] });
     });
 
     it.each<'ask' | 'deny'>(['ask', 'deny'])('opensNothing_at_%s', (level: 'ask' | 'deny') => {
       expect(
-        sandboxFor(turn(), null, { localPorts: level, dockerSocket: level }, ['/real/docker.sock'])
-          .network,
+        sandboxFor(
+          turn(),
+          null,
+          { localPorts: level, dockerSocket: level, certificateChecks: level },
+          ['/real/docker.sock'],
+        ).network,
       ).toBeUndefined();
+    });
+
+    it('opensTheCertificateTrustService_onlyWhenItsPermissionDoes', () => {
+      const reach: (level: 'allow' | 'ask' | 'deny') => ReturnType<typeof sandboxFor> = (
+        level: 'allow' | 'ask' | 'deny',
+      ): ReturnType<typeof sandboxFor> =>
+        sandboxFor(
+          turn(),
+          null,
+          { localPorts: 'ask', dockerSocket: 'ask', certificateChecks: level },
+          [],
+        );
+
+      expect(reach('allow').enableWeakerNetworkIsolation).toBe(true);
+      expect(reach('ask').enableWeakerNetworkIsolation).toBeUndefined();
+      expect(reach('deny').enableWeakerNetworkIsolation).toBeUndefined();
     });
 
     it('neverNamesAnEmptySocketList_whenNoEngineIsThere', () => {
       expect(
-        sandboxFor(turn(), null, { localPorts: 'ask', dockerSocket: 'allow' }, []).network,
+        sandboxFor(
+          turn(),
+          null,
+          { localPorts: 'ask', dockerSocket: 'allow', certificateChecks: 'ask' },
+          [],
+        ).network,
       ).toBeUndefined();
     });
 
@@ -900,7 +982,7 @@ describe('the permission gate', () => {
         sandboxFor(
           turn({ deniedNetworkLocations: ['bad.com'] }),
           null,
-          { localPorts: 'allow', dockerSocket: 'ask' },
+          { localPorts: 'allow', dockerSocket: 'ask', certificateChecks: 'ask' },
           [],
         ).network,
       ).toEqual({ deniedDomains: ['bad.com'], allowLocalBinding: true });
@@ -917,6 +999,14 @@ describe('the permission gate', () => {
 
     it('changes_whenALevelDoes_evenIfTheSandboxWouldNot', () => {
       expect(sandboxSignature(turn({ toolPolicies: { [DOCKER_SOCKET]: 'deny' } }))).not.toBe(
+        sandboxSignature(turn()),
+      );
+    });
+
+    it('changes_whenCertificateChecksAreDenied', () => {
+      // Denied rather than Allowed: Allowed opens nothing off macOS, so on a Linux runner it would
+      // leave the signature as it was. Denied tells the agent something new on every platform.
+      expect(sandboxSignature(turn({ toolPolicies: { [CERTIFICATE_CHECKS]: 'deny' } }))).not.toBe(
         sandboxSignature(turn()),
       );
     });

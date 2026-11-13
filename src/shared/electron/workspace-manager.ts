@@ -14,6 +14,7 @@ import type { Dirent, Stats } from 'node:fs';
 import * as path from 'node:path';
 import {
   CompiledArtifact,
+  DocumentFormatResult,
   ProjectItems,
   ProjectModel,
   ProjectOperationResult,
@@ -72,6 +73,12 @@ const MAX_READ_BYTES: number = 1024 * 1024;
  * Specifies the bits of a file's mode that hold its permissions.
  */
 const PERMISSION_BITS: number = 0o7777;
+
+/**
+ * Specifies the largest text a {@link ProjectChannel.DocumentFormat} request may format (#1212): far
+ * beyond any source file, so a formatter is never handed something unbounded.
+ */
+const MAX_FORMAT_TEXT: number = 10 * 1024 * 1024;
 
 /**
  * Handles workspace (open folder) and directory IPC on behalf of the renderer: opening a folder as
@@ -283,6 +290,17 @@ export class WorkspaceManager {
       },
     );
     ipcMain.handle(
+      ProjectChannel.DocumentFormat,
+      (
+        _event: IpcMainInvokeEvent,
+        filePath: unknown,
+        text: unknown,
+      ): Promise<DocumentFormatResult | null> => {
+        logger.trace('WorkspaceManager.register', `IPC ${ProjectChannel.DocumentFormat}`);
+        return this.formatDocument(filePath, text);
+      },
+    );
+    ipcMain.handle(
       ProjectChannel.SolutionFolderRename,
       (
         _event: IpcMainInvokeEvent,
@@ -359,6 +377,43 @@ export class WorkspaceManager {
         (await system.resolveArtifact?.(sourcePath, configuration)) ?? null;
       if (artifact !== null) {
         return artifact;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Formats a document's text with the tool its project uses (#1212), for a language whose server does
+   * not format. Confined to files within an open workspace, so the renderer cannot run a formatter
+   * against configuration elsewhere on disk, and to a text no larger than a source file should be.
+   * @param filePath The document's absolute path, unvalidated.
+   * @param text The document's text, unvalidated.
+   * @returns Returns the outcome, or null when no project system formats the file.
+   */
+  private async formatDocument(
+    filePath: unknown,
+    text: unknown,
+  ): Promise<DocumentFormatResult | null> {
+    if (typeof filePath !== 'string' || !this.workspace.isWithin(filePath)) {
+      logger.warn('WorkspaceManager.formatDocument', 'Rejected a file outside the workspace');
+      return null;
+    }
+    if (typeof text !== 'string' || text.length > MAX_FORMAT_TEXT) {
+      logger.warn(
+        'WorkspaceManager.formatDocument',
+        'Rejected a text that is not one, or too large',
+      );
+      return null;
+    }
+    const root: string | undefined = this.workspace.rootContaining(filePath);
+    if (root === undefined) {
+      return null;
+    }
+    for (const system of projectSystems.all()) {
+      const result: DocumentFormatResult | null =
+        (await system.formatDocument?.(filePath, text, root)) ?? null;
+      if (result !== null) {
+        return result;
       }
     }
     return null;

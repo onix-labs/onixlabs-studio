@@ -28,6 +28,7 @@ const EVERY_OP: Readonly<Record<VersionControlOp, true>> = {
   unstage: true,
   commit: true,
   ignore: true,
+  resolveConflict: true,
   stopTracking: true,
   stash: true,
   stashApply: true,

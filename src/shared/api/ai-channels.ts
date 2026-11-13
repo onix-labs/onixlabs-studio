@@ -21,6 +21,8 @@ import type {
   AiRemoteControlMode,
   AiRevokePermissionGrant,
   AiRunRequest,
+  AiSetWorkspaceExclusions,
+  AiWorkspaceExclusions,
   AiSetConnectionKeyRequest,
   AiSteerRequest,
   AiStopTaskRequest,
@@ -175,6 +177,23 @@ export enum AiChannel {
    * Returns the tools whose old tool-wide grants were dropped, once (invoke).
    */
   TakeNarrowedGrants = 'ai:take-narrowed-grants',
+
+  /**
+   * Reads a workspace's excluded commands: its private and shared lists, and whether the shared one
+   * has been reviewed (invoke, #1163).
+   */
+  GetWorkspaceExclusions = 'ai:get-workspace-exclusions',
+
+  /**
+   * Replaces a workspace's private excluded commands, answering with the workspace's lists (invoke).
+   */
+  SetPrivateExclusions = 'ai:set-private-exclusions',
+
+  /**
+   * Records that the user reviewed a workspace's shared excluded commands, so exactly that list applies
+   * (invoke).
+   */
+  ReviewSharedExclusions = 'ai:review-shared-exclusions',
 
   /**
    * Sends the user's answer to an input request (an agent question) back to the main process
@@ -376,6 +395,28 @@ export interface AiClient {
    * @returns Resolves to the tools; a later call gets none of them again.
    */
   takeNarrowedGrants(): Promise<readonly string[]>;
+
+  /**
+   * Reads a workspace's excluded commands (#1163).
+   * @param workspaceRoot The workspace.
+   * @returns Resolves to its lists, or null when the root is not one Studio will read.
+   */
+  getWorkspaceExclusions(workspaceRoot: string): Promise<AiWorkspaceExclusions | null>;
+
+  /**
+   * Replaces a workspace's private excluded commands.
+   * @param request The workspace and its new list.
+   * @returns Resolves to its lists as they now are, or null when the change was refused.
+   */
+  setPrivateExclusions(request: AiSetWorkspaceExclusions): Promise<AiWorkspaceExclusions | null>;
+
+  /**
+   * Records that the user reviewed a workspace's shared excluded commands: exactly that list applies
+   * until it changes.
+   * @param request The workspace and the list the user saw.
+   * @returns Resolves to its lists as they now are, or null when the change was refused.
+   */
+  reviewSharedExclusions(request: AiSetWorkspaceExclusions): Promise<AiWorkspaceExclusions | null>;
 
   /**
    * Sends the user's answer to an input request (an agent question) back to the main process.

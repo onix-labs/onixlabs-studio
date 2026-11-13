@@ -1,5 +1,16 @@
-import { effect, inject, Injector, Service, signal, Signal, WritableSignal } from '@angular/core';
+import {
+  effect,
+  inject,
+  Injector,
+  Service,
+  signal,
+  Signal,
+  untracked,
+  WritableSignal,
+} from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
+import { EditorKeybinding, toMonacoKeybinding } from './monaco-keybindings';
 import {
   CurrentLineHighlightStyle,
   FoldingProvider,
@@ -13,7 +24,6 @@ import type { FindMode } from '@shared/angular/components/find-panel/find-reques
 import {
   extensionForLanguage,
   LanguageInfo,
-  languageForExtension,
   languageForFileName,
   supportedLanguages,
 } from './monaco-languages';
@@ -27,6 +37,7 @@ import { editorAppearanceOptions } from './editor-appearance-options';
 import { editorSuggestOptions, wordSuggestionsOption } from './editor-suggest-options';
 import { editorTypingOptions } from './editor-typing-options';
 import { registerAsmLanguage } from './monaco-asm-language';
+import { registerCsharpLanguage } from './monaco-csharp-language';
 import { registerScssLanguage } from './monaco-scss-language';
 import { registerCypherLanguage } from './monaco-cypher-language';
 import { registerDocCommentRules } from './monaco-doc-comment-rules';
@@ -345,12 +356,30 @@ export class Monaco {
   private autoInsert: AutoInsertHandler | null = null;
 
   /**
+   * Holds the keybinding registry, which Studio's editor commands take their chords from (#1036).
+   */
+  private readonly keybindings: Keybindings = inject(Keybindings);
+
+  /**
+   * Holds, per Monaco instance, Studio's editor commands and the rules currently binding them, so the
+   * rules can be replaced when a chord changes. Each instance has its own keybinding service.
+   */
+  private readonly editorKeybindings: Map<
+    typeof MonacoApi,
+    { readonly bindings: readonly EditorKeybinding[]; rules: MonacoApi.IDisposable | null }
+  > = new Map<
+    typeof MonacoApi,
+    { readonly bindings: readonly EditorKeybinding[]; rules: MonacoApi.IDisposable | null }
+  >();
+
+  /**
    * Gets a value indicating whether Monaco has finished loading.
    */
   public readonly isLoaded: Signal<boolean> = this.loadedSignal.asReadonly();
 
   /**
-   * Initialises the service, asking for the heuristic tokens again when Semantic Highlighting changes.
+   * Initialises the service, asking for the heuristic tokens again when Semantic Highlighting changes,
+   * and binding Studio's editor commands afresh whenever a chord in the registry changes.
    */
   public constructor() {
     effect((): void => {
@@ -361,6 +390,58 @@ export class Monaco {
       this.settings.foldingProviderChoices();
       this.foldingRefreshers.forEach((refresh: () => void): void => refresh());
     });
+    // An override, a cleared shortcut or a restored default reaches every editor at once (#1036).
+    effect((): void => {
+      this.keybindings.resolvedCatalogue();
+      untracked((): void => {
+        for (const monaco of this.editorKeybindings.keys()) {
+          this.applyEditorKeybindings(monaco);
+        }
+      });
+    });
+  }
+
+  /**
+   * Records an instance's editor commands and binds them to the chords the registry holds.
+   * @param monaco The Monaco instance.
+   * @param bindings The commands its installers registered.
+   */
+  private bindEditorKeybindings(
+    monaco: typeof MonacoApi | undefined,
+    bindings: readonly EditorKeybinding[],
+  ): void {
+    if (monaco === undefined) {
+      return;
+    }
+    this.editorKeybindings.set(monaco, { bindings, rules: null });
+    this.applyEditorKeybindings(monaco);
+  }
+
+  /**
+   * Replaces an instance's rules for Studio's editor commands with ones made from the chords now in
+   * effect. The old rules are disposed rather than overridden with removals: a removal would stay in
+   * Monaco's registry, and would silently remove the same chord if the user later bound it back.
+   * @param monaco The Monaco instance.
+   */
+  private applyEditorKeybindings(monaco: typeof MonacoApi): void {
+    const record:
+      | { readonly bindings: readonly EditorKeybinding[]; rules: MonacoApi.IDisposable | null }
+      | undefined = this.editorKeybindings.get(monaco);
+    if (record === undefined) {
+      return;
+    }
+    record.rules?.dispose();
+    const rules: MonacoApi.editor.IKeybindingRule[] = [];
+    for (const binding of record.bindings) {
+      const keybinding: number | null = toMonacoKeybinding(
+        monaco,
+        this.keybindings.chordFor(binding.id) ?? '',
+      );
+      if (keybinding !== null) {
+        rules.push({ keybinding, command: binding.command, when: binding.when });
+      }
+    }
+    record.rules = monaco.editor.addKeybindingRules(rules);
   }
 
   /**
@@ -448,22 +529,15 @@ export class Monaco {
   }
 
   /**
-   * Resolves the Monaco language identifier for a file extension.
-   * @param extension The file extension, with or without a leading dot.
-   * @returns Returns the Monaco language identifier, or `plaintext` when the extension is unknown.
-   */
-  public getLanguageForExtension(extension: string): string {
-    return languageForExtension(extension);
-  }
-
-  /**
-   * Resolves the Monaco language identifier for a file name, honouring the files whose whole name is
-   * their type (`Dockerfile`) as well as those identified by extension.
+   * Resolves the Monaco language identifier for a file through the one shared resolver (#1068):
+   * whole file names that are their type (`Dockerfile`, `nuget.config`), then the ending, then — for
+   * an ending such as `.config` that says nothing certain — the content, when it is given.
    * @param fileName The file name, with or without a path.
+   * @param content The file's text, when the caller has it.
    * @returns Returns the Monaco language identifier, or `plaintext` when nothing matches.
    */
-  public getLanguageForFileName(fileName: string): string {
-    return languageForFileName(fileName);
+  public getLanguageForFileName(fileName: string, content?: string): string {
+    return languageForFileName(fileName, content);
   }
 
   /**
@@ -712,6 +786,7 @@ export class Monaco {
     defineThemes(window.monaco, this.settings.textEditorAccentSelection());
     registerAsmLanguage(window.monaco);
     registerScssLanguage(window.monaco);
+    registerCsharpLanguage(window.monaco);
     registerCypherLanguage(window.monaco);
     registerDocCommentRules(window.monaco);
     this.foldingRefreshers.push(
@@ -722,17 +797,22 @@ export class Monaco {
         this.foldingProvider,
       ),
     );
-    this.installFindCommands(window.monaco);
-    this.installGoToCommands(window.monaco);
-    this.installNavigationCommands(window.monaco);
-    this.installRenameCommands(window.monaco);
+    const bindings: EditorKeybinding[] = [
+      ...this.installFindCommands(window.monaco),
+      ...this.installGoToCommands(window.monaco),
+      ...this.installNavigationCommands(window.monaco),
+      ...this.installRenameCommands(window.monaco),
+    ];
     if (window.monaco !== undefined) {
       installAutoInsert(window.monaco, this.typed);
     }
-    this.installQuickFixCommands(window.monaco);
-    this.installHoverCommands(window.monaco);
-    this.installSuggestCommands(window.monaco);
-    this.installWidgetGuard(window.monaco);
+    bindings.push(
+      ...this.installQuickFixCommands(window.monaco),
+      ...this.installHoverCommands(window.monaco),
+      ...this.installSuggestCommands(window.monaco),
+      ...this.installWidgetGuard(window.monaco),
+    );
+    this.bindEditorKeybindings(window.monaco, bindings);
     this.registerHeuristicSemanticTokens();
     this.loadedSignal.set(true);
     this.log.info('Monaco', 'Monaco editor initialized');
@@ -743,14 +823,14 @@ export class Monaco {
    * place, so ⌘F / ⌘⌥F (Ctrl+F / Ctrl+H) in any of its editors reach the {@link FindRouter} and
    * Monaco's own find widget can never open (#1007).
    * @param monaco The Monaco instance to prepare.
+   * @returns Returns the commands to bind from the keybinding registry.
    */
-  private installFindCommands(monaco: typeof MonacoApi | undefined): void {
+  private installFindCommands(monaco: typeof MonacoApi | undefined): readonly EditorKeybinding[] {
     if (monaco === undefined) {
-      return;
+      return [];
     }
-    installFindCommands(
+    return installFindCommands(
       monaco,
-      this.studio.platform === 'darwin',
       (editor: MonacoApi.editor.ICodeEditor, mode: FindMode): void => {
         this.log.info('Monaco', 'Studio find command', mode);
         this.findRouter.openFromEditor(editor, mode);
@@ -763,14 +843,14 @@ export class Monaco {
    * their place, so ⌘⇧O / ⌃G (Ctrl+Shift+O / Ctrl+G) in any of its editors reach the
    * {@link GoToRouter} and Monaco's quick-input box never opens (#1009).
    * @param monaco The Monaco instance to prepare.
+   * @returns Returns the commands to bind from the keybinding registry.
    */
-  private installGoToCommands(monaco: typeof MonacoApi | undefined): void {
+  private installGoToCommands(monaco: typeof MonacoApi | undefined): readonly EditorKeybinding[] {
     if (monaco === undefined) {
-      return;
+      return [];
     }
-    installGoToCommands(
+    return installGoToCommands(
       monaco,
-      this.studio.platform === 'darwin',
       (editor: MonacoApi.editor.ICodeEditor, mode: GoToMode): void => {
         this.log.info('Monaco', 'Studio go-to command', mode);
         this.goToRouter.open(editor, mode);
@@ -784,12 +864,15 @@ export class Monaco {
    * editors, so F12, ⇧F12 and a ⌘-click reach the {@link EditorNavigation} and Monaco's peek never
    * opens (#1014).
    * @param monaco The Monaco instance to prepare.
+   * @returns Returns the commands to bind from the keybinding registry.
    */
-  private installNavigationCommands(monaco: typeof MonacoApi | undefined): void {
+  private installNavigationCommands(
+    monaco: typeof MonacoApi | undefined,
+  ): readonly EditorKeybinding[] {
     if (monaco === undefined) {
-      return;
+      return [];
     }
-    installNavigationCommands(
+    return installNavigationCommands(
       monaco,
       this.studio.platform === 'darwin',
       (editor: MonacoApi.editor.ICodeEditor, mode: NavigationMode): void => {
@@ -838,12 +921,13 @@ export class Monaco {
    * place, and routes every other way into Monaco's rename to Studio's, so F2 reaches the
    * {@link RenameSymbol} and Monaco's rename box never opens (#1015).
    * @param monaco The Monaco instance to prepare.
+   * @returns Returns the commands to bind from the keybinding registry.
    */
-  private installRenameCommands(monaco: typeof MonacoApi | undefined): void {
+  private installRenameCommands(monaco: typeof MonacoApi | undefined): readonly EditorKeybinding[] {
     if (monaco === undefined) {
-      return;
+      return [];
     }
-    installRenameCommands(monaco, (editor: MonacoApi.editor.ICodeEditor): void => {
+    return installRenameCommands(monaco, (editor: MonacoApi.editor.ICodeEditor): void => {
       this.log.info('Monaco', 'Studio rename command');
       void this.injector.get(RenameSymbol).rename(editor);
     });
@@ -855,12 +939,15 @@ export class Monaco {
    * widget to Studio's, so ⌘. (Ctrl+.) reaches the {@link QuickFixes} and Monaco's widget never opens
    * (#1016).
    * @param monaco The Monaco instance to prepare.
+   * @returns Returns the commands to bind from the keybinding registry.
    */
-  private installQuickFixCommands(monaco: typeof MonacoApi | undefined): void {
+  private installQuickFixCommands(
+    monaco: typeof MonacoApi | undefined,
+  ): readonly EditorKeybinding[] {
     if (monaco === undefined) {
-      return;
+      return [];
     }
-    installQuickFixCommands(monaco, (editor: MonacoApi.editor.ICodeEditor): void => {
+    return installQuickFixCommands(monaco, (editor: MonacoApi.editor.ICodeEditor): void => {
       this.log.info('Monaco', 'Studio quick-fix command');
       void this.injector.get(QuickFixes).open(editor);
     });
@@ -872,12 +959,13 @@ export class Monaco {
    * Studio's, so ⌘K ⌘I (Ctrl+K Ctrl+I) and F8 / ⇧F8 reach the {@link HoverCards} and none of Monaco's
    * hover widgets is ever built (#1020).
    * @param monaco The Monaco instance to prepare.
+   * @returns Returns the commands to bind from the keybinding registry.
    */
-  private installHoverCommands(monaco: typeof MonacoApi | undefined): void {
+  private installHoverCommands(monaco: typeof MonacoApi | undefined): readonly EditorKeybinding[] {
     if (monaco === undefined) {
-      return;
+      return [];
     }
-    installHoverCommands(monaco, {
+    return installHoverCommands(monaco, {
       showHover: (editor: MonacoApi.editor.ICodeEditor, position?: MonacoApi.IPosition): void => {
         this.log.info('Monaco', 'Studio show-hover command');
         this.injector.get(HoverCards).showAt(editor, position);
@@ -898,14 +986,16 @@ export class Monaco {
    * typing and the language's trigger characters show the `Autocomplete` service's list and card and
    * neither of Monaco's widgets is ever built (#1021).
    * @param monaco The Monaco instance to prepare.
+   * @returns Returns the commands to bind from the keybinding registry.
    */
-  private installSuggestCommands(monaco: typeof MonacoApi | undefined): void {
+  private installSuggestCommands(
+    monaco: typeof MonacoApi | undefined,
+  ): readonly EditorKeybinding[] {
     if (monaco === undefined) {
-      return;
+      return [];
     }
-    installSuggestCommands(
+    return installSuggestCommands(
       monaco,
-      this.studio.platform === 'darwin',
       (): SuggestPresenter => this.assist ?? IDLE_SUGGEST_PRESENTER,
       (): ParameterHintsPresenter => this.assist ?? IDLE_PARAMETER_HINTS_PRESENTER,
       (model: MonacoApi.editor.ITextModel): boolean => this.isWordSuggestionSuppressed(model),
@@ -921,12 +1011,13 @@ export class Monaco {
    * (#1024). An attempt to edit a read-only editor raises Studio's notice, and a document with unusual
    * line terminators asks through Studio's dialog.
    * @param monaco The Monaco instance to prepare.
+   * @returns Returns the commands to bind from the keybinding registry.
    */
-  private installWidgetGuard(monaco: typeof MonacoApi | undefined): void {
+  private installWidgetGuard(monaco: typeof MonacoApi | undefined): readonly EditorKeybinding[] {
     if (monaco === undefined) {
-      return;
+      return [];
     }
-    installWidgetGuard(monaco, {
+    return installWidgetGuard(monaco, {
       showContextMenu: (editor: MonacoApi.editor.ICodeEditor): void => {
         this.log.info('Monaco', 'Studio show-context-menu command');
         this.injector.get(EditorContextMenu).openAtCaretFromKeyboard(editor);
@@ -994,6 +1085,7 @@ export class Monaco {
       defineThemes(monaco, this.settings.textEditorAccentSelection());
       registerAsmLanguage(monaco, target);
       registerScssLanguage(monaco, target);
+      registerCsharpLanguage(monaco, target);
       registerCypherLanguage(monaco, target);
       registerDocCommentRules(monaco);
       this.foldingRefreshers.push(
@@ -1004,15 +1096,20 @@ export class Monaco {
           this.foldingProvider,
         ),
       );
-      this.installFindCommands(monaco);
-      this.installGoToCommands(monaco);
-      this.installNavigationCommands(monaco);
-      this.installRenameCommands(monaco);
+      const bindings: EditorKeybinding[] = [
+        ...this.installFindCommands(monaco),
+        ...this.installGoToCommands(monaco),
+        ...this.installNavigationCommands(monaco),
+        ...this.installRenameCommands(monaco),
+      ];
       installAutoInsert(monaco, this.typed);
-      this.installQuickFixCommands(monaco);
-      this.installHoverCommands(monaco);
-      this.installSuggestCommands(monaco);
-      this.installWidgetGuard(monaco);
+      bindings.push(
+        ...this.installQuickFixCommands(monaco),
+        ...this.installHoverCommands(monaco),
+        ...this.installSuggestCommands(monaco),
+        ...this.installWidgetGuard(monaco),
+      );
+      this.bindEditorKeybindings(monaco, bindings);
     } catch (error: unknown) {
       // A fence would otherwise fall silently back to its placeholder, with nothing to say why.
       this.log.error(
@@ -1026,6 +1123,7 @@ export class Monaco {
     target.addEventListener('pagehide', (): void => {
       this.childInstances.delete(monaco);
       this.childLoads.delete(target);
+      this.editorKeybindings.delete(monaco);
     });
     this.log.info('Monaco', 'Monaco editor initialized in a child window');
     return monaco;

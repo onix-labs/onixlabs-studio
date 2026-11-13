@@ -1,0 +1,91 @@
+# Released plugins — verifies, nightly, that the last three Studio releases can still install every
+# plugin they ship with.
+#
+# `plugin-index.yml` checks the index on `main`. This checks what each *released* build carries in its
+# own seed index, resolving every lockfile the way that build does (compiled in, or fetched by its
+# pinned URL and hash) and checking every package it names is still downloadable. beta.10 is why: the
+# index on `main` was fine while every copy of beta.10 could not install the plugins bumped after it.
+#
+# Nightly rather than weekly, because the failure is caused by ordinary merges to `main` and every hour
+# it goes unnoticed is an hour of new users meeting a setup wizard that cannot install anything.
+name: Released plugins
+
+on:
+  schedule:
+    # Nightly, 05:00 UTC — clear of CodeQL (06:00 Monday) and the plugin index (07:00 Monday).
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+  # The script and this workflow are worth proving on the change that alters them.
+  pull_request:
+    paths:
+      - 'scripts/verify-released-plugins.mjs'
+      - '.github/workflows/released-plugins.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify released builds' plugins
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Every tag, because each release's own index and lockfiles are read from its tag.
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node (version from .nvmrc)
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      # Retried once, because a host being briefly unreachable is not the failure this watches for.
+      - name: Verify the last three releases
+        shell: bash
+        run: |
+          if node scripts/verify-released-plugins.mjs; then
+            exit 0
+          fi
+          echo "::warning::First pass failed; retrying once in 60s in case a host was briefly unreachable."
+          sleep 60
+          node scripts/verify-released-plugins.mjs
+
+  # A red tick on a scheduled run is a red tick nobody watches, so a genuine failure is raised where it
+  # will be seen, once: a later failure comments on the open issue rather than opening another.
+  report:
+    name: Raise an issue on failure
+    needs: verify
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Open or update the report
+        shell: bash
+        run: |
+          title='[Plugins] A released Studio build can no longer install a plugin it ships with'
+          existing=$(gh issue list --repo "$REPO" --state open --search "$title in:title" \
+            --json number --jq '.[0].number // empty')
+          body=$(printf '%s\n' \
+            'The nightly check of released builds failed twice in a row.' \
+            '' \
+            "Run: $RUN" \
+            '' \
+            'A release in the window pins a lockfile, or names a package, that no longer resolves to' \
+            'what it pinned. Every user of that release meets an install that fails. Usually a pinned' \
+            'URL moved (a deleted release asset or tag) or a lockfile was rewritten under its pin.' \
+            '' \
+            'Reproduce locally with `node scripts/verify-released-plugins.mjs`.')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$REPO" --body "$body"
+          else
+            gh issue create --repo "$REPO" --title "$title" \
+              --label bug --label area:plugins --body "$body"
+          fi

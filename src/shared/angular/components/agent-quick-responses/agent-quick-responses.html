@@ -5,6 +5,7 @@
   tooltip="Quick responses"
   [cdkMenuTriggerFor]="menu"
   [cdkMenuPosition]="menuPosition"
+  (cdkMenuClosed)="cancelEdit()"
 />
 
 <!-- `cdkMenu` must be this template's root node: on an inner element the CDK silently falls back to
@@ -36,25 +37,44 @@
           >
             <app-icon [icon]="Icon.GRIP_VERTICAL" [size]="1" />
           </span>
-          <button
-            type="button"
-            class="quick-responses__select"
-            cdkMenuItem
-            (cdkMenuItemTriggered)="choose(response)"
-          >
-            <span class="quick-responses__text">{{ response.text }}</span>
-          </button>
-          <!-- A plain icon button rather than a cdkMenuItem so deleting leaves the menu open, letting
-               several be cleared in a row; the stopPropagation keeps the click from reaching the menu. -->
-          <app-button
-            variant="none"
-            size="small"
-            [icon]="Icon.CLOSE"
-            [ariaLabel]="'Delete quick response: ' + response.text"
-            tooltip="Delete"
-            (pointerdown)="$event.preventDefault()"
-            (click)="remove(response); $event.stopPropagation()"
-          />
+          @if (editingId() === response.id) {
+            <!-- Editing in place (#1420). Its keys stay its own, as the add field's do: the menu runs
+                 type-ahead on printable keys and closes on Escape, which here cancels the edit. -->
+            <app-text-field
+              #editField
+              class="quick-responses__edit"
+              [(value)]="editDraft"
+              [ariaLabel]="'Edit quick response: ' + response.text"
+              (enter)="saveEdit(response)"
+              (escape)="cancelEdit(response.id)"
+              (keydown)="$event.stopPropagation()"
+            />
+          } @else {
+            <button
+              type="button"
+              class="quick-responses__select"
+              [attr.data-response-id]="response.id"
+              cdkMenuItem
+              (cdkMenuItemTriggered)="choose(response)"
+            >
+              <span class="quick-responses__text">{{ response.text }}</span>
+            </button>
+            <!-- Everything else a row can do, in its own small menu (#1420): Edit, the other of the
+                 two things picking does, and Delete. Opened inside this panel, it joins the panel's
+                 menu stack, so a press in it is not a click away from the panel — nor from a
+                 collapsed dock panel showing this one as a flyout (#1057). -->
+            <app-button
+              #rowTrigger="cdkMenuTriggerFor"
+              variant="none"
+              size="small"
+              [icon]="Icon.DOTS_THREE_BOLD"
+              [ariaLabel]="'More actions: ' + response.text"
+              tooltip="More Actions"
+              [cdkMenuTriggerFor]="rowMenu"
+              [cdkMenuTriggerData]="{ $implicit: response, trigger: rowTrigger }"
+              [cdkMenuPosition]="rowMenuPosition"
+            />
+          }
         </div>
       } @empty {
         <p class="quick-responses__empty">
@@ -75,5 +95,40 @@
         (keydown)="$event.stopPropagation()"
       />
     </div>
+  </div>
+</ng-template>
+
+<!-- A row's own menu. Edit and Delete change the list the panel shows, so they leave the panel open
+     and close only this menu (`appMenuKeepOpen`); the other action closes everything and acts, as
+     picking the row does. -->
+<ng-template #rowMenu let-response let-rowTrigger="trigger">
+  <div class="app-menu-panel" cdkMenu appMenuPointerGuard>
+    <button
+      type="button"
+      class="app-menu-panel__item"
+      cdkMenuItem
+      (appMenuKeepOpen)="startEdit(response, rowTrigger)"
+    >
+      <app-icon [icon]="Icon.PENCIL" />
+      <span class="app-menu-panel__item-label">Edit</span>
+    </button>
+    <button
+      type="button"
+      class="app-menu-panel__item"
+      cdkMenuItem
+      (cdkMenuItemTriggered)="chooseAlternate(response)"
+    >
+      <app-icon [icon]="alternate().icon" />
+      <span class="app-menu-panel__item-label">{{ alternate().label }}</span>
+    </button>
+    <button
+      type="button"
+      class="app-menu-panel__item"
+      cdkMenuItem
+      (appMenuKeepOpen)="remove(response); rowTrigger.close()"
+    >
+      <app-icon [icon]="Icon.TRASH" />
+      <span class="app-menu-panel__item-label">Delete</span>
+    </button>
   </div>
 </ng-template>

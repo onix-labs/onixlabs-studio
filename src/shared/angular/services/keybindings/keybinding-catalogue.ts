@@ -19,9 +19,19 @@ export interface CatalogueBinding {
   readonly description: string;
 
   /**
-   * Gets the default key chord, written with the platform-neutral `Mod` modifier.
+   * Gets the default key chord, written with the platform-neutral `Mod` modifier. `Control` names the
+   * Control key itself — ⌃ on macOS, where `Mod` is ⌘; the same as `Mod` elsewhere. Two chords pressed
+   * one after the other are written with a space between them (`Mod+K Mod+I`); only an editor's own
+   * commands, which Monaco dispatches, can be bound to one. Empty means no default shortcut.
    */
   readonly chord: string;
+
+  /**
+   * Gets the default chord on macOS, when it is not {@link chord} read with `Mod` as ⌘: Go to Line is
+   * ⌃G on a Mac (`Control+G`) and Ctrl+G elsewhere, and find-and-replace has a different chord on each.
+   * Absent means {@link chord} on every platform.
+   */
+  readonly macChord?: string;
 }
 
 /**

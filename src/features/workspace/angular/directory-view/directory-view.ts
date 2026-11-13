@@ -16,6 +16,7 @@ import {
 } from '@angular/core';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
 import { Log } from '@shared/angular/services/log/log';
+import { ExplorerExclusions } from '@shared/angular/services/explorer-filter/explorer-exclusions';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AGENT_RUN_OWNER } from '@shared/angular/services/agent/agent-run-owner';
@@ -160,6 +161,7 @@ import { CommitDetail } from '@shared/angular/components/panels/commit-detail/co
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
 import { WORKSPACE_DOCK_BLUEPRINT } from './workspace-dock-blueprint';
 import { LAYOUT_TEMPLATES, SOURCE_CONTROL_TEMPLATE_ID } from './layout-templates';
+import { AutoAddedPanels } from './auto-added-panels';
 import { REPOSITORY_DOCK_BLUEPRINT } from '@shared/angular/components/panels/repository-dock-blueprint';
 import {
   SourceControlCommandHandler,
@@ -169,6 +171,7 @@ import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-s
 import { WorktreeRepository } from '@features/workspace/angular/worktree/worktree-repository';
 import { WorktreeDialogs } from '@features/workspace/angular/worktree/worktree-dialogs/worktree-dialogs';
 import { REPOSITORY_WORKTREES } from '@shared/angular/services/repository-worktrees/repository-worktrees';
+import { CONFLICT_CONTEXT } from '@shared/angular/services/repository/conflict-context';
 import { OpenOptions } from '@shared/angular/services/tabs/tab';
 import { TERMINAL_PATH_LINKS } from '@shared/angular/services/terminal-path-links/terminal-path-links';
 import { WorkspaceTerminalPathLinks } from '@shared/angular/services/terminal-path-links/workspace-terminal-path-links';
@@ -270,8 +273,13 @@ const AGENT_OPEN: OpenOptions = { background: true };
     PackageExplorer,
     FileOpener,
     WorkspaceGit,
+    // The code editors' view of a merge or rebase stopped on conflicts (#1321): what the sides are
+    // called and Mark Resolved, through a seam so the code feature names no workspace service.
+    { provide: CONFLICT_CONTEXT, useExisting: WorkspaceGit },
     // The explorers' version-control commands (#1041), beside the status they read.
     ExplorerVcsMenu,
+    // The files and folders the explorers, Expand All and Find leave out (#1252).
+    ExplorerExclusions,
     Repository,
     // The Repository panel's worktrees, per view beside its Repository: "the current worktree" is
     // the checkout this view shows, which a container keeps one view alive for each of.
@@ -587,6 +595,11 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Holds this tab's scoped package model, whose presence drives the Package Management panel.
    */
   private readonly packageModel: PackageModel = inject(PackageModel);
+
+  /**
+   * Holds which panels Studio has already added to each workspace on its own (#1253).
+   */
+  private readonly autoAddedPanels: AutoAddedPanels = inject(AutoAddedPanels);
 
   /**
    * Holds this tab's tests, whose adapters drive the Tests panel (#1352).
@@ -1806,8 +1819,8 @@ export class DirectoryView implements OnInit, OnDestroy {
   }
 
   /**
-   * Adds the Solution Explorer panel beside the File Explorer once this tab has a project model,
-   * for a layout that does not already name it.
+   * Adds the Solution Explorer panel beside the File Explorer the first time this tab's workspace has a
+   * project model, and never again once the user has closed it or applied a layout without it (#1253).
    *
    * Adding only, never removing: a layout that mentions the Solution Explorer keeps mentioning it,
    * and the dock simply passes over it while there is no project model (see
@@ -1816,41 +1829,70 @@ export class DirectoryView implements OnInit, OnDestroy {
    * @param hasModel Whether this tab currently has a project model.
    */
   private syncSolutionPanel(hasModel: boolean): void {
-    // Derive presence from the live layout rather than a per-instance flag: the layout persists across
-    // a tab's close/reopen, so a flag that resets with each DirectoryView would re-add a panel that is
-    // already there, accumulating duplicates. Mirrors revealCommit's guard.
-    const present: boolean = collectPanelIds(this.dockState.layout()).includes('solution');
-    if (hasModel && !present) {
-      const filesStack: StackNode | null = findStackOfPanel(this.dockState.layout(), 'files');
-      if (filesStack !== null) {
-        this.dockState.tabInto(filesStack.id, 'solution');
-      }
+    if (!hasModel || this.alreadyOffered('solution')) {
+      return;
+    }
+    const filesStack: StackNode | null = findStackOfPanel(this.dockState.layout(), 'files');
+    if (filesStack !== null) {
+      this.dockState.tabInto(filesStack.id, 'solution');
+      this.markOffered('solution');
+    }
+  }
+
+  /**
+   * Determines whether a panel Studio adds on its own should be left out (#1253: add once, and respect
+   * closing). Presence is read from the live layout rather than a per-instance flag, since the layout
+   * outlives the view and a flag would re-add a panel already there. A panel the layout holds is
+   * recorded as offered, so closing it later is respected; one Studio has offered this workspace before
+   * and the layout no longer holds was closed by the user, or left out of a layout they applied, and
+   * stays out.
+   * @param panel The panel's id.
+   * @returns Returns true when the panel must not be added.
+   */
+  private alreadyOffered(panel: string): boolean {
+    if (collectPanelIds(this.dockState.layout()).includes(panel)) {
+      this.markOffered(panel);
+      return true;
+    }
+    const root: string | null = this.workspace.root()?.path ?? null;
+    return root !== null && this.autoAddedPanels.has(root, panel);
+  }
+
+  /**
+   * Records that this workspace has been given a panel Studio adds on its own.
+   * @param panel The panel's id.
+   */
+  private markOffered(panel: string): void {
+    const root: string | null = this.workspace.root()?.path ?? null;
+    if (root !== null) {
+      this.autoAddedPanels.mark(root, panel);
     }
   }
 
   /**
    * Adds the Package Management panel to the bottom tool group alongside the Error List, Terminal,
-   * and Logs once this tab has a package model, for a layout that does not already name it (without
-   * stealing the active tab from the user). Mirrors {@link syncSolutionPanel}: presence is derived
-   * from the live layout so a tab's close/reopen does not accumulate duplicates, and it adds only —
-   * the dock passes over the panel while there is no package model.
+   * and Logs the first time this tab's workspace has a package model (without stealing the active tab
+   * from the user), and never again once the user has closed it or applied a layout without it
+   * (#1253). Mirrors {@link syncSolutionPanel}; it adds only — the dock passes over the panel while
+   * there is no package model.
    * @param hasModel Whether this tab currently has a package model.
    */
   private syncPackagesPanel(hasModel: boolean): void {
-    const present: boolean = collectPanelIds(this.dockState.layout()).includes('packages');
-    if (hasModel && !present) {
-      const anchor: StackNode | null =
-        findStackOfPanel(this.dockState.layout(), 'errors') ??
-        findStackOfPanel(this.dockState.layout(), 'terminal') ??
-        firstStackOfRole(this.dockState.layout(), 'tool');
-      if (anchor === null) {
-        return;
-      }
-      const previous: string | null = anchor.active;
-      this.dockState.tabInto(anchor.id, 'packages');
-      if (previous !== null) {
-        this.dockState.setActive(anchor.id, previous);
-      }
+    if (!hasModel || this.alreadyOffered('packages')) {
+      return;
+    }
+    const anchor: StackNode | null =
+      findStackOfPanel(this.dockState.layout(), 'errors') ??
+      findStackOfPanel(this.dockState.layout(), 'terminal') ??
+      firstStackOfRole(this.dockState.layout(), 'tool');
+    if (anchor === null) {
+      return;
+    }
+    const previous: string | null = anchor.active;
+    this.dockState.tabInto(anchor.id, 'packages');
+    this.markOffered('packages');
+    if (previous !== null) {
+      this.dockState.setActive(anchor.id, previous);
     }
   }
 

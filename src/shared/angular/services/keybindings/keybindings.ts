@@ -115,6 +115,16 @@ const KEY_SYMBOLS: Readonly<Record<string, string>> = {
 const NO_CHORD: string = '';
 
 /**
+ * Separates the chords of a sequence pressed one after the other (`Mod+K Mod+I`).
+ */
+const CHORD_STEP_SEPARATOR: string = ' ';
+
+/**
+ * Names the modifiers of a normalized chord, none of which is a key on its own.
+ */
+const MODIFIERS: ReadonlySet<string> = new Set<string>(['Mod', 'Control', 'Alt', 'Shift']);
+
+/**
  * Routes application keyboard accelerators to the active view's commands, without the shell knowing
  * which feature is active.
  *
@@ -457,11 +467,20 @@ export class Keybindings {
    * @returns Returns the Electron accelerator.
    */
   public toAccelerator(chord: string): string {
+    // An accelerator is one chord: a menu cannot show or bind two pressed in turn, so such a command
+    // keeps its menu item with no accelerator, and its editor still runs it.
+    if (chord.includes(CHORD_STEP_SEPARATOR)) {
+      return '';
+    }
     return chord
       .split('+')
-      .map((part: string): string =>
-        part === 'Mod' ? 'CmdOrCtrl' : (ACCELERATOR_KEYS[part] ?? part),
-      )
+      .map((part: string): string => {
+        if (part === 'Mod') {
+          return 'CmdOrCtrl';
+        }
+        // Electron's `Ctrl` is the Control key itself on every platform.
+        return part === 'Control' ? 'Ctrl' : (ACCELERATOR_KEYS[part] ?? part);
+      })
       .join('+');
   }
 
@@ -521,18 +540,21 @@ export class Keybindings {
       return 'Unknown command.';
     }
     const normalized: string = this.normalizeChord(chord);
-    const key: string = normalized.split('+').pop() ?? '';
-    if (key.length === 0 || key === 'Mod' || key === 'Alt' || key === 'Shift') {
-      return 'A shortcut needs a key in addition to its modifiers.';
-    }
-    if (EDITING_CHORDS.has(normalized)) {
-      return `${this.formatChord(normalized)} is kept for undo, redo, cut, copy, paste and select all in every text box.`;
-    }
-    if (
-      catalogued.entry.modShiftOnly === true &&
-      !(normalized.includes('Mod+') && normalized.includes('Shift+'))
-    ) {
-      return `${catalogued.entry.view} shortcuts must use both ${this.isMac ? '⌘' : 'Ctrl'} and Shift, so they never collide with the shell's control codes.`;
+    // Every chord of a sequence is held to the same rules as a single one.
+    for (const step of normalized.length === 0 ? [''] : normalized.split(CHORD_STEP_SEPARATOR)) {
+      const key: string = step.split('+').pop() ?? '';
+      if (key.length === 0 || MODIFIERS.has(key)) {
+        return 'A shortcut needs a key in addition to its modifiers.';
+      }
+      if (EDITING_CHORDS.has(step)) {
+        return `${this.formatChord(step)} is kept for undo, redo, cut, copy, paste and select all in every text box.`;
+      }
+      if (
+        catalogued.entry.modShiftOnly === true &&
+        !(step.includes('Mod+') && step.includes('Shift+'))
+      ) {
+        return `${catalogued.entry.view} shortcuts must use both ${this.isMac ? '⌘' : 'Ctrl'} and Shift, so they never collide with the shell's control codes.`;
+      }
     }
     return null;
   }
@@ -544,7 +566,14 @@ export class Keybindings {
    * @returns Returns the platform-formatted chord.
    */
   public formatChord(chord: string): string {
-    return this.chordKeys(chord).join(this.isMac ? '' : '+');
+    if (chord === NO_CHORD) {
+      return '';
+    }
+    // A sequence reads as its chords in turn, a space apart: ⌘K ⌘I, Ctrl+K Ctrl+I.
+    return chord
+      .split(CHORD_STEP_SEPARATOR)
+      .map((step: string): string => this.stepKeys(step).join(this.isMac ? '' : '+'))
+      .join(CHORD_STEP_SEPARATOR);
   }
 
   /**
@@ -557,9 +586,51 @@ export class Keybindings {
     if (chord === NO_CHORD) {
       return [];
     }
-    return chord.split('+').map((part: string): string => {
+    // A sequence's chords are kept apart by a comma cap, so ⌘K, ⌘I never reads as one chord.
+    return chord
+      .split(CHORD_STEP_SEPARATOR)
+      .flatMap((step: string, index: number): readonly string[] =>
+        index === 0 ? this.stepKeys(step) : [',', ...this.stepKeys(step)],
+      );
+  }
+
+  /**
+   * Normalizes an author-written chord to the canonical modifier order and key casing, so
+   * registration, overrides and dispatch compare identically regardless of how the chord was
+   * written. A sequence keeps its chords in order, each normalized, a single space apart.
+   * @param chord The chord to normalize.
+   * @returns Returns the canonical chord string.
+   */
+  public normalizeChord(chord: string): string {
+    return chord
+      .trim()
+      .split(/\s+/)
+      .map((step: string): string => this.normalizeStep(step))
+      .filter((step: string): boolean => step.length > 0)
+      .join(CHORD_STEP_SEPARATOR);
+  }
+
+  /**
+   * Gets a binding's default chord on this platform: its macOS chord on a Mac when it has one.
+   * @param binding The catalogued binding.
+   * @returns Returns the default chord, as authored.
+   */
+  private defaultChordOf(binding: CatalogueBinding): string {
+    return this.isMac && binding.macChord !== undefined ? binding.macChord : binding.chord;
+  }
+
+  /**
+   * Splits one chord of a sequence into the keys a person presses, as the platform labels them.
+   * @param step The normalized chord.
+   * @returns Returns the key labels in pressing order.
+   */
+  private stepKeys(step: string): readonly string[] {
+    return step.split('+').map((part: string): string => {
       if (part === 'Mod') {
         return this.isMac ? '⌘' : 'Ctrl';
+      }
+      if (part === 'Control') {
+        return this.isMac ? '⌃' : 'Ctrl';
       }
       if (part === 'Alt') {
         return this.isMac ? '⌥' : 'Alt';
@@ -572,22 +643,29 @@ export class Keybindings {
   }
 
   /**
-   * Normalizes an author-written chord to the canonical modifier order and key casing, so
-   * registration, overrides and dispatch compare identically regardless of how the chord was
-   * written.
-   * @param chord The chord to normalize.
-   * @returns Returns the canonical chord string.
+   * Normalizes one chord: canonical modifier order (Mod, Control, Alt, Shift) and key casing. `Ctrl` is
+   * kept as a spelling of `Mod`, as overrides saved before `Control` existed were written with it;
+   * `Control` is the Control key itself, which on platforms other than macOS is `Mod`.
+   * @param step The chord to normalize.
+   * @returns Returns the canonical chord.
    */
-  public normalizeChord(chord: string): string {
+  private normalizeStep(step: string): string {
     let mod: boolean = false;
+    let control: boolean = false;
     let alt: boolean = false;
     let shift: boolean = false;
     let key: string = '';
-    for (const token of chord.split('+')) {
+    for (const token of step.split('+')) {
       const trimmed: string = token.trim();
       const lower: string = trimmed.toLowerCase();
       if (lower === 'mod' || lower === 'cmd' || lower === 'ctrl' || lower === 'meta') {
         mod = true;
+      } else if (lower === 'control') {
+        if (this.isMac) {
+          control = true;
+        } else {
+          mod = true;
+        }
       } else if (lower === 'alt' || lower === 'option') {
         alt = true;
       } else if (lower === 'shift') {
@@ -599,6 +677,9 @@ export class Keybindings {
     const parts: string[] = [];
     if (mod) {
       parts.push('Mod');
+    }
+    if (control) {
+      parts.push('Control');
     }
     if (alt) {
       parts.push('Alt');
@@ -630,13 +711,14 @@ export class Keybindings {
    */
   private resolve(binding: CatalogueBinding, entry: KeybindingCatalogueEntry): ResolvedBinding {
     const chord: string = this.effectiveChord(binding.id);
+    const defaultChord: string = this.normalizeChord(this.defaultChordOf(binding));
     return {
       id: binding.id,
       description: binding.description,
       view: entry.view,
       chord,
-      defaultChord: this.normalizeChord(binding.chord),
-      overridden: chord !== this.normalizeChord(binding.chord),
+      defaultChord,
+      overridden: chord !== defaultChord,
       global: entry.global === true,
     };
   }
@@ -661,7 +743,7 @@ export class Keybindings {
     if (override !== undefined && this.validateOverride(id, override) === null) {
       return this.normalizeChord(override);
     }
-    return this.normalizeChord(catalogued.binding.chord);
+    return this.normalizeChord(this.defaultChordOf(catalogued.binding));
   }
 
   /**
@@ -679,6 +761,10 @@ export class Keybindings {
     const parts: string[] = [];
     if (this.isMac ? event.metaKey : event.ctrlKey) {
       parts.push('Mod');
+    }
+    // On a Mac the Control key is a modifier of its own (⌃G is not ⌘G); elsewhere it is Mod already.
+    if (this.isMac && event.ctrlKey) {
+      parts.push('Control');
     }
     if (event.altKey) {
       parts.push('Alt');

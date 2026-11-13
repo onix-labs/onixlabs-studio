@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { GitHubAuth } from './auth';
 import {
   GitHubHosting,
+  graphqlUrlFor,
   Http,
   HttpResponse,
   listOptions,
   mapRunStatus,
+  merged,
   notSignedInDetail,
   Outcome,
   rollUpChecks,
@@ -16,6 +18,7 @@ import {
   HostedCiRun,
   HostedIssue,
   HostedIssueComment,
+  HostedLabel,
   HostedPullRequest,
   HostedRepository,
   HostedRepositoryRef,
@@ -678,8 +681,11 @@ describe('GitHubHosting', () => {
         'createIssue',
         'commentOnIssue',
         'setIssueState',
+        'editSubIssues',
+        'editIssue',
         'ciRerun',
         'ciCancel',
+        'editPullRequest',
       ]);
       // #819's acceptance: Issues turned off on the repository.
       expect(await read({ has_issues: false, permissions: { push: false } })).toEqual([
@@ -712,6 +718,33 @@ describe('GitHubHosting', () => {
       expect(outsider).not.toContain('setIssueState');
       expect(triager).toContain('setIssueState');
       expect(triager).not.toContain('ciRerun');
+      // Editing labels, assignees, milestones and sub-issues takes triage too (#1156); editing a pull
+      // request itself takes push.
+      expect(outsider).not.toContain('editIssue');
+      expect(outsider).not.toContain('editSubIssues');
+      expect(triager).toContain('editIssue');
+      expect(triager).toContain('editSubIssues');
+      expect(triager).not.toContain('editPullRequest');
+    });
+
+    it('offersEditingAPullRequestsLabels_evenWithIssuesTurnedOff', async () => {
+      const { github } = setup([
+        {
+          match: '/repos/onix-labs/onixlabs-studio',
+          status: 200,
+          body: { has_issues: false, permissions: { triage: true } },
+        },
+      ]);
+
+      const described: Outcome<{ readonly capabilities: readonly HostingCapability[] }> =
+        await github.describeRepository(REPOSITORY);
+
+      expect(described.ok && described.result.capabilities).toEqual([
+        'pullRequests',
+        'createPullRequest',
+        'ciRuns',
+        'editIssue',
+      ]);
     });
   });
 
@@ -811,6 +844,9 @@ describe('GitHubHosting', () => {
             draft: false,
             state: 'open',
             headRef: 'feature/thing',
+            // The commit the head points at (#887), so a merged pull request can mark only the local
+            // branch still sitting at what it merged.
+            headSha: 'abc123',
             fetchRef: 'refs/pull/7/head',
             checks: 'succeeded',
           },
@@ -1273,6 +1309,7 @@ describe('writing', () => {
         draft: true,
         state: 'open',
         headRef: 'feat/851',
+        headSha: 'abc',
         fetchRef: 'refs/pull/851/head',
         checks: 'none',
       },
@@ -1286,6 +1323,321 @@ describe('writing', () => {
       ok: false,
       code: 'forbidden',
     });
+  });
+});
+
+describe('editing (#1156)', () => {
+  const ISSUE: Record<string, unknown> = {
+    id: 9012,
+    number: 12,
+    title: 'Fix login',
+    html_url: 'https://github.com/onix-labs/onixlabs-studio/issues/12',
+    user: { login: 'matthew' },
+    labels: [{ name: 'bug' }, { name: 'area:agent' }],
+    assignees: [{ login: 'matthew' }],
+    state: 'open',
+    body: 'It breaks.',
+    created_at: '2026-11-10T09:00:00Z',
+    updated_at: '2026-11-10T09:00:00Z',
+    comments: 0,
+  };
+  const LABELS: readonly unknown[] = [
+    { name: 'bug', description: 'Something is broken' },
+    { name: 'epic', description: '' },
+    { name: 'area:agent' },
+  ];
+  const PULL: Record<string, unknown> = {
+    node_id: 'PR_kwDO123',
+    number: 7,
+    title: 'Add edits',
+    html_url: 'https://github.com/onix-labs/onixlabs-studio/pull/7',
+    draft: true,
+    state: 'open',
+    user: { login: 'matthew' },
+    head: { ref: 'feat/1156', sha: 'abc' },
+  };
+  const CHECKS: readonly Route[] = [
+    { match: '/commits/abc/check-runs', status: 200, body: { check_runs: [] } },
+    { match: '/commits/abc/status', status: 200, body: { statuses: [] } },
+  ];
+
+  /**
+   * Reads the body a request sent.
+   * @param http The fake transport.
+   * @param index Which request.
+   * @returns Returns the parsed body.
+   */
+  function sentBody(http: FakeHttp, index: number): unknown {
+    return JSON.parse(http.requests[index]?.body ?? '{}');
+  }
+
+  it('listLabels_namesEachLabel_withItsDescriptionWhenItHasOne', async () => {
+    const { github } = setup([{ match: '/labels', status: 200, body: LABELS }]);
+
+    const labels: Outcome<readonly HostedLabel[]> = await github.listLabels(REPOSITORY);
+
+    expect(labels).toEqual({
+      ok: true,
+      result: [
+        { name: 'bug', description: 'Something is broken' },
+        { name: 'epic' },
+        { name: 'area:agent' },
+      ],
+    });
+  });
+
+  it('updateIssue_withATitleAndBody_patchesOnlyThose_withoutReadingFirst', async () => {
+    const { github, http } = setup([{ match: '/issues/12', status: 200, body: ISSUE }]);
+
+    const edited: Outcome<HostedIssue> = await github.updateIssue(REPOSITORY, 12, {
+      title: 'Fix sign-in',
+      body: 'New body.',
+    });
+
+    expect(http.requests.map((request) => request.method)).toEqual(['PATCH']);
+    expect(sentBody(http, 0)).toEqual({ title: 'Fix sign-in', body: 'New body.' });
+    expect(edited).toMatchObject({ ok: true, result: { number: 12 } });
+  });
+
+  it('updateIssue_addsAndRemovesLabels_keepingTheOnesItDidNotMention', async () => {
+    // The bug a whole-list replace would have: an agent adding `epic` silently drops `area:agent`.
+    const { github, http } = setup([
+      { match: '/labels', status: 200, body: LABELS },
+      { match: '/issues/12', status: 200, body: ISSUE },
+    ]);
+
+    await github.updateIssue(REPOSITORY, 12, { addLabels: ['EPIC'], removeLabels: ['Bug'] });
+
+    expect(http.requests.map((request) => request.method)).toEqual(['GET', 'GET', 'PATCH']);
+    // GitHub matches names regardless of case; the repository's own spelling is what is sent.
+    expect(sentBody(http, 2)).toEqual({ labels: ['area:agent', 'epic'] });
+  });
+
+  it('updateIssue_withALabelTheRepositoryDoesNotHave_changesNothing_andNamesTheOnesItDoes', async () => {
+    const { github, http } = setup([
+      { match: '/labels', status: 200, body: LABELS },
+      { match: '/issues/12', status: 200, body: ISSUE },
+    ]);
+
+    const edited: Outcome<HostedIssue> = await github.updateIssue(REPOSITORY, 12, {
+      addLabels: ['enhancement'],
+    });
+
+    expect(http.requests.map((request) => request.method)).toEqual(['GET', 'GET']);
+    expect(edited).toMatchObject({ ok: false, code: 'refused' });
+    expect(edited.ok ? '' : edited.error).toContain('“enhancement”');
+    expect(edited.ok ? '' : edited.error).toContain('bug, epic, area:agent');
+  });
+
+  it('updateIssue_assignsAndUnassigns_keepingTheOthers', async () => {
+    const { github, http } = setup([{ match: '/issues/12', status: 200, body: ISSUE }]);
+
+    await github.updateIssue(REPOSITORY, 12, {
+      addAssignees: ['octocat', 'matthew'],
+      removeAssignees: [],
+    });
+
+    expect(sentBody(http, 1)).toEqual({ assignees: ['matthew', 'octocat'] });
+  });
+
+  it('updateIssue_setsAMilestoneByTitle_andClearsOneWithNull', async () => {
+    const { github, http } = setup([
+      {
+        match: '/milestones',
+        status: 200,
+        body: [
+          { number: 3, title: 'v1.0' },
+          { number: 4, title: 'Beta 11' },
+        ],
+      },
+      { match: '/issues/12', status: 200, body: ISSUE },
+    ]);
+
+    await github.updateIssue(REPOSITORY, 12, { milestone: 'beta 11' });
+    await github.updateIssue(REPOSITORY, 12, { milestone: null });
+
+    expect(http.urls[0]).toContain('/milestones?state=open');
+    expect(sentBody(http, 1)).toEqual({ milestone: 4 });
+    expect(sentBody(http, 2)).toEqual({ milestone: null });
+  });
+
+  it('updateIssue_withAMilestoneTheRepositoryDoesNotHave_isRefused_namingTheOpenOnes', async () => {
+    const { github, http } = setup([
+      { match: '/milestones', status: 200, body: [{ number: 3, title: 'v1.0' }] },
+    ]);
+
+    const edited: Outcome<HostedIssue> = await github.updateIssue(REPOSITORY, 12, {
+      milestone: 'v2.0',
+    });
+
+    expect(http.requests.map((request) => request.method)).toEqual(['GET']);
+    expect(edited).toMatchObject({ ok: false, code: 'refused' });
+    expect(edited.ok ? '' : edited.error).toContain('v1.0');
+  });
+
+  it.each([
+    ['nothing', {}],
+    ['an empty title', { title: '  ' }],
+  ])('updateIssue_with %s_isRefused_withoutAskingGitHub', async (_label: string, edit: object) => {
+    const { github, http } = setup([]);
+
+    expect(await github.updateIssue(REPOSITORY, 12, edit)).toMatchObject({
+      ok: false,
+      code: 'refused',
+    });
+    expect(http.requests).toEqual([]);
+  });
+
+  it('addSubIssue_readsTheChildsId_andPostsItToTheParent', async () => {
+    // GitHub takes the child by its internal id, not its number.
+    const { github, http } = setup([
+      { match: '/issues/1/sub_issues', status: 201, body: { ...ISSUE, number: 1 } },
+      { match: '/issues/12', status: 200, body: ISSUE },
+    ]);
+
+    const parent: Outcome<HostedIssue> = await github.addSubIssue(REPOSITORY, 1, 12);
+
+    expect(http.requests.map((request) => `${request.method} ${request.url}`)).toEqual([
+      'GET https://api.github.com/repos/onix-labs/onixlabs-studio/issues/12',
+      'POST https://api.github.com/repos/onix-labs/onixlabs-studio/issues/1/sub_issues',
+    ]);
+    expect(sentBody(http, 1)).toEqual({ sub_issue_id: 9012 });
+    expect(parent).toMatchObject({ ok: true, result: { number: 1 } });
+  });
+
+  it('removeSubIssue_deletesItFromTheParent', async () => {
+    const { github, http } = setup([
+      { match: '/issues/1/sub_issue', status: 200, body: { ...ISSUE, number: 1 } },
+      { match: '/issues/12', status: 200, body: ISSUE },
+    ]);
+
+    await github.removeSubIssue(REPOSITORY, 1, 12);
+
+    expect(http.requests[1]?.method).toBe('DELETE');
+    expect(http.urls[1]).toBe(
+      'https://api.github.com/repos/onix-labs/onixlabs-studio/issues/1/sub_issue',
+    );
+    expect(sentBody(http, 1)).toEqual({ sub_issue_id: 9012 });
+  });
+
+  it('addSubIssue_ofItself_isRefused_withoutAskingGitHub', async () => {
+    const { github, http } = setup([]);
+
+    expect(await github.addSubIssue(REPOSITORY, 12, 12)).toMatchObject({
+      ok: false,
+      code: 'refused',
+    });
+    expect(http.requests).toEqual([]);
+  });
+
+  it('addSubIssue_ofAMissingIssue_changesNothing_andSaysWhich', async () => {
+    const { github, http } = setup([{ match: '/issues/99', status: 404, body: {} }]);
+
+    const parent: Outcome<HostedIssue> = await github.addSubIssue(REPOSITORY, 1, 99);
+
+    expect(http.requests.map((request) => request.method)).toEqual(['GET']);
+    expect(parent.ok ? '' : parent.error).toContain('#99');
+  });
+
+  it('updatePullRequest_patchesTheTitleBodyAndBase_andReportsItsChecks', async () => {
+    const { github, http } = setup([
+      ...CHECKS,
+      { match: '/pulls/7', status: 200, body: { ...PULL, title: 'Edit issues' } },
+    ]);
+
+    const edited: Outcome<HostedPullRequest> = await github.updatePullRequest(REPOSITORY, 7, {
+      title: 'Edit issues',
+      body: 'Closes #1156.',
+      base: 'release',
+    });
+
+    expect(http.requests[0]?.method).toBe('PATCH');
+    expect(sentBody(http, 0)).toEqual({
+      title: 'Edit issues',
+      body: 'Closes #1156.',
+      base: 'release',
+    });
+    expect(http.urls.some((url) => url.includes('graphql'))).toBe(false);
+    expect(edited).toMatchObject({
+      ok: true,
+      result: { number: 7, title: 'Edit issues', checks: 'none' },
+    });
+  });
+
+  it('updatePullRequest_markingADraftReady_goesThroughGraphQL_byItsNodeId', async () => {
+    // REST cannot change whether a pull request is a draft.
+    const { github, http } = setup([
+      ...CHECKS,
+      { match: '/graphql', status: 200, body: { data: { markPullRequestReadyForReview: {} } } },
+      { match: '/pulls/7', status: 200, body: PULL },
+    ]);
+
+    const edited: Outcome<HostedPullRequest> = await github.updatePullRequest(REPOSITORY, 7, {
+      draft: false,
+    });
+
+    expect(http.requests[0]?.method).toBe('GET');
+    expect(http.requests[1]?.url).toBe('https://api.github.com/graphql');
+    const sent: { query: string; variables: unknown } = sentBody(http, 1) as {
+      query: string;
+      variables: unknown;
+    };
+    expect(sent.query).toContain('markPullRequestReadyForReview');
+    expect(sent.variables).toEqual({ id: 'PR_kwDO123' });
+    expect(edited).toMatchObject({ ok: true, result: { draft: false } });
+  });
+
+  it('updatePullRequest_toTheDraftStateItIsAlreadyIn_sendsNoMutation', async () => {
+    const { github, http } = setup([...CHECKS, { match: '/pulls/7', status: 200, body: PULL }]);
+
+    await github.updatePullRequest(REPOSITORY, 7, { draft: true });
+
+    expect(http.urls.some((url) => url.includes('graphql'))).toBe(false);
+  });
+
+  it('updatePullRequest_whenGraphQLAnswersWithErrors_saysWhy', async () => {
+    // GraphQL reports a refused mutation with a 200 and an errors list.
+    const { github } = setup([
+      ...CHECKS,
+      {
+        match: '/graphql',
+        status: 200,
+        body: { errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible' }] },
+      },
+      { match: '/pulls/7', status: 200, body: { ...PULL, draft: false } },
+    ]);
+
+    expect(await github.updatePullRequest(REPOSITORY, 7, { draft: true })).toEqual({
+      ok: false,
+      error: 'Resource not accessible',
+      code: 'forbidden',
+    });
+  });
+
+  it.each([
+    ['nothing', {}],
+    ['an empty title', { title: '' }],
+    ['an empty base', { base: ' ' }],
+  ])(
+    'updatePullRequest_with %s_isRefused_withoutAskingGitHub',
+    async (_label: string, edit: object) => {
+      const { github, http } = setup([]);
+
+      expect(await github.updatePullRequest(REPOSITORY, 7, edit)).toMatchObject({
+        ok: false,
+        code: 'refused',
+      });
+      expect(http.requests).toEqual([]);
+    },
+  );
+
+  it('graphqlUrlFor_anEnterpriseServer_isUnderApiGraphql_notApiV3', () => {
+    expect(graphqlUrlFor('github.com')).toBe('https://api.github.com/graphql');
+    expect(graphqlUrlFor('git.example.com')).toBe('https://git.example.com/api/graphql');
+  });
+
+  it('merged_addsRemovesAndKeepsEachNameOnce_regardlessOfCase', () => {
+    expect(merged(['bug', 'area:agent'], ['Epic', 'BUG'], ['Area:Agent'])).toEqual(['bug', 'Epic']);
   });
 });
 

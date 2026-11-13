@@ -36,6 +36,24 @@ const EXTENSION_TO_LANGUAGE: Readonly<Record<string, string>> = {
   '.sass': 'scss',
   '.less': 'less',
   '.xml': 'xml',
+  // The XML family (#1068): .NET project and build files, XAML, and the XML formats that carry an
+  // ending of their own. A `.csproj` opened as plain text was uncoloured and never offered to an XML
+  // language server.
+  '.csproj': 'xml',
+  '.fsproj': 'xml',
+  '.vbproj': 'xml',
+  '.props': 'xml',
+  '.targets': 'xml',
+  '.nuspec': 'xml',
+  '.resx': 'xml',
+  '.xaml': 'xml',
+  '.axaml': 'xml',
+  '.slnx': 'xml',
+  '.svg': 'xml',
+  '.plist': 'xml',
+  '.xsd': 'xml',
+  '.xsl': 'xml',
+  '.xslt': 'xml',
   '.yaml': 'yaml',
   '.yml': 'yaml',
   '.py': 'python',
@@ -133,7 +151,21 @@ const LANGUAGE_NAMES: Readonly<Record<string, string>> = {
 const FILENAME_TO_LANGUAGE: Readonly<Record<string, string>> = {
   dockerfile: 'dockerfile',
   containerfile: 'dockerfile',
+  // XML whatever their ending says (#1068): a `.config` is not XML as a rule, but these always are.
+  'nuget.config': 'xml',
+  'web.config': 'xml',
+  'app.config': 'xml',
+  'packages.config': 'xml',
+  'directory.build.props': 'xml',
+  'directory.build.targets': 'xml',
+  'directory.packages.props': 'xml',
 };
+
+/**
+ * Holds the endings that say nothing certain about a file's language, so the file's content decides
+ * (#1068): a `.config` is XML when it reads as XML, and plain text otherwise.
+ */
+const CONTENT_CHECKED_EXTENSIONS: ReadonlySet<string> = new Set<string>(['.config']);
 
 /**
  * Holds the default language used when an extension is unknown.
@@ -152,16 +184,23 @@ export function languageForExtension(extension: string): string {
 }
 
 /**
- * Resolves the Monaco language identifier for a file name.
+ * Resolves the Monaco language identifier for a file: the one resolver every surface uses (#1068), so a
+ * file colours, is offered to a language server, and is named the same way wherever it is opened.
  *
- * Prefer this to {@link languageForExtension} wherever the name is in hand: some files carry no
- * extension and are identified by their whole name, and an extension-only lookup calls those
- * plaintext. `Dockerfile` is the case that forced this — it is the canonical spelling, it has no
- * extension, and calling it plaintext means the editor never asks for a Dockerfile language server.
+ * The rules, most specific first:
+ * 1. A whole file name that is its type, matched case-insensitively: `Dockerfile`, `nuget.config`,
+ *    `Directory.Build.props`.
+ * 2. The file's ending: `.ts`, `.csproj`.
+ * 3. For an ending that says nothing certain (`.config`), the content, when the caller has it: XML when
+ *    its first non-blank character is `<`, after any byte-order mark. Without the content, plain text.
+ *
+ * Prefer this to {@link languageForExtension} wherever the name is in hand: an extension-only lookup
+ * calls `Dockerfile` and `nuget.config` plain text, so the editor never asks for their language server.
  * @param fileName The file name, with or without a path.
+ * @param content The file's text, when the caller has it, for the content check.
  * @returns Returns the Monaco language identifier, or `plaintext` when nothing matches.
  */
-export function languageForFileName(fileName: string): string {
+export function languageForFileName(fileName: string, content?: string): string {
   const base: string = fileName.split(/[\\/]/).pop() ?? '';
   const named: string | undefined = FILENAME_TO_LANGUAGE[base.toLowerCase()];
   if (named !== undefined) {
@@ -170,7 +209,24 @@ export function languageForFileName(fileName: string): string {
   const dot: number = base.lastIndexOf('.');
   // A leading dot is the whole name of a dotfile, not an extension, so `.gitignore` is not an
   // extension of `gitignore`.
-  return dot > 0 ? languageForExtension(base.slice(dot)) : DEFAULT_LANGUAGE;
+  if (dot <= 0) {
+    return DEFAULT_LANGUAGE;
+  }
+  const extension: string = base.slice(dot).toLowerCase();
+  if (CONTENT_CHECKED_EXTENSIONS.has(extension)) {
+    return content !== undefined && readsAsXml(content) ? 'xml' : DEFAULT_LANGUAGE;
+  }
+  return languageForExtension(extension);
+}
+
+/**
+ * Determines whether a file's text reads as XML: its first non-blank character, after any byte-order
+ * mark, is `<` — an `<?xml` declaration or a root element such as `<configuration>`.
+ * @param content The file's text.
+ * @returns Returns true when the text reads as XML.
+ */
+export function readsAsXml(content: string): boolean {
+  return /^\uFEFF?\s*</.test(content);
 }
 
 /**

@@ -25,17 +25,14 @@ import {
   WORD_BASED_PROVIDER_NAME,
   WordSuggestionsOption,
 } from './monaco-suggest-commands';
+import type { EditorKeybinding } from './monaco-keybindings';
 
 /**
  * Monaco's key modifiers and codes, as the fake instance numbers them.
  */
-const CTRL_CMD: number = 2048;
 const SHIFT: number = 1024;
 const ALT: number = 512;
-const WIN_CTRL: number = 256;
-const SPACE: number = 10;
 const ESCAPE: number = 9;
-const KEY_I: number = 39;
 const ENTER: number = 3;
 const TAB: number = 2;
 const UP: number = 16;
@@ -329,19 +326,18 @@ interface Installed {
   readonly rules: MonacoApi.editor.IKeybindingRule[];
   readonly commands: Map<string, () => void>;
   readonly presented: Presented;
+  bindings: readonly EditorKeybinding[];
   create(editor: MonacoApi.editor.ICodeEditor): void;
 }
 
 /**
  * Installs the suggest commands into a fake Monaco instance holding the given editors.
  * @param editors The editors the instance holds.
- * @param isMac Whether the host is macOS.
  * @param suppressed Whether a document's word-based suggestions are left out.
  * @returns Returns what the instance was asked to do.
  */
 function install(
   editors: readonly MonacoApi.editor.ICodeEditor[],
-  isMac: boolean = true,
   suppressed: boolean = false,
 ): Installed {
   let onCreate: ((editor: MonacoApi.editor.ICodeEditor) => void) | null = null;
@@ -356,14 +352,13 @@ function install(
     rules: [],
     commands: new Map(),
     presented,
+    bindings: [],
     create: (editor: MonacoApi.editor.ICodeEditor): void => onCreate?.(editor),
   };
   const fake: typeof MonacoApi = {
-    KeyMod: { CtrlCmd: CTRL_CMD, Shift: SHIFT, Alt: ALT },
+    KeyMod: { Shift: SHIFT, Alt: ALT },
     KeyCode: {
-      Space: SPACE,
       Escape: ESCAPE,
-      KeyI: KEY_I,
       Enter: ENTER,
       Tab: TAB,
       UpArrow: UP,
@@ -405,9 +400,8 @@ function install(
     ): void => void presented.hints.push({ control, hints: value }),
     hideSignatures: (): void => void presented.calls.push('hideSignatures'),
   };
-  installSuggestCommands(
+  installed.bindings = installSuggestCommands(
     fake,
-    isMac,
     (): SuggestPresenter => suggest,
     (): ParameterHintsPresenter => hints,
     (): boolean => suppressed,
@@ -455,26 +449,19 @@ describe('installSuggestCommands (#1021)', () => {
     document.body.innerHTML = '';
   });
 
-  it('removesMonacosTriggerChords_andBindsStudios_onMacOS', () => {
-    const installed: Installed = install([], true);
+  it('removesMonacosTriggerChords_andBindsTheListAndCardKeys', () => {
+    const installed: Installed = install([]);
     const list: string = 'studioSuggestVisible && !studioEditorComposing';
     const accept: string = `${list} && studioSuggestFocused`;
     const card: string =
       'studioParameterHintsVisible && !studioSuggestVisible && !studioEditorComposing';
     const overloads: string = `${card} && studioParameterHintsMultiple`;
-    const trigger: string = 'editorTextFocus && !editorReadonly';
 
+    // The trigger chords themselves come from the keybinding registry (#1036); the keys that move in
+    // an open list or card are the widget's own and stay here.
     expect(installed.rules).toEqual([
       { keybinding: 0, command: '-editor.action.triggerSuggest' },
       { keybinding: 0, command: '-editor.action.triggerParameterHints' },
-      { keybinding: WIN_CTRL | SPACE, command: STUDIO_TRIGGER_SUGGEST_COMMAND, when: trigger },
-      { keybinding: ALT | ESCAPE, command: STUDIO_TRIGGER_SUGGEST_COMMAND, when: trigger },
-      { keybinding: CTRL_CMD | KEY_I, command: STUDIO_TRIGGER_SUGGEST_COMMAND, when: trigger },
-      {
-        keybinding: CTRL_CMD | SHIFT | SPACE,
-        command: STUDIO_TRIGGER_PARAMETER_HINTS_COMMAND,
-        when: 'editorTextFocus',
-      },
       { keybinding: DOWN, command: STUDIO_SUGGEST_NEXT_COMMAND, when: list },
       { keybinding: UP, command: STUDIO_SUGGEST_PREVIOUS_COMMAND, when: list },
       { keybinding: PAGE_DOWN, command: STUDIO_SUGGEST_NEXT_PAGE_COMMAND, when: list },
@@ -500,17 +487,30 @@ describe('installSuggestCommands (#1021)', () => {
     ]);
   });
 
-  it('bindsCtrlSpaceAndCtrlI_elsewhere', () => {
-    const installed: Installed = install([], false);
+  it('handsTheTriggerChords_toTheRegistry', () => {
+    // ⌃Space, ⌘I and (macOS) ⌥Esc show completions, ⌘⇧Space parameter hints, by default: see
+    // monaco-keybindings.spec.ts for the chords each platform gets.
+    const installed: Installed = install([]);
+    const trigger: string = 'editorTextFocus && !editorReadonly';
 
-    expect(
-      installed.rules
-        .filter(
-          (rule: MonacoApi.editor.IKeybindingRule): boolean =>
-            rule.command === STUDIO_TRIGGER_SUGGEST_COMMAND,
-        )
-        .map((rule: MonacoApi.editor.IKeybindingRule): number => rule.keybinding),
-    ).toEqual([CTRL_CMD | SPACE, CTRL_CMD | KEY_I]);
+    expect(installed.bindings).toEqual([
+      { id: 'editor.triggerSuggest', command: STUDIO_TRIGGER_SUGGEST_COMMAND, when: trigger },
+      {
+        id: 'editor.triggerSuggestAlternative',
+        command: STUDIO_TRIGGER_SUGGEST_COMMAND,
+        when: trigger,
+      },
+      {
+        id: 'editor.triggerSuggestEscape',
+        command: STUDIO_TRIGGER_SUGGEST_COMMAND,
+        when: trigger,
+      },
+      {
+        id: 'editor.triggerParameterHints',
+        command: STUDIO_TRIGGER_PARAMETER_HINTS_COMMAND,
+        when: 'editorTextFocus',
+      },
+    ]);
   });
 
   it('studiosCommands_runInTheFocusedEditor_throughItsContributionsAndThePresenter', () => {
@@ -605,7 +605,7 @@ describe('installSuggestCommands (#1021)', () => {
 
   it('leavesWordBasedSuggestionsOut_whenTheDocumentSaysSo', () => {
     const editor: FakeEditor = fakeEditor();
-    const installed: Installed = install([editor.editor], true, true);
+    const installed: Installed = install([editor.editor], true);
     installed.create(editor.editor);
     const words: SuggestItem = item('word', WORD_BASED_PROVIDER_NAME);
     const server: SuggestItem = item('server');

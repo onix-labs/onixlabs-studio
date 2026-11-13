@@ -15,12 +15,15 @@ import {
   VcsResult,
 } from './protocol';
 import {
+  BATCH_SSH_COMMAND,
   commitOptions,
   confinedPaths,
+  gitSideFor,
   GitVersionControl,
   ignoreLine,
   isSafeOperand,
   MAX_READ_FILE_BYTES,
+  networkArgs,
   networkTimeout,
   pullOptions,
   revisionSpec,
@@ -53,6 +56,32 @@ function git(cwd: string, ...args: string[]): Promise<string> {
     );
   });
 }
+
+describe('networkArgs (#1433)', () => {
+  const fetch: readonly string[] = ['fetch', '--prune'];
+
+  it('givesTheNonInteractiveCommand_onlyWhenTheUserHasNone', () => {
+    expect(networkArgs(fetch, {}, null)).toEqual([
+      '-c',
+      `core.sshCommand=${BATCH_SSH_COMMAND}`,
+      'fetch',
+      '--prune',
+    ]);
+    expect(BATCH_SSH_COMMAND).toBe('ssh -o BatchMode=yes -o ConnectTimeout=10');
+  });
+
+  it.each([
+    ['GIT_SSH_COMMAND exported', { GIT_SSH_COMMAND: 'ssh -i key' }, null],
+    ['GIT_SSH exported', { GIT_SSH: '/usr/local/bin/plink' }, null],
+    ['core.sshCommand configured', {}, 'ssh -i ~/.ssh/work\n'],
+  ])('leavesTheArgumentsAlone_with %s', (_label: string, env: NodeJS.ProcessEnv, configured) => {
+    expect(networkArgs(fetch, env, configured)).toBe(fetch);
+  });
+
+  it('treatsABlankValue_asNoneSet', () => {
+    expect(networkArgs(fetch, { GIT_SSH_COMMAND: ' ' }, '\n')).toHaveLength(4);
+  });
+});
 
 describe('revisionSpec', () => {
   it('neverDoublesTheSeparatorForTheIndexOrOurSide', () => {
@@ -379,6 +408,110 @@ describe('GitVersionControl', () => {
     },
   );
 
+  describe('resolveConflict (#1321)', () => {
+    /**
+     * Leaves README.md conflicted between `main` ("main") and `topic` ("topic"), by merging topic into
+     * main or by rebasing topic onto main.
+     * @param how Which operation stops on the conflict.
+     */
+    async function conflictOn(how: 'merge' | 'rebase'): Promise<void> {
+      await git(repo, 'checkout', '-b', 'topic');
+      await fs.writeFile(path.join(repo, 'README.md'), 'topic\n', 'utf8');
+      await git(repo, 'commit', '-am', 'topic');
+      await git(repo, 'checkout', 'main');
+      await fs.writeFile(path.join(repo, 'README.md'), 'main\n', 'utf8');
+      await git(repo, 'commit', '-am', 'main');
+      if (how === 'merge') {
+        expect(await ask('merge', { branch: 'topic', mode: 'default' })).toMatchObject({
+          code: 'conflicted',
+        });
+      } else {
+        await git(repo, 'checkout', 'topic');
+        expect(await ask('rebase', { onto: 'main' })).toMatchObject({ code: 'conflicted' });
+      }
+    }
+
+    it(
+      'keepingYoursInAMerge_takesTheCheckedOutBranch_andMarksItResolved',
+      GIT_TEST_TIMEOUT,
+      async () => {
+        await conflictOn('merge');
+
+        expect(
+          await ask('resolveConflict', { path: 'README.md', resolution: 'yours' }),
+        ).toMatchObject({ ok: true });
+
+        expect(await fs.readFile(path.join(repo, 'README.md'), 'utf8')).toBe('main\n');
+        expect((await result('status', {})).conflicted).toEqual([]);
+      },
+    );
+
+    it(
+      'keepingYoursInARebase_takesTheCommitBeingReplayed_notTheUpstream',
+      GIT_TEST_TIMEOUT,
+      async () => {
+        // The swap: rebasing topic onto main checks main out, so git's --ours is main — not the user's.
+        await conflictOn('rebase');
+
+        await result('resolveConflict', { path: 'README.md', resolution: 'yours' });
+
+        expect(await fs.readFile(path.join(repo, 'README.md'), 'utf8')).toBe('topic\n');
+        expect((await result('status', {})).conflicted).toEqual([]);
+      },
+    );
+
+    it('keepingTheirsInARebase_takesTheUpstream', GIT_TEST_TIMEOUT, async () => {
+      await conflictOn('rebase');
+
+      await result('resolveConflict', { path: 'README.md', resolution: 'theirs' });
+
+      expect(await fs.readFile(path.join(repo, 'README.md'), 'utf8')).toBe('main\n');
+    });
+
+    it(
+      'aConflictOverADeletedFile_isReportedAsOne_andCanBeKeptOrDeleted',
+      GIT_TEST_TIMEOUT,
+      async () => {
+        await git(repo, 'checkout', '-b', 'topic');
+        await git(repo, 'rm', '-q', 'README.md');
+        await git(repo, 'commit', '-m', 'delete');
+        await git(repo, 'checkout', 'main');
+        await fs.writeFile(path.join(repo, 'README.md'), 'edited\n', 'utf8');
+        await git(repo, 'commit', '-am', 'edit');
+        await ask('merge', { branch: 'topic', mode: 'default' });
+
+        expect((await result('status', {})).conflicted).toEqual([
+          expect.objectContaining({ path: 'README.md', conflict: 'deleted' }),
+        ]);
+        await result('resolveConflict', { path: 'README.md', resolution: 'deleteFile' });
+
+        await expect(fs.access(path.join(repo, 'README.md'))).rejects.toThrow();
+        expect((await result('status', {})).conflicted).toEqual([]);
+      },
+    );
+
+    it(
+      'refusesAPathOutsideTheRepository_theRoot_orAnUnknownResolution',
+      GIT_TEST_TIMEOUT,
+      async () => {
+        await conflictOn('merge');
+
+        for (const params of [
+          { path: '../outside', resolution: 'yours' },
+          { path: '.', resolution: 'yours' },
+          { path: '-p', resolution: 'yours' },
+          { path: 'README.md', resolution: 'everything' },
+        ]) {
+          expect(await ask('resolveConflict', params as never)).toMatchObject({ ok: false });
+        }
+        expect((await result('status', {})).conflicted.map((change) => change.path)).toEqual([
+          'README.md',
+        ]);
+        expect((await result('status', {})).conflicted[0]).toMatchObject({ conflict: 'content' });
+      },
+    );
+  });
+
   it('deleteBranch_whenUnmerged_isCodedBranchNotMerged', GIT_TEST_TIMEOUT, async () => {
     await git(repo, 'checkout', '-b', 'unmerged');
     await fs.writeFile(path.join(repo, 'x.ts'), 'x\n', 'utf8');
@@ -409,6 +542,51 @@ describe('GitVersionControl', () => {
     expect(refs.tags.map((tag) => tag.name)).toEqual(['v1']);
     expect(refs.remotes).toEqual([]);
   });
+
+  it('refs_marksTheBranchesMainAlreadyContains_byAncestry (#887)', GIT_TEST_TIMEOUT, async () => {
+    // `done` is merged with a merge commit; `wip` has work main lacks; `fresh` sits at main's tip,
+    // which is as likely a branch just made as one just merged, so it is left unmarked.
+    await git(repo, 'checkout', '-b', 'done');
+    await fs.writeFile(path.join(repo, 'done.txt'), 'done\n', 'utf8');
+    await git(repo, 'add', '.');
+    await git(repo, 'commit', '-m', 'done');
+    await git(repo, 'checkout', 'main');
+    await git(repo, 'merge', '--no-ff', '-m', 'merge done', 'done');
+    await git(repo, 'checkout', '-b', 'wip');
+    await fs.writeFile(path.join(repo, 'wip.txt'), 'wip\n', 'utf8');
+    await git(repo, 'add', '.');
+    await git(repo, 'commit', '-m', 'wip');
+    await git(repo, 'checkout', 'main');
+    await git(repo, 'branch', 'fresh');
+
+    const refs: VcsRefs = await result('refs', {});
+    const mergedInto: Record<string, string | undefined> = Object.fromEntries(
+      refs.branches.map((branch) => [branch.name, branch.mergedInto]),
+    );
+
+    expect(mergedInto).toEqual({ done: 'main', fresh: undefined, main: undefined, wip: undefined });
+  });
+
+  it(
+    'refs_measuresAgainstTheRemotesDefaultBranch_whenThereIsOne (#887)',
+    GIT_TEST_TIMEOUT,
+    async () => {
+      await fs.writeFile(path.join(repo, 'README.md'), 'two\n', 'utf8');
+      await git(repo, 'commit', '-am', 'second');
+      const clone: string = path.join(base, 'clone');
+      await git(base, 'clone', repo, clone);
+      // A local branch left at an older commit that origin/main already contains.
+      await git(clone, 'branch', 'old', 'HEAD~1');
+
+      const response: VersionControlResponse<'refs'> = await vcs.request('refs', clone, {});
+
+      expect(
+        response.ok && response.result.branches.find((branch) => branch.name === 'old'),
+      ).toMatchObject({
+        mergedInto: 'main',
+      });
+    },
+  );
 
   it('clone_makesACheckoutOnANewBranch_andResolveRootFindsIt', GIT_TEST_TIMEOUT, async () => {
     const target: string = path.join(base, 'checkout');
@@ -544,5 +722,15 @@ describe('git command options', () => {
     expect(networkTimeout({ timeoutMs: 0 })).toBe(0);
     expect(networkTimeout({})).toBe(120_000);
     expect(networkTimeout({ timeoutMs: -1 })).toBe(120_000);
+  });
+});
+
+describe('gitSideFor', () => {
+  it('mapsYoursOntoOursEverywhere_butARebase', () => {
+    expect(gitSideFor('yours', 'merge')).toBe('--ours');
+    expect(gitSideFor('theirs', 'merge')).toBe('--theirs');
+    expect(gitSideFor('yours', 'cherry-pick')).toBe('--ours');
+    expect(gitSideFor('yours', 'rebase')).toBe('--theirs');
+    expect(gitSideFor('theirs', 'rebase')).toBe('--ours');
   });
 });

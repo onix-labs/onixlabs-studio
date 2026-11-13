@@ -42,18 +42,28 @@ import { ButtonRow } from '@shared/angular/components/forms/button-row/button-ro
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { AgentComposerShortcuts } from '@shared/angular/components/agent-composer-shortcuts/agent-composer-shortcuts';
-import { AgentQuickResponses } from '@shared/angular/components/agent-quick-responses/agent-quick-responses';
+import {
+  AgentQuickResponses,
+  QuickResponseChoice,
+} from '@shared/angular/components/agent-quick-responses/agent-quick-responses';
 import { AgentTasksMenu } from '@shared/angular/components/agent-tasks-menu/agent-tasks-menu';
 import { AgentLoginModal } from '@shared/angular/components/agent-login-modal/agent-login-modal';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { AgentPerf } from '@shared/angular/services/agent-perf/agent-perf';
 import { Settings } from '@shared/angular/services/settings/settings';
 import type { SendMessageWith } from '@shared/angular/services/settings/settings-registry';
+import { formatElapsed } from '@shared/angular/services/time/time-format';
 
 /**
  * Holds the bytes in a megabyte, for the Size per Image setting.
  */
 const BYTES_PER_MB: number = 1024 * 1024;
+
+/**
+ * How long a running agent must go unheard before the run clock says so (#1419): long enough that a
+ * slow tool or a long thought does not raise it, short enough that a stall is plain.
+ */
+export const QUIET_AFTER_MS: number = 30_000;
 
 /**
  * The image media types accepted by the composer (the types the providers accept).
@@ -508,6 +518,27 @@ export class AgentComposer {
   private readonly host: ElementRef<HTMLElement> = inject(ElementRef) as ElementRef<HTMLElement>;
 
   /**
+   * Holds how long the running agent has been quiet, in milliseconds, written by the elapsed tick
+   * (#1419). Zero until the quiet spell is long enough to mention.
+   */
+  protected readonly quietMs: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Holds the latest moment the run counts as active even without an event from the agent: when it
+   * started, and every tick spent waiting on the user, since a run blocked on a decision is not
+   * stalled.
+   */
+  private activeFloor: number = 0;
+
+  /**
+   * Gets the stall hint appended to the run clock, such as ` · quiet for 1m 40s`, or empty while the
+   * agent is being heard from.
+   */
+  protected readonly quietLabel: Signal<string> = computed((): string =>
+    this.quietMs() >= QUIET_AFTER_MS ? ` · quiet for ${formatElapsed(this.quietMs())}` : '',
+  );
+
+  /**
    * Gets the elapsed-run readout (`m:ss`), shown beside the token meter while a run executes.
    */
   protected readonly elapsedLabel: Signal<string> = computed((): string => {
@@ -692,8 +723,14 @@ export class AgentComposer {
         if (running) {
           this.elapsedMs.set(0);
           this.hiddenElapsedMs = 0;
+          this.activeFloor = Date.now();
+          this.quietMs.set(0);
           this.elapsedTimer ??= setInterval((): void => {
             if (this.awaitingDecision()) {
+              this.activeFloor = Date.now();
+              if (this.onScreen() && this.quietMs() !== 0) {
+                this.quietMs.set(0);
+              }
               return;
             }
             // An off-screen composer accumulates silently: writing the signal from a hidden view
@@ -702,6 +739,8 @@ export class AgentComposer {
             if (this.onScreen()) {
               this.elapsedMs.update((value: number): number => value + 1000 + this.hiddenElapsedMs);
               this.hiddenElapsedMs = 0;
+              const heard: number = Math.max(this.agent.lastActivityAt() ?? 0, this.activeFloor);
+              this.quietMs.set(Date.now() - heard);
             } else {
               this.hiddenElapsedMs += 1000;
             }
@@ -808,23 +847,49 @@ export class AgentComposer {
   }
 
   /**
-   * Answers with a saved quick response.
+   * Answers with a saved quick response, in the mode the menu picked (#1420).
    *
-   * An empty composer sends it as it stands — that is the whole point of a saved reply. A draft that
-   * is already being written is appended to instead, so the response becomes part of what is being
-   * said ("Yes, and check the tests too") rather than replacing it: text the user typed is theirs, and
-   * a menu pick must never throw it away.
-   * @param text The picked response.
+   * `send` sends it: on its own in an empty composer, or added to the draft, which then goes too (the
+   * menu's explicit Add and Send). `insert` puts it in the composer to be edited first. A draft is
+   * never thrown away and never sent by a plain pick: the menu asks for `insert` whenever one exists.
+   * @param choice The picked response and what to do with it.
    */
-  public onQuickResponse(text: string): void {
-    const current: string = this.draftText();
-    if (current.trim().length === 0) {
-      this.draftText.set(text);
+  public onQuickResponse(choice: QuickResponseChoice): void {
+    if (choice.mode === 'send') {
+      // The draft only, never the textarea: a text written into the textarea and then cleared by
+      // send() within one turn leaves the signal back where it was rendered, so nothing re-renders
+      // and the sent text stayed behind in the prompt.
+      this.draftText.set(AgentComposer.appended(this.draftText(), choice.text));
       this.send();
       return;
     }
-    const separator: string = current.endsWith(' ') || current.endsWith('\n') ? '' : ' ';
-    this.replaceComposerRange(current.length, current.length, `${separator}${text}`);
+    this.insertText(choice.text);
+  }
+
+  /**
+   * Puts text into the composer at the end of the draft, separated from it by a space when the draft
+   * does not already end in one, with the caret after it and the composer focused. A composer holding
+   * only whitespace counts as empty, and the text replaces it.
+   * @param text The text to add.
+   */
+  public insertText(text: string): void {
+    const current: string = this.draftText();
+    this.replaceComposerRange(0, current.length, AgentComposer.appended(current, text));
+  }
+
+  /**
+   * Adds text to the end of a draft, separated by a space when the draft does not already end in
+   * one. A draft holding only whitespace counts as empty, and the text replaces it.
+   * @param draft The draft.
+   * @param text The text to add.
+   * @returns Returns the new draft.
+   */
+  private static appended(draft: string, text: string): string {
+    if (draft.trim().length === 0) {
+      return text;
+    }
+    const separator: string = draft.endsWith(' ') || draft.endsWith('\n') ? '' : ' ';
+    return `${draft}${separator}${text}`;
   }
 
   /**

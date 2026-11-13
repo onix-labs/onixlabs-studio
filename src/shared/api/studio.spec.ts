@@ -30,6 +30,46 @@ function config(id: string, name: string): RunConfiguration {
 }
 
 describe('parseWorkspace', () => {
+  it('keepsTheTeamsExcludedCommands_soASaveDoesNotDropThem', () => {
+    // #1163: every save goes through this parser, so a field it does not read is erased on save.
+    const parsed: StudioWorkspace = parseWorkspace({
+      version: 1,
+      runConfigurations: [],
+      excludedCommands: ['npx ng :*', '*', 'dotnet:*'],
+    });
+
+    expect(parsed.excludedCommands).toEqual(['npx ng:*', 'dotnet:*']);
+    expect(parseWorkspace(JSON.parse(serializeWorkspace(parsed))).excludedCommands).toEqual([
+      'npx ng:*',
+      'dotnet:*',
+    ]);
+  });
+
+  it('leavesExcludedCommandsOut_whenThereAreNone', () => {
+    expect('excludedCommands' in parseWorkspace({ version: 1, excludedCommands: ['*'] })).toBe(
+      false,
+    );
+  });
+
+  it('keepsTheExcludedFiles_canonical_throughARoundTrip', () => {
+    // #1252: the list arrives with a clone, so a hand-edit or a hostile one is cleaned on read.
+    const parsed: StudioWorkspace = parseWorkspace({
+      version: 1,
+      runConfigurations: [],
+      excludedFiles: ['dist/', 'src\\generated', '../outside', '/etc', 'dist'],
+    });
+
+    expect(parsed.excludedFiles).toEqual(['dist', 'src/generated']);
+    expect(parseWorkspace(JSON.parse(serializeWorkspace(parsed))).excludedFiles).toEqual([
+      'dist',
+      'src/generated',
+    ]);
+  });
+
+  it('leavesExcludedFilesOut_whenThereAreNone', () => {
+    expect('excludedFiles' in parseWorkspace({ version: 1, excludedFiles: ['../x'] })).toBe(false);
+  });
+
   it('defaultsWhenNotAnObject', () => {
     expect(parseWorkspace(null)).toEqual(defaultWorkspace());
     expect(parseWorkspace('nonsense')).toEqual(defaultWorkspace());

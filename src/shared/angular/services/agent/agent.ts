@@ -184,6 +184,12 @@ export interface AgentTask {
   readonly durationMs: number;
 
   /**
+   * Gets when Studio saw the task start, in epoch milliseconds, so its running time can tick live
+   * rather than wait on the provider's next report (#1419).
+   */
+  readonly startedAt?: number;
+
+  /**
    * Gets the task's lifecycle state as last patched by the provider.
    */
   readonly status: 'pending' | 'running' | 'paused';
@@ -257,6 +263,18 @@ export interface AgentItem {
    * thumbnails and persisted with the transcript.
    */
   readonly images?: readonly AiImageRef[];
+
+  /**
+   * Gets when the item was added to the transcript, in epoch milliseconds (#1419). Absent from items
+   * saved before entries were timed, which show no time.
+   */
+  readonly createdAt?: number;
+
+  /**
+   * Gets when a tool call finished, in epoch milliseconds, so the transcript can say how long it took
+   * (#1419). Absent while it runs (or runs in the background) and from older transcripts.
+   */
+  readonly endedAt?: number;
 
   /**
    * Gets the correlation id of a tool use.
@@ -1023,6 +1041,13 @@ export class Agent {
   public readonly isRunning: Signal<boolean> = this.busy.asReadonly();
 
   /**
+   * Holds when this conversation last heard from its agent, in epoch milliseconds, or null before it
+   * has (#1419). A plain field rather than a signal: it changes on every streamed chunk, and the one
+   * reader — the composer's run clock — reads it on its own once-a-second tick.
+   */
+  private lastActivity: number | null = null;
+
+  /**
    * Holds the conversation's live tasks, keyed by task id in arrival order.
    */
   private readonly taskState: WritableSignal<readonly AgentTask[]> = signal<readonly AgentTask[]>(
@@ -1528,7 +1553,7 @@ export class Agent {
    * tab's bound repository) when present, otherwise the open folder workspace, or null for neither.
    * @returns Returns the workspace root path, or null.
    */
-  private runWorkspaceRoot(): string | null {
+  public runWorkspaceRoot(): string | null {
     return this.workspaceRootResolver !== null
       ? this.workspaceRootResolver()
       : (this.workspace.root()?.path ?? null);
@@ -1590,6 +1615,7 @@ export class Agent {
       deniedWritePaths: this.settings.aiDeniedWritePaths(),
       allowedNetworkLocations: this.settings.aiAllowedNetworkLocations(),
       deniedNetworkLocations: this.settings.aiDeniedNetworkLocations(),
+      excludedCommands: this.settings.aiExcludedCommands(),
       tokenCap: this.settings.aiTokenCap(),
       maxSteps: this.settings.get('ai.maxStepsPerTurn'),
       requireSandbox: this.settings.get('ai.requireOsSandbox'),
@@ -2132,6 +2158,7 @@ export class Agent {
       event.kind === 'task-updated'
     ) {
       if (event.agentSessionId === this.agentSessionId) {
+        this.lastActivity = Date.now();
         this.onTaskEvent(event);
       }
       return;
@@ -2206,6 +2233,7 @@ export class Agent {
     if (event.requestId !== this.activeRequestId && !this.admitsSessionEvent(event)) {
       return;
     }
+    this.lastActivity = Date.now();
     if (this.adoptionWatch?.requestId === event.requestId) {
       // The report-back has begun; the turn now ends the way every turn does, on its status.
       this.clearAdoptionWatch();
@@ -2664,6 +2692,7 @@ export class Agent {
           tokens: 0,
           toolUses: 0,
           durationMs: 0,
+          startedAt: Date.now(),
           status: 'running',
           backgrounded: false,
           skipTranscript: event.skipTranscript === true,
@@ -2745,7 +2774,7 @@ export class Agent {
     this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
       items.map((item: AgentItem): AgentItem =>
         item.kind === 'tool' && item.toolId === card && item.toolState === 'backgrounded'
-          ? { ...item, toolState: ok ? 'ok' : 'error' }
+          ? { ...item, toolState: ok ? 'ok' : 'error', endedAt: Date.now() }
           : item,
       ),
     );
@@ -3039,6 +3068,7 @@ export class Agent {
           id: `item-${this.sequence}`,
           kind: 'assistant',
           text: `**Conversation summary**\n\n${summary}`,
+          createdAt: Date.now(),
         },
       ]);
       // Start a genuinely fresh provider session from the summary, rather than leaving the old one to
@@ -3304,6 +3334,8 @@ export class Agent {
         ...items[index],
         toolState: backgrounded ? 'backgrounded' : ok ? 'ok' : 'error',
         ...(output === undefined ? {} : { toolOutput: output }),
+        // A backgrounded call has not finished; its time comes when the task settles.
+        ...(backgrounded ? {} : { endedAt: Date.now() }),
       };
       return next;
     });
@@ -3344,6 +3376,15 @@ export class Agent {
   }
 
   /**
+   * Gets when this conversation last heard from its agent — any event of its run, or a background
+   * task's progress — so a stall shows as a quiet spell (#1419).
+   * @returns Returns the time in epoch milliseconds, or null before anything has arrived.
+   */
+  public lastActivityAt(): number | null {
+    return this.lastActivity;
+  }
+
+  /**
    * Appends a new item with a fresh identifier.
    * @param item The item without its id.
    */
@@ -3361,7 +3402,7 @@ export class Agent {
    */
   private appendItem(item: Omit<AgentItem, 'id'>): void {
     this.sequence += 1;
-    const created: AgentItem = { id: `item-${this.sequence}`, ...item };
+    const created: AgentItem = { id: `item-${this.sequence}`, createdAt: Date.now(), ...item };
     this.log.update((items: readonly AgentItem[]): readonly AgentItem[] => [...items, created]);
   }
 

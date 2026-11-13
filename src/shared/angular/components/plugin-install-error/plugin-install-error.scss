@@ -1,0 +1,26 @@
+// The message leads; the actions sit after it and wrap beneath it when the row is narrow, rather than
+// squeezing the message into a column.
+.install-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  color: var(--danger-color);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.install-error__icon {
+  flex: none;
+}
+
+.install-error__message {
+  flex: 1 1 16rem;
+  min-inline-size: 0;
+}
+
+.install-error__actions {
+  display: flex;
+  flex: none;
+  gap: 0.25rem;
+}

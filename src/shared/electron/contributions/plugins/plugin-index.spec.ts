@@ -7,6 +7,7 @@ import CURATED_PLUGINS from './curated-plugins.json';
 import {
   IndexFetch,
   IndexResponse,
+  overlayPluginIndex,
   parsePluginIndex,
   PluginIndex,
   PluginIndexDocument,
@@ -121,6 +122,59 @@ describe('parsePluginIndex', () => {
     expect(parsePluginIndex({ revision: '1', plugins: [] })).toBeNull();
     expect(parsePluginIndex({ revision: 1.5, plugins: [] })).toBeNull();
     expect(parsePluginIndex({ revision: 1 })).toBeNull();
+  });
+});
+
+describe('overlayPluginIndex', () => {
+  /**
+   * Parses a document the test knows to be valid.
+   * @param revision The revision.
+   * @param plugins The entries.
+   * @returns Returns the parsed document.
+   */
+  function parsed(revision: number, plugins: readonly unknown[]): PluginIndexDocument {
+    return parsePluginIndex(document(revision, plugins))!;
+  }
+
+  it('recordsTheIdOfAnEntryItRefuses', () => {
+    const result: PluginIndexDocument = parsed(2, [
+      entry({ id: 'zls', apiVersion: '1.999.0' }),
+      entry({ id: 'other' }),
+    ]);
+
+    expect(result.refused).toEqual(['zls']);
+  });
+
+  it('keepsTheBundledEntry_whenTheNewerOneNeedsANewerApi', () => {
+    const seed: PluginIndexDocument = parsed(1, [entry({ id: 'zls', version: '0.13.0' })]);
+    const newer: PluginIndexDocument = parsed(2, [
+      entry({ id: 'zls', version: '0.14.0', apiVersion: '1.999.0' }),
+    ]);
+
+    const result: PluginIndexDocument = overlayPluginIndex(newer, seed);
+
+    expect(result.revision).toBe(2);
+    expect(
+      result.manifests.map((manifest: { version: string }): string => manifest.version),
+    ).toEqual(['0.13.0']);
+  });
+
+  it('prefersTheNewerEntry_whenThisBuildCanHonourIt', () => {
+    const seed: PluginIndexDocument = parsed(1, [entry({ id: 'zls', version: '0.13.0' })]);
+    const newer: PluginIndexDocument = parsed(2, [entry({ id: 'zls', version: '0.14.0' })]);
+
+    expect(
+      overlayPluginIndex(newer, seed).manifests.map((m: { version: string }) => m.version),
+    ).toEqual(['0.14.0']);
+  });
+
+  it('doesNotRestoreAPluginTheNewerIndexLeftOut', () => {
+    const seed: PluginIndexDocument = parsed(1, [entry({ id: 'zls' }), entry({ id: 'retired' })]);
+    const newer: PluginIndexDocument = parsed(2, [entry({ id: 'zls' })]);
+
+    expect(overlayPluginIndex(newer, seed).manifests.map((m: { id: string }) => m.id)).toEqual([
+      'zls',
+    ]);
   });
 });
 
@@ -300,9 +354,10 @@ describe('the shipped lockfiles', () => {
 
     it(`areServedFromThisRepositoryFor_${entry.id}`, () => {
       // A lockfile decides which tarballs are fetched. Pointing one somewhere we do not control would
-      // hand that decision away.
+      // hand that decision away. The ref is a plugin's release tag, or `main` for a third-party
+      // server's lockfile, which has no tag of its own.
       expect(entry.provision['lockfileUrl']).toMatch(
-        /^https:\/\/raw\.githubusercontent\.com\/onix-labs\/onixlabs-studio\/main\//,
+        /^https:\/\/raw\.githubusercontent\.com\/onix-labs\/onixlabs-studio\/(main|plugin-[a-z0-9-]+-v[0-9][^/]*)\/src\/shared\/electron\/contributions\/plugins\/lockfiles\/[^/]+\.lock\.json$/,
       );
     });
   }

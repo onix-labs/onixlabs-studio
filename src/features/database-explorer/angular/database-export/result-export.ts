@@ -92,6 +92,81 @@ export function toJson(
 }
 
 /**
+ * Turns a result set into a Markdown table (GitHub-flavoured): a header row of the column names, the
+ * divider, then one line per row. A pipe in a cell is escaped and a line break becomes `<br>`, so a
+ * cell never breaks the table; a NULL cell is written as the given text.
+ * @param columns The result's columns.
+ * @param rows The rows.
+ * @param nullText What a NULL is written as.
+ * @returns Returns the Markdown text.
+ */
+export function toMarkdown(
+  columns: readonly ResultColumn[],
+  rows: readonly (readonly DatabaseValue[])[],
+  nullText: string = '',
+): string {
+  const line: (fields: readonly string[]) => string = (fields: readonly string[]): string =>
+    `| ${fields.map(markdownField).join(' | ')} |`;
+  return [
+    line(columns.map((column: ResultColumn): string => column.name)),
+    `|${columns.map((): string => ' --- ').join('|')}|`,
+    ...rows.map((row: readonly DatabaseValue[]): string =>
+      line(
+        columns.map((_column: ResultColumn, index: number): string => {
+          const value: DatabaseValue = row[index] ?? null;
+          return value === null ? nullText : cellText(value).text;
+        }),
+      ),
+    ),
+  ]
+    .map((text: string): string => `${text}\n`)
+    .join('');
+}
+
+/**
+ * Makes one value safe in a Markdown table cell.
+ * @param field The value as text.
+ * @returns Returns it escaped.
+ */
+function markdownField(field: string): string {
+  return field
+    .replaceAll('\\', '\\\\')
+    .replaceAll('|', '\\|')
+    .replace(/\r\n|\r|\n/g, '<br>');
+}
+
+/**
+ * Turns rows into tab-separated text with a header row, as a spreadsheet pastes it: one line per row,
+ * a tab between cells. A tab or line break inside a cell becomes a space, since the format has no way
+ * to quote one; a NULL cell is written as the given text.
+ * @param columns The result's columns.
+ * @param rows The rows.
+ * @param nullText What a NULL is written as.
+ * @returns Returns the text.
+ */
+export function toTsv(
+  columns: readonly ResultColumn[],
+  rows: readonly (readonly DatabaseValue[])[],
+  nullText: string = '',
+): string {
+  const line: (fields: readonly string[]) => string = (fields: readonly string[]): string =>
+    fields.map((field: string): string => field.replace(/\t|\r\n|\r|\n/g, ' ')).join('\t');
+  return [
+    line(columns.map((column: ResultColumn): string => column.name)),
+    ...rows.map((row: readonly DatabaseValue[]): string =>
+      line(
+        columns.map((_column: ResultColumn, index: number): string => {
+          const value: DatabaseValue = row[index] ?? null;
+          return value === null ? nullText : cellText(value).text;
+        }),
+      ),
+    ),
+  ]
+    .map((text: string): string => `${text}\n`)
+    .join('');
+}
+
+/**
  * Turns a result set into an Excel workbook (`.xlsx`): one sheet, the column names as a bold header
  * row frozen above the data. Numbers and booleans are written as such, so they sort and sum in Excel;
  * a big integer is written as text, since Excel keeps only fifteen significant digits; every other

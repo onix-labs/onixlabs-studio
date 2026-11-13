@@ -63,6 +63,11 @@ const HOSTING_TOOLS: readonly HostingToolSpec[] = [
     description: "List the repository's recent CI runs (workflow runs), most recent first.",
   },
   {
+    op: 'listLabels',
+    description:
+      "List the labels the repository's issues and pull requests can carry. Choose from these when labelling.",
+  },
+  {
     op: 'createIssue',
     description:
       'Open an issue in the repository. The body is markdown. The user may be asked to approve this first.',
@@ -78,9 +83,29 @@ const HOSTING_TOOLS: readonly HostingToolSpec[] = [
       'Close or reopen an issue. When closing, say whether its work was completed or is not planned. The user may be asked to approve this first.',
   },
   {
+    op: 'updateIssue',
+    description:
+      "Edit an issue, or a pull request's issue side (they share a number): its title, body, labels, assignees or milestone. Only what you pass changes; labels and assignees are added or removed by name, never replaced. Labels must already exist (see hosting_list_labels). The user may be asked to approve this first.",
+  },
+  {
+    op: 'addSubIssue',
+    description:
+      'Make one issue a sub-issue of another, as an epic lists its parts. The user may be asked to approve this first.',
+  },
+  {
+    op: 'removeSubIssue',
+    description:
+      'Take a sub-issue off its parent issue. Both issues stay open as they were. The user may be asked to approve this first.',
+  },
+  {
     op: 'createPullRequest',
     description:
       'Open a pull request from a pushed branch (head) into another (base). Push the branch first; use owner:branch for a fork. The user may be asked to approve this first.',
+  },
+  {
+    op: 'updatePullRequest',
+    description:
+      "Edit a pull request: its title, description, the branch it merges into, or whether it is a draft (false marks it ready for review). Only what you pass changes. For its labels, assignees or milestone use hosting_update_issue with the pull request's number. The user may be asked to approve this first.",
   },
   {
     op: 'rerunCiRun',
@@ -90,6 +115,16 @@ const HOSTING_TOOLS: readonly HostingToolSpec[] = [
     op: 'cancelCiRun',
     description: 'Cancel a CI run in progress. The user may be asked to approve this first.',
   },
+];
+
+/**
+ * The operations that edit an existing issue or pull request (#1156).
+ */
+const EDIT_OPS: readonly HostingOp[] = [
+  'updateIssue',
+  'addSubIssue',
+  'removeSubIssue',
+  'updatePullRequest',
 ];
 
 /**
@@ -138,6 +173,7 @@ export async function createHostingTools(context: AgentRunContext): Promise<Tool
     .string()
     .regex(/^\d+$/)
     .describe('The CI run id, as listed.');
+  const names: ReturnType<typeof z.array> = z.array(z.string().min(1)).min(1);
   const schemas: Readonly<Record<HostingOp, ReturnType<typeof z.object> | undefined>> = {
     initialize: undefined,
     authStatus: undefined,
@@ -153,6 +189,7 @@ export async function createHostingTools(context: AgentRunContext): Promise<Tool
     listIssueComments: z.object({ issue }),
     listSubIssues: z.object({ issue }),
     listCiRuns: z.object({}),
+    listLabels: z.object({}),
     createIssue: z.object({
       title: z.string().min(1).describe("The issue's title."),
       body: z.string().optional().describe("The issue's body, as markdown."),
@@ -171,6 +208,29 @@ export async function createHostingTools(context: AgentRunContext): Promise<Tool
           'When closing: completed (the work is done) or notPlanned (it will not be done).',
         ),
     }),
+    updateIssue: z.object({
+      issue,
+      title: z.string().min(1).optional().describe('The new title.'),
+      body: z.string().optional().describe('The new body, as markdown. Replaces the whole body.'),
+      addLabels: names.optional().describe('Labels to add, by name. Each must already exist.'),
+      removeLabels: names.optional().describe('Labels to remove, by name.'),
+      addAssignees: names.optional().describe('Logins to assign.'),
+      removeAssignees: names.optional().describe('Logins to unassign.'),
+      milestone: z
+        .string()
+        .min(1)
+        .nullable()
+        .optional()
+        .describe("The milestone's title to set, or null to clear it."),
+    }),
+    addSubIssue: z.object({
+      issue: issue.describe('The parent issue.'),
+      subIssue: z.number().int().positive().describe('The issue to make its sub-issue.'),
+    }),
+    removeSubIssue: z.object({
+      issue: issue.describe('The parent issue.'),
+      subIssue: z.number().int().positive().describe('The sub-issue to take off it.'),
+    }),
     createPullRequest: z.object({
       title: z.string().min(1).describe("The pull request's title."),
       head: z
@@ -180,6 +240,19 @@ export async function createHostingTools(context: AgentRunContext): Promise<Tool
       base: z.string().min(1).describe('The branch to merge into, such as main.'),
       body: z.string().optional().describe("The pull request's description, as markdown."),
       draft: z.boolean().optional().describe('Whether to open it as a draft.'),
+    }),
+    updatePullRequest: z.object({
+      pullRequest: z.number().int().positive().describe("The pull request's number."),
+      title: z.string().min(1).optional().describe('The new title.'),
+      body: z
+        .string()
+        .optional()
+        .describe('The new description, as markdown. Replaces the whole description.'),
+      base: z.string().min(1).optional().describe('The branch it should now merge into.'),
+      draft: z
+        .boolean()
+        .optional()
+        .describe('true converts it to a draft; false marks it ready for review.'),
     }),
     rerunCiRun: z.object({ runId }),
     cancelCiRun: z.object({ runId }),
@@ -260,6 +333,13 @@ export function hostingPromptAppendix(context: AgentRunContext): string {
     `This workspace's repository is ${owner}/${name} on ${host}, served by Studio's ${hosting.provider} plugin. You have these tools for it:`,
     ...offered.map((spec: HostingToolSpec): string => `- ${hostingOpToolName(spec.op)}`),
     `For these operations, use these tools rather than a command-line tool (such as the host's own CLI) or the web API: Studio asks the user before anything is changed on ${hosting.provider}, keeps a record, and applies the user's own sign-in. For anything they do not cover — releases, wikis, repository settings and the like — use your other tools as usual.`,
+    // Every edit an agent once reached for the CLI to make (#1156), named, so the gap it remembers is
+    // not assumed to still be there.
+    ...(offered.some((spec: HostingToolSpec): boolean => EDIT_OPS.includes(spec.op))
+      ? [
+          'Editing issues and pull requests is covered too: titles, bodies, labels, assignees, milestones, sub-issues and drafts all go through these tools.',
+        ]
+      : []),
     // The user keeps agents off the host's CLI (#853): said up front, so the agent does not try it and
     // learn from a refusal.
     ...((context.blockedCommands ?? []).length === 0

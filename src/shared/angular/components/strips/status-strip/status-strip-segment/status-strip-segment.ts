@@ -7,7 +7,7 @@ import { StatusSegment } from '@shared/angular/services/status-bar/status-segmen
 
 /**
  * Renders one status-strip segment: its optional icon, its text, and its hover title — and, when it
- * has one, the menu it opens (#1236). This is the one place a segment is styled — the view region's
+ * has one, the menu it opens (#1236) or the action a click runs (#1160). This is the one place a segment is styled — the view region's
  * {@link StatusStripSegments} and the strip's own ambient region both compose it, so a feature never
  * emits status markup of its own.
  */
@@ -43,6 +43,17 @@ import { StatusSegment } from '@shared/angular/services/status-bar/status-segmen
         placement="up-end"
         (selected)="menu.choose($event)"
       />
+    } @else if (segment().activate; as activate) {
+      <!-- A segment that acts at once is a button too, styled as one that opens a menu (#1160). -->
+      <button
+        type="button"
+        class="status-strip-segment status-strip-segment--button"
+        [title]="segment().title ?? segment().text"
+        [attr.data-segment]="segment().id"
+        (click)="activate()"
+      >
+        <ng-container [ngTemplateOutlet]="content" />
+      </button>
     } @else {
       <span class="status-strip-segment" [title]="segment().title ?? segment().text">
         <ng-container [ngTemplateOutlet]="content" />

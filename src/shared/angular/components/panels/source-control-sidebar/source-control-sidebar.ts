@@ -2,12 +2,15 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
+  EffectRef,
   inject,
   input,
   InputSignal,
   OnDestroy,
   Signal,
   signal,
+  untracked,
   WritableSignal,
 } from '@angular/core';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -46,6 +49,11 @@ import {
   GitStash,
   GitTag,
 } from '@shared/angular/services/repository/repository-data';
+import {
+  BranchMerge,
+  branchMerge,
+  describeBranchMerge,
+} from '@shared/angular/services/repository/branch-merge';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
@@ -149,6 +157,17 @@ interface RepoNode {
    * Gets the branch, for a local-branch row (drives the ahead/behind deltas and checkout action).
    */
   readonly branch?: GitBranch;
+
+  /**
+   * Gets where a merged local branch's work went, in words, for its Merged tag's tooltip — or
+   * undefined for a branch not known to be merged (#887).
+   */
+  readonly merged?: string;
+
+  /**
+   * Gets whether a local branch's upstream no longer exists on the remote (#887).
+   */
+  readonly upstreamGone?: boolean;
 
   /**
    * Gets the worktree, for a worktree row and for the branch rows of a worktree other than the
@@ -730,6 +749,20 @@ export class SourceControlSidebar implements OnDestroy {
   private readonly expandedWorktrees: WritableSignal<ReadonlySet<string>> = signal<
     ReadonlySet<string>
   >(new Set<string>());
+
+  /**
+   * Reads the repository's merged pull requests whenever a hosting plugin is found to serve it, so a
+   * branch merged by squash or rebase is marked Merged as well as one merged by ancestry (#887). Always
+   * on while a hosting plugin serves the repository; there is no setting.
+   */
+  private readonly mergedPullRequestLoader: EffectRef = effect((): void => {
+    const reference: unknown = this.forge.repositoryRef();
+    untracked((): void => {
+      if (reference !== null) {
+        void this.forge.loadMergedPullRequests();
+      }
+    });
+  });
 
   /**
    * Holds the keys of the currently expanded sections. Only the local branches start open; the rest
@@ -2233,6 +2266,10 @@ export class SourceControlSidebar implements OnDestroy {
    * @param force Whether to read it even when it has data already.
    */
   private loadSection(key: string, force: boolean = false): void {
+    // Local's Refresh also re-reads which branches the host has merged (#887).
+    if (key === 'local' && force) {
+      void this.forge.loadMergedPullRequests();
+    }
     if (key === 'pullRequests' && (force || this.forge.pullRequests().state !== 'ready')) {
       void this.forge.loadPullRequests();
     }
@@ -2265,19 +2302,26 @@ export class SourceControlSidebar implements OnDestroy {
     if (branches.length === 0) {
       return [this.emptyRow('local', Icon.SOURCE_CONTROL, 'No local branches', depth)];
     }
-    return branches.map((branch: GitBranch): TreeRow => ({
-      id: `branch:${branch.name}`,
-      depth,
-      expandable: false,
-      expanded: false,
-      data: {
-        kind: 'branch',
-        icon: Icon.SOURCE_CONTROL,
-        label: branch.name,
-        branch,
-        commit: branch.tip,
-      },
-    }));
+    const mergedPullRequests: readonly ForgePullRequest[] = this.forge.mergedPullRequests();
+    return branches.map((branch: GitBranch): TreeRow => {
+      // A merged branch is dimmed, with a Merged tag saying where its work went (#887).
+      const merge: BranchMerge | null = branchMerge(branch, mergedPullRequests);
+      return {
+        id: `branch:${branch.name}`,
+        depth,
+        expandable: false,
+        expanded: false,
+        data: {
+          kind: 'branch',
+          icon: Icon.SOURCE_CONTROL,
+          label: branch.name,
+          branch,
+          commit: branch.tip,
+          ...(merge === null ? {} : { merged: describeBranchMerge(merge), muted: true }),
+          ...(branch.upstreamGone === true ? { upstreamGone: true } : {}),
+        },
+      };
+    });
   }
 
   /**

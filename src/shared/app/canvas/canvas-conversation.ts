@@ -41,6 +41,8 @@ function mockAgent(running: boolean): Partial<Agent> {
     contextWindow: signal<number>(1_000_000),
     costUsd: signal<number>(1.42),
     billedPerToken: signal<boolean>(true),
+    // The board runs no commands, so none left the sandbox (#1160).
+    unsandboxedRuns: signal<number>(0),
     provider: signal<string>(PROVIDER.id),
     mode: signal<'agent'>('agent'),
     effort: signal(null),
@@ -65,6 +67,9 @@ function mockAgent(running: boolean): Partial<Agent> {
     clear: ignore,
     setMode: ignore,
     setEffort: ignore,
+    lastActivityAt: (): number | null => null,
+    // The board runs no agent, so it works in no workspace and offers no exclusion (#1163).
+    runWorkspaceRoot: (): null => null,
     dismissLoginPrompt: ignore,
     onLoginSucceeded: ignore,
     promptLogin: ignore,
@@ -104,6 +109,7 @@ function mockAgent(running: boolean): Partial<Agent> {
         tailRequest: signal<number>(0),
         topRequest: signal<number>(0),
         promptRequest: signal<number>(0),
+        unsandboxedRequest: signal<number>(0),
       },
     },
     { provide: Workspace, useValue: { root: signal<{ path: string } | null>({ path: '/repo' }) } },

@@ -121,6 +121,7 @@ const PLUGIN_GROUP_SLOTS: readonly PluginSlot[] = [
   'container-engine',
   'database-engine',
   'package-manager',
+  'test-adapter',
 ];
 
 /**

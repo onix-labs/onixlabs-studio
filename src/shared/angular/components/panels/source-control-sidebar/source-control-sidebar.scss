@@ -63,6 +63,11 @@
 
 // Why a section's contents are not current — "offline", "rate limited". Muted and italic beside the
 // heading, so the stale data underneath stays the thing being read rather than the apology for it.
+// A branch's Merged or Gone tag (#887), set a little apart from its name as the note is.
+.rail__tag {
+  margin-inline-start: 0.35rem;
+}
+
 .rail__note {
   margin-inline-start: 0.35rem;
   color: var(--form-muted-foreground-color);

@@ -64,6 +64,18 @@ const ALLOWED_NAMES: ReadonlySet<string> = new Set<string>([
   'DISPLAY',
   'WAYLAND_DISPLAY',
   'DBUS_SESSION_BUS_ADDRESS',
+  // The package managers' own registry settings (#1423), so a private module, crate home or index set
+  // in the user's shell reaches the plugin that resolves packages. By exact name, never a prefix: `GO`
+  // would also pass `GOOGLE_APPLICATION_CREDENTIALS`.
+  'GOPROXY',
+  'GOPRIVATE',
+  'GONOSUMDB',
+  'GONOPROXY',
+  'GOFLAGS',
+  'CARGO_HOME',
+  'PIP_INDEX_URL',
+  'PIP_EXTRA_INDEX_URL',
+  'PIP_CONFIG_FILE',
 ]);
 
 /**

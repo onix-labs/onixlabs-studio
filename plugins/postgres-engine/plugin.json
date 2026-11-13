@@ -3,12 +3,12 @@
   "name": "PostgreSQL",
   "description": "Connect the Database Explorer to PostgreSQL servers.",
   "detail": "Connects to PostgreSQL servers over the network with `pg`, a pure-JavaScript client; it installs no database and no native code.",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "apiVersion": "1.20.0",
   "provision": {
     "kind": "npm",
-    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/postgres-engine.lock.json",
-    "sha256": "7160ad682ac35de9ba84fa974ebd9ecd620e0b12e3249e69ffc6c76b7399238d",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-postgres-engine-v1.4.0/src/shared/electron/contributions/plugins/lockfiles/postgres-engine.lock.json",
+    "sha256": "90288c8dea77003dfc5792ed2cc8360ee88b5fbf64c04ffc28f49368c2cd9693",
     "executablePath": "node_modules/@onixlabs/postgres-engine/main.js"
   },
   "contributes": {

@@ -6,6 +6,8 @@
     [attr.aria-label]="triggerTitle()"
     [cdkMenuTriggerFor]="menu"
     [cdkMenuPosition]="menuPosition"
+    (cdkMenuOpened)="clock.start()"
+    (cdkMenuClosed)="clock.stop()"
   >
     <app-icon class="tasks-menu__glyph" [icon]="Icon.SPINNER" />
     <span class="tasks-menu__count">{{ count() }}</span>

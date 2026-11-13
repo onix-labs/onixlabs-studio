@@ -7,6 +7,9 @@
  * input degrades to defaults rather than throwing.
  */
 
+import { sanitizeExcludedCommands } from './excluded-commands';
+import { sanitizeExcludedFiles } from './excluded-files';
+
 /**
  * The name of the folder holding a workspace's persisted studio configuration.
  */
@@ -187,6 +190,19 @@ export interface StudioWorkspace {
    * Gets the pinned project-system kind for the workspace, or undefined to let detection decide.
    */
   readonly providerKind?: string;
+
+  /**
+   * Gets the commands the team excludes from agents' sandbox in this workspace (#1163), or undefined
+   * for none. Committed, so it arrives with a clone: Studio applies it only once the user has reviewed
+   * exactly this list in the workspace.
+   */
+  readonly excludedCommands?: readonly string[];
+
+  /**
+   * Gets the files and folders excluded from the explorers, Expand All and Find (#1252), as canonical
+   * workspace-relative paths, or undefined for none.
+   */
+  readonly excludedFiles?: readonly string[];
 }
 
 /**
@@ -467,7 +483,16 @@ export function parseWorkspace(raw: unknown): StudioWorkspace {
             configuration !== null,
         )
     : [];
-  return { version, runConfigurations, providerKind: optionalString(record, 'providerKind') };
+  const excludedCommands: readonly string[] = sanitizeExcludedCommands(record['excludedCommands']);
+  const excludedFiles: readonly string[] = sanitizeExcludedFiles(record['excludedFiles']);
+  return {
+    version,
+    runConfigurations,
+    providerKind: optionalString(record, 'providerKind'),
+    // Kept only when there are some, so a workspace without them writes the file it always did.
+    ...(excludedCommands.length === 0 ? {} : { excludedCommands }),
+    ...(excludedFiles.length === 0 ? {} : { excludedFiles }),
+  };
 }
 
 /**

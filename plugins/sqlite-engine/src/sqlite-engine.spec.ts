@@ -7,7 +7,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CompletionName, DatabaseNode, NodeActionOutcome } from '../../protocol/database/protocol';
+import {
+  CompletionName,
+  DatabaseNode,
+  ExplainOutcome,
+  NodeActionOutcome,
+  QueryPlan,
+} from '../../protocol/database/protocol';
 import { encodePath, EngineSession } from '../../protocol/database/engine';
 import { SqliteEngine } from './sqlite-engine';
 
@@ -76,7 +82,13 @@ describe('SqliteEngine', (): void => {
     const engine: SqliteEngine = new SqliteEngine('/unused/main.js');
 
     expect(engine.info.id).toBe('sqlite');
-    expect(engine.info.capabilities).toEqual(['cancel', 'script', 'completion', 'transactions']);
+    expect(engine.info.capabilities).toEqual([
+      'cancel',
+      'script',
+      'completion',
+      'transactions',
+      'explain',
+    ]);
     expect(engine.info.connectionFields.map((field: { id: string }): string => field.id)).toEqual([
       'file',
       'readOnly',
@@ -86,6 +98,39 @@ describe('SqliteEngine', (): void => {
         (field: { section?: string }): string | undefined => field.section,
       ),
     ).toEqual(['server', 'options']);
+  });
+
+  it('explain_plansEachStatement_withoutRunningAWrite', async (): Promise<void> => {
+    // #1099. EXPLAIN QUERY PLAN plans a statement without running it, so the delete leaves the row.
+    const seed: DatabaseSync = new DatabaseSync(file);
+    seed.exec(`insert into authors (name) values ('Ada')`);
+    seed.close();
+    const session: EngineSession = await open();
+
+    const outcome: ExplainOutcome = await session.explain!(
+      `select * from books where title = 'x';\ndelete from authors`,
+    );
+
+    expect(outcome.failed).toBe(false);
+    expect(outcome.plans.map((plan: QueryPlan): number => plan.line)).toEqual([1, 2]);
+    expect(outcome.plans[0]?.root.operator).toBe('QUERY PLAN');
+    expect(outcome.plans[0]?.root.children[0]).toMatchObject({
+      operator: 'SEARCH',
+      detail: expect.stringContaining('books_by_title') as string,
+    });
+    const check: DatabaseSync = new DatabaseSync(file);
+    expect(check.prepare('select count(*) as n from authors').get()?.['n']).toBe(1);
+    check.close();
+  });
+
+  it('explain_ofAStatementThatCannotBePlanned_saysWhy_keepingThePlansBeforeIt', async (): Promise<void> => {
+    const session: EngineSession = await open();
+
+    const outcome: ExplainOutcome = await session.explain!('select 1; select * from nowhere');
+
+    expect(outcome.failed).toBe(true);
+    expect(outcome.plans).toHaveLength(1);
+    expect(outcome.message).toContain('nowhere');
   });
 
   it('connect_refusesAnEmptyFile', async (): Promise<void> => {

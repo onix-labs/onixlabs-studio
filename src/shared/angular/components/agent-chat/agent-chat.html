@@ -103,6 +103,11 @@
                     (click)="composer.beginEdit(row.item!)"
                   />
                 }
+                @if (row.stamp) {
+                  <time class="agent__stamp" (pointerenter)="showWhen($event, row.stampAt!)">{{
+                    row.stamp
+                  }}</time>
+                }
               </span>
             </div>
           </div>
@@ -140,6 +145,7 @@
       [class.agent__row--down]="row.connectsDown"
       [class.agent__row--working]="row.kind === 'working'"
       [class.agent__unmeasured]="!isMeasured(row.id)"
+      [attr.data-unsandboxed]="row.item?.toolUnsandboxed !== undefined ? row.item?.id : null"
     >
       <div class="agent__node" aria-hidden="true">
         <span
@@ -155,27 +161,41 @@
       <div class="agent__row-content">
         @switch (row.kind) {
           @case ('assistant') {
-            <app-markdown-renderer class="agent__bubble agent__markdown" [text]="row.item!.text" />
-            <span class="agent__msg-actions">
-              <app-button
-                variant="none"
-                size="small"
-                [icon]="copiedId() === row.item!.id ? Icon.CHECK : Icon.COPY"
-                [label]="copiedId() === row.item!.id ? 'Copied' : 'Copy'"
-                ariaLabel="Copy response"
-                (click)="copy(row.item!)"
+            <!-- The response and its actions share a box as wide as the response, so the actions
+                 row spans it: Copy and Retry at its start, the time at its end. -->
+            <div class="agent__response">
+              <app-markdown-renderer
+                class="agent__bubble agent__markdown"
+                [text]="row.item!.text"
               />
-              @if (retryTarget()?.assistantId === row.item!.id) {
+              <span class="agent__msg-actions">
                 <app-button
                   variant="none"
                   size="small"
-                  [icon]="Icon.REFRESH"
-                  label="Retry"
-                  ariaLabel="Retry this turn"
-                  (click)="retryLast()"
+                  [icon]="copiedId() === row.item!.id ? Icon.CHECK : Icon.COPY"
+                  [label]="copiedId() === row.item!.id ? 'Copied' : 'Copy'"
+                  ariaLabel="Copy response"
+                  (click)="copy(row.item!)"
                 />
-              }
-            </span>
+                @if (retryTarget()?.assistantId === row.item!.id) {
+                  <app-button
+                    variant="none"
+                    size="small"
+                    [icon]="Icon.REFRESH"
+                    label="Retry"
+                    ariaLabel="Retry this turn"
+                    (click)="retryLast()"
+                  />
+                }
+                @if (row.stamp) {
+                  <time
+                    class="agent__stamp agent__stamp--end"
+                    (pointerenter)="showWhen($event, row.stampAt!)"
+                    >{{ row.stamp }}</time
+                  >
+                }
+              </span>
+            </div>
           }
           @case ('thinking') {
             <!-- The turn's reasoning, shown in its box rather than folded behind a caret: the
@@ -355,7 +375,9 @@
                   <!-- Which commands left the sandbox has to read at a glance, without opening each
                        row; why it was allowed is on the badge (#1160). -->
                   @if (row.item!.toolUnsandboxed; as reason) {
-                    <span class="agent__action-unsandboxed" [attr.title]="reason">Unsandboxed</span>
+                    <app-chip class="agent__action-unsandboxed" tone="warning" [attr.title]="reason"
+                      >Unsandboxed</app-chip
+                    >
                   }
                   <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN_BOLD" />
                 </summary>
@@ -365,10 +387,38 @@
                     <code class="agent__action-cmd">{{ row.item!.toolDetail }}</code>
                   }
                   <ng-container [ngTemplateOutlet]="payloads" />
+                  <!-- A toolchain that cannot run in the sandbox at all crashes there; the fix is the
+                       user's to make, in one click, for this workspace only (#1163). -->
+                  @if (exclusionOffer(row.item!); as pattern) {
+                    <p class="agent__exclusion-offer">
+                      This looks like a crash the sandbox causes.
+                      <app-button
+                        variant="ghost"
+                        size="small"
+                        [label]="'Exclude ' + pattern + ' for This Workspace'"
+                        (click)="excludeForWorkspace(row.item!, pattern)"
+                      />
+                    </p>
+                  } @else if (row.item!.toolId && excludedFrom().has(row.item!.toolId)) {
+                    <p class="agent__exclusion-offer">
+                      Excluded for this workspace. Ask the agent to run it again.
+                    </p>
+                  }
                 </div>
               </details>
             }
           }
+        }
+
+        <!-- When the entry arrived (#1419): under its box, at the box's trailing edge, shown on
+             hover, the same on every entry. A response carries it on its own actions row instead,
+             opposite Copy and Retry, which puts it in the same place. -->
+        @if (row.stamp && row.kind !== 'assistant') {
+          <time
+            class="agent__stamp agent__stamp--under"
+            (pointerenter)="showWhen($event, row.stampAt!)"
+            >{{ row.stamp }}</time
+          >
         }
       </div>
     </div>
@@ -377,5 +427,27 @@
   <!-- The command surface: a sibling component, not part of the transcript view, so typing in it does
        not re-check the message list's bindings. Sending re-pins the transcript to the tail; its Edit
        affordance on a user bubble drives the composer's edit mode through the template reference. -->
+  <!-- A repository's shared exclusions are ignored until the user allows them here (#1163): a clone
+       must not be able to take commands out of the sandbox on its own say-so. Not a modal: the user
+       can keep working, and the list stays ignored. -->
+  @if (pendingExclusions().length) {
+    <div class="agent__exclusion-review" role="status">
+      <p class="agent__exclusion-review-text">
+        This workspace's repository asks to run these commands outside the sandbox:
+        <code>{{ pendingExclusions().join(', ') }}</code
+        >. They are ignored until you allow them, and still ask for permission when they run.
+      </p>
+      <span class="agent__exclusion-review-actions">
+        <app-button variant="ghost" size="small" label="Allow" (click)="allowSharedExclusions()" />
+        <app-button
+          variant="ghost"
+          size="small"
+          label="Not Now"
+          (click)="postponeSharedExclusions()"
+        />
+      </span>
+    </div>
+  }
+
   <app-agent-composer #composer [tabId]="tabId()" [surface]="surface()" (sent)="onSent()" />
 </div>

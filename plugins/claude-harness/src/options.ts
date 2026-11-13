@@ -28,6 +28,7 @@ import type {
   SandboxSettings,
 } from '@anthropic-ai/claude-agent-sdk';
 import { blockedCommandMessage, findBlockedCommand } from './blocked-commands';
+import { excludedCommandsOf, isExcludedCommand } from './excluded-commands';
 import {
   absolutePathsOf,
   CONFINED_WRITE_TOOLS,
@@ -226,8 +227,8 @@ export function parseQuestions(input: Record<string, unknown>): readonly ParsedQ
  * sandbox sees the syscalls, so it covers `Bash` and the SDK's own web access. Handed to it: the denied
  * write paths (so a shell command cannot write where a file tool may not), the allowed write paths (so
  * a granted shell write to a widened root is not then blocked), the network locations, which have no
- * gate equivalent at all, and local ports and the Docker socket when their permissions open them
- * (#1162).
+ * gate equivalent at all, local ports and the Docker socket when their permissions open them
+ * (#1162), and the certificate trust service when its permission does.
  *
  * Every list is omitted when empty, so a user who configured nothing gets precisely the sandbox Studio
  * has always applied, plus the session's temporary folder when it has one.
@@ -284,6 +285,19 @@ export function sandboxFor(
       ...(allowLocalBinding ? { allowLocalBinding } : {}),
       ...(allowUnixSockets.length > 0 ? { allowUnixSockets: [...allowUnixSockets] } : {}),
     };
+  }
+  // macOS's certificate trust service, which Go tools verify TLS through. The SDK keeps it closed
+  // because it is a path out that the network rules cannot see, so it opens only when its permission
+  // does.
+  if (reach.certificateChecks === 'allow') {
+    sandbox.enableWeakerNetworkIsolation = true;
+  }
+  // The commands the user excluded (#1163): handed to the SDK, which runs them outside the sandbox and
+  // still through the permission flow. Kept to the patterns this harness understands, so the audit's
+  // "ran outside" and the sandbox's agree on every command.
+  const excluded: readonly string[] = excludedCommandsOf(turn);
+  if (excluded.length > 0) {
+    sandbox.excludedCommands = [...excluded];
   }
   return sandbox;
 }
@@ -829,12 +843,23 @@ export function buildOptions(
                   : turn.permissionPosture === 'prompt'
                     ? 'ask'
                     : (turn.toolPolicies[RUN_UNSANDBOXED] ?? 'ask');
+                // A command the user excluded (#1163) ran outside the sandbox without asking to: the
+                // SDK took it out, so it is recorded as unsandboxed, and why.
+                const excluded: boolean =
+                  raw === SHELL_TOOL &&
+                  !left &&
+                  isExcludedCommand(
+                    typeof ranInput['command'] === 'string' ? ranInput['command'] : '',
+                    excludedCommandsOf(turn),
+                  );
                 gate.audit(
                   turn.requestId,
                   displayName,
                   summarizeToolInput(post.tool_input),
-                  coarseGrantSource(policy, turn.permissionPosture, EDIT_TOOLS.includes(raw)),
-                  raw === SHELL_TOOL ? sandboxAvailable && !left : undefined,
+                  excluded
+                    ? 'excluded'
+                    : coarseGrantSource(policy, turn.permissionPosture, EDIT_TOOLS.includes(raw)),
+                  raw === SHELL_TOOL ? sandboxAvailable && !left && !excluded : undefined,
                   post.tool_use_id,
                 );
               } catch {

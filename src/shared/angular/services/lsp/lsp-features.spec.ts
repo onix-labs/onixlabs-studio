@@ -9,7 +9,9 @@ import {
   SEMANTIC_TOKEN_TYPES,
 } from '@shared/api/lsp-channels';
 import { FileChannel } from '@shared/api/file-channels';
+import { ProjectChannel } from '@shared/api/project-channels';
 import { Editors } from '@shared/angular/services/editors/editors';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { BuildHandler, Builds } from '@shared/angular/services/tasks/builds';
 import { signal, WritableSignal } from '@angular/core';
@@ -33,7 +35,10 @@ import {
   LspRenameSupport,
   STUDIO_LSP_COMMAND,
   opensBlockAt,
+  testLensMode,
 } from './lsp-features';
+import type { LspCommand } from './lsp-features';
+import { TestAtLocation, TestRunMode, TestRuns } from '@shared/angular/services/tests/test-runs';
 import type { HierarchyNode, HierarchySource } from '@shared/angular/services/hierarchy/hierarchy';
 import type { LspCompletionSupport, LspSignatureHelpSupport } from './lsp-completion';
 import { readFileSync } from 'node:fs';
@@ -86,6 +91,8 @@ interface CapturedProviders {
   semanticEmitters: Map<string, FakeEmitter>;
   /** The formatting providers registered, keyed `<language>:<document|range|onType>` (#1141). */
   formatting?: Map<string, FakeFormattingProvider>;
+  /** The Python formatter Studio registers at start for its projects' own tools (#1212). */
+  projectFormatting?: FakeFormattingProvider;
   /** The code lens providers registered, keyed by language (#1149). */
   codeLens?: Map<string, FakeCodeLensProvider>;
   /** The structure providers registered, keyed `<language>:<folding|highlights|rangeTokens>` (#1147). */
@@ -118,6 +125,8 @@ interface FakeStructureProvider {
     model: unknown,
     range: unknown,
   ): Promise<{ data: Uint32Array } | null>;
+  provideDocumentColors?(model: unknown): Promise<unknown>;
+  provideColorPresentations?(model: unknown, color: unknown): Promise<unknown>;
 }
 
 /**
@@ -236,6 +245,9 @@ function fakeMonacoNamespace(
       registerSelectionRangeProvider: (language: string, provider: unknown): void => {
         (captured.structure ??= new Map()).set(`${language}:selectionRanges`, provider);
       },
+      registerColorProvider: (language: string, provider: unknown): void => {
+        (captured.structure ??= new Map()).set(`${language}:colors`, provider);
+      },
       registerDocumentFormattingEditProvider: (language: string, provider: unknown): unknown =>
         captureFormatter(captured, `${language}:document`, provider),
       registerDocumentRangeFormattingEditProvider: (language: string, provider: unknown): unknown =>
@@ -326,8 +338,14 @@ describe('LspFeatures', () => {
   let formattingSupport: LspFormattingSupport | undefined;
   let navigationSupport: LspNavigationSupport | undefined;
   let inlayHintSupport: LspInlayHintSupport | undefined;
+  /** What the main process answers a project formatting request with, and what it was asked. */
+  let projectFormatAnswer: unknown;
+  let projectFormatCalls: unknown[][];
 
   beforeEach(() => {
+    projectFormatAnswer = null;
+    projectFormatCalls = [];
+    captured.projectFormatting = undefined;
     captured.completion = undefined;
     captured.signature = undefined;
     captured.completionRegistrations = 0;
@@ -379,6 +397,12 @@ describe('LspFeatures', () => {
           return response instanceof Error
             ? Promise.reject(response)
             : Promise.resolve((response ?? null) as T);
+        }
+        if (channel === (ProjectChannel.DocumentFormat as string)) {
+          projectFormatCalls.push(args);
+          return projectFormatAnswer instanceof Error
+            ? Promise.reject(projectFormatAnswer)
+            : Promise.resolve(projectFormatAnswer as T);
         }
         return Promise.resolve(null as T);
       },
@@ -450,8 +474,96 @@ describe('LspFeatures', () => {
         : null,
     );
     await flush();
+    // The formatter registered at start formats with the project's tools, not a server: it is kept
+    // apart, so the servers' formatters are asserted alone.
+    captured.projectFormatting = captured.formatting?.get('python:document');
+    captured.formatting?.delete('python:document');
     return features;
   }
+
+  describe('project formatting (#1212)', () => {
+    const PY_URI: string = 'inmemory://model/py';
+    const RANGE: unknown = { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 4 };
+
+    /**
+     * Builds the service with a saved Python document open, and the model it is edited in.
+     * @returns Returns the model.
+     */
+    async function buildWithPython(): Promise<unknown> {
+      await build();
+      TestBed.inject(Editors).register(PY_URI, {
+        documentId: 'doc-py',
+        path: '/root/app.py',
+        name: 'app.py',
+      });
+      return {
+        uri: { toString: (): string => PY_URI },
+        getValue: (): string => 'x=1',
+        getFullModelRange: (): unknown => RANGE,
+      };
+    }
+
+    it('registersAPythonFormatterAtStart', async () => {
+      await build();
+      expect(Object.keys(captured.projectFormatting ?? {})).toEqual([
+        'provideDocumentFormattingEdits',
+      ]);
+    });
+
+    it('replacesTheTextWithWhatTheProjectsToolFormatted', async () => {
+      const model: unknown = await buildWithPython();
+      projectFormatAnswer = { text: 'x = 1\n', error: null, formatter: 'ruff' };
+      const edits: unknown = await captured.projectFormatting?.provideDocumentFormattingEdits?.(
+        model,
+        {},
+      );
+      expect(projectFormatCalls).toEqual([['/root/app.py', 'x=1']]);
+      expect(edits).toEqual([{ range: RANGE, text: 'x = 1\n' }]);
+    });
+
+    it('editsNothingWhenTheTextIsAlreadyFormatted', async () => {
+      const model: unknown = await buildWithPython();
+      projectFormatAnswer = { text: 'x=1', error: null, formatter: 'ruff' };
+      expect(await captured.projectFormatting?.provideDocumentFormattingEdits?.(model, {})).toEqual(
+        [],
+      );
+    });
+
+    it('saysOnceWhyTheFileCouldNotBeFormatted', async () => {
+      const model: unknown = await buildWithPython();
+      const notify: ReturnType<typeof vi.spyOn> = vi.spyOn(TestBed.inject(Notifications), 'notify');
+      projectFormatAnswer = { text: null, error: 'Ruff is not installed.', formatter: 'ruff' };
+      const edits: unknown = await captured.projectFormatting?.provideDocumentFormattingEdits?.(
+        model,
+        {},
+      );
+      expect(edits).toBeUndefined();
+      expect(notify).toHaveBeenCalledWith({
+        severity: 'warning',
+        title: 'Could Not Format the File',
+        detail: 'Ruff is not installed.',
+        key: 'project-format',
+      });
+    });
+
+    it('leavesAnUnsavedOrUnformattableDocumentAlone', async () => {
+      const model: unknown = await buildWithPython();
+      const unsaved: unknown = { uri: { toString: (): string => 'inmemory://model/none' } };
+      expect(
+        await captured.projectFormatting?.provideDocumentFormattingEdits?.(unsaved, {}),
+      ).toBeUndefined();
+      expect(projectFormatCalls).toEqual([]);
+
+      projectFormatAnswer = null;
+      expect(
+        await captured.projectFormatting?.provideDocumentFormattingEdits?.(model, {}),
+      ).toBeUndefined();
+      projectFormatAnswer = new Error('ipc');
+      expect(
+        await captured.projectFormatting?.provideDocumentFormattingEdits?.(model, {}),
+      ).toBeUndefined();
+    });
+  });
 
   describe('formatting (#1141)', () => {
     const ROSLYN: LspFormattingSupport = {
@@ -1433,9 +1545,12 @@ describe('LspFeatures', () => {
           { lenses: { command: { id: string; arguments: unknown[] } }[] } | undefined;
 
       const command: { id: string; arguments: unknown[] } | undefined = list?.lenses[0].command;
-      expect(command?.id).toBe('studio.lsp.runLens');
+      // A Run Tests lens goes through the Tests panel first (#1215); with no panel knowing the test, it
+      // falls back to running as a run configuration.
+      expect(command?.id).toBe('studio.lsp.testLens');
+      expect((command?.arguments[3] as { id: string } | null)?.id).toBe('studio.lsp.runLens');
 
-      captured.commands?.get('studio.lsp.runLens')?.(undefined, ...(command?.arguments ?? []));
+      captured.commands?.get('studio.lsp.testLens')?.(undefined, ...(command?.arguments ?? []));
 
       expect(run).toHaveBeenCalledWith(
         expect.objectContaining({ program: 'cargo', args: ['test', '--', 'tests'], cwd: '/root' }),
@@ -1475,9 +1590,11 @@ describe('LspFeatures', () => {
         (await provider?.provideCodeLenses(owned)) as unknown as
           { lenses: { command: { id: string; arguments: unknown[] } }[] } | undefined;
       const command: { id: string; arguments: unknown[] } | undefined = list?.lenses[0].command;
-      expect(command?.id).toBe('studio.lsp.debugLens');
+      expect(command?.id).toBe('studio.lsp.testLens');
+      expect(command?.arguments[2]).toBe('debug');
+      expect((command?.arguments[3] as { id: string } | null)?.id).toBe('studio.lsp.debugLens');
 
-      captured.commands?.get('studio.lsp.debugLens')?.(undefined, ...(command?.arguments ?? []));
+      captured.commands?.get('studio.lsp.testLens')?.(undefined, ...(command?.arguments ?? []));
 
       expect(launch).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1492,7 +1609,7 @@ describe('LspFeatures', () => {
       // One session at a time: pressed while one runs, it starts nothing.
       launch.mockClear();
       state.set('running');
-      captured.commands?.get('studio.lsp.debugLens')?.(undefined, ...(command?.arguments ?? []));
+      captured.commands?.get('studio.lsp.testLens')?.(undefined, ...(command?.arguments ?? []));
       expect(launch).not.toHaveBeenCalled();
     });
 
@@ -1591,7 +1708,12 @@ describe('LspFeatures', () => {
           title: 'Restore',
           arguments: ['/root::typescript', { title: 'Restore', command: 'dotnet.restore.project' }],
         },
-        { id: '', title: 'Debug test' },
+        // A test lens with no command of its own still offers its test to the Tests panel (#1215).
+        {
+          id: 'studio.lsp.testLens',
+          title: 'Debug test',
+          arguments: [MODEL_URI, 9, 'debug', null],
+        },
       ]);
     });
 
@@ -1630,9 +1752,13 @@ describe('LspFeatures', () => {
         list?.lenses as { command?: { id: string; title: string; arguments?: unknown[] } }[];
 
       expect(lenses.map((lens) => lens.command?.title)).toEqual(['Run Test', 'Debug Test']);
-      expect(lenses[1]?.command?.id).toBe('studio.lsp.runTests');
-      expect(lenses[0]?.command?.id).toBe('studio.lsp.runTests');
-      captured.commands?.get('studio.lsp.runTests')?.(
+      // Through the Tests panel first (#1215); with no panel knowing the test, the session runs it.
+      expect(lenses.map((lens) => lens.command?.id)).toEqual([
+        'studio.lsp.testLens',
+        'studio.lsp.testLens',
+      ]);
+      expect(lenses.map((lens) => lens.command?.arguments?.[2])).toEqual(['run', 'debug']);
+      captured.commands?.get('studio.lsp.testLens')?.(
         undefined,
         ...(lenses[0]?.command?.arguments ?? []),
       );
@@ -1654,10 +1780,95 @@ describe('LspFeatures', () => {
         ?.get('csharp')
         ?.provideCodeLenses(owned);
 
+      // Nothing on the session runs it, but the Tests panel still may (#1215).
       expect((list?.lenses[0] as { command?: unknown }).command).toEqual({
-        id: '',
+        id: 'studio.lsp.testLens',
         title: 'Run Test',
+        arguments: [MODEL_URI, 9, 'run', null],
       });
+    });
+
+    it('aTestLens_whoseTestTheTestsPanelKnows_runsThroughThePanel_notTheServer (#1215)', async () => {
+      codeLensSupport = { resolve: false };
+      testsRun = [];
+      responses['textDocument/codeLens'] = [
+        {
+          ...(LENS as object),
+          command: { title: 'Run Test', command: 'dotnet.test.run', arguments: [{}] },
+        },
+        {
+          ...(LENS as object),
+          command: {
+            title: 'Debug Test',
+            command: 'dotnet.test.run',
+            arguments: [{ attachDebugger: true }],
+          },
+        },
+      ];
+      const model: unknown = { ...(owned as object), uri: { toString: (): string => MODEL_URI } };
+      openModels.push(model);
+      const features: LspFeatures = await build();
+      const panelRuns: string[] = [];
+      let debuggable: boolean = false;
+      TestBed.inject(TestRuns).register({
+        root: (): string => '/root',
+        testAt: (_path: string, line: number): TestAtLocation | null =>
+          line === 9
+            ? {
+                pluginId: 'onixlabs.dotnet-tests',
+                id: 't1',
+                label: 'Adds',
+                kind: 'test',
+                debuggable,
+              }
+            : null,
+        run: (test: TestAtLocation, mode: TestRunMode): Promise<boolean> => {
+          panelRuns.push(`${mode} ${test.id}`);
+          return Promise.resolve(true);
+        },
+      });
+      features.enableCodeLens('csharp');
+      const list: { lenses: { command?: { arguments?: unknown[] } }[] } | undefined =
+        (await captured.codeLens?.get('csharp')?.provideCodeLenses(model)) as unknown as
+          { lenses: { command?: { arguments?: unknown[] } }[] } | undefined;
+      const press: (index: number) => Promise<void> = async (index: number): Promise<void> => {
+        captured.commands?.get('studio.lsp.testLens')?.(
+          undefined,
+          ...(list?.lenses[index]?.command?.arguments ?? []),
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+      };
+
+      await press(0);
+      // A test its adapter cannot debug is debugged by the server's own Debug lens, as before.
+      await press(1);
+      debuggable = true;
+      await press(1);
+
+      expect(panelRuns).toEqual(['run t1', 'debug t1']);
+      expect(testsRun).toEqual([{ attachDebugger: true }]);
+    });
+
+    it.each([
+      [
+        'a Run Test lens',
+        { title: 'Run Test', command: 'dotnet.test.run', arguments: [{}] },
+        'run',
+      ],
+      [
+        "Roslyn's Debug Test lens",
+        { title: 'Debug Test', command: 'dotnet.test.run', arguments: [{ attachDebugger: true }] },
+        'debug',
+      ],
+      [
+        "rust-analyzer's Debug lens",
+        { title: '⚙︎ Debug', command: 'rust-analyzer.debugSingle' },
+        'debug',
+      ],
+      ["gopls's debug test lens", { title: 'debug test', command: 'gopls.run_tests' }, 'debug'],
+    ])('testLensMode_of %s_is %s', (_label: string, command: object, mode: string) => {
+      expect(testLensMode(command as LspCommand)).toBe(mode);
     });
 
     it('askNothing_forADocumentWhoseServerShowsNone', async () => {
@@ -1801,6 +2012,106 @@ describe('LspFeatures', () => {
         'csharp:selectionRanges',
         'go:folding',
       ]);
+    });
+
+    it('colors_areAskedFor_onlyWhereMonacoHasNoneOfItsOwn (#1214)', async () => {
+      const features: LspFeatures = await build();
+      const colors: LspStructureSupport = { ...ALL, colors: true };
+      for (const language of ['html', 'svelte', 'css', 'scss', 'less', 'json']) {
+        features.enableStructure(language, colors);
+      }
+      features.enableStructure('csharp', ALL);
+
+      // Monaco's own CSS and JSON workers already colour those: a server's swatches would show twice.
+      expect(
+        [...(captured.structure?.keys() ?? [])].filter((key: string): boolean =>
+          key.endsWith(':colors'),
+        ),
+      ).toEqual(['html:colors', 'svelte:colors']);
+    });
+
+    it('colors_mapTheServersColours_leavingOutAnyItCannotRead (#1214)', async () => {
+      structureSupport = { ...ALL, colors: true };
+      const at: (line: number) => unknown = (line: number): unknown => ({
+        start: { line, character: 7 },
+        end: { line, character: 14 },
+      });
+      responses['textDocument/documentColor'] = [
+        { range: at(0), color: { red: 1, green: 0, blue: 0, alpha: 1 } },
+        { range: at(1), color: { red: 2, green: 0, blue: 0, alpha: 1 } },
+        { range: at(2), color: 'red' },
+        { color: { red: 0, green: 0, blue: 1, alpha: 0.5 } },
+      ];
+      const features: LspFeatures = await build();
+      features.enableStructure('html', { ...ALL, colors: true });
+
+      const found: unknown = await captured.structure
+        ?.get('html:colors')
+        ?.provideDocumentColors?.(owned);
+
+      expect(requests.at(-1)?.method).toBe('textDocument/documentColor');
+      expect(found).toEqual([
+        {
+          range: { startLineNumber: 1, startColumn: 8, endLineNumber: 1, endColumn: 15 },
+          color: { red: 1, green: 0, blue: 0, alpha: 1 },
+        },
+      ]);
+    });
+
+    it('colorPresentations_askHowToWriteThePickedColour_inItsPlace (#1214)', async () => {
+      structureSupport = { ...ALL, colors: true };
+      responses['textDocument/colorPresentation'] = [
+        {
+          label: 'rgb(255, 0, 0)',
+          textEdit: {
+            range: { start: { line: 0, character: 7 }, end: { line: 0, character: 14 } },
+            newText: 'rgb(255, 0, 0)',
+          },
+        },
+        { label: '#ff0000' },
+        { textEdit: { newText: 'no label' } },
+      ];
+      const features: LspFeatures = await build();
+      features.enableStructure('html', { ...ALL, colors: true });
+      const picked: unknown = {
+        range: { startLineNumber: 1, startColumn: 8, endLineNumber: 1, endColumn: 15 },
+        color: { red: 1, green: 0, blue: 0, alpha: 1 },
+      };
+
+      const presentations: unknown = await captured.structure
+        ?.get('html:colors')
+        ?.provideColorPresentations?.(owned, picked);
+
+      expect(requests.at(-1)).toMatchObject({
+        method: 'textDocument/colorPresentation',
+        params: {
+          color: { red: 1, green: 0, blue: 0, alpha: 1 },
+          range: { start: { line: 0, character: 7 }, end: { line: 0, character: 14 } },
+        },
+      });
+      expect(presentations).toEqual([
+        {
+          label: 'rgb(255, 0, 0)',
+          textEdit: {
+            range: { startLineNumber: 1, startColumn: 8, endLineNumber: 1, endColumn: 15 },
+            text: 'rgb(255, 0, 0)',
+          },
+        },
+        { label: '#ff0000' },
+      ]);
+    });
+
+    it('colors_whereTheServerFindsNone_askNothing (#1214)', async () => {
+      structureSupport = ALL;
+      const features: LspFeatures = await build();
+      features.enableStructure('html', { ...ALL, colors: true });
+
+      expect(
+        await captured.structure?.get('html:colors')?.provideDocumentColors?.(owned),
+      ).toBeUndefined();
+      expect(requests.filter((request) => request.method === 'textDocument/documentColor')).toEqual(
+        [],
+      );
     });
 
     it('linkedEditing_asksTheServerForTheRangesEditedTogether', async () => {

@@ -13,6 +13,7 @@ import type { RunConfiguration } from '@shared/api/studio';
 import { Log } from '@shared/angular/services/log/log';
 import { Builds } from '@shared/angular/services/tasks/builds';
 import { Debugger } from '@shared/angular/services/debug/debugger';
+import { TestAtLocation, TestRunMode, TestRuns } from '@shared/angular/services/tests/test-runs';
 import {
   type FoldingProvider,
   type LanguageOverrides,
@@ -29,6 +30,9 @@ import {
   SEMANTIC_TOKEN_TYPES,
 } from '@shared/api/lsp-channels';
 import { Editors } from '@shared/angular/services/editors/editors';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
+import { ProjectChannel } from '@shared/api/project-channels';
+import type { DocumentFormatResult } from '@shared/api/project-system';
 import { cargoRunConfiguration } from './lsp-cargo-runnable';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { CodeSymbol, toCodeSymbols } from '@shared/angular/services/lsp/lsp-symbols';
@@ -466,7 +470,26 @@ export interface LspStructureSupport {
    * Expand and Shrink Selection grow and shrink by (#1155).
    */
   readonly selectionRanges: boolean;
+
+  /**
+   * Gets whether it finds the colours written in a document and the ways to write a colour picked in
+   * their place (`textDocument/documentColor`, `textDocument/colorPresentation`) — swatches and the
+   * colour picker in HTML's `<style>` and `style=`, and in Svelte (#1214). Absent from a support built
+   * before colours were read.
+   */
+  readonly colors?: boolean;
 }
+
+/**
+ * The languages Monaco colours itself, through its own CSS and JSON workers: a server's colours there
+ * would only show every swatch twice, so they are not asked for (#1214).
+ */
+const MONACO_COLOR_LANGUAGES: ReadonlySet<string> = new Set<string>([
+  'css',
+  'scss',
+  'less',
+  'json',
+]);
 
 /**
  * Describes how a server shows facts above a document's types and members (#1149): code lenses —
@@ -576,6 +599,34 @@ const INFERRED_PROJECT: string = '/dev/null/';
  * argument.
  */
 export const STUDIO_RUN_TESTS_COMMAND: string = 'studio.lsp.runTests';
+
+/**
+ * The Monaco command every Run Test and Debug Test lens runs (#1215), whichever server drew it: it
+ * runs the test through the workspace's Tests panel when the panel knows one on the lens's line, and
+ * otherwise runs the lens's own command. Its arguments are the model's URI, the lens's 1-based line,
+ * `run` or `debug`, and that command (or null for none).
+ */
+export const STUDIO_TEST_LENS_COMMAND: string = 'studio.lsp.testLens';
+
+/**
+ * Says whether a test lens runs its test or debugs it: Roslyn marks a Debug Test lens in its argument,
+ * rust-analyzer gives it its own command, and every other server says so in the title.
+ * @param command The lens's command.
+ * @returns Returns how the lens runs its test.
+ */
+export function testLensMode(command: LspCommand): TestRunMode {
+  const argument: unknown = command.arguments?.[0];
+  if (
+    command.command === RUST_DEBUG_SINGLE_COMMAND ||
+    (typeof argument === 'object' &&
+      argument !== null &&
+      (argument as { attachDebugger?: unknown }).attachDebugger === true) ||
+    /\bdebug\b/i.test(command.title)
+  ) {
+    return 'debug';
+  }
+  return 'run';
+}
 
 /**
  * The `_vs_textEditFormat` of an auto-insert whose text is a snippet (#1148): Roslyn's doc-comment
@@ -985,6 +1036,11 @@ export class LspFeatures {
   private readonly editors: Editors = inject(Editors);
 
   /**
+   * Holds the notifications, which say why a document could not be formatted (#1212).
+   */
+  private readonly notifications: Notifications = inject(Notifications);
+
+  /**
    * Holds the reader of each reference's line, for Find All References (#1014).
    */
   private readonly linePreviews: LinePreviews = inject(LinePreviews);
@@ -998,6 +1054,12 @@ export class LspFeatures {
    * Holds the active workspace's debugger, which a Debug lens launches through (#1210).
    */
   private readonly debugger: Debugger = inject(Debugger);
+
+  /**
+   * Holds the run/debug-a-test seam, which a test lens runs through when the workspace's Tests panel
+   * knows the test (#1215).
+   */
+  private readonly testRuns: TestRuns = inject(TestRuns);
 
   /**
    * Holds the structured logger.
@@ -1591,6 +1653,108 @@ export class LspFeatures {
   }
 
   /**
+   * Runs one of Studio's own lens and completion commands: the one dispatcher Monaco calls them
+   * through, so a test lens can fall back to whichever of them its server's lens maps to (#1215).
+   * @param monaco The Monaco API.
+   * @param id The command.
+   * @param args Its arguments.
+   */
+  private async runLensCommand(
+    monaco: typeof MonacoApi,
+    id: string,
+    args: readonly unknown[],
+  ): Promise<void> {
+    switch (id) {
+      case STUDIO_RUN_TESTS_COMMAND: {
+        // A Run Test lens runs its tests on the session serving its document (#1150).
+        const model: MonacoApi.editor.ITextModel | undefined = this.modelWithUri(monaco, args[0]);
+        if (model !== undefined) {
+          this.resolve(model)?.runTests?.(args[1]);
+        }
+        return;
+      }
+      case STUDIO_RUN_LENS_COMMAND:
+        // A rust-analyzer Run lens runs in the active workspace's run terminal (#1210). Pressed again,
+        // it replaces the run it started, as a run configuration does.
+        this.builds.runConfiguration(args[0] as RunConfiguration, [], { restart: true });
+        return;
+      case STUDIO_DEBUG_LENS_COMMAND:
+        // A Debug lens builds what its Run lens would run and launches it under CodeLLDB (#1210), in
+        // the active workspace's debugger: one session at a time, as from the ribbon.
+        if (this.debugger.running()) {
+          this.log.info('LspFeatures', 'Debug lens ignored: a debug session is already running');
+          return;
+        }
+        this.debugger.launch(args[0] as RunConfiguration);
+        return;
+      case STUDIO_LSP_COMMAND:
+        // A completion's or lens's server command, run on its session (#1021).
+        await this.runCompletionCommand(args[0], args[1]);
+        return;
+      case STUDIO_TEST_LENS_COMMAND:
+        await this.runTestLens(monaco, args);
+        return;
+      default:
+        return;
+    }
+  }
+
+  /**
+   * Runs a Run Test or Debug Test lens (#1215): through the workspace's Tests panel when the panel
+   * knows a test on the lens's line — a debug only when the test's adapter can debug it — and
+   * otherwise through the lens's own command, as before.
+   * @param monaco The Monaco API.
+   * @param args The model's URI, the lens's 1-based line, `run` or `debug`, and the lens's own
+   * command or null.
+   */
+  private async runTestLens(monaco: typeof MonacoApi, args: readonly unknown[]): Promise<void> {
+    const [modelUri, line, mode, fallback] = args;
+    const runMode: TestRunMode = mode === 'debug' ? 'debug' : 'run';
+    const model: MonacoApi.editor.ITextModel | undefined = this.modelWithUri(monaco, modelUri);
+    const document: string | undefined = model === undefined ? undefined : this.resolve(model)?.uri;
+    if (document !== undefined && typeof line === 'number') {
+      // The session's own file URI, not the model's: a model's URI need not be a path.
+      const path: string = this.uriToPath(document);
+      const test: TestAtLocation | null = this.testRuns.testAt(path, line);
+      if (
+        test !== null &&
+        (runMode === 'run' || test.debuggable) &&
+        (await this.testRuns.run(path, test, runMode))
+      ) {
+        return;
+      }
+    }
+    const command: { id?: unknown; arguments?: unknown } | null =
+      typeof fallback === 'object' ? fallback : null;
+    if (
+      typeof command?.id === 'string' &&
+      command.id.length > 0 &&
+      command.id !== STUDIO_TEST_LENS_COMMAND
+    ) {
+      await this.runLensCommand(
+        monaco,
+        command.id,
+        Array.isArray(command.arguments) ? (command.arguments as readonly unknown[]) : [],
+      );
+    }
+  }
+
+  /**
+   * Finds the open model a lens command names by its URI.
+   * @param monaco The Monaco API.
+   * @param uri The model's URI, untrusted.
+   * @returns Returns the model, or undefined when none is open with that URI.
+   */
+  private modelWithUri(
+    monaco: typeof MonacoApi,
+    uri: unknown,
+  ): MonacoApi.editor.ITextModel | undefined {
+    return monaco.editor
+      .getModels()
+      .find((candidate: MonacoApi.editor.ITextModel): boolean => candidate.uri.toString() === uri);
+  }
+
+  /**
    * Determines whether a lens is of a kind its language shows (#1215). A lens not yet filled in has no
    * kind yet, and is shown until it is.
    * @param switches The language's code-lens switches.
@@ -1635,6 +1799,52 @@ export class LspFeatures {
    * offered.
    */
   private lensCommand(
+    model: MonacoApi.editor.ITextModel,
+    ref: LspDocumentRef,
+    lens: unknown,
+  ): { command?: MonacoApi.languages.Command } | null {
+    const mapped: { command?: MonacoApi.languages.Command } | null = this.serverLensCommand(
+      model,
+      ref,
+      lens,
+    );
+    const command: LspCommand | null = toCommand((lens as { command?: unknown } | null)?.command);
+    const line: number | undefined = (lens as { range?: LspRange } | null)?.range?.start.line;
+    if (
+      mapped === null ||
+      command === null ||
+      line === undefined ||
+      codeLensKind(command.command, command.title) !== 'tests'
+    ) {
+      return mapped;
+    }
+    // A Run Test or Debug Test lens goes through the workspace's Tests panel when the panel knows the
+    // test it sits on (#1215): the run then shows in the Tests terminal and its result in the panel,
+    // whichever server drew the lens. Otherwise the lens does what it did before.
+    return {
+      command: {
+        id: STUDIO_TEST_LENS_COMMAND,
+        title: command.title,
+        arguments: [
+          model.uri.toString(),
+          line + 1,
+          testLensMode(command),
+          mapped.command?.id ? mapped.command : null,
+        ],
+      },
+    };
+  }
+
+  /**
+   * Maps a lens's command to what the server or Studio's own lens commands do with it, before a test
+   * lens is offered to the Tests panel ({@link lensCommand}).
+   * @param model The model the lens is in.
+   * @param ref The document's session.
+   * @param lens The server's lens, untrusted.
+   * @returns Returns the lens's command, nothing for a lens not yet filled in, or null for a lens not
+   * offered.
+   */
+  private serverLensCommand(
     model: MonacoApi.editor.ITextModel,
     ref: LspDocumentRef,
     lens: unknown,
@@ -1772,6 +1982,24 @@ export class LspFeatures {
           position: MonacoApi.Position,
         ): Promise<MonacoApi.languages.DocumentHighlight[] | undefined> =>
           this.provideDocumentHighlights(monaco, model, position),
+      });
+    }
+    if (
+      support.colors === true &&
+      !MONACO_COLOR_LANGUAGES.has(language) &&
+      !registered.has(`${language}:colors`)
+    ) {
+      registered.add(`${language}:colors`);
+      monaco.languages.registerColorProvider(language, {
+        provideDocumentColors: (
+          model: MonacoApi.editor.ITextModel,
+        ): Promise<MonacoApi.languages.IColorInformation[] | undefined> =>
+          this.provideDocumentColors(model),
+        provideColorPresentations: (
+          model: MonacoApi.editor.ITextModel,
+          color: MonacoApi.languages.IColorInformation,
+        ): Promise<MonacoApi.languages.IColorPresentation[] | undefined> =>
+          this.provideColorPresentations(model, color),
       });
     }
     if (support.linkedEditing && !registered.has(`${language}:linkedEditing`)) {
@@ -1918,6 +2146,112 @@ export class LspFeatures {
       });
     }
     return ranges;
+  }
+
+  /**
+   * Asks the server serving a document for the colours written in it, each with its range, for the
+   * editor's swatches and colour picker (#1214).
+   * @param model The model.
+   * @returns Returns the colours, or undefined when no server serving the model finds colours.
+   */
+  private async provideDocumentColors(
+    model: MonacoApi.editor.ITextModel,
+  ): Promise<MonacoApi.languages.IColorInformation[] | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || this.bridge === undefined || ref.structure?.colors !== true) {
+      return undefined;
+    }
+    await ref.sync?.(model.getValue());
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/documentColor',
+        { textDocument: { uri: ref.uri } },
+      );
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(result)) {
+      return undefined;
+    }
+    const colors: MonacoApi.languages.IColorInformation[] = [];
+    for (const entry of result as readonly ({ range?: LspRange; color?: unknown } | null)[]) {
+      const color: MonacoApi.languages.IColor | null = toColor(entry?.color);
+      if (entry?.range !== undefined && color !== null) {
+        colors.push({ range: this.toRange(entry.range), color });
+      }
+    }
+    return colors;
+  }
+
+  /**
+   * Asks the server serving a document how a colour picked in the colour picker should be written in
+   * a colour's place (`rgb(…)`, `#rrggbb`, `hsl(…)`), the first of which the picker writes (#1214).
+   * @param model The model.
+   * @param color The colour picked, with the range it replaces.
+   * @returns Returns the ways to write it, or undefined when the server gave none.
+   */
+  private async provideColorPresentations(
+    model: MonacoApi.editor.ITextModel,
+    color: MonacoApi.languages.IColorInformation,
+  ): Promise<MonacoApi.languages.IColorPresentation[] | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || this.bridge === undefined || ref.structure?.colors !== true) {
+      return undefined;
+    }
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/colorPresentation',
+        {
+          textDocument: { uri: ref.uri },
+          color: color.color,
+          range: toLspRange(color.range),
+        },
+      );
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(result)) {
+      return undefined;
+    }
+    const presentations: MonacoApi.languages.IColorPresentation[] = [];
+    for (const entry of result as readonly ({
+      label?: unknown;
+      textEdit?: { range?: LspRange; newText?: unknown };
+      additionalTextEdits?: readonly { range?: LspRange; newText?: unknown }[];
+    } | null)[]) {
+      if (typeof entry?.label !== 'string') {
+        continue;
+      }
+      const edit: MonacoApi.languages.TextEdit | null = this.toTextEdit(entry.textEdit);
+      const additional: MonacoApi.languages.TextEdit[] = (entry.additionalTextEdits ?? [])
+        .map((candidate): MonacoApi.languages.TextEdit | null => this.toTextEdit(candidate))
+        .filter((candidate): candidate is MonacoApi.languages.TextEdit => candidate !== null);
+      presentations.push({
+        label: entry.label,
+        ...(edit === null ? {} : { textEdit: edit }),
+        ...(additional.length === 0 ? {} : { additionalTextEdits: additional }),
+      });
+    }
+    return presentations;
+  }
+
+  /**
+   * Turns a server's text edit into Monaco's.
+   * @param edit The server's edit, untrusted.
+   * @returns Returns the edit, or null when it is not one.
+   */
+  private toTextEdit(
+    edit: { range?: LspRange; newText?: unknown } | undefined,
+  ): MonacoApi.languages.TextEdit | null {
+    return edit?.range === undefined || typeof edit.newText !== 'string'
+      ? null
+      : { range: this.toRange(edit.range), text: edit.newText };
   }
 
   /**
@@ -2236,6 +2570,43 @@ export class LspFeatures {
   }
 
   /**
+   * Formats a saved document with the tool its project uses, for a language whose server does not
+   * format (#1212), and says once, on a coalescing toast, why it could not when it cannot.
+   * @param model The model to format.
+   * @returns Returns one edit replacing the text, none when it is already formatted, or undefined when
+   * the document is not one a project system formats or it could not be formatted.
+   */
+  private async provideProjectFormatting(
+    model: MonacoApi.editor.ITextModel,
+  ): Promise<MonacoApi.languages.TextEdit[] | undefined> {
+    const path: string | null | undefined = this.editors.locate(model.uri.toString())?.path;
+    if (path === null || path === undefined || this.bridge === undefined) {
+      return undefined;
+    }
+    const text: string = model.getValue();
+    let result: DocumentFormatResult | null;
+    try {
+      result = await this.bridge.invoke(ProjectChannel.DocumentFormat, path, text);
+    } catch (error: unknown) {
+      this.log.warn('LspFeatures', 'Project formatting failed', error);
+      return undefined;
+    }
+    if (result === null) {
+      return undefined;
+    }
+    if (result.text === null) {
+      this.notifications.notify({
+        severity: 'warning',
+        title: 'Could Not Format the File',
+        detail: result.error ?? undefined,
+        key: 'project-format',
+      });
+      return undefined;
+    }
+    return result.text === text ? [] : [{ range: model.getFullModelRange(), text: result.text }];
+  }
+
+  /**
    * Asks the server serving a model to format it — the whole document, a range, or around a character
    * just typed — and maps its edits to Monaco's.
    * @param model The model to format.
@@ -2322,47 +2693,30 @@ export class LspFeatures {
       (model: MonacoApi.editor.ITextModel): boolean =>
         this.resolve(model)?.structure?.folding === true,
     );
-    // A completion's server command, run when the completion is accepted (#1021).
-    // A Run Test lens runs its tests on the session serving its document (#1150).
-    monaco.editor.registerCommand(
+    // Studio's own lens commands (#1150, #1210, #1215), each run through one dispatcher so a test lens
+    // can fall back to any of them.
+    for (const id of [
       STUDIO_RUN_TESTS_COMMAND,
-      (_accessor: unknown, modelUri: unknown, lens: unknown): void => {
-        const model: MonacoApi.editor.ITextModel | undefined = monaco.editor
-          .getModels()
-          .find(
-            (candidate: MonacoApi.editor.ITextModel): boolean =>
-              candidate.uri.toString() === modelUri,
-          );
-        if (model !== undefined) {
-          this.resolve(model)?.runTests?.(lens);
-        }
-      },
-    );
-    // A rust-analyzer Run lens runs in the active workspace's run terminal (#1210). Pressed again, it
-    // replaces the run it started, as a run configuration does.
-    monaco.editor.registerCommand(
       STUDIO_RUN_LENS_COMMAND,
-      (_accessor: unknown, configuration: RunConfiguration): void =>
-        this.builds.runConfiguration(configuration, [], { restart: true }),
-    );
-    // A Debug lens builds what its Run lens would run and launches it under CodeLLDB (#1210), in the
-    // active workspace's debugger: one session at a time, as from the ribbon.
-    monaco.editor.registerCommand(
       STUDIO_DEBUG_LENS_COMMAND,
-      (_accessor: unknown, configuration: RunConfiguration): void => {
-        if (this.debugger.running()) {
-          this.log.info('LspFeatures', 'Debug lens ignored: a debug session is already running');
-          return;
-        }
-        this.debugger.launch(configuration);
-      },
-    );
-    monaco.editor.registerCommand(
       STUDIO_LSP_COMMAND,
-      (_accessor: unknown, sessionId: unknown, command: unknown): void =>
-        void this.runCompletionCommand(sessionId, command),
-    );
+      STUDIO_TEST_LENS_COMMAND,
+    ]) {
+      monaco.editor.registerCommand(
+        id,
+        (_accessor: unknown, ...args: unknown[]): void =>
+          void this.runLensCommand(monaco, id, args),
+      );
+    }
     this.registerTriggerProviders(monaco);
+    // Python whose language server does not format (ty does not) is formatted by its project's tool,
+    // ruff or black (#1212). Registered first, so a server that does format registers later and wins.
+    monaco.languages.registerDocumentFormattingEditProvider('python', {
+      provideDocumentFormattingEdits: (
+        model: MonacoApi.editor.ITextModel,
+      ): Promise<MonacoApi.languages.TextEdit[] | undefined> =>
+        this.provideProjectFormatting(model),
+    });
     for (const language of FEATURE_LANGUAGES) {
       const hoverProvider: MonacoApi.languages.HoverProvider = {
         provideHover: (
@@ -3992,6 +4346,38 @@ export function opensBlockAt(model: MonacoApi.editor.ITextModel, line: number): 
  */
 function toLspPosition(position: MonacoApi.IPosition): LspPosition {
   return { line: position.lineNumber - 1, character: position.column - 1 };
+}
+
+/**
+ * Converts a one-based editor span to a zero-based protocol range.
+ * @param range The editor span.
+ * @returns Returns the protocol range.
+ */
+function toLspRange(range: MonacoApi.IRange): LspRange {
+  return {
+    start: toLspPosition({ lineNumber: range.startLineNumber, column: range.startColumn }),
+    end: toLspPosition({ lineNumber: range.endLineNumber, column: range.endColumn }),
+  };
+}
+
+/**
+ * Reads a protocol colour — red, green, blue and alpha, each from 0 to 1 — as Monaco's, which has the
+ * same shape.
+ * @param value The server's colour, untrusted.
+ * @returns Returns the colour, or null when it is not one.
+ */
+export function toColor(value: unknown): MonacoApi.languages.IColor | null {
+  const color: { red?: unknown; green?: unknown; blue?: unknown; alpha?: unknown } | null =
+    typeof value === 'object' && value !== null ? value : null;
+  const channel: (raw: unknown) => number | null = (raw: unknown): number | null =>
+    typeof raw === 'number' && raw >= 0 && raw <= 1 ? raw : null;
+  const red: number | null = channel(color?.red);
+  const green: number | null = channel(color?.green);
+  const blue: number | null = channel(color?.blue);
+  const alpha: number | null = channel(color?.alpha);
+  return red === null || green === null || blue === null || alpha === null
+    ? null
+    : { red, green, blue, alpha };
 }
 
 /**

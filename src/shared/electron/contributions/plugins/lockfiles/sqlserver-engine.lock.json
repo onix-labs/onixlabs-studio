@@ -1,0 +1,20 @@
+{
+  "name": "sqlserver-engine",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "sqlserver-engine",
+      "version": "1.0.0",
+      "dependencies": {
+        "@onixlabs/sqlserver-engine": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-sqlserver-engine-v0.1.0/onixlabs-sqlserver-engine-0.1.0.tgz"
+      }
+    },
+    "node_modules/@onixlabs/sqlserver-engine": {
+      "version": "0.1.0",
+      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-sqlserver-engine-v0.1.0/onixlabs-sqlserver-engine-0.1.0.tgz",
+      "integrity": "sha512-OJkeHoRvz3PwILTOUVrSd02b8ZWZbiqL6SaEhncqrGESNo+/zAEg94tGzyvvFRqGcp2mTE2diM2pzZ2i9H1ITg=="
+    }
+  }
+}

@@ -7,7 +7,7 @@
   "detail": "Reads your POMs, Gradle build scripts, version catalog, Gradle lockfiles, ~/.m2/settings.xml and gradle.properties. Neither Maven nor Gradle has a command that adds a dependency, so this plugin only resolves them, through the mvn or gradle on your machine, in a terminal you can see.",
   "provision": {
     "kind": "npm",
-    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.maven.lock.json",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-maven-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.maven.lock.json",
     "sha256": "8aead4409d15bc0819d5e45ba8da35a4815c032c22316f8f54e54ee5f47e128a",
     "executablePath": "node_modules/@onixlabs/maven/main.js"
   },

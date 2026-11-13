@@ -75,15 +75,14 @@
   <!-- What the working tree is in the middle of, and the three ways out of it. Shown whatever the graph
        has selected: a repository mid-merge is mid-merge whichever commit is being looked at. -->
   @if (repository.operationInFlight()) {
-    <div class="detail__operation" role="status">
-      <div class="detail__operation-summary">
-        <app-icon class="detail__operation-icon" [icon]="Icon.GIT_MERGE" />
+    <div class="detail__operation">
+      <app-alert tone="warning">
         <span class="detail__operation-title">{{ operationTitle() }}</span>
-        @if (operationProgress(); as progress) {
+        @if (resolvedProgress(); as progress) {
           <span class="detail__operation-progress">{{ progress }}</span>
         }
-      </div>
-      <p class="detail__operation-message">{{ operationMessage() }}</p>
+        <span class="detail__operation-message">{{ operationMessage() }}</span>
+      </app-alert>
       <app-button-row size="small">
         <app-button
           size="small"
@@ -176,7 +175,9 @@
       <app-tree-view
         [rows]="workingRows()"
         [selectedId]="repository.selectedFile()?.path ?? null"
+        [contextMenuFor]="conflictMenu"
         (rowClick)="onWorkingRowClick($event)"
+        (contextMenuSelect)="onConflictMenu($event)"
       >
         <ng-template let-row>
           @let entry = workingRowOf(row);
@@ -209,6 +210,11 @@
               {{ fileName(entry.file.path) }}
               @if (fileDir(entry.file.path); as dir) {
                 <span class="detail__file-dir">{{ dir }}</span>
+              }
+              @if (conflictsLeftOf(entry.file); as left) {
+                <span class="detail__conflicts-left">
+                  {{ left === 1 ? '1 conflict left' : left + ' conflicts left' }}
+                </span>
               }
             </span>
             <app-button

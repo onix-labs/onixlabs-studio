@@ -89,6 +89,43 @@ describe('describeHostingWrite', () => {
     ).toBe('GitHub: create the private repository onix-labs/new');
   });
 
+  it('saysWhatAnEditChanges_soTheUserApprovesTheseLabelsOnThisIssue', () => {
+    // #1156: "edit #12" alone would ask the user to approve something they cannot see.
+    expect(
+      describeHostingWrite('GitHub', 'updateIssue', {
+        repository,
+        issue: 12,
+        title: 'Fix sign-in',
+        body: 'x',
+        addLabels: ['epic', 'area:agent'],
+        removeLabels: ['bug'],
+        addAssignees: ['octocat'],
+        milestone: null,
+      }),
+    ).toBe(
+      'GitHub: edit #12 in onix-labs/studio (title “Fix sign-in”; body; add labels epic, area:agent; remove labels bug; assign octocat; clear the milestone)',
+    );
+    expect(
+      describeHostingWrite('GitHub', 'addSubIssue', { repository, issue: 1, subIssue: 12 }),
+    ).toBe('GitHub: make #12 a sub-issue of #1 in onix-labs/studio');
+    expect(
+      describeHostingWrite('GitHub', 'removeSubIssue', { repository, issue: 1, subIssue: 12 }),
+    ).toBe('GitHub: take sub-issue #12 off #1 in onix-labs/studio');
+    expect(
+      describeHostingWrite('GitHub', 'updatePullRequest', {
+        repository,
+        pullRequest: 7,
+        base: 'release',
+        draft: false,
+      }),
+    ).toBe(
+      'GitHub: edit pull request #7 in onix-labs/studio (merge into release; mark ready for review)',
+    );
+    expect(describeHostingWrite('GitHub', 'updateIssue', { repository, issue: 12 })).toBe(
+      'GitHub: edit #12 in onix-labs/studio (no changes)',
+    );
+  });
+
   it('copesWithMalformedParameters_ratherThanThrowing', () => {
     expect(describeHostingWrite('GitHub', 'createIssue', null)).toBe('GitHub: open an issue “?”');
   });

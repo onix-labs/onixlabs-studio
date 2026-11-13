@@ -50,7 +50,7 @@ import {
   Notifications,
 } from '@shared/angular/services/notifications/notifications';
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
-import { LspServer, LspStatus, NOTICE_MS } from './lsp-status';
+import { LOAD_STALL_MS, LspServer, LspStatus, NOTICE_MS } from './lsp-status';
 import { EditorConfigs } from '@shared/angular/services/editor-config/editor-configs';
 import { Editors } from '@shared/angular/services/editors/editors';
 import type * as MonacoApi from 'monaco-editor';
@@ -657,6 +657,72 @@ describe('LspClient', () => {
         expect(notifications.toasts()).toEqual([]);
         vi.advanceTimersByTime(NOTICE_MS);
         expect(status.servers()[0]?.notice).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('aWorkspaceLoadStillGoingAfterTwoMinutes_isFlaggedOnItsRow_andNothingIsEnded (#1211)', async () => {
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      await openCsharp(client);
+      const ended: number = lsp.stops.length + lsp.restarts.length;
+      vi.useFakeTimers();
+      try {
+        // gopls's load, as it reports it.
+        lsp.notify('/root::csharp', '$/progress', {
+          token: 'load-1',
+          value: { kind: 'begin', title: 'Setting up workspace', message: 'Loading packages...' },
+        });
+        vi.advanceTimersByTime(LOAD_STALL_MS - 1);
+        expect(status.servers()[0]?.loadStalled).toBe(false);
+
+        vi.advanceTimersByTime(1);
+        expect(status.servers()[0]?.loadStalled).toBe(true);
+        // It keeps waiting: the server is neither stopped nor restarted.
+        expect(lsp.stops.length + lsp.restarts.length).toBe(ended);
+
+        lsp.notify('/root::csharp', '$/progress', { token: 'load-1', value: { kind: 'end' } });
+        expect(status.servers()[0]?.loadStalled).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('aWorkspaceLoadThatEndsInTime_isNeverFlagged (#1211)', async () => {
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      await openCsharp(client);
+      vi.useFakeTimers();
+      try {
+        lsp.notify('/root::csharp', '$/progress', {
+          token: 'load-1',
+          value: { kind: 'begin', title: 'Setting up workspace' },
+        });
+        vi.advanceTimersByTime(30_000);
+        lsp.notify('/root::csharp', '$/progress', { token: 'load-1', value: { kind: 'end' } });
+        vi.advanceTimersByTime(LOAD_STALL_MS);
+
+        expect(status.servers()[0]?.loadStalled).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('otherProgress_isNotTimed_however_longItRuns (#1211)', async () => {
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      await openCsharp(client);
+      vi.useFakeTimers();
+      try {
+        // clangd's background index can legitimately run for many minutes.
+        lsp.notify('/root::csharp', '$/progress', {
+          token: 'index-1',
+          value: { kind: 'begin', title: 'indexing' },
+        });
+        vi.advanceTimersByTime(LOAD_STALL_MS * 3);
+
+        expect(status.servers()[0]?.loadStalled).toBe(false);
       } finally {
         vi.useRealTimers();
       }
@@ -1704,6 +1770,7 @@ describe('LspClient', () => {
         linkedEditing: false,
         rangeTokens: false,
         selectionRanges: false,
+        colors: false,
       };
       expect(features.structureEnabled).toEqual([['typescript', expected]]);
       expect(features.resolver?.('/root/src/a.ts')?.structure).toEqual(expected);

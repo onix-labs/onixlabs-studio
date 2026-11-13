@@ -1,5 +1,4 @@
 import { execFile } from 'node:child_process';
-import { Dirent } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
@@ -12,15 +11,19 @@ import {
   ProjectModel,
   ProjectNode,
 } from '@shared/api/project-system';
+import type { DebugResolveResult } from '@shared/api/debug-channels';
+import type { RunConfiguration } from '@shared/api/studio';
+import { goDebugTarget } from './go-debug-target';
 import { buildGoPackageTree, GoPackage, goListArguments, parseGoPackages } from './go-list';
+import { listProjectFiles, sourceFilter } from './project-listing';
 import { ProjectSystem } from './project-system';
 import { logger } from '../logger';
 
 /**
  * The Go project system's root-independent capabilities: the Build/Clean/Rebuild actions the `go`
  * toolchain supports, no build-configuration axis (Go has no Debug/Release profile), a GOOS/GOARCH
- * target axis, and no debug adapter yet — a Go DAP adapter (Delve) is a later phase, so the ribbon's
- * Debug button stays inert until one is provisioned.
+ * target axis, and Delve as its debugger (#1211), installed from the Plugin Manager like CodeLLDB for
+ * Rust.
  */
 const GO_CAPABILITIES: ProjectCapabilities = {
   actions: ['build', 'clean', 'rebuild'],
@@ -36,7 +39,7 @@ const GO_CAPABILITIES: ProjectCapabilities = {
       { id: 'windows/amd64', name: 'Windows (x64)' },
     ],
   },
-  debug: null,
+  debug: { adapter: 'delve' },
   // This ecosystem has no solution folders, so there is nothing to rename.
   renamesSolutionFolders: false,
 };
@@ -57,6 +60,15 @@ const SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set<string>(['vendor', 'nod
  * Explorer.
  */
 const MAX_ITEMS: number = 5_000;
+
+/**
+ * Keeps what a module is built from when the fallback lists it (#899): Go and assembly sources, and
+ * the module and workspace files with their checksums.
+ */
+const GO_SOURCE_FILES: (name: string) => boolean = sourceFilter(
+  ['.go', '.s'],
+  ['go.mod', 'go.sum', 'go.work', 'go.work.sum'],
+);
 
 /**
  * The files of a module that belong to it without being in any package.
@@ -192,6 +204,20 @@ export class GoProjectSystem implements ProjectSystem {
   }
 
   /**
+   * Resolves a run configuration into what Delve launches (#1211): see {@link goDebugTarget}. Delve
+   * builds the program itself, so nothing is built here first.
+   * @param configuration The run configuration being launched under the debugger.
+   * @param root The absolute workspace root.
+   * @returns Returns the launch target, or a reason it could not be resolved.
+   */
+  public resolveDebugTarget(
+    configuration: RunConfiguration,
+    root: string,
+  ): Promise<DebugResolveResult> {
+    return Promise.resolve(goDebugTarget(configuration, root));
+  }
+
+  /**
    * Builds the module's contents from its packages.
    * @param projectPath The absolute path of the module manifest.
    * @param directory The module's directory.
@@ -276,53 +302,21 @@ export class GoProjectSystem implements ProjectSystem {
   }
 
   /**
-   * Lists the module's files straight from its directory, skipping the vendored dependency tree.
+   * Lists the module's files straight from its directory when `go` cannot describe it (#899): Go
+   * sources and the module's own manifests only, skipping the vendored dependency tree, so an output
+   * folder the skip list does not name can never crowd the sources out of the budget.
    * @param directory The module's directory.
    * @returns Returns the contents, or null when the directory cannot be read.
    */
   private async listing(directory: string): Promise<readonly ProjectItemNode[] | null> {
-    const budget: { remaining: number } = { remaining: MAX_ITEMS };
-    return this.listDirectory(directory, budget);
-  }
-
-  /**
-   * Lists one directory level as item nodes, recursing into subdirectories.
-   * @param directory The directory to list.
-   * @param budget The remaining file budget, decremented as files are added.
-   * @returns Returns the nodes, or null when the directory cannot be read.
-   */
-  private async listDirectory(
-    directory: string,
-    budget: { remaining: number },
-  ): Promise<readonly ProjectItemNode[] | null> {
-    let entries: Dirent[];
-    try {
-      entries = await fs.readdir(directory, { withFileTypes: true });
-    } catch {
-      return null;
-    }
-    const directories: Dirent[] = entries
-      .filter((entry: Dirent): boolean => entry.isDirectory() && !this.isSkipped(entry.name))
-      .sort((a: Dirent, b: Dirent): number => a.name.localeCompare(b.name));
-    const files: Dirent[] = entries
-      .filter((entry: Dirent): boolean => entry.isFile())
-      .sort((a: Dirent, b: Dirent): number => a.name.localeCompare(b.name));
-    const nodes: ProjectItemNode[] = [];
-    for (const child of directories) {
-      const full: string = path.join(directory, child.name);
-      const children: readonly ProjectItemNode[] | null = await this.listDirectory(full, budget);
-      if (children !== null && children.length > 0) {
-        nodes.push({ type: 'folder', name: child.name, path: full, children });
-      }
-    }
-    for (const file of files) {
-      if (budget.remaining <= 0) {
-        break;
-      }
-      budget.remaining -= 1;
-      nodes.push({ type: 'file', name: file.name, path: path.join(directory, file.name) });
-    }
-    return nodes;
+    return listProjectFiles(
+      directory,
+      { remaining: MAX_ITEMS },
+      {
+        skipDirectory: (name: string): boolean => this.isSkipped(name),
+        keepFile: GO_SOURCE_FILES,
+      },
+    );
   }
 
   /**

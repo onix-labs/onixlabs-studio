@@ -1,12 +1,13 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type * as MonacoApi from 'monaco-editor';
-import { installFindCommands } from './monaco-find-commands';
+import { FIND_PASSTHROUGH_CONTEXT_KEY, installFindCommands } from './monaco-find-commands';
 import { installGoToCommands } from './monaco-goto-commands';
 import { installNavigationCommands } from './monaco-navigation-commands';
 import { installRenameCommands } from './monaco-rename-commands';
 import { CODE_ACTION_CONTRIBUTION, installQuickFixCommands } from './monaco-quick-fix-commands';
 import { installHoverCommands } from './monaco-hover-commands';
+import { EDITOR_KEYBINDINGS, EditorKeybinding } from './monaco-keybindings';
 import {
   IDLE_PARAMETER_HINTS_PRESENTER,
   IDLE_SUGGEST_PRESENTER,
@@ -447,13 +448,34 @@ function readDefaultChords(): DefaultChords {
 }
 
 /**
- * Collects the commands Studio's installers remove every chord of, on one platform: each installer
- * runs against a stand-in Monaco instance that records the keybinding rules it is given.
- * @param isMac Whether the host is macOS.
- * @returns Returns the commands.
+ * Records what Studio's installers did to a stand-in Monaco instance.
  */
-function removedByStudio(isMac: boolean): Set<string> {
+interface Installation {
+  /**
+   * Gets the keybinding rules the installers added.
+   */
+  readonly rules: readonly MonacoApi.editor.IKeybindingRule[];
+
+  /**
+   * Gets the commands the installers registered.
+   */
+  readonly registered: ReadonlySet<string>;
+
+  /**
+   * Gets the editor shortcuts the installers handed to the keybinding registry.
+   */
+  readonly bindings: readonly EditorKeybinding[];
+}
+
+/**
+ * Runs every one of Studio's Monaco installers, on one platform, against a stand-in Monaco instance
+ * that records the keybinding rules and commands it is given.
+ * @param isMac Whether the host is macOS.
+ * @returns Returns what the installers did.
+ */
+function installAll(isMac: boolean): Installation {
   const rules: MonacoApi.editor.IKeybindingRule[] = [];
+  const registered: Set<string> = new Set<string>();
   // Any key modifier or code reads as a number; only the removals are read.
   const keys: Record<string, unknown> = new Proxy(
     {},
@@ -467,33 +489,50 @@ function removedByStudio(isMac: boolean): Set<string> {
     KeyCode: keys,
     editor: {
       getEditors: (): readonly MonacoApi.editor.ICodeEditor[] => [],
-      registerCommand: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
+      registerCommand: (id: string): MonacoApi.IDisposable => {
+        registered.add(id);
+        return { dispose: (): void => undefined };
+      },
       addKeybindingRules: (added: MonacoApi.editor.IKeybindingRule[]): void =>
         void rules.push(...added),
       onDidCreateEditor: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
     },
   } as unknown as typeof MonacoApi;
   const ignore: () => void = (): void => undefined;
-  installFindCommands(monaco, isMac, ignore);
-  installGoToCommands(monaco, isMac, ignore);
-  installNavigationCommands(monaco, isMac, ignore, ignore);
-  installRenameCommands(monaco, ignore);
-  installQuickFixCommands(monaco, ignore);
-  installHoverCommands(monaco, { showHover: ignore, goToProblem: ignore, showProblem: ignore });
-  installSuggestCommands(
-    monaco,
-    isMac,
-    () => IDLE_SUGGEST_PRESENTER,
-    () => IDLE_PARAMETER_HINTS_PRESENTER,
-  );
-  installWidgetGuard(monaco, {
-    showContextMenu: ignore,
-    readOnlyEdit: ignore,
-    confirmUnusualLineTerminators: (): Promise<boolean> => Promise.resolve(false),
-  });
+  const bindings: EditorKeybinding[] = [
+    ...installFindCommands(monaco, ignore),
+    ...installGoToCommands(monaco, ignore),
+    ...installNavigationCommands(monaco, isMac, ignore, ignore),
+    ...installRenameCommands(monaco, ignore),
+    ...installQuickFixCommands(monaco, ignore),
+    ...installHoverCommands(monaco, {
+      showHover: ignore,
+      goToProblem: ignore,
+      showProblem: ignore,
+    }),
+    ...installSuggestCommands(
+      monaco,
+      () => IDLE_SUGGEST_PRESENTER,
+      () => IDLE_PARAMETER_HINTS_PRESENTER,
+    ),
+    ...installWidgetGuard(monaco, {
+      showContextMenu: ignore,
+      readOnlyEdit: ignore,
+      confirmUnusualLineTerminators: (): Promise<boolean> => Promise.resolve(false),
+    }),
+  ];
+  return { rules, registered, bindings };
+}
+
+/**
+ * Collects the commands Studio's installers remove every chord of, on one platform.
+ * @param isMac Whether the host is macOS.
+ * @returns Returns the commands.
+ */
+function removedByStudio(isMac: boolean): Set<string> {
   return new Set<string>(
-    rules
-      // Only a removal with no chord drops every chord the command has, on every platform.
+    installAll(isMac)
+      .rules // Only a removal with no chord drops every chord the command has, on every platform.
       .filter(
         (rule: MonacoApi.editor.IKeybindingRule): boolean =>
           rule.keybinding === 0 && rule.command?.startsWith('-') === true,
@@ -710,6 +749,40 @@ describe('Monaco widget guard (#1024)', () => {
     // The model's own check and removal, which the replacement calls.
     expect(/[;}]\s*mightContainUnusualLineTerminators\(\)\{/.test(build)).toBe(true);
     expect(/[;}]\s*removeUnusualLineTerminators\([^)]*\)\{/.test(build)).toBe(true);
+  });
+
+  it('everyEditorShortcutInTheRegistry_isBoundToACommandStudioRegisters_andNoneIsLeftInCode (#1036)', () => {
+    // The diff editor steps its differences itself, through the registry's matches.
+    const editorIds: string[] = EDITOR_KEYBINDINGS.bindings
+      .map((binding: { readonly id: string }): string => binding.id)
+      .filter((id: string): boolean => id.startsWith('editor.'));
+    for (const isMac of [true, false]) {
+      const { rules, registered, bindings }: Installation = installAll(isMac);
+      expect(bindings.map((binding: EditorKeybinding): string => binding.id).sort()).toEqual(
+        [...editorIds].sort(),
+      );
+      for (const binding of bindings) {
+        expect(registered, binding.id).toContain(binding.command);
+      }
+      // Find and the go-to commands keep Monaco's own find for code fences in markdown.
+      for (const id of [
+        'editor.find',
+        'editor.findReplace',
+        'editor.goToSymbol',
+        'editor.goToLine',
+      ]) {
+        expect(
+          bindings.find((binding: EditorKeybinding): boolean => binding.id === id)?.when,
+          id,
+        ).toContain(`!${FIND_PASSTHROUGH_CONTEXT_KEY}`);
+      }
+      // No installer binds a chord of Studio's commands itself; the registry does.
+      const studioChords: MonacoApi.editor.IKeybindingRule[] = rules.filter(
+        (rule: MonacoApi.editor.IKeybindingRule): boolean =>
+          bindings.some((binding: EditorKeybinding): boolean => binding.command === rule.command),
+      );
+      expect(studioChords).toEqual([]);
+    }
   });
 
   it('theEndToEndSuitesCopyOfTheAuditedCommands_isInStep', () => {

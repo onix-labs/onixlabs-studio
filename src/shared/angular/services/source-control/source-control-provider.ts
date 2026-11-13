@@ -1,4 +1,4 @@
-import type { VcsIgnoreRule } from '@shared/api/version-control-protocol';
+import type { VcsConflictResolution, VcsIgnoreRule } from '@shared/api/version-control-protocol';
 import { GitMergeMode, GitOperationState } from '@shared/api/source-control-channels';
 import {
   GitBranch,
@@ -230,6 +230,23 @@ export interface SourceControlProvider {
    * @returns Returns the outcome.
    */
   stopTracking(paths: readonly string[]): Promise<MutationResult>;
+
+  /**
+   * Settles one conflicted file whole and marks it resolved (#1321): the user's side, the other side,
+   * or — for a file one side deleted — kept or deleted. Refused by a plugin without `resolveConflicts`.
+   * @param path The repository-relative path.
+   * @param resolution How to settle it.
+   * @returns Returns the outcome.
+   */
+  resolveConflict(path: string, resolution: VcsConflictResolution): Promise<MutationResult>;
+
+  /**
+   * Reads a file as it stands on disk, through the plugin, so a conflicted file can be checked for the
+   * markers git left in it before it is marked resolved (#1321).
+   * @param path The repository-relative path.
+   * @returns Returns its content, empty when it cannot be read.
+   */
+  readWorkingFile(path: string): Promise<string>;
 
   /**
    * Commits the staged changes with a message.

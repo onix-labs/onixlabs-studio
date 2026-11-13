@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  CERTIFICATE_CHECKS,
   DOCKER_SOCKET,
   dockerSocketPaths,
   LOCAL_NETWORK,
@@ -24,6 +25,17 @@ describe('sandboxGuidance', () => {
     allowedNetworkLocations: [],
     deniedNetworkLocations: [],
   };
+
+  it('sandboxGuidance_namesTheExcludedCommands_andHowToAskForOne', () => {
+    const guidance: string = sandboxGuidance(
+      { ...nothing, excludedCommands: ['npx ng:*', 'dotnet:*'] },
+      true,
+    );
+
+    expect(guidance).toContain('Excluded: npx ng:*, dotnet:* run outside the sandbox');
+    expect(guidance).toContain('ask them to, rather than setting the flag');
+    expect(sandboxGuidance(nothing, true)).not.toContain('Excluded:');
+  });
 
   it('sandboxGuidance_saysWhatHoldsByDefault', () => {
     const guidance: string = sandboxGuidance(nothing, true);
@@ -61,11 +73,12 @@ describe('sandboxGuidance', () => {
     expect(guidance).toContain('Security & Permissions');
   });
 
-  it('sandboxGuidance_promisesNoWayOutThatDoesNotExistYet', () => {
+  it('sandboxGuidance_promisesNoWayOutThatDoesNotExist', () => {
+    // A per-host `allowed_domains` is ignored outside auto mode. Excluding a command became real with
+    // #1163, so the guidance may now name it.
     const guidance: string = sandboxGuidance(nothing, true);
 
     expect(guidance).not.toContain('allowed_domains');
-    expect(guidance).not.toContain('exclude');
   });
 
   it('sandboxGuidance_saysLocalPortsAndDockerAreOutOfReachByDefault', () => {
@@ -79,6 +92,7 @@ describe('sandboxGuidance', () => {
     const guidance: string = sandboxGuidance(nothing, true, {
       localPorts: 'allow',
       dockerSocket: 'allow',
+      certificateChecks: 'allow',
     });
 
     expect(guidance).toContain('commands may bind and connect to ports on this machine');
@@ -90,6 +104,7 @@ describe('sandboxGuidance', () => {
     const guidance: string = sandboxGuidance(nothing, true, {
       localPorts: 'deny',
       dockerSocket: 'deny',
+      certificateChecks: 'deny',
     });
 
     expect(guidance).toContain(
@@ -100,6 +115,24 @@ describe('sandboxGuidance', () => {
       'The Docker socket is denied by the user: `docker` commands fail. Do not try, and do not ' +
         'leave the sandbox to reach it.',
     );
+  });
+
+  it('sandboxGuidance_saysAGoToolsInvalidTokenIsNot_whenCertificateChecksAreClosed', () => {
+    const guidance: string = sandboxGuidance(nothing, true);
+
+    expect(guidance).toContain('Certificate checks cannot be reached');
+    expect(guidance).toContain('gh calls it an invalid token. It is not');
+  });
+
+  it('sandboxGuidance_saysGoToolsCanVerifyTls_whenCertificateChecksAreAllowed', () => {
+    const guidance: string = sandboxGuidance(nothing, true, {
+      localPorts: 'ask',
+      dockerSocket: 'ask',
+      certificateChecks: 'allow',
+    });
+
+    expect(guidance).toContain('Go tools (gh, terraform, gcloud) can verify TLS');
+    expect(guidance).not.toContain('Certificate checks cannot be reached');
   });
 
   it('sandboxGuidance_withNoSandboxButRequired_saysCommandsAreRefused', () => {
@@ -129,7 +162,13 @@ describe('sandboxReach', () => {
     return {
       permissionPosture: posture,
       toolPolicies: {
-        ...(level === undefined ? {} : { [LOCAL_NETWORK]: level, [DOCKER_SOCKET]: level }),
+        ...(level === undefined
+          ? {}
+          : {
+              [LOCAL_NETWORK]: level,
+              [DOCKER_SOCKET]: level,
+              [CERTIFICATE_CHECKS]: level,
+            }),
         ...(unsandboxed === undefined ? {} : { [RUN_UNSANDBOXED]: unsandboxed }),
       },
     };
@@ -137,7 +176,8 @@ describe('sandboxReach', () => {
 
   it.each<[ReachSettings['permissionPosture'], 'allow' | 'deny' | undefined, ReachLevel]>([
     ['prompt', undefined, 'ask'],
-    ['prompt', 'allow', 'ask'],
+    // Ruled on #1162 (2026-11-11): an explicit Allowed opens it even under Prompt All.
+    ['prompt', 'allow', 'allow'],
     ['prompt', 'deny', 'deny'],
     ['auto-edits', undefined, 'ask'],
     ['auto-edits', 'allow', 'allow'],
@@ -149,6 +189,7 @@ describe('sandboxReach', () => {
     expect(sandboxReach(settings(posture, level), 'darwin')).toEqual({
       localPorts: expected,
       dockerSocket: expected,
+      certificateChecks: expected,
     });
   });
 
@@ -156,13 +197,28 @@ describe('sandboxReach', () => {
     expect(sandboxReach(settings('auto-all', undefined, 'deny'), 'darwin')).toEqual({
       localPorts: 'ask',
       dockerSocket: 'ask',
+      certificateChecks: 'ask',
     });
   });
 
-  it('anExplicitAllow_standsEvenWhenLeavingTheSandboxIsDenied', () => {
-    expect(sandboxReach(settings('auto-all', 'allow', 'deny'), 'darwin').dockerSocket).toBe(
-      'allow',
-    );
+  it.each<ReachSettings['permissionPosture']>(['prompt', 'auto-edits', 'auto-all'])(
+    'anExplicitAllow_standsEvenWhenLeavingTheSandboxIsDenied_under %s',
+    (posture: ReachSettings['permissionPosture']) => {
+      expect(sandboxReach(settings(posture, 'allow', 'deny'), 'darwin')).toEqual({
+        localPorts: 'allow',
+        dockerSocket: 'allow',
+        certificateChecks: 'allow',
+      });
+    },
+  );
+
+  it('anExplicitAllow_opensNothing_offMacOS', () => {
+    // The SDK has neither knob on Linux, so the agent must not be told they are open.
+    expect(sandboxReach(settings('prompt', 'allow'), 'linux')).toEqual({
+      localPorts: 'ask',
+      dockerSocket: 'ask',
+      certificateChecks: 'ask',
+    });
   });
 
   it('decidesEachPermissionOnItsOwn', () => {
@@ -174,19 +230,20 @@ describe('sandboxReach', () => {
         },
         'darwin',
       ),
-    ).toEqual({ localPorts: 'allow', dockerSocket: 'deny' });
+    ).toEqual({ localPorts: 'allow', dockerSocket: 'deny', certificateChecks: 'ask' });
   });
 
   it('nothingGrantedToTheShell_opensEither', () => {
     expect(
       sandboxReach({ permissionPosture: 'auto-edits', toolPolicies: { Bash: 'allow' } }, 'darwin'),
-    ).toEqual({ localPorts: 'ask', dockerSocket: 'ask' });
+    ).toEqual({ localPorts: 'ask', dockerSocket: 'ask', certificateChecks: 'ask' });
   });
 
   it.each<NodeJS.Platform>(['linux', 'win32'])('neverOpens_on_%s', (platform: NodeJS.Platform) => {
     expect(sandboxReach(settings('auto-all', 'allow'), platform)).toEqual({
       localPorts: 'ask',
       dockerSocket: 'ask',
+      certificateChecks: 'ask',
     });
     expect(sandboxReach(settings('auto-all', 'deny'), platform).dockerSocket).toBe('deny');
   });
@@ -264,6 +321,19 @@ describe('osSandboxAvailable', () => {
 });
 
 describe('shellRule', () => {
+  it('doesNotAutoAllowAnExcludedCommand_whichRunsOutsideTheSandbox', () => {
+    // #1163: Auto-Allow is for commands that stay inside the sandbox; an excluded one does not.
+    const settings: { autoAllowSandboxedShell: boolean; excludedCommands: string[] } = {
+      autoAllowSandboxedShell: true,
+      excludedCommands: ['npx ng:*'],
+    };
+
+    expect(shellRule('Bash', { command: 'npx ng build' }, settings, true)).toEqual({
+      kind: 'continue',
+    });
+    expect(shellRule('Bash', { command: 'ls' }, settings, true)).toEqual({ kind: 'allow' });
+  });
+
   it('leavesEveryOtherToolAlone', () => {
     expect(shellRule('Write', {}, {}, false)).toEqual({ kind: 'continue' });
   });

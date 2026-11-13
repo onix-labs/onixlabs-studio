@@ -114,8 +114,16 @@ export function describeHostingWrite(provider: string, op: HostingOp, params: un
       return `${provider}: comment on #${text('issue')}${where}`;
     case 'setIssueState':
       return `${provider}: ${record['state'] === 'closed' ? 'close' : 'reopen'} #${text('issue')}${where}`;
+    case 'updateIssue':
+      return `${provider}: edit #${text('issue')}${where} (${describeIssueEdit(record)})`;
+    case 'addSubIssue':
+      return `${provider}: make #${text('subIssue')} a sub-issue of #${text('issue')}${where}`;
+    case 'removeSubIssue':
+      return `${provider}: take sub-issue #${text('subIssue')} off #${text('issue')}${where}`;
     case 'createPullRequest':
       return `${provider}: open a pull request “${text('title')}” from ${text('head')} into ${text('base')}${where}`;
+    case 'updatePullRequest':
+      return `${provider}: edit pull request #${text('pullRequest')}${where} (${describePullRequestEdit(record)})`;
     case 'rerunCiRun':
       return `${provider}: re-run CI run ${text('runId')}${where}`;
     case 'cancelCiRun':
@@ -123,4 +131,73 @@ export function describeHostingWrite(provider: string, op: HostingOp, params: un
     default:
       return `${provider}: ${op}${where}`;
   }
+}
+
+/**
+ * Lists the names an edit adds or removes, for the permission prompt.
+ * @param value The untrusted list.
+ * @returns Returns the names, joined, or empty when there are none.
+ */
+function namesIn(value: unknown): string {
+  return Array.isArray(value)
+    ? value.filter((name: unknown): name is string => typeof name === 'string').join(', ')
+    : '';
+}
+
+/**
+ * Says what an issue edit changes, so the user approves these labels on this issue rather than "an
+ * edit" (#1156).
+ * @param record The edit's parameters.
+ * @returns Returns the changes, separated by semicolons.
+ */
+function describeIssueEdit(record: Record<string, unknown>): string {
+  const changes: string[] = [];
+  if (typeof record['title'] === 'string') {
+    changes.push(`title “${record['title']}”`);
+  }
+  if (typeof record['body'] === 'string') {
+    changes.push('body');
+  }
+  const listed: readonly (readonly [string, string])[] = [
+    ['addLabels', 'add labels'],
+    ['removeLabels', 'remove labels'],
+    ['addAssignees', 'assign'],
+    ['removeAssignees', 'unassign'],
+  ];
+  for (const [key, verb] of listed) {
+    const names: string = namesIn(record[key]);
+    if (names.length > 0) {
+      changes.push(`${verb} ${names}`);
+    }
+  }
+  if (record['milestone'] === null) {
+    changes.push('clear the milestone');
+  } else if (typeof record['milestone'] === 'string') {
+    changes.push(`milestone “${record['milestone']}”`);
+  }
+  return changes.length === 0 ? 'no changes' : changes.join('; ');
+}
+
+/**
+ * Says what a pull request edit changes, for the permission prompt (#1156).
+ * @param record The edit's parameters.
+ * @returns Returns the changes, separated by semicolons.
+ */
+function describePullRequestEdit(record: Record<string, unknown>): string {
+  const changes: string[] = [];
+  if (typeof record['title'] === 'string') {
+    changes.push(`title “${record['title']}”`);
+  }
+  if (typeof record['body'] === 'string') {
+    changes.push('description');
+  }
+  if (typeof record['base'] === 'string') {
+    changes.push(`merge into ${record['base']}`);
+  }
+  if (record['draft'] === true) {
+    changes.push('convert to draft');
+  } else if (record['draft'] === false) {
+    changes.push('mark ready for review');
+  }
+  return changes.length === 0 ? 'no changes' : changes.join('; ');
 }

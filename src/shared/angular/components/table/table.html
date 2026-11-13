@@ -125,7 +125,7 @@
             class="table-row"
             [class.table-row--alternate]="alternateIds().has(row.id)"
             [class.table-row--selected]="selectedIds().has(row.id)"
-            (click)="rowClick.emit(row)"
+            (click)="onRowClick(row, $event)"
           >
             <ng-container
               [ngTemplateOutlet]="rowTemplate()?.template ?? null"

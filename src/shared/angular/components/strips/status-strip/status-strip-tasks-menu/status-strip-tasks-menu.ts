@@ -1,11 +1,20 @@
 import { CdkMenu, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
-import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  DestroyRef,
+  inject,
+  Signal,
+} from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { MENU_POSITIONS } from '@shared/angular/components/menu/menu-position';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
 import { AgentTasks, LiveAgentTask } from '@shared/angular/services/agent-tasks/agent-tasks';
+import { MenuClock } from '@shared/angular/services/time/menu-clock';
+import { taskTiming } from '@shared/angular/services/time/time-format';
 
 /**
  * The status strip's agent-task indicator: a count of the work agents are running in the background,
@@ -79,21 +88,22 @@ export class StatusStripTasksMenu {
   }
 
   /**
-   * Formats a task's elapsed time coarsely — the flyout is a progress cue, not a stopwatch.
-   * @param durationMs The task's elapsed milliseconds, as last reported.
-   * @returns Returns the formatted duration.
+   * Holds the clock the open flyout's running times tick by (#1419). It ticks only while the flyout is
+   * open.
    */
-  protected elapsed(durationMs: number): string {
-    const seconds: number = Math.floor(durationMs / 1000);
-    if (seconds < 60) {
-      return `${seconds}s`;
-    }
-    const minutes: number = Math.floor(seconds / 60);
-    return minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h`;
+  protected readonly clock: MenuClock = new MenuClock();
+
+  /**
+   * Initializes a new instance of the {@link StatusStripTasksMenu} class, stopping the clock with the
+   * view.
+   */
+  public constructor() {
+    inject(DestroyRef).onDestroy((): void => this.clock.stop());
   }
 
   /**
-   * Builds the secondary line for a task: what it last did and what it has spent.
+   * Builds the secondary line for a task: its conversation, what it last did, when it started and how
+   * long it has run.
    * @param task The task to describe.
    * @returns Returns the joined detail, or an empty string when nothing is known yet.
    */
@@ -102,8 +112,9 @@ export class StatusStripTasksMenu {
     if (task.lastToolName !== undefined) {
       parts.push(task.lastToolName);
     }
-    if (task.durationMs > 0) {
-      parts.push(this.elapsed(task.durationMs));
+    const timing: string = taskTiming(task.startedAt, task.durationMs, this.clock.now());
+    if (timing.length > 0) {
+      parts.push(timing);
     }
     return parts.join(' · ');
   }

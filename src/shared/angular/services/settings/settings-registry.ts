@@ -192,6 +192,12 @@ export type CollapsedFolderSeparator = '/' | '.';
 export type ExplorerSortOrder = 'folders-first' | 'files-first' | 'mixed';
 
 /**
+ * Identifies how the explorers show the files version control ignores (#1252): greyed out, or not at
+ * all.
+ */
+export type ExplorerIgnoredFiles = 'greyed' | 'hidden';
+
+/**
  * Identifies how an explorer's row opens its file: one click, or two.
  */
 export type ExplorerOpenFilesWith = 'single' | 'double';
@@ -250,6 +256,12 @@ export type DefaultReasoningEffort = 'provider' | 'low' | 'medium' | 'high';
  * Names the key that sends an agent message; the other two insert a new line.
  */
 export type SendMessageWith = 'enter' | 'mod-enter' | 'shift-enter';
+
+/**
+ * Names what picking a quick response does in an empty composer (#1420): send it at once, or put it in
+ * the composer to be edited first. With a draft already written it is always added to the draft.
+ */
+export type QuickResponseMode = 'send' | 'insert';
 
 /**
  * How scroll bars are shown: slim bars that appear while an area is hovered or scrolled, or bars that
@@ -566,6 +578,7 @@ export interface SettingsValues {
   readonly 'workspaces.documentWellPlacement': DocumentWellPlacement;
   readonly 'workspaces.addStudioUserFileToGitignore': boolean;
   readonly 'workspaces.showErrorSquiggles': boolean;
+  readonly 'workspaces.ignoredFiles': ExplorerIgnoredFiles;
   readonly 'workspaces.sortOrder': ExplorerSortOrder;
   readonly 'workspaces.collapsedFolderSeparator': CollapsedFolderSeparator;
   readonly 'workspaces.openFilesWith': ExplorerOpenFilesWith;
@@ -821,6 +834,7 @@ export interface SettingsValues {
   readonly 'ai.deniedWritePaths': readonly string[];
   readonly 'ai.allowedNetworkLocations': readonly string[];
   readonly 'ai.deniedNetworkLocations': readonly string[];
+  readonly 'ai.excludedCommands': readonly string[];
   readonly 'ai.tokenCap': number;
   readonly 'ai.runTimeoutMinutes': number;
   readonly 'ai.agentSessionLifetime': number;
@@ -858,6 +872,7 @@ export interface SettingsValues {
   readonly 'ai.deleteConversationsAfterDays': number;
   readonly 'ai.deleteConversationsMode': AskOrAutomatic;
   readonly 'ai.sendMessageWith': SendMessageWith;
+  readonly 'ai.quickResponseMode': QuickResponseMode;
   readonly 'ai.maxImagesPerMessage': number;
   readonly 'ai.maxImageSizeMb': number;
   readonly 'ai.expandToolCalls': boolean;
@@ -1517,6 +1532,21 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description: 'Underline the name of a file with an error, and the folders above it.',
         control: { kind: 'toggle' },
         default: true,
+      },
+      {
+        key: 'workspaces.ignoredFiles',
+        title: 'Ignored Files',
+        description:
+          'How the files and folders version control ignores appear: greyed out, or left out of ' +
+          'the tree.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'greyed', label: 'Show Greyed' },
+            { value: 'hidden', label: 'Hide' },
+          ],
+        },
+        default: 'greyed',
       },
       {
         key: 'workspaces.sortOrder',
@@ -4929,6 +4959,17 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: [],
       },
       {
+        key: 'ai.excludedCommands',
+        title: 'Excluded Commands',
+        description:
+          'Commands that run outside the OS sandbox in every workspace, such as a toolchain that ' +
+          'crashes inside it (e.g. npx ng:*, dotnet:*). They still ask for permission as any ' +
+          'command does; only the sandbox is removed. Claude agents only: Codex cannot take one ' +
+          'command out of its sandbox.',
+        control: { kind: 'custom', component: 'ai-excluded-commands' },
+        default: [],
+      },
+      {
         key: 'ai.tokenCap',
         title: 'Token Cap',
         description: 'The per-request token budget.',
@@ -5119,6 +5160,20 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'enter',
+      },
+      {
+        key: 'ai.quickResponseMode',
+        title: 'Quick Responses',
+        description:
+          'What picking a quick response does in an empty composer. With a draft, it is always added to the draft.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'send', label: 'Send Immediately' },
+            { value: 'insert', label: 'Insert for Editing' },
+          ],
+        },
+        default: 'send',
       },
       {
         key: 'ai.maxImagesPerMessage',

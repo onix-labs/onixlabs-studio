@@ -24,6 +24,7 @@ import neo4j, {
 import { afterEach, beforeEach, describe, expect, it, Mock, vi } from 'vitest';
 import {
   DatabaseNode,
+  ExplainOutcome,
   GraphNodeValue,
   GraphRelationshipValue,
 } from '../../protocol/database/protocol';
@@ -448,6 +449,7 @@ describe('Neo4jEngine', (): void => {
       'script',
       'graph',
       'completion',
+      'explain',
     ]);
     expect(engine.info.connectionFields.map((field: { id: string }): string => field.id)).toEqual([
       'uri',
@@ -813,6 +815,86 @@ describe('Neo4jEngine', (): void => {
         line: 2,
       },
     ]);
+  });
+
+  it('explain_plansEachStatement_inASessionItThenCloses', async (): Promise<void> => {
+    // #1099.
+    const session: EngineSession = await open();
+    const asked: string[] = [];
+    answer((text: string): QueryResult => {
+      asked.push(text);
+      return result([], [], {
+        plan: {
+          operatorType: 'NodeByLabelScan@neo4j',
+          identifiers: ['p'],
+          args: { Details: 'p:Person', EstimatedRows: 10 },
+          children: [],
+        },
+      });
+    });
+
+    const outcome: ExplainOutcome = await session.explain!('MATCH (p:Person) RETURN p;');
+
+    expect(asked).toEqual(['EXPLAIN MATCH (p:Person) RETURN p']);
+    expect(outcome.failed).toBe(false);
+    expect(outcome.plans[0]?.root).toMatchObject({
+      operator: 'NodeByLabelScan',
+      detail: 'p:Person',
+      estimatedRows: 10,
+    });
+    expect(sessions.at(-1)?.close).toHaveBeenCalled();
+  });
+
+  it('explain_analyzed_profilesInATransactionItRollsBack', async (): Promise<void> => {
+    // PROFILE runs the statement; rolling back undoes what it wrote.
+    const rollback: Mock<() => Promise<void>> = vi.fn((): Promise<void> => Promise.resolve());
+    const asked: string[] = [];
+    const transaction: unknown = {
+      run: vi.fn((text: string): Running => {
+        asked.push(text);
+        return asRunning(
+          Promise.resolve(
+            result([], [], {
+              profile: {
+                operatorType: 'Create@neo4j',
+                identifiers: [],
+                args: {},
+                dbHits: 2,
+                rows: 1,
+                children: [],
+              },
+            }),
+          ),
+        );
+      }),
+      rollback,
+      isOpen: (): boolean => true,
+    };
+    driver.session.mockReturnValueOnce({
+      run: vi.fn(),
+      close: vi.fn((): Promise<void> => Promise.resolve()),
+      beginTransaction: vi.fn((): unknown => transaction),
+    } as unknown as FakeSession);
+    const session: EngineSession = await open();
+
+    const outcome: ExplainOutcome = await session.explain!('CREATE (:Person)', undefined, true);
+
+    expect(asked).toEqual(['PROFILE CREATE (:Person)']);
+    expect(rollback).toHaveBeenCalledTimes(1);
+    expect(outcome.plans[0]?.root).toMatchObject({ operator: 'Create', actualRows: 1 });
+  });
+
+  it('explain_ofAStatementTheServerRefuses_saysWhy', async (): Promise<void> => {
+    const session: EngineSession = await open();
+    answer((): never => {
+      throw new Error('Invalid input');
+    });
+
+    expect(await session.explain!('MATC (n) RETURN n')).toEqual({
+      plans: [],
+      failed: true,
+      message: 'Invalid input',
+    });
   });
 
   it('cancel_closesTheRunningSession_andTheOutcomeReadsAsCancelledNotFailed', async (): Promise<void> => {

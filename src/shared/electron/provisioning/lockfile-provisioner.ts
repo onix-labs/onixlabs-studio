@@ -5,6 +5,7 @@ import { logger } from '../logger';
 import { platformKey } from './archive-provision';
 import { isComplete, markComplete } from './archive-provisioner';
 import { downloadTo, extractArchive, integrityOf, sha256Of } from './download';
+import { classifyInstallError, recordInstallFailure } from './install-failure';
 import {
   LockfilePackage,
   LockfileProvision,
@@ -46,20 +47,21 @@ export class LockfileProvisioner {
   >();
 
   /**
-   * Resolves a lockfile compiled into the application for a URL, or null to fetch it.
+   * Resolves a lockfile compiled into the application for a URL and its pinned hash, or null to fetch
+   * it.
    */
-  private readonly bundled: (url: string) => unknown;
+  private readonly bundled: (url: string, sha256: string) => unknown;
 
   /**
    * Initializes a new instance of the {@link LockfileProvisioner} class.
    * @param root The directory installs are rooted at, or null to disable provisioning.
    * @param logName The name to log under.
-   * @param bundled Resolves a compiled-in lockfile for a URL, defaulting to none.
+   * @param bundled Resolves a compiled-in lockfile for a URL and its pinned hash, defaulting to none.
    */
   public constructor(
     root: string | null,
     logName: string,
-    bundled: (url: string) => unknown = (): null => null,
+    bundled: (url: string, sha256: string) => unknown = (): null => null,
   ) {
     this.root = root;
     this.logName = logName;
@@ -217,6 +219,7 @@ export class LockfileProvisioner {
       }
       if (target !== null && !existsSync(target)) {
         logger.warn(this.logName, `Installed ${provision.id} but its entry point is missing`);
+        recordInstallFailure(provision.id, { kind: 'broken' });
         await fs.rm(directory, { recursive: true, force: true });
         return null;
       }
@@ -227,6 +230,7 @@ export class LockfileProvisioner {
       return target ?? directory;
     } catch (error: unknown) {
       logger.error(this.logName, `Failed to provision ${provision.id}`, error);
+      recordInstallFailure(provision.id, classifyInstallError(error));
       await fs.rm(directory, { recursive: true, force: true }).catch((): void => undefined);
       return null;
     }
@@ -246,14 +250,14 @@ export class LockfileProvisioner {
     directory: string,
   ): Promise<readonly LockfilePackage[] | null> {
     // A lockfile compiled into the application shipped with the code that reads it, so there is
-    // nothing to download and no digest to compare it against — the pinned hash verifies a *download*.
-    // This is also the only path that works at all while the repository is private, since
-    // `raw.githubusercontent.com` does not serve one.
-    const bundled: unknown = this.bundled(provision.lockfileUrl);
+    // nothing to download. The resolver is handed the pin and serves a copy only for exactly that pin,
+    // so a newer pin from a fetched index is never answered with an older bundled tree.
+    const bundled: unknown = this.bundled(provision.lockfileUrl, provision.sha256);
     if (bundled !== null) {
       const packages: readonly LockfilePackage[] | null = parseLockfileDocument(bundled);
       if (packages === null) {
         logger.error(this.logName, `Bundled lockfile for ${provision.id} cannot be honoured`);
+        recordInstallFailure(provision.id, { kind: 'broken' });
         return null;
       }
       logger.info(this.logName, `Using the lockfile compiled in for ${provision.id}`);
@@ -267,6 +271,7 @@ export class LockfileProvisioner {
         this.logName,
         `Lockfile checksum mismatch for ${provision.id}: expected ${provision.sha256}, got ${digest}`,
       );
+      recordInstallFailure(provision.id, { kind: 'mismatch' });
       return null;
     }
     const packages: readonly LockfilePackage[] | null = parseLockfile(
@@ -275,6 +280,7 @@ export class LockfileProvisioner {
     await fs.rm(file, { force: true });
     if (packages === null) {
       logger.error(this.logName, `Lockfile for ${provision.id} is not one this can honour`);
+      recordInstallFailure(provision.id, { kind: 'broken' });
       return null;
     }
     return packages;
@@ -302,6 +308,7 @@ export class LockfileProvisioner {
         this.logName,
         `Refusing to install ${id}: ${entry.path} resolves outside the install directory`,
       );
+      recordInstallFailure(id, { kind: 'broken' });
       return false;
     }
     await fs.mkdir(destination, { recursive: true });
@@ -313,6 +320,7 @@ export class LockfileProvisioner {
         this.logName,
         `Integrity mismatch installing ${id}: ${entry.path} expected ${entry.integrity}, got ${actual}`,
       );
+      recordInstallFailure(id, { kind: 'mismatch' });
       return false;
     }
     // npm tarballs are rooted at `package/`, and the lockfile's paths assume that root is gone.

@@ -191,6 +191,27 @@ export interface TableRow {
 }
 
 /**
+ * Describes a click on a data row of a {@link Table}, with the modifier keys held, for a consumer that
+ * selects several rows: ⌘ or Ctrl to add or remove one, Shift to extend a range.
+ */
+export interface TableRowSelect {
+  /**
+   * Gets the row clicked.
+   */
+  readonly row: TableRow;
+
+  /**
+   * Gets whether the click toggles the row in the selection: ⌘ on macOS, Ctrl elsewhere.
+   */
+  readonly toggle: boolean;
+
+  /**
+   * Gets whether the click extends the selection from its anchor to this row: Shift.
+   */
+  readonly range: boolean;
+}
+
+/**
  * Marks the `<ng-template>` a {@link Table} renders for each data row. The row is the template's
  * implicit context (`<ng-template appTableRow let-row>`), and the template must render one `<td>` per
  * column in column order.
@@ -410,6 +431,12 @@ export class Table {
    * Emits the row that was clicked.
    */
   public readonly rowClick: OutputEmitterRef<TableRow> = output<TableRow>();
+
+  /**
+   * Emits a click on a data row with the modifier keys held, alongside {@link rowClick}, for a
+   * consumer that selects several rows. The selection is still the consumer's to keep.
+   */
+  public readonly rowSelect: OutputEmitterRef<TableRowSelect> = output<TableRowSelect>();
 
   /**
    * Emits the current sort whenever a sortable header is clicked, or null when sorting is cleared (the
@@ -718,6 +745,17 @@ export class Table {
    */
   protected isCollapsed(id: string): boolean {
     return this.collapsedGroups().has(id);
+  }
+
+  /**
+   * Reports a click on a data row: plainly through {@link rowClick}, and with its modifier keys
+   * through {@link rowSelect}.
+   * @param row The row clicked.
+   * @param event The click.
+   */
+  protected onRowClick(row: TableRow, event: MouseEvent): void {
+    this.rowClick.emit(row);
+    this.rowSelect.emit({ row, toggle: event.metaKey || event.ctrlKey, range: event.shiftKey });
   }
 
   /**

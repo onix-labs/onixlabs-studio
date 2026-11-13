@@ -6,13 +6,17 @@ import {
   DatabaseNode,
   DatabaseValue,
   ExecuteRequest,
+  ExplainOutcome,
   NamesScope,
   NodeActionOutcome,
+  QueryPlan,
   TransactionAction,
   TransactionOutcome,
   TreeOptions,
 } from '../../protocol/database/protocol';
+import { splitStatements } from '../../protocol/database/statements';
 import { SqliteRunner } from './sqlite-runner';
+import { sqlitePlanTree, SqlitePlanRow } from './sqlite-plan';
 import { toValue } from './sqlite-run';
 import {
   DatabaseEngine,
@@ -70,7 +74,7 @@ export class SqliteEngine implements DatabaseEngine {
     displayName: 'SQLite',
     language: 'sql',
     queryExtension: 'sql',
-    capabilities: ['cancel', 'script', 'completion', 'transactions'],
+    capabilities: ['cancel', 'script', 'completion', 'transactions', 'explain'],
     connectionFields: [
       {
         id: 'file',
@@ -376,6 +380,38 @@ class SqliteSession implements EngineSession {
    */
   public transaction(action: TransactionAction): Promise<TransactionOutcome> {
     return this.runner.transaction(action);
+  }
+
+  /**
+   * Says how SQLite would run each statement, with `EXPLAIN QUERY PLAN` on the plugin's own
+   * connection: it plans a statement without running it, writes included, so it needs no runner and
+   * leaves nothing to undo. SQLite reports no actual rows or times, so there is nothing to analyze,
+   * and a temporary table a query made in the runner is not there to plan against.
+   * @param sql The text, one statement or several.
+   * @returns Returns a promise resolving the plans, up to the first statement that cannot be planned.
+   */
+  public explain(sql: string): Promise<ExplainOutcome> {
+    const plans: QueryPlan[] = [];
+    for (const statement of splitStatements(sql)) {
+      try {
+        const rows: readonly SqlitePlanRow[] = this.all(`explain query plan ${statement.text}`).map(
+          (row: readonly DatabaseValue[]): SqlitePlanRow => ({
+            id: Number(row[0]),
+            parent: Number(row[1]),
+            detail: text(row[3] ?? ''),
+          }),
+        );
+        plans.push({
+          statement: statement.text,
+          line: statement.line,
+          root: sqlitePlanTree(rows),
+          raw: JSON.stringify(rows, null, 2),
+        });
+      } catch (error: unknown) {
+        return Promise.resolve({ plans, failed: true, message: describeError(error) });
+      }
+    }
+    return Promise.resolve({ plans, failed: false });
   }
 
   /**

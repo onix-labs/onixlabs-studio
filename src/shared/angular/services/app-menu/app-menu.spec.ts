@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
+import { AppMenuSection } from '@shared/api/menu-types';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
 import { AppMenu } from './app-menu';
@@ -374,5 +375,49 @@ describe('AppMenu', () => {
     expect(menu.dispatchChord(modEvent('q'))).toBe(false);
     expect(closed).toBe(1);
     expect(printed).toBe(0);
+  });
+});
+
+describe('AppMenu over the bridge', () => {
+  let sent: unknown[][];
+
+  beforeEach(() => {
+    sent = [];
+    const bridge: unknown = {
+      send: (...message: unknown[]): void => void sent.push(message),
+      on: (): (() => void) => (): void => undefined,
+    };
+    Object.defineProperty(window, 'bridge', { value: bridge, configurable: true });
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'bridge');
+  });
+
+  it('setMenu_carriesTheApplicationMenuGroupToTheMainProcess', () => {
+    // The main process moves About and Settings into macOS's application menu by this field (#1406),
+    // so it has to survive the handlers being stripped.
+    const menu: AppMenu = TestBed.inject(AppMenu);
+    menu.contribute(
+      'core',
+      [
+        {
+          id: 'help',
+          label: 'Help',
+          items: [
+            { id: 'about', label: 'About', applicationMenu: 'about', run: (): void => undefined },
+          ],
+        },
+      ],
+      CORE_PRIORITY,
+    );
+    TestBed.tick();
+
+    const sections: readonly AppMenuSection[] = sent.at(-1)?.[1] as readonly AppMenuSection[];
+    expect(sections[0]?.items[0]).toEqual({
+      id: 'about',
+      label: 'About',
+      applicationMenu: 'about',
+    });
   });
 });
