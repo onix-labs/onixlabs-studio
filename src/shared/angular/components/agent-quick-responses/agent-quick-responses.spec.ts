@@ -286,6 +286,30 @@ describe('AgentQuickResponses', () => {
     expect(document.querySelector('.quick-responses__panel')).not.toBeNull();
   });
 
+  it('edit_onEnter_cancelsTheKeysDefault_soItDoesNotPressTheRowThatTakesFocus', () => {
+    // Saving hands focus to a row's pick while the Enter is still being dispatched. Left to run, the
+    // browser's default for Enter then presses that pick: a reply is sent and the panel closes.
+    const harness: Harness = open(['Okay', 'Ship it']);
+    openRowMenu(harness);
+    rowMenuItem('Edit')?.click();
+    harness.fixture.detectChanges();
+    const field: HTMLInputElement = editField()!;
+    field.value = 'Okay, go ahead';
+    field.dispatchEvent(new Event('input'));
+    harness.fixture.detectChanges();
+
+    const enter: KeyboardEvent = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true,
+    });
+    field.dispatchEvent(enter);
+    harness.fixture.detectChanges();
+
+    expect(enter.defaultPrevented).toBe(true);
+    expect(harness.chosen).toEqual([]);
+  });
+
   it('edit_onEscape_leavesTheRowAsItWas_andThePanelOpen', () => {
     const harness: Harness = open(['Okay']);
     openRowMenu(harness);
@@ -412,4 +436,32 @@ describe('AgentQuickResponses', () => {
     expect(document.querySelector('.quick-responses__panel')).not.toBeNull();
     expect(harness.chosen).toEqual([]);
   });
+
+  it.each([
+    ['the next row', 0, ['Okay', 'Ship it', 'Merge'], 'Ship it'],
+    ['the previous row, for the last', 2, ['Okay', 'Ship it', 'Merge'], 'Ship it'],
+    ['the add field, for the only one', 0, ['Okay'], null],
+  ])(
+    'delete_movesFocusTo %s_soThePanelKeepsIt',
+    (_case: string, index: number, saved: readonly string[], expected: string | null) => {
+      // Focus sits in the row menu, which goes with the deleted row; left there, it falls to the page
+      // and the CDK closes the whole stack, panel and all.
+      const harness: Harness = open(saved);
+
+      moreActionsButtons()[index]?.click();
+      TestBed.tick();
+      harness.fixture.detectChanges();
+      rowMenuItem('Delete')?.focus();
+      rowMenuItem('Delete')?.click();
+      harness.fixture.detectChanges();
+
+      const focused: Element | null = document.activeElement;
+      expect(focused?.closest('.quick-responses__panel')).not.toBeNull();
+      if (expected === null) {
+        expect(focused?.closest('.quick-responses__add')).not.toBeNull();
+      } else {
+        expect(focused?.textContent?.trim()).toBe(expected);
+      }
+    },
+  );
 });

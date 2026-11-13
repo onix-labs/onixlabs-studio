@@ -11,7 +11,7 @@
 <!-- `cdkMenu` must be this template's root node: on an inner element the CDK silently falls back to
      an inline menu, which never dismisses. -->
 <ng-template #menu>
-  <div class="quick-responses__panel" cdkMenu>
+  <div #panel class="quick-responses__panel" cdkMenu>
     <!-- Only the replies scroll. The list is the panel's one scrolling child so the add field below it
          stays put however long the list grows, rather than being pushed out of reach past the foot of
          a scrolled panel. -->
@@ -39,7 +39,9 @@
           </span>
           @if (editingId() === response.id) {
             <!-- Editing in place (#1420). Its keys stay its own, as the add field's do: the menu runs
-                 type-ahead on printable keys and closes on Escape, which here cancels the edit. -->
+                 type-ahead on printable keys and closes on Escape, which here cancels the edit.
+                 Enter's default is cancelled too: saving hands focus to a row's pick mid-keystroke,
+                 and the browser would then press it — sending a reply and closing the panel. -->
             <app-text-field
               #editField
               class="quick-responses__edit"
@@ -48,6 +50,7 @@
               (enter)="saveEdit(response)"
               (escape)="cancelEdit(response.id)"
               (keydown)="$event.stopPropagation()"
+              (keydown.enter)="$event.preventDefault()"
             />
           } @else {
             <button
@@ -128,7 +131,7 @@
       type="button"
       class="app-menu-panel__item"
       cdkMenuItem
-      (appMenuKeepOpen)="remove(response); rowTrigger.close()"
+      (appMenuKeepOpen)="remove(response, rowTrigger)"
     >
       <app-icon [icon]="Icon.TRASH" />
       <span class="app-menu-panel__item-label">Delete</span>

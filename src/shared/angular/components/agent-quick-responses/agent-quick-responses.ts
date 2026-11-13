@@ -6,6 +6,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  ElementRef,
   inject,
   Injector,
   input,
@@ -170,6 +171,12 @@ export class AgentQuickResponses {
   private readonly editField: Signal<TextField | undefined> = viewChild<TextField>('editField');
 
   /**
+   * Holds the open panel, when the menu is open.
+   */
+  private readonly panel: Signal<ElementRef<HTMLElement> | undefined> =
+    viewChild<ElementRef<HTMLElement>>('panel');
+
+  /**
    * Holds the injector the edit field is focused after rendering through.
    */
   private readonly injector: Injector = inject(Injector);
@@ -287,11 +294,43 @@ export class AgentQuickResponses {
   }
 
   /**
-   * Deletes a response.
+   * Deletes a response, closing only the row's own menu: the panel stays open, so several can be
+   * cleared in a row.
+   *
+   * Focus is moved onto the row that takes the deleted one's place before anything goes. It sits in
+   * the row menu, which belongs to the deleted row's trigger; removing the row takes the menu with it,
+   * focus falls to the page, and the CDK closes a whole menu stack the moment focus leaves it — the
+   * panel along with the row menu.
    * @param response The response to delete.
+   * @param rowTrigger The trigger of the row's menu, closed as the response is deleted.
    */
-  protected remove(response: QuickResponse): void {
+  protected remove(response: QuickResponse, rowTrigger: CdkMenuTrigger): void {
+    this.focusInPlaceOf(response.id);
+    rowTrigger.close();
     this.library.remove(response.id);
+  }
+
+  /**
+   * Focuses what takes a row's place when it goes: the next row's pick, the previous one's when it
+   * is the last, or the add field when it is the only one.
+   * @param id The row going.
+   */
+  private focusInPlaceOf(id: string): void {
+    const panel: HTMLElement | undefined = this.panel()?.nativeElement;
+    if (panel === undefined) {
+      return;
+    }
+    const picks: readonly HTMLElement[] = Array.from(
+      panel.querySelectorAll<HTMLElement>('.quick-responses__select'),
+    );
+    const index: number = picks.findIndex(
+      (pick: HTMLElement): boolean => pick.dataset['responseId'] === id,
+    );
+    const target: HTMLElement | null =
+      picks[index + 1] ??
+      picks[index - 1] ??
+      panel.querySelector<HTMLElement>('.quick-responses__add input');
+    target?.focus();
   }
 
   /**
