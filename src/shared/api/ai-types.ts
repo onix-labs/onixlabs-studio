@@ -171,6 +171,7 @@ export type { GateableTool } from './ai/ai-tool-policy';
 export {
   GATEABLE_TOOLS,
   DEFAULT_TOOL_POLICY,
+  CERTIFICATE_CHECKS,
   DOCKER_SOCKET,
   LOCAL_NETWORK,
   RUN_UNSANDBOXED,

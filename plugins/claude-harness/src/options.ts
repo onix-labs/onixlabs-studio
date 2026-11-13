@@ -227,8 +227,8 @@ export function parseQuestions(input: Record<string, unknown>): readonly ParsedQ
  * sandbox sees the syscalls, so it covers `Bash` and the SDK's own web access. Handed to it: the denied
  * write paths (so a shell command cannot write where a file tool may not), the allowed write paths (so
  * a granted shell write to a widened root is not then blocked), the network locations, which have no
- * gate equivalent at all, and local ports and the Docker socket when their permissions open them
- * (#1162).
+ * gate equivalent at all, local ports and the Docker socket when their permissions open them
+ * (#1162), and the certificate trust service when its permission does.
  *
  * Every list is omitted when empty, so a user who configured nothing gets precisely the sandbox Studio
  * has always applied, plus the session's temporary folder when it has one.
@@ -285,6 +285,12 @@ export function sandboxFor(
       ...(allowLocalBinding ? { allowLocalBinding } : {}),
       ...(allowUnixSockets.length > 0 ? { allowUnixSockets: [...allowUnixSockets] } : {}),
     };
+  }
+  // macOS's certificate trust service, which Go tools verify TLS through. The SDK keeps it closed
+  // because it is a path out that the network rules cannot see, so it opens only when its permission
+  // does.
+  if (reach.certificateChecks === 'allow') {
+    sandbox.enableWeakerNetworkIsolation = true;
   }
   // The commands the user excluded (#1163): handed to the SDK, which runs them outside the sandbox and
   // still through the permission flow. Kept to the patterns this harness understands, so the audit's
