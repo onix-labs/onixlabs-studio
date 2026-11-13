@@ -27,12 +27,7 @@
       <p class="plugin-manager__subtitle">{{ summary() }}</p>
     </header>
 
-    @if (error(); as message) {
-      <p class="plugin-manager__error" role="alert">
-        <app-icon [icon]="Icon.WARNING" />
-        {{ message }}
-      </p>
-    }
+    <app-plugin-install-error class="plugin-manager__error" />
 
     <!-- One list, filling the rest of the view, its header in view while its rows scroll. Sorted by
          clicking a column's header. -->

@@ -38,13 +38,9 @@
 }
 
 .plugin-manager__error {
-  display: flex;
+  display: block;
   flex: none;
-  align-items: center;
-  gap: 0.5rem;
   margin: 0 1rem 0.5rem;
-  color: var(--danger-color);
-  font-size: 0.8125rem;
 }
 
 // The one list fills the rest of the view edge to edge, as the System Monitor's log does, and scrolls

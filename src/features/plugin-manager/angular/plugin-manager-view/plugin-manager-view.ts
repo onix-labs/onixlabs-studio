@@ -25,6 +25,7 @@ import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { CategoryItem, CategoryList } from '@shared/angular/components/category-list/category-list';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { PluginAction } from '@shared/angular/components/plugin-action/plugin-action';
+import { PluginInstallError } from '@shared/angular/components/plugin-install-error/plugin-install-error';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { canUpdate } from '@shared/angular/components/plugin-action/plugin-action-rules';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
@@ -109,6 +110,7 @@ const COLUMNS: readonly TableColumn[] = [
     PanelLayout,
     Panel,
     PluginAction,
+    PluginInstallError,
     Table,
     TableRowDef,
     ToolViewAgentPanel,
@@ -296,11 +298,6 @@ export class PluginManagerView implements OnInit {
       : 'turn on Load sideloaded plugins in Settings to load them';
     return `${summary} ${skipped}: ${remedy}.`;
   });
-
-  /**
-   * Gets the last action's error, or null.
-   */
-  protected readonly error: Signal<string | null> = this.plugins.error;
 
   /**
    * Reads a table row's plugin payload. The table hands its templates the {@link TableRow} wrapper, not

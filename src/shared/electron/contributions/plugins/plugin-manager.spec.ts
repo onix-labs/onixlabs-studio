@@ -7,6 +7,7 @@ import { HandPlacedPluginError, PluginContext, PluginDescriptor } from './plugin
 import { PluginInstallChange, PluginInstallEvents } from './plugin-install-events';
 import { PluginManager } from './plugin-manager';
 import { PluginStore } from './plugin-store';
+import { recordInstallFailure } from '../../provisioning/install-failure';
 
 /**
  * Builds a descriptor whose detection and installation are scripted by the test.
@@ -206,6 +207,47 @@ describe('PluginManager', () => {
     expect(result.error).not.toBe(detail);
     expect(result.error).toContain('demo');
     expect(store.get('demo')).toBeNull();
+  });
+
+  it('install_thatFails_saysWhyTheProvisionerGaveUp', async () => {
+    const manager: PluginManager = new PluginManager(
+      [
+        {
+          ...descriptor('demo', (): boolean => false),
+          install: (): Promise<string | null> => {
+            recordInstallFailure('demo', { kind: 'mismatch' });
+            return Promise.resolve(null);
+          },
+        },
+      ],
+      context,
+      store,
+    );
+
+    const result: PluginActionResult = await manager.install('demo');
+
+    expect(result.error).toContain('was not exactly what it expected');
+  });
+
+  it('install_thatFails_ignoresAReasonLeftBeforeItStarted', async () => {
+    // A reason recorded by provisioning outside the Plugin Manager is not this attempt's.
+    recordInstallFailure('demo', { kind: 'offline' });
+    const manager: PluginManager = new PluginManager(
+      [
+        {
+          ...descriptor('demo', (): boolean => false),
+          install: (): Promise<string | null> => Promise.resolve(null),
+        },
+      ],
+      context,
+      store,
+    );
+
+    const result: PluginActionResult = await manager.install('demo');
+
+    expect(result.error).toBe(
+      'demo could not be installed. The application log records what failed.',
+    );
   });
 
   describe('contributions (#878)', () => {

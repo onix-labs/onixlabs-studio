@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { logger } from '../logger';
 import { ArchiveDownload, ArchiveProvision, platformKey } from './archive-provision';
 import { downloadTo, extractArchive, sha256Of } from './download';
+import { classifyInstallError, recordInstallFailure } from './install-failure';
 
 /**
  * The name of the file written into an install directory once its contents are complete.
@@ -335,6 +336,7 @@ export class ArchiveProvisioner {
           this.logName,
           `Checksum mismatch for ${provision.id}: expected ${download.sha256}, got ${digest}`,
         );
+        recordInstallFailure(provision.id, { kind: 'mismatch' });
         await fs.rm(directory, { recursive: true, force: true });
         return null;
       }
@@ -342,6 +344,7 @@ export class ArchiveProvisioner {
       await fs.rm(archive, { force: true });
       if (!existsSync(target)) {
         logger.warn(this.logName, `Extracted ${provision.id} but its entry point is missing`);
+        recordInstallFailure(provision.id, { kind: 'broken' });
         await fs.rm(directory, { recursive: true, force: true });
         return null;
       }
@@ -354,6 +357,7 @@ export class ArchiveProvisioner {
       return target;
     } catch (error: unknown) {
       logger.error(this.logName, `Failed to provision ${provision.id}`, error);
+      recordInstallFailure(provision.id, classifyInstallError(error));
       await fs.rm(directory, { recursive: true, force: true }).catch((): void => undefined);
       return null;
     }
