@@ -76,6 +76,18 @@ function openRowMenu(harness: Harness): void {
 }
 
 /**
+ * Finds every row's More Actions button.
+ * @returns Returns the buttons, in row order.
+ */
+function moreActionsButtons(): readonly HTMLButtonElement[] {
+  return Array.from(
+    document.querySelectorAll<HTMLButtonElement>(
+      '.quick-responses__item button[aria-label^="More actions"]',
+    ),
+  );
+}
+
+/**
  * Finds an item of the open row menu by its label.
  * @param label The item's label.
  * @returns Returns the item, or null.
@@ -199,6 +211,48 @@ describe('AgentQuickResponses', () => {
     expect(rowMenu?.getAttribute('data-cdk-menu-stack-id')).toBe(
       panel?.getAttribute('data-cdk-menu-stack-id'),
     );
+  });
+
+  it('rowMenu_onHover_doesNotOpen', () => {
+    // A row's More Actions button opens on a click alone; sweeping down the rows opened each in turn.
+    const harness: Harness = open(['Okay', 'Ship it']);
+
+    for (const button of moreActionsButtons()) {
+      button.closest('app-button')?.dispatchEvent(new MouseEvent('mouseenter'));
+    }
+    TestBed.tick();
+    harness.fixture.detectChanges();
+
+    expect(document.querySelectorAll('.app-menu-panel')).toHaveLength(0);
+  });
+
+  it('rowMenu_openingAnother_closesTheFirst', () => {
+    const harness: Harness = open(['Okay', 'Ship it']);
+    const [first, second] = moreActionsButtons();
+
+    first?.click();
+    TestBed.tick();
+    second?.click();
+    TestBed.tick();
+    harness.fixture.detectChanges();
+
+    expect(document.querySelectorAll('.app-menu-panel')).toHaveLength(1);
+    expect(document.querySelector('.quick-responses__panel')).not.toBeNull();
+  });
+
+  it('rowMenu_hoveringAnotherRow_closesIt_andKeepsThePanelOpen', () => {
+    // The panel pops the row menu off its stack as the pointer moves on; it must leave the screen too.
+    const harness: Harness = open(['Okay', 'Ship it']);
+
+    openRowMenu(harness);
+    document
+      .querySelectorAll('.quick-responses__select')[1]
+      ?.dispatchEvent(new MouseEvent('mouseenter'));
+    TestBed.tick();
+    harness.fixture.detectChanges();
+
+    expect(document.querySelectorAll('.app-menu-panel')).toHaveLength(0);
+    expect(document.querySelector('.quick-responses__panel')).not.toBeNull();
   });
 
   it('edit_turnsTheRowIntoAField_andKeepsThePanelOpen', () => {

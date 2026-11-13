@@ -62,9 +62,12 @@
             <!-- Everything else a row can do, in its own small menu (#1420): Edit, the other of the
                  two things picking does, and Delete. Opened inside this panel, it joins the panel's
                  menu stack, so a press in it is not a click away from the panel — nor from a
-                 collapsed dock panel showing this one as a flyout (#1057). -->
+                 collapsed dock panel showing this one as a flyout (#1057). Not being one of the
+                 panel's items, it opens on a click alone and is closed as the panel moves on
+                 (`appMenuClickTrigger`); otherwise each opened on hover and none ever closed. -->
             <app-button
               #rowTrigger="cdkMenuTriggerFor"
+              appMenuClickTrigger
               variant="none"
               size="small"
               [icon]="Icon.DOTS_THREE_BOLD"
