@@ -20,6 +20,7 @@ import {
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { MenuClickTrigger } from '@shared/angular/components/menu/menu-click-trigger';
 import { MenuKeepOpen } from '@shared/angular/components/menu/menu-keep-open';
 import { MenuPointerGuard } from '@shared/angular/components/menu/menu-pointer-guard';
 import { MENU_POSITIONS } from '@shared/angular/components/menu/menu-position';
@@ -92,6 +93,7 @@ interface AlternateAction {
     CdkDrag,
     CdkDragHandle,
     CdkDropList,
+    MenuClickTrigger,
     MenuKeepOpen,
     MenuPointerGuard,
   ],
