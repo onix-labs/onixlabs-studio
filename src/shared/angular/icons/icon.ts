@@ -1084,6 +1084,26 @@ export class Icon {
    */
   public static readonly ROOT: Icon = new Icon('ph-duotone ph-hard-drive');
 
+  /**
+   * Gets the size-sorted listing icon.
+   */
+  public static readonly SORT_BY_SIZE: Icon = new Icon('ph ph-sort-descending');
+
+  /**
+   * Gets the previous-directory icon.
+   */
+  public static readonly PREVIOUS_FOLDER: Icon = new Icon('ph ph-arrow-bend-up-left');
+
+  /**
+   * Gets the Desktop folder icon.
+   */
+  public static readonly DESKTOP: Icon = new Icon('ph ph-desktop');
+
+  /**
+   * Gets the Documents folder icon.
+   */
+  public static readonly DOCUMENTS: Icon = new Icon('ph ph-file-text');
+
   // --- Dock: panels ---
 
   /**

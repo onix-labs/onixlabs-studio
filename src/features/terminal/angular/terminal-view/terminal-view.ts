@@ -25,12 +25,21 @@ import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layou
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Shell } from '@shared/angular/services/shell/shell';
+import { Studio } from '@shared/angular/services/studio/studio';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { TerminalAgents } from '@features/terminal/angular/terminal-agents/terminal-agents';
 import {
   TerminalCommandHandler,
   TerminalCommands,
 } from '@features/terminal/angular/terminal-commands/terminal-commands';
+import {
+  listCommand,
+  locationCommand,
+  ShellFamily,
+  shellFamilyOf,
+  TerminalListing,
+  TerminalLocation,
+} from '@features/terminal/angular/terminal-commands/shell-commands';
 import { TerminalFindAdapter } from '@features/terminal/angular/find/terminal-find-adapter';
 import { TerminalStatus } from '@features/terminal/angular/terminal-status/terminal-status';
 import {
@@ -89,6 +98,12 @@ export class TerminalView implements OnInit, OnDestroy {
   private readonly settings: Settings = inject(Settings);
 
   /**
+   * Holds the host bridge, read for the platform whose usual shell stands in before the pane reports
+   * the one it spawned.
+   */
+  private readonly studio: Studio = inject(Studio);
+
+  /**
    * Holds the docked agent-panel state for terminal tabs.
    */
   private readonly terminalAgents: TerminalAgents = inject(TerminalAgents);
@@ -125,6 +140,19 @@ export class TerminalView implements OnInit, OnDestroy {
    * active. Set once the pane reports the spawned shell (including after a New session or restart).
    */
   private readonly currentShell: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds the executable path of the shell the pane reports it spawned, or null until it does.
+   */
+  private readonly currentShellPath: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Gets the command dialect of the running shell, which the ribbon's listings and locations are
+   * written in.
+   */
+  private readonly shellFamily: Signal<ShellFamily> = computed((): ShellFamily =>
+    shellFamilyOf(this.currentShellPath(), this.studio.platform),
+  );
 
   /**
    * Holds the terminal's address — the shell's own prompt title (`user@host:~/path`) — published in
@@ -283,6 +311,7 @@ export class TerminalView implements OnInit, OnDestroy {
     const base: string = shell.split(/[\\/]/).pop() ?? shell;
     const name: string = base.replace(/\.[^.]+$/, '');
     this.currentShell.set(name);
+    this.currentShellPath.set(shell);
     this.log.debug('terminal.view', 'Terminal shell reported', {
       tabId: this.tabId(),
       shell: name,
@@ -335,6 +364,7 @@ export class TerminalView implements OnInit, OnDestroy {
   private registerCommandHandler(): void {
     this.commandHandler = {
       scrollLocked: this.scrollLocked.asReadonly(),
+      shellFamily: this.shellFamily,
       setScrollLock: (value: boolean): void => this.scrollLocked.set(value),
       scrollToBottom: (): void => {
         this.terminal()?.scrollToBottom();
@@ -363,21 +393,13 @@ export class TerminalView implements OnInit, OnDestroy {
       paste: (): void => {
         this.terminal()?.paste();
       },
-      list: (): void => {
-        this.terminal()?.runCommand('ls');
-      },
-      listAll: (): void => {
-        this.terminal()?.runCommand('ls -la');
+      list: (listing: TerminalListing): void => {
+        this.terminal()?.runCommand(listCommand(this.shellFamily(), listing));
       },
       open: (): void => {
         void this.openDirectory();
       },
-      home: (): void => {
-        this.terminal()?.runCommand('cd ~');
-      },
-      root: (): void => {
-        this.terminal()?.runCommand('cd /');
-      },
+      goTo: (location: TerminalLocation): void => this.goTo(location),
       find: (): void => this.showFind(),
     };
     this.terminalCommands.register(this.commandHandler);
@@ -412,14 +434,31 @@ export class TerminalView implements OnInit, OnDestroy {
   }
 
   /**
-   * Opens the terminal's working directory in the operating system's file manager.
+   * Changes the terminal's working directory to the given location, in the running shell's own
+   * command; a location the shell cannot reach (a previous directory in cmd) is ignored.
+   * @param location The location wanted.
+   */
+  private goTo(location: TerminalLocation): void {
+    const family: ShellFamily = this.shellFamily();
+    const command: string | null = locationCommand(family, location);
+    if (command === null) {
+      this.log.debug('terminal.view', 'The shell cannot go to that location', { family, location });
+      return;
+    }
+    this.terminal()?.runCommand(command);
+  }
+
+  /**
+   * Opens the terminal's working directory in the operating system's file manager. Where the platform
+   * cannot report a process's working directory (Windows), the directory the terminal started in is
+   * opened instead.
    */
   private async openDirectory(): Promise<void> {
     const pane: Terminal | undefined = this.terminal();
     if (pane === undefined) {
       return;
     }
-    const cwd: string | null = await pane.getCwd();
+    const cwd: string | null = (await pane.getCwd()) ?? this.cwd() ?? null;
     if (cwd !== null) {
       this.log.debug('terminal.view', 'Opening terminal directory in file manager', cwd);
       await this.shell.openPath(cwd);

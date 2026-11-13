@@ -2,8 +2,6 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
-import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
-import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
 import {
   RibbonMenuItem,
@@ -11,11 +9,21 @@ import {
 } from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
-import { MENU_SEPARATOR, MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
+import {
+  MENU_SEPARATOR,
+  MenuContribution,
+  MenuEntry,
+} from '@shared/angular/services/app-menu/app-menu-model';
 import { Log } from '@shared/angular/services/log/log';
 import { ShellInfo } from '@shared/api/terminal-channels';
 import { TerminalAgents } from '@features/terminal/angular/terminal-agents/terminal-agents';
 import { TerminalCommands } from '@features/terminal/angular/terminal-commands/terminal-commands';
+import {
+  locationCommand,
+  ShellFamily,
+  TerminalListing,
+  TerminalLocation,
+} from '@features/terminal/angular/terminal-commands/shell-commands';
 import { TerminalShells } from '@shared/angular/services/terminal-shells/terminal-shells';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
@@ -26,22 +34,79 @@ import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-
 const VARIANT_RESTART: string = 'restart';
 
 /**
+ * Describes one of the List button's further listings.
+ */
+interface ListingOption {
+  /**
+   * Gets the listing.
+   */
+  readonly listing: TerminalListing;
+
+  /**
+   * Gets the label shown for it.
+   */
+  readonly label: string;
+
+  /**
+   * Gets the icon shown beside it, if any.
+   */
+  readonly icon?: Icon;
+}
+
+/**
+ * Describes one of the Home button's further locations.
+ */
+interface LocationOption {
+  /**
+   * Gets the location.
+   */
+  readonly location: TerminalLocation;
+
+  /**
+   * Gets the label shown for it.
+   */
+  readonly label: string;
+
+  /**
+   * Gets the icon shown beside it, if any.
+   */
+  readonly icon?: Icon;
+}
+
+/**
+ * Holds the listings the List button's drop-down offers beside its own plain listing, in the order
+ * people reach for them.
+ */
+const LISTING_OPTIONS: readonly ListingOption[] = [
+  { listing: 'all', label: 'List All', icon: Icon.LIST_ALL },
+  { listing: 'byTime', label: 'Sort by Time', icon: Icon.RECENT },
+  { listing: 'bySize', label: 'Sort by Size', icon: Icon.SORT_BY_SIZE },
+  { listing: 'folders', label: 'Folders Only', icon: Icon.FOLDER },
+];
+
+/**
+ * Holds the locations the Home button's drop-down offers beside home itself.
+ */
+const LOCATION_OPTIONS: readonly LocationOption[] = [
+  { location: 'root', label: 'Root', icon: Icon.ROOT },
+  { location: 'up', label: 'Up One Level', icon: Icon.ARROW_UP },
+  { location: 'previous', label: 'Previous Folder', icon: Icon.PREVIOUS_FOLDER },
+  { location: 'desktop', label: 'Desktop', icon: Icon.DESKTOP },
+  { location: 'documents', label: 'Documents', icon: Icon.DOCUMENTS },
+  { location: 'downloads', label: 'Downloads', icon: Icon.DOWNLOAD },
+];
+
+/**
  * Represents the contextual ribbon shown when a terminal tab is active. The session, clipboard,
  * actions and locations commands drive the active terminal through the {@link TerminalCommands}
- * registry; the Tools group's Agent button toggles the active terminal's docked agent panel; the View
+ * registry, which writes List's listings and Home's locations in the running shell's own command
+ * (`ls -la` in zsh, `Get-ChildItem -Force` in PowerShell, `dir /a` in cmd); the Tools group's Agent button toggles the active terminal's docked agent panel; the View
  * group's Scroll Lock toggle freezes the active terminal's viewport as output streams in, which
  * disables Scroll (jump to newest output) while engaged.
  */
 @Component({
   selector: 'app-terminal-ribbon',
-  imports: [
-    RibbonStripOverflow,
-    RibbonStripGroup,
-    RibbonStripColumn,
-    RibbonStripButton,
-    RibbonStripButtonSmall,
-    RibbonStripMenuButton,
-  ],
+  imports: [RibbonStripOverflow, RibbonStripGroup, RibbonStripButton, RibbonStripMenuButton],
   templateUrl: './terminal-ribbon.html',
   hostDirectives: [RibbonHost],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -83,6 +148,32 @@ export class TerminalRibbon {
   protected readonly scrollLocked: Signal<boolean> = this.commands.scrollLocked;
 
   /**
+   * Gets the List button's drop-down items: the further listings, each written in the active shell's
+   * own command when chosen.
+   */
+  protected readonly listItems: readonly RibbonMenuItem[] = LISTING_OPTIONS.map(
+    (option: ListingOption): RibbonMenuItem => ({
+      id: option.listing,
+      label: option.label,
+      icon: option.icon,
+    }),
+  );
+
+  /**
+   * Gets the Home button's drop-down items: the further locations, with any the active shell has no
+   * way to reach (a previous folder, in cmd and Windows PowerShell) shown but disabled.
+   */
+  protected readonly locationItems: Signal<readonly RibbonMenuItem[]> = computed(
+    (): readonly RibbonMenuItem[] =>
+      LOCATION_OPTIONS.map((option: LocationOption): RibbonMenuItem => ({
+        id: option.location,
+        label: option.label,
+        icon: option.icon,
+        disabled: !this.canGoTo(option.location),
+      })),
+  );
+
+  /**
    * Contributes this tab's menu while the terminal ribbon is mounted.
    */
   private readonly menu: void = contributeFeatureMenu(
@@ -122,11 +213,29 @@ export class TerminalRibbon {
         id: 'terminal',
         label: 'Terminal',
         items: [
-          { id: 'terminal.list', label: 'List', run: (): void => this.onList() },
-          { id: 'terminal.listAll', label: 'List All', run: (): void => this.onListAll() },
-          MENU_SEPARATOR,
-          { id: 'terminal.home', label: 'Go Home', run: (): void => this.onHome() },
-          { id: 'terminal.root', label: 'Go to Workspace Root', run: (): void => this.onRoot() },
+          {
+            label: 'List',
+            items: [
+              { id: 'terminal.list', label: 'List', run: (): void => this.onList() },
+              ...LISTING_OPTIONS.map((option: ListingOption): MenuEntry => ({
+                id: `terminal.list.${option.listing}`,
+                label: option.label,
+                run: (): void => this.onListing(option.listing),
+              })),
+            ],
+          },
+          {
+            label: 'Go To',
+            items: [
+              { id: 'terminal.home', label: 'Home', run: (): void => this.onHome() },
+              ...LOCATION_OPTIONS.map((option: LocationOption): MenuEntry => ({
+                id: `terminal.goTo.${option.location}`,
+                label: option.label,
+                enabled: this.canGoTo(option.location),
+                run: (): void => this.onLocation(option.location),
+              })),
+            ],
+          },
           {
             id: 'terminal.open',
             label: OPEN_IN_FILE_SYSTEM_LABEL,
@@ -227,17 +336,18 @@ export class TerminalRibbon {
   }
 
   /**
-   * Runs a directory listing in the active terminal.
+   * Lists the active terminal's directory by name — the List button's primary action.
    */
   protected onList(): void {
-    this.commands.list();
+    this.commands.list('names');
   }
 
   /**
-   * Runs a detailed directory listing in the active terminal.
+   * Lists the active terminal's directory the way chosen from the List button's drop-down.
+   * @param listing The chosen listing (the item's identifier).
    */
-  protected onListAll(): void {
-    this.commands.listAll();
+  protected onListing(listing: string): void {
+    this.commands.list(listing as TerminalListing);
   }
 
   /**
@@ -248,17 +358,30 @@ export class TerminalRibbon {
   }
 
   /**
-   * Changes the active terminal's directory to the user's home directory.
+   * Changes the active terminal's directory to the user's home directory — the Home button's primary
+   * action.
    */
   protected onHome(): void {
-    this.commands.home();
+    this.commands.goTo('home');
   }
 
   /**
-   * Changes the active terminal's directory to the file-system root.
+   * Changes the active terminal's directory to the location chosen from the Home button's drop-down.
+   * @param location The chosen location (the item's identifier).
    */
-  protected onRoot(): void {
-    this.commands.root();
+  protected onLocation(location: string): void {
+    this.commands.goTo(location as TerminalLocation);
+  }
+
+  /**
+   * Gets a value indicating whether the active terminal's shell can go to a location. With no active
+   * terminal every location is offered, since there is no shell to rule one out.
+   * @param location The location.
+   * @returns Returns true when the shell has a command for it.
+   */
+  private canGoTo(location: TerminalLocation): boolean {
+    const family: ShellFamily | null = this.commands.shellFamily();
+    return family === null || locationCommand(family, location) !== null;
   }
 
   /**
