@@ -42,8 +42,6 @@
     />
   }
 
-  <span class="strip__divider" aria-hidden="true"></span>
-
   <!-- One field for the pair: the models of every connection, grouped under their provider's label. -->
   <app-dropdown
     class="strip__field"
@@ -54,8 +52,6 @@
     [disabled]="!controls().engine"
     (valueChange)="onEngine($event)"
   />
-
-  <span class="strip__divider" aria-hidden="true"></span>
 
   <!-- The three ways to attach context share one button: they are one decision (what to attach),
        and three icons side by side made the strip too busy to read. -->
