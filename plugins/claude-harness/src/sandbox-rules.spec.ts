@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  CERTIFICATE_CHECKS,
   DOCKER_SOCKET,
   dockerSocketPaths,
   LOCAL_NETWORK,
@@ -91,6 +92,7 @@ describe('sandboxGuidance', () => {
     const guidance: string = sandboxGuidance(nothing, true, {
       localPorts: 'allow',
       dockerSocket: 'allow',
+      certificateChecks: 'allow',
     });
 
     expect(guidance).toContain('commands may bind and connect to ports on this machine');
@@ -102,6 +104,7 @@ describe('sandboxGuidance', () => {
     const guidance: string = sandboxGuidance(nothing, true, {
       localPorts: 'deny',
       dockerSocket: 'deny',
+      certificateChecks: 'deny',
     });
 
     expect(guidance).toContain(
@@ -112,6 +115,24 @@ describe('sandboxGuidance', () => {
       'The Docker socket is denied by the user: `docker` commands fail. Do not try, and do not ' +
         'leave the sandbox to reach it.',
     );
+  });
+
+  it('sandboxGuidance_saysAGoToolsInvalidTokenIsNot_whenCertificateChecksAreClosed', () => {
+    const guidance: string = sandboxGuidance(nothing, true);
+
+    expect(guidance).toContain('Certificate checks cannot be reached');
+    expect(guidance).toContain('gh calls it an invalid token. It is not');
+  });
+
+  it('sandboxGuidance_saysGoToolsCanVerifyTls_whenCertificateChecksAreAllowed', () => {
+    const guidance: string = sandboxGuidance(nothing, true, {
+      localPorts: 'ask',
+      dockerSocket: 'ask',
+      certificateChecks: 'allow',
+    });
+
+    expect(guidance).toContain('Go tools (gh, terraform, gcloud) can verify TLS');
+    expect(guidance).not.toContain('Certificate checks cannot be reached');
   });
 
   it('sandboxGuidance_withNoSandboxButRequired_saysCommandsAreRefused', () => {
@@ -141,7 +162,13 @@ describe('sandboxReach', () => {
     return {
       permissionPosture: posture,
       toolPolicies: {
-        ...(level === undefined ? {} : { [LOCAL_NETWORK]: level, [DOCKER_SOCKET]: level }),
+        ...(level === undefined
+          ? {}
+          : {
+              [LOCAL_NETWORK]: level,
+              [DOCKER_SOCKET]: level,
+              [CERTIFICATE_CHECKS]: level,
+            }),
         ...(unsandboxed === undefined ? {} : { [RUN_UNSANDBOXED]: unsandboxed }),
       },
     };
@@ -162,6 +189,7 @@ describe('sandboxReach', () => {
     expect(sandboxReach(settings(posture, level), 'darwin')).toEqual({
       localPorts: expected,
       dockerSocket: expected,
+      certificateChecks: expected,
     });
   });
 
@@ -169,6 +197,7 @@ describe('sandboxReach', () => {
     expect(sandboxReach(settings('auto-all', undefined, 'deny'), 'darwin')).toEqual({
       localPorts: 'ask',
       dockerSocket: 'ask',
+      certificateChecks: 'ask',
     });
   });
 
@@ -178,6 +207,7 @@ describe('sandboxReach', () => {
       expect(sandboxReach(settings(posture, 'allow', 'deny'), 'darwin')).toEqual({
         localPorts: 'allow',
         dockerSocket: 'allow',
+        certificateChecks: 'allow',
       });
     },
   );
@@ -187,6 +217,7 @@ describe('sandboxReach', () => {
     expect(sandboxReach(settings('prompt', 'allow'), 'linux')).toEqual({
       localPorts: 'ask',
       dockerSocket: 'ask',
+      certificateChecks: 'ask',
     });
   });
 
@@ -199,19 +230,20 @@ describe('sandboxReach', () => {
         },
         'darwin',
       ),
-    ).toEqual({ localPorts: 'allow', dockerSocket: 'deny' });
+    ).toEqual({ localPorts: 'allow', dockerSocket: 'deny', certificateChecks: 'ask' });
   });
 
   it('nothingGrantedToTheShell_opensEither', () => {
     expect(
       sandboxReach({ permissionPosture: 'auto-edits', toolPolicies: { Bash: 'allow' } }, 'darwin'),
-    ).toEqual({ localPorts: 'ask', dockerSocket: 'ask' });
+    ).toEqual({ localPorts: 'ask', dockerSocket: 'ask', certificateChecks: 'ask' });
   });
 
   it.each<NodeJS.Platform>(['linux', 'win32'])('neverOpens_on_%s', (platform: NodeJS.Platform) => {
     expect(sandboxReach(settings('auto-all', 'allow'), platform)).toEqual({
       localPorts: 'ask',
       dockerSocket: 'ask',
+      certificateChecks: 'ask',
     });
     expect(sandboxReach(settings('auto-all', 'deny'), platform).dockerSocket).toBe('deny');
   });

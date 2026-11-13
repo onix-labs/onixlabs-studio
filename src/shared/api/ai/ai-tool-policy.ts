@@ -46,6 +46,14 @@ export const LOCAL_NETWORK: string = 'Local network';
 export const DOCKER_SOCKET: string = 'Docker socket';
 
 /**
+ * The permission for sandboxed commands to reach macOS's certificate trust service. Go programs (`gh`,
+ * `terraform`, `gcloud`, …) verify TLS through it and fail every request without it, which `gh`
+ * misreports as an invalid token. Not a tool of its own: the harness applies it to the OS sandbox when
+ * a session opens, and keeps its own copy of the name.
+ */
+export const CERTIFICATE_CHECKS: string = 'Certificate checks';
+
+/**
  * The mutating/exec tools that flow through the permission gate and can therefore carry a default
  * policy. Read-only tools (Read/Glob/Grep) are always allowed and never gated, so they are excluded —
  * a policy on them would not be enforced. Keyed by display name to match `prettyToolName`, the
@@ -82,6 +90,12 @@ export const GATEABLE_TOOLS: readonly GateableTool[] = [
     label: 'Docker Socket',
     description:
       "Let sandboxed commands reach the container engine, which can read and change whatever a container can mount. Allow opens it under every posture. Ask keeps it refused, except that Allow All opens it unless Run Outside the Sandbox is denied. Deny keeps it refused and tells the agent not to try. Finds Docker Desktop's socket and DOCKER_HOST. Applies to Claude on macOS.",
+  },
+  {
+    name: CERTIFICATE_CHECKS,
+    label: 'Certificate Checks',
+    description:
+      "Let sandboxed commands ask macOS's certificate trust service to verify secure connections. Go command-line tools such as gh, terraform and gcloud need it, and fail every request without it. The service is also a path out of the sandbox that its network rules cannot see, which is why it is closed by default. Allow opens it under every posture. Ask keeps it closed, except that Allow All opens it unless Run Outside the Sandbox is denied. Deny keeps it closed and tells the agent not to try. Applies to Claude on macOS.",
   },
   { name: 'WebFetch', label: 'Fetch a URL', description: 'Retrieve the contents of a web page.' },
   { name: 'WebSearch', label: 'Web Search', description: 'Search the web.' },

@@ -31,6 +31,12 @@ export const LOCAL_NETWORK: string = 'Local network';
 export const DOCKER_SOCKET: string = 'Docker socket';
 
 /**
+ * Names the permission for sandboxed commands to reach macOS's certificate trust service, as Studio's
+ * policy map knows it.
+ */
+export const CERTIFICATE_CHECKS: string = 'Certificate checks';
+
+/**
  * Lists the permissions Studio's policy map carries that are not tools, so a Deny of one never reaches
  * the SDK's list of tools to withhold.
  */
@@ -38,6 +44,7 @@ export const SANDBOX_PERMISSIONS: readonly string[] = [
   RUN_UNSANDBOXED,
   LOCAL_NETWORK,
   DOCKER_SOCKET,
+  CERTIFICATE_CHECKS,
 ];
 
 /**
@@ -137,6 +144,11 @@ export interface SandboxReach {
    * Gets where the container engine's socket stands.
    */
   readonly dockerSocket: ReachLevel;
+
+  /**
+   * Gets where macOS's certificate trust service stands.
+   */
+  readonly certificateChecks: ReachLevel;
 }
 
 /**
@@ -157,7 +169,11 @@ export interface ReachSettings {
 /**
  * The sandbox as Studio has always opened it: nothing beyond its usual limits.
  */
-const NO_REACH: SandboxReach = { localPorts: 'ask', dockerSocket: 'ask' };
+const NO_REACH: SandboxReach = {
+  localPorts: 'ask',
+  dockerSocket: 'ask',
+  certificateChecks: 'ask',
+};
 
 /**
  * Decides one opening: Denied, then an explicit Allowed, then the posture.
@@ -209,6 +225,11 @@ export function sandboxReach(
   return {
     localPorts: reachLevel(settings.toolPolicies[LOCAL_NETWORK] ?? 'ask', settings, platform),
     dockerSocket: reachLevel(settings.toolPolicies[DOCKER_SOCKET] ?? 'ask', settings, platform),
+    certificateChecks: reachLevel(
+      settings.toolPolicies[CERTIFICATE_CHECKS] ?? 'ask',
+      settings,
+      platform,
+    ),
   };
 }
 
@@ -299,6 +320,32 @@ function dockerSocketLine(level: ReachLevel): string {
 }
 
 /**
+ * Tells the agent where certificate checks stand, so a Go tool's TLS failure is read for what it is.
+ * 🔥 `gh` reports the refusal as "the token in keyring is invalid": without this line the agent sends
+ * the user off to re-authenticate a token that is fine.
+ * @param level Where they stand.
+ * @returns Returns the line.
+ */
+function certificateChecksLine(level: ReachLevel): string {
+  switch (level) {
+    case 'allow':
+      return '- Certificates: Go tools (gh, terraform, gcloud) can verify TLS.';
+    case 'deny':
+      return (
+        '- Certificate checks are denied by the user: Go tools (gh, terraform, gcloud) fail TLS ' +
+        'verification (x509 OSStatus -26276), and gh calls it an invalid token. It is not. Do not ' +
+        'leave the sandbox to work around it.'
+      );
+    default:
+      return (
+        '- Certificate checks cannot be reached: Go tools (gh, terraform, gcloud) fail TLS ' +
+        'verification (x509 OSStatus -26276), and gh calls it an invalid token. It is not: the user ' +
+        'can allow Certificate Checks.'
+      );
+  }
+}
+
+/**
  * Lists paths or hosts for a sentence of the guidance.
  * @param entries The entries.
  * @returns Returns them, comma separated.
@@ -358,17 +405,18 @@ export function sandboxGuidance(
         : ''),
     localPortsLine(reach.localPorts),
     dockerSocketLine(reach.dockerSocket),
+    certificateChecksLine(reach.certificateChecks),
     ...excludedLine(excludedCommandsOf(scope)),
     '',
     'Run commands in the sandbox. Do not set `dangerouslyDisableSandbox` because you expect a command',
     "to fail: try it first. Leaving the sandbox is the user's decision, not a routine step, and it",
     'removes the limits above. When a command does fail because of the sandbox, tell the user what was',
-    'refused. They can widen the write paths, network locations, local ports and the Docker socket',
-    'under Settings > Artificial Intelligence > Security & Permissions. A toolchain that cannot run in',
-    'the sandbox at all (a crash naming dyld or SIGABRT) is one the user can exclude, for this',
-    'workspace or every one: ask them to, rather than setting the flag. Set the flag only when they ask',
-    'you to, or when the refusal shows the command cannot work in the sandbox, and say why you are',
-    'doing it.',
+    'refused. They can widen the write paths, network locations, local ports, the Docker socket and',
+    'certificate checks under Settings > Artificial Intelligence > Security & Permissions. A toolchain',
+    'that cannot run in the sandbox at all (a crash naming dyld or SIGABRT) is one the user can',
+    'exclude, for this workspace or every one: ask them to, rather than setting the flag. Set the flag',
+    'only when they ask you to, or when the refusal shows the command cannot work in the sandbox, and',
+    'say why you are doing it.',
   ].join('\n');
 }
 
