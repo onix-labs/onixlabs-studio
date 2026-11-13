@@ -7,7 +7,7 @@
   "detail": "Reads your test sources to list their tests; running them uses your Gradle or Maven wrapper, or the one on your machine, in a terminal you can see.",
   "provision": {
     "kind": "npm",
-    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.jvm-tests.lock.json",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-jvm-tests-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.jvm-tests.lock.json",
     "sha256": "e9aaf8744c0e1182a6c2d229e831baf5bb5b456e9019b6f66a1d3c8f2574d95d",
     "executablePath": "node_modules/@onixlabs/jvm-tests/main.js"
   },

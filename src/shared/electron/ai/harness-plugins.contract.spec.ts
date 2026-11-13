@@ -182,9 +182,10 @@ describe.each(['claude-harness', 'codex-harness', 'ai-sdk-harness'])(
 
     it('pinsALockfileFromTheDirectoryLockfilesLiveIn', () => {
       // The URL is public API the moment a build ships against it: an installed Studio fetches this exact
-      // path, so moving the file breaks installs for versions already out there.
+      // path, so moving the file breaks installs for versions already out there. It is pinned to the
+      // plugin's release tag, not `main`, so the bytes behind it never change under a pin already shipped.
       expect(provision.lockfileUrl).toBe(
-        'https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/' +
+        `https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-${name}-v${manifest.version}/` +
           `src/shared/electron/contributions/plugins/lockfiles/onixlabs.${name}.lock.json`,
       );
     });

@@ -7,7 +7,7 @@
   "detail": "Reads go.mod, go.work, go.sum and your Go environment (GOPROXY, GOPRIVATE). Adding, updating and removing run through the go on your machine, in a terminal you can see.",
   "provision": {
     "kind": "npm",
-    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.go-modules.lock.json",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-go-modules-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.go-modules.lock.json",
     "sha256": "e5b53fbafab1b6b31bd0fb3454e15b855ab2ba91a83948777fea57b02673a348",
     "executablePath": "node_modules/@onixlabs/go-modules/main.js"
   },

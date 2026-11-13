@@ -16,6 +16,8 @@
 #
 # The procedure:
 #   1. PR the harness change, including a regenerated lockfile and a repinned `curated-plugins.json`.
+#      The `lockfileUrl` names the release tag of step 2 (`…/plugin-<plugin>-v<version>/…`), never
+#      `main`: a branch URL changes bytes under a pin builds already shipped, and they stop installing.
 #   2. After it merges, tag `plugin-<plugin>-v<version>` on `main` and push the tag.
 #   3. This workflow builds the tarball, checks it against the integrity the merged lockfile already
 #      pins, and publishes the release.

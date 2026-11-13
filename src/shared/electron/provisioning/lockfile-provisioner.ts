@@ -46,20 +46,21 @@ export class LockfileProvisioner {
   >();
 
   /**
-   * Resolves a lockfile compiled into the application for a URL, or null to fetch it.
+   * Resolves a lockfile compiled into the application for a URL and its pinned hash, or null to fetch
+   * it.
    */
-  private readonly bundled: (url: string) => unknown;
+  private readonly bundled: (url: string, sha256: string) => unknown;
 
   /**
    * Initializes a new instance of the {@link LockfileProvisioner} class.
    * @param root The directory installs are rooted at, or null to disable provisioning.
    * @param logName The name to log under.
-   * @param bundled Resolves a compiled-in lockfile for a URL, defaulting to none.
+   * @param bundled Resolves a compiled-in lockfile for a URL and its pinned hash, defaulting to none.
    */
   public constructor(
     root: string | null,
     logName: string,
-    bundled: (url: string) => unknown = (): null => null,
+    bundled: (url: string, sha256: string) => unknown = (): null => null,
   ) {
     this.root = root;
     this.logName = logName;
@@ -246,10 +247,9 @@ export class LockfileProvisioner {
     directory: string,
   ): Promise<readonly LockfilePackage[] | null> {
     // A lockfile compiled into the application shipped with the code that reads it, so there is
-    // nothing to download and no digest to compare it against — the pinned hash verifies a *download*.
-    // This is also the only path that works at all while the repository is private, since
-    // `raw.githubusercontent.com` does not serve one.
-    const bundled: unknown = this.bundled(provision.lockfileUrl);
+    // nothing to download. The resolver is handed the pin and serves a copy only for exactly that pin,
+    // so a newer pin from a fetched index is never answered with an older bundled tree.
+    const bundled: unknown = this.bundled(provision.lockfileUrl, provision.sha256);
     if (bundled !== null) {
       const packages: readonly LockfilePackage[] | null = parseLockfileDocument(bundled);
       if (packages === null) {

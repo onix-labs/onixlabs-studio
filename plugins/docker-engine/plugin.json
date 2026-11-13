@@ -7,7 +7,7 @@
   "apiVersion": "1.19.0",
   "provision": {
     "kind": "npm",
-    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/docker-engine.lock.json",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-docker-engine-v30.3.0/src/shared/electron/contributions/plugins/lockfiles/docker-engine.lock.json",
     "sha256": "423a8ab0f744d1d67fdf839f6dcac468c42e2598563147a240a3f3dab28d0110",
     "executablePath": "node_modules/@onixlabs/docker-engine/main.js"
   },

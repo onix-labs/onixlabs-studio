@@ -7,7 +7,7 @@
   "detail": "Finds tests by reading your project files and C# sources, without building anything. Running them uses the .NET SDK on your machine, in a terminal you can see.",
   "provision": {
     "kind": "npm",
-    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.dotnet-tests.lock.json",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-dotnet-tests-v0.1.1/src/shared/electron/contributions/plugins/lockfiles/onixlabs.dotnet-tests.lock.json",
     "sha256": "5b921582548a687435c43cac4f96d9c325979d1898b193ed46655a6c048245ec",
     "executablePath": "node_modules/@onixlabs/dotnet-tests/main.js"
   },
