@@ -7,7 +7,7 @@
   "apiVersion": "1.20.0",
   "provision": {
     "kind": "npm",
-    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/postgres-engine.lock.json",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-postgres-engine-v1.4.0/src/shared/electron/contributions/plugins/lockfiles/postgres-engine.lock.json",
     "sha256": "90288c8dea77003dfc5792ed2cc8360ee88b5fbf64c04ffc28f49368c2cd9693",
     "executablePath": "node_modules/@onixlabs/postgres-engine/main.js"
   },

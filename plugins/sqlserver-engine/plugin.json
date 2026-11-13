@@ -7,7 +7,7 @@
   "apiVersion": "1.23.0",
   "provision": {
     "kind": "npm",
-    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/sqlserver-engine.lock.json",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-sqlserver-engine-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/sqlserver-engine.lock.json",
     "sha256": "1cde5c4db0c874850a288d6fe635db57c5b0bc575e4135fcc7bdecb7381adf85",
     "executablePath": "node_modules/@onixlabs/sqlserver-engine/main.js"
   },

@@ -95,6 +95,24 @@ export interface PluginIndexDocument {
    * Gets the reasons entries were refused, empty when every entry validated.
    */
   readonly errors: readonly ManifestError[];
+
+  /**
+   * Gets the ids of the entries that were refused, where an entry said what it was.
+   */
+  readonly refused: readonly string[];
+}
+
+/**
+ * Gets the id an entry claims, before it is trusted with anything else.
+ * @param entry The entry.
+ * @returns Returns the id, or null when it names none.
+ */
+function claimedId(entry: unknown): string | null {
+  if (typeof entry !== 'object' || entry === null) {
+    return null;
+  }
+  const id: unknown = (entry as { id?: unknown }).id;
+  return typeof id === 'string' && id.length > 0 ? id : null;
 }
 
 /**
@@ -120,12 +138,17 @@ export function parsePluginIndex(value: unknown): PluginIndexDocument | null {
   }
   const manifests: PluginManifest[] = [];
   const errors: ManifestError[] = [];
+  const refused: string[] = [];
   const seen: Set<string> = new Set<string>();
   source.plugins.forEach((entry: unknown, index: number): void => {
     const result: ReturnType<typeof parsePluginManifest> = parsePluginManifest(entry);
     if (result.manifest === null) {
       for (const error of result.errors) {
         errors.push({ path: `plugins[${index}].${error.path}`, message: error.message });
+      }
+      const id: string | null = claimedId(entry);
+      if (id !== null) {
+        refused.push(id);
       }
       return;
     }
@@ -139,7 +162,33 @@ export function parsePluginIndex(value: unknown): PluginIndexDocument | null {
     seen.add(result.manifest.id);
     manifests.push(result.manifest);
   });
-  return { revision: source.revision, manifests, errors };
+  return { revision: source.revision, manifests, errors, refused };
+}
+
+/**
+ * Lays a newer index over the one this build shipped with.
+ *
+ * The newer copy wins, entry by entry, except where it names a plugin this build cannot honour. That is
+ * most often a plugin released against a newer plugin API than this build implements, and the newer
+ * index carries only the newest release. Dropping the entry would take the plugin away from a build that
+ * was installing it yesterday (beta.10 lost GitHub this way), so the seed's own entry stands instead: an
+ * older release, but one this build can run.
+ * @param newer The newer copy.
+ * @param seed The copy this build shipped with.
+ * @returns Returns the document in force.
+ */
+export function overlayPluginIndex(
+  newer: PluginIndexDocument,
+  seed: PluginIndexDocument,
+): PluginIndexDocument {
+  const present: Set<string> = new Set<string>(
+    newer.manifests.map((manifest: PluginManifest): string => manifest.id),
+  );
+  const kept: readonly PluginManifest[] = seed.manifests.filter(
+    (manifest: PluginManifest): boolean =>
+      newer.refused.includes(manifest.id) && !present.has(manifest.id),
+  );
+  return kept.length === 0 ? newer : { ...newer, manifests: [...newer.manifests, ...kept] };
 }
 
 /**
@@ -296,6 +345,7 @@ export class PluginIndex {
       revision: 0,
       manifests: [],
       errors: [],
+      refused: [],
     };
     const cached: PluginIndexDocument | null = this.readCache();
     if (cached === null || cached.revision <= seed.revision) {
@@ -305,11 +355,18 @@ export class PluginIndex {
       );
       return seed;
     }
+    const resolved: PluginIndexDocument = overlayPluginIndex(cached, seed);
+    for (const manifest of resolved.manifests.slice(cached.manifests.length)) {
+      logger.info(
+        'PluginIndex',
+        `Keeping the bundled ${manifest.id} ${manifest.version}: this build cannot honour the newer entry`,
+      );
+    }
     logger.info(
       'PluginIndex',
-      `Using cached index revision ${cached.revision} (${cached.manifests.length} plugins)`,
+      `Using cached index revision ${cached.revision} (${resolved.manifests.length} plugins)`,
     );
-    return cached;
+    return resolved;
   }
 
   /**

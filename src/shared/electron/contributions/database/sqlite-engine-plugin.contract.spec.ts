@@ -191,7 +191,7 @@ describe('the SQLite engine plugin is installable', () => {
 
   it('pinsALockfileFromTheDirectoryLockfilesLiveIn', () => {
     expect((manifest.provision as { lockfileUrl: string }).lockfileUrl).toBe(
-      'https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/' +
+      `https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-sqlite-engine-v${manifest.version}/` +
         'src/shared/electron/contributions/plugins/lockfiles/sqlite-engine.lock.json',
     );
   });

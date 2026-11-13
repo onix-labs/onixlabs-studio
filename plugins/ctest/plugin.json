@@ -7,7 +7,7 @@
   "detail": "Asks ctest which tests a configured build directory declares, which runs none of them; running them uses the ctest on your machine, in a terminal you can see.",
   "provision": {
     "kind": "npm",
-    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.ctest.lock.json",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-ctest-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.ctest.lock.json",
     "sha256": "010b447bed7042ba0fd93dd85a7c3b56e3c197be52b50c5465d400fbce0f7a31",
     "executablePath": "node_modules/@onixlabs/ctest/main.js"
   },

@@ -7,7 +7,7 @@
   "apiVersion": "1.19.0",
   "provision": {
     "kind": "npm",
-    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/podman-engine.lock.json",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-podman-engine-v7.3.0/src/shared/electron/contributions/plugins/lockfiles/podman-engine.lock.json",
     "sha256": "ebfed83beababbccef030deedf64b93e7eb0cfeeec795af07f4ffafc9c1aeb4a",
     "executablePath": "node_modules/@onixlabs/podman-engine/main.js"
   },
