@@ -16,11 +16,14 @@
   margin-block-start: auto;
 }
 
+// The core graphs give up height first: they take what the card has spare, up to a comfortable size,
+// and shrink toward a sliver on a short view before anything spills.
 .cpu-card__cores-section {
   display: flex;
-  flex: none;
+  flex: 0 1 auto;
   flex-direction: column;
   gap: 0.4rem;
+  min-block-size: 0;
 }
 
 .cpu-card__heading {
@@ -30,12 +33,15 @@
 // The per-core graphs: as many small wells as fit a row, each a core's load.
 .cpu-card__cores {
   display: grid;
+  flex: 0 1 auto;
   grid-template-columns: repeat(auto-fill, minmax(1.4rem, 1fr));
+  grid-auto-rows: minmax(0.6rem, 1.3rem);
   gap: 0.2rem;
+  min-block-size: 0;
 }
 
 .cpu-card__core {
-  block-size: 1.3rem;
+  min-block-size: 0;
   padding: 1px;
   border-radius: calc(0.25rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);

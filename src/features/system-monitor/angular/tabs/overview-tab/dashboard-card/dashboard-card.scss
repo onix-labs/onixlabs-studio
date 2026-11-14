@@ -6,11 +6,17 @@
   min-block-size: 0;
 }
 
+// Each card is a size container: what it holds can size itself by the card's height (a leading graph is a
+// share of it), and since the cards of a row share one height, those shares line up across the row.
+// What does not fit is clipped rather than pushing the card, and so its row, taller.
 .dashboard-card {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  box-sizing: border-box;
   block-size: 100%;
+  container-type: size;
+  overflow: hidden;
   padding: 0.9rem 1rem 0.7rem;
   border: 1px solid var(--dock-border-color);
   border-radius: calc(1rem * var(--border-radius-multiplier));
@@ -46,7 +52,13 @@
   color: var(--body-foreground-color);
 }
 
+// At most two lines, the full text in its tooltip, so no head outgrows the height the row shares.
 .dashboard-card__subtitle {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
   margin: 0.1rem 0 0;
   font-size: 0.75rem;
   color: var(--form-muted-foreground-color);

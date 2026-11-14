@@ -15,10 +15,11 @@
   min-block-size: $min;
 }
 
-// A graph that leads its card (CPU, Memory, GPU, Network): its plot is one height across the cards, so
-// the four graphs line up across the row whatever sits beneath each, legend or not.
+// A graph that leads its card (CPU, Memory, GPU, Network): its plot is a share of the card's height, so
+// it grows and shrinks with the view, and since the cards of a row share one height, the four graphs
+// line up across the row whatever sits beneath each, legend or not.
 @mixin leading-chart {
-  --line-chart-plot-height: 10rem;
+  --line-chart-plot-height: 34cqb;
 
   flex: none;
 }

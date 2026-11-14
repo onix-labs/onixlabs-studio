@@ -3,7 +3,7 @@
     <app-icon class="dashboard-card__icon" [icon]="icon()" [size]="1.75" />
     <div class="dashboard-card__titles">
       <h3 class="dashboard-card__title">{{ heading() }}</h3>
-      <p class="dashboard-card__subtitle">{{ subtitle() }}</p>
+      <p class="dashboard-card__subtitle" [title]="subtitle()">{{ subtitle() }}</p>
     </div>
     <div class="dashboard-card__badges">
       <ng-content select="[cardBadges]" />

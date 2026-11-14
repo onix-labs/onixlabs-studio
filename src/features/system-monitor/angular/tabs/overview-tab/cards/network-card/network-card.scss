@@ -21,6 +21,10 @@
 
 .network-card__table {
   @include table;
+
+  td {
+    padding-block: 0.3rem;
+  }
 }
 
 .network-card__table .network-card__number {

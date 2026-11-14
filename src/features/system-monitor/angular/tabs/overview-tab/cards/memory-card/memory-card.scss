@@ -16,7 +16,8 @@
 
 .memory-card__meter {
   flex: none;
-  inline-size: 9rem;
+  // As large as it reads well, but no more than a share of the card's height on a short view.
+  inline-size: clamp(5.5rem, 34cqb, 9rem);
 }
 
 .memory-card__entries {
