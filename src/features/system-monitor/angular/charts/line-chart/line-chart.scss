@@ -5,10 +5,12 @@
   min-block-size: 0;
 }
 
+// The plot takes the chart's spare height, or exactly --line-chart-plot-height where a host sets one,
+// so graphs side by side line up whether or not each has a legend beneath it.
 .line-chart {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: var(--line-chart-plot-height, minmax(0, 1fr)) auto;
   block-size: 100%;
   column-gap: 0.5rem;
 }

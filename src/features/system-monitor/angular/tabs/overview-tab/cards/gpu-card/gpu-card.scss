@@ -5,7 +5,7 @@
 }
 
 .gpu-card__chart {
-  @include chart;
+  @include leading-chart;
 }
 
 // The four facts in two columns, ruled like the image's grid.

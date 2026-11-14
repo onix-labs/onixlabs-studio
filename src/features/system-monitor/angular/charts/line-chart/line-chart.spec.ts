@@ -74,6 +74,18 @@ describe('LineChart', () => {
     expect(host.querySelector('[aria-label="Legend"]')?.textContent).toContain('Sent');
   });
 
+  it('leavesTheLegendOut_whenTheHostNamesTheSeries', async () => {
+    await draw(
+      [
+        { label: 'System', values: [1], emphasis: 'primary' },
+        { label: 'Studio', values: [2], emphasis: 'secondary' },
+      ],
+      { showLegend: false },
+    );
+
+    expect(host.querySelector('[aria-label="Legend"]')).toBeNull();
+  });
+
   it('readsEverySeriesAtTheCrosshair_fromTheKeyboard', async () => {
     await draw(
       [

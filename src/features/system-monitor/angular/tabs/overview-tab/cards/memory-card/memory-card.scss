@@ -70,5 +70,5 @@
 }
 
 .memory-card__chart {
-  @include chart(4rem);
+  @include leading-chart;
 }

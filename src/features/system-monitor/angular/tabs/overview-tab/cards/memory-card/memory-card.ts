@@ -31,8 +31,9 @@ interface MemoryEntry {
 }
 
 /**
- * Represents the Overview's Memory card: memory in use as a nested meter against the total — the
- * system's in the outer ring, Studio's own share in the inner — its breakdown, and its history beneath.
+ * Represents the Overview's Memory card: memory in use over time (the system's and Studio's), then as a
+ * nested meter against the total — the system's in the outer ring, Studio's own share in the inner —
+ * beside its breakdown.
  */
 @Component({
   selector: 'app-system-monitor-memory-card',

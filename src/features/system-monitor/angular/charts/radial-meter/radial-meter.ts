@@ -72,8 +72,9 @@ type MeterSeverity = 'normal' | 'warning' | 'danger';
  * those who cannot tell the colours apart.
  *
  * Given an inner reading, a second, narrower ring sits inside the first in the muted grey: a share of
- * the same limit (Studio's own memory within the machine's), read beneath the main reading. Each ring
- * is a meter in its own right, so the two are never stacked or summed.
+ * the same limit (Studio's own memory within the machine's), read beneath the main reading. The two
+ * readings then stand alone in the centre, each in its ring's colour; the accessible label names them.
+ * Each ring is a meter in its own right, so the two are never stacked or summed.
  *
  * A meter, not a pie: each ring is one value and its limit, so there is nothing to compare slice
  * against slice.

@@ -5,7 +5,7 @@
 }
 
 .network-card__chart {
-  @include chart(8rem);
+  @include leading-chart;
 }
 
 .network-card__interfaces {

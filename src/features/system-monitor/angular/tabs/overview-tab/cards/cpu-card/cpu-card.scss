@@ -5,7 +5,7 @@
 }
 
 .cpu-card__chart {
-  @include chart;
+  @include leading-chart;
 }
 
 .cpu-card__facts {

@@ -66,7 +66,7 @@
 
 .radial-meter__inner {
   margin-block-start: 0.1rem;
-  font-size: 0.66rem;
+  font-size: 0.85rem;
   font-weight: 600;
   white-space: nowrap;
   color: var(--form-muted-foreground-color);
@@ -88,10 +88,11 @@
   align-items: center;
 }
 
+// The reading wears its ring's colour, so its severity reads in the centre too.
 .radial-meter__value {
   font-size: 1.75rem;
   font-weight: 600;
-  color: var(--body-foreground-color);
+  color: var(--radial-meter-fill);
 }
 
 .radial-meter__label {

@@ -42,6 +42,8 @@ describe('MemoryCard', () => {
     expect(host.textContent).toContain('217.0 GB');
     expect(host.textContent).toContain('256.0 GB');
     expect(host.textContent).toContain('512.0 MB (0.2%)');
-    expect(host.querySelector('[aria-label="Legend"]')?.textContent).toContain('Studio');
+    // The badges name the graph's two lines, so it carries no legend of its own.
+    expect(host.querySelector('[aria-label="Legend"]')).toBeNull();
+    expect(host.textContent).toContain('100%');
   });
 });

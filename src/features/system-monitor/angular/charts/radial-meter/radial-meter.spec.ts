@@ -62,7 +62,10 @@ describe('RadialMeter', () => {
     await show(23);
 
     expect(meter().getAttribute('aria-label')).toBe('In Use: 23%; Studio: 0.3%');
-    expect(host.textContent).toContain('0.3% Studio');
+    // The readings stand alone in the centre; only the accessible label names them.
+    expect(host.textContent).toContain('0.3%');
+    expect(host.textContent).not.toContain('Studio');
+    expect(host.textContent).not.toContain('In Use');
     expect(host.querySelectorAll('circle')).toHaveLength(4);
   });
 

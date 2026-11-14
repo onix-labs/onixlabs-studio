@@ -15,6 +15,14 @@
   min-block-size: $min;
 }
 
+// A graph that leads its card (CPU, Memory, GPU, Network): its plot is one height across the cards, so
+// the four graphs line up across the row whatever sits beneath each, legend or not.
+@mixin leading-chart {
+  --line-chart-plot-height: 10rem;
+
+  flex: none;
+}
+
 // Facts in a row: label over value, sharing the width. Put it on a `<dl>`.
 @mixin facts {
   display: grid;

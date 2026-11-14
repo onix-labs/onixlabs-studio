@@ -38,9 +38,12 @@
   </svg>
   <div class="radial-meter__reading" aria-hidden="true">
     <span class="radial-meter__value">{{ value() }}</span>
-    <span class="radial-meter__label">{{ label() }}</span>
+    <!-- A nested meter's readings stand alone, each in its ring's colour, which names it; a single
+         ring names its reading in words. Both are named in the meter's accessible label. -->
     @if (nested()) {
-      <span class="radial-meter__inner">{{ innerValue() }} {{ innerLabel() }}</span>
+      <span class="radial-meter__inner">{{ innerValue() }}</span>
+    } @else {
+      <span class="radial-meter__label">{{ label() }}</span>
     }
   </div>
 </div>

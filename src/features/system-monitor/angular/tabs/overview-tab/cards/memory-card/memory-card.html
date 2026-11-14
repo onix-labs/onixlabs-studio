@@ -17,6 +17,18 @@
     />
   }
 
+  <!-- The graph leads, as on the CPU, GPU and Network cards, so the four graphs line up. Its two lines
+       are named by the System and Studio badges above, in the same colours. -->
+  <app-system-monitor-line-chart
+    class="memory-card__chart"
+    ariaLabel="Memory in use over time, the system's and Studio's"
+    [series]="series()"
+    [max]="100"
+    [format]="percent"
+    [showLegend]="false"
+    [intervalMs]="readings.intervalMs()"
+  />
+
   <div class="memory-card__summary">
     <app-system-monitor-radial-meter
       class="memory-card__meter"
@@ -42,14 +54,4 @@
       }
     </dl>
   </div>
-
-  <app-system-monitor-line-chart
-    class="memory-card__chart"
-    ariaLabel="Memory in use over time, the system's and Studio's"
-    [series]="series()"
-    [max]="100"
-    [format]="percent"
-    [axis]="false"
-    [intervalMs]="readings.intervalMs()"
-  />
 </app-system-monitor-dashboard-card>

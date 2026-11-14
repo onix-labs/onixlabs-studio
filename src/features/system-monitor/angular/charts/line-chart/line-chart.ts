@@ -156,6 +156,12 @@ export class LineChart {
   public readonly axis: InputSignal<boolean> = input<boolean>(true);
 
   /**
+   * Gets whether a legend names the series when there are two. Turn it off only where the host already
+   * names them beside the chart in the same colours (a card's System and Studio badges).
+   */
+  public readonly showLegend: InputSignal<boolean> = input<boolean>(true);
+
+  /**
    * Gets the time between samples in milliseconds, for the readout's "how long ago".
    */
   public readonly intervalMs: InputSignal<number> = input<number>(1000);
@@ -226,9 +232,11 @@ export class LineChart {
   );
 
   /**
-   * Gets whether a legend is shown: whenever two series share the chart.
+   * Gets whether a legend is shown: whenever two series share the chart, unless the host names them.
    */
-  protected readonly legend: Signal<boolean> = computed((): boolean => this.series().length > 1);
+  protected readonly legend: Signal<boolean> = computed(
+    (): boolean => this.showLegend() && this.series().length > 1,
+  );
 
   /**
    * Gets the hover readout, or null when nothing is hovered.

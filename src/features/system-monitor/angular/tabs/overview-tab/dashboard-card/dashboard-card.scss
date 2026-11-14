@@ -19,11 +19,14 @@
   background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
 }
 
+// Every head is as tall as a two-line subtitle, so a subtitle that wraps beside wide badges does not
+// push its card's body down out of line with its neighbours'.
 .dashboard-card__head {
   display: flex;
   flex: none;
   align-items: flex-start;
   gap: 0.75rem;
+  min-block-size: 3.4rem;
 }
 
 .dashboard-card__icon {
