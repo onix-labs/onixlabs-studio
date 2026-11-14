@@ -1,0 +1,27 @@
+<section class="log-context" aria-label="Log context" data-testid="log-context">
+  <header class="log-context__head">
+    <app-tab-list
+      ariaLabel="Context or raw record"
+      [tabs]="tabs"
+      [value]="tab()"
+      (valueChange)="setTab($event)"
+    />
+    @if (code()) {
+      <app-button
+        variant="none"
+        size="small"
+        [icon]="copied() ? Icon.CHECK : Icon.COPY"
+        [ariaLabel]="copied() ? 'Copied' : 'Copy'"
+        [tooltip]="copied() ? 'Copied' : 'Copy'"
+        (click)="copy()"
+      />
+    }
+  </header>
+  @if (code(); as shown) {
+    <div class="log-context__body">
+      <app-code-block [code]="shown.text" [lang]="shown.lang" [footer]="false" />
+    </div>
+  } @else {
+    <p class="log-context__empty">{{ emptyText() }}</p>
+  }
+</section>

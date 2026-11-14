@@ -31,23 +31,48 @@
           <app-system-monitor-gpu-tab />
         }
         @case (Tab.Logs) {
-          <section class="system-monitor__audit">
-            <header class="system-monitor__toolbar">
+          @let counts = severityCounts();
+          <section class="logs" data-testid="logs-view">
+            <header class="logs__header">
+              <app-icon class="logs__icon" [icon]="Icon.MONITOR_LOGS" [size]="1.75" />
+              <h2 class="logs__title">Logs</h2>
+              <span class="logs__subtitle">Application logs • {{ summary().session }}</span>
+              <ul class="logs__chips" aria-label="Records by level">
+                <li class="logs__chip">
+                  <span class="logs__chip-label">Total</span>
+                  <strong class="logs__chip-value">{{ counts.total }}</strong>
+                </li>
+                @for (severity of severities; track severity) {
+                  <li class="logs__chip" [class]="'logs__chip--' + severity">
+                    <span class="logs__chip-label">{{ severityName(severity) }}</span>
+                    <strong class="logs__chip-value">{{ counts.bySeverity[severity] }}</strong>
+                  </li>
+                }
+              </ul>
+            </header>
+
+            <div class="logs__toolbar">
               <app-dropdown
-                class="system-monitor__session"
+                class="logs__session"
                 ariaLabel="Session"
                 [options]="sessionOptions()"
                 [value]="selectedSessionValue()"
                 (valueChange)="selectSession($event)"
               />
 
-              <div class="system-monitor__severities" role="group" aria-label="Filter by severity">
+              <div class="logs__levels" role="group" aria-label="Filter by level">
+                <app-button
+                  variant="none"
+                  size="small"
+                  label="All"
+                  [pressed]="allSeverities()"
+                  (click)="showAllSeverities()"
+                />
                 @for (severity of severities; track severity) {
                   <app-button
-                    class="system-monitor__severity"
                     variant="none"
                     size="small"
-                    [label]="severityLabel(severity)"
+                    [label]="severityName(severity)"
                     [pressed]="isEnabled(severity)"
                     (click)="toggleSeverity(severity)"
                   />
@@ -55,7 +80,8 @@
               </div>
 
               <app-text-field
-                class="system-monitor__search"
+                class="logs__search"
+                kind="search"
                 placeholder="Filter messages…"
                 ariaLabel="Filter messages"
                 [value]="text()"
@@ -63,54 +89,79 @@
                 (escape)="clearText()"
               />
 
-              @if (selectedCount() > 0) {
-                <span class="system-monitor__selection">{{ selectedCount() }} selected</span>
-                <app-button-row
-                  class="system-monitor__selection-actions"
-                  align="start"
-                  size="small"
-                >
-                  <app-button variant="ghost" size="small" label="Copy" (click)="copy()" />
-                  <app-button
-                    variant="none"
-                    size="small"
-                    label="Clear"
-                    (click)="clearSelection()"
-                  />
-                </app-button-row>
+              @if (selectedCount() > 1) {
+                <span class="logs__selection">{{ selectedCount() }} selected</span>
               }
+              <span class="logs__count">{{ filtered().length }} / {{ records().length }}</span>
 
-              <span class="system-monitor__count"
-                >{{ filtered().length }} / {{ records().length }}</span
+              <app-button
+                variant="none"
+                size="small"
+                label="Filters"
+                [icon]="Icon.FILTER"
+                [cdkMenuTriggerFor]="filtersMenu.panel() ?? null"
+                [cdkMenuPosition]="filtersMenu.position()"
+              />
+              <app-menu
+                #filtersMenu
+                [items]="filterItems()"
+                placement="down-end"
+                (selected)="toggleOrigin($event)"
+              />
+              <app-button
+                variant="none"
+                size="small"
+                ariaLabel="More Actions"
+                tooltip="More Actions"
+                [icon]="Icon.DOTS_THREE_BOLD"
+                [cdkMenuTriggerFor]="moreMenu.panel() ?? null"
+                [cdkMenuPosition]="moreMenu.position()"
+              />
+              <app-menu
+                #moreMenu
+                [items]="moreItems()"
+                placement="down-end"
+                (selected)="onMore($event)"
+              />
+            </div>
+
+            <div class="logs__list">
+              <app-table
+                class="logs__table"
+                [columns]="columns"
+                [rows]="rows()"
+                [selectedIds]="selected()"
+                [virtual]="true"
+                emptyText="No log records match the current filters."
+                (rowSelect)="selectRow($event)"
+                (sortChange)="onSort($event)"
               >
-            </header>
+                <!-- Every string is built once per record (rowFor), so a pass only reads them (#980 P5). -->
+                <ng-template appTableRow let-row>
+                  @let entry = entryOf(row);
+                  <td class="logs__time">{{ entry.time }}</td>
+                  <td>
+                    <app-chip class="logs__badge" [tone]="entry.tone">
+                      {{ entry.severityLabel }}
+                    </app-chip>
+                  </td>
+                  <td class="logs__component" [title]="entry.origin">
+                    {{ entry.record.source }}
+                  </td>
+                  <td class="logs__message" [title]="entry.record.message">
+                    {{ entry.record.message }}
+                  </td>
+                </ng-template>
+              </app-table>
+            </div>
 
-            <app-table
-              class="system-monitor__table"
-              [columns]="columns"
-              [rows]="rows()"
-              [selectedIds]="selected()"
-              [virtual]="true"
-              emptyText="No log records match the current filters."
-              (rowClick)="toggleRow($event)"
-            >
-              <!-- Every string is built once per record (rowFor), so a pass only reads them (#980 P5). -->
-              <ng-template appTableRow let-row>
-                @let entry = entryOf(row);
-                <td>
-                  <app-chip class="system-monitor__badge" [tone]="entry.tone">
-                    {{ entry.severityLabel }}
-                  </app-chip>
-                </td>
-                <td class="system-monitor__where" [title]="entry.origin">
-                  {{ entry.record.source }}
-                </td>
-                <td class="system-monitor__message" [title]="entry.record.message">
-                  {{ entry.record.message }}
-                </td>
-                <td class="system-monitor__time">{{ entry.time }}</td>
-              </ng-template>
-            </app-table>
+            <div class="logs__details">
+              <app-system-monitor-log-details-card
+                [record]="focusedRecord()"
+                [session]="summary().session"
+              />
+              <app-system-monitor-log-context-card [record]="focusedRecord()" />
+            </div>
           </section>
         }
       }

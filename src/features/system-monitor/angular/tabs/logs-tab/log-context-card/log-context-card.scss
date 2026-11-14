@@ -1,0 +1,40 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+// The same well as the dashboard cards, its tabs taking the place of a heading.
+.log-context {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  box-sizing: border-box;
+  block-size: 100%;
+  overflow: hidden;
+  padding: 0.6rem 1rem 0.7rem;
+  border: 1px solid var(--dock-border-color);
+  border-radius: calc(1rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
+}
+
+.log-context__head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+// The code scrolls within the card.
+.log-context__body {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow: auto;
+  user-select: text;
+}
+
+.log-context__empty {
+  @include empty;
+}

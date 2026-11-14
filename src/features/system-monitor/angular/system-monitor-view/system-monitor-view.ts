@@ -17,7 +17,21 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
-import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
+import {
+  Table,
+  TableColumn,
+  TableRow,
+  TableRowDef,
+  TableRowSelect,
+  TableSort,
+} from '@shared/angular/components/table/table';
+import { CdkMenuTrigger } from '@angular/cdk/menu';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
+import { Icon } from '@shared/angular/icons/icon';
+import { LogContextCard } from '../tabs/logs-tab/log-context-card/log-context-card';
+import { LogDetailsCard } from '../tabs/logs-tab/log-details-card/log-details-card';
+import { formatLogTime, SEVERITY_TONES } from '../tabs/logs-tab/log-format';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { Log } from '@shared/angular/services/log/log';
@@ -27,7 +41,8 @@ import {
   createViewInjectorRegistrar,
   ViewInjectorRegistrar,
 } from '@shared/angular/services/view-injectors/view-injector-registration';
-import { LogRecord, LogSession, SEVERITIES, Severity } from '@shared/api/log-channels';
+import { LogOrigin, LogRecord, LogSession, SEVERITIES, Severity } from '@shared/api/log-channels';
+import { fullMessage } from '@shared/api/log-format';
 import {
   GpuReading,
   MetricsSample,
@@ -73,11 +88,34 @@ import { SystemMonitorAgentPanel } from '../system-monitor-agent/system-monitor-
  * and the flexing message.
  */
 const AUDIT_COLUMNS: readonly TableColumn[] = [
-  { id: 'severity', header: 'Severity', width: '6rem' },
-  { id: 'where', header: 'Where', width: '12rem' },
+  { id: 'time', header: 'Time', width: '8.5rem', sortable: true },
+  { id: 'level', header: 'Level', width: '6.5rem' },
+  { id: 'component', header: 'Component', width: '15rem' },
   { id: 'message', header: 'Message' },
-  { id: 'timestamp', header: 'Timestamp', width: '9rem' },
 ];
+
+/**
+ * The origins the Filters menu offers, in order, with how each is named.
+ */
+const ORIGIN_LABELS: Readonly<Record<LogOrigin, string>> = {
+  main: 'Main process',
+  renderer: 'Renderer windows',
+};
+
+/**
+ * Describes the viewed session's records counted by severity, for the Logs header.
+ */
+export interface SeverityCounts {
+  /**
+   * Gets every record in the session.
+   */
+  readonly total: number;
+
+  /**
+   * Gets the records of each severity.
+   */
+  readonly bySeverity: Readonly<Record<Severity, number>>;
+}
 
 /**
  * The number of latest records the Overview's Logs card lists.
@@ -130,17 +168,6 @@ export interface SystemMonitorSummary {
 }
 
 /**
- * The chip tone each severity is labelled in: trace quiet, then rising to danger for an error.
- */
-const SEVERITY_TONES: Readonly<Record<Severity, ChipTone>> = {
-  trace: 'neutral',
-  debug: 'info',
-  info: 'accent',
-  warning: 'warning',
-  error: 'danger',
-};
-
-/**
  * One audit row's display strings, built once per record so change detection only reads them (#980
  * P5).
  */
@@ -181,8 +208,13 @@ interface AuditEntry {
 @Component({
   selector: 'app-system-monitor-view',
   imports: [
+    AppIcon,
+    CdkMenuTrigger,
     Chip,
     Button,
+    LogContextCard,
+    LogDetailsCard,
+    Menu,
     ButtonRow,
     Dropdown,
     TextField,
@@ -222,6 +254,11 @@ export class SystemMonitorView implements OnInit {
    * Gets the tab identities, exposed for the template.
    */
   protected readonly Tab: typeof SystemMonitorTabId = SystemMonitorTabId;
+
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
 
   /**
    * Gets the severities in display order, exposed for the filter chips.
@@ -336,6 +373,23 @@ export class SystemMonitorView implements OnInit {
   );
 
   /**
+   * Holds the origins shown (the main process, the renderer windows); the Filters menu changes them.
+   */
+  protected readonly origins: WritableSignal<ReadonlySet<LogOrigin>> = signal<
+    ReadonlySet<LogOrigin>
+  >(new Set<LogOrigin>(['main', 'renderer']));
+
+  /**
+   * Holds the order the records are listed in by time: oldest first, or newest first.
+   */
+  private readonly newestFirst: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the id (as a string) of the record whose details are shown: the one last clicked.
+   */
+  protected readonly focusedId: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
    * Holds the case-insensitive text the source or message must contain; empty shows all.
    */
   protected readonly text: WritableSignal<string> = signal<string>('');
@@ -372,14 +426,15 @@ export class SystemMonitorView implements OnInit {
    */
   protected readonly filtered: Signal<readonly LogRecord[]> = computed((): readonly LogRecord[] => {
     const enabled: ReadonlySet<Severity> = this.enabled();
+    const origins: ReadonlySet<LogOrigin> = this.origins();
     const needle: string = this.text().trim().toLowerCase();
     return this.records().filter((record: LogRecord): boolean => {
-      if (!enabled.has(record.severity)) {
+      if (!enabled.has(record.severity) || !origins.has(record.origin)) {
         return false;
       }
       if (
         needle.length > 0 &&
-        !`${record.source} ${record.message}`.toLowerCase().includes(needle)
+        !`${record.source} ${fullMessage(record)}`.toLowerCase().includes(needle)
       ) {
         return false;
       }
@@ -512,9 +567,77 @@ export class SystemMonitorView implements OnInit {
    * Gets the filtered records adapted to the table's row shape, oldest first. Each row carries its
    * {@link AuditEntry} display strings, so the template formats nothing.
    */
-  protected readonly rows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] =>
-    this.filtered().map((record: LogRecord): TableRow => this.rowFor(record)),
+  protected readonly rows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] => {
+    const rows: TableRow[] = this.filtered().map((record: LogRecord): TableRow =>
+      this.rowFor(record),
+    );
+    return this.newestFirst() ? rows.reverse() : rows;
+  });
+
+  /**
+   * Gets the record whose details are shown, or null when none has been chosen (or it has left the
+   * session's records).
+   */
+  protected readonly focusedRecord: Signal<LogRecord | null> = computed((): LogRecord | null => {
+    const id: string | null = this.focusedId();
+    return id === null
+      ? null
+      : (this.records().find((record: LogRecord): boolean => String(record.id) === id) ?? null);
+  });
+
+  /**
+   * Gets the viewed session's records counted by severity, over the whole session whatever the
+   * filters show.
+   */
+  protected readonly severityCounts: Signal<SeverityCounts> = computed((): SeverityCounts => {
+    const bySeverity: Record<Severity, number> = {
+      trace: 0,
+      debug: 0,
+      info: 0,
+      warning: 0,
+      error: 0,
+    };
+    for (const record of this.records()) {
+      bySeverity[record.severity] += 1;
+    }
+    return { total: this.records().length, bySeverity };
+  });
+
+  /**
+   * Gets whether every severity is shown, so the All filter reads pressed.
+   */
+  protected readonly allSeverities: Signal<boolean> = computed(
+    (): boolean => this.enabled().size === SEVERITIES.length,
   );
+
+  /**
+   * Gets the Filters menu: each origin, ticked while shown.
+   */
+  protected readonly filterItems: Signal<readonly MenuItem[]> = computed(
+    (): readonly MenuItem[] => {
+      const origins: ReadonlySet<LogOrigin> = this.origins();
+      return (Object.keys(ORIGIN_LABELS) as LogOrigin[]).map((origin: LogOrigin): MenuItem => ({
+        id: origin,
+        label: ORIGIN_LABELS[origin],
+        checked: origins.has(origin),
+      }));
+    },
+  );
+
+  /**
+   * Gets the Logs view's more-actions menu.
+   */
+  protected readonly moreItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] => [
+    { id: 'refresh', label: 'Refresh', icon: Icon.REFRESH },
+    {
+      id: 'copy',
+      label: this.selectedCount() > 0 ? 'Copy Selected' : 'Copy Shown',
+      icon: Icon.COPY,
+      disabled: this.filtered().length === 0,
+    },
+    { id: 'select-none', label: 'Clear Selection', disabled: this.selectedCount() === 0 },
+    { id: 'clear-filters', label: 'Reset Filters' },
+  ]);
 
   /**
    * Gets whether the audit currently shows any records, gating the ribbon's Copy action.
@@ -853,6 +976,7 @@ export class SystemMonitorView implements OnInit {
    */
   protected clearFilters(): void {
     this.enabled.set(new Set<Severity>(this.settings.get('systemMonitor.defaultSeverities')));
+    this.origins.set(new Set<LogOrigin>(['main', 'renderer']));
     this.text.set('');
   }
 
@@ -871,7 +995,7 @@ export class SystemMonitorView implements OnInit {
     const text: string = records
       .map(
         (record: LogRecord): string =>
-          `${record.timestamp} [${record.severity}] ${record.source}: ${record.message}`,
+          `${record.timestamp} [${record.severity}] ${record.source}: ${fullMessage(record)}`,
       )
       .join('\n');
     try {
@@ -882,18 +1006,88 @@ export class SystemMonitorView implements OnInit {
   }
 
   /**
-   * Toggles whether a clicked row is selected, so Copy can act on a chosen subset. Clicking a selected
-   * row deselects it.
-   * @param row The clicked table row.
+   * Chooses a clicked row: a plain click selects it alone and shows its details; ⌘ or Ctrl adds it to
+   * the selection or takes it out; Shift selects every row shown from the last one chosen to it. Copy
+   * acts on the selection.
+   * @param select The click, with its modifier keys.
    */
-  protected toggleRow(row: TableRow): void {
-    this.selected.update((selected: ReadonlySet<string>): ReadonlySet<string> => {
-      const next: Set<string> = new Set<string>(selected);
-      if (!next.delete(row.id)) {
-        next.add(row.id);
+  protected selectRow(select: TableRowSelect): void {
+    const id: string = select.row.id;
+    const anchor: string | null = this.focusedId();
+    if (select.range && anchor !== null) {
+      const ids: readonly string[] = this.rows().map((row: TableRow): string => row.id);
+      const from: number = ids.indexOf(anchor);
+      const to: number = ids.indexOf(id);
+      if (from >= 0 && to >= 0) {
+        this.selected.set(new Set<string>(ids.slice(Math.min(from, to), Math.max(from, to) + 1)));
+        return;
+      }
+    }
+    if (select.toggle) {
+      this.selected.update((selected: ReadonlySet<string>): ReadonlySet<string> => {
+        const next: Set<string> = new Set<string>(selected);
+        if (!next.delete(id)) {
+          next.add(id);
+        }
+        return next;
+      });
+    } else {
+      this.selected.set(new Set<string>([id]));
+    }
+    this.focusedId.set(id);
+  }
+
+  /**
+   * Lists the records oldest or newest first, as the Time header asks.
+   * @param sort The sort, or null to return to oldest first.
+   */
+  protected onSort(sort: TableSort | null): void {
+    this.newestFirst.set(sort?.direction === 'desc');
+  }
+
+  /**
+   * Shows every severity (the All filter).
+   */
+  protected showAllSeverities(): void {
+    this.enabled.set(new Set<Severity>(SEVERITIES));
+  }
+
+  /**
+   * Shows or hides an origin (the Filters menu).
+   * @param id The origin, as the menu item's id.
+   */
+  protected toggleOrigin(id: string): void {
+    const origin: LogOrigin = id === 'main' ? 'main' : 'renderer';
+    this.origins.update((origins: ReadonlySet<LogOrigin>): ReadonlySet<LogOrigin> => {
+      const next: Set<LogOrigin> = new Set<LogOrigin>(origins);
+      if (!next.delete(origin)) {
+        next.add(origin);
       }
       return next;
     });
+  }
+
+  /**
+   * Runs an action from the more-actions menu.
+   * @param id The action's id.
+   */
+  protected onMore(id: string): void {
+    switch (id) {
+      case 'refresh':
+        this.refresh();
+        break;
+      case 'copy':
+        void this.copy();
+        break;
+      case 'select-none':
+        this.clearSelection();
+        break;
+      case 'clear-filters':
+        this.clearFilters();
+        break;
+      default:
+        break;
+    }
   }
 
   /**
@@ -967,12 +1161,21 @@ export class SystemMonitorView implements OnInit {
         severityLabel: this.severityLabel(record.severity),
         tone: this.severityTone(record.severity),
         origin: this.origin(record),
-        time: this.formatTime(record.timestamp),
+        time: formatLogTime(record.timestamp),
       };
       row = { id: String(record.id), data: entry };
       this.rowCache.set(record, row);
     }
     return row;
+  }
+
+  /**
+   * Gets a severity's name as a filter or count reads it (`Warning`).
+   * @param severity The severity.
+   * @returns Returns the name.
+   */
+  protected severityName(severity: Severity): string {
+    return `${severity.charAt(0).toUpperCase()}${severity.slice(1)}`;
   }
 
   /**
@@ -1000,17 +1203,6 @@ export class SystemMonitorView implements OnInit {
    */
   private origin(record: LogRecord): string {
     return record.window ? `${record.origin} · ${record.window}` : record.origin;
-  }
-
-  /**
-   * Formats a record timestamp as a locale time. About 1.5 µs a call, so it runs once per record (in
-   * {@link rowFor}), never per change-detection pass.
-   * @param timestamp The ISO-8601 timestamp.
-   * @returns Returns the formatted time, or the timestamp itself when it does not parse.
-   */
-  private formatTime(timestamp: string): string {
-    const date: Date = new Date(timestamp);
-    return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleTimeString();
   }
 
   /**

@@ -1,3 +1,4 @@
+import { fullMessage } from '@shared/api/log-format';
 import {
   LIST_LOG_SESSIONS,
   QUERY_LOGS,
@@ -58,6 +59,7 @@ interface ReportedRecord {
   readonly window?: string;
   readonly source?: string;
   readonly message?: string;
+  readonly details?: readonly string[];
 }
 
 /**
@@ -80,7 +82,11 @@ export function clampLogLimit(limit: number | undefined): number {
 export function formatLogRecord(record: ReportedRecord): string {
   // ⛔ Masked here, at the one point a record leaves for the model: a log line can carry a token — a
   // clone URL, a header a plugin echoed — and this is the tool that sends it to a provider (audit S7).
-  const message: string = redactSecrets((record.message ?? '').replace(/\s+/g, ' ').trim());
+  const message: string = redactSecrets(
+    fullMessage({ message: record.message ?? '', details: record.details })
+      .replace(/\s+/g, ' ')
+      .trim(),
+  );
   const shown: string =
     message.length > MAX_MESSAGE_CHARS ? `${message.slice(0, MAX_MESSAGE_CHARS)}…` : message;
   const where: string = [record.origin, record.window].filter(Boolean).join('/');

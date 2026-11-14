@@ -2,7 +2,7 @@ import { Signal, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, Mock, vi } from 'vitest';
 import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
-import { TableRow } from '@shared/angular/components/table/table';
+import { TableRow, TableRowSelect, TableSort } from '@shared/angular/components/table/table';
 import { DocumentVisibility } from '@shared/angular/services/document-visibility/document-visibility';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -14,7 +14,7 @@ import { LogsOverview } from '../tabs/overview-tab/logs-overview';
 import { SystemMonitorTabId } from '../tabs/system-monitor-tab-id';
 import { SystemMonitorCommands } from '../system-monitor-commands/system-monitor-commands';
 import { SystemMonitorMetrics } from '../metrics/system-monitor-metrics';
-import { SystemMonitorView } from './system-monitor-view';
+import { SeverityCounts, SystemMonitorView } from './system-monitor-view';
 
 /**
  * A fake metrics client that records start/stop and lets a test drive the sample push.
@@ -244,9 +244,27 @@ interface Testable {
   selected: WritableSignal<ReadonlySet<string>>;
   selectedCount: Signal<number>;
   rows: Signal<readonly TableRow[]>;
-  toggleRow(row: TableRow): void;
+  selectRow(select: TableRowSelect): void;
+  focusedRecord: Signal<LogRecord | null>;
   clearSelection(): void;
   copy(): Promise<void>;
+  severityCounts: Signal<SeverityCounts>;
+  toggleOrigin(id: string): void;
+  onSort(sort: TableSort | null): void;
+  showAllSeverities(): void;
+  allSeverities: Signal<boolean>;
+}
+
+/**
+ * Builds a click on a row.
+ * @param row The row.
+ * @param keys The modifier keys held.
+ * @param keys.toggle Whether ⌘ or Ctrl is held.
+ * @param keys.range Whether Shift is held.
+ * @returns Returns the click.
+ */
+function click(row: TableRow, keys: { toggle?: boolean; range?: boolean } = {}): TableRowSelect {
+  return { row, toggle: keys.toggle ?? false, range: keys.range ?? false };
 }
 
 describe('SystemMonitorView', () => {
@@ -467,7 +485,7 @@ describe('SystemMonitorView', () => {
 
     const tones: Record<string, string> = {};
     for (const chip of (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
-      'app-chip.system-monitor__badge',
+      'app-chip.logs__badge',
     )) {
       tones[chip.textContent?.trim() ?? ''] =
         [...chip.classList].find((name: string): boolean => name.startsWith('chip--')) ?? '';
@@ -545,8 +563,9 @@ describe('SystemMonitorView', () => {
       severityLabel: 'ERROR',
       tone: 'danger',
       origin: 'renderer · Main',
-      time: new Date('2026-08-10T10:00:00.000Z').toLocaleTimeString(),
     });
+    // The time reads to the millisecond, in local time.
+    expect((first.data as { time: string }).time).toMatch(/^\d{2}:\d{2}:\d{2}\.000$/);
     expect((view.rows()[1].data as { time: string }).time).toBe('not a time');
 
     view.text.set('hello');
@@ -634,30 +653,93 @@ describe('SystemMonitorView', () => {
     ]);
 
     // Select only the second row, then copy.
-    view.toggleRow(view.rows()[1]);
+    view.selectRow(click(view.rows()[1]));
     expect(view.selectedCount()).toBe(1);
     await view.copy();
     expect(writeText).toHaveBeenCalledWith('2026-08-10T10:00:01.000Z [info] B: second');
   });
 
-  it('toggleRow_deselectsOnASecondClick_andClearSelectionEmptiesIt', async () => {
+  it('selectRow_choosesOne_addsWithToggle_andSpansWithRange', async () => {
+    await create([
+      record({ id: 1, severity: 'error', message: 'first' }),
+      record({ id: 2, severity: 'error', message: 'second' }),
+      record({ id: 3, severity: 'error', message: 'third' }),
+    ]);
+    const [first, second, third]: readonly TableRow[] = view.rows();
+
+    view.selectRow(click(first));
+    expect([...view.selected()]).toEqual(['1']);
+    expect(view.focusedRecord()?.message).toBe('first');
+
+    view.selectRow(click(third, { toggle: true }));
+    expect([...view.selected()].sort()).toEqual(['1', '3']);
+    view.selectRow(click(third, { toggle: true }));
+    expect([...view.selected()]).toEqual(['1']);
+
+    view.selectRow(click(first));
+    view.selectRow(click(third, { range: true }));
+    expect([...view.selected()]).toEqual(['1', '2', '3']);
+    expect(view.focusedRecord()?.message).toBe('first');
+
+    view.selectRow(click(second));
+    view.clearSelection();
+    expect(view.selectedCount()).toBe(0);
+  });
+
+  it('copy_appendsTheDetailsLoggedWithEachMessage', async () => {
+    const writeText: Mock = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     await create([
       record({
         id: 1,
         severity: 'error',
         source: 'A',
-        message: 'first',
+        message: 'seeded',
+        details: ['{"providerCount":7}'],
         timestamp: '2026-08-10T10:00:00.000Z',
       }),
     ]);
-    const row: TableRow = view.rows()[0];
-    view.toggleRow(row);
-    expect(view.selectedCount()).toBe(1);
-    view.toggleRow(row);
-    expect(view.selectedCount()).toBe(0);
-    view.toggleRow(row);
-    view.clearSelection();
-    expect(view.selectedCount()).toBe(0);
+
+    await view.copy();
+
+    expect(writeText).toHaveBeenCalledWith(
+      '2026-08-10T10:00:00.000Z [error] A: seeded {"providerCount":7}',
+    );
+  });
+
+  it('countsTheSessionByLevel_whateverTheFiltersShow', async () => {
+    await create([
+      record({ id: 1, severity: 'trace' }),
+      record({ id: 2, severity: 'error' }),
+      record({ id: 3, severity: 'error' }),
+    ]);
+
+    expect(view.severityCounts().total).toBe(3);
+    expect(view.severityCounts().bySeverity).toEqual({
+      trace: 1,
+      debug: 0,
+      info: 0,
+      warning: 0,
+      error: 2,
+    });
+  });
+
+  it('filtersByOrigin_listsNewestFirst_andShowsEveryLevel', async () => {
+    await create([
+      record({ id: 1, severity: 'error', origin: 'main' }),
+      record({ id: 2, severity: 'error', origin: 'renderer', window: 'window-2' }),
+    ]);
+
+    view.toggleOrigin('main');
+    expect(view.filtered().map((entry: LogRecord): number => entry.id)).toEqual([2]);
+    view.toggleOrigin('main');
+
+    view.onSort({ columnId: 'time', direction: 'desc' });
+    expect(view.rows().map((row: TableRow): string => row.id)).toEqual(['2', '1']);
+
+    expect(view.allSeverities()).toBe(false);
+    view.showAllSeverities();
+    expect(view.allSeverities()).toBe(true);
   });
 
   it('whenHidden_detachesTheLiveRecordStream_andReactivationCatchesUp', async () => {

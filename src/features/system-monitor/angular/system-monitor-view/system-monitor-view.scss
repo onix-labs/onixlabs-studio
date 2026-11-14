@@ -1,6 +1,6 @@
 // The System Monitor view fills its tab with the view the ribbon's View group has chosen (Overview,
-// each resource, System, Logs). The Logs tab is the log audit — a filter toolbar over a
-// scrolling, column-aligned table.
+// each resource, Logs). The Logs view is the log audit: a header counting the session's records by
+// level, a filter toolbar, a scrolling table, and the chosen record's details beneath.
 :host {
   display: block;
   block-size: 100%;
@@ -30,87 +30,185 @@
   }
 }
 
-.system-monitor__audit {
+// The Logs view fills its tab: header, toolbar, the table (which scrolls its own rows) and the chosen
+// record's details, fitting a full-screen 1080p display and scrolling below that.
+.logs {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
-  min-block-size: 0;
+  gap: 0.75rem;
+  box-sizing: border-box;
+  min-block-size: 36rem;
+  padding: 0.75rem;
+  overflow: auto;
 }
 
-// The filter toolbar: session picker, severity chips, free-text search, and a match count.
-.system-monitor__toolbar {
+.logs__header {
   display: flex;
   flex: none;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.6rem 1rem;
-  border-block-end: 1px solid var(--dock-border-color);
+  min-inline-size: 0;
 }
 
-.system-monitor__session {
+.logs__icon {
   flex: none;
-  min-inline-size: 14rem;
-}
-
-.system-monitor__severities {
-  display: flex;
-  flex: none;
-  gap: 0.3rem;
-}
-
-.system-monitor__search {
-  flex: 1 1 auto;
-  min-inline-size: 8rem;
-}
-
-.system-monitor__count {
-  flex: none;
-  font-size: 0.78rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--form-muted-foreground-color);
-}
-
-// The "n selected" indicator shown when rows are selected, ahead of the contextual Copy/Clear actions.
-.system-monitor__selection {
-  flex: none;
-  font-size: 0.78rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--accent-color);
-}
-
-// Copy and Clear sit in the toolbar's flow right after the indicator, so the row holds its place there
-// rather than pushing to the trailing edge, and it never gives up width to the flexing search field.
-.system-monitor__selection-actions {
-  flex: none;
-}
-
-// The audit table (the shared app-table) fills the remaining height and scrolls its own body.
-.system-monitor__table {
-  flex: 1 1 auto;
-  min-block-size: 0;
-}
-
-// The severity, as a chip toned by how severe it is (see `severityTone`).
-.system-monitor__badge {
-  letter-spacing: 0.03em;
-}
-
-.system-monitor__where {
-  color: var(--form-muted-foreground-color);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.system-monitor__message {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   color: var(--body-foreground-color);
 }
 
-.system-monitor__time {
+.logs__title {
+  flex: none;
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.logs__subtitle {
+  min-inline-size: 0;
+  overflow: hidden;
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
+}
+
+// The counts against the right edge: label over value, a hairline between each. A warning or error
+// count is toned, with its level named beside it, so the tone is never alone.
+.logs__chips {
+  display: flex;
+  flex: 0 1 auto;
+  margin: 0 0 0 auto;
+  padding: 0.45rem 0.25rem;
+  overflow: hidden;
+  border: 1px solid var(--dock-border-color);
+  border-radius: calc(0.75rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
+  list-style: none;
+}
+
+.logs__chip {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 3.5rem;
+  padding: 0 1.1rem;
+  border-inline-start: 1px solid var(--dock-border-color);
+
+  &:first-child {
+    border-inline-start: none;
+  }
+}
+
+.logs__chip-label {
+  font-size: 0.72rem;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
+}
+
+.logs__chip-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--body-foreground-color);
+}
+
+.logs__chip--warning .logs__chip-value,
+.logs__chip--warning .logs__chip-label {
+  color: var(--warning-color);
+}
+
+.logs__chip--error .logs__chip-value,
+.logs__chip--error .logs__chip-label {
+  color: var(--danger-color);
+}
+
+// The session, the levels, the search taking the spare width, then the counts and menus.
+.logs__toolbar {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.logs__session {
+  flex: none;
+  min-inline-size: 16rem;
+}
+
+.logs__levels {
+  display: flex;
+  flex: none;
+  gap: 0.2rem;
+  padding: 0.2rem;
+  border: 1px solid var(--dock-border-color);
+  border-radius: calc(0.6rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.logs__search {
+  flex: 1 1 14rem;
+  min-inline-size: 10rem;
+}
+
+.logs__count,
+.logs__selection {
+  flex: none;
+  font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
   color: var(--form-muted-foreground-color);
+}
+
+.logs__selection {
+  color: var(--accent-color);
+}
+
+// The table sits in a well like the other views' cards, its rows scrolling within it.
+.logs__list {
+  display: flex;
+  flex: 1 1 auto;
+  min-block-size: 14rem;
+  overflow: hidden;
+  border: 1px solid var(--dock-border-color);
+  border-radius: calc(1rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
+}
+
+.logs__table {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.logs__time {
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  color: var(--body-foreground-color);
+}
+
+.logs__badge {
+  letter-spacing: 0.03em;
+}
+
+.logs__component {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--body-foreground-color);
+}
+
+.logs__message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--body-foreground-color);
+}
+
+// The chosen record's details beside its context, a third of the view's height.
+.logs__details {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  block-size: clamp(13rem, 30%, 17rem);
 }
