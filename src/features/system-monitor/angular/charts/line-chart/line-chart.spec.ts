@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ChartSeries } from '../chart-series';
-import { LineChart } from './line-chart';
+import { describeAgo, LineChart } from './line-chart';
 
 describe('LineChart', () => {
   let fixture: ComponentFixture<LineChart>;
@@ -110,5 +110,17 @@ describe('LineChart', () => {
     plot().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     fixture.detectChanges();
     expect(host.querySelector('[role="status"]')).toBeNull();
+  });
+});
+
+describe('describeAgo', () => {
+  it('saysHowLongAgo_inTheLargestUnitThatReadsWell', () => {
+    expect([0, 12, 300, 3 * 3600 + 20 * 60, 6 * 3600].map(describeAgo)).toEqual([
+      'Now',
+      '12 s ago',
+      '5 min ago',
+      '3 h 20 min ago',
+      '6 h ago',
+    ]);
   });
 });

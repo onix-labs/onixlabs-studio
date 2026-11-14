@@ -142,6 +142,12 @@ export interface StartupSettings {
    * Gets the folder the skill library lives in, empty for under the user data.
    */
   readonly skillLibraryFolder: string;
+
+  /**
+   * Gets whether the GPU is read at all (the System Monitor's GPU Monitoring), which the main process
+   * follows from launch to keep the GPU's history.
+   */
+  readonly gpuMonitoring: boolean;
 }
 
 /**
@@ -167,6 +173,7 @@ export const DEFAULT_STARTUP_SETTINGS: StartupSettings = {
   ollamaStart: 'needed',
   ollamaKeepAliveMinutes: 5,
   skillLibraryFolder: '',
+  gpuMonitoring: true,
 };
 
 /**
@@ -273,5 +280,9 @@ export function parseStartupSettings(raw: unknown): StartupSettings {
       defaults.ollamaKeepAliveMinutes,
     ),
     skillLibraryFolder: text(record['skillLibraryFolder'], defaults.skillLibraryFolder),
+    gpuMonitoring:
+      typeof record['gpuMonitoring'] === 'boolean'
+        ? record['gpuMonitoring']
+        : defaults.gpuMonitoring,
   };
 }

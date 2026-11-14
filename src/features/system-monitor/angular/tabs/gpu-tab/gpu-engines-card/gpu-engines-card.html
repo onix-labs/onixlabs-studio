@@ -1,0 +1,26 @@
+<app-system-monitor-dashboard-card [icon]="Icon.MONITOR_CPU" heading="GPU Engines">
+  @if (inCommands()) {
+    <span
+      cardBadges
+      title="This GPU reports the commands each engine is given, not how busy it is."
+    >
+      <span class="gpu-engines__unit">Commands / second</span>
+    </span>
+  }
+  @if (rows().length > 0) {
+    <ul class="gpu-engines" data-testid="gpu-engines">
+      @for (row of rows(); track row.key) {
+        <li class="gpu-engines__row">
+          <app-icon class="gpu-engines__icon" [icon]="row.icon" [size]="1.1" />
+          <span class="gpu-engines__name">{{ row.label }}</span>
+          <span class="gpu-engines__value">{{ row.value }}</span>
+          <app-sparkline class="gpu-engines__graph" [values]="row.values" [max]="row.max" />
+        </li>
+      }
+    </ul>
+  } @else if (read()) {
+    <p class="gpu-engines__empty">This GPU does not report its engines.</p>
+  } @else {
+    <p class="gpu-engines__empty">The engines appear after the next reading.</p>
+  }
+</app-system-monitor-dashboard-card>

@@ -28,9 +28,15 @@ import {
   ViewInjectorRegistrar,
 } from '@shared/angular/services/view-injectors/view-injector-registration';
 import { LogRecord, LogSession, SEVERITIES, Severity } from '@shared/api/log-channels';
-import { MetricsSample, ProcessesSnapshot, SystemInfo } from '@shared/api/system-monitor-channels';
+import {
+  GpuReading,
+  MetricsSample,
+  ProcessesSnapshot,
+  SystemInfo,
+} from '@shared/api/system-monitor-channels';
 import { SystemMonitorReadings } from '../readings/system-monitor-readings';
 import { SystemMonitorProcesses } from '../readings/system-monitor-processes';
+import { SystemMonitorGpu } from '../readings/system-monitor-gpu';
 import { SystemMonitorTabId } from '../tabs/system-monitor-tab-id';
 import { OverviewTab } from '../tabs/overview-tab/overview-tab';
 import { ProcessesTab } from '../tabs/processes-tab/processes-tab';
@@ -199,6 +205,7 @@ interface AuditEntry {
     // One monitor's readings and process listing, shared by its tabs; a second monitor keeps its own.
     SystemMonitorReadings,
     SystemMonitorProcesses,
+    SystemMonitorGpu,
   ],
   templateUrl: './system-monitor-view.html',
   styleUrl: './system-monitor-view.scss',
@@ -260,6 +267,11 @@ export class SystemMonitorView implements OnInit {
    * Holds this monitor's process listing, shared with the Processes tab.
    */
   private readonly processes: SystemMonitorProcesses = inject(SystemMonitorProcesses);
+
+  /**
+   * Holds this monitor's GPU readings, shared with the GPU view.
+   */
+  private readonly gpu: SystemMonitorGpu = inject(SystemMonitorGpu);
 
   /**
    * Holds the view chosen, which the ribbon's View group shows pressed. Overview first: it is the
@@ -547,6 +559,9 @@ export class SystemMonitorView implements OnInit {
     const unsubscribeProcesses: () => void = this.metrics.onProcesses(
       (snapshot: ProcessesSnapshot): void => this.processes.accept(snapshot),
     );
+    const unsubscribeGpu: () => void = this.metrics.onGpu((reading: GpuReading): void =>
+      this.gpu.accept(reading),
+    );
     void this.loadInfo();
 
     // Whether this view has asked the backend to sample (one start per stop, whatever the rate does).
@@ -554,6 +569,7 @@ export class SystemMonitorView implements OnInit {
     const destroy: DestroyRef = inject(DestroyRef);
     destroy.onDestroy(unsubscribeSamples);
     destroy.onDestroy(unsubscribeProcesses);
+    destroy.onDestroy(unsubscribeGpu);
     destroy.onDestroy((): void => this.unsubscribeFromLiveRecords());
     destroy.onDestroy((): void => this.commands.unregister(this.commandHandler));
     destroy.onDestroy((): void => {
@@ -568,6 +584,32 @@ export class SystemMonitorView implements OnInit {
       if (listing) {
         this.metrics.stopProcesses();
       }
+    });
+
+    // Whether this view has asked the backend to read the GPU.
+    let readingGpu: boolean = false;
+    destroy.onDestroy((): void => {
+      if (readingGpu) {
+        this.metrics.stopGpu();
+      }
+    });
+
+    // The GPU is read in detail only while the GPU view is in front of the user and GPU Monitoring is
+    // on; its engines and processes are costlier than a sample, and no other view shows them.
+    effect((): void => {
+      const wanted: boolean =
+        this.isActive() &&
+        this.onScreen() &&
+        this.selectedTab() === SystemMonitorTabId.Gpu &&
+        this.readings.gpuMonitoring();
+      untracked((): void => {
+        if (wanted && !readingGpu) {
+          this.metrics.startGpu();
+        } else if (!wanted && readingGpu) {
+          this.metrics.stopGpu();
+        }
+        readingGpu = wanted;
+      });
     });
 
     // The ribbon handler follows the tab: its actions belong to the tab in front, on screen or not.
@@ -619,8 +661,9 @@ export class SystemMonitorView implements OnInit {
     });
 
     // Processes are listed only while a view showing them is in front of the user — Processes, the
-    // Overview's Processes card, or the CPU and Memory views' top processes: a listing is a `ps` (or
-    // WMI query) every couple of seconds, far costlier than a sample.
+    // Overview's Processes card, the CPU and Memory views' top processes, or the GPU view's (whose
+    // readings on Windows carry pids, not names): a listing is a `ps` (or WMI query) every couple of
+    // seconds, far costlier than a sample.
     effect((): void => {
       const tab: SystemMonitorTabId = this.selectedTab();
       const wanted: boolean =
@@ -629,7 +672,8 @@ export class SystemMonitorView implements OnInit {
         (tab === SystemMonitorTabId.Processes ||
           tab === SystemMonitorTabId.Overview ||
           tab === SystemMonitorTabId.Cpu ||
-          tab === SystemMonitorTabId.Memory);
+          tab === SystemMonitorTabId.Memory ||
+          tab === SystemMonitorTabId.Gpu);
       untracked((): void => {
         if (wanted && !listing) {
           this.metrics.startProcesses();

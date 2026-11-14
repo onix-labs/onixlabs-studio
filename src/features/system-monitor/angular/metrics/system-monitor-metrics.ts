@@ -1,6 +1,8 @@
 import { Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import {
+  GpuHistory,
+  GpuReading,
   MetricsSample,
   ProcessesSnapshot,
   SamplingRate,
@@ -103,6 +105,52 @@ export class SystemMonitorMetrics {
     }
     try {
       return await this.bridge.invoke<SystemInfo>(SystemMonitorChannel.Info);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Asks the backend to begin reading the GPU for this consumer. Ref-counted like {@link start}.
+   */
+  public startGpu(): void {
+    this.bridge?.send(SystemMonitorChannel.GpuStart);
+  }
+
+  /**
+   * Asks the backend to stop reading the GPU for this consumer.
+   */
+  public stopGpu(): void {
+    this.bridge?.send(SystemMonitorChannel.GpuStop);
+  }
+
+  /**
+   * Subscribes to pushed GPU readings.
+   * @param listener The callback invoked with each reading.
+   * @returns Returns a function that removes the subscription.
+   */
+  public onGpu(listener: (reading: GpuReading) => void): () => void {
+    return (
+      this.bridge?.on(SystemMonitorChannel.Gpu, (...args: unknown[]): void =>
+        listener(args[0] as GpuReading),
+      ) ??
+      ((): void => {
+        // No bridge outside Electron; there is nothing to unsubscribe.
+      })
+    );
+  }
+
+  /**
+   * Reads the GPU's history over a span, from what the backend keeps while GPU Monitoring is on.
+   * @param spanMs The span, in milliseconds.
+   * @returns Returns the history, or null outside Electron or when it could not be read.
+   */
+  public async gpuHistory(spanMs: number): Promise<GpuHistory | null> {
+    if (this.bridge === undefined) {
+      return null;
+    }
+    try {
+      return await this.bridge.invoke<GpuHistory>(SystemMonitorChannel.GpuHistory, spanMs);
     } catch {
       return null;
     }

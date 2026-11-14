@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import * as os from 'node:os';
 import { promisify } from 'node:util';
 import { app, IpcMainEvent } from 'electron';
@@ -13,6 +13,13 @@ import {
   MemoryDetailMetric,
   MetricsSample,
   NetworkMetric,
+  GPU_HISTORY_INTERVAL_MS,
+  GPU_HISTORY_SPAN_MS,
+  GPU_SAMPLE_INTERVAL_MS,
+  GpuHistory,
+  GpuHistoryPoint,
+  GpuInfo,
+  GpuReading,
   PROCESS_SAMPLE_INTERVAL_MS,
   PROCESS_SNAPSHOT_LIMIT,
   ProcessesSnapshot,
@@ -59,6 +66,8 @@ import {
   WindowsProcess,
 } from './process-extras';
 import { ElectronProcess, readProcesses } from './process-readers';
+import { architectureOf, parseIoregStatistics } from './gpu-readers';
+import { GpuSampler, GpuSources } from './gpu-sampler';
 import { MetricsSampler } from './metrics-sampler';
 import { HeavyCadence, normaliseSamplingInterval } from './sampling-cadence';
 
@@ -106,6 +115,17 @@ const WINDOWS_MEMORY_COMMAND: string = [
   "$c = (Get-Process -Name 'Memory Compression' -ErrorAction SilentlyContinue).WorkingSet64",
   '[pscustomobject]@{ memory = $m; compressed = $c } | ConvertTo-Json -Compress',
 ].join('; ');
+
+/**
+ * The most points a span of GPU history is evened out to.
+ */
+const GPU_HISTORY_POINTS: number = 360;
+
+/**
+ * How much slower the background GPU history is read where a reading is costly (Windows' counters, a
+ * PowerShell query of a second or more): every third tick.
+ */
+const COSTLY_GPU_HISTORY_EVERY: number = 3;
 
 /**
  * The platforms whose process listing reports CPU per core (`ps`'s `%cpu`) rather than as a share of
@@ -234,6 +254,47 @@ export class SystemMonitorContribution implements MainContribution {
   private listing: boolean = false;
 
   /**
+   * The number of renderer consumers currently asking for GPU readings.
+   */
+  private gpuConsumers: number = 0;
+
+  /**
+   * The GPU reading interval, or null when no consumer wants readings.
+   */
+  private gpuTimer: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * Reads the GPU for the GPU view, with its engines and processes; replaced each time readings start,
+   * so its rates begin afresh.
+   */
+  private gpuSampler: GpuSampler = new GpuSampler(gpuSources(), true);
+
+  /**
+   * Whether a GPU reading is being taken, so a slow read cannot let ticks overlap.
+   */
+  private readingGpu: boolean = false;
+
+  /**
+   * The background GPU history interval, or null while GPU Monitoring is off.
+   */
+  private gpuHistoryTimer: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * Reads the GPU for its history: its figures alone, on a sampler of its own.
+   */
+  private gpuHistorySampler: GpuSampler = new GpuSampler(gpuSources(), false);
+
+  /**
+   * The background ticks since the history was last read, for slowing down where reading is costly.
+   */
+  private gpuHistoryTicks: number = 0;
+
+  /**
+   * The GPU's history, oldest first, held to {@link GPU_HISTORY_SPAN_MS}.
+   */
+  private gpuHistory: GpuHistoryPoint[] = [];
+
+  /**
    * Decides the listings each process's threads and CPU time are read on, reset when listing starts.
    */
   private extrasCadence: HeavyCadence = new HeavyCadence(EXTRAS_SAMPLE_INTERVAL_MS);
@@ -270,6 +331,11 @@ export class SystemMonitorContribution implements MainContribution {
     context.on(SystemMonitorChannel.ProcessesStart, (): void => this.addProcessConsumer());
     context.on(SystemMonitorChannel.ProcessesStop, (): void => this.removeProcessConsumer());
     context.handle(SystemMonitorChannel.Info, (): Promise<SystemInfo> => this.readInfo());
+    context.on(SystemMonitorChannel.GpuStart, (): void => this.addGpuConsumer());
+    context.on(SystemMonitorChannel.GpuStop, (): void => this.removeGpuConsumer());
+    context.handle(SystemMonitorChannel.GpuHistory, (_event: unknown, span: unknown): GpuHistory =>
+      this.readGpuHistory(span),
+    );
     logger.info('SystemMonitorContribution', 'Activated; awaiting sampling consumers');
   }
 
@@ -280,6 +346,8 @@ export class SystemMonitorContribution implements MainContribution {
     logger.info('SystemMonitorContribution', 'Disposing; stopping sampling');
     this.stopSampling();
     this.stopListing();
+    this.stopGpu();
+    this.setGpuHistory(false);
     this.context = null;
     this.consumers = 0;
     this.processConsumers = 0;
@@ -676,6 +744,268 @@ export class SystemMonitorContribution implements MainContribution {
   }
 
   /**
+   * Starts or stops keeping the GPU's history in the background, as GPU Monitoring says. Studio follows
+   * the setting from launch, so the history's longer spans have readings whether or not the monitor
+   * has been opened. Turning it off forgets the history.
+   * @param enabled Whether GPU Monitoring is on.
+   */
+  public setGpuHistory(enabled: boolean): void {
+    if (enabled === (this.gpuHistoryTimer !== null)) {
+      return;
+    }
+    if (enabled) {
+      logger.debug('SystemMonitorContribution', 'Keeping the GPU history');
+      this.gpuHistorySampler = new GpuSampler(gpuSources(), false);
+      this.gpuHistoryTicks = 0;
+      void this.recordGpuHistory();
+      this.gpuHistoryTimer = setInterval((): void => {
+        this.gpuHistoryTicks += 1;
+        if (
+          !this.gpuHistorySampler.costly ||
+          this.gpuHistoryTicks % COSTLY_GPU_HISTORY_EVERY === 0
+        ) {
+          void this.recordGpuHistory();
+        }
+      }, GPU_HISTORY_INTERVAL_MS);
+    } else {
+      logger.debug('SystemMonitorContribution', 'No longer keeping the GPU history');
+      if (this.gpuHistoryTimer !== null) {
+        clearInterval(this.gpuHistoryTimer);
+      }
+      this.gpuHistoryTimer = null;
+      this.gpuHistory = [];
+    }
+  }
+
+  /**
+   * Reads the GPU once for its history, dropping what is older than the history keeps.
+   */
+  private async recordGpuHistory(): Promise<void> {
+    try {
+      const reading: GpuReading | undefined = await this.gpuHistorySampler.read();
+      if (reading === undefined || this.gpuHistoryTimer === null) {
+        return;
+      }
+      const time: number = Date.parse(reading.timestamp);
+      this.gpuHistory.push({
+        time,
+        ...definedOnly({
+          utilisationPercent: reading.utilisationPercent,
+          memoryUsedBytes: reading.memoryUsedBytes,
+        }),
+      });
+      const oldest: number = time - GPU_HISTORY_SPAN_MS;
+      const stale: number = this.gpuHistory.findIndex(
+        (point: GpuHistoryPoint): boolean => point.time >= oldest,
+      );
+      if (stale > 0) {
+        this.gpuHistory.splice(0, stale);
+      }
+    } catch (error: unknown) {
+      logger.debug('SystemMonitorContribution', 'Could not read the GPU for its history', error);
+    }
+  }
+
+  /**
+   * Answers the GPU's history over a span, evened out to at most a few hundred points: each point the
+   * average of the readings in its slice of the span.
+   * @param span The span, in milliseconds (clamped to what is kept).
+   * @returns Returns the history.
+   */
+  private readGpuHistory(span: unknown): GpuHistory {
+    const spanMs: number = Math.min(
+      GPU_HISTORY_SPAN_MS,
+      Math.max(
+        GPU_HISTORY_INTERVAL_MS,
+        typeof span === 'number' && Number.isFinite(span) ? span : 0,
+      ),
+    );
+    const now: number = Date.now();
+    const from: number = now - spanMs;
+    const intervalMs: number = Math.max(
+      GPU_HISTORY_INTERVAL_MS,
+      Math.ceil(spanMs / GPU_HISTORY_POINTS),
+    );
+    const buckets: Map<number, GpuHistoryPoint[]> = new Map<number, GpuHistoryPoint[]>();
+    for (const point of this.gpuHistory) {
+      if (point.time >= from) {
+        const slot: number = Math.floor((point.time - from) / intervalMs);
+        buckets.set(slot, [...(buckets.get(slot) ?? []), point]);
+      }
+    }
+    const average: (
+      points: readonly GpuHistoryPoint[],
+      pick: (point: GpuHistoryPoint) => number | undefined,
+    ) => number | undefined = (
+      points: readonly GpuHistoryPoint[],
+      pick: (point: GpuHistoryPoint) => number | undefined,
+    ): number | undefined => {
+      const values: number[] = points
+        .map(pick)
+        .filter((value: number | undefined): value is number => value !== undefined);
+      return values.length === 0
+        ? undefined
+        : values.reduce((sum: number, value: number): number => sum + value, 0) / values.length;
+    };
+    const points: GpuHistoryPoint[] = [...buckets.entries()]
+      .sort(([a]: [number, GpuHistoryPoint[]], [b]: [number, GpuHistoryPoint[]]): number => a - b)
+      .map(([slot, slice]: [number, GpuHistoryPoint[]]): GpuHistoryPoint => ({
+        time: from + slot * intervalMs,
+        ...definedOnly({
+          utilisationPercent: average(
+            slice,
+            (point: GpuHistoryPoint): number | undefined => point.utilisationPercent,
+          ),
+          memoryUsedBytes: average(
+            slice,
+            (point: GpuHistoryPoint): number | undefined => point.memoryUsedBytes,
+          ),
+        }),
+      }));
+    return { points, intervalMs };
+  }
+
+  /**
+   * Adds a GPU-reading consumer, starting the readings when it is the first. The first reading is
+   * taken at once.
+   */
+  private addGpuConsumer(): void {
+    this.gpuConsumers += 1;
+    if (this.gpuTimer === null) {
+      logger.debug('SystemMonitorContribution', 'Starting GPU readings');
+      this.gpuSampler = new GpuSampler(gpuSources(), true);
+      this.readGpuOnce();
+      this.gpuTimer = setInterval((): void => this.readGpuOnce(), GPU_SAMPLE_INTERVAL_MS);
+    }
+  }
+
+  /**
+   * Removes a GPU-reading consumer, stopping the readings when it was the last.
+   */
+  private removeGpuConsumer(): void {
+    this.gpuConsumers = Math.max(0, this.gpuConsumers - 1);
+    if (this.gpuConsumers === 0) {
+      this.stopGpu();
+    }
+  }
+
+  /**
+   * Stops the GPU readings.
+   */
+  private stopGpu(): void {
+    if (this.gpuTimer !== null) {
+      logger.debug('SystemMonitorContribution', 'Stopping GPU readings');
+      clearInterval(this.gpuTimer);
+      this.gpuTimer = null;
+    }
+  }
+
+  /**
+   * Reads the GPU and pushes the reading to the renderer, skipping a tick while one is still running.
+   */
+  private readGpuOnce(): void {
+    if (this.readingGpu) {
+      return;
+    }
+    this.readingGpu = true;
+    void this.gpuSampler
+      .read()
+      .then((reading: GpuReading | undefined): void => {
+        if (reading !== undefined && this.gpuTimer !== null) {
+          this.context?.send(SystemMonitorChannel.Gpu, reading);
+        }
+      })
+      .catch((error: unknown): void => {
+        logger.debug('SystemMonitorContribution', 'Could not read the GPU', error);
+      })
+      .finally((): void => {
+        this.readingGpu = false;
+      });
+  }
+
+  /**
+   * Reads what the platform says of the first GPU beyond systeminformation: on macOS its driver and
+   * version (the accelerator's kernel extension), architecture (from its driver class) and PCIe width;
+   * with `nvidia-smi`, its driver version and PCIe link. Best-effort: what cannot be read is left out.
+   * @param model The GPU's model, which names the architecture where the driver does not.
+   * @returns Returns the details.
+   */
+  private async readGpuDetails(model: string): Promise<Partial<GpuInfo>> {
+    const options: { timeout: number; maxBuffer: number } = {
+      timeout: 6_000,
+      maxBuffer: 16 * 1024 * 1024,
+    };
+    try {
+      if (process.platform === 'darwin') {
+        const [statistics, displays]: [{ stdout: string }, { stdout: string }] = await Promise.all([
+          run('ioreg', ['-r', '-d', '1', '-w', '0', '-c', 'IOAccelerator'], options),
+          run('system_profiler', ['-json', 'SPDisplaysDataType'], options),
+        ]);
+        const driverClass: string = parseIoregStatistics(statistics.stdout)?.driverClass ?? '';
+        const bundle: string | undefined = /"CFBundleIdentifier" = "([^"]+)"/.exec(
+          statistics.stdout,
+        )?.[1];
+        const version: string | undefined =
+          bundle === undefined
+            ? undefined
+            : /\(([\d.]+)\)/.exec(
+                (
+                  await run('kmutil', ['showloaded', '--bundle-identifier', bundle], options).catch(
+                    (): { stdout: string } => ({ stdout: '' }),
+                  )
+                ).stdout,
+              )?.[1];
+        const width: string | undefined = /"spdisplays_pcie_width"\s*:\s*"x?(\d+)"/.exec(
+          displays.stdout,
+        )?.[1];
+        const driverName: string | undefined = bundle?.split('.').pop();
+        return definedOnly({
+          driver:
+            driverName === undefined ? undefined : [driverName, version].filter(Boolean).join(' '),
+          architecture: architectureOf(driverClass, model),
+          bus: width === undefined ? undefined : `PCIe ×${width}`,
+        });
+      }
+      const { stdout }: { stdout: string } = await run(
+        'nvidia-smi',
+        [
+          '--query-gpu=driver_version,pcie.link.gen.max,pcie.link.width.max',
+          '--format=csv,noheader,nounits',
+        ],
+        options,
+      );
+      const [driver, generation, width]: string[] = (stdout.split('\n')[0] ?? '')
+        .split(',')
+        .map((part: string): string => part.trim());
+      return definedOnly({
+        driver: driver === undefined || driver.length === 0 ? undefined : driver,
+        architecture: architectureOf(model),
+        bus:
+          width === undefined || !/^\d+$/.test(width)
+            ? undefined
+            : /^\d+$/.test(generation ?? '')
+              ? `PCIe Gen ${generation} ×${width}`
+              : `PCIe ×${width}`,
+      });
+    } catch {
+      return definedOnly({ architecture: architectureOf(model) });
+    }
+  }
+
+  /**
+   * Adds what the platform says beyond systeminformation to the first GPU.
+   * @param gpus The GPUs systeminformation describes.
+   * @returns Returns the GPUs, the first with its driver, architecture and bus where known.
+   */
+  private async describeGpus(gpus: readonly GpuInfo[]): Promise<readonly GpuInfo[]> {
+    const [first, ...rest]: readonly GpuInfo[] = gpus;
+    if (first === undefined) {
+      return gpus;
+    }
+    return [{ ...first, ...(await this.readGpuDetails(first.model)) }, ...rest];
+  }
+
+  /**
    * Reads each process's threads and CPU time, the way the platform offers them: two `ps` calls on
    * macOS (one for every process's CPU time, one listing every thread), `/proc/<pid>/stat` for the
    * listed processes on Linux, one WMI query on Windows. Best-effort: a platform or process that cannot
@@ -781,7 +1111,7 @@ export class SystemMonitorContribution implements MainContribution {
           ? `${os.type()} ${os.release()}`
           : `${osInfo.distro} ${osInfo.release}`.trim(),
       ...definedOnly({ bootTime: readBootTime() }),
-      gpus: readGpus(graphics?.controllers ?? []),
+      gpus: await this.describeGpus(readGpus(graphics?.controllers ?? [])),
       memoryModules: memory.modules,
       ...definedOnly({ memorySlots: memory.slots, memoryEcc: memory.ecc }),
     };
@@ -863,7 +1193,7 @@ export class SystemMonitorContribution implements MainContribution {
 /**
  * The singleton System Monitor contribution appended to the `mainContributions` manifest.
  */
-export const systemMonitorContribution: MainContribution = new SystemMonitorContribution();
+export const systemMonitorContribution: SystemMonitorContribution = new SystemMonitorContribution();
 
 /**
  * Drops the readings that are undefined, so a sample carries only the optional fields it has.
@@ -887,4 +1217,19 @@ function readBootTime(): number | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Builds what a GPU sampler reads the machine through: commands, files and folders, and the clock.
+ * @returns Returns the sources.
+ */
+function gpuSources(): GpuSources {
+  return {
+    platform: process.platform,
+    run: async (file: string, args: readonly string[]): Promise<string> =>
+      (await run(file, args, { timeout: 6_000, maxBuffer: 16 * 1024 * 1024 })).stdout,
+    readFile: (path: string): Promise<string> => readFile(path, 'utf8'),
+    readdir: (path: string): Promise<readonly string[]> => readdir(path),
+    now: (): number => Date.now(),
+  };
 }

@@ -1,0 +1,14 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+.gpu-memory-history__chart {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+.gpu-memory-history__empty {
+  @include empty;
+}

@@ -82,6 +82,8 @@ export interface GpuController {
   readonly model?: string;
   readonly vendor?: string;
   readonly vram?: number | null;
+  readonly driverVersion?: string;
+  readonly bus?: string;
   readonly utilizationGpu?: number | null;
 }
 
@@ -306,10 +308,14 @@ export function readGpus(controllers: readonly GpuController[]): readonly GpuInf
     )
     .map((controller: GpuController): GpuInfo => {
       const vram: number | null | undefined = controller.vram;
+      const driver: string = (controller.driverVersion ?? '').trim();
+      const bus: string = (controller.bus ?? '').trim();
       return {
         model: controller.model ?? '',
         vendor: controller.vendor ?? '',
         ...(typeof vram === 'number' && vram > 0 ? { memoryBytes: vram * 1024 * 1024 } : {}),
+        ...(driver.length > 0 ? { driver } : {}),
+        ...(bus.length > 0 ? { bus } : {}),
       };
     });
 }

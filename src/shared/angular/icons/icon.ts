@@ -263,6 +263,46 @@ export class Icon {
   public static readonly MONITOR_COMPOSITION: Icon = new Icon('ph-duotone ph-stack-simple');
 
   /**
+   * Gets the icon for temperature in the System Monitor.
+   */
+  public static readonly MONITOR_TEMPERATURE: Icon = new Icon('ph ph-thermometer');
+
+  /**
+   * Gets the icon for power in the System Monitor.
+   */
+  public static readonly MONITOR_POWER: Icon = new Icon('ph ph-lightning');
+
+  /**
+   * Gets the icon for a fan in the System Monitor.
+   */
+  public static readonly MONITOR_FAN: Icon = new Icon('ph ph-fan');
+
+  /**
+   * Gets the icon for the GPU's 3D engine in the System Monitor.
+   */
+  public static readonly MONITOR_ENGINE_3D: Icon = new Icon('ph ph-cube');
+
+  /**
+   * Gets the icon for the GPU's video decoder in the System Monitor.
+   */
+  public static readonly MONITOR_ENGINE_DECODE: Icon = new Icon('ph ph-film-strip');
+
+  /**
+   * Gets the icon for the GPU's video encoder in the System Monitor.
+   */
+  public static readonly MONITOR_ENGINE_ENCODE: Icon = new Icon('ph ph-video-camera');
+
+  /**
+   * Gets the icon for the GPU's copy engine in the System Monitor.
+   */
+  public static readonly MONITOR_ENGINE_COPY: Icon = new Icon('ph ph-copy-simple');
+
+  /**
+   * Gets the icon for the GPU's compute engine in the System Monitor.
+   */
+  public static readonly MONITOR_ENGINE_COMPUTE: Icon = new Icon('ph ph-function');
+
+  /**
    * Gets the icon for a grid layout in the System Monitor.
    */
   public static readonly MONITOR_GRID: Icon = new Icon('ph ph-squares-four');

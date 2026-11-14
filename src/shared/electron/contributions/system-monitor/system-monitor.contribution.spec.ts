@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IpcMainEvent } from 'electron';
 import {
+  GpuHistory,
+  GpuReading,
   MetricsSample,
   ProcessesSnapshot,
   SystemInfo,
@@ -120,6 +122,7 @@ describe('SystemMonitorContribution', () => {
   let listeners: Map<string, ContributionListener>;
   let samples: MetricsSample[];
   let snapshots: ProcessesSnapshot[];
+  let gpuReadings: GpuReading[];
   let handlers: Map<string, InvokeHandler>;
   let contribution: InstanceType<typeof SystemMonitorContribution>;
 
@@ -133,10 +136,15 @@ describe('SystemMonitorContribution', () => {
         void handlers.set(channel, handler),
       on: (channel: string, listener: ContributionListener): void =>
         void listeners.set(channel, listener),
-      send: (channel: string, payload: unknown): void =>
-        void (channel === SystemMonitorChannel.Processes.valueOf()
-          ? snapshots.push(payload as ProcessesSnapshot)
-          : samples.push(payload as MetricsSample)),
+      send: (channel: string, payload: unknown): void => {
+        if (channel === SystemMonitorChannel.Processes.valueOf()) {
+          snapshots.push(payload as ProcessesSnapshot);
+        } else if (channel === SystemMonitorChannel.Gpu.valueOf()) {
+          gpuReadings.push(payload as GpuReading);
+        } else {
+          samples.push(payload as MetricsSample);
+        }
+      },
       permission: <T>(): T => {
         throw new Error('The monitor declares no permissions.');
       },
@@ -188,6 +196,7 @@ describe('SystemMonitorContribution', () => {
     handlers = new Map<string, InvokeHandler>();
     samples = [];
     snapshots = [];
+    gpuReadings = [];
     contribution = new SystemMonitorContribution();
     contribution.activate(context());
   });
@@ -522,6 +531,49 @@ describe('SystemMonitorContribution', () => {
     }
     // The mocked controller names no model, so no GPU is described.
     expect(info.gpus).toEqual([]);
+  });
+
+  describe('the GPU', () => {
+    beforeEach(() => {
+      setPlatform('darwin');
+      machine.ioreg = (): Promise<{ stdout: string }> =>
+        Promise.resolve({
+          stdout:
+            '+-o Accel  <class AMDRadeonX6000_AMDNavi21GraphicsAccelerator, id 0x1>\n"PerformanceStatistics" = {"Device Utilization %"=30,"inUseVidMemoryBytes"=1024}',
+        });
+    });
+
+    it('keepsAHistory_whileGpuMonitoringIsOn_andForgetsItWhenOff', async () => {
+      contribution.setGpuHistory(true);
+      await advance(25_000);
+
+      const history: GpuHistory = (await handlers.get(SystemMonitorChannel.GpuHistory)?.(
+        {} as never,
+        60_000,
+      )) as GpuHistory;
+      expect(history.points.length).toBeGreaterThan(0);
+      expect(history.points[0].utilisationPercent).toBe(30);
+      expect(history.points[0].memoryUsedBytes).toBe(1024);
+
+      contribution.setGpuHistory(false);
+      const after: GpuHistory = (await handlers.get(SystemMonitorChannel.GpuHistory)?.(
+        {} as never,
+        60_000,
+      )) as GpuHistory;
+      expect(after.points).toEqual([]);
+    });
+
+    it('streamsReadings_whileAGpuViewAsks', async () => {
+      send(SystemMonitorChannel.GpuStart);
+      await advance(4_000);
+      expect(gpuReadings.length).toBeGreaterThanOrEqual(2);
+      expect(gpuReadings[0].utilisationPercent).toBe(30);
+
+      send(SystemMonitorChannel.GpuStop);
+      const count: number = gpuReadings.length;
+      await advance(10_000);
+      expect(gpuReadings).toHaveLength(count);
+    });
   });
 
   describe('dispose', () => {

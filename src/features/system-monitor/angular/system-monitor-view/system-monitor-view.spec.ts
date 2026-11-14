@@ -67,6 +67,25 @@ class FakeMetrics {
   public info(): Promise<SystemInfo | null> {
     return Promise.resolve(this.machine);
   }
+
+  public gpuStarted: number = 0;
+  public gpuStopped: number = 0;
+
+  public startGpu(): void {
+    this.gpuStarted += 1;
+  }
+
+  public stopGpu(): void {
+    this.gpuStopped += 1;
+  }
+
+  public onGpu(): () => void {
+    return (): void => undefined;
+  }
+
+  public gpuHistory(): Promise<null> {
+    return Promise.resolve(null);
+  }
 }
 
 /**
@@ -276,7 +295,7 @@ describe('SystemMonitorView', () => {
   });
 
   it('processes_areListedOnlyWhileAViewShowingThemIsInFront', async () => {
-    await create([], 'gpu');
+    await create([], 'system');
     expect(metrics.processesStarted).toBe(0);
 
     // The Overview's Processes card and the CPU view's top processes list them too.
@@ -301,6 +320,19 @@ describe('SystemMonitorView', () => {
     view.selectTab('storage');
     fixture.detectChanges();
     expect(metrics.processesStopped).toBe(2);
+  });
+
+  it('gpu_isReadInDetail_onlyWhileTheGpuViewIsInFront', async () => {
+    await create([], 'overview');
+    expect(metrics.gpuStarted).toBe(0);
+
+    view.selectTab('gpu');
+    fixture.detectChanges();
+    expect(metrics.gpuStarted).toBe(1);
+
+    view.selectTab('cpu');
+    fixture.detectChanges();
+    expect(metrics.gpuStopped).toBe(1);
   });
 
   it('processes_snapshotsReachTheListing', async () => {

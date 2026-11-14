@@ -97,6 +97,28 @@ interface Readout {
 }
 
 /**
+ * Says how long ago a sample was taken, in the largest unit that reads well (`12 s ago`, `5 min ago`,
+ * `3 h 20 min ago`).
+ * @param seconds How long ago, in seconds.
+ * @returns Returns the description.
+ */
+export function describeAgo(seconds: number): string {
+  if (seconds <= 0) {
+    return 'Now';
+  }
+  if (seconds < 120) {
+    return `${seconds} s ago`;
+  }
+  const minutes: number = Math.round(seconds / 60);
+  if (minutes < 120) {
+    return `${minutes} min ago`;
+  }
+  const hours: number = Math.floor(minutes / 60);
+  const rest: number = minutes % 60;
+  return rest === 0 ? `${hours} h ago` : `${hours} h ${rest} min ago`;
+}
+
+/**
  * Formats a value as itself, the default when a chart is given no formatter.
  * @param value The value.
  * @returns Returns the value as text.
@@ -253,7 +275,7 @@ export class LineChart {
     return {
       left,
       flipped: left > 60,
-      when: ago === 0 ? 'Now' : `${ago} s ago`,
+      when: describeAgo(ago),
       rows: this.series().map((series: ChartSeries): ReadoutRow => {
         // A shorter series is right-aligned, so the same sample sits at a different index in it.
         const value: number | undefined = series.values[index - (length - series.values.length)];

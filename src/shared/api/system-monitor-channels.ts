@@ -49,6 +49,218 @@ export enum SystemMonitorChannel {
    * Renderer → main (invoke): the machine's static description, a {@link SystemInfo}.
    */
   Info = 'system-monitor:info',
+
+  /**
+   * Renderer → main (send): a GPU view became visible and wants GPU readings. Ref-counted.
+   */
+  GpuStart = 'system-monitor:gpu-start',
+
+  /**
+   * Renderer → main (send): a GPU view is no longer visible.
+   */
+  GpuStop = 'system-monitor:gpu-stop',
+
+  /**
+   * Main → renderer (send): one {@link GpuReading}.
+   */
+  Gpu = 'system-monitor:gpu',
+
+  /**
+   * Renderer → main (invoke): the GPU's history over a span, a {@link GpuHistory}, from the readings
+   * the main process keeps in the background while GPU Monitoring is on.
+   */
+  GpuHistory = 'system-monitor:gpu-history',
+}
+
+/**
+ * The time between GPU readings while a GPU view is visible, in milliseconds.
+ */
+export const GPU_SAMPLE_INTERVAL_MS: number = 2_000;
+
+/**
+ * The time between the background GPU readings kept for the GPU's history, in milliseconds.
+ */
+export const GPU_HISTORY_INTERVAL_MS: number = 10_000;
+
+/**
+ * The longest span of GPU history kept, in milliseconds: a day.
+ */
+export const GPU_HISTORY_SPAN_MS: number = 24 * 60 * 60 * 1000;
+
+/**
+ * Identifies what a GPU engine does.
+ */
+export type GpuEngineKind = '3d' | 'decode' | 'encode' | 'copy' | 'compute' | 'other';
+
+/**
+ * Describes one GPU engine's activity.
+ */
+export interface GpuEngineReading {
+  /**
+   * Gets what the engine does.
+   */
+  readonly kind: GpuEngineKind;
+
+  /**
+   * Gets the engine's name as the view shows it (`3D / Graphics`, `Video Decode`).
+   */
+  readonly label: string;
+
+  /**
+   * Gets the engine's activity, in {@link unit}.
+   */
+  readonly value: number;
+
+  /**
+   * Gets what the activity is measured in: a percentage busy (Windows, NVIDIA, Apple silicon), or the
+   * commands submitted each second (AMD on macOS, which reports no busy share per engine).
+   */
+  readonly unit: 'percent' | 'commands';
+}
+
+/**
+ * Describes one process's use of the GPU.
+ */
+export interface GpuProcessReading {
+  /**
+   * Gets the process's pid.
+   */
+  readonly pid: number;
+
+  /**
+   * Gets the process's name, where the reading carries one.
+   */
+  readonly name?: string;
+
+  /**
+   * Gets the process's share of the GPU, 0–100, where reported.
+   */
+  readonly gpuPercent?: number;
+
+  /**
+   * Gets the GPU memory the process holds, in bytes, where reported.
+   */
+  readonly memoryBytes?: number;
+
+  /**
+   * Gets the process's share of the video encoder, 0–100, where reported.
+   */
+  readonly encoderPercent?: number;
+
+  /**
+   * Gets the process's share of the video decoder, 0–100, where reported.
+   */
+  readonly decoderPercent?: number;
+}
+
+/**
+ * Describes one reading of the GPU, as far as the platform reports it.
+ */
+export interface GpuReading {
+  /**
+   * Gets when the reading was taken, as an ISO-8601 string.
+   */
+  readonly timestamp: string;
+
+  /**
+   * Gets the GPU's utilisation, 0–100.
+   */
+  readonly utilisationPercent?: number;
+
+  /**
+   * Gets the video memory in use, in bytes.
+   */
+  readonly memoryUsedBytes?: number;
+
+  /**
+   * Gets the video memory there is, in bytes.
+   */
+  readonly memoryTotalBytes?: number;
+
+  /**
+   * Gets the video memory the driver reserves, in bytes.
+   */
+  readonly memoryReservedBytes?: number;
+
+  /**
+   * Gets the GPU's temperature, in °C.
+   */
+  readonly temperatureC?: number;
+
+  /**
+   * Gets the GPU's power draw, in watts.
+   */
+  readonly powerWatts?: number;
+
+  /**
+   * Gets the GPU's power limit, in watts.
+   */
+  readonly powerLimitWatts?: number;
+
+  /**
+   * Gets the fan's speed, in revolutions a minute.
+   */
+  readonly fanRpm?: number;
+
+  /**
+   * Gets the fan's speed as a share of its maximum, 0–100.
+   */
+  readonly fanPercent?: number;
+
+  /**
+   * Gets the core clock, in MHz.
+   */
+  readonly coreClockMhz?: number;
+
+  /**
+   * Gets the memory clock, in MHz.
+   */
+  readonly memoryClockMhz?: number;
+
+  /**
+   * Gets each engine's activity, those the platform reports.
+   */
+  readonly engines: readonly GpuEngineReading[];
+
+  /**
+   * Gets each process's use of the GPU, those the platform reports, busiest first.
+   */
+  readonly processes: readonly GpuProcessReading[];
+}
+
+/**
+ * Describes one point of the GPU's history.
+ */
+export interface GpuHistoryPoint {
+  /**
+   * Gets when the point was read, in milliseconds since the epoch.
+   */
+  readonly time: number;
+
+  /**
+   * Gets the GPU's utilisation, 0–100, or undefined where not read.
+   */
+  readonly utilisationPercent?: number;
+
+  /**
+   * Gets the video memory in use, in bytes, or undefined where not read.
+   */
+  readonly memoryUsedBytes?: number;
+}
+
+/**
+ * Describes the GPU's history over a span, evened out to at most a few hundred points.
+ */
+export interface GpuHistory {
+  /**
+   * Gets the points, oldest first.
+   */
+  readonly points: readonly GpuHistoryPoint[];
+
+  /**
+   * Gets the time each point stands for, in milliseconds.
+   */
+  readonly intervalMs: number;
 }
 
 /**
@@ -209,6 +421,21 @@ export interface GpuInfo {
    * Gets the controller's dedicated memory in bytes, or undefined when it has none or it is unknown.
    */
   readonly memoryBytes?: number;
+
+  /**
+   * Gets the driver and its version (`AMDRadeonX6000 7.0.1`, `560.35.03`), or undefined when unknown.
+   */
+  readonly driver?: string;
+
+  /**
+   * Gets the GPU's architecture (`RDNA 2`, `Ada Lovelace`), or undefined when unknown.
+   */
+  readonly architecture?: string;
+
+  /**
+   * Gets the bus it sits on (`PCIe Gen 4 ×16`, `PCIe ×16`), or undefined when unknown.
+   */
+  readonly bus?: string;
 }
 
 /**
