@@ -48,8 +48,8 @@
   }
 }
 
-// Facts ruled into two columns (Model beside Memory, and so on): label over value, a hairline beneath
-// each row. Put it on a `<dl>` of `<div>`s.
+// Facts ruled into two columns (Model beside Memory, and so on): label over value, a hairline between
+// rows. Put it on a `<dl>` of `<div>`s, an even number of them.
 @mixin fact-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -60,6 +60,11 @@
     min-inline-size: 0;
     padding: 0.45rem 0.4rem;
     border-block-end: 1px solid color-mix(in srgb, var(--dock-border-color) 50%, transparent);
+  }
+
+  // The rules separate rows; the last row closes the card, so it has none.
+  > div:nth-last-child(-n + 2) {
+    border-block-end: none;
   }
 
   dt {

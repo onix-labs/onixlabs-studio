@@ -3,6 +3,7 @@
   heading="Network"
   subtitle="Network activity and interface statistics"
 >
+  <!-- The badges name the graph's lines in their colours: Received in the accent, Sent in grey. -->
   <app-system-monitor-dashboard-badge
     cardBadges
     [icon]="Icon.MONITOR_IN"
@@ -12,6 +13,7 @@
   <app-system-monitor-dashboard-badge
     cardBadges
     [icon]="Icon.MONITOR_OUT"
+    tone="neutral"
     [value]="readings.networkTxValue()"
     caption="Sent"
   />
@@ -23,6 +25,7 @@
     [base]="1024"
     [floor]="1024"
     [format]="rate"
+    [showLegend]="false"
     [intervalMs]="readings.intervalMs()"
   />
 

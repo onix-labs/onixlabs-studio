@@ -35,7 +35,8 @@ interface InterfaceRow {
 
 /**
  * Represents the Overview's Network card: received and sent throughput over time on one axis (the same
- * unit), and the three busiest interfaces.
+ * unit), named by its badges in the lines' colours (Received in the accent, Sent in grey), and the three
+ * busiest interfaces at its foot.
  */
 @Component({
   selector: 'app-system-monitor-network-card',

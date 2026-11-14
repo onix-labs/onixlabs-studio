@@ -8,9 +8,11 @@
   @include leading-chart;
 }
 
+// The interfaces sit at the card's foot; the spare height goes between them and the graph.
 .network-card__interfaces {
   display: flex;
   flex: none;
+  margin-block-start: auto;
   flex-direction: column;
   gap: 0.3rem;
 }
@@ -24,6 +26,11 @@
 
   td {
     padding-block: 0.3rem;
+  }
+
+  // The last interface closes the card, so it has no rule beneath.
+  tbody tr:last-child td {
+    border-block-end: none;
   }
 }
 

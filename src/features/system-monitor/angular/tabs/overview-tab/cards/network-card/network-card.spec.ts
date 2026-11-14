@@ -22,7 +22,7 @@ describe('NetworkCard', () => {
     globalThis.localStorage?.clear();
   });
 
-  it('graphsReceivedAndSent_withALegend_andListsTheThreeBusiestInterfaces', async () => {
+  it('graphsReceivedAndSent_namedByTheBadges_andListsTheThreeBusiestInterfaces', async () => {
     readings.accept({
       timestamp: 't',
       cpu: 0,
@@ -37,7 +37,9 @@ describe('NetworkCard', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(host.querySelector('[aria-label="Legend"]')?.textContent).toContain('Sent');
+    // The badges name the lines in their colours, so the graph carries no legend.
+    expect(host.querySelector('[aria-label="Legend"]')).toBeNull();
+    expect(host.textContent).toContain('Sent');
     expect(host.textContent).toContain('4.0 KB/s');
     const rows: NodeListOf<HTMLTableRowElement> = host.querySelectorAll(
       '[data-testid="network-card-interfaces"] tbody tr',
