@@ -424,6 +424,38 @@ export interface ProcessSample {
    * Gets which of Studio's own processes this is, or undefined when it is not Studio's.
    */
   readonly studio?: StudioProcessKind;
+
+  /**
+   * Gets the number of threads the process runs, or undefined when it could not be read.
+   */
+  readonly threads?: number;
+
+  /**
+   * Gets the CPU time the process has used since it started (user and system), in seconds, or
+   * undefined when it could not be read.
+   */
+  readonly cpuTimeSeconds?: number;
+}
+
+/**
+ * Describes one level of the CPU's cache.
+ */
+export interface CacheInfo {
+  /**
+   * Gets the cache level (`L1`, `L2`, `L3`). L1 counts its data and instruction caches together.
+   */
+  readonly level: 'L1' | 'L2' | 'L3';
+
+  /**
+   * Gets the cache's size across the whole processor, in bytes.
+   */
+  readonly totalBytes: number;
+
+  /**
+   * Gets each core's own share, in bytes, where the cache is per core and the platform says so;
+   * undefined for a shared cache, or where the platform reports only the total.
+   */
+  readonly perCoreBytes?: number;
 }
 
 /**
@@ -480,6 +512,21 @@ export interface SystemInfo {
    * Gets the CPU's base speed in GHz, or undefined when unknown.
    */
   readonly speedGhz?: number;
+
+  /**
+   * Gets the CPU's maximum (turbo) speed in GHz, or undefined unless the OS reports one above the base.
+   */
+  readonly maxSpeedGhz?: number;
+
+  /**
+   * Gets the CPU's architecture (`x86_64`, `arm64`).
+   */
+  readonly architecture: string;
+
+  /**
+   * Gets the CPU's caches, smallest level first, those the OS reports.
+   */
+  readonly caches: readonly CacheInfo[];
 
   /**
    * Gets the total physical memory, in bytes.

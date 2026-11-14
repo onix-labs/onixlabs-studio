@@ -4,8 +4,8 @@ import { Icon } from '@shared/angular/icons/icon';
 import { ProcessesSnapshot, ProcessSample } from '@shared/api/system-monitor-channels';
 import { formatBytes, formatShare } from '../../../../readings/format';
 import { SystemMonitorProcesses } from '../../../../readings/system-monitor-processes';
-import { DashboardBadge } from '../../dashboard-badge/dashboard-badge';
-import { DashboardCard } from '../../dashboard-card/dashboard-card';
+import { DashboardBadge } from '../../../dashboard-badge/dashboard-badge';
+import { DashboardCard } from '../../../dashboard-card/dashboard-card';
 
 /**
  * The number of processes the card lists.

@@ -4,8 +4,8 @@ import { Icon } from '@shared/angular/icons/icon';
 import { VolumeMetric } from '@shared/api/system-monitor-channels';
 import { formatBytes } from '../../../../readings/format';
 import { SystemMonitorReadings } from '../../../../readings/system-monitor-readings';
-import { DashboardBadge } from '../../dashboard-badge/dashboard-badge';
-import { DashboardCard } from '../../dashboard-card/dashboard-card';
+import { DashboardBadge } from '../../../dashboard-badge/dashboard-badge';
+import { DashboardCard } from '../../../dashboard-card/dashboard-card';
 
 /**
  * The share of a volume in use at which its bar warns.

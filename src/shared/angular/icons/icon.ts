@@ -233,6 +233,31 @@ export class Icon {
   public static readonly MONITOR_LOGS: Icon = new Icon('ph-duotone ph-file-text');
 
   /**
+   * Gets the icon for a graph over time in the System Monitor.
+   */
+  public static readonly MONITOR_TREND: Icon = new Icon('ph-duotone ph-chart-line');
+
+  /**
+   * Gets the icon for readings grouped into bars in the System Monitor.
+   */
+  public static readonly MONITOR_GROUPED: Icon = new Icon('ph-duotone ph-chart-bar-horizontal');
+
+  /**
+   * Gets the icon for a ranked list in the System Monitor.
+   */
+  public static readonly MONITOR_RANKED: Icon = new Icon('ph-duotone ph-list-numbers');
+
+  /**
+   * Gets the icon for a grid layout in the System Monitor.
+   */
+  public static readonly MONITOR_GRID: Icon = new Icon('ph ph-squares-four');
+
+  /**
+   * Gets the icon for a list layout in the System Monitor.
+   */
+  public static readonly MONITOR_LIST: Icon = new Icon('ph ph-rows');
+
+  /**
    * Gets the icon for a volume in the System Monitor's storage list.
    */
   public static readonly MONITOR_VOLUME: Icon = new Icon('ph ph-hard-drive');

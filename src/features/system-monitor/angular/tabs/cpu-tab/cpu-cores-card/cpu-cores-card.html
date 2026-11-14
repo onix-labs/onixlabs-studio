@@ -1,0 +1,54 @@
+<app-system-monitor-dashboard-card [icon]="Icon.MONITOR_CPU" [heading]="heading()">
+  <div cardBadges class="cpu-cores__layouts" role="group" aria-label="Layout">
+    <app-button
+      variant="none"
+      size="small"
+      [icon]="Icon.MONITOR_GRID"
+      label="Grid"
+      [pressed]="layout() === 'grid'"
+      (click)="setLayout('grid')"
+    />
+    <app-button
+      variant="none"
+      size="small"
+      [icon]="Icon.MONITOR_LIST"
+      label="List"
+      [pressed]="layout() === 'list'"
+      (click)="setLayout('list')"
+    />
+  </div>
+
+  @if (cores().length === 0) {
+    <p class="cpu-cores__empty">Each core's load appears after the next reading.</p>
+  } @else if (layout() === 'grid') {
+    <div class="cpu-cores__grid" data-testid="cpu-cores-grid">
+      @for (core of cores(); track core.number) {
+        <div class="cpu-cores__tile" [attr.aria-label]="'Core ' + core.number + ': ' + core.value">
+          <span class="cpu-cores__number">{{ core.number }}</span>
+          <span class="cpu-cores__value">{{ core.value }}</span>
+          <app-sparkline class="cpu-cores__graph" [values]="core.values" [max]="100" />
+        </div>
+      }
+    </div>
+  } @else {
+    <ol class="cpu-cores__list" data-testid="cpu-cores-list">
+      @for (core of cores(); track core.number) {
+        <li class="cpu-cores__row">
+          <span class="cpu-cores__row-name">Core {{ core.number }}</span>
+          <div
+            class="cpu-cores__track"
+            role="meter"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            [attr.aria-valuenow]="core.percent"
+            [attr.aria-label]="'Core ' + core.number"
+          >
+            <div class="cpu-cores__fill" [style.inline-size.%]="core.percent"></div>
+          </div>
+          <span class="cpu-cores__row-value">{{ core.value }}</span>
+          <app-sparkline class="cpu-cores__row-graph" [values]="core.values" [max]="100" />
+        </li>
+      }
+    </ol>
+  }
+</app-system-monitor-dashboard-card>

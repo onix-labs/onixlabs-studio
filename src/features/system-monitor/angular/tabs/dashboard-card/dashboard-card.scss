@@ -25,13 +25,18 @@
   background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
 }
 
-// Every head is as tall as a two-line subtitle, so a subtitle that wraps beside wide badges does not
-// push its card's body down out of line with its neighbours'.
+// A head centres its title against its badges; with a subtitle, every head is as tall as a two-line
+// one, so a subtitle that wraps beside wide badges does not push its card's body down out of line with
+// its neighbours'.
 .dashboard-card__head {
   display: flex;
   flex: none;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.75rem;
+}
+
+.dashboard-card__head--subtitled {
+  align-items: flex-start;
   min-block-size: 3.4rem;
 }
 

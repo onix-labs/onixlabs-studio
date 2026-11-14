@@ -55,6 +55,24 @@ export interface ProcessMachine {
 }
 
 /**
+ * The tools the monitor itself runs to take its readings. One the main process started is the
+ * listing reading itself, not something the user is running, so it is left out of the listing.
+ */
+const MONITOR_TOOLS: ReadonlySet<string> = new Set<string>([
+  'ps',
+  'ioreg',
+  'sysctl',
+  'df',
+  'lsof',
+  'netstat',
+  'system_profiler',
+  'powershell',
+  'powershell.exe',
+  'wmic',
+  'wmic.exe',
+]);
+
+/**
  * Rounds a value to one decimal place.
  * @param value The value to round.
  * @returns Returns the rounded value.
@@ -141,7 +159,8 @@ export function studioProcesses(
 
 /**
  * Maps a process listing to the processes a snapshot carries: every one of Studio's, then the busiest
- * of the rest — by CPU, then by memory — up to the limit in all. CPU is scaled to a share of the whole
+ * of the rest — by CPU, then by memory — up to the limit in all. The tools the monitor runs to take its
+ * own readings (a `ps` the main process started) are left out. CPU is scaled to a share of the whole
  * machine whatever the platform reported, so it reads against the machine-wide CPU graph.
  * @param stats The processes listed (`si.processes().list`).
  * @param electron Electron's own processes (`app.getAppMetrics()`).
@@ -161,25 +180,31 @@ export function readProcesses(
     machine.mainPid,
   );
   const cores: number = Math.max(1, machine.coreCount);
-  const samples: ProcessSample[] = stats.map((stat: ProcessStat): ProcessSample => {
-    const memoryBytes: number = Math.max(0, stat.memRss) * 1024;
-    const command: string = [stat.command, stat.params]
-      .filter((part: string | undefined): boolean => part !== undefined && part.length > 0)
-      .join(' ');
-    const kind: StudioProcessKind | undefined = kinds.get(stat.pid);
-    return {
-      pid: stat.pid,
-      parentPid: stat.parentPid ?? 0,
-      name: stat.name,
-      command: command.length > 0 ? command : stat.name,
-      user: stat.user ?? '',
-      cpuPercent: round1(clampPercent(machine.cpuIsPerCore ? stat.cpu / cores : stat.cpu)),
-      memoryBytes,
-      memoryPercent:
-        machine.totalBytes > 0 ? round1(clampPercent((memoryBytes / machine.totalBytes) * 100)) : 0,
-      ...(kind === undefined ? {} : { studio: kind }),
-    };
-  });
+  const own: (stat: ProcessStat) => boolean = (stat: ProcessStat): boolean =>
+    stat.parentPid === machine.mainPid && MONITOR_TOOLS.has(stat.name.toLowerCase());
+  const samples: ProcessSample[] = stats
+    .filter((stat: ProcessStat): boolean => !own(stat))
+    .map((stat: ProcessStat): ProcessSample => {
+      const memoryBytes: number = Math.max(0, stat.memRss) * 1024;
+      const command: string = [stat.command, stat.params]
+        .filter((part: string | undefined): boolean => part !== undefined && part.length > 0)
+        .join(' ');
+      const kind: StudioProcessKind | undefined = kinds.get(stat.pid);
+      return {
+        pid: stat.pid,
+        parentPid: stat.parentPid ?? 0,
+        name: stat.name,
+        command: command.length > 0 ? command : stat.name,
+        user: stat.user ?? '',
+        cpuPercent: round1(clampPercent(machine.cpuIsPerCore ? stat.cpu / cores : stat.cpu)),
+        memoryBytes,
+        memoryPercent:
+          machine.totalBytes > 0
+            ? round1(clampPercent((memoryBytes / machine.totalBytes) * 100))
+            : 0,
+        ...(kind === undefined ? {} : { studio: kind }),
+      };
+    });
 
   const busiest: (a: ProcessSample, b: ProcessSample) => number = (
     a: ProcessSample,

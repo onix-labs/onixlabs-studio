@@ -6,8 +6,8 @@ import { LineChart } from '../../../../charts/line-chart/line-chart';
 import { formatPercent } from '../../../../readings/format';
 import { SystemMonitorReadings } from '../../../../readings/system-monitor-readings';
 import { Sparkline } from '../../../../sparkline/sparkline';
-import { DashboardBadge } from '../../dashboard-badge/dashboard-badge';
-import { DashboardCard } from '../../dashboard-card/dashboard-card';
+import { DashboardBadge } from '../../../dashboard-badge/dashboard-badge';
+import { DashboardCard } from '../../../dashboard-card/dashboard-card';
 
 /**
  * Describes one core's small graph.

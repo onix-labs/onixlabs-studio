@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { formatAxisRate, formatBytes, formatPercent, formatRate, formatShare } from './format';
+import {
+  formatAxisRate,
+  formatBytes,
+  formatDuration,
+  formatPercent,
+  formatRate,
+  formatShare,
+} from './format';
 
 describe('format', () => {
   it('formatBytes_picksTheLargestWholeUnit', () => {
@@ -16,6 +23,13 @@ describe('format', () => {
     expect(formatAxisRate(128 * 1024)).toBe('128 KB/s');
     expect(formatAxisRate(1.5 * 1024 ** 2)).toBe('1.5 MB/s');
     expect(formatAxisRate(0)).toBe('0 B/s');
+  });
+
+  it('formatDuration_keepsTheTwoLargestUnits', () => {
+    expect(formatDuration(12.6)).toBe('12s');
+    expect(formatDuration(763)).toBe('12m 43s');
+    expect(formatDuration(4 * 3600 + 5 * 60)).toBe('4h 05m');
+    expect(formatDuration(3 * 86_400 + 4 * 3600 + 59)).toBe('3d 4h');
   });
 
   it('formatRate_isBytesPerSecond', () => {

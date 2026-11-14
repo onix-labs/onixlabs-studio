@@ -6,8 +6,8 @@ import { LineChart } from '../../../../charts/line-chart/line-chart';
 import { RadialMeter } from '../../../../charts/radial-meter/radial-meter';
 import { formatBytes, formatPercent } from '../../../../readings/format';
 import { SystemMonitorReadings } from '../../../../readings/system-monitor-readings';
-import { DashboardBadge } from '../../dashboard-badge/dashboard-badge';
-import { DashboardCard } from '../../dashboard-card/dashboard-card';
+import { DashboardBadge } from '../../../dashboard-badge/dashboard-badge';
+import { DashboardCard } from '../../../dashboard-card/dashboard-card';
 
 /**
  * Describes one entry of the memory breakdown.

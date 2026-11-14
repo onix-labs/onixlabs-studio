@@ -11,8 +11,8 @@ import { Icon } from '@shared/angular/icons/icon';
 import { MachineHealth } from '../../../../readings/machine-health';
 import { SystemMonitorReadings } from '../../../../readings/system-monitor-readings';
 import { SystemFacts } from '../../../system-facts/system-facts';
-import { DashboardBadge } from '../../dashboard-badge/dashboard-badge';
-import { DashboardCard } from '../../dashboard-card/dashboard-card';
+import { DashboardBadge } from '../../../dashboard-badge/dashboard-badge';
+import { DashboardCard } from '../../../dashboard-card/dashboard-card';
 
 /**
  * Represents the Overview's System card: the machine's health at a glance, and its facts.

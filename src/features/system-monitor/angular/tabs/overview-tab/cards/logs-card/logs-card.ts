@@ -9,8 +9,8 @@ import {
 import { Chip, ChipTone } from '@shared/angular/components/chip/chip';
 import { Icon } from '@shared/angular/icons/icon';
 import { LogRecord, Severity } from '@shared/api/log-channels';
-import { DashboardBadge } from '../../dashboard-badge/dashboard-badge';
-import { DashboardCard } from '../../dashboard-card/dashboard-card';
+import { DashboardBadge } from '../../../dashboard-badge/dashboard-badge';
+import { DashboardCard } from '../../../dashboard-card/dashboard-card';
 import { LogsOverview } from '../../logs-overview';
 
 /**

@@ -29,6 +29,8 @@ describe('GpuCard', () => {
       logicalCores: 1,
       totalMemoryBytes: 1,
       os: 'TestOS',
+      architecture: 'x86_64',
+      caches: [],
       gpus: [{ model: 'Radeon Pro', vendor: 'AMD', memoryBytes: 16 * 1024 ** 3 }],
     });
     readings.accept({

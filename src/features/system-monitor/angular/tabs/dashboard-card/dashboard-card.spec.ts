@@ -18,6 +18,14 @@ describe('DashboardCard', () => {
     await fixture.whenStable();
   });
 
+  it('leavesOutTheSubtitle_whenThereIsNone', async () => {
+    fixture.componentRef.setInput('subtitle', '');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(host.querySelectorAll('p')).toHaveLength(0);
+  });
+
   it('showsItsHeadingAndWhatItCovers', () => {
     expect(host.querySelector('article')?.getAttribute('aria-label')).toBe('CPU');
     expect(host.textContent).toContain('Processor utilisation');

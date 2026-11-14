@@ -30,6 +30,8 @@ describe('CpuCard', () => {
       speedGhz: 2.7,
       totalMemoryBytes: 1,
       os: 'TestOS',
+      architecture: 'x86_64',
+      caches: [],
       gpus: [],
     });
     readings.accept({

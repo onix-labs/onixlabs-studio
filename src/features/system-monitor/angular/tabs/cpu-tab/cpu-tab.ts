@@ -1,91 +1,109 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
 import { SystemInfo } from '@shared/api/system-monitor-channels';
-import { MetricTile, TileChannel } from '../../metric-tile/metric-tile';
-import { formatPercent } from '../../readings/format';
+import { ChartSeries } from '../../charts/chart-series';
+import { LineChart } from '../../charts/line-chart/line-chart';
+import { formatBytes, formatPercent } from '../../readings/format';
 import { SystemMonitorReadings } from '../../readings/system-monitor-readings';
+import { DashboardBadge } from '../dashboard-badge/dashboard-badge';
+import { DashboardCard } from '../dashboard-card/dashboard-card';
+import { CpuCoresCard } from './cpu-cores-card/cpu-cores-card';
+import { CpuGroupsCard } from './cpu-groups-card/cpu-groups-card';
+import { CpuInformationCard } from './cpu-information-card/cpu-information-card';
+import { CpuProcessesCard } from './cpu-processes-card/cpu-processes-card';
 
 /**
- * Describes one core's graph.
+ * Describes one of the header's summary chips (`48 Logical Cores`).
  */
-interface CoreGraph {
+interface SummaryChip {
   /**
-   * Gets the core's label (`Core 1`).
-   */
-  readonly label: string;
-
-  /**
-   * Gets the graph's channel.
-   */
-  readonly channels: readonly TileChannel[];
-}
-
-/**
- * Describes one fact shown under the CPU graph.
- */
-interface CpuFact {
-  /**
-   * Gets the fact's label.
-   */
-  readonly label: string;
-
-  /**
-   * Gets the fact's value.
+   * Gets the chip's reading.
    */
   readonly value: string;
+
+  /**
+   * Gets what the reading is.
+   */
+  readonly label: string;
 }
 
 /**
- * Represents the System Monitor's CPU tab: the machine-wide graph with Studio's share overlaid, the
- * processor described, and one small graph per logical core.
+ * Represents the System Monitor's CPU view: the processor named with its headline facts, its total
+ * load over time (the system's and Studio's), its description, every core's load (as a grid or a
+ * list), the cores' load in groups, and the processes using the most CPU.
  */
 @Component({
   selector: 'app-system-monitor-cpu-tab',
-  imports: [MetricTile],
+  imports: [
+    AppIcon,
+    DashboardCard,
+    DashboardBadge,
+    LineChart,
+    CpuInformationCard,
+    CpuCoresCard,
+    CpuGroupsCard,
+    CpuProcessesCard,
+  ],
   templateUrl: './cpu-tab.html',
   styleUrl: './cpu-tab.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CpuTab {
   /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
+  /**
    * Gets the view's readings.
    */
   protected readonly readings: SystemMonitorReadings = inject(SystemMonitorReadings);
 
   /**
-   * Gets the processor's facts: its model, cores and speed, as far as they are known.
+   * Gets how a load is written, on the axis and in the readout.
    */
-  protected readonly facts: Signal<readonly CpuFact[]> = computed((): readonly CpuFact[] => {
-    const info: SystemInfo | null = this.readings.info();
-    if (info === null) {
-      return [];
-    }
-    const facts: CpuFact[] = [{ label: 'Processor', value: info.cpuModel }];
-    if (info.physicalCores !== undefined) {
-      facts.push({ label: 'Cores', value: `${info.physicalCores}` });
-    }
-    facts.push({ label: 'Logical processors', value: `${info.logicalCores}` });
-    if (info.performanceCores !== undefined && info.efficiencyCores !== undefined) {
-      facts.push({
-        label: 'Performance / efficiency',
-        value: `${info.performanceCores} / ${info.efficiencyCores}`,
-      });
-    }
-    if (info.speedGhz !== undefined) {
-      facts.push({ label: 'Base speed', value: `${info.speedGhz.toFixed(2)} GHz` });
-    }
-    return facts;
-  });
+  protected readonly percent: (value: number) => string = formatPercent;
 
   /**
-   * Gets one graph per logical core, in the OS's core order.
+   * Gets the processor's model, or the empty string until it has been described.
    */
-  protected readonly cores: Signal<readonly CoreGraph[]> = computed((): readonly CoreGraph[] => {
-    const latest: readonly number[] = this.readings.cores();
-    return this.readings
-      .coreHistories()
-      .map((values: readonly number[], index: number): CoreGraph => ({
-        label: `Core ${index + 1}`,
-        channels: [{ value: formatPercent(latest[index] ?? 0), values }],
-      }));
-  });
+  protected readonly model: Signal<string> = computed(
+    (): string => this.readings.info()?.cpuModel ?? '',
+  );
+
+  /**
+   * Gets the header's chips: the cores, the frequencies (the maximum only where the platform reports
+   * one) and the memory.
+   */
+  protected readonly chips: Signal<readonly SummaryChip[]> = computed(
+    (): readonly SummaryChip[] => {
+      const info: SystemInfo | null = this.readings.info();
+      if (info === null) {
+        return [];
+      }
+      const chips: SummaryChip[] = [{ value: `${info.logicalCores}`, label: 'Logical Cores' }];
+      if (info.physicalCores !== undefined) {
+        chips.push({ value: `${info.physicalCores}`, label: 'Physical Cores' });
+      }
+      if (info.speedGhz !== undefined) {
+        chips.push({ value: `${info.speedGhz.toFixed(2)} GHz`, label: 'Base' });
+      }
+      if (info.maxSpeedGhz !== undefined) {
+        chips.push({ value: `${info.maxSpeedGhz.toFixed(2)} GHz`, label: 'Max (Turbo)' });
+      }
+      chips.push({ value: formatBytes(info.totalMemoryBytes), label: 'RAM' });
+      return chips;
+    },
+  );
+
+  /**
+   * Gets the total load graph's series: the system's, and Studio's own share in grey.
+   */
+  protected readonly series: Signal<readonly ChartSeries[]> = computed(
+    (): readonly ChartSeries[] => [
+      { label: 'System', values: this.readings.cpuHistory(), emphasis: 'primary' },
+      { label: 'Studio', values: this.readings.appCpuHistory(), emphasis: 'secondary' },
+    ],
+  );
 }

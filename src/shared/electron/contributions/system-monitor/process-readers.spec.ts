@@ -149,4 +149,15 @@ describe('readProcesses', () => {
       'kernel_task',
     ]);
   });
+
+  it('leavesOutTheMonitorsOwnTools_butNotTheSameToolRunElsewhere', () => {
+    const processes: readonly ProcessSample[] = readProcesses(
+      [stat(10, 1), { ...stat(20, 10, 5), name: 'ps' }, { ...stat(30, 1, 5), name: 'ps' }],
+      [],
+      MACHINE,
+      10,
+    );
+
+    expect(processes.map((process: ProcessSample): number => process.pid)).toEqual([30, 10]);
+  });
 });

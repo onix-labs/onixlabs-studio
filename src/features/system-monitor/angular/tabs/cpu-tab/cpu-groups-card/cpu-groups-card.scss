@@ -1,0 +1,53 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+// The groups share the card's height, a bar each.
+.cpu-groups {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: 0.4rem;
+  min-block-size: 0;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.cpu-groups__group {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr) 3rem;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+}
+
+.cpu-groups__label {
+  white-space: nowrap;
+  color: var(--body-foreground-color);
+}
+
+.cpu-groups__track {
+  @include usage-track;
+
+  block-size: 0.5rem;
+}
+
+.cpu-groups__fill {
+  @include usage-fill;
+}
+
+.cpu-groups__value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+  color: var(--body-foreground-color);
+}
+
+.cpu-groups__empty {
+  @include empty;
+}

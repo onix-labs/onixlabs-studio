@@ -1,0 +1,24 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+.cpu-processes {
+  @include table;
+
+  tbody tr:last-child td {
+    border-block-end: none;
+  }
+}
+
+// Scoped under the table so it outranks the table's own header alignment.
+.cpu-processes .cpu-processes__number {
+  @include number;
+
+  inline-size: 12%;
+}
+
+.cpu-processes__empty {
+  @include empty;
+}

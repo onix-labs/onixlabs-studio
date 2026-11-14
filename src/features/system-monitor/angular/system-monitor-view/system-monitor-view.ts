@@ -618,15 +618,17 @@ export class SystemMonitorView implements OnInit {
       });
     });
 
-    // Processes are listed only while a view showing them is in front of the user — Processes, or the
-    // Overview's Processes card: a listing is a `ps` (or WMI query) every couple of seconds, far
-    // costlier than a sample.
+    // Processes are listed only while a view showing them is in front of the user — Processes, the
+    // Overview's Processes card, or the CPU view's top processes: a listing is a `ps` (or WMI query)
+    // every couple of seconds, far costlier than a sample.
     effect((): void => {
       const tab: SystemMonitorTabId = this.selectedTab();
       const wanted: boolean =
         this.isActive() &&
         this.onScreen() &&
-        (tab === SystemMonitorTabId.Processes || tab === SystemMonitorTabId.Overview);
+        (tab === SystemMonitorTabId.Processes ||
+          tab === SystemMonitorTabId.Overview ||
+          tab === SystemMonitorTabId.Cpu);
       untracked((): void => {
         if (wanted && !listing) {
           this.metrics.startProcesses();

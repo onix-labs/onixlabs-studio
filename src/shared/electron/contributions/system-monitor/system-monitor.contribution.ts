@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import * as os from 'node:os';
 import { promisify } from 'node:util';
 import { app, IpcMainEvent } from 'electron';
@@ -15,6 +16,7 @@ import {
   PROCESS_SAMPLE_INTERVAL_MS,
   PROCESS_SNAPSHOT_LIMIT,
   ProcessesSnapshot,
+  ProcessSample,
   SamplingRate,
   SystemInfo,
   SystemMonitorChannel,
@@ -23,8 +25,10 @@ import {
 import { logger } from '../../logger';
 import { ContributionContext, MainContribution } from '../main-contribution';
 import {
+  architectureName,
   NetworkStat,
   parseIoregGpu,
+  readCaches,
   readGpus,
   pickGpu,
   readAppUsage,
@@ -34,6 +38,15 @@ import {
   readVolumes,
   sumNetwork,
 } from './metrics-readers';
+import {
+  joinDarwinExtras,
+  parseDarwinThreads,
+  parseDarwinTimes,
+  parseProcStat,
+  parseWindowsProcesses,
+  ProcessExtras,
+  WindowsProcess,
+} from './process-extras';
 import { ElectronProcess, readProcesses } from './process-readers';
 import { MetricsSampler } from './metrics-sampler';
 import { HeavyCadence, normaliseSamplingInterval } from './sampling-cadence';
@@ -54,6 +67,19 @@ interface HeavyReadings {
  * is a `df` (or WMI query), so it is taken far less often than the other costly readings.
  */
 const VOLUME_SAMPLE_INTERVAL_MS: number = 15_000;
+
+/**
+ * The least time between readings of each process's threads and CPU time, in milliseconds. They
+ * change slowly, and on Windows reading them is a PowerShell WMI query, so they are read far less
+ * often than the listing itself and carried forward between.
+ */
+const EXTRAS_SAMPLE_INTERVAL_MS: number = 6_000;
+
+/**
+ * The PowerShell that lists each Windows process's threads and CPU time as JSON.
+ */
+const WINDOWS_EXTRAS_COMMAND: string =
+  'Get-CimInstance Win32_Process | Select-Object ProcessId,ThreadCount,UserModeTime,KernelModeTime | ConvertTo-Json -Compress';
 
 /**
  * The platforms whose process listing reports CPU per core (`ps`'s `%cpu`) rather than as a share of
@@ -170,6 +196,16 @@ export class SystemMonitorContribution implements MainContribution {
    * Whether a process snapshot is being taken, so a slow listing cannot let ticks overlap.
    */
   private listing: boolean = false;
+
+  /**
+   * Decides the listings each process's threads and CPU time are read on, reset when listing starts.
+   */
+  private extrasCadence: HeavyCadence = new HeavyCadence(EXTRAS_SAMPLE_INTERVAL_MS);
+
+  /**
+   * Each process's threads and CPU time as last read, by pid, carried forward between readings.
+   */
+  private extras: ReadonlyMap<number, ProcessExtras> = new Map<number, ProcessExtras>();
 
   /**
    * Whether every GPU source reported nothing this sampling run, so none is asked again until the
@@ -402,6 +438,8 @@ export class SystemMonitorContribution implements MainContribution {
     );
     if (this.processTimer === null) {
       logger.debug('SystemMonitorContribution', 'Starting process listing loop');
+      this.extrasCadence = new HeavyCadence(EXTRAS_SAMPLE_INTERVAL_MS);
+      this.extras = new Map<number, ProcessExtras>();
       this.listProcesses();
       this.processTimer = setInterval((): void => this.listProcesses(), PROCESS_SAMPLE_INTERVAL_MS);
     }
@@ -465,24 +503,93 @@ export class SystemMonitorContribution implements MainContribution {
       } catch {
         // Outside the Electron runtime Studio's own processes are still found by descent from main.
       }
+      const processes: readonly ProcessSample[] = readProcesses(
+        listing.list,
+        electron,
+        {
+          mainPid: process.pid,
+          coreCount: os.cpus().length,
+          totalBytes: os.totalmem(),
+          cpuIsPerCore: PER_CORE_CPU_PLATFORMS.has(process.platform),
+        },
+        PROCESS_SNAPSHOT_LIMIT,
+      );
+      if (this.extrasCadence.due(Date.now())) {
+        this.extras = await this.readExtras(
+          processes.map((sample: ProcessSample): number => sample.pid),
+        );
+      }
       return {
         timestamp: new Date().toISOString(),
-        processes: readProcesses(
-          listing.list,
-          electron,
-          {
-            mainPid: process.pid,
-            coreCount: os.cpus().length,
-            totalBytes: os.totalmem(),
-            cpuIsPerCore: PER_CORE_CPU_PLATFORMS.has(process.platform),
-          },
-          PROCESS_SNAPSHOT_LIMIT,
-        ),
+        processes: processes.map((sample: ProcessSample): ProcessSample => ({
+          ...sample,
+          ...this.extras.get(sample.pid),
+        })),
         total: listing.all,
       };
     } catch (error: unknown) {
       logger.debug('SystemMonitorContribution', 'Could not list processes', error);
       return undefined;
+    }
+  }
+
+  /**
+   * Reads each process's threads and CPU time, the way the platform offers them: two `ps` calls on
+   * macOS (one for every process's CPU time, one listing every thread), `/proc/<pid>/stat` for the
+   * listed processes on Linux, one WMI query on Windows. Best-effort: a platform or process that cannot
+   * be read is simply left without them.
+   * @param pids The listed processes' pids.
+   * @returns Returns each process's extras, by pid.
+   */
+  private async readExtras(pids: readonly number[]): Promise<ReadonlyMap<number, ProcessExtras>> {
+    const options: { timeout: number; maxBuffer: number } = {
+      timeout: 4_000,
+      maxBuffer: 32 * 1024 * 1024,
+    };
+    try {
+      switch (process.platform) {
+        case 'darwin': {
+          const [times, threads]: [{ stdout: string }, { stdout: string }] = await Promise.all([
+            run('ps', ['-axo', 'pid=,time='], options),
+            run('ps', ['-axM'], options),
+          ]);
+          return joinDarwinExtras(
+            parseDarwinTimes(times.stdout),
+            parseDarwinThreads(threads.stdout),
+          );
+        }
+        case 'linux': {
+          const extras: Map<number, ProcessExtras> = new Map<number, ProcessExtras>();
+          await Promise.all(
+            pids.map(async (pid: number): Promise<void> => {
+              try {
+                const stat: ProcessExtras | undefined = parseProcStat(
+                  await readFile(`/proc/${pid}/stat`, 'utf8'),
+                );
+                if (stat !== undefined) {
+                  extras.set(pid, stat);
+                }
+              } catch {
+                // The process ended between the listing and the read.
+              }
+            }),
+          );
+          return extras;
+        }
+        case 'win32': {
+          const { stdout }: { stdout: string } = await run(
+            'powershell.exe',
+            ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_EXTRAS_COMMAND],
+            options,
+          );
+          return parseWindowsProcesses(JSON.parse(stdout) as WindowsProcess | WindowsProcess[]);
+        }
+        default:
+          return new Map<number, ProcessExtras>();
+      }
+    } catch (error: unknown) {
+      logger.debug('SystemMonitorContribution', 'Could not read process threads and times', error);
+      return new Map<number, ProcessExtras>();
     }
   }
 
@@ -495,14 +602,16 @@ export class SystemMonitorContribution implements MainContribution {
     const cpus: readonly os.CpuInfo[] = os.cpus();
     // The graphics controllers are read once here, not per sample: on macOS it is `system_profiler`,
     // a second or more.
-    const [cpu, osInfo, graphics]: [
+    const [cpu, osInfo, graphics, cache]: [
       si.Systeminformation.CpuData | null,
       si.Systeminformation.OsData | null,
       si.Systeminformation.GraphicsData | null,
+      si.Systeminformation.CpuCacheData | null,
     ] = await Promise.all([
       si.cpu().catch((): null => null),
       si.osInfo().catch((): null => null),
       si.graphics().catch((): null => null),
+      si.cpuCache().catch((): null => null),
     ]);
     const positive: (value: number | undefined) => number | undefined = (
       value: number | undefined,
@@ -516,6 +625,12 @@ export class SystemMonitorContribution implements MainContribution {
         positive(cpu?.efficiencyCores) === undefined ? undefined : positive(cpu?.performanceCores),
       efficiencyCores: positive(cpu?.efficiencyCores),
       speedGhz: positive(cpu?.speed),
+      // Only a maximum above the base is one: macOS reports the base as the maximum.
+      maxSpeedGhz:
+        (cpu?.speedMax ?? 0) > (cpu?.speed ?? 0) + 0.05 ? positive(cpu?.speedMax) : undefined,
+      architecture: architectureName(os.arch()),
+      caches:
+        cache === null ? [] : readCaches(cache, process.platform, positive(cpu?.physicalCores)),
       totalMemoryBytes: os.totalmem(),
       os:
         osInfo === null

@@ -73,6 +73,14 @@ export class SystemMonitorReadings {
   });
 
   /**
+   * Gets the span a graph covers, in words (`Last 5 minutes`), from Graph History.
+   */
+  public readonly historyLabel: Signal<string> = computed((): string => {
+    const minutes: number = this.settings.value('systemMonitor.graphHistoryMinutes')();
+    return minutes === 1 ? 'Last 60 seconds' : `Last ${minutes} minutes`;
+  });
+
+  /**
    * Holds the most recent sample, or null before the first arrives.
    */
   public readonly latest: WritableSignal<MetricsSample | null> = signal<MetricsSample | null>(null);

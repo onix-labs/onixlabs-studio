@@ -51,3 +51,24 @@ export function formatPercent(percent: number): string {
 export function formatShare(percent: number): string {
   return percent < 10 ? `${percent.toFixed(1)}%` : `${Math.round(percent)}%`;
 }
+
+/**
+ * Formats a span of CPU time compactly, to its two largest units (`12s`, `12m 43s`, `4h 05m`, `3d 4h`).
+ * @param seconds The span, in seconds.
+ * @returns Returns the formatted span.
+ */
+export function formatDuration(seconds: number): string {
+  const total: number = Math.max(0, Math.floor(seconds));
+  const days: number = Math.floor(total / 86_400);
+  const hours: number = Math.floor((total % 86_400) / 3600);
+  const minutes: number = Math.floor((total % 3600) / 60);
+  const rest: number = total % 60;
+  const pad: (value: number) => string = (value: number): string => `${value}`.padStart(2, '0');
+  if (days > 0) {
+    return `${days}d ${hours}h`;
+  }
+  if (hours > 0) {
+    return `${hours}h ${pad(minutes)}m`;
+  }
+  return minutes > 0 ? `${minutes}m ${pad(rest)}s` : `${rest}s`;
+}

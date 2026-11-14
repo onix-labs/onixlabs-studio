@@ -26,7 +26,7 @@ export class DashboardCard {
   public readonly heading: InputSignal<string> = input.required<string>();
 
   /**
-   * Gets what the card covers, beneath its title.
+   * Gets what the card covers, beneath its title, or the empty string for a card whose title says it.
    */
-  public readonly subtitle: InputSignal<string> = input.required<string>();
+  public readonly subtitle: InputSignal<string> = input<string>('');
 }

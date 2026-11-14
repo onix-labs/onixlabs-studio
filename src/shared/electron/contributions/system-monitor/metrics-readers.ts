@@ -1,5 +1,6 @@
 import {
   AppUsageMetric,
+  CacheInfo,
   DiskMetric,
   GpuInfo,
   GpuMetric,
@@ -38,6 +39,16 @@ export interface FsSizeStat {
   readonly size: number;
   readonly used: number;
   readonly available?: number;
+}
+
+/**
+ * The subset of `systeminformation`'s cache reading this reads (`si.cpuCache()`), in bytes.
+ */
+export interface CpuCacheStat {
+  readonly l1d: number | null;
+  readonly l1i: number | null;
+  readonly l2: number | null;
+  readonly l3: number | null;
 }
 
 /**
@@ -301,4 +312,56 @@ export function readGpus(controllers: readonly GpuController[]): readonly GpuInf
         ...(typeof vram === 'number' && vram > 0 ? { memoryBytes: vram * 1024 * 1024 } : {}),
       };
     });
+}
+
+/**
+ * Maps the CPU's cache reading to its levels. macOS reports L1 and L2 per core (`sysctl`), so there
+ * each is multiplied out to the processor's total and the per-core share kept; elsewhere the reading
+ * is taken as the total (Windows' WMI and current `lscpu` report totals). L1 counts its data and
+ * instruction caches together; a level not reported is left out.
+ * @param cache The cache reading (`si.cpuCache()`).
+ * @param platform The platform it was read on (`process.platform`).
+ * @param physicalCores The number of physical cores, or undefined when unknown.
+ * @returns Returns the levels, smallest first.
+ */
+export function readCaches(
+  cache: CpuCacheStat,
+  platform: string,
+  physicalCores: number | undefined,
+): readonly CacheInfo[] {
+  const positive: (value: number | null) => number = (value: number | null): number =>
+    value !== null && value > 0 ? value : 0;
+  const perCore: boolean =
+    platform === 'darwin' && physicalCores !== undefined && physicalCores > 0;
+  const cores: number = perCore ? (physicalCores ?? 1) : 1;
+  const levels: CacheInfo[] = [];
+  const l1: number = positive(cache.l1d) + positive(cache.l1i);
+  if (l1 > 0) {
+    levels.push({ level: 'L1', totalBytes: l1 * cores, ...(perCore ? { perCoreBytes: l1 } : {}) });
+  }
+  const l2: number = positive(cache.l2);
+  if (l2 > 0) {
+    levels.push({ level: 'L2', totalBytes: l2 * cores, ...(perCore ? { perCoreBytes: l2 } : {}) });
+  }
+  const l3: number = positive(cache.l3);
+  if (l3 > 0) {
+    levels.push({ level: 'L3', totalBytes: l3 });
+  }
+  return levels;
+}
+
+/**
+ * Names the CPU's architecture as people know it, from Node's name for it.
+ * @param arch Node's architecture (`os.arch()`).
+ * @returns Returns the architecture (`x86_64`, `arm64`).
+ */
+export function architectureName(arch: string): string {
+  switch (arch) {
+    case 'x64':
+      return 'x86_64';
+    case 'ia32':
+      return 'x86';
+    default:
+      return arch;
+  }
 }

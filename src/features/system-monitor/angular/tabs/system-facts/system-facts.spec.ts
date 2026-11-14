@@ -31,6 +31,8 @@ describe('SystemFacts', () => {
       totalMemoryBytes: 256 * 1024 ** 3,
       os: 'macOS 26.7.3',
       bootTime: boot,
+      architecture: 'x86_64',
+      caches: [],
       gpus: [
         { model: 'AMD Radeon RX 6900 XT', vendor: 'AMD', memoryBytes: 16 * 1024 ** 3 },
         { model: 'Intel UHD 630', vendor: 'Intel' },

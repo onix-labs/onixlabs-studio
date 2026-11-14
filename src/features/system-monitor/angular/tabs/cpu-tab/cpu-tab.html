@@ -1,27 +1,52 @@
-<div class="cpu">
-  <app-metric-tile class="cpu__hero" label="CPU" [channels]="readings.cpuChannels()" />
-
-  @if (facts().length > 0) {
-    <dl class="cpu__facts">
-      @for (fact of facts(); track fact.label) {
-        <div>
-          <dt>{{ fact.label }}</dt>
-          <dd [title]="fact.value">{{ fact.value }}</dd>
-        </div>
+<div class="cpu" data-testid="cpu-view">
+  <header class="cpu__header">
+    <app-icon class="cpu__icon" [icon]="Icon.MONITOR_CPU" [size]="1.75" />
+    <h2 class="cpu__title">CPU</h2>
+    <span class="cpu__model" [title]="model()">{{ model() }}</span>
+    <ul class="cpu__chips" aria-label="Summary">
+      @for (chip of chips(); track chip.label) {
+        <li class="cpu__chip">
+          <strong class="cpu__chip-value">{{ chip.value }}</strong>
+          {{ chip.label }}
+        </li>
       }
-    </dl>
-  }
+    </ul>
+  </header>
 
-  <section>
-    <h3 class="cpu__heading">Logical processors</h3>
-    @if (cores().length > 0) {
-      <div class="cpu__cores" data-testid="cpu-cores">
-        @for (core of cores(); track core.label) {
-          <app-metric-tile [label]="core.label" [channels]="core.channels" />
-        }
-      </div>
-    } @else {
-      <p class="cpu__empty">Each processor's load appears after the next reading.</p>
-    }
-  </section>
+  <div class="cpu__grid">
+    <app-system-monitor-dashboard-card
+      class="cpu__total"
+      [icon]="Icon.MONITOR_TREND"
+      heading="Total Utilisation"
+    >
+      <app-system-monitor-dashboard-badge
+        cardBadges
+        [value]="readings.cpuValue()"
+        caption="System"
+      />
+      @if (readings.cpuAppValue(); as studio) {
+        <app-system-monitor-dashboard-badge
+          cardBadges
+          tone="neutral"
+          [value]="studio"
+          caption="Studio"
+        />
+      }
+      <app-system-monitor-line-chart
+        class="cpu__chart"
+        ariaLabel="CPU utilisation over time, the system's and Studio's"
+        [series]="series()"
+        [max]="100"
+        [format]="percent"
+        [showLegend]="false"
+        [intervalMs]="readings.intervalMs()"
+      />
+      <span class="cpu__span">{{ readings.historyLabel() }}</span>
+    </app-system-monitor-dashboard-card>
+
+    <app-system-monitor-cpu-information-card class="cpu__information" />
+    <app-system-monitor-cpu-cores-card class="cpu__cores" />
+    <app-system-monitor-cpu-groups-card class="cpu__groups" />
+    <app-system-monitor-cpu-processes-card class="cpu__processes" />
+  </div>
 </div>

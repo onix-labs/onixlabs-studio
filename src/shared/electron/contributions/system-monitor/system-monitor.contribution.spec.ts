@@ -69,6 +69,8 @@ vi.mock('systeminformation', () => {
     Promise.resolve({ physicalCores: 4, performanceCores: 4, efficiencyCores: 0, speed: 3.2 });
   const osInfo: () => Promise<unknown> = (): Promise<unknown> =>
     Promise.resolve({ distro: 'macOS', release: '26.6' });
+  const cpuCache: () => Promise<unknown> = (): Promise<unknown> =>
+    Promise.resolve({ l1d: 32768, l1i: 32768, l2: 1048576, l3: 8388608 });
   const all: Record<string, unknown> = {
     networkStats,
     fsStats,
@@ -78,6 +80,7 @@ vi.mock('systeminformation', () => {
     fsSize,
     cpu,
     osInfo,
+    cpuCache,
   };
   return { ...all, default: all };
 });
@@ -96,6 +99,14 @@ vi.mock('node:child_process', () => {
     );
   };
   return { execFile, default: { execFile } };
+});
+
+// The listing's per-process extras read /proc on Linux (the platform these tests run as); none exists
+// here, and a real read would outlast the fake clock.
+vi.mock('node:fs/promises', () => {
+  const readFile: () => Promise<string> = (): Promise<string> =>
+    Promise.reject(new Error('No /proc here.'));
+  return { readFile, default: { readFile } };
 });
 
 // Imported only now, behind the mocks above, so nothing of it can bind to the real modules.
@@ -484,6 +495,15 @@ describe('SystemMonitorContribution', () => {
     expect(info.efficiencyCores).toBeUndefined();
     expect(info.speedGhz).toBe(3.2);
     expect(info.os).toBe('macOS 26.6');
+    expect(info.architecture.length).toBeGreaterThan(0);
+    // The mocked CPU's maximum is not above its base, so there is none.
+    expect(info.maxSpeedGhz).toBeUndefined();
+    // Read as totals off macOS (these tests run as Linux).
+    expect(info.caches.map((cache: { level: string }): string => cache.level)).toEqual([
+      'L1',
+      'L2',
+      'L3',
+    ]);
     // Best-effort: a sandboxed run can be refused the uptime, and then there is no boot time.
     if (info.bootTime !== undefined) {
       expect(info.bootTime).toBeLessThanOrEqual(Date.now());

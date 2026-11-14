@@ -276,14 +276,16 @@ describe('SystemMonitorView', () => {
   });
 
   it('processes_areListedOnlyWhileAViewShowingThemIsInFront', async () => {
-    await create([], 'cpu');
+    await create([], 'memory');
     expect(metrics.processesStarted).toBe(0);
 
-    // The Overview's Processes card lists them too.
+    // The Overview's Processes card and the CPU view's top processes list them too.
     view.selectTab('overview');
     fixture.detectChanges();
     expect(metrics.processesStarted).toBe(1);
 
+    view.selectTab('cpu');
+    fixture.detectChanges();
     view.selectTab('processes');
     fixture.detectChanges();
     expect(metrics.processesStarted).toBe(1);
@@ -296,7 +298,7 @@ describe('SystemMonitorView', () => {
     fixture.detectChanges();
     expect(metrics.processesStarted).toBe(2);
 
-    view.selectTab('memory');
+    view.selectTab('storage');
     fixture.detectChanges();
     expect(metrics.processesStopped).toBe(2);
   });
@@ -331,6 +333,8 @@ describe('SystemMonitorView', () => {
       logicalCores: 8,
       totalMemoryBytes: 1024,
       os: 'TestOS 1',
+      architecture: 'x86_64',
+      caches: [],
       gpus: [],
     };
     await create([], 'overview', machine);

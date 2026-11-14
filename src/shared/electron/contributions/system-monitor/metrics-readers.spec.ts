@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { AppUsageMetric } from '@shared/api/system-monitor-channels';
 import {
+  architectureName,
+  CpuCacheStat,
   parseIoregGpu,
   pickGpu,
   readAppUsage,
+  readCaches,
   readDisk,
   readGpus,
   readInterfaces,
@@ -202,5 +205,39 @@ describe('readGpus', () => {
       { model: 'Radeon Pro W5700X', vendor: 'AMD', memoryBytes: 16_384 * 1024 * 1024 },
       { model: 'Intel UHD', vendor: 'Intel' },
     ]);
+  });
+});
+
+describe('readCaches', () => {
+  const cache: CpuCacheStat = {
+    l1d: 32 * 1024,
+    l1i: 32 * 1024,
+    l2: 1024 * 1024,
+    l3: 33 * 1024 * 1024,
+  };
+
+  it('multipliesMacOsPerCoreCaches_outToTheProcessor', () => {
+    expect(readCaches(cache, 'darwin', 24)).toEqual([
+      { level: 'L1', totalBytes: 64 * 1024 * 24, perCoreBytes: 64 * 1024 },
+      { level: 'L2', totalBytes: 1024 * 1024 * 24, perCoreBytes: 1024 * 1024 },
+      { level: 'L3', totalBytes: 33 * 1024 * 1024 },
+    ]);
+  });
+
+  it('takesOtherPlatformsReadings_asTotals', () => {
+    expect(readCaches(cache, 'win32', 24)[0]).toEqual({ level: 'L1', totalBytes: 64 * 1024 });
+  });
+
+  it('leavesOutALevelNotReported', () => {
+    expect(readCaches({ l1d: null, l1i: null, l2: 0, l3: 8 }, 'linux', 4)).toEqual([
+      { level: 'L3', totalBytes: 8 },
+    ]);
+  });
+});
+
+describe('architectureName', () => {
+  it('namesTheArchitectureAsPeopleKnowIt', () => {
+    expect(architectureName('x64')).toBe('x86_64');
+    expect(architectureName('arm64')).toBe('arm64');
   });
 });
