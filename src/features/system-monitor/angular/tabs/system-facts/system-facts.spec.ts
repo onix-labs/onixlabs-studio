@@ -31,7 +31,10 @@ describe('SystemFacts', () => {
       totalMemoryBytes: 256 * 1024 ** 3,
       os: 'macOS 26.7.3',
       bootTime: boot,
-      gpus: [],
+      gpus: [
+        { model: 'AMD Radeon RX 6900 XT', vendor: 'AMD', memoryBytes: 16 * 1024 ** 3 },
+        { model: 'Intel UHD 630', vendor: 'Intel' },
+      ],
     });
     readings.accept({
       // Two days, an hour, two minutes and three seconds after boot.
@@ -47,6 +50,8 @@ describe('SystemFacts', () => {
     expect(text).toContain('24 / 48');
     expect(text).toContain('256.0 GB');
     expect(text).toContain('2d 01:02:03');
+    expect(text).toContain('GPUs');
+    expect(text).toContain('AMD Radeon RX 6900 XT (16.0 GB VRAM), Intel UHD 630');
   });
 
   it('showsPlaceholders_untilTheMachineIsDescribed', async () => {

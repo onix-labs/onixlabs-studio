@@ -34,10 +34,14 @@ describe('MemoryCard', () => {
     await fixture.whenStable();
 
     expect(host.querySelector('[role="meter"]')?.getAttribute('aria-valuenow')).toBe('19');
+    // Studio's share is the inner ring, named alongside the system's.
+    expect(host.querySelector('[role="meter"]')?.getAttribute('aria-label')).toBe(
+      'In Use: 19%; Studio: 0.2%',
+    );
     expect(host.textContent).toContain('49.0 GB');
     expect(host.textContent).toContain('217.0 GB');
     expect(host.textContent).toContain('256.0 GB');
-    expect(host.textContent).toContain('512.0 MB (0%)');
+    expect(host.textContent).toContain('512.0 MB (0.2%)');
     expect(host.querySelector('[aria-label="Legend"]')?.textContent).toContain('Studio');
   });
 });

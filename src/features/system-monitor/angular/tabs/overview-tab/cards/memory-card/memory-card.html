@@ -18,7 +18,13 @@
   }
 
   <div class="memory-card__summary">
-    <app-system-monitor-radial-meter class="memory-card__meter" [percent]="used()" label="In Use" />
+    <app-system-monitor-radial-meter
+      class="memory-card__meter"
+      [percent]="used()"
+      label="In Use"
+      [innerPercent]="studio()"
+      innerLabel="Studio"
+    />
     <dl class="memory-card__entries">
       @for (entry of entries(); track entry.label) {
         <div class="memory-card__entry">
@@ -26,6 +32,7 @@
             <span
               class="memory-card__key"
               [class.memory-card__key--used]="entry.key === 'used'"
+              [class.memory-card__key--studio]="entry.key === 'studio'"
               [class.memory-card__key--free]="entry.key === 'free'"
             ></span>
             {{ entry.label }}

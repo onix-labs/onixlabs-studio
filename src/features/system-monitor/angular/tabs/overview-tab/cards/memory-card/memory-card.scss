@@ -48,7 +48,8 @@
   }
 }
 
-// The keys mirror the meter: its fill for in use, its track for available, none for the total.
+// The keys mirror the meter: the outer fill for in use, the inner fill for Studio's share, the outer
+// track for available, none for the total.
 .memory-card__key {
   display: inline-block;
   inline-size: 0.5rem;
@@ -58,6 +59,10 @@
 
 .memory-card__key--used {
   background-color: var(--accent-color);
+}
+
+.memory-card__key--studio {
+  background-color: var(--form-muted-foreground-color);
 }
 
 .memory-card__key--free {

@@ -55,4 +55,20 @@ describe('RadialMeter', () => {
     await show(140);
     expect(host.textContent).toContain('100%');
   });
+
+  it('nestsAnInnerReading_namedAfterTheOuterOne', async () => {
+    fixture.componentRef.setInput('innerPercent', 0.3);
+    fixture.componentRef.setInput('innerLabel', 'Studio');
+    await show(23);
+
+    expect(meter().getAttribute('aria-label')).toBe('In Use: 23%; Studio: 0.3%');
+    expect(host.textContent).toContain('0.3% Studio');
+    expect(host.querySelectorAll('circle')).toHaveLength(4);
+  });
+
+  it('drawsNoFill_forAnEmptyReading_soARoundCapDoesNotReadAsADot', async () => {
+    await show(0);
+
+    expect(host.querySelectorAll('circle')).toHaveLength(1);
+  });
 });

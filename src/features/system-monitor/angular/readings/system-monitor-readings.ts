@@ -9,7 +9,7 @@ import {
   VolumeMetric,
 } from '@shared/api/system-monitor-channels';
 import { TileChannel } from '../metric-tile/metric-tile';
-import { formatBytes, formatPercent, formatRate } from './format';
+import { formatBytes, formatPercent, formatRate, formatShare } from './format';
 import { MachineHealth } from './machine-health';
 
 /**
@@ -158,11 +158,12 @@ export class SystemMonitorReadings {
   });
 
   /**
-   * Gets the app's CPU share, formatted as a percentage, or null when it was not read.
+   * Gets the app's CPU share, formatted as a percentage, or null when it was not read. A share below 10%
+   * keeps a decimal, so Studio's usual fraction of a large machine does not read as 0%.
    */
   public readonly cpuAppValue: Signal<string | null> = computed((): string | null => {
     const usage: MetricsSample['app'] = this.latest()?.app;
-    return usage === undefined ? null : formatPercent(usage.cpuPercent);
+    return usage === undefined ? null : formatShare(usage.cpuPercent);
   });
 
   /**
@@ -194,12 +195,13 @@ export class SystemMonitorReadings {
 
   /**
    * Gets the app's memory share, formatted as bytes with the percentage, or null when it was not read.
+   * The percentage keeps a decimal below 10%, as the CPU share does.
    */
   public readonly memoryAppValue: Signal<string | null> = computed((): string | null => {
     const usage: MetricsSample['app'] = this.latest()?.app;
     return usage === undefined
       ? null
-      : `${formatBytes(usage.memoryBytes)} (${formatPercent(usage.memoryPercent)})`;
+      : `${formatBytes(usage.memoryBytes)} (${formatShare(usage.memoryPercent)})`;
   });
 
   /**

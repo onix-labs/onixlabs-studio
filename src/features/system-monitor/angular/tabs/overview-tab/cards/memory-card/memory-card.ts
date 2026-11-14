@@ -24,14 +24,15 @@ interface MemoryEntry {
   readonly value: string;
 
   /**
-   * Gets the key beside the label: the meter's fill, its track, or none for the total.
+   * Gets the key beside the label: the outer ring's fill (the system's use), the inner ring's (Studio's),
+   * the outer ring's track (what is available), or none for the total.
    */
-  readonly key: 'used' | 'free' | 'none';
+  readonly key: 'used' | 'studio' | 'free' | 'none';
 }
 
 /**
- * Represents the Overview's Memory card: memory in use as a meter against the total, its breakdown, and
- * its history beneath with Studio's own share.
+ * Represents the Overview's Memory card: memory in use as a nested meter against the total — the
+ * system's in the outer ring, Studio's own share in the inner — its breakdown, and its history beneath.
  */
 @Component({
   selector: 'app-system-monitor-memory-card',
@@ -64,6 +65,13 @@ export class MemoryCard {
   );
 
   /**
+   * Gets Studio's share of memory, or undefined when it was not read (the meter then has one ring).
+   */
+  protected readonly studio: Signal<number | undefined> = computed(
+    (): number | undefined => this.readings.latest()?.app?.memoryPercent,
+  );
+
+  /**
    * Gets the history graph's series: the system's memory in use, and Studio's own share in grey.
    */
   protected readonly series: Signal<readonly ChartSeries[]> = computed(
@@ -74,17 +82,23 @@ export class MemoryCard {
   );
 
   /**
-   * Gets the breakdown: in use, available and the total.
+   * Gets the breakdown: in use, Studio's share of it, available and the total.
    */
   protected readonly entries: Signal<readonly MemoryEntry[]> = computed(
     (): readonly MemoryEntry[] => {
       const sample: MetricsSample | null = this.readings.latest();
       const available: number | undefined = sample?.memoryDetail?.availableBytes;
+      const studio: number | undefined = sample?.app?.memoryBytes;
       return [
         {
           label: 'In Use',
           value: sample === null ? '—' : formatBytes(sample.memory.usedBytes),
           key: 'used',
+        },
+        {
+          label: 'Studio',
+          value: studio === undefined ? '—' : formatBytes(studio),
+          key: 'studio',
         },
         {
           label: 'Available',

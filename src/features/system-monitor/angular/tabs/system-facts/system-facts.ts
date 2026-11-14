@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Icon } from '@shared/angular/icons/icon';
-import { MetricsSample, SystemInfo } from '@shared/api/system-monitor-channels';
+import { GpuInfo, MetricsSample, SystemInfo } from '@shared/api/system-monitor-channels';
 import { formatBytes } from '../../readings/format';
 import { SystemMonitorReadings } from '../../readings/system-monitor-readings';
 
@@ -52,8 +52,27 @@ function formatSpan(ms: number): string {
 }
 
 /**
- * Represents the machine's facts: its operating system, processor, cores, memory, how long it has been
- * up, and when the logging session started. Shared by the Overview's System card and the System view.
+ * Describes the machine's GPUs in a line: each model with its dedicated memory where it has some
+ * (`AMD Radeon RX 6900 XT (16.0 GB VRAM)`).
+ * @param gpus The machine's GPUs.
+ * @returns Returns the line, or a placeholder when none is known.
+ */
+function describeGpus(gpus: readonly GpuInfo[]): string {
+  if (gpus.length === 0) {
+    return '—';
+  }
+  return gpus
+    .map((gpu: GpuInfo): string =>
+      gpu.memoryBytes === undefined
+        ? gpu.model
+        : `${gpu.model} (${formatBytes(gpu.memoryBytes)} VRAM)`,
+    )
+    .join(', ');
+}
+
+/**
+ * Represents the machine's facts: its operating system, processor, cores, memory, GPU and its video
+ * memory, how long it has been up, and when the logging session started. Shared by the Overview's System card and the System view.
  */
 @Component({
   selector: 'app-system-monitor-system-facts',
@@ -95,6 +114,11 @@ export class SystemFacts {
         icon: Icon.MONITOR_MEMORY,
         label: 'Memory',
         value: info === null ? '—' : formatBytes(info.totalMemoryBytes),
+      },
+      {
+        icon: Icon.MONITOR_GPU,
+        label: info !== null && info.gpus.length > 1 ? 'GPUs' : 'GPU',
+        value: info === null ? '—' : describeGpus(info.gpus),
       },
       {
         icon: Icon.MONITOR_UPTIME,

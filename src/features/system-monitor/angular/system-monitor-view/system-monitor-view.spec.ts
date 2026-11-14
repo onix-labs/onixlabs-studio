@@ -646,7 +646,7 @@ describe('SystemMonitorView', () => {
       sample({ app: { cpuPercent: 12, memoryBytes: 512 * 1024 ** 2, memoryPercent: 3 } }),
     );
     expect(view.readings.cpuAppValue()).toBe('12%');
-    expect(view.readings.memoryAppValue()).toBe('512.0 MB (3%)');
+    expect(view.readings.memoryAppValue()).toBe('512.0 MB (3.0%)');
     expect(view.readings.appCpuHistory()).toEqual([12]);
     expect(view.readings.appMemoryHistory()).toEqual([3]);
   });

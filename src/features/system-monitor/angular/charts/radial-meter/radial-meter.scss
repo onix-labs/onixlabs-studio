@@ -32,9 +32,44 @@
 }
 
 .radial-meter__track,
-.radial-meter__fill {
+.radial-meter__fill,
+.radial-meter__inner-track,
+.radial-meter__inner-fill {
   fill: none;
   stroke-width: 9;
+}
+
+// A nested meter's rings are narrower, so the reading still fits inside the inner one.
+.radial-meter--nested {
+  .radial-meter__track,
+  .radial-meter__fill,
+  .radial-meter__inner-track,
+  .radial-meter__inner-fill {
+    stroke-width: 7;
+  }
+
+  .radial-meter__value {
+    font-size: 1.35rem;
+  }
+}
+
+// The inner ring is Studio's share, in the muted grey that marks it elsewhere, on a track of its own
+// hue.
+.radial-meter__inner-track {
+  stroke: color-mix(in srgb, var(--form-muted-foreground-color) 18%, transparent);
+}
+
+.radial-meter__inner-fill {
+  stroke: var(--form-muted-foreground-color);
+  stroke-linecap: round;
+}
+
+.radial-meter__inner {
+  margin-block-start: 0.1rem;
+  font-size: 0.66rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
 }
 
 // The unfilled track is a lighter step of the fill's own hue, so the state reads around the ring.
