@@ -8,8 +8,12 @@
   @include leading-chart;
 }
 
+// The facts sit at the card's foot: the spare height goes above them, between the core graphs and
+// the facts, as on the Memory card.
 .cpu-card__facts {
-  @include facts;
+  @include fact-grid;
+
+  margin-block-start: auto;
 }
 
 .cpu-card__cores-section {

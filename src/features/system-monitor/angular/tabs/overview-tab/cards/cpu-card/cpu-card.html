@@ -19,17 +19,9 @@
     [series]="series()"
     [max]="100"
     [format]="percent"
+    [showLegend]="false"
     [intervalMs]="readings.intervalMs()"
   />
-
-  <dl class="cpu-card__facts">
-    @for (fact of facts(); track fact.label) {
-      <div>
-        <dt>{{ fact.label }}</dt>
-        <dd>{{ fact.value }}</dd>
-      </div>
-    }
-  </dl>
 
   <section class="cpu-card__cores-section" aria-label="Core utilisation">
     <h4 class="cpu-card__heading">Core Utilisation</h4>
@@ -45,4 +37,15 @@
       <p class="cpu-card__empty">Each core's load appears after the next reading.</p>
     }
   </section>
+
+  <!-- The processor's details sit at the foot of the card, as the Memory card's do; its load is the
+       badge above. -->
+  <dl class="cpu-card__facts">
+    @for (fact of facts(); track fact.label) {
+      <div>
+        <dt>{{ fact.label }}</dt>
+        <dd [title]="fact.value">{{ fact.value }}</dd>
+      </div>
+    }
+  </dl>
 </app-system-monitor-dashboard-card>

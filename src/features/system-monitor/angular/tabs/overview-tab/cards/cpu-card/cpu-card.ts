@@ -45,8 +45,8 @@ interface CpuFact {
 }
 
 /**
- * Represents the Overview's CPU card: the machine's load over time with Studio's own share, the
- * processor in four facts, and a small graph per logical core so a single busy core stands out.
+ * Represents the Overview's CPU card: the machine's load over time with Studio's own share, a small
+ * graph per logical core so a single busy core stands out, and the processor in four facts at its foot.
  */
 @Component({
   selector: 'app-system-monitor-cpu-card',
@@ -83,18 +83,22 @@ export class CpuCard {
   );
 
   /**
-   * Gets the processor's facts: its cores, logical processors, base speed and load.
+   * Gets the processor's facts, two to a row: its model and base speed, then its physical and logical
+   * cores. Its load is the badge above.
    */
   protected readonly facts: Signal<readonly CpuFact[]> = computed((): readonly CpuFact[] => {
     const info: SystemInfo | null = this.readings.info();
     return [
-      { label: 'Cores', value: info?.physicalCores === undefined ? '—' : `${info.physicalCores}` },
-      { label: 'Logical', value: info === null ? '—' : `${info.logicalCores}` },
+      { label: 'Model', value: info?.cpuModel ?? '—' },
       {
         label: 'Base Speed',
         value: info?.speedGhz === undefined ? '—' : `${info.speedGhz.toFixed(2)} GHz`,
       },
-      { label: 'Usage', value: this.readings.cpuValue() },
+      {
+        label: 'Physical Cores',
+        value: info?.physicalCores === undefined ? '—' : `${info.physicalCores}`,
+      },
+      { label: 'Logical Cores', value: info === null ? '—' : `${info.logicalCores}` },
     ];
   });
 

@@ -23,7 +23,7 @@ describe('GpuCard', () => {
     globalThis.localStorage?.clear();
   });
 
-  it('namesTheReadingsSource_andTheGpusModelAndMemory', async () => {
+  it('namesTheGpusModelAndMemory', async () => {
     readings.setInfo({
       cpuModel: 'CPU',
       logicalCores: 1,
@@ -40,7 +40,12 @@ describe('GpuCard', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(host.textContent).toContain('ioreg (macOS)');
+    // The utilisation is the badge; the facts are the GPU itself.
+    expect(
+      Array.from(host.querySelectorAll('dt')).map(
+        (term: Element): string => term.textContent?.trim() ?? '',
+      ),
+    ).toEqual(['Model', 'Memory']);
     expect(host.textContent).toContain('Radeon Pro');
     expect(host.textContent).toContain('16.0 GB');
   });

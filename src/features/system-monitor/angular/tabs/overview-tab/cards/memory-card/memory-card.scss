@@ -4,10 +4,12 @@
   @include host;
 }
 
-// The meter beside its breakdown.
+// The meter beside its breakdown, at the card's foot: the spare height goes between the graph and
+// them.
 .memory-card__summary {
   display: flex;
   flex: none;
+  margin-block-start: auto;
   align-items: center;
   gap: 1.25rem;
 }

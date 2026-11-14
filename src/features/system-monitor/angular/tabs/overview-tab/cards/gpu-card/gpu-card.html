@@ -22,7 +22,7 @@
 
     <dl class="gpu-card__facts">
       @for (fact of facts(); track fact.label) {
-        <div class="gpu-card__fact">
+        <div>
           <dt>{{ fact.label }}</dt>
           <dd [title]="fact.value">{{ fact.value }}</dd>
         </div>

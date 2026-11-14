@@ -46,7 +46,13 @@ describe('CpuCard', () => {
     // The system's load and Studio's share each have a badge, and share the graph.
     expect(host.textContent).toContain('System');
     expect(host.textContent).toContain('Studio');
-    expect(host.querySelector('[aria-label="Legend"]')?.textContent).toContain('Studio');
+    // The badges name the graph's two lines, so it carries no legend.
+    expect(host.querySelector('[aria-label="Legend"]')).toBeNull();
+    expect(
+      Array.from(host.querySelectorAll('dt')).map(
+        (term: Element): string => term.textContent?.trim() ?? '',
+      ),
+    ).toEqual(['Model', 'Base Speed', 'Physical Cores', 'Logical Cores']);
     expect(host.textContent).toContain('6%');
     const cores: NodeListOf<HTMLElement> = host.querySelectorAll(
       '[data-testid="cpu-card-cores"] > div',

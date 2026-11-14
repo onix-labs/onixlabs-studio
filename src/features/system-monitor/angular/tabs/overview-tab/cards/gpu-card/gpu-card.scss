@@ -4,37 +4,14 @@
   @include host;
 }
 
+// The graph takes the card's spare height, its top still in line with its neighbours' (every card head
+// is one height).
 .gpu-card__chart {
-  @include leading-chart;
+  @include chart;
 }
 
-// The four facts in two columns, ruled like the image's grid.
 .gpu-card__facts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0;
-  margin: 0;
-}
-
-.gpu-card__fact {
-  min-inline-size: 0;
-  padding: 0.45rem 0.4rem;
-  border-block-end: 1px solid color-mix(in srgb, var(--dock-border-color) 50%, transparent);
-
-  dt {
-    font-size: 0.72rem;
-    color: var(--form-muted-foreground-color);
-  }
-
-  dd {
-    margin: 0.1rem 0 0;
-    overflow: hidden;
-    font-size: 0.85rem;
-    font-weight: 600;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--body-foreground-color);
-  }
+  @include fact-grid;
 }
 
 .gpu-card__off {
