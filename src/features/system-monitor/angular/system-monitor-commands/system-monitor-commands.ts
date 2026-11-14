@@ -1,4 +1,5 @@
 import { computed, Service, Signal, signal, WritableSignal } from '@angular/core';
+import { SystemMonitorTabId } from '../tabs/system-monitor-tab-id';
 
 /**
  * The contract the active System Monitor view implements so the ribbon can drive it. Mirrors the
@@ -15,6 +16,17 @@ export interface SystemMonitorCommandHandler {
    * Gets whether the docked agent is showing (#966).
    */
   readonly agentShown: Signal<boolean>;
+
+  /**
+   * Gets the view the monitor is showing.
+   */
+  readonly tab: Signal<SystemMonitorTabId>;
+
+  /**
+   * Shows a view.
+   * @param tab The view to show.
+   */
+  selectTab(tab: SystemMonitorTabId): void;
 
   /**
    * Shows the docked agent, or hides it.
@@ -64,6 +76,13 @@ export class SystemMonitorCommands {
   );
 
   /**
+   * Gets the view the active monitor is showing, or undefined when no monitor is active.
+   */
+  public readonly tab: Signal<SystemMonitorTabId | undefined> = computed(
+    (): SystemMonitorTabId | undefined => this.handler()?.tab(),
+  );
+
+  /**
    * Registers the active view's handler as the current one.
    * @param handler The handler to make current.
    */
@@ -107,5 +126,13 @@ export class SystemMonitorCommands {
    */
   public toggleAgent(): void {
     this.handler()?.toggleAgent();
+  }
+
+  /**
+   * Shows a view in the active monitor.
+   * @param tab The view to show.
+   */
+  public selectTab(tab: SystemMonitorTabId): void {
+    this.handler()?.selectTab(tab);
   }
 }

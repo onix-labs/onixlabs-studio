@@ -10,6 +10,28 @@ import {
 } from '@shared/api/system-monitor-channels';
 import { TileChannel } from '../metric-tile/metric-tile';
 import { formatBytes, formatPercent, formatRate } from './format';
+import { MachineHealth } from './machine-health';
+
+/**
+ * The share of memory in use at which the machine is under memory pressure.
+ */
+const MEMORY_PRESSURE_PERCENT: number = 90;
+
+/**
+ * The share of a volume in use at which it is nearly full.
+ */
+const VOLUME_FULL_PERCENT: number = 95;
+
+/**
+ * The CPU load, averaged over {@link CPU_BUSY_SAMPLES}, at which the machine is busy. Averaged so a
+ * moment's spike does not raise the alarm.
+ */
+const CPU_BUSY_PERCENT: number = 90;
+
+/**
+ * The number of recent samples the CPU load is averaged over.
+ */
+const CPU_BUSY_SAMPLES: number = 10;
 
 /**
  * Holds one System Monitor view's machine readings: the latest sample, the bounded histories its graphs
@@ -40,6 +62,15 @@ export class SystemMonitorReadings {
       this.settings.systemMonitorRefreshRate(),
     ),
   );
+
+  /**
+   * Gets the time between samples in milliseconds, or the default while sampling is paused, for the
+   * graphs' "how long ago".
+   */
+  public readonly intervalMs: Signal<number> = computed((): number => {
+    const rate: number = this.settings.systemMonitorRefreshRate();
+    return rate > 0 ? rate : 1000;
+  });
 
   /**
    * Holds the most recent sample, or null before the first arrives.
@@ -233,6 +264,39 @@ export class SystemMonitorReadings {
       return '—';
     }
     return sample.gpu?.available === true ? formatPercent(sample.gpu.percent) : 'N/A';
+  });
+
+  /**
+   * Gets the machine's health: healthy, or what is under pressure — memory nearly exhausted, a volume
+   * nearly full, or the CPU busy for the last several samples.
+   */
+  public readonly health: Signal<MachineHealth> = computed((): MachineHealth => {
+    const sample: MetricsSample | null = this.latest();
+    const reasons: string[] = [];
+    if (sample !== null && sample.memory.percent >= MEMORY_PRESSURE_PERCENT) {
+      reasons.push('Memory pressure');
+    }
+    const full: readonly VolumeMetric[] = this.volumes().filter(
+      (volume: VolumeMetric): boolean =>
+        volume.sizeBytes > 0 && (volume.usedBytes / volume.sizeBytes) * 100 >= VOLUME_FULL_PERCENT,
+    );
+    if (full.length > 0) {
+      reasons.push(full.length === 1 ? `${full[0].mount} nearly full` : 'Volumes nearly full');
+    }
+    const recent: readonly number[] = this.cpuHistory().slice(-CPU_BUSY_SAMPLES);
+    const average: number =
+      recent.length === 0
+        ? 0
+        : recent.reduce((sum: number, cpu: number): number => sum + cpu, 0) / recent.length;
+    if (recent.length >= CPU_BUSY_SAMPLES && average >= CPU_BUSY_PERCENT) {
+      reasons.push('CPU busy');
+    }
+    return {
+      healthy: reasons.length === 0,
+      label:
+        reasons.length === 0 ? 'Healthy' : reasons.length === 1 ? reasons[0] : 'Under pressure',
+      reasons,
+    };
   });
 
   /**

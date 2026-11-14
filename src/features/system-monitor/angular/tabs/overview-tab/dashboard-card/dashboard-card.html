@@ -1,0 +1,23 @@
+<article class="dashboard-card" [attr.aria-label]="heading()">
+  <header class="dashboard-card__head">
+    <app-icon class="dashboard-card__icon" [icon]="icon()" [size]="1.75" />
+    <div class="dashboard-card__titles">
+      <h3 class="dashboard-card__title">{{ heading() }}</h3>
+      <p class="dashboard-card__subtitle">{{ subtitle() }}</p>
+    </div>
+    <div class="dashboard-card__badges">
+      <ng-content select="[cardBadges]" />
+    </div>
+  </header>
+
+  <div class="dashboard-card__body">
+    <ng-content />
+  </div>
+
+  <footer class="dashboard-card__foot">
+    <button type="button" class="dashboard-card__details" (click)="details.emit()">
+      View Details
+      <app-icon [icon]="Icon.ARROW_RIGHT" [size]="0.85" />
+    </button>
+  </footer>
+</article>

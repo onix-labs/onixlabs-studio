@@ -52,6 +52,7 @@ describe('CpuTab', () => {
       speedGhz: 3.2,
       totalMemoryBytes: 1,
       os: 'TestOS',
+      gpus: [],
     });
     fixture.detectChanges();
     await fixture.whenStable();

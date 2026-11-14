@@ -5,6 +5,7 @@ import {
   pickGpu,
   readAppUsage,
   readDisk,
+  readGpus,
   readInterfaces,
   readMemoryDetail,
   readVolumes,
@@ -186,5 +187,20 @@ describe('readVolumes', () => {
     expect(
       readVolumes([{ mount: '/', type: 'apfs', size: 1000, used: 10, available: 300 }]),
     ).toEqual([{ mount: '/', type: 'apfs', sizeBytes: 1000, usedBytes: 700 }]);
+  });
+});
+
+describe('readGpus', () => {
+  it('namesEachController_withItsDedicatedMemoryInBytes', () => {
+    expect(
+      readGpus([
+        { model: 'Radeon Pro W5700X', vendor: 'AMD', vram: 16_384 },
+        { model: 'Intel UHD', vendor: 'Intel', vram: 0 },
+        { vendor: 'Unknown' },
+      ]),
+    ).toEqual([
+      { model: 'Radeon Pro W5700X', vendor: 'AMD', memoryBytes: 16_384 * 1024 * 1024 },
+      { model: 'Intel UHD', vendor: 'Intel' },
+    ]);
   });
 });

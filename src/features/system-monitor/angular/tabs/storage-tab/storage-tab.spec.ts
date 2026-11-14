@@ -1,20 +1,20 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SystemMonitorReadings } from '../../readings/system-monitor-readings';
-import { DiskTab } from './disk-tab';
+import { StorageTab } from './storage-tab';
 
-describe('DiskTab', () => {
-  let fixture: ComponentFixture<DiskTab>;
+describe('StorageTab', () => {
+  let fixture: ComponentFixture<StorageTab>;
   let host: HTMLElement;
   let readings: SystemMonitorReadings;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [DiskTab],
+      imports: [StorageTab],
       providers: [SystemMonitorReadings],
     }).compileComponents();
     readings = TestBed.inject(SystemMonitorReadings);
-    fixture = TestBed.createComponent(DiskTab);
+    fixture = TestBed.createComponent(StorageTab);
     host = fixture.nativeElement as HTMLElement;
     fixture.detectChanges();
     await fixture.whenStable();
@@ -25,7 +25,7 @@ describe('DiskTab', () => {
   });
 
   it('listsEachVolume_withItsSpaceAndUsage', async () => {
-    expect(host.querySelector('[data-testid="disk-volumes"]')).toBeNull();
+    expect(host.querySelector('[data-testid="storage-volumes"]')).toBeNull();
 
     readings.accept({
       timestamp: 't',
@@ -40,7 +40,7 @@ describe('DiskTab', () => {
     await fixture.whenStable();
 
     const rows: NodeListOf<HTMLTableRowElement> = host.querySelectorAll(
-      '[data-testid="disk-volumes"] tbody tr',
+      '[data-testid="storage-volumes"] tbody tr',
     );
     expect(rows).toHaveLength(2);
     expect(rows[0].textContent).toContain('950.0 GB');

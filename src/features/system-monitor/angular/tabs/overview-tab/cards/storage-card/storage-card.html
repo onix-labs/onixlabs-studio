@@ -1,0 +1,66 @@
+<app-system-monitor-dashboard-card
+  [icon]="Icon.MONITOR_STORAGE"
+  heading="Storage"
+  subtitle="Disk usage, performance and volumes"
+  (details)="details.emit()"
+>
+  <app-system-monitor-dashboard-badge
+    cardBadges
+    [icon]="Icon.MONITOR_IN"
+    [value]="readings.diskReadValue()"
+    caption="Read"
+  />
+  <app-system-monitor-dashboard-badge
+    cardBadges
+    [icon]="Icon.MONITOR_OUT"
+    [value]="readings.diskWriteValue()"
+    caption="Write"
+  />
+
+  @if (volumes().length > 0) {
+    <table class="storage-card__table" data-testid="storage-card-volumes">
+      <thead>
+        <tr>
+          <th>Volume</th>
+          <th class="storage-card__space">Used / Total</th>
+          <th class="storage-card__usage">Usage</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (volume of volumes(); track volume.mount) {
+          <tr>
+            <td [title]="volume.mount">
+              <span class="storage-card__volume">
+                <app-icon class="storage-card__icon" [icon]="Icon.MONITOR_VOLUME" [size]="1.25" />
+                <span class="storage-card__names">
+                  <span class="storage-card__mount">{{ volume.mount }}</span>
+                  <span class="storage-card__type">{{ volume.type }}</span>
+                </span>
+              </span>
+            </td>
+            <td class="storage-card__space">{{ volume.space }}</td>
+            <td class="storage-card__usage">
+              <span class="storage-card__percent">{{ volume.percentLabel }}</span>
+              <div
+                class="storage-card__track"
+                role="meter"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                [attr.aria-valuenow]="volume.percent"
+                [attr.aria-label]="volume.mount + ' in use'"
+              >
+                <div
+                  class="storage-card__fill"
+                  [class.storage-card__fill--full]="volume.nearlyFull"
+                  [style.inline-size.%]="volume.percent"
+                ></div>
+              </div>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  } @else {
+    <p class="storage-card__empty">Volumes appear after the next reading.</p>
+  }
+</app-system-monitor-dashboard-card>

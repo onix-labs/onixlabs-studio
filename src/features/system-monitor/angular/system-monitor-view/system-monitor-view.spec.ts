@@ -10,6 +10,8 @@ import { LogQuery, LogRecord, LogSession, Severity } from '@shared/api/log-chann
 import { MetricsSample, ProcessesSnapshot, SystemInfo } from '@shared/api/system-monitor-channels';
 import { SystemMonitorReadings } from '../readings/system-monitor-readings';
 import { SystemMonitorProcesses } from '../readings/system-monitor-processes';
+import { LogsOverview } from '../tabs/overview-tab/logs-overview';
+import { SystemMonitorTabId } from '../tabs/system-monitor-tab-id';
 import { SystemMonitorCommands } from '../system-monitor-commands/system-monitor-commands';
 import { SystemMonitorMetrics } from '../metrics/system-monitor-metrics';
 import { SystemMonitorView } from './system-monitor-view';
@@ -170,8 +172,9 @@ interface Testable {
   sessionOptions: Signal<readonly DropdownOption[]>;
   selectedSessionValue: Signal<string>;
   readings: SystemMonitorReadings;
-  shownTab: Signal<string>;
+  selectedTab: Signal<string>;
   selectTab(tab: string): void;
+  logsOverview: Signal<LogsOverview>;
   selectSession(sessionId: string): void;
   toggleSeverity(severity: Severity): void;
   isEnabled(severity: Severity): boolean;
@@ -236,59 +239,56 @@ describe('SystemMonitorView', () => {
     expect(view.filtered()).toHaveLength(2);
   });
 
-  it('tabs_openOnOverview_withATabPerResource_andTheLogsOnTheirOwn', async () => {
+  it('opensOnTheOverview_andTheRibbonsViewGroupSwitchesTheView', async () => {
     await create([], 'overview');
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
-    const tabs: string[] = Array.from(host.querySelectorAll('[role="tab"]')).map(
-      (tab: Element): string => tab.textContent?.trim() ?? '',
-    );
+    const commands: SystemMonitorCommands = TestBed.inject(SystemMonitorCommands);
 
-    expect(tabs).toEqual([
-      'Overview',
-      'Processes',
-      'CPU',
-      'Memory',
-      'Disk',
-      'Network',
-      'GPU',
-      'Logs',
-    ]);
+    expect(commands.tab()).toBe('overview');
     expect(host.querySelector('app-system-monitor-overview-tab')).not.toBeNull();
-    expect(host.querySelector('app-table')).toBeNull();
-  });
+    expect(host.querySelector('[role="tablist"]')).toBeNull();
 
-  it('gpuTab_isLeftOut_whenGpuMonitoringIsOff_andAChosenGpuTabFallsBackToOverview', async () => {
-    await create([], 'gpu');
-    expect(view.shownTab()).toBe('gpu');
-
-    TestBed.inject(Settings).set('systemMonitor.gpuMonitoring', false);
+    commands.selectTab(SystemMonitorTabId.Storage);
     fixture.detectChanges();
     await fixture.whenStable();
 
-    const host: HTMLElement = fixture.nativeElement as HTMLElement;
-    expect(view.shownTab()).toBe('overview');
-    expect(
-      Array.from(host.querySelectorAll('[role="tab"]')).some(
-        (tab: Element): boolean => tab.textContent?.trim() === 'GPU',
-      ),
-    ).toBe(false);
+    expect(view.selectedTab()).toBe('storage');
+    expect(host.querySelector('app-system-monitor-storage-tab')).not.toBeNull();
+    expect(host.querySelector('app-system-monitor-overview-tab')).toBeNull();
   });
 
-  it('selectTab_ignoresAnUnknownTab', async () => {
-    await create([], 'overview');
-    view.selectTab('nonsense');
-    expect(view.shownTab()).toBe('overview');
+  it('logsOverview_countsTheSessionBySeverity_andListsTheLatestTheLogsViewShowsFirst', async () => {
+    await create(
+      [
+        record({ id: 1, severity: 'info' }),
+        record({ id: 2, severity: 'warning' }),
+        record({ id: 3, severity: 'error' }),
+        record({ id: 4, severity: 'info' }),
+        record({ id: 5, severity: 'debug' }),
+      ],
+      'overview',
+    );
+
+    const logs: LogsOverview = view.logsOverview();
+    expect([logs.info, logs.warnings, logs.errors]).toEqual([2, 1, 1]);
+    // Debug is hidden by the Logs view's default filters, so the card leaves it out too.
+    expect(logs.recent.map((entry: LogRecord): number => entry.id)).toEqual([4, 3, 2, 1]);
   });
 
-  it('processes_areListedOnlyWhileTheProcessesTabIsInFront', async () => {
-    await create([], 'overview');
+  it('processes_areListedOnlyWhileAViewShowingThemIsInFront', async () => {
+    await create([], 'cpu');
     expect(metrics.processesStarted).toBe(0);
+
+    // The Overview's Processes card lists them too.
+    view.selectTab('overview');
+    fixture.detectChanges();
+    expect(metrics.processesStarted).toBe(1);
 
     view.selectTab('processes');
     fixture.detectChanges();
     expect(metrics.processesStarted).toBe(1);
 
-    // Hiding the monitor stops the listing too, and showing it again restarts it.
+    // Hiding the monitor stops the listing, and showing it again restarts it.
     fixture.componentRef.setInput('isActive', false);
     fixture.detectChanges();
     expect(metrics.processesStopped).toBe(1);
@@ -296,7 +296,7 @@ describe('SystemMonitorView', () => {
     fixture.detectChanges();
     expect(metrics.processesStarted).toBe(2);
 
-    view.selectTab('cpu');
+    view.selectTab('memory');
     fixture.detectChanges();
     expect(metrics.processesStopped).toBe(2);
   });
@@ -331,6 +331,7 @@ describe('SystemMonitorView', () => {
       logicalCores: 8,
       totalMemoryBytes: 1024,
       os: 'TestOS 1',
+      gpus: [],
     };
     await create([], 'overview', machine);
 

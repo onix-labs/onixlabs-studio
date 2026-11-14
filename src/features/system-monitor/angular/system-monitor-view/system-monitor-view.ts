@@ -29,7 +29,6 @@ import {
 } from '@shared/angular/services/view-injectors/view-injector-registration';
 import { LogRecord, LogSession, SEVERITIES, Severity } from '@shared/api/log-channels';
 import { MetricsSample, ProcessesSnapshot, SystemInfo } from '@shared/api/system-monitor-channels';
-import { TabList, TabListTab } from '@shared/angular/components/forms/tab-list/tab-list';
 import { SystemMonitorReadings } from '../readings/system-monitor-readings';
 import { SystemMonitorProcesses } from '../readings/system-monitor-processes';
 import { SystemMonitorTabId } from '../tabs/system-monitor-tab-id';
@@ -37,7 +36,9 @@ import { OverviewTab } from '../tabs/overview-tab/overview-tab';
 import { ProcessesTab } from '../tabs/processes-tab/processes-tab';
 import { CpuTab } from '../tabs/cpu-tab/cpu-tab';
 import { MemoryTab } from '../tabs/memory-tab/memory-tab';
-import { DiskTab } from '../tabs/disk-tab/disk-tab';
+import { StorageTab } from '../tabs/storage-tab/storage-tab';
+import { SystemTab } from '../tabs/system-tab/system-tab';
+import { LogsOverview } from '../tabs/overview-tab/logs-overview';
 import { NetworkTab } from '../tabs/network-tab/network-tab';
 import { GpuTab } from '../tabs/gpu-tab/gpu-tab';
 import { SystemMonitorMetrics } from '../metrics/system-monitor-metrics';
@@ -66,6 +67,11 @@ const AUDIT_COLUMNS: readonly TableColumn[] = [
   { id: 'message', header: 'Message' },
   { id: 'timestamp', header: 'Timestamp', width: '9rem' },
 ];
+
+/**
+ * The number of latest records the Overview's Logs card lists.
+ */
+const OVERVIEW_RECORDS: number = 6;
 
 /**
  * What the System Monitor tab's status strip reports.
@@ -171,12 +177,12 @@ interface AuditEntry {
     TextField,
     Table,
     TableRowDef,
-    TabList,
     OverviewTab,
     ProcessesTab,
     CpuTab,
     MemoryTab,
-    DiskTab,
+    StorageTab,
+    SystemTab,
     NetworkTab,
     GpuTab,
     Panel,
@@ -256,42 +262,12 @@ export class SystemMonitorView implements OnInit {
   private readonly processes: SystemMonitorProcesses = inject(SystemMonitorProcesses);
 
   /**
-   * Gets whether the GPU is read and its tab shown.
-   */
-  protected readonly gpuMonitoring: Signal<boolean> = this.readings.gpuMonitoring;
-
-  /**
-   * Holds the tab chosen, which the strip shows selected. Overview first: it is the monitor at a
-   * glance.
+   * Holds the view chosen, which the ribbon's View group shows pressed. Overview first: it is the
+   * monitor at a glance.
    */
   protected readonly selectedTab: WritableSignal<SystemMonitorTabId> = signal<SystemMonitorTabId>(
     SystemMonitorTabId.Overview,
   );
-
-  /**
-   * Gets the tab shown: the one chosen, or Overview when the chosen one is GPU and GPU Monitoring has
-   * since been turned off.
-   */
-  protected readonly shownTab: Signal<SystemMonitorTabId> = computed((): SystemMonitorTabId => {
-    const tab: SystemMonitorTabId = this.selectedTab();
-    return tab === SystemMonitorTabId.Gpu && !this.gpuMonitoring()
-      ? SystemMonitorTabId.Overview
-      : tab;
-  });
-
-  /**
-   * Gets the tab strip's tabs, GPU among them only while GPU Monitoring is on.
-   */
-  protected readonly tabs: Signal<readonly TabListTab[]> = computed((): readonly TabListTab[] => [
-    { value: SystemMonitorTabId.Overview, label: 'Overview' },
-    { value: SystemMonitorTabId.Processes, label: 'Processes' },
-    { value: SystemMonitorTabId.Cpu, label: 'CPU' },
-    { value: SystemMonitorTabId.Memory, label: 'Memory' },
-    { value: SystemMonitorTabId.Disk, label: 'Disk' },
-    { value: SystemMonitorTabId.Network, label: 'Network' },
-    ...(this.gpuMonitoring() ? [{ value: SystemMonitorTabId.Gpu, label: 'GPU' }] : []),
-    { value: SystemMonitorTabId.Logs, label: 'Logs' },
-  ]);
 
   /**
    * Holds whether the window is on screen. A tab in front of a minimised or covered window is still
@@ -411,6 +387,38 @@ export class SystemMonitorView implements OnInit {
   });
 
   /**
+   * Gets the logs at a glance for the Overview: the viewed session's counts by severity, and its latest
+   * records as the Logs view's filters show them, newest first — so the card and the view agree.
+   */
+  protected readonly logsOverview: Signal<LogsOverview> = computed((): LogsOverview => {
+    const records: readonly LogRecord[] = this.records();
+    let info: number = 0;
+    let warnings: number = 0;
+    let errors: number = 0;
+    for (const record of records) {
+      if (record.severity === 'info') {
+        info += 1;
+      } else if (record.severity === 'warning') {
+        warnings += 1;
+      } else if (record.severity === 'error') {
+        errors += 1;
+      }
+    }
+    return { info, warnings, errors, recent: this.filtered().slice(-OVERVIEW_RECORDS).reverse() };
+  });
+
+  /**
+   * Gets when the current logging session started, or null before the sessions have loaded.
+   */
+  protected readonly sessionStartedAt: Signal<string | null> = computed((): string | null => {
+    const current: string | null = this.currentSessionId();
+    return (
+      this.sessions().find((session: LogSession): boolean => session.id === current)?.startedAt ??
+      null
+    );
+  });
+
+  /**
    * Publishes this view's injector while it is active, so the status strip mounts the tab's status
    * (#882) inside it.
    */
@@ -502,6 +510,8 @@ export class SystemMonitorView implements OnInit {
     refresh: (): void => this.refresh(),
     clearFilters: (): void => this.clearFilters(),
     copy: (): void => void this.copy(),
+    tab: this.selectedTab.asReadonly(),
+    selectTab: (tab: SystemMonitorTabId): void => this.selectTab(tab),
   };
 
   /**
@@ -593,7 +603,7 @@ export class SystemMonitorView implements OnInit {
     // The backend's ref-count sees one start per stop, whatever the rate does in between.
     effect((): void => {
       const rate: number = this.refreshRate();
-      const gpu: boolean = this.gpuMonitoring();
+      const gpu: boolean = this.readings.gpuMonitoring();
       const wanted: boolean = this.isActive() && this.onScreen() && rate > 0;
       untracked((): void => {
         if (wanted) {
@@ -608,11 +618,15 @@ export class SystemMonitorView implements OnInit {
       });
     });
 
-    // Processes are listed only while the Processes tab is in front of the user: a listing is a `ps`
-    // (or WMI query) every couple of seconds, far costlier than a sample, and no other tab shows it.
+    // Processes are listed only while a view showing them is in front of the user — Processes, or the
+    // Overview's Processes card: a listing is a `ps` (or WMI query) every couple of seconds, far
+    // costlier than a sample.
     effect((): void => {
+      const tab: SystemMonitorTabId = this.selectedTab();
       const wanted: boolean =
-        this.isActive() && this.onScreen() && this.shownTab() === SystemMonitorTabId.Processes;
+        this.isActive() &&
+        this.onScreen() &&
+        (tab === SystemMonitorTabId.Processes || tab === SystemMonitorTabId.Overview);
       untracked((): void => {
         if (wanted && !listing) {
           this.metrics.startProcesses();
@@ -673,16 +687,11 @@ export class SystemMonitorView implements OnInit {
   }
 
   /**
-   * Shows a tab.
-   * @param tab The tab's identity, as the strip or an Overview graph reports it.
+   * Shows a view, as the ribbon's View group or an Overview card asks.
+   * @param tab The view to show.
    */
-  protected selectTab(tab: string): void {
-    const match: SystemMonitorTabId | undefined = Object.values(SystemMonitorTabId).find(
-      (id: SystemMonitorTabId): boolean => id.valueOf() === tab,
-    );
-    if (match !== undefined) {
-      this.selectedTab.set(match);
-    }
+  protected selectTab(tab: SystemMonitorTabId): void {
+    this.selectedTab.set(tab);
   }
 
   /**

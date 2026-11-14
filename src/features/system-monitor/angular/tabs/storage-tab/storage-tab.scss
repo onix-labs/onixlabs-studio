@@ -4,37 +4,37 @@
   @include host;
 }
 
-.disk {
+.storage {
   @include page;
 }
 
-.disk__hero {
+.storage__hero {
   @include hero;
 }
 
-.disk__heading {
+.storage__heading {
   @include heading;
 }
 
-.disk__list {
+.storage__list {
   @include list;
 }
 
 // Scoped under the list so it outranks the list's own header alignment.
-.disk__list .disk__number {
+.storage__list .storage__number {
   @include number;
 }
 
-.disk__muted {
+.storage__muted {
   @include muted;
 }
 
-.disk__usage-column {
+.storage__usage-column {
   inline-size: 30%;
 }
 
 // A volume's usage: a thin bar, turning to the warning colour once nearly full.
-.disk__usage {
+.storage__usage {
   block-size: 0.4rem;
   min-inline-size: 6rem;
   overflow: hidden;
@@ -42,15 +42,15 @@
   background-color: color-mix(in srgb, var(--dock-border-color) 70%, transparent);
 }
 
-.disk__usage-fill {
+.storage__usage-fill {
   block-size: 100%;
   background-color: var(--accent-color);
 }
 
-.disk__usage-fill--full {
+.storage__usage-fill--full {
   background-color: var(--warning-color);
 }
 
-.disk__empty {
+.storage__empty {
   @include empty;
 }

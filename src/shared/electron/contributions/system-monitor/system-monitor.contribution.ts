@@ -25,6 +25,7 @@ import { ContributionContext, MainContribution } from '../main-contribution';
 import {
   NetworkStat,
   parseIoregGpu,
+  readGpus,
   pickGpu,
   readAppUsage,
   readDisk,
@@ -492,8 +493,17 @@ export class SystemMonitorContribution implements MainContribution {
    */
   private async readInfo(): Promise<SystemInfo> {
     const cpus: readonly os.CpuInfo[] = os.cpus();
-    const [cpu, osInfo]: [si.Systeminformation.CpuData | null, si.Systeminformation.OsData | null] =
-      await Promise.all([si.cpu().catch((): null => null), si.osInfo().catch((): null => null)]);
+    // The graphics controllers are read once here, not per sample: on macOS it is `system_profiler`,
+    // a second or more.
+    const [cpu, osInfo, graphics]: [
+      si.Systeminformation.CpuData | null,
+      si.Systeminformation.OsData | null,
+      si.Systeminformation.GraphicsData | null,
+    ] = await Promise.all([
+      si.cpu().catch((): null => null),
+      si.osInfo().catch((): null => null),
+      si.graphics().catch((): null => null),
+    ]);
     const positive: (value: number | undefined) => number | undefined = (
       value: number | undefined,
     ): number | undefined => (typeof value === 'number' && value > 0 ? value : undefined);
@@ -511,6 +521,8 @@ export class SystemMonitorContribution implements MainContribution {
         osInfo === null
           ? `${os.type()} ${os.release()}`
           : `${osInfo.distro} ${osInfo.release}`.trim(),
+      ...definedOnly({ bootTime: readBootTime() }),
+      gpus: readGpus(graphics?.controllers ?? []),
     };
   }
 
@@ -561,7 +573,7 @@ export class SystemMonitorContribution implements MainContribution {
     }
     try {
       const gpu: GpuMetric = pickGpu((await si.graphics()).controllers);
-      return gpu.available ? gpu : undefined;
+      return gpu.available ? { ...gpu, source: 'nvidia-smi' } : undefined;
     } catch {
       return undefined;
     }
@@ -580,7 +592,7 @@ export class SystemMonitorContribution implements MainContribution {
         { timeout: 800, maxBuffer: 16 * 1024 * 1024 },
       );
       const gpu: GpuMetric = parseIoregGpu(stdout);
-      return gpu.available ? gpu : undefined;
+      return gpu.available ? { ...gpu, source: 'ioreg' } : undefined;
     } catch {
       return undefined;
     }
@@ -601,4 +613,17 @@ function definedOnly<T extends object>(readings: T): Partial<T> {
   return Object.fromEntries(
     Object.entries(readings).filter(([, value]: [string, unknown]): boolean => value !== undefined),
   ) as Partial<T>;
+}
+
+/**
+ * Reads when the machine started, or undefined where the OS refuses its uptime (a sandboxed process
+ * can be denied it).
+ * @returns Returns the boot time in milliseconds since the epoch, or undefined.
+ */
+function readBootTime(): number | undefined {
+  try {
+    return Date.now() - os.uptime() * 1000;
+  } catch {
+    return undefined;
+  }
 }

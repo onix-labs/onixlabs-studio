@@ -1,0 +1,31 @@
+@use '../tabs' as *;
+
+:host {
+  @include host;
+}
+
+.system {
+  @include page;
+
+  max-inline-size: 48rem;
+}
+
+.system__heading {
+  @include heading;
+}
+
+.system__health {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--success-color);
+}
+
+.system__health--warning {
+  color: var(--warning-color);
+}
+
+.system__reasons {
+  font-weight: 400;
+  color: var(--body-foreground-color);
+}

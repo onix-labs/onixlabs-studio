@@ -1,5 +1,6 @@
 import { signal, WritableSignal } from '@angular/core';
 import { describe, expect, it, Mock, vi } from 'vitest';
+import { SystemMonitorTabId } from '../tabs/system-monitor-tab-id';
 import { SystemMonitorCommandHandler, SystemMonitorCommands } from './system-monitor-commands';
 
 /**
@@ -13,6 +14,7 @@ interface FakeHandler {
   readonly copy: Mock;
   readonly agent: WritableSignal<boolean>;
   readonly toggleAgent: Mock;
+  readonly tab: WritableSignal<SystemMonitorTabId>;
 }
 
 /**
@@ -27,14 +29,27 @@ function fakeHandler(hasRecords: boolean = true): FakeHandler {
   const copy: Mock = vi.fn();
   const agent: WritableSignal<boolean> = signal<boolean>(false);
   const toggleAgent: Mock = vi.fn();
+  const tab: WritableSignal<SystemMonitorTabId> = signal<SystemMonitorTabId>(
+    SystemMonitorTabId.Overview,
+  );
   return {
+    tab,
     records,
     refresh,
     clearFilters,
     copy,
     agent,
     toggleAgent,
-    handler: { hasRecords: records, agentShown: agent, toggleAgent, refresh, clearFilters, copy },
+    handler: {
+      hasRecords: records,
+      agentShown: agent,
+      toggleAgent,
+      refresh,
+      clearFilters,
+      copy,
+      tab,
+      selectTab: (next: SystemMonitorTabId): void => tab.set(next),
+    },
   };
 }
 
@@ -94,5 +109,17 @@ describe('SystemMonitorCommands', () => {
     commands.unregister(second.handler);
     commands.refresh();
     expect(second.refresh).toHaveBeenCalledOnce();
+  });
+
+  it('tab_followsTheActiveMonitor_andSelectTabSwitchesIt', () => {
+    const commands: SystemMonitorCommands = new SystemMonitorCommands();
+    expect(commands.tab()).toBeUndefined();
+
+    const fake: FakeHandler = fakeHandler();
+    commands.register(fake.handler);
+    expect(commands.tab()).toBe(SystemMonitorTabId.Overview);
+
+    commands.selectTab(SystemMonitorTabId.Storage);
+    expect(commands.tab()).toBe(SystemMonitorTabId.Storage);
   });
 });

@@ -1,5 +1,5 @@
-// The System Monitor view fills its tab: a strip of tabs (Overview, Processes, each resource, Logs) over
-// the chosen tab's body, which fills the rest. The Logs tab is the log audit — a filter toolbar over a
+// The System Monitor view fills its tab with the view the ribbon's View group has chosen (Overview,
+// each resource, System, Logs). The Logs tab is the log audit — a filter toolbar over a
 // scrolling, column-aligned table.
 :host {
   display: block;
@@ -15,13 +15,6 @@
   flex-direction: column;
   block-size: 100%;
   min-block-size: 0;
-}
-
-// The tab strip, ruled off from the body beneath it.
-.system-monitor__tabs {
-  flex: none;
-  padding-inline: 0.75rem;
-  border-block-end: 1px solid var(--dock-border-color);
 }
 
 // The chosen tab's body fills what the strip leaves; each tab scrolls its own content.

@@ -1,0 +1,69 @@
+@use '../cards' as *;
+
+:host {
+  @include host;
+}
+
+// The meter beside its breakdown.
+.memory-card__summary {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.memory-card__meter {
+  flex: none;
+  inline-size: 9rem;
+}
+
+.memory-card__entries {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0;
+}
+
+.memory-card__entry {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+
+  dt {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--form-muted-foreground-color);
+  }
+
+  dd {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--body-foreground-color);
+  }
+}
+
+// The keys mirror the meter: its fill for in use, its track for available, none for the total.
+.memory-card__key {
+  display: inline-block;
+  inline-size: 0.5rem;
+  block-size: 0.5rem;
+  border-radius: 50%;
+}
+
+.memory-card__key--used {
+  background-color: var(--accent-color);
+}
+
+.memory-card__key--free {
+  background-color: color-mix(in srgb, var(--accent-color) 25%, transparent);
+}
+
+.memory-card__chart {
+  @include chart(4rem);
+}

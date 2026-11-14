@@ -85,4 +85,23 @@ describe('SystemMonitorReadings', () => {
     ]);
     expect(readings.volumes()).toHaveLength(1);
   });
+
+  it('health_isHealthy_untilMemoryRunsShort', () => {
+    readings.accept(sample());
+    expect(readings.health()).toEqual({ healthy: true, label: 'Healthy', reasons: [] });
+
+    readings.accept(sample({ memory: { usedBytes: 92, totalBytes: 100, percent: 92 } }));
+    expect(readings.health().label).toBe('Memory pressure');
+  });
+
+  it('health_callsTheCpuBusy_onlyWhenItStaysBusy', () => {
+    for (let index: number = 0; index < 9; index += 1) {
+      readings.accept(sample({ cpu: 99 }));
+    }
+    // Nine busy samples are a spike, not yet sustained.
+    expect(readings.health().healthy).toBe(true);
+
+    readings.accept(sample({ cpu: 99 }));
+    expect(readings.health().label).toBe('CPU busy');
+  });
 });

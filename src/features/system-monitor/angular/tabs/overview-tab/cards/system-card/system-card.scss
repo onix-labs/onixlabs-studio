@@ -1,0 +1,5 @@
+@use '../cards' as *;
+
+:host {
+  @include host;
+}

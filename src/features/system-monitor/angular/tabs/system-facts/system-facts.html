@@ -1,0 +1,11 @@
+<dl class="system-facts" data-testid="system-facts">
+  @for (fact of facts(); track fact.label) {
+    <div class="system-facts__fact">
+      <dt class="system-facts__label">
+        <app-icon class="system-facts__icon" [icon]="fact.icon" [size]="1.15" />
+        {{ fact.label }}
+      </dt>
+      <dd class="system-facts__value" [title]="fact.value">{{ fact.value }}</dd>
+    </div>
+  }
+</dl>

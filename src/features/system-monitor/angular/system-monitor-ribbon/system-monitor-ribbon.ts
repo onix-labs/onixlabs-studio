@@ -6,13 +6,56 @@ import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/rib
 import { Icon } from '@shared/angular/icons/icon';
 import { SystemMonitorCommands } from '../system-monitor-commands/system-monitor-commands';
 import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
-import { MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
+import {
+  MENU_SEPARATOR,
+  MenuContribution,
+  MenuEntry,
+} from '@shared/angular/services/app-menu/app-menu-model';
+import { SystemMonitorTabId } from '../tabs/system-monitor-tab-id';
 
 /**
- * The contextual ribbon shown while a System Monitor tab is active. Its actions drive the active view
- * through the {@link SystemMonitorCommands} registry: refresh reloads the audit, clear resets the
- * filters, and copy is enabled only when the audit shows records. The stateful filters (session,
- * severity, text) live in the view's own toolbar, alongside the table they act on.
+ * Describes one of the monitor's views, as the View group and the Monitor menu offer it.
+ */
+interface MonitorView {
+  /**
+   * Gets the view.
+   */
+  readonly tab: SystemMonitorTabId;
+
+  /**
+   * Gets the view's name.
+   */
+  readonly label: string;
+
+  /**
+   * Gets the view's icon.
+   */
+  readonly icon: Icon;
+}
+
+/**
+ * Holds the monitor's views, in the order the View group shows them.
+ */
+const VIEWS: readonly MonitorView[] = [
+  { tab: SystemMonitorTabId.Overview, label: 'Overview', icon: Icon.MONITOR_OVERVIEW },
+  { tab: SystemMonitorTabId.Cpu, label: 'CPU', icon: Icon.MONITOR_CPU },
+  { tab: SystemMonitorTabId.Memory, label: 'Memory', icon: Icon.MONITOR_MEMORY },
+  { tab: SystemMonitorTabId.Gpu, label: 'GPU', icon: Icon.MONITOR_GPU },
+  { tab: SystemMonitorTabId.Processes, label: 'Processes', icon: Icon.MONITOR_PROCESSES },
+  { tab: SystemMonitorTabId.Storage, label: 'Storage', icon: Icon.MONITOR_STORAGE },
+  { tab: SystemMonitorTabId.Network, label: 'Network', icon: Icon.MONITOR_NETWORK },
+  { tab: SystemMonitorTabId.System, label: 'System', icon: Icon.MONITOR_SYSTEM },
+  { tab: SystemMonitorTabId.Logs, label: 'Logs', icon: Icon.MONITOR_LOGS },
+];
+
+/**
+ * The contextual ribbon shown while a System Monitor tab is active. It is the monitor's tab strip: the
+ * View group's buttons switch between its views (Overview, each resource, System and Logs), the one
+ * showing pressed. Its actions drive the active monitor through the {@link SystemMonitorCommands}
+ * registry. The Audit and Clipboard groups belong to the logs, so they appear only on the Logs view:
+ * refresh reloads the audit, clear resets the filters, and copy is enabled only when the audit shows
+ * records. The stateful filters (session, severity, text) live in the view's own toolbar, alongside
+ * the table they act on.
  */
 @Component({
   selector: 'app-system-monitor-ribbon',
@@ -43,6 +86,21 @@ export class SystemMonitorRibbon {
   protected readonly agentShown: Signal<boolean> = this.commands.agentShown;
 
   /**
+   * Gets the view the active monitor is showing.
+   */
+  protected readonly tab: Signal<SystemMonitorTabId | undefined> = this.commands.tab;
+
+  /**
+   * Gets the view identities, exposed for the template.
+   */
+  protected readonly Tab: typeof SystemMonitorTabId = SystemMonitorTabId;
+
+  /**
+   * Gets the monitor's views, for the View group.
+   */
+  protected readonly views: readonly MonitorView[] = VIEWS;
+
+  /**
    * Contributes this tab's menu while the System Monitor ribbon is mounted.
    */
   private readonly menu: void = contributeFeatureMenu(
@@ -55,6 +113,14 @@ export class SystemMonitorRibbon {
         id: 'monitor',
         label: 'Monitor',
         items: [
+          ...VIEWS.map((view: MonitorView): MenuEntry => ({
+            id: `monitor.view.${view.tab}`,
+            label: view.label,
+            kind: 'checkbox',
+            checked: this.tab() === view.tab,
+            run: (): void => this.onSelect(view.tab),
+          })),
+          MENU_SEPARATOR,
           {
             id: 'monitor.refresh',
             label: 'Refresh',
@@ -75,7 +141,15 @@ export class SystemMonitorRibbon {
   );
 
   /**
-   * Reloads the audit.
+   * Shows a view in the active monitor (the View group, and the Monitor menu's view entries).
+   * @param tab The view to show.
+   */
+  protected onSelect(tab: SystemMonitorTabId): void {
+    this.commands.selectTab(tab);
+  }
+
+  /**
+   * Reloads the logs (the Audit group's Refresh).
    */
   protected onRefresh(): void {
     this.commands.refresh();

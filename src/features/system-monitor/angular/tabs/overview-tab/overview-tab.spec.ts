@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { SystemMonitorProcesses } from '../../readings/system-monitor-processes';
 import { SystemMonitorReadings } from '../../readings/system-monitor-readings';
 import { SystemMonitorTabId } from '../system-monitor-tab-id';
 import { OverviewTab } from './overview-tab';
@@ -7,16 +8,15 @@ import { OverviewTab } from './overview-tab';
 describe('OverviewTab', () => {
   let fixture: ComponentFixture<OverviewTab>;
   let host: HTMLElement;
-  let readings: SystemMonitorReadings;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [OverviewTab],
-      providers: [SystemMonitorReadings],
+      providers: [SystemMonitorReadings, SystemMonitorProcesses],
     }).compileComponents();
-    readings = TestBed.inject(SystemMonitorReadings);
     fixture = TestBed.createComponent(OverviewTab);
     host = fixture.nativeElement as HTMLElement;
+    fixture.componentRef.setInput('logs', { info: 0, warnings: 0, errors: 0, recent: [] });
     fixture.detectChanges();
     await fixture.whenStable();
   });
@@ -25,30 +25,35 @@ describe('OverviewTab', () => {
     globalThis.localStorage?.clear();
   });
 
-  it('describesTheMachineInALine_onceItIsKnown', async () => {
-    expect(host.textContent).not.toContain('·');
+  it('showsACardPerView_inTheRibbonsOrder', () => {
+    const cards: string[] = Array.from(host.querySelectorAll('article')).map(
+      (card: Element): string => card.getAttribute('aria-label') ?? '',
+    );
 
-    readings.setInfo({
-      cpuModel: 'Test CPU',
-      logicalCores: 8,
-      totalMemoryBytes: 16 * 1024 ** 3,
-      os: 'TestOS 1',
-    });
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    expect(host.textContent).toContain('Test CPU · 8 cores · 16.0 GB · TestOS 1');
+    expect(cards).toEqual([
+      'CPU',
+      'Memory',
+      'GPU',
+      'Processes',
+      'Storage',
+      'Network',
+      'System',
+      'Logs',
+    ]);
   });
 
-  it('opensAResourcesTab_whenItsGraphIsPressed', () => {
+  it('opensACardsView_fromItsViewDetailsLink', () => {
     const opened: SystemMonitorTabId[] = [];
     fixture.componentInstance.open.subscribe((tab: SystemMonitorTabId): void => {
       opened.push(tab);
     });
 
-    host.querySelector<HTMLButtonElement>('[aria-label="Open Memory"]')?.click();
-    host.querySelector<HTMLButtonElement>('[aria-label="Open Network"]')?.click();
+    const links: HTMLButtonElement[] = Array.from(
+      host.querySelectorAll<HTMLButtonElement>('article footer button'),
+    );
+    links[0].click();
+    links[7].click();
 
-    expect(opened).toEqual([SystemMonitorTabId.Memory, SystemMonitorTabId.Network]);
+    expect(opened).toEqual([SystemMonitorTabId.Cpu, SystemMonitorTabId.Logs]);
   });
 });

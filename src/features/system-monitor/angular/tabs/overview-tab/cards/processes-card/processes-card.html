@@ -1,0 +1,38 @@
+<app-system-monitor-dashboard-card
+  [icon]="Icon.MONITOR_PROCESSES"
+  heading="Processes"
+  subtitle="Running processes and resource usage"
+  (details)="details.emit()"
+>
+  <app-system-monitor-dashboard-badge cardBadges [value]="total()" caption="Total" />
+
+  @if (listed()) {
+    <table class="processes-card__table" data-testid="processes-card-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th class="processes-card__pid">PID</th>
+          <th class="processes-card__share">CPU</th>
+          <th class="processes-card__memory">Memory</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of rows(); track row.pid) {
+          <tr>
+            <td [title]="row.command">
+              <span class="processes-card__name">
+                <app-icon class="processes-card__icon" [icon]="row.icon" [size]="1" />
+                {{ row.name }}
+              </span>
+            </td>
+            <td class="processes-card__pid">{{ row.pid }}</td>
+            <td class="processes-card__share">{{ row.cpu }}</td>
+            <td class="processes-card__memory">{{ row.memory }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  } @else {
+    <p class="processes-card__empty">Listing processes…</p>
+  }
+</app-system-monitor-dashboard-card>

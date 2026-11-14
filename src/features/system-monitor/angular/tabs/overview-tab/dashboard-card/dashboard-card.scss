@@ -1,0 +1,93 @@
+// A card fills its grid cell: the head, then a body that takes the rest, then the link to its view.
+:host {
+  display: block;
+  block-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+.dashboard-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  block-size: 100%;
+  padding: 0.9rem 1rem 0.7rem;
+  border: 1px solid var(--dock-border-color);
+  border-radius: calc(0.6rem * var(--border-radius-multiplier, 1));
+  // A shade darker than the panel, so each card reads as a well its readings sit in.
+  background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
+}
+
+.dashboard-card__head {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.dashboard-card__icon {
+  flex: none;
+  color: var(--body-foreground-color);
+}
+
+.dashboard-card__titles {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.dashboard-card__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.dashboard-card__subtitle {
+  margin: 0.1rem 0 0;
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.dashboard-card__badges {
+  display: flex;
+  flex: none;
+  gap: 0.4rem;
+}
+
+.dashboard-card__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-block-size: 0;
+}
+
+.dashboard-card__foot {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+}
+
+.dashboard-card__details {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.25rem;
+  border: none;
+  border-radius: calc(0.25rem * var(--border-radius-multiplier, 1));
+  background: none;
+  color: var(--accent-color);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 1px;
+  }
+}

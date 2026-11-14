@@ -1,0 +1,60 @@
+:host {
+  display: inline-block;
+}
+
+// A badge is a soft wash of its tone with the tone's border; the words stay in text colours.
+.dashboard-badge {
+  --dashboard-badge-tone: var(--accent-color);
+
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--dashboard-badge-tone) 45%, transparent);
+  border-radius: calc(0.4rem * var(--border-radius-multiplier, 1));
+  background-color: color-mix(in srgb, var(--dashboard-badge-tone) 12%, transparent);
+}
+
+.dashboard-badge--neutral {
+  --dashboard-badge-tone: var(--form-muted-foreground-color);
+}
+
+.dashboard-badge--success {
+  --dashboard-badge-tone: var(--success-color);
+}
+
+.dashboard-badge--warning {
+  --dashboard-badge-tone: var(--warning-color);
+}
+
+.dashboard-badge--danger {
+  --dashboard-badge-tone: var(--danger-color);
+}
+
+.dashboard-badge--info {
+  --dashboard-badge-tone: var(--info-color);
+}
+
+// The glyph carries the tone; the reading beside it stays legible text.
+.dashboard-badge__icon {
+  color: var(--dashboard-badge-tone);
+}
+
+.dashboard-badge__text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.15;
+}
+
+.dashboard-badge__value {
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--body-foreground-color);
+}
+
+.dashboard-badge__caption {
+  font-size: 0.66rem;
+  color: var(--form-muted-foreground-color);
+}

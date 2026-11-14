@@ -1,0 +1,47 @@
+@use '../cards' as *;
+
+:host {
+  @include host;
+}
+
+.processes-card__table {
+  @include table;
+
+  td {
+    padding-block: 0.55rem;
+  }
+}
+
+.processes-card__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.processes-card__icon {
+  flex: none;
+  color: var(--form-muted-foreground-color);
+}
+
+// Scoped under the table so they outrank its header alignment.
+.processes-card__table .processes-card__pid {
+  @include number;
+
+  inline-size: 4.5rem;
+}
+
+.processes-card__table .processes-card__share {
+  @include number;
+
+  inline-size: 4rem;
+}
+
+.processes-card__table .processes-card__memory {
+  @include number;
+
+  inline-size: 5.5rem;
+}
+
+.processes-card__empty {
+  @include empty;
+}

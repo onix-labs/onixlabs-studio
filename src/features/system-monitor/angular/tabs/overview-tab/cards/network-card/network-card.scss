@@ -1,0 +1,32 @@
+@use '../cards' as *;
+
+:host {
+  @include host;
+}
+
+.network-card__chart {
+  @include chart(8rem);
+}
+
+.network-card__interfaces {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.network-card__heading {
+  @include heading;
+}
+
+.network-card__table {
+  @include table;
+}
+
+.network-card__table .network-card__number {
+  @include number;
+}
+
+.network-card__none {
+  color: var(--form-muted-foreground-color);
+}

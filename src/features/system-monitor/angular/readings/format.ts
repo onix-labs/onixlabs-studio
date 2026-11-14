@@ -11,7 +11,17 @@ export function formatBytes(bytes: number): string {
     size /= 1024;
     unit += 1;
   }
-  return `${unit === 0 ? size : size.toFixed(1)} ${units[unit]}`;
+  return `${unit === 0 ? Math.round(size) : size.toFixed(1)} ${units[unit]}`;
+}
+
+/**
+ * Formats a per-second byte rate for a chart's axis: like {@link formatRate}, but a whole number of its
+ * unit drops the `.0`, so the ticks read cleanly (`128 KB/s`, `1.5 MB/s`).
+ * @param bytesPerSec The rate in bytes per second.
+ * @returns Returns the formatted throughput.
+ */
+export function formatAxisRate(bytesPerSec: number): string {
+  return formatRate(bytesPerSec).replace(/\.0 /, ' ');
 }
 
 /**

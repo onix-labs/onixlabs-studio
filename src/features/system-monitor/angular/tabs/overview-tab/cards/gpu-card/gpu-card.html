@@ -1,0 +1,34 @@
+<app-system-monitor-dashboard-card
+  [icon]="Icon.MONITOR_GPU"
+  heading="GPU"
+  subtitle="Graphics processor utilisation"
+  (details)="details.emit()"
+>
+  <!-- The badge has an @if of its own: a node projected into a named slot must be its block's only
+       root. -->
+  @if (readings.gpuMonitoring()) {
+    <app-system-monitor-dashboard-badge cardBadges [value]="readings.gpuValue()" />
+  }
+
+  @if (readings.gpuMonitoring()) {
+    <app-system-monitor-line-chart
+      class="gpu-card__chart"
+      ariaLabel="GPU utilisation over time"
+      [series]="series()"
+      [max]="100"
+      [format]="percent"
+      [intervalMs]="readings.intervalMs()"
+    />
+
+    <dl class="gpu-card__facts">
+      @for (fact of facts(); track fact.label) {
+        <div class="gpu-card__fact">
+          <dt>{{ fact.label }}</dt>
+          <dd [title]="fact.value">{{ fact.value }}</dd>
+        </div>
+      }
+    </dl>
+  } @else {
+    <p class="gpu-card__off">GPU Monitoring is off. Turn it on in Settings to read the GPU.</p>
+  }
+</app-system-monitor-dashboard-card>

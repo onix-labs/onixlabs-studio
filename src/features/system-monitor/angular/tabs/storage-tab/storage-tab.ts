@@ -55,16 +55,16 @@ interface VolumeRow {
 }
 
 /**
- * Represents the System Monitor's Disk tab: read and write throughput, and each volume's space.
+ * Represents the System Monitor's Storage tab: read and write throughput, and each volume's space.
  */
 @Component({
-  selector: 'app-system-monitor-disk-tab',
+  selector: 'app-system-monitor-storage-tab',
   imports: [MetricTile],
-  templateUrl: './disk-tab.html',
-  styleUrl: './disk-tab.scss',
+  templateUrl: './storage-tab.html',
+  styleUrl: './storage-tab.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class DiskTab {
+export class StorageTab {
   /**
    * Gets the view's readings.
    */

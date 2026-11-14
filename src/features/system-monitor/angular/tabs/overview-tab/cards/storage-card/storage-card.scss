@@ -1,0 +1,74 @@
+@use '../cards' as *;
+
+:host {
+  @include host;
+}
+
+.storage-card__table {
+  @include table;
+
+  td {
+    padding-block: 0.6rem;
+    vertical-align: middle;
+  }
+}
+
+.storage-card__volume {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-inline-size: 0;
+}
+
+.storage-card__icon {
+  flex: none;
+  color: var(--form-muted-foreground-color);
+}
+
+.storage-card__names {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.storage-card__mount {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.storage-card__type {
+  font-size: 0.7rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.storage-card__table .storage-card__space {
+  inline-size: 40%;
+  font-variant-numeric: tabular-nums;
+}
+
+.storage-card__table .storage-card__usage {
+  inline-size: 22%;
+  text-align: end;
+}
+
+.storage-card__percent {
+  display: block;
+  margin-block-end: 0.3rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.storage-card__track {
+  @include usage-track;
+}
+
+.storage-card__fill {
+  @include usage-fill;
+}
+
+.storage-card__fill--full {
+  background-color: var(--warning-color);
+}
+
+.storage-card__empty {
+  @include empty;
+}

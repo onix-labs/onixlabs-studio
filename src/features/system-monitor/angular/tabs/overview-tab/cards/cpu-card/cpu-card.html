@@ -1,0 +1,41 @@
+<app-system-monitor-dashboard-card
+  [icon]="Icon.MONITOR_CPU"
+  heading="CPU"
+  subtitle="Processor utilisation and core activity"
+  (details)="details.emit()"
+>
+  <app-system-monitor-dashboard-badge cardBadges [value]="readings.cpuValue()" />
+
+  <app-system-monitor-line-chart
+    class="cpu-card__chart"
+    ariaLabel="CPU utilisation over time"
+    [series]="series()"
+    [max]="100"
+    [format]="percent"
+    [intervalMs]="readings.intervalMs()"
+  />
+
+  <dl class="cpu-card__facts">
+    @for (fact of facts(); track fact.label) {
+      <div>
+        <dt>{{ fact.label }}</dt>
+        <dd>{{ fact.value }}</dd>
+      </div>
+    }
+  </dl>
+
+  <section class="cpu-card__cores-section" aria-label="Core utilisation">
+    <h4 class="cpu-card__heading">Core Utilisation</h4>
+    @if (cores().length > 0) {
+      <div class="cpu-card__cores" data-testid="cpu-card-cores">
+        @for (core of cores(); track core.number) {
+          <div class="cpu-card__core" [title]="core.title">
+            <app-sparkline [values]="core.values" [max]="100" />
+          </div>
+        }
+      </div>
+    } @else {
+      <p class="cpu-card__empty">Each core's load appears after the next reading.</p>
+    }
+  </section>
+</app-system-monitor-dashboard-card>

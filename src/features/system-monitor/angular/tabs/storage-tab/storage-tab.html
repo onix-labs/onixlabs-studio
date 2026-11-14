@@ -1,0 +1,55 @@
+<div class="storage">
+  <app-metric-tile
+    class="storage__hero"
+    label="Disk activity"
+    [channels]="readings.diskChannels()"
+  />
+
+  <section>
+    <h3 class="storage__heading">Volumes</h3>
+    @if (volumes().length > 0) {
+      <table class="storage__list" data-testid="storage-volumes">
+        <thead>
+          <tr>
+            <th>Volume</th>
+            <th>Type</th>
+            <th class="storage__number">Used</th>
+            <th class="storage__number">Free</th>
+            <th class="storage__number">Size</th>
+            <th class="storage__usage-column" aria-label="Usage"></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (volume of volumes(); track volume.mount) {
+            <tr>
+              <td [title]="volume.mount">{{ volume.mount }}</td>
+              <td class="storage__muted">{{ volume.type }}</td>
+              <td class="storage__number">{{ volume.used }}</td>
+              <td class="storage__number">{{ volume.free }}</td>
+              <td class="storage__number">{{ volume.size }}</td>
+              <td>
+                <div
+                  class="storage__usage"
+                  role="meter"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  [attr.aria-valuenow]="volume.percent"
+                  [attr.aria-label]="volume.mount + ' in use'"
+                  [title]="volume.percentLabel + ' in use'"
+                >
+                  <div
+                    class="storage__usage-fill"
+                    [class.storage__usage-fill--full]="volume.nearlyFull"
+                    [style.inline-size.%]="volume.percent"
+                  ></div>
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    } @else {
+      <p class="storage__empty">Volumes appear after the next reading.</p>
+    }
+  </section>
+</div>

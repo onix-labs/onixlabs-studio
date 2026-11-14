@@ -177,6 +177,38 @@ export interface GpuMetric {
    * Gets the GPU utilisation, 0–100; meaningful only when {@link available} is true.
    */
   readonly percent: number;
+
+  /**
+   * Gets where the reading came from, or undefined when none was obtained.
+   */
+  readonly source?: GpuSource;
+}
+
+/**
+ * Identifies where a GPU reading came from.
+ * - `ioreg`: macOS's IOAccelerator statistics.
+ * - `nvidia-smi`: NVIDIA's driver tool, which systeminformation reads on Windows and Linux.
+ */
+export type GpuSource = 'ioreg' | 'nvidia-smi';
+
+/**
+ * Describes one graphics controller.
+ */
+export interface GpuInfo {
+  /**
+   * Gets the controller's model (for example `AMD Radeon Pro W5700X`).
+   */
+  readonly model: string;
+
+  /**
+   * Gets the controller's vendor, or the empty string when unknown.
+   */
+  readonly vendor: string;
+
+  /**
+   * Gets the controller's dedicated memory in bytes, or undefined when it has none or it is unknown.
+   */
+  readonly memoryBytes?: number;
 }
 
 /**
@@ -458,4 +490,15 @@ export interface SystemInfo {
    * Gets the operating system's name and version (for example `macOS 26.6`).
    */
   readonly os: string;
+
+  /**
+   * Gets when the machine started, in milliseconds since the epoch, for its uptime; undefined where the
+   * OS will not say (a sandboxed process can be refused it).
+   */
+  readonly bootTime?: number;
+
+  /**
+   * Gets the machine's graphics controllers, or an empty list when they could not be read.
+   */
+  readonly gpus: readonly GpuInfo[];
 }

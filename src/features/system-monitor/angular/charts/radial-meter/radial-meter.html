@@ -1,0 +1,27 @@
+<div
+  class="radial-meter"
+  role="meter"
+  aria-valuemin="0"
+  aria-valuemax="100"
+  [attr.aria-valuenow]="percent()"
+  [attr.aria-label]="description()"
+  [class.radial-meter--warning]="severity() === 'warning'"
+  [class.radial-meter--danger]="severity() === 'danger'"
+>
+  <svg class="radial-meter__svg" viewBox="0 0 100 100" aria-hidden="true">
+    <circle class="radial-meter__track" cx="50" cy="50" [attr.r]="radius" />
+    <!-- Drawn from twelve o'clock, clockwise. -->
+    <circle
+      class="radial-meter__fill"
+      cx="50"
+      cy="50"
+      [attr.r]="radius"
+      [attr.stroke-dasharray]="dash()"
+      transform="rotate(-90 50 50)"
+    />
+  </svg>
+  <div class="radial-meter__reading" aria-hidden="true">
+    <span class="radial-meter__value">{{ value() }}</span>
+    <span class="radial-meter__label">{{ label() }}</span>
+  </div>
+</div>

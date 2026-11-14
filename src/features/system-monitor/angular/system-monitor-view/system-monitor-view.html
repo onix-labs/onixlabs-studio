@@ -1,20 +1,17 @@
 <app-panel-layout class="system-monitor">
   <div main class="system-monitor__main">
-    <!-- The monitor is tabbed: Overview at a glance, a tab per resource in full, the processes, and the
-         logs on their own. One tab is in front at a time, and only its feeds run beyond the samples
-         every tab shares (the process listing runs only while Processes is in front). -->
-    <app-tab-list
-      class="system-monitor__tabs"
-      ariaLabel="System Monitor"
-      [tabs]="tabs()"
-      [value]="shownTab()"
-      (valueChange)="selectTab($event)"
-    />
-
-    <div class="system-monitor__body" role="tabpanel">
-      @switch (shownTab()) {
+    <!-- The monitor has views, which the ribbon's View group switches between: Overview at a glance,
+         a view per resource in full, System, and the logs on their own. One view is in front at a
+         time, and only its feeds run beyond the samples every view shares (processes are listed only
+         while Overview or Processes is in front). -->
+    <div class="system-monitor__body">
+      @switch (selectedTab()) {
         @case (Tab.Overview) {
-          <app-system-monitor-overview-tab (open)="selectTab($event)" />
+          <app-system-monitor-overview-tab
+            [logs]="logsOverview()"
+            [sessionStartedAt]="sessionStartedAt()"
+            (open)="selectTab($event)"
+          />
         }
         @case (Tab.Processes) {
           <app-system-monitor-processes-tab />
@@ -25,14 +22,17 @@
         @case (Tab.Memory) {
           <app-system-monitor-memory-tab />
         }
-        @case (Tab.Disk) {
-          <app-system-monitor-disk-tab />
+        @case (Tab.Storage) {
+          <app-system-monitor-storage-tab />
         }
         @case (Tab.Network) {
           <app-system-monitor-network-tab />
         }
         @case (Tab.Gpu) {
           <app-system-monitor-gpu-tab />
+        }
+        @case (Tab.System) {
+          <app-system-monitor-system-tab [sessionStartedAt]="sessionStartedAt()" />
         }
         @case (Tab.Logs) {
           <section class="system-monitor__audit">

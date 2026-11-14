@@ -1,13 +1,14 @@
 /**
- * Identifies one of the System Monitor's tabs.
+ * Identifies one of the System Monitor's views, which the ribbon's View group switches between.
  */
 export enum SystemMonitorTabId {
   Overview = 'overview',
-  Processes = 'processes',
   Cpu = 'cpu',
   Memory = 'memory',
-  Disk = 'disk',
-  Network = 'network',
   Gpu = 'gpu',
+  Processes = 'processes',
+  Storage = 'storage',
+  Network = 'network',
+  System = 'system',
   Logs = 'logs',
 }

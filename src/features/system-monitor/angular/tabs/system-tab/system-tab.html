@@ -1,0 +1,16 @@
+<div class="system">
+  <section>
+    <h3 class="system__heading">Health</h3>
+    <p class="system__health" [class.system__health--warning]="!health().healthy">
+      {{ health().label }}
+      @if (!health().healthy) {
+        <span class="system__reasons">— {{ reasons() }}</span>
+      }
+    </p>
+  </section>
+
+  <section>
+    <h3 class="system__heading">System</h3>
+    <app-system-monitor-system-facts [sessionStartedAt]="sessionStartedAt()" />
+  </section>
+</div>

@@ -1,0 +1,97 @@
+<div class="line-chart" [class.line-chart--bare]="!axis()">
+  @if (axis()) {
+    <div class="line-chart__ticks" aria-hidden="true">
+      @for (tick of ticks(); track tick.top) {
+        <span class="line-chart__tick" [style.top.%]="tick.top">{{ tick.label }}</span>
+      }
+    </div>
+  }
+
+  <div
+    class="line-chart__plot"
+    role="img"
+    tabindex="0"
+    [attr.aria-label]="ariaLabel()"
+    (pointermove)="onPointerMove($event)"
+    (pointerleave)="onPointerLeave()"
+    (focus)="onFocus()"
+    (blur)="onPointerLeave()"
+    (keydown)="onKeydown($event)"
+  >
+    <svg
+      class="line-chart__svg"
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      @if (axis()) {
+        @for (tick of ticks(); track tick.top) {
+          <line
+            class="line-chart__grid"
+            x1="0"
+            x2="100"
+            [attr.y1]="tick.top"
+            [attr.y2]="tick.top"
+            vector-effect="non-scaling-stroke"
+          />
+        }
+      }
+      @for (drawn of drawn(); track drawn.series.label) {
+        @if (drawn.area) {
+          <path class="line-chart__area" [attr.d]="drawn.area" />
+        }
+        <path
+          class="line-chart__line"
+          [class.line-chart__line--secondary]="drawn.series.emphasis === 'secondary'"
+          [attr.d]="drawn.line"
+          vector-effect="non-scaling-stroke"
+        />
+      }
+      @if (readout(); as hover) {
+        <line
+          class="line-chart__crosshair"
+          [attr.x1]="hover.left"
+          [attr.x2]="hover.left"
+          y1="0"
+          y2="100"
+          vector-effect="non-scaling-stroke"
+        />
+      }
+    </svg>
+
+    @if (readout(); as hover) {
+      <div
+        class="line-chart__readout"
+        [class.line-chart__readout--flipped]="hover.flipped"
+        [style.left.%]="hover.left"
+        role="status"
+      >
+        <span class="line-chart__when">{{ hover.when }}</span>
+        @for (row of hover.rows; track row.label) {
+          <span class="line-chart__row">
+            <span
+              class="line-chart__key"
+              [class.line-chart__key--secondary]="row.emphasis === 'secondary'"
+            ></span>
+            <strong class="line-chart__value">{{ row.value }}</strong>
+            <span class="line-chart__label">{{ row.label }}</span>
+          </span>
+        }
+      </div>
+    }
+  </div>
+
+  @if (legend()) {
+    <ul class="line-chart__legend" aria-label="Legend">
+      @for (drawn of drawn(); track drawn.series.label) {
+        <li class="line-chart__legend-item">
+          <span
+            class="line-chart__key"
+            [class.line-chart__key--secondary]="drawn.series.emphasis === 'secondary'"
+          ></span>
+          {{ drawn.series.label }}
+        </li>
+      }
+    </ul>
+  }
+</div>

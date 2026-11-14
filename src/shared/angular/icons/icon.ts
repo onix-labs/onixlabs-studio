@@ -185,6 +185,93 @@ export class Icon {
    */
   public static readonly SYSTEM_MONITOR: Icon = new Icon('ph-duotone ph-gauge');
 
+  // --- System Monitor: its views (the ribbon's View group, and the Overview's cards) ---
+
+  /**
+   * Gets the System Monitor's Overview icon.
+   */
+  public static readonly MONITOR_OVERVIEW: Icon = new Icon('ph-duotone ph-squares-four');
+
+  /**
+   * Gets the System Monitor's CPU icon.
+   */
+  public static readonly MONITOR_CPU: Icon = new Icon('ph-duotone ph-cpu');
+
+  /**
+   * Gets the System Monitor's Memory icon.
+   */
+  public static readonly MONITOR_MEMORY: Icon = new Icon('ph-duotone ph-memory');
+
+  /**
+   * Gets the System Monitor's GPU icon.
+   */
+  public static readonly MONITOR_GPU: Icon = new Icon('ph-duotone ph-graphics-card');
+
+  /**
+   * Gets the System Monitor's Processes icon.
+   */
+  public static readonly MONITOR_PROCESSES: Icon = new Icon('ph-duotone ph-stack');
+
+  /**
+   * Gets the System Monitor's Storage icon.
+   */
+  public static readonly MONITOR_STORAGE: Icon = new Icon('ph-duotone ph-hard-drives');
+
+  /**
+   * Gets the System Monitor's Network icon.
+   */
+  public static readonly MONITOR_NETWORK: Icon = new Icon('ph-duotone ph-wifi-high');
+
+  /**
+   * Gets the System Monitor's System icon.
+   */
+  public static readonly MONITOR_SYSTEM: Icon = new Icon('ph-duotone ph-info');
+
+  /**
+   * Gets the System Monitor's Logs icon.
+   */
+  public static readonly MONITOR_LOGS: Icon = new Icon('ph-duotone ph-file-text');
+
+  /**
+   * Gets the icon for a volume in the System Monitor's storage list.
+   */
+  public static readonly MONITOR_VOLUME: Icon = new Icon('ph ph-hard-drive');
+
+  /**
+   * Gets the icon for a process in the System Monitor's process lists.
+   */
+  public static readonly MONITOR_PROCESS: Icon = new Icon('ph ph-app-window');
+
+  /**
+   * Gets the icon for a shell process in the System Monitor's process lists.
+   */
+  public static readonly MONITOR_SHELL: Icon = new Icon('ph ph-terminal-window');
+
+  /**
+   * Gets the icon for the operating system in the System Monitor's system facts.
+   */
+  public static readonly MONITOR_OS: Icon = new Icon('ph ph-desktop-tower');
+
+  /**
+   * Gets the icon for uptime in the System Monitor's system facts.
+   */
+  public static readonly MONITOR_UPTIME: Icon = new Icon('ph ph-clock');
+
+  /**
+   * Gets the icon for the logging session in the System Monitor's system facts.
+   */
+  public static readonly MONITOR_SESSION: Icon = new Icon('ph ph-user');
+
+  /**
+   * Gets the arrow marking a received or read rate in the System Monitor.
+   */
+  public static readonly MONITOR_IN: Icon = new Icon('ph-bold ph-arrow-down');
+
+  /**
+   * Gets the arrow marking a sent or written rate in the System Monitor.
+   */
+  public static readonly MONITOR_OUT: Icon = new Icon('ph-bold ph-arrow-up');
+
   /**
    * Gets the AI Manager content icon, which also stands for its Local Models sub-view.
    */

@@ -1,0 +1,101 @@
+// The Overview cards' shared drawing: the facts row under a graph, the compact tables, the graph's box
+// and the small headings, so the eight cards read as one dashboard. Each card's stylesheet `@use`s
+// this and includes the mixins on its own classes.
+
+// A card fills its grid cell.
+@mixin host {
+  display: block;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+// A graph's box: it takes the card body's spare height, but never less than is legible.
+@mixin chart($min: 7rem) {
+  flex: 1 1 auto;
+  min-block-size: $min;
+}
+
+// Facts in a row: label over value, sharing the width. Put it on a `<dl>`.
+@mixin facts {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 0.5rem;
+  margin: 0;
+
+  dt {
+    font-size: 0.72rem;
+    color: var(--form-muted-foreground-color);
+  }
+
+  dd {
+    margin: 0.1rem 0 0;
+    overflow: hidden;
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--body-foreground-color);
+  }
+}
+
+// A small heading inside a card body.
+@mixin heading {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+// A compact table: muted headers, hairline rules, readings aligned in columns.
+@mixin table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 0.78rem;
+
+  th {
+    padding: 0.3rem 0.4rem;
+    border-block-end: 1px solid var(--dock-border-color);
+    font-weight: 500;
+    text-align: start;
+    color: var(--form-muted-foreground-color);
+  }
+
+  td {
+    padding: 0.4rem;
+    overflow: hidden;
+    border-block-end: 1px solid color-mix(in srgb, var(--dock-border-color) 50%, transparent);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--body-foreground-color);
+  }
+}
+
+// A number column: right-aligned, its digits lined up.
+@mixin number {
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+// A usage bar: a thin track with the share filled in.
+@mixin usage-track {
+  block-size: 0.35rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background-color: color-mix(in srgb, var(--accent-color) 15%, transparent);
+}
+
+@mixin usage-fill {
+  block-size: 100%;
+  border-radius: 999px;
+  background-color: var(--accent-color);
+}
+
+// What a card says while it has nothing to show yet.
+@mixin empty {
+  margin: auto 0;
+  font-size: 0.82rem;
+  text-align: center;
+  color: var(--form-muted-foreground-color);
+}

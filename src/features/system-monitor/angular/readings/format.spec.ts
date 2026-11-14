@@ -1,11 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { formatBytes, formatPercent, formatRate, formatShare } from './format';
+import { formatAxisRate, formatBytes, formatPercent, formatRate, formatShare } from './format';
 
 describe('format', () => {
   it('formatBytes_picksTheLargestWholeUnit', () => {
     expect(formatBytes(512)).toBe('512 B');
     expect(formatBytes(1536)).toBe('1.5 KB');
     expect(formatBytes(8 * 1024 ** 3)).toBe('8.0 GB');
+  });
+
+  it('formatBytes_roundsAWholeNumberOfBytes', () => {
+    expect(formatBytes(451.2552983)).toBe('451 B');
+  });
+
+  it('formatAxisRate_dropsAWholeUnitsDecimal', () => {
+    expect(formatAxisRate(128 * 1024)).toBe('128 KB/s');
+    expect(formatAxisRate(1.5 * 1024 ** 2)).toBe('1.5 MB/s');
+    expect(formatAxisRate(0)).toBe('0 B/s');
   });
 
   it('formatRate_isBytesPerSecond', () => {

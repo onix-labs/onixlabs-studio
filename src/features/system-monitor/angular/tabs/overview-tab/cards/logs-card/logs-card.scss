@@ -1,0 +1,27 @@
+@use '../cards' as *;
+
+:host {
+  @include host;
+}
+
+.logs-card__table {
+  @include table;
+
+  td {
+    padding-block: 0.45rem;
+  }
+}
+
+.logs-card__table .logs-card__time {
+  inline-size: 5.5rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--form-muted-foreground-color);
+}
+
+.logs-card__table .logs-card__level {
+  inline-size: 5.5rem;
+}
+
+.logs-card__empty {
+  @include empty;
+}

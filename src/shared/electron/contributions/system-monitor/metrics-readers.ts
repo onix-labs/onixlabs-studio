@@ -1,6 +1,7 @@
 import {
   AppUsageMetric,
   DiskMetric,
+  GpuInfo,
   GpuMetric,
   InterfaceMetric,
   MemoryDetailMetric,
@@ -67,6 +68,9 @@ export interface FsStat {
  * The subset of a `systeminformation` graphics controller this reads (`si.graphics().controllers`).
  */
 export interface GpuController {
+  readonly model?: string;
+  readonly vendor?: string;
+  readonly vram?: number | null;
   readonly utilizationGpu?: number | null;
 }
 
@@ -276,4 +280,25 @@ export function readVolumes(stats: readonly FsSizeStat[]): readonly VolumeMetric
     });
   }
   return volumes;
+}
+
+/**
+ * Maps the graphics controllers to the machine's GPUs.
+ * @param controllers The graphics controllers (`si.graphics().controllers`).
+ * @returns Returns each named controller, its dedicated memory in bytes where it reports some.
+ */
+export function readGpus(controllers: readonly GpuController[]): readonly GpuInfo[] {
+  return controllers
+    .filter(
+      (controller: GpuController): boolean =>
+        typeof controller.model === 'string' && controller.model.length > 0,
+    )
+    .map((controller: GpuController): GpuInfo => {
+      const vram: number | null | undefined = controller.vram;
+      return {
+        model: controller.model ?? '',
+        vendor: controller.vendor ?? '',
+        ...(typeof vram === 'number' && vram > 0 ? { memoryBytes: vram * 1024 * 1024 } : {}),
+      };
+    });
 }

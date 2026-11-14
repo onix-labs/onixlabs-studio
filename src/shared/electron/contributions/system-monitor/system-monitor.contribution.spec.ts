@@ -200,7 +200,7 @@ describe('SystemMonitorContribution', () => {
     expect(samples[0].memory.totalBytes).toBeGreaterThan(0);
     expect(samples[0].network).toEqual({ rxBytesPerSec: 11, txBytesPerSec: 20 });
     expect(samples[0].disk).toEqual({ readBytesPerSec: 5, writeBytesPerSec: 6 });
-    expect(samples[0].gpu).toEqual({ available: true, percent: 40 });
+    expect(samples[0].gpu).toEqual({ available: true, percent: 40, source: 'nvidia-smi' });
   });
 
   it('sharesOneLoop_betweenConsumers', async () => {
@@ -363,7 +363,7 @@ describe('SystemMonitorContribution', () => {
       send(SystemMonitorChannel.Start);
       await advance(1_000);
 
-      expect(samples[0].gpu).toEqual({ available: true, percent: 73 });
+      expect(samples[0].gpu).toEqual({ available: true, percent: 73, source: 'ioreg' });
       expect(machine.counts.graphics).toBe(0);
     });
 
@@ -374,7 +374,7 @@ describe('SystemMonitorContribution', () => {
       send(SystemMonitorChannel.Start);
       await advance(1_000);
 
-      expect(samples[0].gpu).toEqual({ available: true, percent: 40 });
+      expect(samples[0].gpu).toEqual({ available: true, percent: 40, source: 'nvidia-smi' });
     });
 
     it('fallsBack_whenIoregReportsNoUtilisation', async () => {
@@ -384,7 +384,7 @@ describe('SystemMonitorContribution', () => {
       send(SystemMonitorChannel.Start);
       await advance(1_000);
 
-      expect(samples[0].gpu).toEqual({ available: true, percent: 40 });
+      expect(samples[0].gpu).toEqual({ available: true, percent: 40, source: 'nvidia-smi' });
     });
   });
 
@@ -484,6 +484,12 @@ describe('SystemMonitorContribution', () => {
     expect(info.efficiencyCores).toBeUndefined();
     expect(info.speedGhz).toBe(3.2);
     expect(info.os).toBe('macOS 26.6');
+    // Best-effort: a sandboxed run can be refused the uptime, and then there is no boot time.
+    if (info.bootTime !== undefined) {
+      expect(info.bootTime).toBeLessThanOrEqual(Date.now());
+    }
+    // The mocked controller names no model, so no GPU is described.
+    expect(info.gpus).toEqual([]);
   });
 
   describe('dispose', () => {

@@ -1,0 +1,45 @@
+@use '../cards' as *;
+
+:host {
+  @include host;
+}
+
+.cpu-card__chart {
+  @include chart;
+}
+
+.cpu-card__facts {
+  @include facts;
+}
+
+.cpu-card__cores-section {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.cpu-card__heading {
+  @include heading;
+}
+
+// The per-core graphs: as many small wells as fit a row, each a core's load.
+.cpu-card__cores {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(1.4rem, 1fr));
+  gap: 0.2rem;
+}
+
+.cpu-card__core {
+  block-size: 1.3rem;
+  padding: 1px;
+  border-radius: 2px;
+  background-color: color-mix(in srgb, var(--accent-color) 6%, transparent);
+}
+
+.cpu-card__empty {
+  @include empty;
+
+  margin: 0;
+  text-align: start;
+}
