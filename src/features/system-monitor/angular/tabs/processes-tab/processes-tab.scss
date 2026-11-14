@@ -1,7 +1,7 @@
 @use '../tabs' as *;
 
-// The Processes view fills its tab: a header with the machine's summary, the toolbar, the list (which
-// scrolls its own rows) and the pager, fitting a full-screen 1080p display and scrolling below that.
+// The Processes view fills its tab: a header holding the filters, the list (which scrolls its own
+// rows) and the pager, fitting a full-screen 1080p display and scrolling below that.
 :host {
   @include host;
 }
@@ -16,10 +16,12 @@
   padding: 0.5rem;
 }
 
-// The title and count, then the summary tiles taking the rest of the row.
+// The title and count, then the filter, the scopes, and the column and row choices against the right
+// edge, wrapping onto a second line when the view is narrow.
 .processes__header {
   display: flex;
   flex: none;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem;
   min-inline-size: 0;
@@ -45,79 +47,6 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   color: var(--form-muted-foreground-color);
-}
-
-.processes__summary {
-  display: grid;
-  flex: 1 1 auto;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.5rem;
-  min-inline-size: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-// A tile: the icon, the label over the reading, and the trend taking the spare width.
-.processes__tile {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-inline-size: 0;
-  padding: 0.5rem 0.9rem;
-  border: 1px solid var(--dock-border-color);
-  border-radius: calc(0.75rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
-}
-
-.processes__tile-icon {
-  flex: none;
-  color: var(--accent-color);
-}
-
-.processes__tile-text {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  min-inline-size: 0;
-}
-
-.processes__tile-label {
-  font-size: 0.75rem;
-  color: var(--form-muted-foreground-color);
-}
-
-.processes__tile-value {
-  font-size: 0.78rem;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  color: var(--form-muted-foreground-color);
-
-  strong {
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: var(--accent-color);
-  }
-}
-
-.processes__tile-detail {
-  margin-inline-start: 0.25rem;
-}
-
-.processes__tile-graph {
-  flex: 1 1 auto;
-  block-size: 1.75rem;
-  min-inline-size: 3rem;
-}
-
-// The filter, the scopes, then the column and row choices against the right edge.
-.processes__toolbar {
-  display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
 }
 
 .processes__search {

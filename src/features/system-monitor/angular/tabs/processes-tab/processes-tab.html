@@ -4,31 +4,6 @@
     <h2 class="processes__title">Processes</h2>
     <span class="processes__count">{{ count() }}</span>
 
-    <ul class="processes__summary" aria-label="Summary">
-      @for (tile of summary(); track tile.label) {
-        <li class="processes__tile">
-          <app-icon class="processes__tile-icon" [icon]="tile.icon" [size]="1.4" />
-          <div class="processes__tile-text">
-            <span class="processes__tile-label">{{ tile.label }}</span>
-            <span class="processes__tile-value">
-              <strong>{{ tile.value }}</strong>
-              @if (tile.detail) {
-                <span class="processes__tile-detail">{{ tile.detail }}</span>
-              }
-            </span>
-          </div>
-          <app-system-monitor-sparkline
-            class="processes__tile-graph"
-            [values]="tile.values"
-            [max]="100"
-            [capacity]="tile.values.length"
-          />
-        </li>
-      }
-    </ul>
-  </header>
-
-  <div class="processes__toolbar">
     <app-text-field
       class="processes__search"
       kind="search"
@@ -94,7 +69,7 @@
         (click)="rowSize.set('comfortable')"
       />
     </div>
-  </div>
+  </header>
 
   <div class="processes__list">
     <app-table

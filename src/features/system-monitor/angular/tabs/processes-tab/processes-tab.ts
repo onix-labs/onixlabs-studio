@@ -24,19 +24,17 @@ import {
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Icon } from '@shared/angular/icons/icon';
 import {
-  MetricsSample,
   ProcessesSnapshot,
   ProcessSample,
   StudioProcessKind,
 } from '@shared/api/system-monitor-channels';
 import { Sparkline } from '../../charts/sparkline/sparkline';
-import { formatBytes, formatDuration, formatPercent, formatShare } from '../../readings/format';
+import { formatBytes, formatDuration, formatShare } from '../../readings/format';
 import {
   PROCESS_HISTORY,
   ProcessHistory,
   SystemMonitorProcesses,
 } from '../../readings/system-monitor-processes';
-import { SystemMonitorReadings } from '../../readings/system-monitor-readings';
 import { ProcessIcons } from '../../readings/process-icons';
 import { pageNumbers } from './pagination';
 
@@ -152,36 +150,6 @@ interface ProcessRow {
 }
 
 /**
- * Describes a summary tile over the list: a machine-wide reading and its recent trend.
- */
-interface SummaryTile {
-  /**
-   * Gets the tile's label.
-   */
-  readonly label: string;
-
-  /**
-   * Gets the tile's icon.
-   */
-  readonly icon: Icon;
-
-  /**
-   * Gets the reading.
-   */
-  readonly value: string;
-
-  /**
-   * Gets the reading's context (the total it is a share of), or the empty string.
-   */
-  readonly detail: string;
-
-  /**
-   * Gets the recent readings, oldest first, as percentages.
-   */
-  readonly values: readonly number[];
-}
-
-/**
  * Every column the list can show, in order.
  */
 const COLUMNS: readonly (TableColumn & { readonly id: ProcessColumnId })[] = [
@@ -254,7 +222,7 @@ function accountOf(user: string): string {
 /**
  * Represents the System Monitor's Processes view: the machine's processes in a paged table — each with
  * its app's icon, its CPU, memory and GPU readings beside their last two minutes as sparklines, its
- * threads and how long it has run — under a summary of the machine's CPU, memory and GPU.
+ * threads and how long it has run.
  *
  * The list narrows to the user's own processes, the system's, Studio's (its windows and helpers, and
  * everything it started), or those using the GPU, and filters by name, PID, path or user. Its columns
@@ -307,11 +275,6 @@ export class ProcessesTab {
    * Gets the view's process listing.
    */
   protected readonly listing: SystemMonitorProcesses = inject(SystemMonitorProcesses);
-
-  /**
-   * Gets the view's machine readings, for the summary.
-   */
-  protected readonly readings: SystemMonitorReadings = inject(SystemMonitorReadings);
 
   /**
    * Holds the apps' icons.
@@ -380,42 +343,6 @@ export class ProcessesTab {
           checked: !hidden.has(column.id as ProcessColumnId),
         }),
       );
-    },
-  );
-
-  /**
-   * Gets the summary tiles: the machine's CPU, memory and GPU.
-   */
-  protected readonly summary: Signal<readonly SummaryTile[]> = computed(
-    (): readonly SummaryTile[] => {
-      const sample: MetricsSample | null = this.readings.latest();
-      const memory: MetricsSample['memory'] | undefined = sample?.memory;
-      return [
-        {
-          label: 'CPU',
-          icon: Icon.MONITOR_CPU,
-          value: this.readings.cpuValue(),
-          detail: '',
-          values: this.readings.cpuHistory(),
-        },
-        {
-          label: 'Memory',
-          icon: Icon.MONITOR_MEMORY,
-          value: memory === undefined ? '—' : formatBytes(memory.usedBytes),
-          detail:
-            memory === undefined
-              ? ''
-              : `/ ${formatBytes(memory.totalBytes)} (${formatPercent(memory.percent)})`,
-          values: this.readings.memoryHistory(),
-        },
-        {
-          label: 'GPU',
-          icon: Icon.MONITOR_GPU,
-          value: this.readings.gpuValue(),
-          detail: '',
-          values: this.readings.gpuHistory(),
-        },
-      ];
     },
   );
 
