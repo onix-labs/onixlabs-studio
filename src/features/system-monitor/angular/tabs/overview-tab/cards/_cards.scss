@@ -67,6 +67,11 @@
     border-block-end: none;
   }
 
+  // The right-hand column reads against the card's right edge.
+  > div:nth-child(2n) {
+    text-align: end;
+  }
+
   dt {
     font-size: 0.72rem;
     color: var(--form-muted-foreground-color);
