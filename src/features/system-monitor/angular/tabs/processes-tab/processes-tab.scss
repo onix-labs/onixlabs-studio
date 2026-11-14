@@ -117,7 +117,8 @@
 .processes__command {
   padding: 0.5rem;
   overflow-wrap: anywhere;
-  border-radius: calc(0.35rem * var(--border-radius-multiplier, 1));
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
   font-size: 0.75rem;
   color: var(--form-muted-foreground-color);

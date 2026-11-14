@@ -2,13 +2,20 @@
   [icon]="Icon.MONITOR_CPU"
   heading="CPU"
   subtitle="Processor utilisation and core activity"
-  (details)="details.emit()"
 >
-  <app-system-monitor-dashboard-badge cardBadges [value]="readings.cpuValue()" />
+  <app-system-monitor-dashboard-badge cardBadges [value]="readings.cpuValue()" caption="System" />
+  @if (readings.cpuAppValue(); as studio) {
+    <app-system-monitor-dashboard-badge
+      cardBadges
+      tone="neutral"
+      [value]="studio"
+      caption="Studio"
+    />
+  }
 
   <app-system-monitor-line-chart
     class="cpu-card__chart"
-    ariaLabel="CPU utilisation over time"
+    ariaLabel="CPU utilisation over time, the system's and Studio's"
     [series]="series()"
     [max]="100"
     [format]="percent"

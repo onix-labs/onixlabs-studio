@@ -22,15 +22,4 @@ describe('DashboardCard', () => {
     expect(host.querySelector('article')?.getAttribute('aria-label')).toBe('CPU');
     expect(host.textContent).toContain('Processor utilisation');
   });
-
-  it('asksForItsFullView_fromItsLink', () => {
-    let asked: number = 0;
-    fixture.componentInstance.details.subscribe((): void => {
-      asked += 1;
-    });
-
-    host.querySelector<HTMLButtonElement>('footer button')?.click();
-
-    expect(asked).toBe(1);
-  });
 });

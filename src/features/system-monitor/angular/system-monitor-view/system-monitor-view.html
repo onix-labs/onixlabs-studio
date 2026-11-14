@@ -10,7 +10,6 @@
           <app-system-monitor-overview-tab
             [logs]="logsOverview()"
             [sessionStartedAt]="sessionStartedAt()"
-            (open)="selectTab($event)"
           />
         }
         @case (Tab.Processes) {

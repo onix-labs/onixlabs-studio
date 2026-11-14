@@ -2,12 +2,12 @@
   [icon]="Icon.MONITOR_GPU"
   heading="GPU"
   subtitle="Graphics processor utilisation"
-  (details)="details.emit()"
 >
   <!-- The badge has an @if of its own: a node projected into a named slot must be its block's only
-       root. -->
+       root. There is no Studio badge, as CPU and Memory have: no OS reports a process's own GPU use
+       portably (Electron's process metrics carry CPU and memory only). -->
   @if (readings.gpuMonitoring()) {
-    <app-system-monitor-dashboard-badge cardBadges [value]="readings.gpuValue()" />
+    <app-system-monitor-dashboard-badge cardBadges [value]="readings.gpuValue()" caption="System" />
   }
 
   @if (readings.gpuMonitoring()) {

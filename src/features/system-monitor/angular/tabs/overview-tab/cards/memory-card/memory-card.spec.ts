@@ -28,6 +28,7 @@ describe('MemoryCard', () => {
       cpu: 0,
       memory: { usedBytes: 49 * 1024 ** 3, totalBytes: 256 * 1024 ** 3, percent: 19 },
       memoryDetail: { availableBytes: 217 * 1024 ** 3, swapUsedBytes: 0, swapTotalBytes: 0 },
+      app: { cpuPercent: 0, memoryBytes: 512 * 1024 ** 2, memoryPercent: 0.2 },
     });
     fixture.detectChanges();
     await fixture.whenStable();
@@ -36,5 +37,7 @@ describe('MemoryCard', () => {
     expect(host.textContent).toContain('49.0 GB');
     expect(host.textContent).toContain('217.0 GB');
     expect(host.textContent).toContain('256.0 GB');
+    expect(host.textContent).toContain('512.0 MB (0%)');
+    expect(host.querySelector('[aria-label="Legend"]')?.textContent).toContain('Studio');
   });
 });

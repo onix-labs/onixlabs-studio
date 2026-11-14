@@ -36,7 +36,8 @@
 .line-chart__plot {
   position: relative;
   min-block-size: 0;
-  border-radius: 2px;
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   outline: none;
 
   &:focus-visible {
@@ -94,7 +95,8 @@
   margin-inline-start: 0.5rem;
   padding: 0.35rem 0.5rem;
   border: 1px solid var(--tooltip-border-color);
-  border-radius: calc(0.35rem * var(--border-radius-multiplier, 1));
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   background-color: var(--tooltip-background-color);
   box-shadow: 0 2px 8px var(--tooltip-shadow-color);
   color: var(--tooltip-foreground-color);

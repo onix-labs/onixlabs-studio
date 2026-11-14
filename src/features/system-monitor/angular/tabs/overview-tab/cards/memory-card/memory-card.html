@@ -2,9 +2,20 @@
   [icon]="Icon.MONITOR_MEMORY"
   heading="Memory"
   subtitle="System memory usage and allocation"
-  (details)="details.emit()"
 >
-  <app-system-monitor-dashboard-badge cardBadges [value]="readings.memoryValue()" />
+  <app-system-monitor-dashboard-badge
+    cardBadges
+    [value]="readings.memoryValue()"
+    caption="System"
+  />
+  @if (readings.memoryAppValue(); as studio) {
+    <app-system-monitor-dashboard-badge
+      cardBadges
+      tone="neutral"
+      [value]="studio"
+      caption="Studio"
+    />
+  }
 
   <div class="memory-card__summary">
     <app-system-monitor-radial-meter class="memory-card__meter" [percent]="used()" label="In Use" />
@@ -27,7 +38,7 @@
 
   <app-system-monitor-line-chart
     class="memory-card__chart"
-    ariaLabel="Memory in use over time"
+    ariaLabel="Memory in use over time, the system's and Studio's"
     [series]="series()"
     [max]="100"
     [format]="percent"

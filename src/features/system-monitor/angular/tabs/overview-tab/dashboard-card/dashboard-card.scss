@@ -1,4 +1,4 @@
-// A card fills its grid cell: the head, then a body that takes the rest, then the link to its view.
+// A card fills its grid cell: the head, then a body that takes the rest.
 :host {
   display: block;
   block-size: 100%;
@@ -13,7 +13,8 @@
   block-size: 100%;
   padding: 0.9rem 1rem 0.7rem;
   border: 1px solid var(--dock-border-color);
-  border-radius: calc(0.6rem * var(--border-radius-multiplier, 1));
+  border-radius: calc(1rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   // A shade darker than the panel, so each card reads as a well its readings sit in.
   background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
 }
@@ -48,9 +49,11 @@
   color: var(--form-muted-foreground-color);
 }
 
+// The badges share one height (the tallest's), each centring its own content.
 .dashboard-card__badges {
   display: flex;
   flex: none;
+  align-items: stretch;
   gap: 0.4rem;
 }
 
@@ -60,34 +63,4 @@
   flex-direction: column;
   gap: 0.75rem;
   min-block-size: 0;
-}
-
-.dashboard-card__foot {
-  display: flex;
-  flex: none;
-  justify-content: flex-end;
-}
-
-.dashboard-card__details {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.15rem 0.25rem;
-  border: none;
-  border-radius: calc(0.25rem * var(--border-radius-multiplier, 1));
-  background: none;
-  color: var(--accent-color);
-  font: inherit;
-  font-size: 0.78rem;
-  font-weight: 600;
-  cursor: pointer;
-
-  &:hover {
-    text-decoration: underline;
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--accent-color);
-    outline-offset: 1px;
-  }
 }

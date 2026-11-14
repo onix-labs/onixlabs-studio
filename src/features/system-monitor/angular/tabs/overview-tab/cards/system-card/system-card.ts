@@ -5,8 +5,6 @@ import {
   inject,
   input,
   InputSignal,
-  output,
-  OutputEmitterRef,
   Signal,
 } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
@@ -54,9 +52,4 @@ export class SystemCard {
     const reasons: readonly string[] = this.health().reasons;
     return reasons.length === 0 ? 'Nothing is under pressure' : reasons.join(', ');
   });
-
-  /**
-   * Emits when the user asks for the System view.
-   */
-  public readonly details: OutputEmitterRef<void> = output<void>();
 }

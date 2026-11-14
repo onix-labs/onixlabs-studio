@@ -1,12 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  inject,
-  output,
-  OutputEmitterRef,
-  Signal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Icon } from '@shared/angular/icons/icon';
 import { VolumeMetric } from '@shared/api/system-monitor-channels';
@@ -93,9 +85,4 @@ export class StorageCard {
       };
     }),
   );
-
-  /**
-   * Emits when the user asks for the Storage view.
-   */
-  public readonly details: OutputEmitterRef<void> = output<void>();
 }

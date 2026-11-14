@@ -1,8 +1,11 @@
+// A badge stretches to the height of the tallest badge beside it, so a captioned badge and a one-line
+// one share a height, and its content is centred in that height.
 :host {
-  display: inline-block;
+  display: flex;
 }
 
-// A badge is a soft wash of its tone with the tone's border; the words stay in text colours.
+// A badge is a soft wash of its tone with the tone's border, its reading and glyph in the tone itself
+// (neutral reads in the muted grey that marks Studio's own share elsewhere), its caption in muted text.
 .dashboard-badge {
   --dashboard-badge-tone: var(--accent-color);
 
@@ -11,7 +14,8 @@
   gap: 0.35rem;
   padding: 0.3rem 0.55rem;
   border: 1px solid color-mix(in srgb, var(--dashboard-badge-tone) 45%, transparent);
-  border-radius: calc(0.4rem * var(--border-radius-multiplier, 1));
+  border-radius: calc(0.6rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   background-color: color-mix(in srgb, var(--dashboard-badge-tone) 12%, transparent);
 }
 
@@ -35,8 +39,8 @@
   --dashboard-badge-tone: var(--info-color);
 }
 
-// The glyph carries the tone; the reading beside it stays legible text.
 .dashboard-badge__icon {
+  display: inline-flex;
   color: var(--dashboard-badge-tone);
 }
 
@@ -44,6 +48,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   line-height: 1.15;
 }
 
@@ -51,7 +56,7 @@
   font-size: 0.82rem;
   font-weight: 600;
   white-space: nowrap;
-  color: var(--body-foreground-color);
+  color: var(--dashboard-badge-tone);
 }
 
 .dashboard-badge__caption {

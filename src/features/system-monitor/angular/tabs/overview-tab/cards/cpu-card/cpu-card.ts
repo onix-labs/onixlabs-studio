@@ -1,12 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  inject,
-  output,
-  OutputEmitterRef,
-  Signal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { SystemInfo } from '@shared/api/system-monitor-channels';
 import { ChartSeries } from '../../../../charts/chart-series';
@@ -53,8 +45,8 @@ interface CpuFact {
 }
 
 /**
- * Represents the Overview's CPU card: the machine's load over time, the processor in four facts, and a
- * small graph per logical core so a single busy core stands out.
+ * Represents the Overview's CPU card: the machine's load over time with Studio's own share, the
+ * processor in four facts, and a small graph per logical core so a single busy core stands out.
  */
 @Component({
   selector: 'app-system-monitor-cpu-card',
@@ -80,11 +72,13 @@ export class CpuCard {
   protected readonly percent: (value: number) => string = formatPercent;
 
   /**
-   * Gets the load graph's series.
+   * Gets the load graph's series: the system's, and Studio's own share beneath it in grey. The per-core
+   * graphs carry the system's alone, since Studio's share is not read per core.
    */
   protected readonly series: Signal<readonly ChartSeries[]> = computed(
     (): readonly ChartSeries[] => [
-      { label: 'CPU', values: this.readings.cpuHistory(), emphasis: 'primary' },
+      { label: 'System', values: this.readings.cpuHistory(), emphasis: 'primary' },
+      { label: 'Studio', values: this.readings.appCpuHistory(), emphasis: 'secondary' },
     ],
   );
 
@@ -117,9 +111,4 @@ export class CpuCard {
         title: `Core ${index + 1}: ${formatPercent(latest[index] ?? 0)}`,
       }));
   });
-
-  /**
-   * Emits when the user asks for the CPU view.
-   */
-  public readonly details: OutputEmitterRef<void> = output<void>();
 }

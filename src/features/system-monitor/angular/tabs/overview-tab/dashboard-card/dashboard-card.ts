@@ -1,17 +1,11 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  input,
-  InputSignal,
-  output,
-  OutputEmitterRef,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Icon } from '@shared/angular/icons/icon';
 
 /**
  * Represents one card of the System Monitor's Overview: an icon, a title and what it covers, its
- * headline readings (projected with the `cardBadges` attribute), its body, and a link to its full view.
+ * headline readings (projected with the `cardBadges` attribute), and its body. Its full view is a
+ * button in the ribbon's View group.
  */
 @Component({
   selector: 'app-system-monitor-dashboard-card',
@@ -21,11 +15,6 @@ import { Icon } from '@shared/angular/icons/icon';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DashboardCard {
-  /**
-   * Gets the icon set, exposed for the template.
-   */
-  protected readonly Icon: typeof Icon = Icon;
-
   /**
    * Gets the card's icon.
    */
@@ -40,9 +29,4 @@ export class DashboardCard {
    * Gets what the card covers, beneath its title.
    */
   public readonly subtitle: InputSignal<string> = input.required<string>();
-
-  /**
-   * Emits when the user asks for the card's full view.
-   */
-  public readonly details: OutputEmitterRef<void> = output<void>();
 }

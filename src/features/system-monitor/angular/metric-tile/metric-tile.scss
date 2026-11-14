@@ -10,7 +10,8 @@
   block-size: 100%;
   padding: 0.6rem 0.75rem 0.5rem;
   border: 1px solid var(--dock-border-color);
-  border-radius: calc(0.5rem * var(--border-radius-multiplier, 1));
+  border-radius: calc(0.75rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   // A shade darker than the panel, so each tile reads as a well the graph sits in.
   background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
 }

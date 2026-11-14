@@ -4,8 +4,6 @@ import {
   computed,
   input,
   InputSignal,
-  output,
-  OutputEmitterRef,
   Signal,
 } from '@angular/core';
 import { Chip, ChipTone } from '@shared/angular/components/chip/chip';
@@ -121,9 +119,4 @@ export class LogsCard {
       };
     }),
   );
-
-  /**
-   * Emits when the user asks for the Logs view.
-   */
-  public readonly details: OutputEmitterRef<void> = output<void>();
 }

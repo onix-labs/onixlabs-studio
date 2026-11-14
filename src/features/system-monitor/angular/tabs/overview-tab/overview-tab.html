@@ -1,13 +1,10 @@
 <div class="overview" data-testid="overview">
-  <app-system-monitor-cpu-card (details)="open.emit(Tab.Cpu)" />
-  <app-system-monitor-memory-card (details)="open.emit(Tab.Memory)" />
-  <app-system-monitor-gpu-card (details)="open.emit(Tab.Gpu)" />
-  <app-system-monitor-processes-card (details)="open.emit(Tab.Processes)" />
-  <app-system-monitor-storage-card (details)="open.emit(Tab.Storage)" />
-  <app-system-monitor-network-card (details)="open.emit(Tab.Network)" />
-  <app-system-monitor-system-card
-    [sessionStartedAt]="sessionStartedAt()"
-    (details)="open.emit(Tab.System)"
-  />
-  <app-system-monitor-logs-card [logs]="logs()" (details)="open.emit(Tab.Logs)" />
+  <app-system-monitor-cpu-card />
+  <app-system-monitor-memory-card />
+  <app-system-monitor-gpu-card />
+  <app-system-monitor-network-card />
+  <app-system-monitor-storage-card />
+  <app-system-monitor-processes-card />
+  <app-system-monitor-system-card [sessionStartedAt]="sessionStartedAt()" />
+  <app-system-monitor-logs-card [logs]="logs()" />
 </div>

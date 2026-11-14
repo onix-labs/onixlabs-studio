@@ -687,7 +687,7 @@ export class SystemMonitorView implements OnInit {
   }
 
   /**
-   * Shows a view, as the ribbon's View group or an Overview card asks.
+   * Shows a view, as the ribbon's View group asks.
    * @param tab The view to show.
    */
   protected selectTab(tab: SystemMonitorTabId): void {

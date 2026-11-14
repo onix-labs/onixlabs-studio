@@ -37,11 +37,16 @@ describe('CpuCard', () => {
       cpu: 6,
       memory: { usedBytes: 1, totalBytes: 2, percent: 50 },
       cores: [1, 2, 3, 24],
+      app: { cpuPercent: 1, memoryBytes: 1, memoryPercent: 0 },
     });
     fixture.detectChanges();
     await fixture.whenStable();
 
     expect(host.textContent).toContain('2.70 GHz');
+    // The system's load and Studio's share each have a badge, and share the graph.
+    expect(host.textContent).toContain('System');
+    expect(host.textContent).toContain('Studio');
+    expect(host.querySelector('[aria-label="Legend"]')?.textContent).toContain('Studio');
     expect(host.textContent).toContain('6%');
     const cores: NodeListOf<HTMLElement> = host.querySelectorAll(
       '[data-testid="cpu-card-cores"] > div',

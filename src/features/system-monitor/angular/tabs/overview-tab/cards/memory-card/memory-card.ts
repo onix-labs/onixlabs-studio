@@ -1,12 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  inject,
-  output,
-  OutputEmitterRef,
-  Signal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { MetricsSample } from '@shared/api/system-monitor-channels';
 import { ChartSeries } from '../../../../charts/chart-series';
@@ -39,7 +31,7 @@ interface MemoryEntry {
 
 /**
  * Represents the Overview's Memory card: memory in use as a meter against the total, its breakdown, and
- * its history beneath.
+ * its history beneath with Studio's own share.
  */
 @Component({
   selector: 'app-system-monitor-memory-card',
@@ -72,11 +64,12 @@ export class MemoryCard {
   );
 
   /**
-   * Gets the history graph's series.
+   * Gets the history graph's series: the system's memory in use, and Studio's own share in grey.
    */
   protected readonly series: Signal<readonly ChartSeries[]> = computed(
     (): readonly ChartSeries[] => [
-      { label: 'In Use', values: this.readings.memoryHistory(), emphasis: 'primary' },
+      { label: 'System', values: this.readings.memoryHistory(), emphasis: 'primary' },
+      { label: 'Studio', values: this.readings.appMemoryHistory(), emphasis: 'secondary' },
     ],
   );
 
@@ -106,9 +99,4 @@ export class MemoryCard {
       ];
     },
   );
-
-  /**
-   * Emits when the user asks for the Memory view.
-   */
-  public readonly details: OutputEmitterRef<void> = output<void>();
 }
