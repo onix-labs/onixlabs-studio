@@ -1,35 +1,133 @@
 @use '../tabs' as *;
 
+// The Network view fills its tab: a header counting the interfaces with their summary, then
+// the cards in a grid that shares the view's height, fitting a full-screen 1080p display and scrolling
+// below that.
 :host {
   @include host;
 }
 
 .network {
-  @include page;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-sizing: border-box;
+  block-size: 100%;
+  min-block-size: 44rem;
+  padding: 0.75rem;
 }
 
-.network__hero {
-  @include hero;
+.network__header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.75rem;
+  min-inline-size: 0;
 }
 
-.network__heading {
-  @include heading;
+.network__icon {
+  flex: none;
+  color: var(--body-foreground-color);
 }
 
-.network__list {
-  @include list;
+.network__title {
+  flex: none;
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
 }
 
-// Scoped under the list so it outranks the list's own header alignment.
-.network__list .network__number {
-  @include number;
+.network__count {
+  flex: none;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
 }
 
-// An idle interface recedes, so the busy ones at the top stand out.
-.network__idle td {
-  @include muted;
+// The summary against the right edge: label over value, a hairline between each.
+.network__chips {
+  display: flex;
+  flex: 0 1 auto;
+  margin: 0 0 0 auto;
+  padding: 0.45rem 0.25rem;
+  overflow: hidden;
+  border: 1px solid var(--dock-border-color);
+  border-radius: calc(0.75rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
+  list-style: none;
 }
 
-.network__empty {
-  @include empty;
+.network__chip {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+  padding: 0 1.1rem;
+  border-inline-start: 1px solid var(--dock-border-color);
+
+  &:first-child {
+    border-inline-start: none;
+  }
+}
+
+.network__chip-label {
+  font-size: 0.72rem;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
+}
+
+.network__chip-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--body-foreground-color);
+}
+
+// Twelve columns, so the rows split them as the sketch does. Each card is a size container whose
+// height never comes from what it holds, so every row's height is stated: the middle row is the
+// tallest, as the chosen interface's details list up to ten facts.
+.network__grid {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-rows:
+    minmax(12rem, 0.85fr)
+    minmax(17rem, 1.2fr)
+    minmax(12rem, 0.95fr);
+  grid-template-areas:
+    'throughput throughput throughput throughput throughput throughput packets packets packets packets packets packets'
+    'interfaces interfaces interfaces interfaces interface interface interface interface activity activity activity activity'
+    'connections connections connections connections connections connections connections statistics statistics statistics statistics statistics';
+  gap: 0.75rem;
+  min-block-size: 0;
+}
+
+.network__throughput {
+  grid-area: throughput;
+}
+
+.network__packets {
+  grid-area: packets;
+}
+
+.network__interfaces {
+  grid-area: interfaces;
+}
+
+.network__interface {
+  grid-area: interface;
+}
+
+.network__activity {
+  grid-area: activity;
+}
+
+.network__connections {
+  grid-area: connections;
+}
+
+.network__statistics {
+  grid-area: statistics;
 }

@@ -4,6 +4,8 @@ import {
   GpuHistory,
   GpuReading,
   MetricsSample,
+  NetworkInfo,
+  NetworkReading,
   ProcessesSnapshot,
   SamplingRate,
   StorageInfo,
@@ -140,6 +142,51 @@ export class SystemMonitorMetrics {
         // No bridge outside Electron; there is nothing to unsubscribe.
       })
     );
+  }
+
+  /**
+   * Asks the backend to read the network interfaces for this consumer. Ref-counted in the backend.
+   */
+  public startNetwork(): void {
+    this.bridge?.send(SystemMonitorChannel.NetworkStart);
+  }
+
+  /**
+   * Asks the backend to stop reading the network interfaces for this consumer.
+   */
+  public stopNetwork(): void {
+    this.bridge?.send(SystemMonitorChannel.NetworkStop);
+  }
+
+  /**
+   * Subscribes to pushed network readings.
+   * @param listener The callback invoked with each reading.
+   * @returns Returns a function that removes the subscription.
+   */
+  public onNetwork(listener: (reading: NetworkReading) => void): () => void {
+    return (
+      this.bridge?.on(SystemMonitorChannel.Network, (...args: unknown[]): void =>
+        listener(args[0] as NetworkReading),
+      ) ??
+      ((): void => {
+        // No bridge outside Electron; there is nothing to unsubscribe.
+      })
+    );
+  }
+
+  /**
+   * Reads the machine's network interfaces, DNS servers and default gateway.
+   * @returns Returns the network, or null outside Electron or when it could not be read.
+   */
+  public async networkInfo(): Promise<NetworkInfo | null> {
+    if (this.bridge === undefined) {
+      return null;
+    }
+    try {
+      return await this.bridge.invoke<NetworkInfo>(SystemMonitorChannel.NetworkInfo);
+    } catch {
+      return null;
+    }
   }
 
   /**

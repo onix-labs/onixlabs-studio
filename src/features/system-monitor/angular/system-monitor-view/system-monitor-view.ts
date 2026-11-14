@@ -31,6 +31,8 @@ import { LogRecord, LogSession, SEVERITIES, Severity } from '@shared/api/log-cha
 import {
   GpuReading,
   MetricsSample,
+  NetworkInfo,
+  NetworkReading,
   ProcessesSnapshot,
   StorageInfo,
   StorageReading,
@@ -40,6 +42,7 @@ import { SystemMonitorReadings } from '../readings/system-monitor-readings';
 import { SystemMonitorProcesses } from '../readings/system-monitor-processes';
 import { SystemMonitorGpu } from '../readings/system-monitor-gpu';
 import { SystemMonitorStorage } from '../readings/system-monitor-storage';
+import { SystemMonitorNetwork } from '../readings/system-monitor-network';
 import { SystemMonitorTabId } from '../tabs/system-monitor-tab-id';
 import { OverviewTab } from '../tabs/overview-tab/overview-tab';
 import { ProcessesTab } from '../tabs/processes-tab/processes-tab';
@@ -210,6 +213,7 @@ interface AuditEntry {
     SystemMonitorProcesses,
     SystemMonitorGpu,
     SystemMonitorStorage,
+    SystemMonitorNetwork,
   ],
   templateUrl: './system-monitor-view.html',
   styleUrl: './system-monitor-view.scss',
@@ -281,6 +285,11 @@ export class SystemMonitorView implements OnInit {
    * Holds this monitor's storage readings, shared with the Storage tab.
    */
   private readonly storage: SystemMonitorStorage = inject(SystemMonitorStorage);
+
+  /**
+   * Holds this monitor's network readings, shared with the Network tab.
+   */
+  private readonly network: SystemMonitorNetwork = inject(SystemMonitorNetwork);
 
   /**
    * Holds the view chosen, which the ribbon's View group shows pressed. Overview first: it is the
@@ -583,6 +592,9 @@ export class SystemMonitorView implements OnInit {
     destroy.onDestroy(
       this.metrics.onStorage((reading: StorageReading): void => this.storage.accept(reading)),
     );
+    destroy.onDestroy(
+      this.metrics.onNetwork((reading: NetworkReading): void => this.network.accept(reading)),
+    );
     destroy.onDestroy((): void => this.unsubscribeFromLiveRecords());
     destroy.onDestroy((): void => this.commands.unregister(this.commandHandler));
     destroy.onDestroy((): void => {
@@ -619,6 +631,28 @@ export class SystemMonitorView implements OnInit {
           this.metrics.stopStorage();
         }
         readingStorage = wanted;
+      });
+    });
+
+    // The network is read only while the Network view is in front of the user. The interfaces are
+    // looked up again each time it comes forward, so one that came up since is listed.
+    let readingNetwork: boolean = false;
+    destroy.onDestroy((): void => {
+      if (readingNetwork) {
+        this.metrics.stopNetwork();
+      }
+    });
+    effect((): void => {
+      const wanted: boolean =
+        this.isActive() && this.onScreen() && this.selectedTab() === SystemMonitorTabId.Network;
+      untracked((): void => {
+        if (wanted && !readingNetwork) {
+          this.metrics.startNetwork();
+          void this.loadNetworkInfo();
+        } else if (!wanted && readingNetwork) {
+          this.metrics.stopNetwork();
+        }
+        readingNetwork = wanted;
       });
     });
 
@@ -776,6 +810,16 @@ export class SystemMonitorView implements OnInit {
    */
   protected selectTab(tab: SystemMonitorTabId): void {
     this.selectedTab.set(tab);
+  }
+
+  /**
+   * Reads the machine's network interfaces, DNS servers and gateway, for the Network tab.
+   */
+  private async loadNetworkInfo(): Promise<void> {
+    const info: NetworkInfo | null = await this.metrics.networkInfo();
+    if (info !== null) {
+      this.network.setInfo(info);
+    }
   }
 
   /**

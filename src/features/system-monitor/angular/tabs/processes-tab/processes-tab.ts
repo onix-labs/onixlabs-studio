@@ -3,11 +3,9 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
-  effect,
   inject,
   signal,
   Signal,
-  untracked,
   WritableSignal,
 } from '@angular/core';
 import { Chip } from '@shared/angular/components/chip/chip';
@@ -32,7 +30,6 @@ import {
   StudioProcessKind,
 } from '@shared/api/system-monitor-channels';
 import { Sparkline } from '../../charts/sparkline/sparkline';
-import { SystemMonitorMetrics } from '../../metrics/system-monitor-metrics';
 import { formatBytes, formatDuration, formatPercent, formatShare } from '../../readings/format';
 import {
   PROCESS_HISTORY,
@@ -40,6 +37,7 @@ import {
   SystemMonitorProcesses,
 } from '../../readings/system-monitor-processes';
 import { SystemMonitorReadings } from '../../readings/system-monitor-readings';
+import { ProcessIcons } from '../../readings/process-icons';
 import { pageNumbers } from './pagination';
 
 /**
@@ -151,12 +149,6 @@ interface ProcessRow {
    * Gets the Studio role, or null when the process is not Studio's.
    */
   readonly studio: string | null;
-
-  /**
-   * Gets the key the process's icon is looked up by, or null when it has no executable folder to look
-   * one up from.
-   */
-  readonly iconKey: string | null;
 }
 
 /**
@@ -322,9 +314,9 @@ export class ProcessesTab {
   protected readonly readings: SystemMonitorReadings = inject(SystemMonitorReadings);
 
   /**
-   * Holds the backend, asked for each app's icon.
+   * Holds the apps' icons.
    */
-  private readonly metrics: SystemMonitorMetrics = inject(SystemMonitorMetrics);
+  private readonly processIcons: ProcessIcons = inject(ProcessIcons);
 
   /**
    * Holds which processes the list shows.
@@ -362,18 +354,6 @@ export class ProcessesTab {
    * Holds how many rows a page shows.
    */
   protected readonly pageSize: WritableSignal<number> = signal<number>(50);
-
-  /**
-   * Holds each app's icon as looked up, by icon key: a data URL, or null for none of its own.
-   */
-  private readonly icons: WritableSignal<ReadonlyMap<string, string | null>> = signal<
-    ReadonlyMap<string, string | null>
-  >(new Map<string, string | null>());
-
-  /**
-   * Holds the icon keys asked for and not yet answered, so each is asked once.
-   */
-  private readonly asked: Set<string> = new Set<string>();
 
   /**
    * Gets the columns shown.
@@ -492,7 +472,6 @@ export class ProcessesTab {
         uptimeSeconds,
         uptime: uptimeSeconds < 0 ? '—' : formatDuration(uptimeSeconds),
         studio: process.studio === undefined ? null : STUDIO_ROLES[process.studio],
-        iconKey: process.location === undefined ? null : `${process.location}\u0000${process.name}`,
       };
     });
   });
@@ -580,20 +559,6 @@ export class ProcessesTab {
   );
 
   /**
-   * Starts looking up the icons of the apps on the current page.
-   */
-  public constructor() {
-    effect((): void => {
-      const keys: readonly ProcessRow[] = this.pageRows();
-      untracked((): void => {
-        for (const row of keys) {
-          this.askIcon(row);
-        }
-      });
-    });
-  }
-
-  /**
    * Gets the row a table row stands for.
    * @param row The table row.
    * @returns Returns the process row, or undefined when it has just left the listing.
@@ -608,7 +573,7 @@ export class ProcessesTab {
    * @returns Returns the icon as a data URL, or null when it has none of its own or is not read yet.
    */
   protected iconOf(row: ProcessRow): string | null {
-    return row.iconKey === null ? null : (this.icons().get(row.iconKey) ?? null);
+    return this.processIcons.icon(row.process.location, row.process.name);
   }
 
   /**
@@ -691,25 +656,6 @@ export class ProcessesTab {
   protected onRowClick(row: TableRow): void {
     const pid: number = Number(row.id);
     this.listing.select(this.listing.selectedPid() === pid ? null : pid);
-  }
-
-  /**
-   * Asks the backend for the icon of the app a row's process belongs to, once per app.
-   * @param row The row.
-   */
-  private askIcon(row: ProcessRow): void {
-    const key: string | null = row.iconKey;
-    const location: string | undefined = row.process.location;
-    if (key === null || location === undefined || this.asked.has(key)) {
-      return;
-    }
-    this.asked.add(key);
-    void this.metrics.processIcon(location, row.process.name).then((icon: string | null): void => {
-      this.icons.update(
-        (icons: ReadonlyMap<string, string | null>): ReadonlyMap<string, string | null> =>
-          new Map<string, string | null>(icons).set(key, icon),
-      );
-    });
   }
 }
 

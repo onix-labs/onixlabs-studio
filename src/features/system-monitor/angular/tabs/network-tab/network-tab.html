@@ -1,29 +1,25 @@
-<div class="network">
-  <app-metric-tile class="network__hero" label="Network" [channels]="readings.networkChannels()" />
+<div class="network" data-testid="network-view">
+  <header class="network__header">
+    <app-icon class="network__icon" [icon]="Icon.MONITOR_NETWORK" [size]="1.75" />
+    <h2 class="network__title">Network</h2>
+    <span class="network__count">{{ count() }}</span>
+    <ul class="network__chips" aria-label="Summary">
+      @for (chip of chips(); track chip.label) {
+        <li class="network__chip">
+          <span class="network__chip-label">{{ chip.label }}</span>
+          <strong class="network__chip-value">{{ chip.value }}</strong>
+        </li>
+      }
+    </ul>
+  </header>
 
-  <section>
-    <h3 class="network__heading">Interfaces</h3>
-    @if (interfaces().length > 0) {
-      <table class="network__list" data-testid="network-interfaces">
-        <thead>
-          <tr>
-            <th>Interface</th>
-            <th class="network__number">Received</th>
-            <th class="network__number">Sent</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (row of interfaces(); track row.name) {
-            <tr [class.network__idle]="row.idle">
-              <td>{{ row.name }}</td>
-              <td class="network__number">{{ row.received }}</td>
-              <td class="network__number">{{ row.sent }}</td>
-            </tr>
-          }
-        </tbody>
-      </table>
-    } @else {
-      <p class="network__empty">Interfaces appear after the next reading.</p>
-    }
-  </section>
+  <div class="network__grid">
+    <app-system-monitor-network-throughput-card class="network__throughput" />
+    <app-system-monitor-network-packets-card class="network__packets" />
+    <app-system-monitor-network-interfaces-card class="network__interfaces" />
+    <app-system-monitor-network-interface-card class="network__interface" />
+    <app-system-monitor-network-activity-card class="network__activity" />
+    <app-system-monitor-network-connections-card class="network__connections" />
+    <app-system-monitor-network-statistics-card class="network__statistics" />
+  </div>
 </div>

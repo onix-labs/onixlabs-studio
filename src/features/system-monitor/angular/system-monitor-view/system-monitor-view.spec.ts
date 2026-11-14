@@ -108,6 +108,25 @@ class FakeMetrics {
     return Promise.resolve(null);
   }
 
+  public networkStarted: number = 0;
+  public networkStopped: number = 0;
+
+  public startNetwork(): void {
+    this.networkStarted += 1;
+  }
+
+  public stopNetwork(): void {
+    this.networkStopped += 1;
+  }
+
+  public onNetwork(): () => void {
+    return (): void => undefined;
+  }
+
+  public networkInfo(): Promise<null> {
+    return Promise.resolve(null);
+  }
+
   public processIcon(): Promise<null> {
     return Promise.resolve(null);
   }
@@ -376,6 +395,17 @@ describe('SystemMonitorView', () => {
     view.selectTab('storage');
     fixture.detectChanges();
     expect(metrics.storageInfoReads).toBe(2);
+  });
+
+  it('network_isRead_onlyWhileTheNetworkViewIsInFront', async () => {
+    await create([], 'overview');
+    view.selectTab('network');
+    fixture.detectChanges();
+    expect(metrics.networkStarted).toBe(1);
+
+    view.selectTab('storage');
+    fixture.detectChanges();
+    expect(metrics.networkStopped).toBe(1);
   });
 
   it('processes_snapshotsReachTheListing', async () => {

@@ -358,6 +358,46 @@ export class Icon {
   public static readonly MONITOR_ACTIVITY: Icon = new Icon('ph-duotone ph-pulse');
 
   /**
+   * Gets the icon for a wired (Ethernet) network interface in the System Monitor.
+   */
+  public static readonly MONITOR_ETHERNET: Icon = new Icon('ph-duotone ph-network');
+
+  /**
+   * Gets the icon for a Wi-Fi network interface in the System Monitor.
+   */
+  public static readonly MONITOR_WIFI: Icon = new Icon('ph-duotone ph-wifi-high');
+
+  /**
+   * Gets the icon for the loopback network interface in the System Monitor.
+   */
+  public static readonly MONITOR_LOOPBACK: Icon = new Icon('ph-duotone ph-arrows-clockwise');
+
+  /**
+   * Gets the icon for a VPN or tunnel network interface in the System Monitor.
+   */
+  public static readonly MONITOR_VPN: Icon = new Icon('ph-duotone ph-lock-key');
+
+  /**
+   * Gets the icon for a bridge network interface in the System Monitor.
+   */
+  public static readonly MONITOR_BRIDGE: Icon = new Icon('ph-duotone ph-share-network');
+
+  /**
+   * Gets the icon for a virtual network interface in the System Monitor.
+   */
+  public static readonly MONITOR_VIRTUAL: Icon = new Icon('ph-duotone ph-cube');
+
+  /**
+   * Gets the icon for network packets in the System Monitor.
+   */
+  public static readonly MONITOR_PACKETS: Icon = new Icon('ph-duotone ph-package');
+
+  /**
+   * Gets the icon for network connections in the System Monitor.
+   */
+  public static readonly MONITOR_CONNECTIONS: Icon = new Icon('ph-duotone ph-arrows-left-right');
+
+  /**
    * Gets the icon for a volume in the System Monitor's storage list.
    */
   public static readonly MONITOR_VOLUME: Icon = new Icon('ph ph-hard-drive');

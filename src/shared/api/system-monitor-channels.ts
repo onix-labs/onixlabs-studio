@@ -98,6 +98,247 @@ export enum SystemMonitorChannel {
    * {@link StorageInfo}.
    */
   StorageInfo = 'system-monitor:storage-info',
+
+  /**
+   * Renderer → main (send): a Network view became visible and wants network readings. Ref-counted.
+   */
+  NetworkStart = 'system-monitor:network-start',
+
+  /**
+   * Renderer → main (send): a Network view is no longer visible.
+   */
+  NetworkStop = 'system-monitor:network-stop',
+
+  /**
+   * Main → renderer (send): one {@link NetworkReading}.
+   */
+  Network = 'system-monitor:network',
+
+  /**
+   * Renderer → main (invoke): the machine's network interfaces, DNS servers and default gateway, a
+   * {@link NetworkInfo}.
+   */
+  NetworkInfo = 'system-monitor:network-info',
+}
+
+/**
+ * The interval between network readings while a Network view is open, in milliseconds.
+ */
+export const NETWORK_SAMPLE_INTERVAL_MS: number = 2_000;
+
+/**
+ * Identifies the kind of a network interface.
+ */
+export type NetworkInterfaceKind =
+  'ethernet' | 'wifi' | 'loopback' | 'vpn' | 'bridge' | 'virtual' | 'other';
+
+/**
+ * Describes one network interface.
+ */
+export interface NetworkInterfaceInfo {
+  /**
+   * Gets the interface's identifier, as the OS names it (`en0`, `eth0`, `Ethernet`).
+   */
+  readonly id: string;
+
+  /**
+   * Gets the interface's friendly name (`Wi-Fi`, `Ethernet 1`), or its id where it has none.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the kind of interface.
+   */
+  readonly kind: NetworkInterfaceKind;
+
+  /**
+   * Gets whether the interface is up.
+   */
+  readonly up: boolean;
+
+  /**
+   * Gets whether the interface carries the default route.
+   */
+  readonly isDefault: boolean;
+
+  /**
+   * Gets the interface's hardware (MAC) address, where it has one.
+   */
+  readonly mac?: string;
+
+  /**
+   * Gets the interface's IPv4 address, where it has one.
+   */
+  readonly ipv4?: string;
+
+  /**
+   * Gets the interface's IPv6 address, a global one where it has one, where it has any.
+   */
+  readonly ipv6?: string;
+
+  /**
+   * Gets the interface's link speed, in megabits per second, where reported.
+   */
+  readonly speedMbps?: number;
+
+  /**
+   * Gets the interface's MTU, in bytes, where reported.
+   */
+  readonly mtu?: number;
+}
+
+/**
+ * Describes the machine's networking: its interfaces, the default interface first, and how it
+ * resolves names and reaches other networks.
+ */
+export interface NetworkInfo {
+  /**
+   * Gets the interfaces.
+   */
+  readonly interfaces: readonly NetworkInterfaceInfo[];
+
+  /**
+   * Gets the DNS servers the system resolves names through.
+   */
+  readonly dnsServers: readonly string[];
+
+  /**
+   * Gets the default gateway's address, where there is one.
+   */
+  readonly gateway?: string;
+}
+
+/**
+ * Describes one interface's activity in a {@link NetworkReading}.
+ */
+export interface NetworkInterfaceReading {
+  /**
+   * Gets the interface's id ({@link NetworkInterfaceInfo.id}).
+   */
+  readonly id: string;
+
+  /**
+   * Gets the bytes received per second since the last reading.
+   */
+  readonly rxBytesPerSecond: number;
+
+  /**
+   * Gets the bytes sent per second since the last reading.
+   */
+  readonly txBytesPerSecond: number;
+
+  /**
+   * Gets the packets received per second since the last reading.
+   */
+  readonly rxPacketsPerSecond: number;
+
+  /**
+   * Gets the packets sent per second since the last reading.
+   */
+  readonly txPacketsPerSecond: number;
+
+  /**
+   * Gets the bytes received since the interface's counters started (usually boot).
+   */
+  readonly totalRxBytes: number;
+
+  /**
+   * Gets the bytes sent since the interface's counters started.
+   */
+  readonly totalTxBytes: number;
+
+  /**
+   * Gets the packets received since the interface's counters started.
+   */
+  readonly totalRxPackets: number;
+
+  /**
+   * Gets the packets sent since the interface's counters started.
+   */
+  readonly totalTxPackets: number;
+
+  /**
+   * Gets the packets received with errors since the counters started.
+   */
+  readonly rxErrors: number;
+
+  /**
+   * Gets the packets that failed to send since the counters started.
+   */
+  readonly txErrors: number;
+
+  /**
+   * Gets the packets dropped, in either direction, since the counters started.
+   */
+  readonly dropped: number;
+}
+
+/**
+ * Describes one network connection (or listening socket).
+ */
+export interface NetworkConnection {
+  /**
+   * Gets the protocol (`TCP`, `UDP`).
+   */
+  readonly protocol: string;
+
+  /**
+   * Gets the local address and port (`192.168.1.42:52138`).
+   */
+  readonly local: string;
+
+  /**
+   * Gets the remote address and port, or the empty string for a socket with no peer.
+   */
+  readonly remote: string;
+
+  /**
+   * Gets the connection's state (`ESTABLISHED`, `LISTEN`), or the empty string where it has none.
+   */
+  readonly state: string;
+
+  /**
+   * Gets the owning process's pid, where known.
+   */
+  readonly pid?: number;
+
+  /**
+   * Gets the owning process's name, where known.
+   */
+  readonly process?: string;
+
+  /**
+   * Gets the folder the owning process's executable is in, where known; the key its icon is looked up
+   * by ({@link SystemMonitorChannel.ProcessIcon}).
+   */
+  readonly location?: string;
+}
+
+/**
+ * Describes one reading of the machine's network.
+ */
+export interface NetworkReading {
+  /**
+   * Gets when the reading was taken, as an ISO-8601 string.
+   */
+  readonly timestamp: string;
+
+  /**
+   * Gets each interface's activity.
+   */
+  readonly interfaces: readonly NetworkInterfaceReading[];
+
+  /**
+   * Gets the connections, when they were read with this reading; they are read less often than the
+   * interfaces, and a reading without them leaves the last ones standing.
+   */
+  readonly connections?: readonly NetworkConnection[];
+
+  /**
+   * Gets how long the system's DNS server took to answer, in milliseconds, when it was measured with
+   * this reading.
+   */
+  readonly dnsLatencyMs?: number;
 }
 
 /**

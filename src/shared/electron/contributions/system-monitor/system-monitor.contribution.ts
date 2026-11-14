@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { promises as dns } from 'node:dns';
 import { readdir, readFile } from 'node:fs/promises';
 import * as os from 'node:os';
 import { promisify } from 'node:util';
@@ -12,7 +13,12 @@ import {
   InterfaceMetric,
   MemoryDetailMetric,
   MetricsSample,
+  NETWORK_SAMPLE_INTERVAL_MS,
+  NetworkConnection,
+  NetworkInfo,
+  NetworkInterfaceReading,
   NetworkMetric,
+  NetworkReading,
   GPU_HISTORY_INTERVAL_MS,
   GPU_HISTORY_SPAN_MS,
   GPU_SAMPLE_INTERVAL_MS,
@@ -84,6 +90,8 @@ import {
   WindowsDisks,
 } from './storage-readers';
 import { StorageSampler } from './storage-sampler';
+import { parseHardwarePorts, readConnections, readNetworkInterfaces } from './network-readers';
+import { NetworkSampler } from './network-sampler';
 import { HeavyCadence, normaliseSamplingInterval } from './sampling-cadence';
 
 /**
@@ -296,6 +304,32 @@ export class SystemMonitorContribution implements MainContribution {
   private readingGpu: boolean = false;
 
   /**
+   * The number of Network views that want network readings.
+   */
+  private networkConsumers: number = 0;
+
+  /**
+   * The timer taking network readings, or null while none are wanted.
+   */
+  private networkTimer: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * Reads the interfaces' activity; replaced each time readings start.
+   */
+  private networkSampler: NetworkSampler = new NetworkSampler(gpuSources());
+
+  /**
+   * Counts the network readings since they started, deciding which also read the connections and the
+   * DNS server's latency.
+   */
+  private networkTicks: number = 0;
+
+  /**
+   * Whether a network reading is under way, so a slow one is not stacked on.
+   */
+  private readingNetwork: boolean = false;
+
+  /**
    * The number of Storage views that want storage readings.
    */
   private storageConsumers: number = 0;
@@ -387,6 +421,11 @@ export class SystemMonitorContribution implements MainContribution {
     context.on(SystemMonitorChannel.ProcessesStart, (): void => this.addProcessConsumer());
     context.on(SystemMonitorChannel.ProcessesStop, (): void => this.removeProcessConsumer());
     context.handle(SystemMonitorChannel.Info, (): Promise<SystemInfo> => this.readInfo());
+    context.on(SystemMonitorChannel.NetworkStart, (): void => this.addNetworkConsumer());
+    context.on(SystemMonitorChannel.NetworkStop, (): void => this.removeNetworkConsumer());
+    context.handle(SystemMonitorChannel.NetworkInfo, (): Promise<NetworkInfo> =>
+      this.readNetworkInfo(),
+    );
     context.on(SystemMonitorChannel.StorageStart, (): void => this.addStorageConsumer());
     context.on(SystemMonitorChannel.StorageStop, (): void => this.removeStorageConsumer());
     context.handle(SystemMonitorChannel.StorageInfo, (): Promise<StorageInfo> =>
@@ -414,6 +453,7 @@ export class SystemMonitorContribution implements MainContribution {
     this.stopListing();
     this.stopGpu();
     this.stopStorage();
+    this.stopNetwork();
     this.setGpuHistory(false);
     this.context = null;
     this.consumers = 0;
@@ -969,6 +1009,146 @@ export class SystemMonitorContribution implements MainContribution {
   }
 
   /**
+   * Adds a network-reading consumer, starting the readings when it is the first. The first reading is
+   * taken at once, so the next has something to compare with.
+   */
+  private addNetworkConsumer(): void {
+    this.networkConsumers += 1;
+    if (this.networkTimer === null) {
+      logger.debug('SystemMonitorContribution', 'Starting network readings');
+      this.networkSampler = new NetworkSampler(gpuSources());
+      this.networkTicks = 0;
+      this.readNetworkOnce();
+      this.networkTimer = setInterval(
+        (): void => this.readNetworkOnce(),
+        NETWORK_SAMPLE_INTERVAL_MS,
+      );
+    }
+  }
+
+  /**
+   * Removes a network-reading consumer, stopping the readings when it was the last.
+   */
+  private removeNetworkConsumer(): void {
+    this.networkConsumers = Math.max(0, this.networkConsumers - 1);
+    if (this.networkConsumers === 0) {
+      this.stopNetwork();
+    }
+  }
+
+  /**
+   * Stops the network readings.
+   */
+  private stopNetwork(): void {
+    if (this.networkTimer !== null) {
+      logger.debug('SystemMonitorContribution', 'Stopping network readings');
+      clearInterval(this.networkTimer);
+      this.networkTimer = null;
+    }
+  }
+
+  /**
+   * Reads the interfaces and pushes the reading to the renderer, skipping a tick while one is still
+   * running. Every {@link NETWORK_CONNECTIONS_EVERY}th reading also lists the connections, and every
+   * {@link NETWORK_LATENCY_EVERY}th times the DNS server; both from the first.
+   */
+  private readNetworkOnce(): void {
+    if (this.readingNetwork) {
+      return;
+    }
+    this.readingNetwork = true;
+    const tick: number = this.networkTicks;
+    this.networkTicks += 1;
+    void Promise.all([
+      this.networkSampler.read(),
+      tick % NETWORK_CONNECTIONS_EVERY === 0 ? this.readConnections() : Promise.resolve(undefined),
+      tick % NETWORK_LATENCY_EVERY === 0 ? measureDnsLatency() : Promise.resolve(undefined),
+    ])
+      .then(
+        ([interfaces, connections, dnsLatencyMs]: [
+          readonly NetworkInterfaceReading[],
+          readonly NetworkConnection[] | undefined,
+          number | undefined,
+        ]): void => {
+          if (this.networkTimer === null || interfaces.length === 0) {
+            return;
+          }
+          const reading: NetworkReading = {
+            timestamp: new Date().toISOString(),
+            interfaces,
+            ...(connections === undefined ? {} : { connections }),
+            ...(dnsLatencyMs === undefined ? {} : { dnsLatencyMs }),
+          };
+          this.context?.send(SystemMonitorChannel.Network, reading);
+        },
+      )
+      .catch((error: unknown): void => {
+        logger.debug('SystemMonitorContribution', 'Could not read the network', error);
+      })
+      .finally((): void => {
+        this.readingNetwork = false;
+      });
+  }
+
+  /**
+   * Lists the machine's connections and listening sockets.
+   * @returns Returns them, or undefined where they cannot be listed.
+   */
+  private async readConnections(): Promise<readonly NetworkConnection[] | undefined> {
+    try {
+      return readConnections(await si.networkConnections());
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Reads the machine's interfaces, the default first, named on macOS by their hardware ports, with
+   * the DNS servers and the default gateway.
+   * @returns Returns the network, empty where it cannot be read.
+   */
+  private async readNetworkInfo(): Promise<NetworkInfo> {
+    const [stats, defaultId, gateway, ports]: [
+      si.Systeminformation.NetworkInterfacesData[],
+      string,
+      string,
+      ReadonlyMap<string, string>,
+    ] = await Promise.all([
+      si
+        .networkInterfaces()
+        .then(
+          (
+            stats:
+              | si.Systeminformation.NetworkInterfacesData
+              | si.Systeminformation.NetworkInterfacesData[],
+          ): si.Systeminformation.NetworkInterfacesData[] =>
+            Array.isArray(stats) ? stats : [stats],
+        )
+        .catch((): si.Systeminformation.NetworkInterfacesData[] => []),
+      si.networkInterfaceDefault().catch((): string => ''),
+      si.networkGatewayDefault().catch((): string => ''),
+      process.platform === 'darwin'
+        ? run('networksetup', ['-listallhardwareports'], { timeout: 5_000, maxBuffer: 1024 * 1024 })
+            .then((output: { stdout: string }): ReadonlyMap<string, string> =>
+              parseHardwarePorts(output.stdout),
+            )
+            .catch((): ReadonlyMap<string, string> => new Map<string, string>())
+        : Promise.resolve(new Map<string, string>()),
+    ]);
+    let dnsServers: readonly string[] = [];
+    try {
+      dnsServers = dns.getServers();
+    } catch {
+      // No resolver configuration to read.
+    }
+    return {
+      interfaces: readNetworkInterfaces(stats, ports, defaultId.length > 0 ? defaultId : undefined),
+      dnsServers,
+      ...(gateway.length > 0 ? { gateway } : {}),
+    };
+  }
+
+  /**
    * Adds a storage-reading consumer, starting the readings when it is the first. The first reading is
    * taken at once, so the next has something to compare with.
    */
@@ -1460,6 +1640,38 @@ function definedOnly<T extends object>(readings: T): Partial<T> {
 function readBootTime(): number | undefined {
   try {
     return Date.now() - os.uptime() * 1000;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * How often a network reading also lists the connections: every third reading, six seconds apart.
+ * Listing them asks the OS for every socket and its process, which costs far more than the counters.
+ */
+const NETWORK_CONNECTIONS_EVERY: number = 3;
+
+/**
+ * How often a network reading also times the DNS server: every fifth reading, ten seconds apart.
+ */
+const NETWORK_LATENCY_EVERY: number = 5;
+
+/**
+ * The longest a DNS latency measurement waits for an answer, in milliseconds.
+ */
+const DNS_TIMEOUT_MS: number = 2_000;
+
+/**
+ * Times one query to the system's DNS server: the root zone's name servers, which every resolver
+ * answers (usually from its cache), so the time is the round trip to the resolver itself.
+ * @returns Returns the time in milliseconds, or undefined when the server did not answer.
+ */
+async function measureDnsLatency(): Promise<number | undefined> {
+  const resolver: dns.Resolver = new dns.Resolver({ timeout: DNS_TIMEOUT_MS, tries: 1 });
+  const started: number = performance.now();
+  try {
+    await resolver.resolveNs('.');
+    return Math.round(performance.now() - started);
   } catch {
     return undefined;
   }
