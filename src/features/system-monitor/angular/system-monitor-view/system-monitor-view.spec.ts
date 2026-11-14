@@ -339,7 +339,7 @@ describe('SystemMonitorView', () => {
   });
 
   it('processes_areListedOnlyWhileAViewShowingThemIsInFront', async () => {
-    await create([], 'system');
+    await create([], 'storage');
     expect(metrics.processesStarted).toBe(0);
 
     // The Overview's Processes card and the CPU view's top processes list them too.

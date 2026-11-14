@@ -30,9 +30,6 @@
         @case (Tab.Gpu) {
           <app-system-monitor-gpu-tab />
         }
-        @case (Tab.System) {
-          <app-system-monitor-system-tab [sessionStartedAt]="sessionStartedAt()" />
-        }
         @case (Tab.Logs) {
           <section class="system-monitor__audit">
             <header class="system-monitor__toolbar">

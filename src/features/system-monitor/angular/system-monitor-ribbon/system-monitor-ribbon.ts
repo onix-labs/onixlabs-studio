@@ -44,13 +44,12 @@ const VIEWS: readonly MonitorView[] = [
   { tab: SystemMonitorTabId.Processes, label: 'Processes', icon: Icon.MONITOR_PROCESSES },
   { tab: SystemMonitorTabId.Storage, label: 'Storage', icon: Icon.MONITOR_STORAGE },
   { tab: SystemMonitorTabId.Network, label: 'Network', icon: Icon.MONITOR_NETWORK },
-  { tab: SystemMonitorTabId.System, label: 'System', icon: Icon.MONITOR_SYSTEM },
   { tab: SystemMonitorTabId.Logs, label: 'Logs', icon: Icon.MONITOR_LOGS },
 ];
 
 /**
  * The contextual ribbon shown while a System Monitor tab is active. It is the monitor's tab strip: the
- * View group's buttons switch between its views (Overview, each resource, System and Logs), the one
+ * View group's buttons switch between its views (Overview, each resource, and Logs), the one
  * showing pressed. Its actions drive the active monitor through the {@link SystemMonitorCommands}
  * registry. The Audit and Clipboard groups belong to the logs, so they appear only on the Logs view:
  * refresh reloads the audit, clear resets the filters, and copy is enabled only when the audit shows

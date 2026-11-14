@@ -49,7 +49,6 @@ import { ProcessesTab } from '../tabs/processes-tab/processes-tab';
 import { CpuTab } from '../tabs/cpu-tab/cpu-tab';
 import { MemoryTab } from '../tabs/memory-tab/memory-tab';
 import { StorageTab } from '../tabs/storage-tab/storage-tab';
-import { SystemTab } from '../tabs/system-tab/system-tab';
 import { LogsOverview } from '../tabs/overview-tab/logs-overview';
 import { NetworkTab } from '../tabs/network-tab/network-tab';
 import { GpuTab } from '../tabs/gpu-tab/gpu-tab';
@@ -194,7 +193,6 @@ interface AuditEntry {
     CpuTab,
     MemoryTab,
     StorageTab,
-    SystemTab,
     NetworkTab,
     GpuTab,
     Panel,

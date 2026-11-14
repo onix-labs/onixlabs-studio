@@ -72,7 +72,8 @@ function describeGpus(gpus: readonly GpuInfo[]): string {
 
 /**
  * Represents the machine's facts: its operating system, processor, cores, memory, GPU and its video
- * memory, how long it has been up, and when the logging session started. Shared by the Overview's System card and the System view.
+ * memory, how long it has been up, and when the logging session started. Shown by the Overview's
+ * System card.
  */
 @Component({
   selector: 'app-system-monitor-system-facts',

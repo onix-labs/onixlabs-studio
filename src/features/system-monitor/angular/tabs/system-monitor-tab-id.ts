@@ -9,6 +9,5 @@ export enum SystemMonitorTabId {
   Processes = 'processes',
   Storage = 'storage',
   Network = 'network',
-  System = 'system',
   Logs = 'logs',
 }

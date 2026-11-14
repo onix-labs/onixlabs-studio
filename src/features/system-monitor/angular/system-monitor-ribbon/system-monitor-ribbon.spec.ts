@@ -90,7 +90,7 @@ describe('SystemMonitorRibbon', () => {
     });
 
     it('offersEveryView_andPressesTheOneShowing', () => {
-      expect(labels().slice(0, 9)).toEqual([
+      expect(labels().slice(0, 8)).toEqual([
         'Overview',
         'CPU',
         'Memory',
@@ -98,7 +98,6 @@ describe('SystemMonitorRibbon', () => {
         'Processes',
         'Storage',
         'Network',
-        'System',
         'Logs',
       ]);
       expect(button('Overview').getAttribute('aria-pressed')).toBe('true');
