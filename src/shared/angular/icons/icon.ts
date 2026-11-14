@@ -338,6 +338,26 @@ export class Icon {
   public static readonly PAGE_LAST: Icon = new Icon('ph ph-caret-double-right');
 
   /**
+   * Gets the icon for a storage device in the System Monitor's Storage view.
+   */
+  public static readonly MONITOR_DRIVE: Icon = new Icon('ph-duotone ph-hard-drive');
+
+  /**
+   * Gets the icon for a USB storage device in the System Monitor's Storage view.
+   */
+  public static readonly MONITOR_DRIVE_USB: Icon = new Icon('ph-duotone ph-usb');
+
+  /**
+   * Gets the icon for a storage device's input/output operations in the System Monitor.
+   */
+  public static readonly MONITOR_IOPS: Icon = new Icon('ph-duotone ph-speedometer');
+
+  /**
+   * Gets the icon for a device's activity (how busy it is) in the System Monitor.
+   */
+  public static readonly MONITOR_ACTIVITY: Icon = new Icon('ph-duotone ph-pulse');
+
+  /**
    * Gets the icon for a volume in the System Monitor's storage list.
    */
   public static readonly MONITOR_VOLUME: Icon = new Icon('ph ph-hard-drive');

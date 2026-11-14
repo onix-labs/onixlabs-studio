@@ -1,56 +1,132 @@
 @use '../tabs' as *;
 
+// The Storage view fills its tab: a header counting the drives and volumes with their summary, then
+// the cards in a grid that shares the view's height, fitting a full-screen 1080p display and scrolling
+// below that.
 :host {
   @include host;
 }
 
 .storage {
-  @include page;
-}
-
-.storage__hero {
-  @include hero;
-}
-
-.storage__heading {
-  @include heading;
-}
-
-.storage__list {
-  @include list;
-}
-
-// Scoped under the list so it outranks the list's own header alignment.
-.storage__list .storage__number {
-  @include number;
-}
-
-.storage__muted {
-  @include muted;
-}
-
-.storage__usage-column {
-  inline-size: 30%;
-}
-
-// A volume's usage: a thin bar, turning to the warning colour once nearly full.
-.storage__usage {
-  block-size: 0.4rem;
-  min-inline-size: 6rem;
-  overflow: hidden;
-  border-radius: 999px;
-  background-color: color-mix(in srgb, var(--dock-border-color) 70%, transparent);
-}
-
-.storage__usage-fill {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-sizing: border-box;
   block-size: 100%;
-  background-color: var(--accent-color);
+  min-block-size: 44rem;
+  padding: 0.75rem;
 }
 
-.storage__usage-fill--full {
-  background-color: var(--warning-color);
+.storage__header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.75rem;
+  min-inline-size: 0;
 }
 
-.storage__empty {
-  @include empty;
+.storage__icon {
+  flex: none;
+  color: var(--body-foreground-color);
+}
+
+.storage__title {
+  flex: none;
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.storage__count {
+  flex: none;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
+}
+
+// The summary against the right edge: label over value, a hairline between each.
+.storage__chips {
+  display: flex;
+  flex: 0 1 auto;
+  margin: 0 0 0 auto;
+  padding: 0.45rem 0.25rem;
+  overflow: hidden;
+  border: 1px solid var(--dock-border-color);
+  border-radius: calc(0.75rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
+  list-style: none;
+}
+
+.storage__chip {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+  padding: 0 1.1rem;
+  border-inline-start: 1px solid var(--dock-border-color);
+
+  &:first-child {
+    border-inline-start: none;
+  }
+}
+
+.storage__chip-label {
+  font-size: 0.72rem;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
+}
+
+.storage__chip-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--body-foreground-color);
+}
+
+// Twelve columns, so the rows split them as the sketch does. Each card is a size container whose
+// height never comes from what it holds, so every row's height is stated.
+.storage__grid {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-rows:
+    minmax(13rem, 1fr)
+    minmax(13rem, 1fr)
+    minmax(12rem, 1fr);
+  grid-template-areas:
+    'activity activity activity activity activity activity iops iops iops iops iops iops'
+    'devices devices devices device device device device utilisation utilisation utilisation utilisation utilisation'
+    'volumes volumes volumes volumes volumes volumes volumes volumes statistics statistics statistics statistics';
+  gap: 0.75rem;
+  min-block-size: 0;
+}
+
+.storage__activity {
+  grid-area: activity;
+}
+
+.storage__iops {
+  grid-area: iops;
+}
+
+.storage__devices {
+  grid-area: devices;
+}
+
+.storage__device {
+  grid-area: device;
+}
+
+.storage__utilisation {
+  grid-area: utilisation;
+}
+
+.storage__volumes {
+  grid-area: volumes;
+}
+
+.storage__statistics {
+  grid-area: statistics;
 }

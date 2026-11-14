@@ -1,0 +1,31 @@
+<app-system-monitor-dashboard-card [icon]="Icon.MONITOR_ACTIVITY" heading="Device Utilisation">
+  <app-system-monitor-dashboard-badge cardBadges [value]="value()" />
+  @if (reported()) {
+    <app-system-monitor-line-chart
+      class="storage-utilisation__chart"
+      ariaLabel="How busy the drive has been over time"
+      [series]="series()"
+      [max]="100"
+      [format]="percent"
+      [showLegend]="false"
+      [intervalMs]="intervalMs"
+    />
+  } @else {
+    <p class="storage-utilisation__empty">Measuring…</p>
+  }
+  <ul
+    class="storage-utilisation__stats"
+    aria-label="Live figures"
+    data-testid="storage-utilisation-stats"
+  >
+    @for (stat of stats(); track stat.label) {
+      <li class="storage-utilisation__stat">
+        <app-icon class="storage-utilisation__icon" [icon]="stat.icon" [size]="1.1" />
+        <span class="storage-utilisation__text">
+          <span class="storage-utilisation__label">{{ stat.label }}</span>
+          <span class="storage-utilisation__value">{{ stat.value }}</span>
+        </span>
+      </li>
+    }
+  </ul>
+</app-system-monitor-dashboard-card>

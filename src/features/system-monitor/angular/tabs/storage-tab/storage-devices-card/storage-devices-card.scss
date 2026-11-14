@@ -1,0 +1,94 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+// The drives, scrolling within the card when there are more than fit.
+.storage-devices {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+// A drive: its icon, its name over its size and connection, and a mark showing it is the one chosen.
+.storage-devices__device {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: calc(0.6rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background: none;
+  font: inherit;
+  text-align: start;
+  color: inherit;
+  cursor: default;
+
+  &:hover {
+    background-color: color-mix(in srgb, var(--accent-color) 8%, transparent);
+  }
+
+  &:focus-visible {
+    outline: none;
+    border-color: var(--accent-color);
+  }
+}
+
+.storage-devices__device--chosen {
+  border-color: color-mix(in srgb, var(--accent-color) 45%, transparent);
+  background-color: color-mix(in srgb, var(--accent-color) 16%, transparent);
+}
+
+.storage-devices__icon {
+  flex: none;
+  color: var(--accent-color);
+}
+
+.storage-devices__text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.storage-devices__name {
+  overflow: hidden;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--body-foreground-color);
+}
+
+.storage-devices__detail {
+  overflow: hidden;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
+}
+
+// A ring, filled with the accent for the chosen drive.
+.storage-devices__mark {
+  flex: none;
+  box-sizing: border-box;
+  inline-size: 0.7rem;
+  block-size: 0.7rem;
+  border: 1.5px solid var(--form-muted-foreground-color);
+  border-radius: 50%;
+}
+
+.storage-devices__device--chosen .storage-devices__mark {
+  border-color: var(--accent-color);
+  background-color: var(--accent-color);
+}
+
+.storage-devices__empty {
+  @include empty;
+}

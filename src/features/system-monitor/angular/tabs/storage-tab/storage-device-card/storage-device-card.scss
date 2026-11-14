@@ -1,0 +1,63 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+// The drive's picture beside its facts.
+.storage-device {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 1.25rem;
+  min-block-size: 0;
+}
+
+.storage-device__picture {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: 6.5rem;
+  block-size: 6.5rem;
+  border-radius: calc(0.9rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background-color: color-mix(in srgb, var(--accent-color) 12%, transparent);
+  color: var(--accent-color);
+}
+
+// Label beside value, the labels in a column of their own.
+.storage-device__facts {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.3rem 1.5rem;
+  min-inline-size: 0;
+  max-block-size: 100%;
+  margin: 0;
+  overflow: auto;
+}
+
+.storage-device__fact {
+  display: contents;
+
+  dt {
+    font-size: 0.8rem;
+    color: var(--form-muted-foreground-color);
+  }
+
+  dd {
+    min-inline-size: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--body-foreground-color);
+  }
+}
+
+.storage-device__empty {
+  @include empty;
+}

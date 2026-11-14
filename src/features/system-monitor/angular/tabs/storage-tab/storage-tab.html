@@ -1,55 +1,25 @@
-<div class="storage">
-  <app-metric-tile
-    class="storage__hero"
-    label="Disk activity"
-    [channels]="readings.diskChannels()"
-  />
+<div class="storage" data-testid="storage-view">
+  <header class="storage__header">
+    <app-icon class="storage__icon" [icon]="Icon.MONITOR_STORAGE" [size]="1.75" />
+    <h2 class="storage__title">Storage</h2>
+    <span class="storage__count">{{ count() }}</span>
+    <ul class="storage__chips" aria-label="Summary">
+      @for (chip of chips(); track chip.label) {
+        <li class="storage__chip">
+          <span class="storage__chip-label">{{ chip.label }}</span>
+          <strong class="storage__chip-value">{{ chip.value }}</strong>
+        </li>
+      }
+    </ul>
+  </header>
 
-  <section>
-    <h3 class="storage__heading">Volumes</h3>
-    @if (volumes().length > 0) {
-      <table class="storage__list" data-testid="storage-volumes">
-        <thead>
-          <tr>
-            <th>Volume</th>
-            <th>Type</th>
-            <th class="storage__number">Used</th>
-            <th class="storage__number">Free</th>
-            <th class="storage__number">Size</th>
-            <th class="storage__usage-column" aria-label="Usage"></th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (volume of volumes(); track volume.mount) {
-            <tr>
-              <td [title]="volume.mount">{{ volume.mount }}</td>
-              <td class="storage__muted">{{ volume.type }}</td>
-              <td class="storage__number">{{ volume.used }}</td>
-              <td class="storage__number">{{ volume.free }}</td>
-              <td class="storage__number">{{ volume.size }}</td>
-              <td>
-                <div
-                  class="storage__usage"
-                  role="meter"
-                  aria-valuemin="0"
-                  aria-valuemax="100"
-                  [attr.aria-valuenow]="volume.percent"
-                  [attr.aria-label]="volume.mount + ' in use'"
-                  [title]="volume.percentLabel + ' in use'"
-                >
-                  <div
-                    class="storage__usage-fill"
-                    [class.storage__usage-fill--full]="volume.nearlyFull"
-                    [style.inline-size.%]="volume.percent"
-                  ></div>
-                </div>
-              </td>
-            </tr>
-          }
-        </tbody>
-      </table>
-    } @else {
-      <p class="storage__empty">Volumes appear after the next reading.</p>
-    }
-  </section>
+  <div class="storage__grid">
+    <app-system-monitor-storage-activity-card class="storage__activity" />
+    <app-system-monitor-storage-iops-card class="storage__iops" />
+    <app-system-monitor-storage-devices-card class="storage__devices" />
+    <app-system-monitor-storage-device-card class="storage__device" />
+    <app-system-monitor-storage-utilisation-card class="storage__utilisation" />
+    <app-system-monitor-storage-volumes-card class="storage__volumes" />
+    <app-system-monitor-storage-statistics-card class="storage__statistics" />
+  </div>
 </div>

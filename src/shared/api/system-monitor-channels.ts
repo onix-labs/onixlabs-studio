@@ -77,6 +77,198 @@ export enum SystemMonitorChannel {
    * its own.
    */
   ProcessIcon = 'system-monitor:process-icon',
+
+  /**
+   * Renderer → main (send): a Storage view became visible and wants storage readings. Ref-counted.
+   */
+  StorageStart = 'system-monitor:storage-start',
+
+  /**
+   * Renderer → main (send): a Storage view is no longer visible.
+   */
+  StorageStop = 'system-monitor:storage-stop',
+
+  /**
+   * Main → renderer (send): one {@link StorageReading}.
+   */
+  Storage = 'system-monitor:storage',
+
+  /**
+   * Renderer → main (invoke): the machine's storage devices and the device each volume is on, a
+   * {@link StorageInfo}.
+   */
+  StorageInfo = 'system-monitor:storage-info',
+}
+
+/**
+ * The interval between storage readings while a Storage view is open, in milliseconds.
+ */
+export const STORAGE_SAMPLE_INTERVAL_MS: number = 2_000;
+
+/**
+ * Identifies the kind of a storage device.
+ */
+export type StorageDeviceKind = 'nvme' | 'ssd' | 'hdd' | 'usb' | 'virtual' | 'other';
+
+/**
+ * Describes one physical storage device (a drive, not a volume on it).
+ */
+export interface StorageDevice {
+  /**
+   * Gets the device's identifier: its BSD name on macOS (`disk0`), its kernel name on Linux
+   * (`nvme0n1`), its physical-disk number on Windows (`0`).
+   */
+  readonly id: string;
+
+  /**
+   * Gets the device's model name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the device's vendor, where reported.
+   */
+  readonly vendor?: string;
+
+  /**
+   * Gets the kind of device.
+   */
+  readonly kind: StorageDeviceKind;
+
+  /**
+   * Gets how the device is connected (`PCIe 3.0 x4`, `SATA`, `USB`), where reported.
+   */
+  readonly connection?: string;
+
+  /**
+   * Gets the device's capacity, in bytes.
+   */
+  readonly sizeBytes: number;
+
+  /**
+   * Gets the device's serial number, where reported.
+   */
+  readonly serial?: string;
+
+  /**
+   * Gets the device's firmware revision, where reported.
+   */
+  readonly firmware?: string;
+
+  /**
+   * Gets the device's self-reported (S.M.A.R.T.) health, where the platform reports it.
+   */
+  readonly health?: 'ok' | 'failing';
+}
+
+/**
+ * Describes the device a volume is on.
+ */
+export interface StorageVolumeDevice {
+  /**
+   * Gets the volume's mount point.
+   */
+  readonly mount: string;
+
+  /**
+   * Gets the id of the device it is on, or undefined when it could not be worked out.
+   */
+  readonly deviceId?: string;
+
+  /**
+   * Gets the volume's name (its label), where it has one.
+   */
+  readonly name?: string;
+}
+
+/**
+ * Describes the machine's storage: its devices, and the device each volume is on.
+ */
+export interface StorageInfo {
+  /**
+   * Gets the physical storage devices, the one the system runs from first where known.
+   */
+  readonly devices: readonly StorageDevice[];
+
+  /**
+   * Gets the device each mounted volume is on.
+   */
+  readonly volumes: readonly StorageVolumeDevice[];
+}
+
+/**
+ * Describes one device's activity in a {@link StorageReading}.
+ */
+export interface StorageDeviceReading {
+  /**
+   * Gets the device's id ({@link StorageDevice.id}).
+   */
+  readonly id: string;
+
+  /**
+   * Gets the bytes read per second since the last reading.
+   */
+  readonly readBytesPerSecond: number;
+
+  /**
+   * Gets the bytes written per second since the last reading.
+   */
+  readonly writeBytesPerSecond: number;
+
+  /**
+   * Gets the read operations per second since the last reading.
+   */
+  readonly readOpsPerSecond: number;
+
+  /**
+   * Gets the write operations per second since the last reading.
+   */
+  readonly writeOpsPerSecond: number;
+
+  /**
+   * Gets the share of the time since the last reading the device was busy, 0–100, where reported.
+   */
+  readonly utilisationPercent?: number;
+
+  /**
+   * Gets the device's temperature, in °C, where reported.
+   */
+  readonly temperatureC?: number;
+
+  /**
+   * Gets the bytes read since the device's counters started (usually boot).
+   */
+  readonly totalReadBytes: number;
+
+  /**
+   * Gets the bytes written since the device's counters started.
+   */
+  readonly totalWriteBytes: number;
+
+  /**
+   * Gets the read operations since the device's counters started.
+   */
+  readonly totalReadOps: number;
+
+  /**
+   * Gets the write operations since the device's counters started.
+   */
+  readonly totalWriteOps: number;
+}
+
+/**
+ * Describes one reading of the machine's storage devices.
+ */
+export interface StorageReading {
+  /**
+   * Gets when the reading was taken, as an ISO-8601 string.
+   */
+  readonly timestamp: string;
+
+  /**
+   * Gets each device's activity.
+   */
+  readonly devices: readonly StorageDeviceReading[];
 }
 
 /**

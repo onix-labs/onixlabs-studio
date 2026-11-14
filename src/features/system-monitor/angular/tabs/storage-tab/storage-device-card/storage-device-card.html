@@ -1,0 +1,31 @@
+<app-system-monitor-dashboard-card [icon]="icon()" [heading]="device()?.name ?? 'Device'">
+  @if (device(); as drive) {
+    <div class="storage-device" data-testid="storage-device">
+      <div class="storage-device__picture" aria-hidden="true">
+        <app-icon [icon]="icon()" [size]="3.5" />
+      </div>
+      <dl class="storage-device__facts">
+        @for (fact of facts(); track fact.label) {
+          <div class="storage-device__fact">
+            <dt>{{ fact.label }}</dt>
+            <dd [title]="fact.value">{{ fact.value }}</dd>
+          </div>
+        }
+        @if (drive.health) {
+          <div class="storage-device__fact">
+            <dt>Health</dt>
+            <dd>
+              @if (drive.health === 'ok') {
+                <app-chip tone="success" [icon]="Icon.CHECK">OK</app-chip>
+              } @else {
+                <app-chip tone="danger" [icon]="Icon.WARNING">Failing</app-chip>
+              }
+            </dd>
+          </div>
+        }
+      </dl>
+    </div>
+  } @else {
+    <p class="storage-device__empty">Reading the drives…</p>
+  }
+</app-system-monitor-dashboard-card>

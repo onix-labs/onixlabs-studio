@@ -6,6 +6,8 @@ import {
   MetricsSample,
   ProcessesSnapshot,
   SamplingRate,
+  StorageInfo,
+  StorageReading,
   SystemInfo,
   SystemMonitorChannel,
 } from '@shared/api/system-monitor-channels';
@@ -138,6 +140,51 @@ export class SystemMonitorMetrics {
         // No bridge outside Electron; there is nothing to unsubscribe.
       })
     );
+  }
+
+  /**
+   * Asks the backend to read the storage devices for this consumer. Ref-counted in the backend.
+   */
+  public startStorage(): void {
+    this.bridge?.send(SystemMonitorChannel.StorageStart);
+  }
+
+  /**
+   * Asks the backend to stop reading the storage devices for this consumer.
+   */
+  public stopStorage(): void {
+    this.bridge?.send(SystemMonitorChannel.StorageStop);
+  }
+
+  /**
+   * Subscribes to pushed storage readings.
+   * @param listener The callback invoked with each reading.
+   * @returns Returns a function that removes the subscription.
+   */
+  public onStorage(listener: (reading: StorageReading) => void): () => void {
+    return (
+      this.bridge?.on(SystemMonitorChannel.Storage, (...args: unknown[]): void =>
+        listener(args[0] as StorageReading),
+      ) ??
+      ((): void => {
+        // No bridge outside Electron; there is nothing to unsubscribe.
+      })
+    );
+  }
+
+  /**
+   * Reads the machine's storage devices and the device each volume is on.
+   * @returns Returns the storage, or null outside Electron or when it could not be read.
+   */
+  public async storageInfo(): Promise<StorageInfo | null> {
+    if (this.bridge === undefined) {
+      return null;
+    }
+    try {
+      return await this.bridge.invoke<StorageInfo>(SystemMonitorChannel.StorageInfo);
+    } catch {
+      return null;
+    }
   }
 
   /**

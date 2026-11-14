@@ -82,3 +82,24 @@ export function formatDuration(seconds: number): string {
   }
   return minutes > 0 ? `${minutes}m ${pad(rest)}s` : `${rest}s`;
 }
+
+/**
+ * Formats a count with its thousands grouped (`1,042`, `2,615,981,436`), rounded to a whole number.
+ * @param count The count.
+ * @returns Returns the formatted count.
+ */
+export function formatCount(count: number): string {
+  return Math.round(count).toLocaleString('en-GB');
+}
+
+/**
+ * Formats a count for a chart's axis: thousands and millions shortened (`800`, `8K`, `1.5M`).
+ * @param count The count.
+ * @returns Returns the formatted count.
+ */
+export function formatAxisCount(count: number): string {
+  if (count >= 1_000_000) {
+    return `${Number((count / 1_000_000).toFixed(1))}M`;
+  }
+  return count >= 1000 ? `${Number((count / 1000).toFixed(1))}K` : `${Math.round(count)}`;
+}

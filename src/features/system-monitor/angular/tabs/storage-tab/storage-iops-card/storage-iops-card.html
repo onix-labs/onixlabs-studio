@@ -1,0 +1,10 @@
+<app-system-monitor-dashboard-card [icon]="Icon.MONITOR_IOPS" heading="IOPS">
+  <app-system-monitor-dashboard-badge cardBadges tone="neutral" [value]="readings.historyLabel()" />
+  <app-system-monitor-line-chart
+    class="storage-iops__chart"
+    ariaLabel="Disk read and write operations per second over time"
+    [series]="series()"
+    [format]="format"
+    [intervalMs]="intervalMs"
+  />
+</app-system-monitor-dashboard-card>

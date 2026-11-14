@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   formatAxisRate,
   formatBytes,
+  formatAxisCount,
+  formatCount,
   formatDuration,
   formatPercent,
   formatRate,
@@ -44,5 +46,17 @@ describe('format', () => {
     expect(formatShare(0.04)).toBe('0.0%');
     expect(formatShare(3.44)).toBe('3.4%');
     expect(formatShare(27.6)).toBe('28%');
+  });
+
+  it('formatCount_groupsTheThousands', () => {
+    expect(formatCount(2_615_981_436.4)).toBe('2,615,981,436');
+    expect(formatCount(354)).toBe('354');
+  });
+
+  it('formatAxisCount_shortensThousandsAndMillions', () => {
+    expect(formatAxisCount(800)).toBe('800');
+    expect(formatAxisCount(8000)).toBe('8K');
+    expect(formatAxisCount(1500)).toBe('1.5K');
+    expect(formatAxisCount(2_000_000)).toBe('2M');
   });
 });

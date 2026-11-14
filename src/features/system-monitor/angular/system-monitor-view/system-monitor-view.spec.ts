@@ -86,6 +86,31 @@ class FakeMetrics {
   public gpuHistory(): Promise<null> {
     return Promise.resolve(null);
   }
+
+  public storageStarted: number = 0;
+  public storageStopped: number = 0;
+  public storageInfoReads: number = 0;
+
+  public startStorage(): void {
+    this.storageStarted += 1;
+  }
+
+  public stopStorage(): void {
+    this.storageStopped += 1;
+  }
+
+  public onStorage(): () => void {
+    return (): void => undefined;
+  }
+
+  public storageInfo(): Promise<null> {
+    this.storageInfoReads += 1;
+    return Promise.resolve(null);
+  }
+
+  public processIcon(): Promise<null> {
+    return Promise.resolve(null);
+  }
 }
 
 /**
@@ -333,6 +358,24 @@ describe('SystemMonitorView', () => {
     view.selectTab('cpu');
     fixture.detectChanges();
     expect(metrics.gpuStopped).toBe(1);
+  });
+
+  it('storage_isRead_onlyWhileTheStorageViewIsInFront_itsDrivesLookedUpEachTime', async () => {
+    await create([], 'overview');
+    expect(metrics.storageStarted).toBe(0);
+
+    view.selectTab('storage');
+    fixture.detectChanges();
+    expect(metrics.storageStarted).toBe(1);
+    expect(metrics.storageInfoReads).toBe(1);
+
+    view.selectTab('cpu');
+    fixture.detectChanges();
+    expect(metrics.storageStopped).toBe(1);
+
+    view.selectTab('storage');
+    fixture.detectChanges();
+    expect(metrics.storageInfoReads).toBe(2);
   });
 
   it('processes_snapshotsReachTheListing', async () => {

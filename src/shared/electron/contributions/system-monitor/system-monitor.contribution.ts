@@ -25,6 +25,10 @@ import {
   ProcessesSnapshot,
   ProcessSample,
   SamplingRate,
+  STORAGE_SAMPLE_INTERVAL_MS,
+  StorageInfo,
+  StorageReading,
+  StorageVolumeDevice,
   SystemInfo,
   SystemMonitorChannel,
   VolumeMetric,
@@ -70,6 +74,16 @@ import { iconTarget } from './process-icons';
 import { architectureOf, parseIoregStatistics } from './gpu-readers';
 import { GpuSampler, GpuSources } from './gpu-sampler';
 import { MetricsSampler } from './metrics-sampler';
+import {
+  deviceOfVolume,
+  parseApfsContainers,
+  parseProfiledDisks,
+  ProfiledDisk,
+  readStorageDevices,
+  StorageCounters,
+  WindowsDisks,
+} from './storage-readers';
+import { StorageSampler } from './storage-sampler';
 import { HeavyCadence, normaliseSamplingInterval } from './sampling-cadence';
 
 /**
@@ -282,6 +296,27 @@ export class SystemMonitorContribution implements MainContribution {
   private readingGpu: boolean = false;
 
   /**
+   * The number of Storage views that want storage readings.
+   */
+  private storageConsumers: number = 0;
+
+  /**
+   * The timer taking storage readings, or null while none are wanted.
+   */
+  private storageTimer: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * Reads the storage devices' activity; replaced each time readings start, so the first reading
+   * compares with nothing stale.
+   */
+  private storageSampler: StorageSampler = new StorageSampler(gpuSources());
+
+  /**
+   * Whether a storage reading is under way, so a slow one is not stacked on.
+   */
+  private readingStorage: boolean = false;
+
+  /**
    * The background GPU history interval, or null while GPU Monitoring is off.
    */
   private gpuHistoryTimer: ReturnType<typeof setInterval> | null = null;
@@ -352,6 +387,11 @@ export class SystemMonitorContribution implements MainContribution {
     context.on(SystemMonitorChannel.ProcessesStart, (): void => this.addProcessConsumer());
     context.on(SystemMonitorChannel.ProcessesStop, (): void => this.removeProcessConsumer());
     context.handle(SystemMonitorChannel.Info, (): Promise<SystemInfo> => this.readInfo());
+    context.on(SystemMonitorChannel.StorageStart, (): void => this.addStorageConsumer());
+    context.on(SystemMonitorChannel.StorageStop, (): void => this.removeStorageConsumer());
+    context.handle(SystemMonitorChannel.StorageInfo, (): Promise<StorageInfo> =>
+      this.readStorageInfo(),
+    );
     context.on(SystemMonitorChannel.GpuStart, (): void => this.addGpuConsumer());
     context.on(SystemMonitorChannel.GpuStop, (): void => this.removeGpuConsumer());
     context.handle(SystemMonitorChannel.GpuHistory, (_event: unknown, span: unknown): GpuHistory =>
@@ -373,6 +413,7 @@ export class SystemMonitorContribution implements MainContribution {
     this.stopSampling();
     this.stopListing();
     this.stopGpu();
+    this.stopStorage();
     this.setGpuHistory(false);
     this.context = null;
     this.consumers = 0;
@@ -925,6 +966,149 @@ export class SystemMonitorContribution implements MainContribution {
         }),
       }));
     return { points, intervalMs };
+  }
+
+  /**
+   * Adds a storage-reading consumer, starting the readings when it is the first. The first reading is
+   * taken at once, so the next has something to compare with.
+   */
+  private addStorageConsumer(): void {
+    this.storageConsumers += 1;
+    if (this.storageTimer === null) {
+      logger.debug('SystemMonitorContribution', 'Starting storage readings');
+      this.storageSampler = new StorageSampler(gpuSources());
+      this.readStorageOnce();
+      this.storageTimer = setInterval(
+        (): void => this.readStorageOnce(),
+        STORAGE_SAMPLE_INTERVAL_MS,
+      );
+    }
+  }
+
+  /**
+   * Removes a storage-reading consumer, stopping the readings when it was the last.
+   */
+  private removeStorageConsumer(): void {
+    this.storageConsumers = Math.max(0, this.storageConsumers - 1);
+    if (this.storageConsumers === 0) {
+      this.stopStorage();
+    }
+  }
+
+  /**
+   * Stops the storage readings.
+   */
+  private stopStorage(): void {
+    if (this.storageTimer !== null) {
+      logger.debug('SystemMonitorContribution', 'Stopping storage readings');
+      clearInterval(this.storageTimer);
+      this.storageTimer = null;
+    }
+  }
+
+  /**
+   * Reads the storage devices and pushes the reading to the renderer, skipping a tick while one is
+   * still running.
+   */
+  private readStorageOnce(): void {
+    if (this.readingStorage) {
+      return;
+    }
+    this.readingStorage = true;
+    void this.storageSampler
+      .read()
+      .then((reading: StorageReading | undefined): void => {
+        if (reading !== undefined && this.storageTimer !== null) {
+          this.context?.send(SystemMonitorChannel.Storage, reading);
+        }
+      })
+      .catch((error: unknown): void => {
+        logger.debug('SystemMonitorContribution', 'Could not read storage', error);
+      })
+      .finally((): void => {
+        this.readingStorage = false;
+      });
+  }
+
+  /**
+   * Reads the machine's storage devices and the device each volume is on. The devices are those the
+   * platform counts activity for, described by systeminformation and, on macOS, System Information
+   * (how each is connected, its S.M.A.R.T. status); APFS volumes are traced through their container to
+   * the drive it lives on, and Windows drive letters through the disk counters' names.
+   * @returns Returns the storage, empty where it cannot be read.
+   */
+  private async readStorageInfo(): Promise<StorageInfo> {
+    const platform: string = process.platform;
+    const sampler: StorageSampler = new StorageSampler(gpuSources());
+    const [layout, sizes, blocks, windows, counted, profiled, containers]: [
+      si.Systeminformation.DiskLayoutData[],
+      si.Systeminformation.FsSizeData[],
+      si.Systeminformation.BlockDevicesData[],
+      WindowsDisks | undefined,
+      ReadonlyMap<string, StorageCounters>,
+      ReadonlyMap<string, ProfiledDisk>,
+      ReadonlyMap<string, string>,
+    ] = await Promise.all([
+      si.diskLayout().catch((): si.Systeminformation.DiskLayoutData[] => []),
+      si.fsSize().catch((): si.Systeminformation.FsSizeData[] => []),
+      si.blockDevices().catch((): si.Systeminformation.BlockDevicesData[] => []),
+      platform === 'win32' ? sampler.windowsDisks() : Promise.resolve(undefined),
+      platform === 'win32'
+        ? Promise.resolve(new Map<string, StorageCounters>())
+        : sampler.counters(),
+      platform === 'darwin'
+        ? run('system_profiler', ['SPNVMeDataType', 'SPSerialATADataType', '-json'], {
+            timeout: 15_000,
+            maxBuffer: 16 * 1024 * 1024,
+          })
+            .then((output: { stdout: string }): ReadonlyMap<string, ProfiledDisk> =>
+              parseProfiledDisks(JSON.parse(output.stdout)),
+            )
+            .catch((): ReadonlyMap<string, ProfiledDisk> => new Map<string, ProfiledDisk>())
+        : Promise.resolve(new Map<string, ProfiledDisk>()),
+      platform === 'darwin'
+        ? run('diskutil', ['apfs', 'list'], { timeout: 10_000, maxBuffer: 4 * 1024 * 1024 })
+            .then((output: { stdout: string }): ReadonlyMap<string, string> =>
+              parseApfsContainers(output.stdout),
+            )
+            .catch((): ReadonlyMap<string, string> => new Map<string, string>())
+        : Promise.resolve(new Map<string, string>()),
+    ]);
+    const map: ReadonlyMap<string, string> = windows?.letters ?? containers;
+    const volumes: readonly StorageVolumeDevice[] = readVolumes(sizes).map(
+      (volume: VolumeMetric): StorageVolumeDevice => {
+        const fs: string =
+          sizes.find(
+            (size: si.Systeminformation.FsSizeData): boolean => size.mount === volume.mount,
+          )?.fs ?? '';
+        const deviceId: string | undefined = deviceOfVolume(fs, platform, map);
+        const label: string =
+          blocks
+            .find(
+              (block: si.Systeminformation.BlockDevicesData): boolean =>
+                block.mount === volume.mount,
+            )
+            ?.label.trim() ?? '';
+        return {
+          mount: volume.mount,
+          ...(deviceId === undefined ? {} : { deviceId }),
+          ...(label.length === 0 ? {} : { name: label }),
+        };
+      },
+    );
+    const systemId: string | undefined = volumes.find(
+      (volume: StorageVolumeDevice): boolean => volume.mount === '/' || /^C:/i.test(volume.mount),
+    )?.deviceId;
+    return {
+      devices: readStorageDevices(
+        layout,
+        platform,
+        new Set<string>((windows?.counters ?? counted).keys()),
+        profiled,
+        systemId,
+      ),
+      volumes,
+    };
   }
 
   /**

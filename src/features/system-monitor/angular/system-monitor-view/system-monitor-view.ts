@@ -32,11 +32,14 @@ import {
   GpuReading,
   MetricsSample,
   ProcessesSnapshot,
+  StorageInfo,
+  StorageReading,
   SystemInfo,
 } from '@shared/api/system-monitor-channels';
 import { SystemMonitorReadings } from '../readings/system-monitor-readings';
 import { SystemMonitorProcesses } from '../readings/system-monitor-processes';
 import { SystemMonitorGpu } from '../readings/system-monitor-gpu';
+import { SystemMonitorStorage } from '../readings/system-monitor-storage';
 import { SystemMonitorTabId } from '../tabs/system-monitor-tab-id';
 import { OverviewTab } from '../tabs/overview-tab/overview-tab';
 import { ProcessesTab } from '../tabs/processes-tab/processes-tab';
@@ -206,6 +209,7 @@ interface AuditEntry {
     SystemMonitorReadings,
     SystemMonitorProcesses,
     SystemMonitorGpu,
+    SystemMonitorStorage,
   ],
   templateUrl: './system-monitor-view.html',
   styleUrl: './system-monitor-view.scss',
@@ -272,6 +276,11 @@ export class SystemMonitorView implements OnInit {
    * Holds this monitor's GPU readings, shared with the GPU view.
    */
   private readonly gpu: SystemMonitorGpu = inject(SystemMonitorGpu);
+
+  /**
+   * Holds this monitor's storage readings, shared with the Storage tab.
+   */
+  private readonly storage: SystemMonitorStorage = inject(SystemMonitorStorage);
 
   /**
    * Holds the view chosen, which the ribbon's View group shows pressed. Overview first: it is the
@@ -571,6 +580,9 @@ export class SystemMonitorView implements OnInit {
     destroy.onDestroy(unsubscribeSamples);
     destroy.onDestroy(unsubscribeProcesses);
     destroy.onDestroy(unsubscribeGpu);
+    destroy.onDestroy(
+      this.metrics.onStorage((reading: StorageReading): void => this.storage.accept(reading)),
+    );
     destroy.onDestroy((): void => this.unsubscribeFromLiveRecords());
     destroy.onDestroy((): void => this.commands.unregister(this.commandHandler));
     destroy.onDestroy((): void => {
@@ -588,6 +600,28 @@ export class SystemMonitorView implements OnInit {
     });
 
     // Whether this view has asked the backend to read the GPU.
+    // Storage devices are read only while the Storage view is in front of the user. The devices are
+    // looked up again each time it comes forward, so a drive plugged in since is listed.
+    let readingStorage: boolean = false;
+    destroy.onDestroy((): void => {
+      if (readingStorage) {
+        this.metrics.stopStorage();
+      }
+    });
+    effect((): void => {
+      const wanted: boolean =
+        this.isActive() && this.onScreen() && this.selectedTab() === SystemMonitorTabId.Storage;
+      untracked((): void => {
+        if (wanted && !readingStorage) {
+          this.metrics.startStorage();
+          void this.loadStorageInfo();
+        } else if (!wanted && readingStorage) {
+          this.metrics.stopStorage();
+        }
+        readingStorage = wanted;
+      });
+    });
+
     let readingGpu: boolean = false;
     destroy.onDestroy((): void => {
       if (readingGpu) {
@@ -742,6 +776,16 @@ export class SystemMonitorView implements OnInit {
    */
   protected selectTab(tab: SystemMonitorTabId): void {
     this.selectedTab.set(tab);
+  }
+
+  /**
+   * Reads the machine's storage devices and the device each volume is on, for the Storage tab.
+   */
+  private async loadStorageInfo(): Promise<void> {
+    const info: StorageInfo | null = await this.metrics.storageInfo();
+    if (info !== null) {
+      this.storage.setInfo(info);
+    }
   }
 
   /**
