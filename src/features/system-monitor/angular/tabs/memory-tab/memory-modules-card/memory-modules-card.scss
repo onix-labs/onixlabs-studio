@@ -4,7 +4,7 @@
   @include host;
 }
 
-// The modules scroll on their own when there are more than the card holds.
+// The modules scroll within the card when there are more than it holds, the header staying put.
 .memory-modules__scroll {
   flex: 1 1 auto;
   min-block-size: 0;
@@ -13,6 +13,12 @@
 
 .memory-modules {
   @include table;
+
+  th {
+    position: sticky;
+    inset-block-start: 0;
+    background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
+  }
 
   th:first-child {
     inline-size: 36%;

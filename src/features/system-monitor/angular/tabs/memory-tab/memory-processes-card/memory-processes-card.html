@@ -1,25 +1,27 @@
 <app-system-monitor-dashboard-card [icon]="Icon.MONITOR_RANKED" heading="Memory Usage by Process">
   @if (listed()) {
-    <table class="memory-processes" data-testid="memory-processes">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th class="memory-processes__number">PID</th>
-          <th class="memory-processes__number" aria-sort="descending">Memory</th>
-          <th class="memory-processes__number">% of Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        @for (row of rows(); track row.pid) {
+    <div class="memory-processes__scroll">
+      <table class="memory-processes" data-testid="memory-processes">
+        <thead>
           <tr>
-            <td [title]="row.command">{{ row.name }}</td>
-            <td class="memory-processes__number">{{ row.pid }}</td>
-            <td class="memory-processes__number">{{ row.memory }}</td>
-            <td class="memory-processes__number">{{ row.share }}</td>
+            <th>Name</th>
+            <th class="memory-processes__number">PID</th>
+            <th class="memory-processes__number" aria-sort="descending">Memory</th>
+            <th class="memory-processes__number">% of Total</th>
           </tr>
-        }
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          @for (row of rows(); track row.pid) {
+            <tr>
+              <td [title]="row.command">{{ row.name }}</td>
+              <td class="memory-processes__number">{{ row.pid }}</td>
+              <td class="memory-processes__number">{{ row.memory }}</td>
+              <td class="memory-processes__number">{{ row.share }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
   } @else {
     <p class="memory-processes__empty">Listing processes…</p>
   }

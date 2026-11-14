@@ -1,4 +1,6 @@
 <app-system-monitor-dashboard-card [icon]="Icon.MONITOR_COMPOSITION" heading="Memory Composition">
+  <app-system-monitor-dashboard-badge cardBadges tone="neutral" [value]="readings.historyLabel()" />
+
   @if (entries().length > 0) {
     <div class="memory-composition">
       <app-system-monitor-stacked-area-chart
@@ -21,7 +23,6 @@
         }
       </ul>
     </div>
-    <span class="memory-composition__span">{{ readings.historyLabel() }}</span>
   } @else {
     <p class="memory-composition__empty">The composition appears after the next reading.</p>
   }

@@ -4,12 +4,12 @@
   @include host;
 }
 
-// The graph with its legend to the right, as the bands stack.
+// The graph with its legend to the right, as the bands stack. The row takes the legend's height, and
+// the graph (which has none of its own) stretches to it.
 .memory-composition {
   display: flex;
-  flex: 1 1 auto;
+  flex: none;
   gap: 1.25rem;
-  min-block-size: 0;
 }
 
 .memory-composition__chart {
@@ -55,13 +55,6 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--body-foreground-color);
-}
-
-.memory-composition__span {
-  flex: none;
-  margin-inline-start: 3.5rem;
-  font-size: 0.72rem;
-  color: var(--form-muted-foreground-color);
 }
 
 .memory-composition__empty {

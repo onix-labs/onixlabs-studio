@@ -6,6 +6,7 @@ import { formatAxisBytes, formatBytes } from '../../../readings/format';
 import { memoryColour } from '../../../readings/memory-colour';
 import { MemorySegment } from '../../../readings/memory-segment';
 import { SystemMonitorReadings } from '../../../readings/system-monitor-readings';
+import { DashboardBadge } from '../../dashboard-badge/dashboard-badge';
 import { DashboardCard } from '../../dashboard-card/dashboard-card';
 
 /**
@@ -36,11 +37,12 @@ interface CompositionEntry {
 /**
  * Represents the Memory view's composition card: what holds the machine's memory over the graph's span,
  * each part stacked on the last against the whole of memory — the free memory being what is left above
- * — and the parts named beside it, the top of the stack first.
+ * — and the parts named beside it, the top of the stack first. The graph is as tall as its legend,
+ * and the span it covers is a chip beside the title.
  */
 @Component({
   selector: 'app-system-monitor-memory-composition-card',
-  imports: [DashboardCard, StackedAreaChart],
+  imports: [DashboardCard, DashboardBadge, StackedAreaChart],
   templateUrl: './memory-composition-card.html',
   styleUrl: './memory-composition-card.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
