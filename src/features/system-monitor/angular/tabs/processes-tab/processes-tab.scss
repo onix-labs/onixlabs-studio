@@ -1,51 +1,151 @@
 @use '../tabs' as *;
 
-// The Processes tab fills its body without scrolling the page: the list scrolls its own rows.
+// The Processes view fills its tab: a header with the machine's summary, the toolbar, the list (which
+// scrolls its own rows) and the pager, fitting a full-screen 1080p display and scrolling below that.
 :host {
-  display: block;
-  block-size: 100%;
-  min-block-size: 0;
+  @include host;
 }
 
 .processes {
   display: flex;
   flex-direction: column;
+  gap: 0.75rem;
+  box-sizing: border-box;
   block-size: 100%;
+  min-block-size: 30rem;
+  padding: 0.75rem;
 }
 
-// The toolbar matches the Logs tab's: scope toggles, a flexing filter, and a count.
-.processes__toolbar {
+// The title and count, then the summary tiles taking the rest of the row.
+.processes__header {
   display: flex;
   flex: none;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.6rem 1rem;
-  border-block-end: 1px solid var(--dock-border-color);
+  min-inline-size: 0;
 }
 
-.processes__scopes {
+.processes__icon {
+  flex: none;
+  color: var(--body-foreground-color);
+}
+
+.processes__title {
+  flex: none;
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.processes__count {
+  flex: none;
+  margin-inline-end: 0.5rem;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
+}
+
+.processes__summary {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+// A tile: the icon, the label over the reading, and the trend taking the spare width.
+.processes__tile {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-inline-size: 0;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--dock-border-color);
+  border-radius: calc(0.75rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
+}
+
+.processes__tile-icon {
+  flex: none;
+  color: var(--accent-color);
+}
+
+.processes__tile-text {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.processes__tile-label {
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.processes__tile-value {
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
+
+  strong {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--accent-color);
+  }
+}
+
+.processes__tile-detail {
+  margin-inline-start: 0.25rem;
+}
+
+.processes__tile-graph {
+  flex: 1 1 auto;
+  block-size: 1.75rem;
+  min-inline-size: 3rem;
+}
+
+// The filter, the scopes, then the column and row choices against the right edge.
+.processes__toolbar {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.processes__search {
+  flex: 0 1 24rem;
+  min-inline-size: 12rem;
+}
+
+.processes__scopes,
+.processes__density {
   display: flex;
   flex: none;
   gap: 0.3rem;
 }
 
-.processes__search {
+.processes__spacer {
   flex: 1 1 auto;
-  min-inline-size: 8rem;
 }
 
-.processes__count {
-  flex: none;
-  font-size: 0.78rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--form-muted-foreground-color);
-}
-
-// The list beside the chosen process's details.
-.processes__body {
+// The list sits in a well like the other views' cards, its rows scrolling within it.
+.processes__list {
   display: flex;
   flex: 1 1 auto;
   min-block-size: 0;
+  overflow: hidden;
+  border: 1px solid var(--dock-border-color);
+  border-radius: calc(1rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
 }
 
 .processes__table {
@@ -55,20 +155,54 @@
 
 .processes__name {
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+}
+
+.processes__name-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-inline-size: 0;
+}
+
+// An app's own icon, or a generic one on a quiet tile of the same size.
+.processes__app-icon {
+  flex: none;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+}
+
+.processes__app-icon--generic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border-radius: calc(0.3rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background-color: color-mix(in srgb, var(--accent-color) 18%, transparent);
+  color: var(--accent-color);
 }
 
 .processes__name-text {
+  min-inline-size: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--body-foreground-color);
 }
 
 .processes__role {
-  margin-inline-start: 0.4rem;
+  flex: none;
 }
 
 .processes__number {
   @include number;
+
+  font-variant-numeric: tabular-nums;
+}
+
+.processes__strong {
+  font-weight: 600;
+  color: var(--body-foreground-color);
 }
 
 .processes__muted {
@@ -79,52 +213,57 @@
   text-overflow: ellipsis;
 }
 
-// The chosen process's details: its facts, command and graphs, scrolling on their own.
-.processes__details {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  gap: 0.75rem;
-  inline-size: 22rem;
-  overflow: auto;
-  padding: 0.75rem 1rem;
-  border-inline-start: 1px solid var(--dock-border-color);
-}
-
-.processes__details-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.processes__details-name {
-  flex: 1 1 auto;
-  margin: 0;
-  overflow: hidden;
-  font-size: 0.95rem;
-  font-weight: 600;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.processes__facts {
-  @include facts;
-
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.processes__command {
-  padding: 0.5rem;
-  overflow-wrap: anywhere;
-  border-radius: calc(0.5rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
-  font-size: 0.75rem;
-  color: var(--form-muted-foreground-color);
+.processes__graph-cell {
+  padding-inline: 0.75rem;
 }
 
 .processes__graph {
+  block-size: 1.4rem;
+}
+
+.processes__table--compact .processes__graph {
+  block-size: 0.9rem;
+}
+
+.processes__table--compact .processes__app-icon {
+  inline-size: 1rem;
+  block-size: 1rem;
+}
+
+// The pages centred, the page size against the right edge.
+.processes__pager {
+  display: grid;
   flex: none;
-  block-size: 9rem;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+}
+
+.processes__pages {
+  display: flex;
+  grid-column: 2;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.processes__page {
+  min-inline-size: 2rem;
+}
+
+.processes__gap {
+  padding-inline: 0.4rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.processes__page-size {
+  display: flex;
+  grid-column: 3;
+  align-items: center;
+  justify-self: end;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.processes__page-size-field {
+  inline-size: 5.5rem;
 }

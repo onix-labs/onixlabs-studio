@@ -559,9 +559,10 @@ export class SystemMonitorView implements OnInit {
     const unsubscribeProcesses: () => void = this.metrics.onProcesses(
       (snapshot: ProcessesSnapshot): void => this.processes.accept(snapshot),
     );
-    const unsubscribeGpu: () => void = this.metrics.onGpu((reading: GpuReading): void =>
-      this.gpu.accept(reading),
-    );
+    const unsubscribeGpu: () => void = this.metrics.onGpu((reading: GpuReading): void => {
+      this.gpu.accept(reading);
+      this.processes.acceptGpu(reading);
+    });
     void this.loadInfo();
 
     // Whether this view has asked the backend to sample (one start per stop, whatever the rate does).
@@ -594,13 +595,15 @@ export class SystemMonitorView implements OnInit {
       }
     });
 
-    // The GPU is read in detail only while the GPU view is in front of the user and GPU Monitoring is
-    // on; its engines and processes are costlier than a sample, and no other view shows them.
+    // The GPU is read in detail only while the GPU or Processes view is in front of the user and GPU
+    // Monitoring is on; its engines and processes are costlier than a sample, and no other view shows
+    // them.
     effect((): void => {
+      const tab: SystemMonitorTabId = this.selectedTab();
       const wanted: boolean =
         this.isActive() &&
         this.onScreen() &&
-        this.selectedTab() === SystemMonitorTabId.Gpu &&
+        (tab === SystemMonitorTabId.Gpu || tab === SystemMonitorTabId.Processes) &&
         this.readings.gpuMonitoring();
       untracked((): void => {
         if (wanted && !readingGpu) {

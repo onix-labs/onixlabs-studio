@@ -51,6 +51,7 @@ describe('GpuProcessesCard', () => {
     listing.accept({
       timestamp: 't',
       total: 1,
+      user: 'me',
       processes: [
         {
           pid: 1316,

@@ -1,7 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ProcessSample } from '@shared/api/system-monitor-channels';
+import { ProcessesSnapshot, ProcessSample } from '@shared/api/system-monitor-channels';
+import { SystemMonitorMetrics } from '../../metrics/system-monitor-metrics';
 import { SystemMonitorProcesses } from '../../readings/system-monitor-processes';
+import { SystemMonitorReadings } from '../../readings/system-monitor-readings';
 import { ProcessesTab } from './processes-tab';
 
 /**
@@ -28,6 +30,9 @@ const PROCESSES: readonly ProcessSample[] = [
     memoryBytes: 500 * 1024 ** 2,
     memoryPercent: 3,
     studio: 'main',
+    threads: 34,
+    startedAt: Date.parse('2026-11-14T10:00:00Z') - 403_000,
+    location: '/Applications/ONIXLabs Studio.app/Contents/MacOS',
   },
   {
     pid: 200,
@@ -52,18 +57,28 @@ const PROCESSES: readonly ProcessSample[] = [
   },
 ];
 
+/**
+ * Builds a snapshot of the test processes, taken at 10:00 as the user `me`.
+ * @param processes The processes listed.
+ * @returns Returns the snapshot.
+ */
+function snapshot(processes: readonly ProcessSample[] = PROCESSES): ProcessesSnapshot {
+  return { timestamp: '2026-11-14T10:00:00Z', total: 512, processes, user: 'me' };
+}
+
 describe('ProcessesTab', () => {
   let fixture: ComponentFixture<ProcessesTab>;
   let host: HTMLElement;
   let listing: SystemMonitorProcesses;
+  let iconsAsked: string[];
 
   /**
    * Gets the names in the list's rows, top to bottom.
    * @returns Returns the names.
    */
   function names(): string[] {
-    return Array.from(host.querySelectorAll('tbody tr td:first-child')).map(
-      (cell: Element): string => cell.querySelector('span')?.textContent?.trim() ?? '',
+    return Array.from(host.querySelectorAll('tbody tr .processes__name-text')).map(
+      (cell: Element): string => cell.textContent?.trim() ?? '',
     );
   }
 
@@ -91,9 +106,22 @@ describe('ProcessesTab', () => {
   }
 
   beforeEach(async () => {
+    iconsAsked = [];
     await TestBed.configureTestingModule({
       imports: [ProcessesTab],
-      providers: [SystemMonitorProcesses],
+      providers: [
+        SystemMonitorProcesses,
+        SystemMonitorReadings,
+        {
+          provide: SystemMonitorMetrics,
+          useValue: {
+            processIcon: (location: string): Promise<string | null> => {
+              iconsAsked.push(location);
+              return Promise.resolve('data:image/png;base64,AAAA');
+            },
+          },
+        },
+      ],
     }).compileComponents();
     listing = TestBed.inject(SystemMonitorProcesses);
     fixture = TestBed.createComponent(ProcessesTab);
@@ -109,55 +137,79 @@ describe('ProcessesTab', () => {
     expect(host.textContent).toContain('Listing processes…');
   });
 
-  it('listsTheProcesses_busiestFirst_markingStudiosOwn', async () => {
-    listing.accept({ timestamp: 't', total: 512, processes: PROCESSES });
+  it('listsTheProcesses_busiestFirst_withTheirReadings', async () => {
+    listing.accept(snapshot());
     await settle();
 
     expect(names()).toEqual(['WindowServer', 'ONIXLabs Studio', 'zsh', 'Finder']);
+    expect(host.textContent).toContain('512 processes • 4 shown');
     expect(host.textContent).toContain('Started by Studio');
-    expect(host.textContent).toContain('4 of 512');
     // A small share keeps its decimal, so idle processes stay distinguishable.
     expect(host.textContent).toContain('4.3%');
+    expect(host.textContent).toContain('6m 43s');
+    expect(host.textContent).toContain('34');
+    expect(host.querySelectorAll('tbody tr app-system-monitor-sparkline').length).toBeGreaterThan(
+      0,
+    );
   });
 
-  it('narrowsToStudiosProcesses', async () => {
-    listing.accept({ timestamp: 't', total: 512, processes: PROCESSES });
+  it('showsTheAppsOwnIcon_whereItHasOne', async () => {
+    listing.accept(snapshot());
     await settle();
+    await settle();
+
+    expect(iconsAsked).toEqual(['/Applications/ONIXLabs Studio.app/Contents/MacOS']);
+    expect(host.querySelectorAll('img.processes__app-icon')).toHaveLength(1);
+  });
+
+  it('narrowsToTheUsersOwn_theSystems_andStudios', async () => {
+    listing.accept(snapshot());
+    await settle();
+
+    button('User Processes').click();
+    await settle();
+    expect(names()).toEqual(['ONIXLabs Studio', 'zsh', 'Finder']);
+
+    button('System Processes').click();
+    await settle();
+    expect(names()).toEqual(['WindowServer']);
 
     button('Studio').click();
     await settle();
-
     expect(names()).toEqual(['ONIXLabs Studio', 'zsh']);
-    expect(host.textContent).toContain('2 of 512');
   });
 
-  it('choosingAProcess_showsItsDetailsAndGraphs_andClosingHidesThem', async () => {
-    listing.accept({ timestamp: 't', total: 512, processes: PROCESSES });
+  it('narrowsToThoseUsingTheGpu_onceTheGpuIsReadPerProcess', async () => {
+    listing.accept(snapshot());
     await settle();
-    expect(host.querySelector('[data-testid="process-details"]')).toBeNull();
+    expect(button('GPU Active').disabled).toBe(true);
 
-    host.querySelectorAll<HTMLTableRowElement>('tbody tr')[2].click();
+    listing.acceptGpu({ timestamp: 't', engines: [], processes: [{ pid: 300, gpuPercent: 2 }] });
+    listing.accept(snapshot());
+    await settle();
+    button('GPU Active').click();
     await settle();
 
-    const details: HTMLElement | null = host.querySelector('[data-testid="process-details"]');
-    expect(details?.textContent).toContain('zsh');
-    expect(details?.textContent).toContain('/bin/zsh -l');
-    expect(details?.textContent).toContain('100');
-    expect(details?.querySelectorAll('app-metric-tile')).toHaveLength(2);
+    expect(names()).toEqual(['WindowServer']);
+  });
 
-    // The process exiting keeps its details up, marked as no longer listed.
-    listing.accept({
-      timestamp: 't',
-      total: 511,
-      processes: PROCESSES.filter((process: ProcessSample): boolean => process.pid !== 200),
-    });
-    await settle();
-    expect(host.querySelector('[data-testid="process-details"]')?.textContent).toContain(
-      'Not listed',
+  it('pagesTheList', async () => {
+    const many: ProcessSample[] = Array.from(
+      { length: 60 },
+      (_: unknown, index: number): ProcessSample => ({
+        ...PROCESSES[3],
+        pid: 1000 + index,
+        name: `worker-${index}`,
+        cpuPercent: 60 - index,
+      }),
     );
-
-    host.querySelector<HTMLButtonElement>('[aria-label="Close details"]')?.click();
+    listing.accept(snapshot(many));
     await settle();
-    expect(host.querySelector('[data-testid="process-details"]')).toBeNull();
+
+    expect(names()).toHaveLength(50);
+    host.querySelector<HTMLButtonElement>('[aria-label="Page 2"]')?.click();
+    await settle();
+
+    expect(names()).toEqual(many.slice(50).map((process: ProcessSample): string => process.name));
   });
 });

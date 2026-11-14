@@ -70,6 +70,13 @@ export enum SystemMonitorChannel {
    * the main process keeps in the background while GPU Monitoring is on.
    */
   GpuHistory = 'system-monitor:gpu-history',
+
+  /**
+   * Renderer → main (invoke): the icon of the app a process belongs to, by the folder its executable
+   * is in ({@link ProcessSample.location}) and its name, as a PNG data URL, or null when it has none of
+   * its own.
+   */
+  ProcessIcon = 'system-monitor:process-icon',
 }
 
 /**
@@ -763,6 +770,17 @@ export interface ProcessSample {
    * undefined when it could not be read.
    */
   readonly cpuTimeSeconds?: number;
+
+  /**
+   * Gets when the process started, in milliseconds since the epoch, or undefined when unknown.
+   */
+  readonly startedAt?: number;
+
+  /**
+   * Gets the folder the process's executable is in, or undefined when unknown; the key its icon is
+   * looked up by ({@link SystemMonitorChannel.ProcessIcon}).
+   */
+  readonly location?: string;
 }
 
 /**
@@ -805,6 +823,12 @@ export interface ProcessesSnapshot {
    * Gets the number of processes running, listed or not.
    */
   readonly total: number;
+
+  /**
+   * Gets the account Studio runs as, which the user's own processes run as too; the empty string when
+   * unknown.
+   */
+  readonly user: string;
 }
 
 /**

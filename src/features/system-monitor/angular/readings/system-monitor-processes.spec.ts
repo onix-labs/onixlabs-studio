@@ -28,7 +28,7 @@ function process(pid: number, cpuPercent: number, name: string = `p${pid}`): Pro
  * @returns Returns the snapshot.
  */
 function snapshot(...processes: ProcessSample[]): ProcessesSnapshot {
-  return { timestamp: 't', total: processes.length, processes };
+  return { timestamp: 't', total: processes.length, processes, user: 'me' };
 }
 
 describe('SystemMonitorProcesses', () => {
@@ -40,7 +40,7 @@ describe('SystemMonitorProcesses', () => {
     listing.select(7);
 
     expect(listing.selected()?.process.cpuPercent).toBe(3);
-    expect(listing.selectedHistory()).toEqual({ cpu: [1, 3], memory: [700, 700] });
+    expect(listing.selectedHistory()).toEqual({ cpu: [1, 3], memory: [700, 700], gpu: [0, 0] });
   });
 
   it('dropsTheHistoryOfAProcessNoLongerListed', () => {
@@ -96,5 +96,15 @@ describe('SystemMonitorProcesses', () => {
 
     expect(listing.selected()).toBeNull();
     expect(listing.selectedPid()).toBeNull();
+  });
+
+  it('recordsEachProcesssGpuShare_withTheNextListing', () => {
+    const listing: SystemMonitorProcesses = new SystemMonitorProcesses();
+    listing.accept(snapshot(process(7, 1)));
+    listing.acceptGpu({ timestamp: 't', engines: [], processes: [{ pid: 7, gpuPercent: 12 }] });
+    listing.accept(snapshot(process(7, 1), process(8, 1)));
+
+    expect(listing.allHistories().get(7)?.gpu).toEqual([0, 12]);
+    expect(listing.allHistories().get(8)?.gpu).toEqual([0]);
   });
 });

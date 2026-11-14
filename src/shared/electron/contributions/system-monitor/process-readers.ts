@@ -16,6 +16,16 @@ export interface ProcessStat {
    * Gets the resident memory, in kilobytes.
    */
   readonly memRss: number;
+
+  /**
+   * Gets when the process started, as the platform's local time (`2026-11-13 19:09:29`).
+   */
+  readonly started?: string;
+
+  /**
+   * Gets the folder the process's executable is in.
+   */
+  readonly path?: string;
 }
 
 /**
@@ -88,6 +98,23 @@ function round1(value: number): number {
  */
 function clampPercent(value: number): number {
   return Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 0;
+}
+
+/**
+ * Reads the time a process started, as systeminformation reports it: the local time, to the second.
+ * @param started The start time (`2026-11-13 19:09:29`), or undefined when unknown.
+ * @returns Returns the time in milliseconds since the epoch, or undefined when unknown or unreadable.
+ */
+export function parseStarted(started: string | undefined): number | undefined {
+  const match: RegExpExecArray | null = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec(
+    started ?? '',
+  );
+  if (match === null) {
+    return undefined;
+  }
+  const [year, month, day, hours, minutes, seconds]: number[] = match.slice(1).map(Number);
+  const time: number = new Date(year, month - 1, day, hours, minutes, seconds).getTime();
+  return Number.isFinite(time) ? time : undefined;
 }
 
 /**
@@ -190,6 +217,7 @@ export function readProcesses(
         .filter((part: string | undefined): boolean => part !== undefined && part.length > 0)
         .join(' ');
       const kind: StudioProcessKind | undefined = kinds.get(stat.pid);
+      const startedAt: number | undefined = parseStarted(stat.started);
       return {
         pid: stat.pid,
         parentPid: stat.parentPid ?? 0,
@@ -203,6 +231,8 @@ export function readProcesses(
             ? round1(clampPercent((memoryBytes / machine.totalBytes) * 100))
             : 0,
         ...(kind === undefined ? {} : { studio: kind }),
+        ...(startedAt === undefined ? {} : { startedAt }),
+        ...(stat.path === undefined || stat.path.length === 0 ? {} : { location: stat.path }),
       };
     });
 

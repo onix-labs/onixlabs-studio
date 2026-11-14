@@ -48,6 +48,7 @@ describe('CpuProcessesCard', () => {
     listing.accept({
       timestamp: 't',
       total: 7,
+      user: 'me',
       processes: [
         // The listing keeps Studio's own first; the card orders by CPU alone.
         process(1, 0.1),

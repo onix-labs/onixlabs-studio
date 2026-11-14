@@ -340,6 +340,7 @@ describe('SystemMonitorView', () => {
     metrics.processListener?.({
       timestamp: 't',
       total: 1,
+      user: 'me',
       processes: [
         {
           pid: 7,

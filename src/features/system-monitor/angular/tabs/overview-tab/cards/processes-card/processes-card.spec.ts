@@ -48,6 +48,7 @@ describe('ProcessesCard', () => {
     listing.accept({
       timestamp: 't',
       total: 712,
+      user: 'me',
       processes: [1, 2, 3, 4, 5, 6, 7].map((pid: number): ProcessSample => process(pid, `p${pid}`)),
     });
     fixture.detectChanges();

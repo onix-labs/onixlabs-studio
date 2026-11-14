@@ -1,97 +1,258 @@
-<div class="processes">
-  <header class="processes__toolbar">
-    <div class="processes__scopes" role="group" aria-label="Show">
-      <app-button
-        variant="none"
-        size="small"
-        label="All processes"
-        [pressed]="scope() === 'all'"
-        (click)="setScope('all')"
-      />
-      <app-button
-        variant="none"
-        size="small"
-        label="Studio"
-        [pressed]="scope() === 'studio'"
-        (click)="setScope('studio')"
-      />
-    </div>
-
-    <app-text-field
-      class="processes__search"
-      placeholder="Filter by name, command or PID…"
-      ariaLabel="Filter processes"
-      [value]="text()"
-      (valueChange)="text.set($event)"
-      (escape)="text.set('')"
-    />
-
+<div class="processes" data-testid="processes-view">
+  <header class="processes__header">
+    <app-icon class="processes__icon" [icon]="Icon.MONITOR_PROCESSES" [size]="1.75" />
+    <h2 class="processes__title">Processes</h2>
     <span class="processes__count">{{ count() }}</span>
+
+    <ul class="processes__summary" aria-label="Summary">
+      @for (tile of summary(); track tile.label) {
+        <li class="processes__tile">
+          <app-icon class="processes__tile-icon" [icon]="tile.icon" [size]="1.4" />
+          <div class="processes__tile-text">
+            <span class="processes__tile-label">{{ tile.label }}</span>
+            <span class="processes__tile-value">
+              <strong>{{ tile.value }}</strong>
+              @if (tile.detail) {
+                <span class="processes__tile-detail">{{ tile.detail }}</span>
+              }
+            </span>
+          </div>
+          <app-system-monitor-sparkline
+            class="processes__tile-graph"
+            [values]="tile.values"
+            [max]="100"
+            [capacity]="tile.values.length"
+          />
+        </li>
+      }
+    </ul>
   </header>
 
-  <div class="processes__body">
+  <div class="processes__toolbar">
+    <app-text-field
+      class="processes__search"
+      kind="search"
+      placeholder="Filter by name, PID, path or user…"
+      ariaLabel="Filter processes"
+      [value]="text()"
+      (valueChange)="setText($event)"
+      (escape)="setText('')"
+    />
+
+    <div class="processes__scopes" role="group" aria-label="Show">
+      @for (option of scopes; track option.scope) {
+        <app-button
+          variant="none"
+          size="small"
+          [label]="option.label"
+          [pressed]="scope() === option.scope"
+          [disabled]="option.scope === 'gpu' && !gpuRead()"
+          [tooltip]="
+            option.scope === 'gpu' && !gpuRead()
+              ? 'The GPU is not read per process here, or GPU Monitoring is off.'
+              : undefined
+          "
+          (click)="setScope(option.scope)"
+        />
+      }
+    </div>
+
+    <span class="processes__spacer"></span>
+
+    <app-button
+      variant="none"
+      size="small"
+      label="Columns"
+      [icon]="Icon.MONITOR_COLUMNS"
+      [cdkMenuTriggerFor]="columnsMenu.panel() ?? null"
+      [cdkMenuPosition]="columnsMenu.position()"
+    />
+    <app-menu
+      #columnsMenu
+      [items]="columnItems()"
+      placement="down-end"
+      (selected)="toggleColumn($event)"
+    />
+
+    <div class="processes__density" role="group" aria-label="Rows">
+      <app-button
+        variant="none"
+        size="small"
+        ariaLabel="Compact rows"
+        tooltip="Compact rows"
+        [icon]="Icon.MONITOR_COMPACT"
+        [pressed]="rowSize() === 'compact'"
+        (click)="rowSize.set('compact')"
+      />
+      <app-button
+        variant="none"
+        size="small"
+        ariaLabel="Comfortable rows"
+        tooltip="Comfortable rows"
+        [icon]="Icon.MONITOR_COMFORTABLE"
+        [pressed]="rowSize() === 'comfortable'"
+        (click)="rowSize.set('comfortable')"
+      />
+    </div>
+  </div>
+
+  <div class="processes__list">
     <app-table
       class="processes__table"
-      [columns]="columns"
+      [class.processes__table--compact]="rowSize() === 'compact'"
+      [columns]="columns()"
       [rows]="rows()"
+      [rowSize]="rowSize()"
       [selectedIds]="selectedIds()"
-      [virtual]="true"
       [emptyText]="emptyText()"
+      gridlines="horizontal"
       (rowClick)="onRowClick($event)"
       (sortChange)="onSort($event)"
     >
       <ng-template appTableRow let-row>
         @let entry = rowOf(row);
         @if (entry) {
-          <td class="processes__name" [title]="entry.process.command">
-            <span class="processes__name-text">{{ entry.process.name }}</span>
-            @if (entry.studio; as role) {
-              <app-chip class="processes__role" tone="accent">{{ role }}</app-chip>
+          @for (column of columns(); track column.id) {
+            @switch (column.id) {
+              @case ('name') {
+                <td class="processes__name" [title]="entry.process.command">
+                  <span class="processes__name-cell">
+                    @if (iconOf(entry); as icon) {
+                      <img class="processes__app-icon" [src]="icon" alt="" />
+                    } @else {
+                      <span class="processes__app-icon processes__app-icon--generic">
+                        <app-icon [icon]="fallbackIcon(entry)" [size]="0.85" />
+                      </span>
+                    }
+                    <span class="processes__name-text">{{ entry.process.name }}</span>
+                    @if (entry.studio; as role) {
+                      <app-chip class="processes__role" tone="accent">{{ role }}</app-chip>
+                    }
+                  </span>
+                </td>
+              }
+              @case ('pid') {
+                <td class="processes__number">{{ entry.process.pid }}</td>
+              }
+              @case ('user') {
+                <td class="processes__muted" [title]="entry.process.user">
+                  {{ entry.process.user }}
+                </td>
+              }
+              @case ('cpu') {
+                <td class="processes__number processes__strong">{{ entry.cpu }}</td>
+              }
+              @case ('cpuGraph') {
+                <td class="processes__graph-cell">
+                  <app-system-monitor-sparkline
+                    class="processes__graph"
+                    [values]="entry.history.cpu"
+                    [max]="entry.cpuMax"
+                    [capacity]="historyLength"
+                  />
+                </td>
+              }
+              @case ('memory') {
+                <td class="processes__number">{{ entry.memory }}</td>
+              }
+              @case ('memoryGraph') {
+                <td class="processes__graph-cell">
+                  <app-system-monitor-sparkline
+                    class="processes__graph"
+                    [values]="entry.history.memory"
+                    [max]="entry.memoryMax"
+                    [capacity]="historyLength"
+                  />
+                </td>
+              }
+              @case ('gpu') {
+                <td class="processes__number">{{ entry.gpu }}</td>
+              }
+              @case ('gpuGraph') {
+                <td class="processes__graph-cell">
+                  @if (gpuRead()) {
+                    <app-system-monitor-sparkline
+                      class="processes__graph"
+                      [values]="entry.history.gpu"
+                      [max]="entry.gpuMax"
+                      [capacity]="historyLength"
+                    />
+                  }
+                </td>
+              }
+              @case ('threads') {
+                <td class="processes__number">{{ entry.threads }}</td>
+              }
+              @case ('uptime') {
+                <td class="processes__number">{{ entry.uptime }}</td>
+              }
             }
-          </td>
-          <td class="processes__number">{{ entry.process.pid }}</td>
-          <td class="processes__number">{{ entry.cpu }}</td>
-          <td class="processes__number">{{ entry.memory }}</td>
-          <td class="processes__muted">{{ entry.process.user }}</td>
+          }
         }
       </ng-template>
     </app-table>
+  </div>
 
-    @if (listing.selected(); as chosen) {
-      @let process = chosen.process;
-      <aside class="processes__details" aria-label="Process details" data-testid="process-details">
-        <header class="processes__details-head">
-          <h3 class="processes__details-name" [title]="process.name">{{ process.name }}</h3>
-          @if (!chosen.listed) {
-            <app-chip
-              tone="warning"
-              title="It exited, or is no longer among the busiest processes listed."
-              >Not listed</app-chip
-            >
-          }
+  <footer class="processes__pager">
+    <nav class="processes__pages" aria-label="Pages">
+      <app-button
+        variant="none"
+        size="small"
+        ariaLabel="First page"
+        [icon]="Icon.PAGE_FIRST"
+        [disabled]="currentPage() === 1"
+        (click)="goTo(1)"
+      />
+      <app-button
+        variant="none"
+        size="small"
+        ariaLabel="Previous page"
+        [icon]="Icon.CARET_LEFT"
+        [disabled]="currentPage() === 1"
+        (click)="goTo(currentPage() - 1)"
+      />
+      @for (number of pages(); track $index) {
+        @if (number === null) {
+          <span class="processes__gap" aria-hidden="true">…</span>
+        } @else {
           <app-button
+            class="processes__page"
             variant="none"
             size="small"
-            [icon]="Icon.CLOSE"
-            ariaLabel="Close details"
-            (click)="closeDetails()"
+            [label]="'' + number"
+            [ariaLabel]="'Page ' + number"
+            [pressed]="number === currentPage()"
+            (click)="goTo(number)"
           />
-        </header>
+        }
+      }
+      <app-button
+        variant="none"
+        size="small"
+        ariaLabel="Next page"
+        [icon]="Icon.CARET_RIGHT"
+        [disabled]="currentPage() === pageCount()"
+        (click)="goTo(currentPage() + 1)"
+      />
+      <app-button
+        variant="none"
+        size="small"
+        ariaLabel="Last page"
+        [icon]="Icon.PAGE_LAST"
+        [disabled]="currentPage() === pageCount()"
+        (click)="goTo(pageCount())"
+      />
+    </nav>
 
-        <dl class="processes__facts">
-          @for (fact of facts(); track fact.label) {
-            <div>
-              <dt>{{ fact.label }}</dt>
-              <dd>{{ fact.value }}</dd>
-            </div>
-          }
-        </dl>
-
-        <code class="processes__command">{{ process.command }}</code>
-
-        <app-metric-tile class="processes__graph" label="CPU" [channels]="cpuChannels()" />
-        <app-metric-tile class="processes__graph" label="Memory" [channels]="memoryChannels()" />
-      </aside>
-    }
-  </div>
+    <div class="processes__page-size">
+      <span aria-hidden="true">Rows per page:</span>
+      <app-dropdown
+        class="processes__page-size-field"
+        ariaLabel="Rows per page"
+        [options]="pageSizes"
+        [value]="'' + pageSize()"
+        (valueChange)="setPageSize($event)"
+      />
+    </div>
+  </footer>
 </div>

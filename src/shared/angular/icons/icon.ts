@@ -313,6 +313,31 @@ export class Icon {
   public static readonly MONITOR_LIST: Icon = new Icon('ph ph-rows');
 
   /**
+   * Gets the icon for the System Monitor's process list with roomy rows that carry graphs.
+   */
+  public static readonly MONITOR_COMFORTABLE: Icon = new Icon('ph ph-rows');
+
+  /**
+   * Gets the icon for the System Monitor's process list with dense rows.
+   */
+  public static readonly MONITOR_COMPACT: Icon = new Icon('ph ph-list');
+
+  /**
+   * Gets the icon for choosing the columns the System Monitor's process list shows.
+   */
+  public static readonly MONITOR_COLUMNS: Icon = new Icon('ph ph-columns');
+
+  /**
+   * Gets the icon for going to the first page of a paged list.
+   */
+  public static readonly PAGE_FIRST: Icon = new Icon('ph ph-caret-double-left');
+
+  /**
+   * Gets the icon for going to the last page of a paged list.
+   */
+  public static readonly PAGE_LAST: Icon = new Icon('ph ph-caret-double-right');
+
+  /**
    * Gets the icon for a volume in the System Monitor's storage list.
    */
   public static readonly MONITOR_VOLUME: Icon = new Icon('ph ph-hard-drive');

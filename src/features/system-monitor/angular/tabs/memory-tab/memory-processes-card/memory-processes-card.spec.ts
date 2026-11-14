@@ -37,6 +37,7 @@ describe('MemoryProcessesCard', () => {
     listing.accept({
       timestamp: 't',
       total: 6,
+      user: 'me',
       processes: [1, 2, 3, 4, 5, 6].map((pid: number) => ({
         pid,
         parentPid: 1,

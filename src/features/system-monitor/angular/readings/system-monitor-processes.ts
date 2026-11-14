@@ -1,5 +1,10 @@
 import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
-import { ProcessesSnapshot, ProcessSample } from '@shared/api/system-monitor-channels';
+import {
+  GpuProcessReading,
+  GpuReading,
+  ProcessesSnapshot,
+  ProcessSample,
+} from '@shared/api/system-monitor-channels';
 
 /**
  * The most snapshots a process's history holds: two minutes at the listing's two-second pace.
@@ -19,6 +24,12 @@ export interface ProcessHistory {
    * Gets the resident memory history (bytes).
    */
   readonly memory: readonly number[];
+
+  /**
+   * Gets the GPU share history (percent of the GPU), 0 for each listing taken while the GPU was not
+   * read per process.
+   */
+  readonly gpu: readonly number[];
 }
 
 /**
@@ -45,7 +56,7 @@ export interface ChosenProcess {
 /**
  * The history of a process not seen yet.
  */
-const EMPTY_HISTORY: ProcessHistory = { cpu: [], memory: [] };
+const EMPTY_HISTORY: ProcessHistory = { cpu: [], memory: [], gpu: [] };
 
 /**
  * Holds one System Monitor view's process listing: the latest snapshot, a short history per process so
@@ -72,6 +83,19 @@ export class SystemMonitorProcesses {
   private readonly histories: WritableSignal<ReadonlyMap<number, ProcessHistory>> = signal<
     ReadonlyMap<number, ProcessHistory>
   >(new Map<number, ProcessHistory>());
+
+  /**
+   * Holds each process's share of the GPU from the latest GPU reading, by pid, or null while no GPU
+   * reading that names processes has arrived.
+   */
+  public readonly gpuShares: WritableSignal<ReadonlyMap<number, number> | null> =
+    signal<ReadonlyMap<number, number> | null>(null);
+
+  /**
+   * Gets every listed process's history, by pid.
+   */
+  public readonly allHistories: Signal<ReadonlyMap<number, ProcessHistory>> =
+    this.histories.asReadonly();
 
   /**
    * Holds the name each history was recorded under, by pid, so a reused pid starts afresh.
@@ -118,6 +142,7 @@ export class SystemMonitorProcesses {
     const previous: ReadonlyMap<number, ProcessHistory> = this.histories();
     const next: Map<number, ProcessHistory> = new Map<number, ProcessHistory>();
     const names: Map<number, string> = new Map<number, string>();
+    const shares: ReadonlyMap<number, number> | null = this.gpuShares();
     for (const process of snapshot.processes) {
       const same: boolean = this.names.get(process.pid) === process.name;
       const history: ProcessHistory =
@@ -125,6 +150,7 @@ export class SystemMonitorProcesses {
       next.set(process.pid, {
         cpu: [...history.cpu, process.cpuPercent].slice(-PROCESS_HISTORY),
         memory: [...history.memory, process.memoryBytes].slice(-PROCESS_HISTORY),
+        gpu: [...history.gpu, shares?.get(process.pid) ?? 0].slice(-PROCESS_HISTORY),
       });
       names.set(process.pid, process.name);
     }
@@ -144,6 +170,28 @@ export class SystemMonitorProcesses {
           : { process: current, history: next.get(current.pid) ?? EMPTY_HISTORY, listed: true },
       );
     }
+  }
+
+  /**
+   * Records the processes' shares of the GPU from a GPU reading, appended to their histories with the
+   * next listing. A reading that names no process shares leaves the last ones in place.
+   * @param reading The GPU reading.
+   */
+  public acceptGpu(reading: GpuReading): void {
+    const processes: readonly GpuProcessReading[] = reading.processes;
+    if (
+      !processes.some((process: GpuProcessReading): boolean => process.gpuPercent !== undefined)
+    ) {
+      return;
+    }
+    this.gpuShares.set(
+      new Map<number, number>(
+        processes.map((process: GpuProcessReading): [number, number] => [
+          process.pid,
+          process.gpuPercent ?? 0,
+        ]),
+      ),
+    );
   }
 
   /**

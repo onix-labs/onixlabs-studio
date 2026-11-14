@@ -45,7 +45,7 @@ vi.mock('electron', () => {
     isReady: (): boolean => false,
     isPackaged: false,
   };
-  return { app, ipcMain: {}, shell: {} };
+  return { app, ipcMain: {}, nativeImage: {}, shell: {} };
 });
 
 vi.mock('systeminformation', () => {

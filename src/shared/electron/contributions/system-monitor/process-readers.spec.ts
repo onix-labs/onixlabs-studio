@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ProcessSample, StudioProcessKind } from '@shared/api/system-monitor-channels';
 import {
   ElectronProcess,
+  parseStarted,
   ProcessMachine,
   ProcessStat,
   readProcesses,
@@ -159,5 +160,28 @@ describe('readProcesses', () => {
     );
 
     expect(processes.map((process: ProcessSample): number => process.pid)).toEqual([30, 10]);
+  });
+});
+
+describe('parseStarted', () => {
+  it('readsTheLocalStartTime', () => {
+    expect(parseStarted('2026-11-13 19:09:29')).toBe(new Date(2026, 10, 13, 19, 9, 29).getTime());
+  });
+
+  it('findsNoTime_whereThereIsNoneToRead', () => {
+    expect(parseStarted(undefined)).toBeUndefined();
+    expect(parseStarted('')).toBeUndefined();
+  });
+
+  it('carriesTheStartTimeAndFolder_intoTheSample', () => {
+    const [process]: readonly ProcessSample[] = readProcesses(
+      [{ ...stat(50, 1), started: '2026-11-13 19:09:29', path: '/usr/bin' }],
+      [],
+      MACHINE,
+      10,
+    );
+
+    expect(process.startedAt).toBe(new Date(2026, 10, 13, 19, 9, 29).getTime());
+    expect(process.location).toBe('/usr/bin');
   });
 });

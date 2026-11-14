@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { readdir, readFile } from 'node:fs/promises';
 import * as os from 'node:os';
 import { promisify } from 'node:util';
-import { app, IpcMainEvent } from 'electron';
+import { app, IpcMainEvent, nativeImage } from 'electron';
 import * as si from 'systeminformation';
 import {
   AppUsageMetric,
@@ -66,6 +66,7 @@ import {
   WindowsProcess,
 } from './process-extras';
 import { ElectronProcess, readProcesses } from './process-readers';
+import { iconTarget } from './process-icons';
 import { architectureOf, parseIoregStatistics } from './gpu-readers';
 import { GpuSampler, GpuSources } from './gpu-sampler';
 import { MetricsSampler } from './metrics-sampler';
@@ -126,6 +127,12 @@ const GPU_HISTORY_POINTS: number = 360;
  * PowerShell query of a second or more): every third tick.
  */
 const COSTLY_GPU_HISTORY_EVERY: number = 3;
+
+/**
+ * The size a macOS app's icon is read at, in pixels: a list row draws it at 20 CSS pixels, so this is
+ * sharp at twice that.
+ */
+const PROCESS_ICON_PX: number = 40;
 
 /**
  * The platforms whose process listing reports CPU per core (`ps`'s `%cpu`) rather than as a share of
@@ -305,6 +312,20 @@ export class SystemMonitorContribution implements MainContribution {
   private extras: ReadonlyMap<number, ProcessExtras> = new Map<number, ProcessExtras>();
 
   /**
+   * Each app's icon as looked up, by the file it was taken from, so a page of processes does not ask
+   * the OS again on every listing. Null for a file with no icon to give.
+   */
+  private readonly icons: Map<string, Promise<string | null>> = new Map<
+    string,
+    Promise<string | null>
+  >();
+
+  /**
+   * The account Studio runs as, read once; the empty string when it could not be read.
+   */
+  private readonly account: string = currentAccount();
+
+  /**
    * Whether every GPU source reported nothing this sampling run, so none is asked again until the
    * next: on a machine without a readable GPU the fallback is `system_profiler`, hundreds of
    * milliseconds, and it would otherwise run on every costly tick for good.
@@ -335,6 +356,11 @@ export class SystemMonitorContribution implements MainContribution {
     context.on(SystemMonitorChannel.GpuStop, (): void => this.removeGpuConsumer());
     context.handle(SystemMonitorChannel.GpuHistory, (_event: unknown, span: unknown): GpuHistory =>
       this.readGpuHistory(span),
+    );
+    context.handle(
+      SystemMonitorChannel.ProcessIcon,
+      (_event: unknown, location: unknown, name: unknown): Promise<string | null> =>
+        this.readProcessIcon(location, name),
     );
     logger.info('SystemMonitorContribution', 'Activated; awaiting sampling consumers');
   }
@@ -701,6 +727,41 @@ export class SystemMonitorContribution implements MainContribution {
   }
 
   /**
+   * Reads the icon of the app a process belongs to, once per app.
+   * @param location The folder the process's executable is in.
+   * @param name The process's name.
+   * @returns Returns the icon as a PNG data URL, or null when the process has none of its own.
+   */
+  private readProcessIcon(location: unknown, name: unknown): Promise<string | null> {
+    if (typeof location !== 'string' || typeof name !== 'string') {
+      return Promise.resolve(null);
+    }
+    const target: string | null = iconTarget(location, name, process.platform);
+    if (target === null) {
+      return Promise.resolve(null);
+    }
+    let icon: Promise<string | null> | undefined = this.icons.get(target);
+    if (icon === undefined) {
+      // On macOS `getFileIcon` gives an app bundle the generic folder's icon; Quick Look's thumbnail of
+      // the bundle is the app's own. Windows reads the icon embedded in the executable.
+      const image: Promise<Electron.NativeImage> =
+        process.platform === 'darwin'
+          ? nativeImage.createThumbnailFromPath(target, {
+              width: PROCESS_ICON_PX,
+              height: PROCESS_ICON_PX,
+            })
+          : app.getFileIcon(target, { size: 'normal' });
+      icon = image
+        .then((read: Electron.NativeImage): string | null =>
+          read.isEmpty() ? null : read.toDataURL(),
+        )
+        .catch((): null => null);
+      this.icons.set(target, icon);
+    }
+    return icon;
+  }
+
+  /**
    * Reads one process snapshot, or undefined when the listing failed.
    * @returns Returns the snapshot, or undefined.
    */
@@ -736,6 +797,7 @@ export class SystemMonitorContribution implements MainContribution {
           ...this.extras.get(sample.pid),
         })),
         total: listing.all,
+        user: this.account,
       };
     } catch (error: unknown) {
       logger.debug('SystemMonitorContribution', 'Could not list processes', error);
@@ -1216,6 +1278,18 @@ function readBootTime(): number | undefined {
     return Date.now() - os.uptime() * 1000;
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * Reads the account Studio runs as: the user's own account, which their processes run as too.
+ * @returns Returns the account name, or the empty string where the OS refuses it.
+ */
+function currentAccount(): string {
+  try {
+    return os.userInfo().username;
+  } catch {
+    return '';
   }
 }
 

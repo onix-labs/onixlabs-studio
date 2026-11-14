@@ -155,4 +155,26 @@ export class SystemMonitorMetrics {
       return null;
     }
   }
+
+  /**
+   * Reads the icon of the app a process belongs to.
+   * @param location The folder the process's executable is in.
+   * @param name The process's name.
+   * @returns Returns the icon as a PNG data URL, or null outside Electron, when the process has no icon
+   * of its own, or when it could not be read.
+   */
+  public async processIcon(location: string, name: string): Promise<string | null> {
+    if (this.bridge === undefined) {
+      return null;
+    }
+    try {
+      return await this.bridge.invoke<string | null>(
+        SystemMonitorChannel.ProcessIcon,
+        location,
+        name,
+      );
+    } catch {
+      return null;
+    }
+  }
 }
