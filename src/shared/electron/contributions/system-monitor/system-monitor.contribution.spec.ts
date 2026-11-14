@@ -69,6 +69,7 @@ vi.mock('systeminformation', () => {
     Promise.resolve({ physicalCores: 4, performanceCores: 4, efficiencyCores: 0, speed: 3.2 });
   const osInfo: () => Promise<unknown> = (): Promise<unknown> =>
     Promise.resolve({ distro: 'macOS', release: '26.6' });
+  const memLayout: () => Promise<unknown[]> = (): Promise<unknown[]> => Promise.resolve([]);
   const cpuCache: () => Promise<unknown> = (): Promise<unknown> =>
     Promise.resolve({ l1d: 32768, l1i: 32768, l2: 1048576, l3: 8388608 });
   const all: Record<string, unknown> = {
@@ -81,6 +82,7 @@ vi.mock('systeminformation', () => {
     cpu,
     osInfo,
     cpuCache,
+    memLayout,
   };
   return { ...all, default: all };
 });
@@ -424,6 +426,16 @@ describe('SystemMonitorContribution', () => {
     expect(samples[0].volumes).toEqual([
       { mount: '/', type: 'apfs', sizeBytes: 1000, usedBytes: 250 },
     ]);
+  });
+
+  it('measuresMemoryInUse_asWhatIsNotAvailable_onceTheBreakdownIsRead', async () => {
+    machine.mem = (): Promise<unknown> =>
+      Promise.resolve({ available: 1024, swapused: 0, swaptotal: 0 });
+    send(SystemMonitorChannel.Start);
+    await advance(1_000);
+
+    const { usedBytes, totalBytes }: { usedBytes: number; totalBytes: number } = samples[0].memory;
+    expect(usedBytes).toBe(totalBytes - 1024);
   });
 
   it('omitsMemoryDetailAndVolumes_whenUnavailable', async () => {

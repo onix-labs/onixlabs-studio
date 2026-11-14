@@ -21,7 +21,17 @@ export function formatBytes(bytes: number): string {
  * @returns Returns the formatted throughput.
  */
 export function formatAxisRate(bytesPerSec: number): string {
-  return formatRate(bytesPerSec).replace(/\.0 /, ' ');
+  return `${formatAxisBytes(bytesPerSec)}/s`;
+}
+
+/**
+ * Formats a size for a chart's axis: like {@link formatBytes}, but a whole number of its unit drops the
+ * `.0`, so the ticks read cleanly (`64 GB`, `1.5 MB`).
+ * @param bytes The size in bytes.
+ * @returns Returns the formatted size.
+ */
+export function formatAxisBytes(bytes: number): string {
+  return formatBytes(bytes).replace(/\.0 /, ' ');
 }
 
 /**

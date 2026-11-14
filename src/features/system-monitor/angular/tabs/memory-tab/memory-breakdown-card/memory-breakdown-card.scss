@@ -1,0 +1,62 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+// One bar of parts, each its share wide, a 2px gap of surface between them rather than an outline.
+.memory-breakdown__bar {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  block-size: 1rem;
+  overflow: hidden;
+  border-radius: calc(0.35rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.memory-breakdown__part {
+  flex-basis: 0;
+  min-inline-size: 2px;
+}
+
+// The legend names every part, so no part is told by its colour alone.
+.memory-breakdown__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.memory-breakdown__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.memory-breakdown__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.memory-breakdown__key {
+  inline-size: 0.6rem;
+  block-size: 0.6rem;
+  border-radius: 2px;
+}
+
+.memory-breakdown__value {
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--body-foreground-color);
+}
+
+.memory-breakdown__empty {
+  @include empty;
+}

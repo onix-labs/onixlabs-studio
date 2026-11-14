@@ -11,6 +11,7 @@ import {
 import { TileChannel } from '../metric-tile/metric-tile';
 import { formatBytes, formatPercent, formatRate, formatShare } from './format';
 import { MachineHealth } from './machine-health';
+import { MemorySegment } from './memory-segment';
 
 /**
  * The share of memory in use at which the machine is under memory pressure.
@@ -111,6 +112,23 @@ export class SystemMonitorReadings {
    * Holds the recent swap-use history (percent of the swap configured), oldest first.
    */
   public readonly swapHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
+
+  /**
+   * Holds the recent memory-pressure history (percent), oldest first.
+   */
+  public readonly pressureHistory: WritableSignal<readonly number[]> = signal<readonly number[]>(
+    [],
+  );
+
+  /**
+   * Holds the recent history of each part of memory (bytes), oldest first, keyed by part, for the
+   * composition graph. A part the platform does not report keeps no history.
+   */
+  public readonly segmentHistories: WritableSignal<
+    ReadonlyMap<MemorySegment['key'], readonly number[]>
+  > = signal<ReadonlyMap<MemorySegment['key'], readonly number[]>>(
+    new Map<MemorySegment['key'], readonly number[]>(),
+  );
 
   /**
    * Holds the recent app CPU-share history (percent), oldest first, overlaid on the CPU graph.
@@ -217,6 +235,18 @@ export class SystemMonitorReadings {
    */
   public readonly memoryDetail: Signal<MemoryDetailMetric | null> = computed(
     (): MemoryDetailMetric | null => this.latest()?.memoryDetail ?? null,
+  );
+
+  /**
+   * Gets the latest sample's memory in parts, those the platform reports, smallest-held first: apps,
+   * wired, compressed, cached files, then free. Where the platform reports no app memory (Windows) it
+   * is the memory in use less the wired and compressed. Empty before the breakdown is first read.
+   */
+  public readonly memorySegments: Signal<readonly MemorySegment[]> = computed(
+    (): readonly MemorySegment[] => {
+      const sample: MetricsSample | null = this.latest();
+      return sample === null ? [] : segmentsOf(sample);
+    },
   );
 
   /**
@@ -400,6 +430,10 @@ export class SystemMonitorReadings {
       const { swapUsedBytes, swapTotalBytes }: MemoryDetailMetric = sample.memoryDetail;
       this.push(this.swapHistory, (swapUsedBytes / swapTotalBytes) * 100);
     }
+    if (sample.memoryDetail?.pressure !== undefined) {
+      this.push(this.pressureHistory, sample.memoryDetail.pressure.percent);
+    }
+    this.pushSegments(segmentsOf(sample));
     if (sample.app !== undefined) {
       this.push(this.appCpuHistory, sample.app.cpuPercent);
       this.push(this.appMemoryHistory, sample.app.memoryPercent);
@@ -438,6 +472,28 @@ export class SystemMonitorReadings {
   }
 
   /**
+   * Appends each part of memory's reading to its history.
+   * @param segments The parts of memory.
+   */
+  private pushSegments(segments: readonly MemorySegment[]): void {
+    if (segments.length === 0) {
+      return;
+    }
+    const length: number = this.historyLength();
+    this.segmentHistories.update(
+      (
+        histories: ReadonlyMap<MemorySegment['key'], readonly number[]>,
+      ): ReadonlyMap<MemorySegment['key'], readonly number[]> =>
+        new Map<MemorySegment['key'], readonly number[]>(
+          segments.map((segment: MemorySegment): [MemorySegment['key'], readonly number[]] => [
+            segment.key,
+            [...(histories.get(segment.key) ?? []), segment.bytes].slice(-length),
+          ]),
+        ),
+    );
+  }
+
+  /**
    * Appends each core's reading to its history. When the core count changes the histories restart,
    * since they would otherwise pair one core's past with another's present.
    * @param cores Each core's utilisation.
@@ -453,4 +509,31 @@ export class SystemMonitorReadings {
       },
     );
   }
+}
+
+/**
+ * Splits a sample's memory into its parts, those the platform reports.
+ * @param sample The sample.
+ * @returns Returns the parts, or none before the breakdown is first read.
+ */
+function segmentsOf(sample: MetricsSample): readonly MemorySegment[] {
+  const detail: MemoryDetailMetric | undefined = sample.memoryDetail;
+  if (detail === undefined) {
+    return [];
+  }
+  const wired: number = detail.wiredBytes ?? 0;
+  const compressed: number = detail.compressedBytes ?? 0;
+  const app: number = detail.appBytes ?? Math.max(0, sample.memory.usedBytes - wired - compressed);
+  const parts: readonly (MemorySegment | null)[] = [
+    { key: 'app', label: 'Apps', bytes: app },
+    detail.wiredBytes === undefined ? null : { key: 'wired', label: 'Wired', bytes: wired },
+    detail.compressedBytes === undefined
+      ? null
+      : { key: 'compressed', label: 'Compressed', bytes: compressed },
+    detail.cachedBytes === undefined
+      ? null
+      : { key: 'cached', label: 'Cached Files', bytes: detail.cachedBytes },
+    detail.freeBytes === undefined ? null : { key: 'free', label: 'Free', bytes: detail.freeBytes },
+  ];
+  return parts.filter((part: MemorySegment | null): part is MemorySegment => part !== null);
 }

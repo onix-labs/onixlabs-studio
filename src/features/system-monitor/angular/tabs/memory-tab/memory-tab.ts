@@ -1,95 +1,139 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
-import { MemoryDetailMetric, MetricsSample } from '@shared/api/system-monitor-channels';
-import { MetricTile, TileChannel } from '../../metric-tile/metric-tile';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Icon } from '@shared/angular/icons/icon';
+import {
+  MemoryDetailMetric,
+  MemoryModule,
+  MetricsSample,
+  SystemInfo,
+} from '@shared/api/system-monitor-channels';
 import { formatBytes, formatPercent } from '../../readings/format';
 import { SystemMonitorReadings } from '../../readings/system-monitor-readings';
+import { MemoryBreakdownCard } from './memory-breakdown-card/memory-breakdown-card';
+import { MemoryCompositionCard } from './memory-composition-card/memory-composition-card';
+import { MemoryHistoryCard } from './memory-history-card/memory-history-card';
+import { MemoryModulesCard } from './memory-modules-card/memory-modules-card';
+import { MemoryPressureCard } from './memory-pressure-card/memory-pressure-card';
+import { MemoryProcessesCard } from './memory-processes-card/memory-processes-card';
+import { MemoryStatisticsCard } from './memory-statistics-card/memory-statistics-card';
+import { MemorySwapCard } from './memory-swap-card/memory-swap-card';
+import { MemoryUsageCard } from './memory-usage-card/memory-usage-card';
 
 /**
- * Describes one fact shown under the memory graphs.
+ * Describes one of the header's summary chips (`In Use: 49.2 GB (19%)`).
  */
-interface MemoryFact {
+interface SummaryChip {
   /**
-   * Gets the fact's label.
+   * Gets what the reading is.
    */
   readonly label: string;
 
   /**
-   * Gets the fact's value.
+   * Gets the reading.
    */
   readonly value: string;
 }
 
 /**
- * Represents the System Monitor's Memory tab: memory in use with Studio's share overlaid, swap in use
- * beside it, and the breakdown — what is used, what is available, and what is Studio's.
- *
- * Available is shown beside used because they do not add up to the total: macOS and Linux keep file
- * data cached in otherwise idle memory and give it up on demand, so "used" alone makes a machine look
- * fuller than it is.
+ * Finds the speed most of the modules run at, which is the memory's speed.
+ * @param modules The memory modules.
+ * @returns Returns the speed in MT/s, or undefined when none reports one.
+ */
+function commonSpeed(modules: readonly MemoryModule[]): number | undefined {
+  const counts: Map<number, number> = new Map<number, number>();
+  for (const module of modules) {
+    if (module.speedMts !== undefined) {
+      counts.set(module.speedMts, (counts.get(module.speedMts) ?? 0) + 1);
+    }
+  }
+  let best: number | undefined;
+  for (const [speed, count] of counts) {
+    if (best === undefined || count > (counts.get(best) ?? 0)) {
+      best = speed;
+    }
+  }
+  return best;
+}
+
+/**
+ * Represents the System Monitor's Memory view: the memory named (its size, generation and whether it
+ * corrects errors) with its headline readings, then its use — as a meter and over time — its pressure,
+ * what holds it, swap, the processes holding the most, its composition over time, the modules it is
+ * made of, and its statistics in full. Every figure is one the platform reports; what it does not is
+ * left out or said to be unavailable.
  */
 @Component({
   selector: 'app-system-monitor-memory-tab',
-  imports: [MetricTile],
+  imports: [
+    AppIcon,
+    MemoryUsageCard,
+    MemoryHistoryCard,
+    MemoryPressureCard,
+    MemoryBreakdownCard,
+    MemorySwapCard,
+    MemoryProcessesCard,
+    MemoryCompositionCard,
+    MemoryModulesCard,
+    MemoryStatisticsCard,
+  ],
   templateUrl: './memory-tab.html',
   styleUrl: './memory-tab.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MemoryTab {
   /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
+  /**
    * Gets the view's readings.
    */
-  protected readonly readings: SystemMonitorReadings = inject(SystemMonitorReadings);
+  private readonly readings: SystemMonitorReadings = inject(SystemMonitorReadings);
 
   /**
-   * Gets whether the machine has swap configured, so its graph is worth showing.
+   * Gets the memory described in a line (`256.0 GB DDR4 ECC`), as far as it is known.
    */
-  protected readonly hasSwap: Signal<boolean> = computed(
-    (): boolean => (this.readings.memoryDetail()?.swapTotalBytes ?? 0) > 0,
-  );
+  protected readonly description: Signal<string> = computed((): string => {
+    const info: SystemInfo | null = this.readings.info();
+    if (info === null) {
+      return '';
+    }
+    const generation: string =
+      /\b(L?P?DDR\d\w*)/i.exec(info.memoryModules[0]?.type ?? '')?.[1] ?? '';
+    return [formatBytes(info.totalMemoryBytes), generation, info.memoryEcc === true ? 'ECC' : '']
+      .filter((part: string): boolean => part.length > 0)
+      .join(' ');
+  });
 
   /**
-   * Gets the swap graph's channel.
+   * Gets the header's chips: in use, available, compressed and swap where reported, and the speed.
    */
-  protected readonly swapChannels: Signal<readonly TileChannel[]> = computed(
-    (): readonly TileChannel[] => {
-      const detail: MemoryDetailMetric | null = this.readings.memoryDetail();
-      const value: string =
-        detail === null || detail.swapTotalBytes === 0
-          ? '—'
-          : `${formatBytes(detail.swapUsedBytes)} of ${formatBytes(detail.swapTotalBytes)}`;
-      return [{ value, values: this.readings.swapHistory() }];
+  protected readonly chips: Signal<readonly SummaryChip[]> = computed(
+    (): readonly SummaryChip[] => {
+      const sample: MetricsSample | null = this.readings.latest();
+      if (sample === null) {
+        return [];
+      }
+      const detail: MemoryDetailMetric | undefined = sample.memoryDetail;
+      const chips: SummaryChip[] = [
+        {
+          label: 'In Use',
+          value: `${formatBytes(sample.memory.usedBytes)} (${formatPercent(sample.memory.percent)})`,
+        },
+      ];
+      if (detail !== undefined) {
+        chips.push({ label: 'Available', value: formatBytes(detail.availableBytes) });
+        if (detail.compressedBytes !== undefined) {
+          chips.push({ label: 'Compressed', value: formatBytes(detail.compressedBytes) });
+        }
+        chips.push({ label: 'Swap', value: formatBytes(detail.swapUsedBytes) });
+      }
+      const speed: number | undefined = commonSpeed(this.readings.info()?.memoryModules ?? []);
+      if (speed !== undefined) {
+        chips.push({ label: 'Speed', value: `${speed} MT/s` });
+      }
+      return chips;
     },
   );
-
-  /**
-   * Gets the memory facts: total, used, available, Studio's and swap, as far as they were read.
-   */
-  protected readonly facts: Signal<readonly MemoryFact[]> = computed((): readonly MemoryFact[] => {
-    const sample: MetricsSample | null = this.readings.latest();
-    if (sample === null) {
-      return [];
-    }
-    const facts: MemoryFact[] = [
-      { label: 'Total', value: formatBytes(sample.memory.totalBytes) },
-      {
-        label: 'In use',
-        value: `${formatBytes(sample.memory.usedBytes)} (${formatPercent(sample.memory.percent)})`,
-      },
-    ];
-    const detail: MemoryDetailMetric | undefined = sample.memoryDetail;
-    if (detail !== undefined) {
-      facts.push({ label: 'Available', value: formatBytes(detail.availableBytes) });
-    }
-    const studio: string | null = this.readings.memoryAppValue();
-    if (studio !== null) {
-      facts.push({ label: 'Studio', value: studio });
-    }
-    if (detail !== undefined && detail.swapTotalBytes > 0) {
-      facts.push({
-        label: 'Swap',
-        value: `${formatBytes(detail.swapUsedBytes)} of ${formatBytes(detail.swapTotalBytes)}`,
-      });
-    }
-    return facts;
-  });
 }

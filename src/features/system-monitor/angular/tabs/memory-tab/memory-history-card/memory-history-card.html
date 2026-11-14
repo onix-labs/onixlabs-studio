@@ -1,0 +1,39 @@
+<app-system-monitor-dashboard-card [icon]="Icon.MONITOR_TREND" [heading]="heading()">
+  <div cardBadges class="memory-history__modes" role="group" aria-label="Show">
+    <app-button
+      variant="none"
+      size="small"
+      label="Usage"
+      [pressed]="mode() === 'usage'"
+      (click)="setMode('usage')"
+    />
+    <app-button
+      variant="none"
+      size="small"
+      label="Pressure"
+      [pressed]="mode() === 'pressure'"
+      (click)="setMode('pressure')"
+    />
+    <app-button
+      variant="none"
+      size="small"
+      label="Swap"
+      [pressed]="mode() === 'swap'"
+      (click)="setMode('swap')"
+    />
+  </div>
+
+  @if (unavailable(); as message) {
+    <p class="memory-history__empty">{{ message }}</p>
+  } @else {
+    <app-system-monitor-line-chart
+      class="memory-history__chart"
+      ariaLabel="Memory over time"
+      [series]="series()"
+      [max]="100"
+      [format]="percent"
+      [showLegend]="mode() === 'usage'"
+      [intervalMs]="readings.intervalMs()"
+    />
+  }
+</app-system-monitor-dashboard-card>

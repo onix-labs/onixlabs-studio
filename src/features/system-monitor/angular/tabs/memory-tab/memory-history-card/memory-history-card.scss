@@ -1,0 +1,20 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+.memory-history__modes {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.memory-history__chart {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+.memory-history__empty {
+  @include empty;
+}

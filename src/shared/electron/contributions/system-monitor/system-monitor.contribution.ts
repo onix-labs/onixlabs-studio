@@ -39,6 +39,17 @@ import {
   sumNetwork,
 } from './metrics-readers';
 import {
+  darwinMemory,
+  darwinMemoryModules,
+  layoutMemoryModules,
+  linuxMemory,
+  MemoryBreakdown,
+  MemoryModules,
+  SystemProfilerMemory,
+  windowsMemory,
+  WindowsMemory,
+} from './memory-readers';
+import {
   joinDarwinExtras,
   parseDarwinThreads,
   parseDarwinTimes,
@@ -80,6 +91,21 @@ const EXTRAS_SAMPLE_INTERVAL_MS: number = 6_000;
  */
 const WINDOWS_EXTRAS_COMMAND: string =
   'Get-CimInstance Win32_Process | Select-Object ProcessId,ThreadCount,UserModeTime,KernelModeTime | ConvertTo-Json -Compress';
+
+/**
+ * The least time between readings of Windows' memory counters, in milliseconds: each is a PowerShell
+ * query, so they are read far less often than the rest of the memory breakdown and carried forward.
+ */
+const WINDOWS_MEMORY_SAMPLE_INTERVAL_MS: number = 15_000;
+
+/**
+ * The PowerShell that reads Windows' memory counters and Memory Compression's working set as JSON.
+ */
+const WINDOWS_MEMORY_COMMAND: string = [
+  '$m = Get-CimInstance Win32_PerfRawData_PerfOS_Memory | Select-Object PagesInputPersec,PagesOutputPersec,CacheBytes,StandbyCacheNormalPriorityBytes,StandbyCacheReserveBytes,StandbyCacheCoreBytes,ModifiedPageListBytes,PoolNonpagedBytes,FreeAndZeroPageListBytes',
+  "$c = (Get-Process -Name 'Memory Compression' -ErrorAction SilentlyContinue).WorkingSet64",
+  '[pscustomobject]@{ memory = $m; compressed = $c } | ConvertTo-Json -Compress',
+].join('; ');
 
 /**
  * The platforms whose process listing reports CPU per core (`ps`'s `%cpu`) rather than as a share of
@@ -176,6 +202,16 @@ export class SystemMonitorContribution implements MainContribution {
    * Decides the ticks the volumes are read on, reset each time sampling starts.
    */
   private volumeCadence: HeavyCadence = new HeavyCadence(VOLUME_SAMPLE_INTERVAL_MS);
+
+  /**
+   * Decides the ticks Windows' memory counters are read on, reset each time sampling starts.
+   */
+  private windowsMemoryCadence: HeavyCadence = new HeavyCadence(WINDOWS_MEMORY_SAMPLE_INTERVAL_MS);
+
+  /**
+   * Windows' memory counters as last read, carried forward between their readings.
+   */
+  private windowsMemoryReading: WindowsMemory | undefined = undefined;
 
   /**
    * The volumes last read, carried forward on the ticks between.
@@ -297,6 +333,8 @@ export class SystemMonitorContribution implements MainContribution {
     this.heavy = NO_HEAVY_READINGS;
     this.volumeCadence = new HeavyCadence(VOLUME_SAMPLE_INTERVAL_MS);
     this.volumes = undefined;
+    this.windowsMemoryCadence = new HeavyCadence(WINDOWS_MEMORY_SAMPLE_INTERVAL_MS);
+    this.windowsMemoryReading = undefined;
     this.gpuUnavailable = false;
     // Prime the CPU and network/disk baselines so the first pushed sample carries real deltas.
     void this.readSample();
@@ -372,8 +410,33 @@ export class SystemMonitorContribution implements MainContribution {
     }
     return {
       ...base,
+      memory: this.inUse(base.memory, this.heavy.memoryDetail),
       ...definedOnly({ ...this.heavy, volumes: this.volumes }),
       app: this.readApp(),
+    };
+  }
+
+  /**
+   * Works out the memory in use as the memory not available, where the available memory is known: the
+   * definition Activity Monitor, Task Manager and Linux's MemAvailable share. The free memory the OS
+   * reports on every tick leaves out what the system holds only as cache and gives up on demand, so on
+   * macOS it reads tens of gigabytes higher than Activity Monitor's Memory Used.
+   * @param memory The memory reading from the free memory.
+   * @param detail The memory breakdown, or undefined before it has been read.
+   * @returns Returns the memory reading, its use measured from what is available where known.
+   */
+  private inUse(
+    memory: MetricsSample['memory'],
+    detail: MemoryDetailMetric | undefined,
+  ): MetricsSample['memory'] {
+    if (detail === undefined || memory.totalBytes <= 0) {
+      return memory;
+    }
+    const usedBytes: number = Math.max(0, memory.totalBytes - detail.availableBytes);
+    return {
+      usedBytes,
+      totalBytes: memory.totalBytes,
+      percent: Math.round((usedBytes / memory.totalBytes) * 1000) / 10,
     };
   }
 
@@ -408,9 +471,88 @@ export class SystemMonitorContribution implements MainContribution {
    */
   private async readMemoryDetail(): Promise<MemoryDetailMetric | undefined> {
     try {
-      return readMemoryDetail(await si.mem());
+      const detail: MemoryDetailMetric = readMemoryDetail(await si.mem());
+      return { ...detail, ...(await this.readMemoryBreakdown(detail.availableBytes)) };
     } catch {
       return undefined;
+    }
+  }
+
+  /**
+   * Reads the memory breakdown the platform's own tools give beyond systeminformation: `vm_stat` and the
+   * kernel's pressure readings on macOS, `/proc` on Linux, the memory counters on Windows (every
+   * fifteen seconds, carried between). Best-effort: what cannot be read is left out.
+   * @param availableBytes The memory available, which Windows' pressure is worked out from.
+   * @returns Returns the breakdown.
+   */
+  private async readMemoryBreakdown(availableBytes: number): Promise<MemoryBreakdown> {
+    const options: { timeout: number; maxBuffer: number } = {
+      timeout: 4_000,
+      maxBuffer: 4 * 1024 * 1024,
+    };
+    const text: (path: string) => Promise<string> = async (path: string): Promise<string> =>
+      readFile(path, 'utf8').catch((): string => '');
+    try {
+      switch (process.platform) {
+        case 'darwin': {
+          const [vmStat, pressure]: [{ stdout: string }, { stdout: string }] = await Promise.all([
+            run('vm_stat', [], options),
+            run(
+              'sysctl',
+              ['-n', 'kern.memorystatus_vm_pressure_level', 'kern.memorystatus_level'],
+              options,
+            ),
+          ]);
+          return darwinMemory(vmStat.stdout, pressure.stdout);
+        }
+        case 'linux': {
+          const [meminfo, vmstat, psi]: [string, string, string] = await Promise.all([
+            text('/proc/meminfo'),
+            text('/proc/vmstat'),
+            text('/proc/pressure/memory'),
+          ]);
+          return linuxMemory(meminfo, vmstat, psi);
+        }
+        case 'win32': {
+          if (this.windowsMemoryCadence.due(Date.now())) {
+            const { stdout }: { stdout: string } = await run(
+              'powershell.exe',
+              ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_MEMORY_COMMAND],
+              options,
+            );
+            this.windowsMemoryReading = JSON.parse(stdout) as WindowsMemory;
+          }
+          return windowsMemory(this.windowsMemoryReading ?? {}, os.totalmem(), availableBytes);
+        }
+        default:
+          return {};
+      }
+    } catch (error: unknown) {
+      logger.debug('SystemMonitorContribution', 'Could not read the memory breakdown', error);
+      return {};
+    }
+  }
+
+  /**
+   * Reads the installed memory modules: from `system_profiler` on macOS (systeminformation reports none
+   * there), from systeminformation elsewhere (Windows' WMI; Linux's dmidecode, which needs
+   * administrator rights, so usually none). Best-effort: an empty list when they cannot be read.
+   * @returns Returns the modules.
+   */
+  private async readMemoryModules(): Promise<MemoryModules> {
+    try {
+      if (process.platform === 'darwin') {
+        const { stdout }: { stdout: string } = await run(
+          'system_profiler',
+          ['-json', 'SPMemoryDataType'],
+          { timeout: 10_000, maxBuffer: 4 * 1024 * 1024 },
+        );
+        return darwinMemoryModules(JSON.parse(stdout) as SystemProfilerMemory);
+      }
+      return layoutMemoryModules(await si.memLayout());
+    } catch (error: unknown) {
+      logger.debug('SystemMonitorContribution', 'Could not read the memory modules', error);
+      return { modules: [] };
     }
   }
 
@@ -602,16 +744,18 @@ export class SystemMonitorContribution implements MainContribution {
     const cpus: readonly os.CpuInfo[] = os.cpus();
     // The graphics controllers are read once here, not per sample: on macOS it is `system_profiler`,
     // a second or more.
-    const [cpu, osInfo, graphics, cache]: [
+    const [cpu, osInfo, graphics, cache, memory]: [
       si.Systeminformation.CpuData | null,
       si.Systeminformation.OsData | null,
       si.Systeminformation.GraphicsData | null,
       si.Systeminformation.CpuCacheData | null,
+      MemoryModules,
     ] = await Promise.all([
       si.cpu().catch((): null => null),
       si.osInfo().catch((): null => null),
       si.graphics().catch((): null => null),
       si.cpuCache().catch((): null => null),
+      this.readMemoryModules(),
     ]);
     const positive: (value: number | undefined) => number | undefined = (
       value: number | undefined,
@@ -638,6 +782,8 @@ export class SystemMonitorContribution implements MainContribution {
           : `${osInfo.distro} ${osInfo.release}`.trim(),
       ...definedOnly({ bootTime: readBootTime() }),
       gpus: readGpus(graphics?.controllers ?? []),
+      memoryModules: memory.modules,
+      ...definedOnly({ memorySlots: memory.slots, memoryEcc: memory.ecc }),
     };
   }
 

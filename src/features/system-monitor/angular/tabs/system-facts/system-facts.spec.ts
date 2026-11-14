@@ -37,6 +37,7 @@ describe('SystemFacts', () => {
         { model: 'AMD Radeon RX 6900 XT', vendor: 'AMD', memoryBytes: 16 * 1024 ** 3 },
         { model: 'Intel UHD 630', vendor: 'Intel' },
       ],
+      memoryModules: [],
     });
     readings.accept({
       // Two days, an hour, two minutes and three seconds after boot.

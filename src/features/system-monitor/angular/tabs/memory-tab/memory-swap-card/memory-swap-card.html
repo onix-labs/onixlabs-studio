@@ -1,0 +1,22 @@
+<app-system-monitor-dashboard-card [icon]="Icon.MONITOR_SWAP" heading="Swap">
+  @if (state(); as swap) {
+    <div class="memory-swap" data-testid="memory-swap">
+      <p class="memory-swap__used">{{ swap.used }}</p>
+      <p class="memory-swap__note">{{ swap.note }}</p>
+      @if (swap.percent !== undefined) {
+        <div
+          class="memory-swap__track"
+          role="meter"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          [attr.aria-valuenow]="swap.percent"
+          aria-label="Swap in use"
+        >
+          <div class="memory-swap__fill" [style.inline-size.%]="swap.percent"></div>
+        </div>
+      }
+    </div>
+  } @else {
+    <p class="memory-swap__empty">Swap appears after the next reading.</p>
+  }
+</app-system-monitor-dashboard-card>

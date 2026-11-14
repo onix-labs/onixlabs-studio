@@ -1,0 +1,38 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+.memory-swap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.memory-swap__used {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.memory-swap__note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.memory-swap__track {
+  @include usage-track;
+
+  margin-block-start: 0.35rem;
+}
+
+.memory-swap__fill {
+  @include usage-fill;
+}
+
+.memory-swap__empty {
+  @include empty;
+}

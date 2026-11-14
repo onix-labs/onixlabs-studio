@@ -1,22 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { MetricsSample } from '@shared/api/system-monitor-channels';
+import { SystemMonitorProcesses } from '../../readings/system-monitor-processes';
 import { SystemMonitorReadings } from '../../readings/system-monitor-readings';
 import { MemoryTab } from './memory-tab';
-
-/**
- * Builds a sample with the given memory breakdown.
- * @param over The fields to override.
- * @returns Returns the sample.
- */
-function sample(over: Partial<MetricsSample> = {}): MetricsSample {
-  return {
-    timestamp: 't',
-    cpu: 0,
-    memory: { usedBytes: 8 * 1024 ** 3, totalBytes: 16 * 1024 ** 3, percent: 50 },
-    ...over,
-  };
-}
+import { MEMORY_SAMPLE } from './memory-test-sample';
 
 describe('MemoryTab', () => {
   let fixture: ComponentFixture<MemoryTab>;
@@ -26,7 +13,7 @@ describe('MemoryTab', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [MemoryTab],
-      providers: [SystemMonitorReadings],
+      providers: [SystemMonitorReadings, SystemMonitorProcesses],
     }).compileComponents();
     readings = TestBed.inject(SystemMonitorReadings);
     fixture = TestBed.createComponent(MemoryTab);
@@ -37,41 +24,61 @@ describe('MemoryTab', () => {
     globalThis.localStorage?.clear();
   });
 
-  /**
-   * Shows the tab with one sample accepted.
-   * @param value The sample.
-   */
-  async function show(value: MetricsSample): Promise<void> {
-    readings.accept(value);
+  it('namesTheMemory_withItsHeadlineReadings', async () => {
+    readings.setInfo({
+      cpuModel: 'CPU',
+      logicalCores: 1,
+      totalMemoryBytes: 256 * 1024 ** 3,
+      os: 'macOS',
+      architecture: 'x86_64',
+      caches: [],
+      gpus: [],
+      memoryModules: [
+        {
+          slot: 'DIMM 1',
+          sizeBytes: 32 * 1024 ** 3,
+          type: 'DDR4 R-DIMM',
+          speedMts: 2400,
+          manufacturer: '',
+          partNumber: '',
+        },
+      ],
+      memoryEcc: true,
+    });
+    readings.accept(MEMORY_SAMPLE);
     fixture.detectChanges();
     await fixture.whenStable();
-  }
 
-  it('showsAvailableBesideInUse_andSwapWhenThereIsSome', async () => {
-    await show(
-      sample({
-        memoryDetail: {
-          availableBytes: 12 * 1024 ** 3,
-          swapUsedBytes: 1024 ** 3,
-          swapTotalBytes: 2 * 1024 ** 3,
-        },
-      }),
+    expect(host.textContent).toContain('256.0 GB DDR4 ECC');
+    const chips: string[] = Array.from(host.querySelectorAll('[aria-label="Summary"] li')).map(
+      (chip: Element): string => chip.textContent?.replace(/\s+/g, ' ').trim() ?? '',
     );
-
-    expect(host.textContent).toContain('In use');
-    expect(host.textContent).toContain('8.0 GB (50%)');
-    expect(host.textContent).toContain('Available');
-    expect(host.textContent).toContain('12.0 GB');
-    expect(host.textContent).toContain('1.0 GB of 2.0 GB');
-    expect(host.querySelectorAll('app-metric-tile')).toHaveLength(2);
+    expect(chips).toEqual([
+      'In Use: 49.0 GB (19%)',
+      'Available: 207.0 GB',
+      'Compressed: 512.0 MB',
+      'Swap: 0 B',
+      'Speed: 2400 MT/s',
+    ]);
   });
 
-  it('leavesSwapOut_whenNoneIsConfigured', async () => {
-    await show(
-      sample({ memoryDetail: { availableBytes: 1, swapUsedBytes: 0, swapTotalBytes: 0 } }),
-    );
+  it('laysOutTheSketchsCards', () => {
+    fixture.detectChanges();
 
-    expect(host.textContent).not.toContain('Swap');
-    expect(host.querySelectorAll('app-metric-tile')).toHaveLength(1);
+    expect(
+      Array.from(host.querySelectorAll('article')).map(
+        (card: Element): string => card.getAttribute('aria-label') ?? '',
+      ),
+    ).toEqual([
+      'Memory Usage',
+      'Memory Usage (Last 60 seconds)',
+      'Memory Pressure',
+      'Memory Breakdown',
+      'Swap',
+      'Memory Usage by Process',
+      'Memory Composition',
+      'Physical Memory (DIMMs)',
+      'Memory Statistics',
+    ]);
   });
 });

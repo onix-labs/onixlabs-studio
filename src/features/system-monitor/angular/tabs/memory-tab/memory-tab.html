@@ -1,23 +1,27 @@
-<div class="memory">
-  <div class="memory__graphs">
-    <app-metric-tile
-      label="Memory"
-      [suffix]="readings.memoryTotal()"
-      [channels]="readings.memoryChannels()"
-    />
-    @if (hasSwap()) {
-      <app-metric-tile label="Swap" [channels]="swapChannels()" />
-    }
-  </div>
-
-  @if (facts().length > 0) {
-    <dl class="memory__facts">
-      @for (fact of facts(); track fact.label) {
-        <div>
-          <dt>{{ fact.label }}</dt>
-          <dd [title]="fact.value">{{ fact.value }}</dd>
-        </div>
+<div class="memory" data-testid="memory-view">
+  <header class="memory__header">
+    <app-icon class="memory__icon" [icon]="Icon.MONITOR_MEMORY" [size]="1.75" />
+    <h2 class="memory__title">Memory</h2>
+    <span class="memory__description">{{ description() }}</span>
+    <ul class="memory__chips" aria-label="Summary">
+      @for (chip of chips(); track chip.label) {
+        <li class="memory__chip">
+          {{ chip.label }}:
+          <strong class="memory__chip-value">{{ chip.value }}</strong>
+        </li>
       }
-    </dl>
-  }
+    </ul>
+  </header>
+
+  <div class="memory__grid">
+    <app-system-monitor-memory-usage-card class="memory__usage" />
+    <app-system-monitor-memory-history-card class="memory__history" />
+    <app-system-monitor-memory-pressure-card class="memory__pressure" />
+    <app-system-monitor-memory-breakdown-card class="memory__breakdown" />
+    <app-system-monitor-memory-swap-card class="memory__swap" />
+    <app-system-monitor-memory-processes-card class="memory__processes" />
+    <app-system-monitor-memory-composition-card class="memory__composition" />
+    <app-system-monitor-memory-modules-card class="memory__modules" />
+    <app-system-monitor-memory-statistics-card class="memory__statistics" />
+  </div>
 </div>

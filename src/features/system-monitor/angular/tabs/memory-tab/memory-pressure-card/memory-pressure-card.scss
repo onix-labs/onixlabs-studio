@@ -1,0 +1,59 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+// The level's colour marks its glyph and the bar; the words stay in text colours.
+.memory-pressure {
+  --memory-pressure-tone: var(--success-color);
+
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.memory-pressure--warning {
+  --memory-pressure-tone: var(--warning-color);
+}
+
+.memory-pressure--critical {
+  --memory-pressure-tone: var(--danger-color);
+}
+
+.memory-pressure__level {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.memory-pressure__icon {
+  color: var(--memory-pressure-tone);
+}
+
+.memory-pressure__description {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.memory-pressure__track {
+  @include usage-track;
+
+  margin-block-start: 0.35rem;
+  background-color: color-mix(in srgb, var(--memory-pressure-tone) 18%, transparent);
+}
+
+.memory-pressure__fill {
+  @include usage-fill;
+
+  background-color: var(--memory-pressure-tone);
+}
+
+.memory-pressure__empty {
+  @include empty;
+}

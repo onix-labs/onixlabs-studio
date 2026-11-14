@@ -276,7 +276,7 @@ describe('SystemMonitorView', () => {
   });
 
   it('processes_areListedOnlyWhileAViewShowingThemIsInFront', async () => {
-    await create([], 'memory');
+    await create([], 'gpu');
     expect(metrics.processesStarted).toBe(0);
 
     // The Overview's Processes card and the CPU view's top processes list them too.
@@ -336,6 +336,7 @@ describe('SystemMonitorView', () => {
       architecture: 'x86_64',
       caches: [],
       gpus: [],
+      memoryModules: [],
     };
     await create([], 'overview', machine);
 

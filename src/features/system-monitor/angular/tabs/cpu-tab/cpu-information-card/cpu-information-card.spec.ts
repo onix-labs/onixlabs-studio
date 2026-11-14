@@ -54,6 +54,7 @@ describe('CpuInformationCard', () => {
           { level: 'L3', totalBytes: 33 * 1024 ** 2 },
         ],
         gpus: [],
+        memoryModules: [],
       }),
     ).toEqual([
       'Model: Intel Xeon W-3265',
@@ -81,6 +82,7 @@ describe('CpuInformationCard', () => {
       architecture: 'x86_64',
       caches: [],
       gpus: [],
+      memoryModules: [],
     });
 
     expect(described).toContain('Performance / Efficiency: 2 / 8');

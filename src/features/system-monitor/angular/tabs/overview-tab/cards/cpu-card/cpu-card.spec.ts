@@ -33,6 +33,7 @@ describe('CpuCard', () => {
       architecture: 'x86_64',
       caches: [],
       gpus: [],
+      memoryModules: [],
     });
     readings.accept({
       timestamp: 't',

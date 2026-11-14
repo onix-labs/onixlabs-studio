@@ -32,6 +32,7 @@ describe('GpuCard', () => {
       architecture: 'x86_64',
       caches: [],
       gpus: [{ model: 'Radeon Pro', vendor: 'AMD', memoryBytes: 16 * 1024 ** 3 }],
+      memoryModules: [],
     });
     readings.accept({
       timestamp: 't',

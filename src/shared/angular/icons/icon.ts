@@ -248,6 +248,21 @@ export class Icon {
   public static readonly MONITOR_RANKED: Icon = new Icon('ph-duotone ph-list-numbers');
 
   /**
+   * Gets the icon for swap in the System Monitor.
+   */
+  public static readonly MONITOR_SWAP: Icon = new Icon('ph-duotone ph-arrows-left-right');
+
+  /**
+   * Gets the icon for statistics in the System Monitor.
+   */
+  public static readonly MONITOR_STATISTICS: Icon = new Icon('ph-duotone ph-chart-bar');
+
+  /**
+   * Gets the icon for a composition over time in the System Monitor.
+   */
+  public static readonly MONITOR_COMPOSITION: Icon = new Icon('ph-duotone ph-stack-simple');
+
+  /**
    * Gets the icon for a grid layout in the System Monitor.
    */
   public static readonly MONITOR_GRID: Icon = new Icon('ph ph-squares-four');

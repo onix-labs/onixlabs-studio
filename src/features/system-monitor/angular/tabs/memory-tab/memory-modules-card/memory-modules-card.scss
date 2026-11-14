@@ -1,0 +1,32 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+// The modules scroll on their own when there are more than the card holds.
+.memory-modules__scroll {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+.memory-modules {
+  @include table;
+
+  th:first-child {
+    inline-size: 36%;
+  }
+
+  td {
+    padding-block: 0.25rem;
+  }
+
+  tbody tr:last-child td {
+    border-block-end: none;
+  }
+}
+
+.memory-modules__empty {
+  @include empty;
+}

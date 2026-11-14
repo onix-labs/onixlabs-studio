@@ -318,6 +318,107 @@ export interface MemoryDetailMetric {
    * Gets the swap space configured, in bytes.
    */
   readonly swapTotalBytes: number;
+
+  /**
+   * Gets the memory apps hold (anonymous memory, less what macOS may purge), in bytes, where the
+   * platform reports it.
+   */
+  readonly appBytes?: number;
+
+  /**
+   * Gets the memory the kernel has wired down and cannot page out, in bytes, where the platform reports
+   * it (macOS's wired memory; Windows' non-paged pool).
+   */
+  readonly wiredBytes?: number;
+
+  /**
+   * Gets the memory the compressor occupies, in bytes, where the platform compresses memory and reports
+   * it (macOS's compressor, Windows' Memory Compression, Linux's zswap).
+   */
+  readonly compressedBytes?: number;
+
+  /**
+   * Gets the memory caching files, which the system gives up on demand, in bytes, where reported.
+   */
+  readonly cachedBytes?: number;
+
+  /**
+   * Gets the memory holding nothing at all, in bytes, where reported.
+   */
+  readonly freeBytes?: number;
+
+  /**
+   * Gets the pages read in from disk since boot, where reported.
+   */
+  readonly pageIns?: number;
+
+  /**
+   * Gets the pages written out to disk since boot, where reported.
+   */
+  readonly pageOuts?: number;
+
+  /**
+   * Gets how hard pressed memory is, where the platform says or it can be worked out.
+   */
+  readonly pressure?: MemoryPressure;
+}
+
+/**
+ * Describes how hard pressed memory is.
+ */
+export interface MemoryPressure {
+  /**
+   * Gets the pressure's level: `normal` (plenty available), `warning` (in demand: compressing and
+   * swapping), or `critical` (short: apps may slow or be ended).
+   */
+  readonly level: 'normal' | 'warning' | 'critical';
+
+  /**
+   * Gets the pressure as a percentage, 0–100, for its graph and bar: on macOS how much of the memory
+   * the system wants free is not; on Linux the share of time tasks stalled for memory; on Windows the
+   * share not available.
+   */
+  readonly percent: number;
+}
+
+/**
+ * Describes one memory module (DIMM).
+ */
+export interface MemoryModule {
+  /**
+   * Gets the slot the module sits in (`DIMM 1`, `Slot 3 (Channel E / DIMM 1)`).
+   */
+  readonly slot: string;
+
+  /**
+   * Gets the module's size, in bytes.
+   */
+  readonly sizeBytes: number;
+
+  /**
+   * Gets the module's type (`DDR4 R-DIMM`), or the empty string when unknown.
+   */
+  readonly type: string;
+
+  /**
+   * Gets the module's data rate in MT/s, or undefined when unknown.
+   */
+  readonly speedMts?: number;
+
+  /**
+   * Gets the module's status as the platform reports it (`OK`), or undefined when it reports none.
+   */
+  readonly status?: string;
+
+  /**
+   * Gets the module's manufacturer, or the empty string when unknown.
+   */
+  readonly manufacturer: string;
+
+  /**
+   * Gets the module's part number, or the empty string when unknown.
+   */
+  readonly partNumber: string;
 }
 
 /**
@@ -548,4 +649,20 @@ export interface SystemInfo {
    * Gets the machine's graphics controllers, or an empty list when they could not be read.
    */
   readonly gpus: readonly GpuInfo[];
+
+  /**
+   * Gets the installed memory modules, or an empty list where the platform will not say (Linux needs
+   * administrator rights to read them).
+   */
+  readonly memoryModules: readonly MemoryModule[];
+
+  /**
+   * Gets the number of memory slots, filled or not, or undefined when unknown.
+   */
+  readonly memorySlots?: number;
+
+  /**
+   * Gets whether the memory corrects errors (ECC), or undefined when unknown.
+   */
+  readonly memoryEcc?: boolean;
 }

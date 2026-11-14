@@ -1,0 +1,28 @@
+<app-system-monitor-dashboard-card [icon]="Icon.MONITOR_COMPOSITION" heading="Memory Composition">
+  @if (entries().length > 0) {
+    <div class="memory-composition">
+      <app-system-monitor-stacked-area-chart
+        class="memory-composition__chart"
+        ariaLabel="Memory composition over time"
+        [layers]="layers()"
+        [max]="total()"
+        [format]="size"
+        [intervalMs]="readings.intervalMs()"
+      />
+      <ul class="memory-composition__legend" data-testid="memory-composition-legend">
+        @for (entry of entries(); track entry.key) {
+          <li class="memory-composition__item">
+            <span class="memory-composition__name">
+              <span class="memory-composition__key" [style.background-color]="entry.colour"></span>
+              {{ entry.label }}
+            </span>
+            <span class="memory-composition__value">{{ entry.value }}</span>
+          </li>
+        }
+      </ul>
+    </div>
+    <span class="memory-composition__span">{{ readings.historyLabel() }}</span>
+  } @else {
+    <p class="memory-composition__empty">The composition appears after the next reading.</p>
+  }
+</app-system-monitor-dashboard-card>

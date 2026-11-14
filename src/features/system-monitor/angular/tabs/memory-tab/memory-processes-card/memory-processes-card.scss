@@ -1,0 +1,23 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+.memory-processes {
+  @include table;
+
+  tbody tr:last-child td {
+    border-block-end: none;
+  }
+}
+
+.memory-processes .memory-processes__number {
+  @include number;
+
+  inline-size: 16%;
+}
+
+.memory-processes__empty {
+  @include empty;
+}

@@ -21,6 +21,7 @@ function machine(over: Partial<SystemInfo> = {}): SystemInfo {
     architecture: 'x86_64',
     caches: [],
     gpus: [],
+    memoryModules: [],
     ...over,
   };
 }
