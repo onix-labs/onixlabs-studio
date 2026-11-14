@@ -16,8 +16,10 @@
 
 .memory-card__meter {
   flex: none;
-  // As large as it reads well, but no more than a share of the card's height on a short view.
-  inline-size: clamp(5.5rem, 34cqb, 9rem);
+  // A share of the card's height, taking most of the spare room between the graph and the stats, so
+  // the readings in the middle have space; bounded so it stays legible on a short view and in
+  // proportion on a tall one.
+  inline-size: clamp(5.5rem, 41cqb, 12rem);
 }
 
 .memory-card__entries {
