@@ -2,7 +2,10 @@ import {
   AppUsageMetric,
   DiskMetric,
   GpuMetric,
+  InterfaceMetric,
+  MemoryDetailMetric,
   NetworkMetric,
+  VolumeMetric,
 } from '@shared/api/system-monitor-channels';
 
 /**
@@ -11,9 +14,46 @@ import {
  * `systeminformation` — keeping the readers pure and unit-testable.
  */
 export interface NetworkStat {
+  readonly iface?: string;
   readonly rx_sec: number | null;
   readonly tx_sec: number | null;
 }
+
+/**
+ * The subset of `systeminformation`'s memory reading this reads (`si.mem()`).
+ */
+export interface MemStat {
+  readonly available: number;
+  readonly swapused: number;
+  readonly swaptotal: number;
+}
+
+/**
+ * The subset of a `systeminformation` volume this reads (`si.fsSize()`).
+ */
+export interface FsSizeStat {
+  readonly mount: string;
+  readonly type: string;
+  readonly size: number;
+  readonly used: number;
+  readonly available?: number;
+}
+
+/**
+ * The file system types that hold no user data — memory-backed, virtual or read-only images — and so
+ * are left out of the volumes listed.
+ */
+const PSEUDO_FILE_SYSTEMS: ReadonlySet<string> = new Set<string>([
+  'tmpfs',
+  'devtmpfs',
+  'devfs',
+  'overlay',
+  'squashfs',
+  'autofs',
+  'proc',
+  'sysfs',
+  'nullfs',
+]);
 
 /**
  * The subset of a `systeminformation` filesystem stat this reads (`si.fsStats()`).
@@ -165,4 +205,75 @@ export function pickGpu(controllers: readonly GpuController[]): GpuMetric {
     }
   }
   return { available: false, percent: 0 };
+}
+
+/**
+ * Maps per-interface network stats to each interface's throughput.
+ * @param stats The per-interface stats (`si.networkStats('*')`).
+ * @returns Returns each named interface's throughput, busiest first.
+ */
+export function readInterfaces(stats: readonly NetworkStat[]): readonly InterfaceMetric[] {
+  return stats
+    .filter((stat: NetworkStat): boolean => typeof stat.iface === 'string' && stat.iface.length > 0)
+    .map((stat: NetworkStat): InterfaceMetric => ({
+      name: stat.iface ?? '',
+      rxBytesPerSec: rate(stat.rx_sec),
+      txBytesPerSec: rate(stat.tx_sec),
+    }))
+    .sort(
+      (a: InterfaceMetric, b: InterfaceMetric): number =>
+        b.rxBytesPerSec + b.txBytesPerSec - (a.rxBytesPerSec + a.txBytesPerSec) ||
+        a.name.localeCompare(b.name),
+    );
+}
+
+/**
+ * Maps a memory reading to the breakdown beyond used and total.
+ * @param stat The memory reading (`si.mem()`).
+ * @returns Returns the breakdown.
+ */
+export function readMemoryDetail(stat: MemStat): MemoryDetailMetric {
+  return {
+    availableBytes: Math.max(0, stat.available),
+    swapUsedBytes: Math.max(0, stat.swapused),
+    swapTotalBytes: Math.max(0, stat.swaptotal),
+  };
+}
+
+/**
+ * Maps the mounted file systems to the volumes worth showing: those holding user data. Memory-backed
+ * and virtual file systems are left out, as are macOS's system mounts under `/System` (its volumes
+ * share the startup disk's container, so they would only repeat its space, and its asset mounts are
+ * not the user's) and anything empty.
+ *
+ * Used is taken as the space not available, where the OS reports it. On macOS `/` is the sealed system
+ * volume, whose own used figure is a few gigabytes however full the disk is; the space not available
+ * counts every volume sharing its container, which is what the user means by how full the disk is.
+ * @param stats The mounted file systems (`si.fsSize()`).
+ * @returns Returns the volumes, in mount order.
+ */
+export function readVolumes(stats: readonly FsSizeStat[]): readonly VolumeMetric[] {
+  const seen: Set<string> = new Set<string>();
+  const volumes: VolumeMetric[] = [];
+  for (const stat of stats) {
+    if (
+      stat.size <= 0 ||
+      PSEUDO_FILE_SYSTEMS.has(stat.type.toLowerCase()) ||
+      stat.mount.startsWith('/System/') ||
+      seen.has(stat.mount)
+    ) {
+      continue;
+    }
+    seen.add(stat.mount);
+    volumes.push({
+      mount: stat.mount,
+      type: stat.type,
+      sizeBytes: stat.size,
+      usedBytes: Math.min(
+        stat.size,
+        Math.max(0, stat.available === undefined ? stat.used : stat.size - stat.available),
+      ),
+    });
+  }
+  return volumes;
 }

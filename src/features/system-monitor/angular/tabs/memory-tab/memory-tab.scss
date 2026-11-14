@@ -1,0 +1,17 @@
+@use '../tabs' as *;
+
+:host {
+  @include host;
+}
+
+.memory {
+  @include page;
+}
+
+.memory__graphs {
+  @include pair(14rem);
+}
+
+.memory__facts {
+  @include facts;
+}

@@ -1,0 +1,36 @@
+@use '../tabs' as *;
+
+:host {
+  @include host;
+}
+
+.cpu {
+  @include page;
+}
+
+.cpu__hero {
+  @include hero;
+}
+
+.cpu__facts {
+  @include facts;
+}
+
+.cpu__heading {
+  @include heading;
+}
+
+// The per-core graphs: a grid of small tiles.
+.cpu__cores {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.5rem;
+
+  > app-metric-tile {
+    block-size: 6.5rem;
+  }
+}
+
+.cpu__empty {
+  @include empty;
+}

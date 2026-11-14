@@ -41,7 +41,7 @@ function clampPercent(value: number): number {
 /**
  * Computes machine metrics samples from raw OS readings. CPU utilisation is derived from the change in
  * the cores' cumulative busy/idle counters between successive samples, so the first sample after a
- * reset reports 0 until a delta exists. Deliberately free of the electron and node modules — the
+ * reset reports 0 (and no per-core readings) until a delta exists. Deliberately free of the electron and node modules — the
  * contribution feeds it `os.cpus()`/`os.totalmem()`/`os.freemem()` and it stays unit-testable.
  */
 export class MetricsSampler {
@@ -49,6 +49,11 @@ export class MetricsSampler {
    * Holds the previous aggregate CPU counters, or null before the first sample.
    */
   private previous: { total: number; idle: number } | null = null;
+
+  /**
+   * Holds the previous per-core counters, or null before the first sample.
+   */
+  private previousCores: readonly { total: number; idle: number }[] | null = null;
 
   /**
    * Produces one sample from the current OS readings, folding in the CPU delta since the last call.
@@ -73,13 +78,40 @@ export class MetricsSampler {
     }
     this.previous = aggregate;
 
+    const perCore: readonly { total: number; idle: number }[] = cpus.map(
+      (core: CpuSnapshot): { total: number; idle: number } => this.aggregate([core]),
+    );
+    const cores: readonly number[] | undefined = this.coreLoads(perCore);
+    this.previousCores = perCore;
+
     const usedBytes: number = Math.max(0, totalBytes - freeBytes);
     const percent: number = totalBytes > 0 ? (usedBytes / totalBytes) * 100 : 0;
     return {
       timestamp,
       cpu: round1(cpu),
       memory: { usedBytes, totalBytes, percent: round1(percent) },
+      ...(cores === undefined ? {} : { cores }),
     };
+  }
+
+  /**
+   * Works out each core's utilisation from its counters' change since the last sample.
+   * @param perCore Each core's current busy and idle counters.
+   * @returns Returns each core's utilisation, or undefined before a delta exists or when the core count
+   * changed (a core taken offline), since the deltas would then pair up the wrong cores.
+   */
+  private coreLoads(
+    perCore: readonly { total: number; idle: number }[],
+  ): readonly number[] | undefined {
+    const previous: readonly { total: number; idle: number }[] | null = this.previousCores;
+    if (previous?.length !== perCore.length) {
+      return undefined;
+    }
+    return perCore.map((core: { total: number; idle: number }, index: number): number => {
+      const deltaTotal: number = core.total - previous[index].total;
+      const deltaIdle: number = core.idle - previous[index].idle;
+      return round1(deltaTotal > 0 ? clampPercent((1 - deltaIdle / deltaTotal) * 100) : 0);
+    });
   }
 
   /**

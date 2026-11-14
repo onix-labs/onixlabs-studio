@@ -1,0 +1,27 @@
+<div class="cpu">
+  <app-metric-tile class="cpu__hero" label="CPU" [channels]="readings.cpuChannels()" />
+
+  @if (facts().length > 0) {
+    <dl class="cpu__facts">
+      @for (fact of facts(); track fact.label) {
+        <div>
+          <dt>{{ fact.label }}</dt>
+          <dd [title]="fact.value">{{ fact.value }}</dd>
+        </div>
+      }
+    </dl>
+  }
+
+  <section>
+    <h3 class="cpu__heading">Logical processors</h3>
+    @if (cores().length > 0) {
+      <div class="cpu__cores" data-testid="cpu-cores">
+        @for (core of cores(); track core.label) {
+          <app-metric-tile [label]="core.label" [channels]="core.channels" />
+        }
+      </div>
+    } @else {
+      <p class="cpu__empty">Each processor's load appears after the next reading.</p>
+    }
+  </section>
+</div>

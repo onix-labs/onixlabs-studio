@@ -7,7 +7,9 @@ import { DocumentVisibility } from '@shared/angular/services/document-visibility
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { LogQuery, LogRecord, LogSession, Severity } from '@shared/api/log-channels';
-import { MetricsSample } from '@shared/api/system-monitor-channels';
+import { MetricsSample, ProcessesSnapshot, SystemInfo } from '@shared/api/system-monitor-channels';
+import { SystemMonitorReadings } from '../readings/system-monitor-readings';
+import { SystemMonitorProcesses } from '../readings/system-monitor-processes';
 import { SystemMonitorCommands } from '../system-monitor-commands/system-monitor-commands';
 import { SystemMonitorMetrics } from '../metrics/system-monitor-metrics';
 import { SystemMonitorView } from './system-monitor-view';
@@ -38,6 +40,30 @@ class FakeMetrics {
     return (): void => {
       this.listener = null;
     };
+  }
+
+  public processesStarted: number = 0;
+  public processesStopped: number = 0;
+  public processListener: ((snapshot: ProcessesSnapshot) => void) | null = null;
+  public machine: SystemInfo | null = null;
+
+  public startProcesses(): void {
+    this.processesStarted += 1;
+  }
+
+  public stopProcesses(): void {
+    this.processesStopped += 1;
+  }
+
+  public onProcesses(listener: (snapshot: ProcessesSnapshot) => void): () => void {
+    this.processListener = listener;
+    return (): void => {
+      this.processListener = null;
+    };
+  }
+
+  public info(): Promise<SystemInfo | null> {
+    return Promise.resolve(this.machine);
   }
 }
 
@@ -143,25 +169,9 @@ interface Testable {
   text: WritableSignal<string>;
   sessionOptions: Signal<readonly DropdownOption[]>;
   selectedSessionValue: Signal<string>;
-  cpuValue: Signal<string>;
-  cpuAppValue: Signal<string | null>;
-  memoryValue: Signal<string>;
-  memoryTotal: Signal<string | null>;
-  memoryAppValue: Signal<string | null>;
-  networkRxValue: Signal<string>;
-  networkTxValue: Signal<string>;
-  diskReadValue: Signal<string>;
-  diskWriteValue: Signal<string>;
-  gpuValue: Signal<string>;
-  cpuHistory: WritableSignal<readonly number[]>;
-  memoryHistory: WritableSignal<readonly number[]>;
-  appCpuHistory: WritableSignal<readonly number[]>;
-  appMemoryHistory: WritableSignal<readonly number[]>;
-  networkRxHistory: WritableSignal<readonly number[]>;
-  networkTxHistory: WritableSignal<readonly number[]>;
-  diskReadHistory: WritableSignal<readonly number[]>;
-  diskWriteHistory: WritableSignal<readonly number[]>;
-  gpuHistory: WritableSignal<readonly number[]>;
+  readings: SystemMonitorReadings;
+  shownTab: Signal<string>;
+  selectTab(tab: string): void;
   selectSession(sessionId: string): void;
   toggleSeverity(severity: Severity): void;
   isEnabled(severity: Severity): boolean;
@@ -186,10 +196,15 @@ describe('SystemMonitorView', () => {
    * @param records The records the fake returns from a query.
    * @returns Returns a promise that resolves once the view has loaded.
    */
-  async function create(records: LogRecord[] = []): Promise<void> {
+  async function create(
+    records: LogRecord[] = [],
+    tab: string = 'logs',
+    machine: SystemInfo | null = null,
+  ): Promise<void> {
     fake = new FakeLog();
     fake.records = records;
     metrics = new FakeMetrics();
+    metrics.machine = machine;
     onScreen = signal<boolean>(true);
     await TestBed.configureTestingModule({
       imports: [SystemMonitorView],
@@ -203,6 +218,8 @@ describe('SystemMonitorView', () => {
     fixture.componentRef.setInput('tabId', 'tab-1');
     fixture.componentRef.setInput('isActive', true);
     view = fixture.componentInstance as unknown as Testable;
+    // Most tests drive the logs, which only render on their own tab.
+    view.selectTab(tab);
     fixture.detectChanges();
     await fixture.whenStable();
   }
@@ -219,16 +236,105 @@ describe('SystemMonitorView', () => {
     expect(view.filtered()).toHaveLength(2);
   });
 
-  it('layout_stacksTheGraphsInAFixedSidePanel_besideTheLogs', async () => {
-    // #951. The graphs are glanced at; the logs are worked in, so they fill the view.
-    await create([record({ id: 1 })]);
+  it('tabs_openOnOverview_withATabPerResource_andTheLogsOnTheirOwn', async () => {
+    await create([], 'overview');
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
-    const panel: HTMLElement | null = host.querySelector('app-panel');
+    const tabs: string[] = Array.from(host.querySelectorAll('[role="tab"]')).map(
+      (tab: Element): string => tab.textContent?.trim() ?? '',
+    );
 
-    expect(panel?.getAttribute('data-edge')).toBe('left');
-    expect(panel?.querySelectorAll('app-metric-tile')).toHaveLength(5);
-    expect(host.querySelector('.system-monitor__main app-table')).not.toBeNull();
-    expect(panel?.querySelector('app-table')).toBeNull();
+    expect(tabs).toEqual([
+      'Overview',
+      'Processes',
+      'CPU',
+      'Memory',
+      'Disk',
+      'Network',
+      'GPU',
+      'Logs',
+    ]);
+    expect(host.querySelector('app-system-monitor-overview-tab')).not.toBeNull();
+    expect(host.querySelector('app-table')).toBeNull();
+  });
+
+  it('gpuTab_isLeftOut_whenGpuMonitoringIsOff_andAChosenGpuTabFallsBackToOverview', async () => {
+    await create([], 'gpu');
+    expect(view.shownTab()).toBe('gpu');
+
+    TestBed.inject(Settings).set('systemMonitor.gpuMonitoring', false);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(view.shownTab()).toBe('overview');
+    expect(
+      Array.from(host.querySelectorAll('[role="tab"]')).some(
+        (tab: Element): boolean => tab.textContent?.trim() === 'GPU',
+      ),
+    ).toBe(false);
+  });
+
+  it('selectTab_ignoresAnUnknownTab', async () => {
+    await create([], 'overview');
+    view.selectTab('nonsense');
+    expect(view.shownTab()).toBe('overview');
+  });
+
+  it('processes_areListedOnlyWhileTheProcessesTabIsInFront', async () => {
+    await create([], 'overview');
+    expect(metrics.processesStarted).toBe(0);
+
+    view.selectTab('processes');
+    fixture.detectChanges();
+    expect(metrics.processesStarted).toBe(1);
+
+    // Hiding the monitor stops the listing too, and showing it again restarts it.
+    fixture.componentRef.setInput('isActive', false);
+    fixture.detectChanges();
+    expect(metrics.processesStopped).toBe(1);
+    fixture.componentRef.setInput('isActive', true);
+    fixture.detectChanges();
+    expect(metrics.processesStarted).toBe(2);
+
+    view.selectTab('cpu');
+    fixture.detectChanges();
+    expect(metrics.processesStopped).toBe(2);
+  });
+
+  it('processes_snapshotsReachTheListing', async () => {
+    await create([], 'processes');
+    metrics.processListener?.({
+      timestamp: 't',
+      total: 1,
+      processes: [
+        {
+          pid: 7,
+          parentPid: 1,
+          name: 'node',
+          command: 'node',
+          user: 'me',
+          cpuPercent: 3,
+          memoryBytes: 1024,
+          memoryPercent: 1,
+        },
+      ],
+    });
+
+    const listing: SystemMonitorProcesses =
+      fixture.debugElement.injector.get(SystemMonitorProcesses);
+    expect(listing.processes().map((process: { pid: number }): number => process.pid)).toEqual([7]);
+  });
+
+  it('info_isReadOnce_intoTheReadings', async () => {
+    const machine: SystemInfo = {
+      cpuModel: 'Test CPU',
+      logicalCores: 8,
+      totalMemoryBytes: 1024,
+      os: 'TestOS 1',
+    };
+    await create([], 'overview', machine);
+
+    expect(view.readings.info()).toEqual(machine);
   });
 
   it('severity_isAChip_tonedByHowSevereItIs', async () => {
@@ -521,16 +627,16 @@ describe('SystemMonitorView', () => {
         memory: { usedBytes: 8 * 1024 ** 3, totalBytes: 16 * 1024 ** 3, percent: 50 },
       }),
     );
-    expect(view.cpuValue()).toBe('42%');
-    expect(view.memoryValue()).toBe('8.0 GB (50%)');
-    expect(view.memoryTotal()).toBe('16.0 GB');
-    expect(view.cpuHistory()).toEqual([42]);
-    expect(view.memoryHistory()).toEqual([50]);
+    expect(view.readings.cpuValue()).toBe('42%');
+    expect(view.readings.memoryValue()).toBe('8.0 GB (50%)');
+    expect(view.readings.memoryTotal()).toBe('16.0 GB');
+    expect(view.readings.cpuHistory()).toEqual([42]);
+    expect(view.readings.memoryHistory()).toEqual([50]);
   });
 
   it('cpuValue_isAPlaceholderBeforeTheFirstSample', async () => {
     await create();
-    expect(view.cpuValue()).toBe('—');
+    expect(view.readings.cpuValue()).toBe('—');
   });
 
   it('sample_splitsCpuAndMemoryIntoSysAndAppWhenAppShareIsPresent', async () => {
@@ -538,49 +644,49 @@ describe('SystemMonitorView', () => {
     metrics.listener?.(
       sample({ app: { cpuPercent: 12, memoryBytes: 512 * 1024 ** 2, memoryPercent: 3 } }),
     );
-    expect(view.cpuAppValue()).toBe('12%');
-    expect(view.memoryAppValue()).toBe('512.0 MB (3%)');
-    expect(view.appCpuHistory()).toEqual([12]);
-    expect(view.appMemoryHistory()).toEqual([3]);
+    expect(view.readings.cpuAppValue()).toBe('12%');
+    expect(view.readings.memoryAppValue()).toBe('512.0 MB (3%)');
+    expect(view.readings.appCpuHistory()).toEqual([12]);
+    expect(view.readings.appMemoryHistory()).toEqual([3]);
   });
 
   it('sample_omitsTheAppReadingAndKeepsNoAppHistoryWhenNotAttributed', async () => {
     await create();
     metrics.listener?.(sample({ app: undefined }));
-    expect(view.cpuAppValue()).toBeNull();
-    expect(view.memoryAppValue()).toBeNull();
-    expect(view.appCpuHistory()).toEqual([]);
-    expect(view.appMemoryHistory()).toEqual([]);
+    expect(view.readings.cpuAppValue()).toBeNull();
+    expect(view.readings.memoryAppValue()).toBeNull();
+    expect(view.readings.appCpuHistory()).toEqual([]);
+    expect(view.readings.appMemoryHistory()).toEqual([]);
   });
 
   it('sample_splitsNetworkAndDiskIntoIndependentSeriesAndFormatsGpuPercent', async () => {
     await create();
     metrics.listener?.(sample());
-    expect(view.networkRxValue()).toBe('1.0 KB/s');
-    expect(view.networkTxValue()).toBe('512 B/s');
-    expect(view.diskReadValue()).toBe('2.0 KB/s');
-    expect(view.diskWriteValue()).toBe('256 B/s');
-    expect(view.gpuValue()).toBe('30%');
-    expect(view.networkRxHistory()).toEqual([1024]);
-    expect(view.networkTxHistory()).toEqual([512]);
-    expect(view.diskReadHistory()).toEqual([2048]);
-    expect(view.diskWriteHistory()).toEqual([256]);
-    expect(view.gpuHistory()).toEqual([30]);
+    expect(view.readings.networkRxValue()).toBe('1.0 KB/s');
+    expect(view.readings.networkTxValue()).toBe('512 B/s');
+    expect(view.readings.diskReadValue()).toBe('2.0 KB/s');
+    expect(view.readings.diskWriteValue()).toBe('256 B/s');
+    expect(view.readings.gpuValue()).toBe('30%');
+    expect(view.readings.networkRxHistory()).toEqual([1024]);
+    expect(view.readings.networkTxHistory()).toEqual([512]);
+    expect(view.readings.diskReadHistory()).toEqual([2048]);
+    expect(view.readings.diskWriteHistory()).toEqual([256]);
+    expect(view.readings.gpuHistory()).toEqual([30]);
   });
 
   it('gpu_showsNotAvailableAndKeepsNoHistoryWhenUnsupported', async () => {
     await create();
     metrics.listener?.(sample({ gpu: { available: false, percent: 0 } }));
-    expect(view.gpuValue()).toBe('N/A');
-    expect(view.gpuHistory()).toEqual([]);
+    expect(view.readings.gpuValue()).toBe('N/A');
+    expect(view.readings.gpuHistory()).toEqual([]);
   });
 
   it('network_showsPlaceholdersAndKeepsNoHistoryWhenUnavailable', async () => {
     await create();
     metrics.listener?.(sample({ network: undefined }));
-    expect(view.networkRxValue()).toBe('—');
-    expect(view.networkTxValue()).toBe('—');
-    expect(view.networkRxHistory()).toEqual([]);
-    expect(view.networkTxHistory()).toEqual([]);
+    expect(view.readings.networkRxValue()).toBe('—');
+    expect(view.readings.networkTxValue()).toBe('—');
+    expect(view.readings.networkRxHistory()).toEqual([]);
+    expect(view.readings.networkTxHistory()).toEqual([]);
   });
 });

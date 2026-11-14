@@ -1,0 +1,56 @@
+@use '../tabs' as *;
+
+:host {
+  @include host;
+}
+
+.disk {
+  @include page;
+}
+
+.disk__hero {
+  @include hero;
+}
+
+.disk__heading {
+  @include heading;
+}
+
+.disk__list {
+  @include list;
+}
+
+// Scoped under the list so it outranks the list's own header alignment.
+.disk__list .disk__number {
+  @include number;
+}
+
+.disk__muted {
+  @include muted;
+}
+
+.disk__usage-column {
+  inline-size: 30%;
+}
+
+// A volume's usage: a thin bar, turning to the warning colour once nearly full.
+.disk__usage {
+  block-size: 0.4rem;
+  min-inline-size: 6rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background-color: color-mix(in srgb, var(--dock-border-color) 70%, transparent);
+}
+
+.disk__usage-fill {
+  block-size: 100%;
+  background-color: var(--accent-color);
+}
+
+.disk__usage-fill--full {
+  background-color: var(--warning-color);
+}
+
+.disk__empty {
+  @include empty;
+}

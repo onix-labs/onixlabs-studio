@@ -1,0 +1,35 @@
+@use '../tabs' as *;
+
+:host {
+  @include host;
+}
+
+.network {
+  @include page;
+}
+
+.network__hero {
+  @include hero;
+}
+
+.network__heading {
+  @include heading;
+}
+
+.network__list {
+  @include list;
+}
+
+// Scoped under the list so it outranks the list's own header alignment.
+.network__list .network__number {
+  @include number;
+}
+
+// An idle interface recedes, so the busy ones at the top stand out.
+.network__idle td {
+  @include muted;
+}
+
+.network__empty {
+  @include empty;
+}

@@ -1,0 +1,29 @@
+<div class="network">
+  <app-metric-tile class="network__hero" label="Network" [channels]="readings.networkChannels()" />
+
+  <section>
+    <h3 class="network__heading">Interfaces</h3>
+    @if (interfaces().length > 0) {
+      <table class="network__list" data-testid="network-interfaces">
+        <thead>
+          <tr>
+            <th>Interface</th>
+            <th class="network__number">Received</th>
+            <th class="network__number">Sent</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of interfaces(); track row.name) {
+            <tr [class.network__idle]="row.idle">
+              <td>{{ row.name }}</td>
+              <td class="network__number">{{ row.received }}</td>
+              <td class="network__number">{{ row.sent }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    } @else {
+      <p class="network__empty">Interfaces appear after the next reading.</p>
+    }
+  </section>
+</div>

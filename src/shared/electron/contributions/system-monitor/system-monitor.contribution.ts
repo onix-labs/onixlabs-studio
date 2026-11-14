@@ -8,14 +8,32 @@ import {
   DEFAULT_SAMPLE_INTERVAL_MS,
   DiskMetric,
   GpuMetric,
+  InterfaceMetric,
+  MemoryDetailMetric,
   MetricsSample,
   NetworkMetric,
+  PROCESS_SAMPLE_INTERVAL_MS,
+  PROCESS_SNAPSHOT_LIMIT,
+  ProcessesSnapshot,
   SamplingRate,
+  SystemInfo,
   SystemMonitorChannel,
+  VolumeMetric,
 } from '@shared/api/system-monitor-channels';
 import { logger } from '../../logger';
 import { ContributionContext, MainContribution } from '../main-contribution';
-import { parseIoregGpu, pickGpu, readAppUsage, readDisk, sumNetwork } from './metrics-readers';
+import {
+  NetworkStat,
+  parseIoregGpu,
+  pickGpu,
+  readAppUsage,
+  readDisk,
+  readInterfaces,
+  readMemoryDetail,
+  readVolumes,
+  sumNetwork,
+} from './metrics-readers';
+import { ElectronProcess, readProcesses } from './process-readers';
 import { MetricsSampler } from './metrics-sampler';
 import { HeavyCadence, normaliseSamplingInterval } from './sampling-cadence';
 
@@ -24,9 +42,40 @@ import { HeavyCadence, normaliseSamplingInterval } from './sampling-cadence';
  */
 interface HeavyReadings {
   readonly network: NetworkMetric | undefined;
+  readonly interfaces: readonly InterfaceMetric[] | undefined;
   readonly disk: DiskMetric | undefined;
   readonly gpu: GpuMetric | undefined;
+  readonly memoryDetail: MemoryDetailMetric | undefined;
 }
+
+/**
+ * The least time between volume readings, in milliseconds. Volume space changes slowly and reading it
+ * is a `df` (or WMI query), so it is taken far less often than the other costly readings.
+ */
+const VOLUME_SAMPLE_INTERVAL_MS: number = 15_000;
+
+/**
+ * The platforms whose process listing reports CPU per core (`ps`'s `%cpu`) rather than as a share of
+ * the whole machine.
+ */
+const PER_CORE_CPU_PLATFORMS: ReadonlySet<string> = new Set<string>([
+  'darwin',
+  'freebsd',
+  'openbsd',
+  'netbsd',
+  'sunos',
+]);
+
+/**
+ * The heavy readings before any has been taken.
+ */
+const NO_HEAVY_READINGS: HeavyReadings = {
+  network: undefined,
+  interfaces: undefined,
+  disk: undefined,
+  gpu: undefined,
+  memoryDetail: undefined,
+};
 
 /**
  * Runs a command and resolves with its stdout, promisified from {@link execFile}.
@@ -94,7 +143,32 @@ export class SystemMonitorContribution implements MainContribution {
   /**
    * The costly readings last taken, carried forward on the ticks between.
    */
-  private heavy: HeavyReadings = { network: undefined, disk: undefined, gpu: undefined };
+  private heavy: HeavyReadings = NO_HEAVY_READINGS;
+
+  /**
+   * Decides the ticks the volumes are read on, reset each time sampling starts.
+   */
+  private volumeCadence: HeavyCadence = new HeavyCadence(VOLUME_SAMPLE_INTERVAL_MS);
+
+  /**
+   * The volumes last read, carried forward on the ticks between.
+   */
+  private volumes: readonly VolumeMetric[] | undefined = undefined;
+
+  /**
+   * The number of renderer consumers currently asking for process snapshots.
+   */
+  private processConsumers: number = 0;
+
+  /**
+   * The process snapshot interval, or null when no consumer wants snapshots.
+   */
+  private processTimer: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * Whether a process snapshot is being taken, so a slow listing cannot let ticks overlap.
+   */
+  private listing: boolean = false;
 
   /**
    * Whether every GPU source reported nothing this sampling run, so none is asked again until the
@@ -120,6 +194,9 @@ export class SystemMonitorContribution implements MainContribution {
       this.readsGpu = (payload as Partial<SamplingRate> | null | undefined)?.gpu !== false;
       this.setRate(normaliseSamplingInterval(payload));
     });
+    context.on(SystemMonitorChannel.ProcessesStart, (): void => this.addProcessConsumer());
+    context.on(SystemMonitorChannel.ProcessesStop, (): void => this.removeProcessConsumer());
+    context.handle(SystemMonitorChannel.Info, (): Promise<SystemInfo> => this.readInfo());
     logger.info('SystemMonitorContribution', 'Activated; awaiting sampling consumers');
   }
 
@@ -129,8 +206,10 @@ export class SystemMonitorContribution implements MainContribution {
   public dispose(): void {
     logger.info('SystemMonitorContribution', 'Disposing; stopping sampling');
     this.stopSampling();
+    this.stopListing();
     this.context = null;
     this.consumers = 0;
+    this.processConsumers = 0;
   }
 
   /**
@@ -178,7 +257,9 @@ export class SystemMonitorContribution implements MainContribution {
     logger.debug('SystemMonitorContribution', `Starting sampling loop (${this.intervalMs}ms)`);
     this.sampler = new MetricsSampler();
     this.heavyCadence = new HeavyCadence();
-    this.heavy = { network: undefined, disk: undefined, gpu: undefined };
+    this.heavy = NO_HEAVY_READINGS;
+    this.volumeCadence = new HeavyCadence(VOLUME_SAMPLE_INTERVAL_MS);
+    this.volumes = undefined;
     this.gpuUnavailable = false;
     // Prime the CPU and network/disk baselines so the first pushed sample carries real deltas.
     void this.readSample();
@@ -228,19 +309,35 @@ export class SystemMonitorContribution implements MainContribution {
       os.freemem(),
       new Date().toISOString(),
     );
-    if (this.heavyCadence.due(Date.now())) {
-      const [network, disk, gpu]: [
-        NetworkMetric | undefined,
+    const now: number = Date.now();
+    if (this.heavyCadence.due(now)) {
+      const [network, disk, gpu, memoryDetail, volumes]: [
+        readonly NetworkStat[] | undefined,
         DiskMetric | undefined,
         GpuMetric | undefined,
+        MemoryDetailMetric | undefined,
+        readonly VolumeMetric[] | undefined,
       ] = await Promise.all([
         this.readNetwork(),
         this.readDisk(),
         this.readsGpu ? this.readGpu() : undefined,
+        this.readMemoryDetail(),
+        this.volumeCadence.due(now) ? this.readVolumes() : Promise.resolve(this.volumes),
       ]);
-      this.heavy = { network, disk, gpu };
+      this.volumes = volumes;
+      this.heavy = {
+        network: network === undefined ? undefined : sumNetwork(network),
+        interfaces: network === undefined ? undefined : readInterfaces(network),
+        disk,
+        gpu,
+        memoryDetail,
+      };
     }
-    return { ...base, ...this.heavy, app: this.readApp() };
+    return {
+      ...base,
+      ...definedOnly({ ...this.heavy, volumes: this.volumes }),
+      app: this.readApp(),
+    };
   }
 
   /**
@@ -257,15 +354,164 @@ export class SystemMonitorContribution implements MainContribution {
   }
 
   /**
-   * Reads summed network throughput, or undefined when unavailable.
-   * @returns Returns the network metric, or undefined.
+   * Reads each network interface's stats, or undefined when unavailable.
+   * @returns Returns the per-interface stats, or undefined.
    */
-  private async readNetwork(): Promise<NetworkMetric | undefined> {
+  private async readNetwork(): Promise<readonly NetworkStat[] | undefined> {
     try {
-      return sumNetwork(await si.networkStats('*'));
+      return await si.networkStats('*');
     } catch {
       return undefined;
     }
+  }
+
+  /**
+   * Reads the memory breakdown beyond used and total, or undefined when unavailable.
+   * @returns Returns the memory breakdown, or undefined.
+   */
+  private async readMemoryDetail(): Promise<MemoryDetailMetric | undefined> {
+    try {
+      return readMemoryDetail(await si.mem());
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Reads the mounted volumes' space, or undefined when unavailable.
+   * @returns Returns the volumes, or undefined.
+   */
+  private async readVolumes(): Promise<readonly VolumeMetric[] | undefined> {
+    try {
+      return readVolumes(await si.fsSize());
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Adds a process-snapshot consumer, starting the listing loop when it is the first. The first
+   * snapshot is taken at once, so the view does not wait a whole interval for its first rows.
+   */
+  private addProcessConsumer(): void {
+    this.processConsumers += 1;
+    logger.trace(
+      'SystemMonitorContribution',
+      `Process consumer added (now ${this.processConsumers})`,
+    );
+    if (this.processTimer === null) {
+      logger.debug('SystemMonitorContribution', 'Starting process listing loop');
+      this.listProcesses();
+      this.processTimer = setInterval((): void => this.listProcesses(), PROCESS_SAMPLE_INTERVAL_MS);
+    }
+  }
+
+  /**
+   * Removes a process-snapshot consumer, stopping the listing loop when it was the last.
+   */
+  private removeProcessConsumer(): void {
+    this.processConsumers = Math.max(0, this.processConsumers - 1);
+    logger.trace(
+      'SystemMonitorContribution',
+      `Process consumer removed (now ${this.processConsumers})`,
+    );
+    if (this.processConsumers === 0) {
+      this.stopListing();
+    }
+  }
+
+  /**
+   * Stops the process listing loop.
+   */
+  private stopListing(): void {
+    if (this.processTimer !== null) {
+      logger.debug('SystemMonitorContribution', 'Stopping process listing loop');
+      clearInterval(this.processTimer);
+      this.processTimer = null;
+    }
+  }
+
+  /**
+   * Lists the machine's processes and pushes the snapshot to the renderer. Skips the tick when the
+   * previous listing is still running; a listing that fails is logged and skipped.
+   */
+  private listProcesses(): void {
+    if (this.listing) {
+      return;
+    }
+    this.listing = true;
+    void this.readProcesses()
+      .then((snapshot: ProcessesSnapshot | undefined): void => {
+        if (snapshot !== undefined && this.processTimer !== null) {
+          this.context?.send(SystemMonitorChannel.Processes, snapshot);
+        }
+      })
+      .finally((): void => {
+        this.listing = false;
+      });
+  }
+
+  /**
+   * Reads one process snapshot, or undefined when the listing failed.
+   * @returns Returns the snapshot, or undefined.
+   */
+  private async readProcesses(): Promise<ProcessesSnapshot | undefined> {
+    try {
+      const listing: si.Systeminformation.ProcessesData = await si.processes();
+      let electron: readonly ElectronProcess[] = [];
+      try {
+        electron = app.getAppMetrics();
+      } catch {
+        // Outside the Electron runtime Studio's own processes are still found by descent from main.
+      }
+      return {
+        timestamp: new Date().toISOString(),
+        processes: readProcesses(
+          listing.list,
+          electron,
+          {
+            mainPid: process.pid,
+            coreCount: os.cpus().length,
+            totalBytes: os.totalmem(),
+            cpuIsPerCore: PER_CORE_CPU_PLATFORMS.has(process.platform),
+          },
+          PROCESS_SNAPSHOT_LIMIT,
+        ),
+        total: listing.all,
+      };
+    } catch (error: unknown) {
+      logger.debug('SystemMonitorContribution', 'Could not list processes', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Reads the machine's static description. The core breakdown and OS name are best-effort: when
+   * systeminformation cannot read them, the description falls back to what Node reports.
+   * @returns Returns the description.
+   */
+  private async readInfo(): Promise<SystemInfo> {
+    const cpus: readonly os.CpuInfo[] = os.cpus();
+    const [cpu, osInfo]: [si.Systeminformation.CpuData | null, si.Systeminformation.OsData | null] =
+      await Promise.all([si.cpu().catch((): null => null), si.osInfo().catch((): null => null)]);
+    const positive: (value: number | undefined) => number | undefined = (
+      value: number | undefined,
+    ): number | undefined => (typeof value === 'number' && value > 0 ? value : undefined);
+    const model: string = cpus[0]?.model.trim() ?? '';
+    return {
+      cpuModel: model.length > 0 ? model : `${cpu?.manufacturer ?? ''} ${cpu?.brand ?? ''}`.trim(),
+      logicalCores: cpus.length,
+      physicalCores: positive(cpu?.physicalCores),
+      performanceCores:
+        positive(cpu?.efficiencyCores) === undefined ? undefined : positive(cpu?.performanceCores),
+      efficiencyCores: positive(cpu?.efficiencyCores),
+      speedGhz: positive(cpu?.speed),
+      totalMemoryBytes: os.totalmem(),
+      os:
+        osInfo === null
+          ? `${os.type()} ${os.release()}`
+          : `${osInfo.distro} ${osInfo.release}`.trim(),
+    };
   }
 
   /**
@@ -345,3 +591,14 @@ export class SystemMonitorContribution implements MainContribution {
  * The singleton System Monitor contribution appended to the `mainContributions` manifest.
  */
 export const systemMonitorContribution: MainContribution = new SystemMonitorContribution();
+
+/**
+ * Drops the readings that are undefined, so a sample carries only the optional fields it has.
+ * @param readings The readings.
+ * @returns Returns the readings that are defined.
+ */
+function definedOnly<T extends object>(readings: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(readings).filter(([, value]: [string, unknown]): boolean => value !== undefined),
+  ) as Partial<T>;
+}

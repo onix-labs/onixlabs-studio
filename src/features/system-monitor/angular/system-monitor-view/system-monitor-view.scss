@@ -1,5 +1,6 @@
-// The System Monitor view fills its tab (#951): the resource graphs stacked in a side panel, and beside
-// them the log audit — a filter toolbar over a scrolling, column-aligned table — filling the rest.
+// The System Monitor view fills its tab: a strip of tabs (Overview, Processes, each resource, Logs) over
+// the chosen tab's body, which fills the rest. The Logs tab is the log audit — a filter toolbar over a
+// scrolling, column-aligned table.
 :host {
   display: block;
   block-size: 100%;
@@ -9,47 +10,31 @@
   block-size: 100%;
 }
 
-// The side panel: a small title over the graphs, one per row, scrolling once the panel is too short to
-// hold them all.
-.system-monitor__resources {
-  display: flex;
-  flex-direction: column;
-  block-size: 100%;
-  min-block-size: 0;
-  overflow: auto;
-  padding: 0.5rem 0.75rem 0.75rem;
-}
-
-.system-monitor__resources-title {
-  flex: none;
-  margin: 0 0 0.5rem;
-  padding-inline: 0.25rem;
-  color: var(--form-muted-foreground-color);
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-// The metric tiles, stacked, sharing the panel's height equally. A tile shrinks no further than its
-// own content (its readings and a legible graph), and the list no further than its tiles, so a panel
-// too short for all five scrolls rather than squashing them.
-.system-monitor__tiles {
-  display: flex;
-  flex: 1 0 auto;
-  flex-direction: column;
-  gap: 0.75rem;
-
-  > app-metric-tile {
-    flex: 1 1 0;
-  }
-}
-
 .system-monitor__main {
   display: flex;
   flex-direction: column;
   block-size: 100%;
   min-block-size: 0;
+}
+
+// The tab strip, ruled off from the body beneath it.
+.system-monitor__tabs {
+  flex: none;
+  padding-inline: 0.75rem;
+  border-block-end: 1px solid var(--dock-border-color);
+}
+
+// The chosen tab's body fills what the strip leaves; each tab scrolls its own content.
+.system-monitor__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-block-size: 0;
+
+  > * {
+    flex: 1 1 auto;
+    min-block-size: 0;
+  }
 }
 
 .system-monitor__audit {

@@ -28,7 +28,40 @@ export enum SystemMonitorChannel {
    * and a loop already running is re-timed at once.
    */
   Rate = 'system-monitor:rate',
+
+  /**
+   * Renderer → main (send): a Processes view became visible and wants process snapshots. Ref-counted
+   * separately from {@link Start}, because a process listing is far costlier than a metrics sample.
+   */
+  ProcessesStart = 'system-monitor:processes-start',
+
+  /**
+   * Renderer → main (send): a Processes view is no longer visible.
+   */
+  ProcessesStop = 'system-monitor:processes-stop',
+
+  /**
+   * Main → renderer (send): one {@link ProcessesSnapshot}.
+   */
+  Processes = 'system-monitor:processes',
+
+  /**
+   * Renderer → main (invoke): the machine's static description, a {@link SystemInfo}.
+   */
+  Info = 'system-monitor:info',
 }
+
+/**
+ * The time between process snapshots, in milliseconds. Fixed rather than following the refresh rate:
+ * listing every process is a `ps` (or WMI query) each time, too costly to run at a metrics sample's
+ * pace.
+ */
+export const PROCESS_SAMPLE_INTERVAL_MS: number = 2_000;
+
+/**
+ * The most processes a snapshot carries: the busiest by CPU, then by memory.
+ */
+export const PROCESS_SNAPSHOT_LIMIT: number = 200;
 
 /**
  * The number of samples the agent's capabilities keep to answer from.
@@ -211,4 +244,218 @@ export interface MetricsSample {
    * example outside the Electron runtime).
    */
   readonly app?: AppUsageMetric;
+
+  /**
+   * Gets each logical core's utilisation, 0–100, in the order the OS lists them, or undefined before
+   * the first delta.
+   */
+  readonly cores?: readonly number[];
+
+  /**
+   * Gets the memory breakdown beyond used and total, or undefined when unavailable.
+   */
+  readonly memoryDetail?: MemoryDetailMetric;
+
+  /**
+   * Gets each network interface's throughput, or undefined when unavailable.
+   */
+  readonly interfaces?: readonly InterfaceMetric[];
+
+  /**
+   * Gets each mounted volume's space, or undefined when unavailable.
+   */
+  readonly volumes?: readonly VolumeMetric[];
+}
+
+/**
+ * Describes memory beyond used and total.
+ */
+export interface MemoryDetailMetric {
+  /**
+   * Gets the memory available to start new work without swapping, in bytes. On macOS and Linux this is
+   * more than the free memory, since cached file data is given up on demand.
+   */
+  readonly availableBytes: number;
+
+  /**
+   * Gets the swap space in use, in bytes.
+   */
+  readonly swapUsedBytes: number;
+
+  /**
+   * Gets the swap space configured, in bytes.
+   */
+  readonly swapTotalBytes: number;
+}
+
+/**
+ * Describes one network interface's throughput.
+ */
+export interface InterfaceMetric {
+  /**
+   * Gets the interface's name (for example `en0`).
+   */
+  readonly name: string;
+
+  /**
+   * Gets the received throughput, in bytes per second.
+   */
+  readonly rxBytesPerSec: number;
+
+  /**
+   * Gets the sent throughput, in bytes per second.
+   */
+  readonly txBytesPerSec: number;
+}
+
+/**
+ * Describes one mounted volume's space.
+ */
+export interface VolumeMetric {
+  /**
+   * Gets where the volume is mounted (for example `/` or `C:`).
+   */
+  readonly mount: string;
+
+  /**
+   * Gets the file system type (for example `apfs` or `NTFS`).
+   */
+  readonly type: string;
+
+  /**
+   * Gets the volume's size, in bytes.
+   */
+  readonly sizeBytes: number;
+
+  /**
+   * Gets the space in use, in bytes.
+   */
+  readonly usedBytes: number;
+}
+
+/**
+ * Identifies which of Studio's own processes a process is.
+ * - `main`: Electron's main (browser) process.
+ * - `renderer`: a window's renderer.
+ * - `gpu`: Electron's GPU process.
+ * - `utility`: another Electron helper (network service, utility process).
+ * - `child`: a process Studio started, or one started by one of those (shells, language servers,
+ *   agents, builds).
+ */
+export type StudioProcessKind = 'main' | 'renderer' | 'gpu' | 'utility' | 'child';
+
+/**
+ * Describes one process in a {@link ProcessesSnapshot}.
+ */
+export interface ProcessSample {
+  /**
+   * Gets the process identifier.
+   */
+  readonly pid: number;
+
+  /**
+   * Gets the parent's process identifier, or 0 when unknown.
+   */
+  readonly parentPid: number;
+
+  /**
+   * Gets the process's name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the process's command line, or its name when the OS does not report one.
+   */
+  readonly command: string;
+
+  /**
+   * Gets the user the process runs as, or the empty string when unknown.
+   */
+  readonly user: string;
+
+  /**
+   * Gets the process's share of the whole machine's CPU, 0–100, comparable to the machine reading.
+   */
+  readonly cpuPercent: number;
+
+  /**
+   * Gets the process's resident memory, in bytes.
+   */
+  readonly memoryBytes: number;
+
+  /**
+   * Gets the process's resident memory as a share of physical memory, 0–100.
+   */
+  readonly memoryPercent: number;
+
+  /**
+   * Gets which of Studio's own processes this is, or undefined when it is not Studio's.
+   */
+  readonly studio?: StudioProcessKind;
+}
+
+/**
+ * Describes one listing of the machine's processes.
+ */
+export interface ProcessesSnapshot {
+  /**
+   * Gets the time the listing was taken, as an ISO-8601 string.
+   */
+  readonly timestamp: string;
+
+  /**
+   * Gets the processes listed: every one of Studio's, and the busiest of the rest up to
+   * {@link PROCESS_SNAPSHOT_LIMIT} in all.
+   */
+  readonly processes: readonly ProcessSample[];
+
+  /**
+   * Gets the number of processes running, listed or not.
+   */
+  readonly total: number;
+}
+
+/**
+ * Describes the machine: what does not change while Studio runs.
+ */
+export interface SystemInfo {
+  /**
+   * Gets the CPU's model name.
+   */
+  readonly cpuModel: string;
+
+  /**
+   * Gets the number of logical cores (hardware threads).
+   */
+  readonly logicalCores: number;
+
+  /**
+   * Gets the number of physical cores, or undefined when unknown.
+   */
+  readonly physicalCores?: number;
+
+  /**
+   * Gets the number of performance cores on a hybrid CPU, or undefined when not hybrid or unknown.
+   */
+  readonly performanceCores?: number;
+
+  /**
+   * Gets the number of efficiency cores on a hybrid CPU, or undefined when not hybrid or unknown.
+   */
+  readonly efficiencyCores?: number;
+
+  /**
+   * Gets the CPU's base speed in GHz, or undefined when unknown.
+   */
+  readonly speedGhz?: number;
+
+  /**
+   * Gets the total physical memory, in bytes.
+   */
+  readonly totalMemoryBytes: number;
+
+  /**
+   * Gets the operating system's name and version (for example `macOS 26.6`).
+   */
+  readonly os: string;
 }

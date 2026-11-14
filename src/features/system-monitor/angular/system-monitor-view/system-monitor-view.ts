@@ -20,7 +20,6 @@ import { TextField } from '@shared/angular/components/forms/text-field/text-fiel
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
-import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { Log } from '@shared/angular/services/log/log';
 import { DocumentVisibility } from '@shared/angular/services/document-visibility/document-visibility';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -29,8 +28,18 @@ import {
   ViewInjectorRegistrar,
 } from '@shared/angular/services/view-injectors/view-injector-registration';
 import { LogRecord, LogSession, SEVERITIES, Severity } from '@shared/api/log-channels';
-import { historySamples, MetricsSample } from '@shared/api/system-monitor-channels';
-import { MetricTile, TileChannel } from '../metric-tile/metric-tile';
+import { MetricsSample, ProcessesSnapshot, SystemInfo } from '@shared/api/system-monitor-channels';
+import { TabList, TabListTab } from '@shared/angular/components/forms/tab-list/tab-list';
+import { SystemMonitorReadings } from '../readings/system-monitor-readings';
+import { SystemMonitorProcesses } from '../readings/system-monitor-processes';
+import { SystemMonitorTabId } from '../tabs/system-monitor-tab-id';
+import { OverviewTab } from '../tabs/overview-tab/overview-tab';
+import { ProcessesTab } from '../tabs/processes-tab/processes-tab';
+import { CpuTab } from '../tabs/cpu-tab/cpu-tab';
+import { MemoryTab } from '../tabs/memory-tab/memory-tab';
+import { DiskTab } from '../tabs/disk-tab/disk-tab';
+import { NetworkTab } from '../tabs/network-tab/network-tab';
+import { GpuTab } from '../tabs/gpu-tab/gpu-tab';
 import { SystemMonitorMetrics } from '../metrics/system-monitor-metrics';
 import {
   SystemMonitorCommandHandler,
@@ -162,7 +171,14 @@ interface AuditEntry {
     TextField,
     Table,
     TableRowDef,
-    MetricTile,
+    TabList,
+    OverviewTab,
+    ProcessesTab,
+    CpuTab,
+    MemoryTab,
+    DiskTab,
+    NetworkTab,
+    GpuTab,
     Panel,
     PanelLayout,
     SystemMonitorAgentPanel,
@@ -174,6 +190,9 @@ interface AuditEntry {
     AgentConversation,
     { provide: AGENT_CONVERSATION_KIND, useValue: 'monitor' },
     SystemMonitorAgentCapabilities,
+    // One monitor's readings and process listing, shared by its tabs; a second monitor keeps its own.
+    SystemMonitorReadings,
+    SystemMonitorProcesses,
   ],
   templateUrl: './system-monitor-view.html',
   styleUrl: './system-monitor-view.scss',
@@ -181,9 +200,9 @@ interface AuditEntry {
 })
 export class SystemMonitorView implements OnInit {
   /**
-   * Gets the edges the resources panel may sit on: only its own, since it is part of the view.
+   * Gets the tab identities, exposed for the template.
    */
-  protected readonly sideEdges: readonly PanelEdge[] = ['left'];
+  protected readonly Tab: typeof SystemMonitorTabId = SystemMonitorTabId;
 
   /**
    * Gets the severities in display order, exposed for the filter chips.
@@ -227,258 +246,58 @@ export class SystemMonitorView implements OnInit {
   private readonly settings: Settings = inject(Settings);
 
   /**
-   * Gets whether the GPU is read and its tile shown.
+   * Holds this monitor's machine readings, shared with its tabs.
    */
-  protected readonly gpuMonitoring: Signal<boolean> = this.settings.value(
-    'systemMonitor.gpuMonitoring',
+  protected readonly readings: SystemMonitorReadings = inject(SystemMonitorReadings);
+
+  /**
+   * Holds this monitor's process listing, shared with the Processes tab.
+   */
+  private readonly processes: SystemMonitorProcesses = inject(SystemMonitorProcesses);
+
+  /**
+   * Gets whether the GPU is read and its tab shown.
+   */
+  protected readonly gpuMonitoring: Signal<boolean> = this.readings.gpuMonitoring;
+
+  /**
+   * Holds the tab chosen, which the strip shows selected. Overview first: it is the monitor at a
+   * glance.
+   */
+  protected readonly selectedTab: WritableSignal<SystemMonitorTabId> = signal<SystemMonitorTabId>(
+    SystemMonitorTabId.Overview,
   );
 
   /**
-   * Gets how many samples a sparkline holds: Graph History's span of time at the Refresh Rate.
+   * Gets the tab shown: the one chosen, or Overview when the chosen one is GPU and GPU Monitoring has
+   * since been turned off.
    */
-  private readonly historyLength: Signal<number> = computed((): number =>
-    historySamples(this.settings.value('systemMonitor.graphHistoryMinutes')(), this.refreshRate()),
-  );
+  protected readonly shownTab: Signal<SystemMonitorTabId> = computed((): SystemMonitorTabId => {
+    const tab: SystemMonitorTabId = this.selectedTab();
+    return tab === SystemMonitorTabId.Gpu && !this.gpuMonitoring()
+      ? SystemMonitorTabId.Overview
+      : tab;
+  });
+
+  /**
+   * Gets the tab strip's tabs, GPU among them only while GPU Monitoring is on.
+   */
+  protected readonly tabs: Signal<readonly TabListTab[]> = computed((): readonly TabListTab[] => [
+    { value: SystemMonitorTabId.Overview, label: 'Overview' },
+    { value: SystemMonitorTabId.Processes, label: 'Processes' },
+    { value: SystemMonitorTabId.Cpu, label: 'CPU' },
+    { value: SystemMonitorTabId.Memory, label: 'Memory' },
+    { value: SystemMonitorTabId.Disk, label: 'Disk' },
+    { value: SystemMonitorTabId.Network, label: 'Network' },
+    ...(this.gpuMonitoring() ? [{ value: SystemMonitorTabId.Gpu, label: 'GPU' }] : []),
+    { value: SystemMonitorTabId.Logs, label: 'Logs' },
+  ]);
 
   /**
    * Holds whether the window is on screen. A tab in front of a minimised or covered window is still
    * "active"; nothing it shows can be seen, so its feeds pause (audit P4).
    */
   private readonly onScreen: Signal<boolean> = inject(DocumentVisibility).visible;
-
-  /**
-   * Holds the most recent metrics sample, or null before the first arrives.
-   */
-  private readonly latest: WritableSignal<MetricsSample | null> = signal<MetricsSample | null>(
-    null,
-  );
-
-  /**
-   * Holds the recent CPU utilisation history (percent), oldest first, for the CPU sparkline.
-   */
-  protected readonly cpuHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
-
-  /**
-   * Holds the recent memory-use history (percent), oldest first, for the memory sparkline.
-   */
-  protected readonly memoryHistory: WritableSignal<readonly number[]> = signal<readonly number[]>(
-    [],
-  );
-
-  /**
-   * Holds the recent app CPU-share history (percent), oldest first, overlaid on the CPU sparkline.
-   */
-  protected readonly appCpuHistory: WritableSignal<readonly number[]> = signal<readonly number[]>(
-    [],
-  );
-
-  /**
-   * Holds the recent app memory-share history (percent), oldest first, overlaid on the memory sparkline.
-   */
-  protected readonly appMemoryHistory: WritableSignal<readonly number[]> = signal<
-    readonly number[]
-  >([]);
-
-  /**
-   * Gets the CPU tile's current machine-wide reading, formatted as a percentage.
-   */
-  protected readonly cpuValue: Signal<string> = computed((): string => {
-    const sample: MetricsSample | null = this.latest();
-    return sample === null ? '—' : `${Math.round(sample.cpu)}%`;
-  });
-
-  /**
-   * Gets the CPU tile's app-share reading, formatted as a percentage, or null when the app share was
-   * not read (so the tile shows the machine reading alone).
-   */
-  protected readonly cpuAppValue: Signal<string | null> = computed((): string | null => {
-    const usage: MetricsSample['app'] = this.latest()?.app;
-    return usage === undefined ? null : `${Math.round(usage.cpuPercent)}%`;
-  });
-
-  /**
-   * Gets the total physical memory, formatted for the memory tile's label suffix, or null before the
-   * first sample.
-   */
-  protected readonly memoryTotal: Signal<string | null> = computed((): string | null => {
-    const sample: MetricsSample | null = this.latest();
-    return sample === null ? null : this.formatBytes(sample.memory.totalBytes);
-  });
-
-  /**
-   * Gets the memory tile's current machine-wide reading: used bytes with the percentage (the total is
-   * shown against the tile label).
-   */
-  protected readonly memoryValue: Signal<string> = computed((): string => {
-    const sample: MetricsSample | null = this.latest();
-    if (sample === null) {
-      return '—';
-    }
-    const { usedBytes, percent }: MetricsSample['memory'] = sample.memory;
-    return `${this.formatBytes(usedBytes)} (${Math.round(percent)}%)`;
-  });
-
-  /**
-   * Gets the memory tile's app-share reading, formatted as bytes with the percentage, or null when the
-   * app share was not read.
-   */
-  protected readonly memoryAppValue: Signal<string | null> = computed((): string | null => {
-    const usage: MetricsSample['app'] = this.latest()?.app;
-    return usage === undefined
-      ? null
-      : `${this.formatBytes(usage.memoryBytes)} (${Math.round(usage.memoryPercent)}%)`;
-  });
-
-  /**
-   * Holds the recent inbound (received) network-throughput history (bytes/sec), oldest first.
-   */
-  protected readonly networkRxHistory: WritableSignal<readonly number[]> = signal<
-    readonly number[]
-  >([]);
-
-  /**
-   * Holds the recent outbound (sent) network-throughput history (bytes/sec), oldest first.
-   */
-  protected readonly networkTxHistory: WritableSignal<readonly number[]> = signal<
-    readonly number[]
-  >([]);
-
-  /**
-   * Holds the recent disk read-throughput history (bytes/sec), oldest first.
-   */
-  protected readonly diskReadHistory: WritableSignal<readonly number[]> = signal<readonly number[]>(
-    [],
-  );
-
-  /**
-   * Holds the recent disk write-throughput history (bytes/sec), oldest first.
-   */
-  protected readonly diskWriteHistory: WritableSignal<readonly number[]> = signal<
-    readonly number[]
-  >([]);
-
-  /**
-   * Holds the recent GPU-utilisation history (percent), oldest first.
-   */
-  protected readonly gpuHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
-
-  /**
-   * Gets the network tile's received-throughput reading, or a placeholder when unavailable.
-   */
-  protected readonly networkRxValue: Signal<string> = computed((): string => {
-    const network: MetricsSample['network'] = this.latest()?.network;
-    return network === undefined ? '—' : this.formatRate(network.rxBytesPerSec);
-  });
-
-  /**
-   * Gets the network tile's sent-throughput reading, or a placeholder when unavailable.
-   */
-  protected readonly networkTxValue: Signal<string> = computed((): string => {
-    const network: MetricsSample['network'] = this.latest()?.network;
-    return network === undefined ? '—' : this.formatRate(network.txBytesPerSec);
-  });
-
-  /**
-   * Gets the disk tile's read-throughput reading, or a placeholder when unavailable.
-   */
-  protected readonly diskReadValue: Signal<string> = computed((): string => {
-    const disk: MetricsSample['disk'] = this.latest()?.disk;
-    return disk === undefined ? '—' : this.formatRate(disk.readBytesPerSec);
-  });
-
-  /**
-   * Gets the disk tile's write-throughput reading, or a placeholder when unavailable.
-   */
-  protected readonly diskWriteValue: Signal<string> = computed((): string => {
-    const disk: MetricsSample['disk'] = this.latest()?.disk;
-    return disk === undefined ? '—' : this.formatRate(disk.writeBytesPerSec);
-  });
-
-  /**
-   * Gets the GPU tile's current value: its utilisation, or `N/A` where the platform does not report it.
-   */
-  protected readonly gpuValue: Signal<string> = computed((): string => {
-    const gpu: MetricsSample['gpu'] = this.latest()?.gpu;
-    if (this.latest() === null) {
-      return '—';
-    }
-    return gpu?.available === true ? `${Math.round(gpu.percent)}%` : 'N/A';
-  });
-
-  /**
-   * Gets the CPU tile's channel: a single graph with the machine reading and the app overlay.
-   */
-  protected readonly cpuChannels: Signal<readonly TileChannel[]> = computed(
-    (): readonly TileChannel[] => [
-      {
-        value: this.cpuValue(),
-        values: this.cpuHistory(),
-        appValue: this.cpuAppValue(),
-        appValues: this.appCpuHistory(),
-      },
-    ],
-  );
-
-  /**
-   * Gets the GPU tile's channel: a single utilisation graph (no app attribution is possible).
-   */
-  protected readonly gpuChannels: Signal<readonly TileChannel[]> = computed(
-    (): readonly TileChannel[] => [{ value: this.gpuValue(), values: this.gpuHistory() }],
-  );
-
-  /**
-   * Gets the Memory tile's channel: a single graph with the used reading and the app overlay.
-   */
-  protected readonly memoryChannels: Signal<readonly TileChannel[]> = computed(
-    (): readonly TileChannel[] => [
-      {
-        value: this.memoryValue(),
-        values: this.memoryHistory(),
-        appValue: this.memoryAppValue(),
-        appValues: this.appMemoryHistory(),
-      },
-    ],
-  );
-
-  /**
-   * Gets the Network tile's channels: independently-scaled Received and Sent graphs.
-   */
-  protected readonly networkChannels: Signal<readonly TileChannel[]> = computed(
-    (): readonly TileChannel[] => [
-      {
-        caption: 'Received',
-        value: this.networkRxValue(),
-        values: this.networkRxHistory(),
-        max: Math.max(1, ...this.networkRxHistory()),
-      },
-      {
-        caption: 'Sent',
-        value: this.networkTxValue(),
-        values: this.networkTxHistory(),
-        max: Math.max(1, ...this.networkTxHistory()),
-      },
-    ],
-  );
-
-  /**
-   * Gets the Disk tile's channels: independently-scaled Read and Write graphs.
-   */
-  protected readonly diskChannels: Signal<readonly TileChannel[]> = computed(
-    (): readonly TileChannel[] => [
-      {
-        caption: 'Read',
-        value: this.diskReadValue(),
-        values: this.diskReadHistory(),
-        max: Math.max(1, ...this.diskReadHistory()),
-      },
-      {
-        caption: 'Write',
-        value: this.diskWriteValue(),
-        values: this.diskWriteHistory(),
-        max: Math.max(1, ...this.diskWriteHistory()),
-      },
-    ],
-  );
 
   /**
    * Holds the records of the selected session, oldest first.
@@ -586,8 +405,8 @@ export class SystemMonitorView implements OnInit {
       warnings: records.filter((record: LogRecord): boolean => record.severity === 'warning')
         .length,
       selected: this.selectedCount(),
-      appCpu: this.cpuAppValue(),
-      appMemory: this.memoryAppValue(),
+      appCpu: this.readings.cpuAppValue(),
+      appMemory: this.readings.memoryAppValue(),
     };
   });
 
@@ -713,18 +532,31 @@ export class SystemMonitorView implements OnInit {
     void this.loadRecords();
 
     const unsubscribeSamples: () => void = this.metrics.onSample((sample: MetricsSample): void =>
-      this.accept(sample),
+      this.readings.accept(sample),
     );
+    const unsubscribeProcesses: () => void = this.metrics.onProcesses(
+      (snapshot: ProcessesSnapshot): void => this.processes.accept(snapshot),
+    );
+    void this.loadInfo();
 
     // Whether this view has asked the backend to sample (one start per stop, whatever the rate does).
     let sampling: boolean = false;
     const destroy: DestroyRef = inject(DestroyRef);
     destroy.onDestroy(unsubscribeSamples);
+    destroy.onDestroy(unsubscribeProcesses);
     destroy.onDestroy((): void => this.unsubscribeFromLiveRecords());
     destroy.onDestroy((): void => this.commands.unregister(this.commandHandler));
     destroy.onDestroy((): void => {
       if (sampling) {
         this.metrics.stop();
+      }
+    });
+
+    // Whether this view has asked the backend to list processes.
+    let listing: boolean = false;
+    destroy.onDestroy((): void => {
+      if (listing) {
+        this.metrics.stopProcesses();
       }
     });
 
@@ -773,6 +605,21 @@ export class SystemMonitorView implements OnInit {
           this.metrics.stop();
         }
         sampling = wanted;
+      });
+    });
+
+    // Processes are listed only while the Processes tab is in front of the user: a listing is a `ps`
+    // (or WMI query) every couple of seconds, far costlier than a sample, and no other tab shows it.
+    effect((): void => {
+      const wanted: boolean =
+        this.isActive() && this.onScreen() && this.shownTab() === SystemMonitorTabId.Processes;
+      untracked((): void => {
+        if (wanted && !listing) {
+          this.metrics.startProcesses();
+        } else if (!wanted && listing) {
+          this.metrics.stopProcesses();
+        }
+        listing = wanted;
       });
     });
   }
@@ -826,65 +673,26 @@ export class SystemMonitorView implements OnInit {
   }
 
   /**
-   * Records one metrics sample: it becomes the current reading and is appended to the sparkline
-   * histories, which hold {@link historyLength} points.
-   * @param sample The sample to accept.
+   * Shows a tab.
+   * @param tab The tab's identity, as the strip or an Overview graph reports it.
    */
-  private accept(sample: MetricsSample): void {
-    this.latest.set(sample);
-    this.push(this.cpuHistory, sample.cpu);
-    this.push(this.memoryHistory, sample.memory.percent);
-    if (sample.app !== undefined) {
-      this.push(this.appCpuHistory, sample.app.cpuPercent);
-      this.push(this.appMemoryHistory, sample.app.memoryPercent);
-    }
-    if (sample.network !== undefined) {
-      this.push(this.networkRxHistory, sample.network.rxBytesPerSec);
-      this.push(this.networkTxHistory, sample.network.txBytesPerSec);
-    }
-    if (sample.disk !== undefined) {
-      this.push(this.diskReadHistory, sample.disk.readBytesPerSec);
-      this.push(this.diskWriteHistory, sample.disk.writeBytesPerSec);
-    }
-    if (sample.gpu?.available === true && this.gpuMonitoring()) {
-      this.push(this.gpuHistory, sample.gpu.percent);
-    }
-  }
-
-  /**
-   * Appends one value to a bounded history signal.
-   * @param history The history signal to append to.
-   * @param value The value to append.
-   */
-  private push(history: WritableSignal<readonly number[]>, value: number): void {
-    history.update((values: readonly number[]): readonly number[] =>
-      [...values, value].slice(-this.historyLength()),
+  protected selectTab(tab: string): void {
+    const match: SystemMonitorTabId | undefined = Object.values(SystemMonitorTabId).find(
+      (id: SystemMonitorTabId): boolean => id.valueOf() === tab,
     );
-  }
-
-  /**
-   * Formats a byte count as a human-readable size.
-   * @param bytes The size in bytes.
-   * @returns Returns the formatted size (for example `6.1 GB`).
-   */
-  protected formatBytes(bytes: number): string {
-    const units: readonly string[] = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let size: number = bytes;
-    let unit: number = 0;
-    while (size >= 1024 && unit < units.length - 1) {
-      size /= 1024;
-      unit += 1;
+    if (match !== undefined) {
+      this.selectedTab.set(match);
     }
-    return `${unit === 0 ? size : size.toFixed(1)} ${units[unit]}`;
   }
 
   /**
-   * Formats a per-second byte rate as a human-readable throughput.
-   * @param bytesPerSec The rate in bytes per second.
-   * @returns Returns the formatted throughput (for example `1.2 MB/s`).
+   * Reads the machine's description once, for the Overview and CPU tabs.
    */
-  protected formatRate(bytesPerSec: number): string {
-    return `${this.formatBytes(bytesPerSec)}/s`;
+  private async loadInfo(): Promise<void> {
+    const info: SystemInfo | null = await this.metrics.info();
+    if (info !== null) {
+      this.readings.setInfo(info);
+    }
   }
 
   /**

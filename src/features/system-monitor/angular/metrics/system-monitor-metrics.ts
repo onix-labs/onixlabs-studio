@@ -2,7 +2,9 @@ import { Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import {
   MetricsSample,
+  ProcessesSnapshot,
   SamplingRate,
+  SystemInfo,
   SystemMonitorChannel,
 } from '@shared/api/system-monitor-channels';
 
@@ -57,5 +59,52 @@ export class SystemMonitorMetrics {
         // No bridge outside Electron; there is nothing to unsubscribe.
       })
     );
+  }
+
+  /**
+   * Asks the backend to begin listing processes for this consumer. Ref-counted like {@link start}, and
+   * separately from it: a listing is far costlier than a sample, so it runs only while a process list
+   * is on screen.
+   */
+  public startProcesses(): void {
+    this.bridge?.send(SystemMonitorChannel.ProcessesStart);
+  }
+
+  /**
+   * Asks the backend to stop listing processes for this consumer.
+   */
+  public stopProcesses(): void {
+    this.bridge?.send(SystemMonitorChannel.ProcessesStop);
+  }
+
+  /**
+   * Subscribes to pushed process snapshots.
+   * @param listener The callback invoked with each snapshot.
+   * @returns Returns a function that removes the subscription.
+   */
+  public onProcesses(listener: (snapshot: ProcessesSnapshot) => void): () => void {
+    return (
+      this.bridge?.on(SystemMonitorChannel.Processes, (...args: unknown[]): void =>
+        listener(args[0] as ProcessesSnapshot),
+      ) ??
+      ((): void => {
+        // No bridge outside Electron; there is nothing to unsubscribe.
+      })
+    );
+  }
+
+  /**
+   * Reads the machine's static description.
+   * @returns Returns the description, or null outside Electron or when it could not be read.
+   */
+  public async info(): Promise<SystemInfo | null> {
+    if (this.bridge === undefined) {
+      return null;
+    }
+    try {
+      return await this.bridge.invoke<SystemInfo>(SystemMonitorChannel.Info);
+    } catch {
+      return null;
+    }
   }
 }

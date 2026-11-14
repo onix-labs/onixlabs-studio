@@ -1,0 +1,17 @@
+@use '../tabs' as *;
+
+:host {
+  @include host;
+}
+
+.gpu {
+  @include page;
+}
+
+.gpu__hero {
+  @include hero;
+}
+
+.gpu__note {
+  @include empty;
+}

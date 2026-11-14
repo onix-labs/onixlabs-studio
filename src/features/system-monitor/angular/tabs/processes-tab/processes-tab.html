@@ -1,0 +1,97 @@
+<div class="processes">
+  <header class="processes__toolbar">
+    <div class="processes__scopes" role="group" aria-label="Show">
+      <app-button
+        variant="none"
+        size="small"
+        label="All processes"
+        [pressed]="scope() === 'all'"
+        (click)="setScope('all')"
+      />
+      <app-button
+        variant="none"
+        size="small"
+        label="Studio"
+        [pressed]="scope() === 'studio'"
+        (click)="setScope('studio')"
+      />
+    </div>
+
+    <app-text-field
+      class="processes__search"
+      placeholder="Filter by name, command or PID…"
+      ariaLabel="Filter processes"
+      [value]="text()"
+      (valueChange)="text.set($event)"
+      (escape)="text.set('')"
+    />
+
+    <span class="processes__count">{{ count() }}</span>
+  </header>
+
+  <div class="processes__body">
+    <app-table
+      class="processes__table"
+      [columns]="columns"
+      [rows]="rows()"
+      [selectedIds]="selectedIds()"
+      [virtual]="true"
+      [emptyText]="emptyText()"
+      (rowClick)="onRowClick($event)"
+      (sortChange)="onSort($event)"
+    >
+      <ng-template appTableRow let-row>
+        @let entry = rowOf(row);
+        @if (entry) {
+          <td class="processes__name" [title]="entry.process.command">
+            <span class="processes__name-text">{{ entry.process.name }}</span>
+            @if (entry.studio; as role) {
+              <app-chip class="processes__role" tone="accent">{{ role }}</app-chip>
+            }
+          </td>
+          <td class="processes__number">{{ entry.process.pid }}</td>
+          <td class="processes__number">{{ entry.cpu }}</td>
+          <td class="processes__number">{{ entry.memory }}</td>
+          <td class="processes__muted">{{ entry.process.user }}</td>
+        }
+      </ng-template>
+    </app-table>
+
+    @if (listing.selected(); as chosen) {
+      @let process = chosen.process;
+      <aside class="processes__details" aria-label="Process details" data-testid="process-details">
+        <header class="processes__details-head">
+          <h3 class="processes__details-name" [title]="process.name">{{ process.name }}</h3>
+          @if (!chosen.listed) {
+            <app-chip
+              tone="warning"
+              title="It exited, or is no longer among the busiest processes listed."
+              >Not listed</app-chip
+            >
+          }
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.CLOSE"
+            ariaLabel="Close details"
+            (click)="closeDetails()"
+          />
+        </header>
+
+        <dl class="processes__facts">
+          @for (fact of facts(); track fact.label) {
+            <div>
+              <dt>{{ fact.label }}</dt>
+              <dd>{{ fact.value }}</dd>
+            </div>
+          }
+        </dl>
+
+        <code class="processes__command">{{ process.command }}</code>
+
+        <app-metric-tile class="processes__graph" label="CPU" [channels]="cpuChannels()" />
+        <app-metric-tile class="processes__graph" label="Memory" [channels]="memoryChannels()" />
+      </aside>
+    }
+  </div>
+</div>

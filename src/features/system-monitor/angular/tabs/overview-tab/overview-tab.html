@@ -1,0 +1,50 @@
+<div class="overview">
+  @if (machine(); as description) {
+    <p class="overview__machine">{{ description }}</p>
+  }
+
+  <!-- One graph per resource. Each is a button onto its resource's tab, where it is shown in full. -->
+  <section class="overview__tiles">
+    <button type="button" class="overview__tile" aria-label="Open CPU" (click)="open.emit(Tab.Cpu)">
+      <app-metric-tile label="CPU" [channels]="readings.cpuChannels()" />
+    </button>
+    <button
+      type="button"
+      class="overview__tile"
+      aria-label="Open Memory"
+      (click)="open.emit(Tab.Memory)"
+    >
+      <app-metric-tile
+        label="Memory"
+        [suffix]="readings.memoryTotal()"
+        [channels]="readings.memoryChannels()"
+      />
+    </button>
+    @if (readings.gpuMonitoring()) {
+      <button
+        type="button"
+        class="overview__tile"
+        aria-label="Open GPU"
+        (click)="open.emit(Tab.Gpu)"
+      >
+        <app-metric-tile label="GPU" [channels]="readings.gpuChannels()" />
+      </button>
+    }
+    <button
+      type="button"
+      class="overview__tile"
+      aria-label="Open Disk"
+      (click)="open.emit(Tab.Disk)"
+    >
+      <app-metric-tile label="Disk" [channels]="readings.diskChannels()" />
+    </button>
+    <button
+      type="button"
+      class="overview__tile"
+      aria-label="Open Network"
+      (click)="open.emit(Tab.Network)"
+    >
+      <app-metric-tile label="Network" [channels]="readings.networkChannels()" />
+    </button>
+  </section>
+</div>

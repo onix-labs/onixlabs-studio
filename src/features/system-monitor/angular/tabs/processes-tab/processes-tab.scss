@@ -1,0 +1,129 @@
+@use '../tabs' as *;
+
+// The Processes tab fills its body without scrolling the page: the list scrolls its own rows.
+:host {
+  display: block;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.processes {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+}
+
+// The toolbar matches the Logs tab's: scope toggles, a flexing filter, and a count.
+.processes__toolbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  border-block-end: 1px solid var(--dock-border-color);
+}
+
+.processes__scopes {
+  display: flex;
+  flex: none;
+  gap: 0.3rem;
+}
+
+.processes__search {
+  flex: 1 1 auto;
+  min-inline-size: 8rem;
+}
+
+.processes__count {
+  flex: none;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--form-muted-foreground-color);
+}
+
+// The list beside the chosen process's details.
+.processes__body {
+  display: flex;
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+.processes__table {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.processes__name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.processes__name-text {
+  color: var(--body-foreground-color);
+}
+
+.processes__role {
+  margin-inline-start: 0.4rem;
+}
+
+.processes__number {
+  @include number;
+}
+
+.processes__muted {
+  @include muted;
+
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+// The chosen process's details: its facts, command and graphs, scrolling on their own.
+.processes__details {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 0.75rem;
+  inline-size: 22rem;
+  overflow: auto;
+  padding: 0.75rem 1rem;
+  border-inline-start: 1px solid var(--dock-border-color);
+}
+
+.processes__details-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.processes__details-name {
+  flex: 1 1 auto;
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.95rem;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.processes__facts {
+  @include facts;
+
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.processes__command {
+  padding: 0.5rem;
+  overflow-wrap: anywhere;
+  border-radius: calc(0.35rem * var(--border-radius-multiplier, 1));
+  background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.processes__graph {
+  flex: none;
+  block-size: 9rem;
+}

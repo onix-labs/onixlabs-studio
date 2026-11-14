@@ -1,0 +1,7 @@
+<div class="gpu">
+  <app-metric-tile class="gpu__hero" label="GPU" [channels]="readings.gpuChannels()" />
+  <p class="gpu__note">
+    Utilisation is read from the GPU's driver: through ioreg on macOS, and nvidia-smi for NVIDIA
+    GPUs on Windows and Linux. Other GPUs show N/A.
+  </p>
+</div>

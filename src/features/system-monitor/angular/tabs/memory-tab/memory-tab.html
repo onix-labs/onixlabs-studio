@@ -1,0 +1,23 @@
+<div class="memory">
+  <div class="memory__graphs">
+    <app-metric-tile
+      label="Memory"
+      [suffix]="readings.memoryTotal()"
+      [channels]="readings.memoryChannels()"
+    />
+    @if (hasSwap()) {
+      <app-metric-tile label="Swap" [channels]="swapChannels()" />
+    }
+  </div>
+
+  @if (facts().length > 0) {
+    <dl class="memory__facts">
+      @for (fact of facts(); track fact.label) {
+        <div>
+          <dt>{{ fact.label }}</dt>
+          <dd [title]="fact.value">{{ fact.value }}</dd>
+        </div>
+      }
+    </dl>
+  }
+</div>

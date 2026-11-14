@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { AppUsageMetric } from '@shared/api/system-monitor-channels';
-import { parseIoregGpu, pickGpu, readAppUsage, readDisk, sumNetwork } from './metrics-readers';
+import {
+  parseIoregGpu,
+  pickGpu,
+  readAppUsage,
+  readDisk,
+  readInterfaces,
+  readMemoryDetail,
+  readVolumes,
+  sumNetwork,
+} from './metrics-readers';
 
 describe('sumNetwork', () => {
   it('sumsRxAndTxAcrossInterfaces', () => {
@@ -122,5 +131,60 @@ describe('parseIoregGpu', () => {
 
   it('reportsUnavailableWhenNoUtilisationIsPresent', () => {
     expect(parseIoregGpu('no stats here')).toEqual({ available: false, percent: 0 });
+  });
+});
+
+describe('readInterfaces', () => {
+  it('listsNamedInterfaces_busiestFirst', () => {
+    expect(
+      readInterfaces([
+        { iface: 'lo0', rx_sec: 10, tx_sec: 10 },
+        { iface: 'en0', rx_sec: 900, tx_sec: 100 },
+        { rx_sec: 5000, tx_sec: 5000 },
+        { iface: 'utun3', rx_sec: null, tx_sec: null },
+      ]),
+    ).toEqual([
+      { name: 'en0', rxBytesPerSec: 900, txBytesPerSec: 100 },
+      { name: 'lo0', rxBytesPerSec: 10, txBytesPerSec: 10 },
+      { name: 'utun3', rxBytesPerSec: 0, txBytesPerSec: 0 },
+    ]);
+  });
+});
+
+describe('readMemoryDetail', () => {
+  it('mapsAvailableAndSwap', () => {
+    expect(readMemoryDetail({ available: 800, swapused: 20, swaptotal: 100 })).toEqual({
+      availableBytes: 800,
+      swapUsedBytes: 20,
+      swapTotalBytes: 100,
+    });
+  });
+});
+
+describe('readVolumes', () => {
+  it('keepsUserVolumes_leavingOutVirtualSystemAndEmptyOnes', () => {
+    expect(
+      readVolumes([
+        { mount: '/', type: 'apfs', size: 1000, used: 400 },
+        { mount: '/System/Volumes/Data', type: 'apfs', size: 1000, used: 400 },
+        { mount: '/System/Library/AssetsV2/x/.AssetData', type: 'apfs', size: 4, used: 1 },
+        { mount: '/dev', type: 'devfs', size: 10, used: 10 },
+        { mount: '/run', type: 'tmpfs', size: 10, used: 1 },
+        { mount: '/Volumes/Backup', type: 'hfs', size: 2000, used: 2500 },
+        { mount: '/Volumes/Empty', type: 'msdos', size: 0, used: 0 },
+        { mount: '/', type: 'apfs', size: 1000, used: 400 },
+      ]),
+    ).toEqual([
+      { mount: '/', type: 'apfs', sizeBytes: 1000, usedBytes: 400 },
+      // Used is held to the size, so a volume never reads as more than full.
+      { mount: '/Volumes/Backup', type: 'hfs', sizeBytes: 2000, usedBytes: 2000 },
+    ]);
+  });
+
+  it('takesUsed_asTheSpaceNotAvailable_whereTheOsReportsIt', () => {
+    // macOS's sealed system volume: a few GB of its own, but the container is mostly full.
+    expect(
+      readVolumes([{ mount: '/', type: 'apfs', size: 1000, used: 10, available: 300 }]),
+    ).toEqual([{ mount: '/', type: 'apfs', sizeBytes: 1000, usedBytes: 700 }]);
   });
 });
