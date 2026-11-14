@@ -10,11 +10,11 @@
 .storage {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.5rem;
   box-sizing: border-box;
   block-size: 100%;
   min-block-size: 44rem;
-  padding: 0.75rem;
+  padding: 0.5rem;
 }
 
 .storage__header {
@@ -99,7 +99,7 @@
     'activity activity activity activity activity activity iops iops iops iops iops iops'
     'devices devices devices device device device device utilisation utilisation utilisation utilisation utilisation'
     'volumes volumes volumes volumes volumes volumes volumes volumes statistics statistics statistics statistics';
-  gap: 0.75rem;
+  gap: 0.5rem;
   min-block-size: 0;
 }
 
