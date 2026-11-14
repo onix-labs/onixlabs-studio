@@ -249,6 +249,7 @@
       <app-dropdown
         class="processes__page-size-field"
         ariaLabel="Rows per page"
+        [fullWidth]="true"
         [options]="pageSizes"
         [value]="'' + pageSize()"
         (valueChange)="setPageSize($event)"
