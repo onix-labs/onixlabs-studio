@@ -18,21 +18,7 @@ import { MemoryProcessesCard } from './memory-processes-card/memory-processes-ca
 import { MemoryStatisticsCard } from './memory-statistics-card/memory-statistics-card';
 import { MemorySwapCard } from './memory-swap-card/memory-swap-card';
 import { MemoryUsageCard } from './memory-usage-card/memory-usage-card';
-
-/**
- * Describes one of the header's summary chips (`In Use: 49.2 GB (19%)`).
- */
-interface SummaryChip {
-  /**
-   * Gets what the reading is.
-   */
-  readonly label: string;
-
-  /**
-   * Gets the reading.
-   */
-  readonly value: string;
-}
+import { SummaryItem, ViewSummary } from '../view-summary/view-summary';
 
 /**
  * Finds the speed most of the modules run at, which is the memory's speed.
@@ -65,6 +51,7 @@ function commonSpeed(modules: readonly MemoryModule[]): number | undefined {
 @Component({
   selector: 'app-system-monitor-memory-tab',
   imports: [
+    ViewSummary,
     AppIcon,
     MemoryUsageCard,
     MemoryHistoryCard,
@@ -109,14 +96,14 @@ export class MemoryTab {
   /**
    * Gets the header's chips: in use, available, compressed and swap where reported, and the speed.
    */
-  protected readonly chips: Signal<readonly SummaryChip[]> = computed(
-    (): readonly SummaryChip[] => {
+  protected readonly chips: Signal<readonly SummaryItem[]> = computed(
+    (): readonly SummaryItem[] => {
       const sample: MetricsSample | null = this.readings.latest();
       if (sample === null) {
         return [];
       }
       const detail: MemoryDetailMetric | undefined = sample.memoryDetail;
-      const chips: SummaryChip[] = [
+      const chips: SummaryItem[] = [
         {
           label: 'In Use',
           value: `${formatBytes(sample.memory.usedBytes)} (${formatPercent(sample.memory.percent)})`,

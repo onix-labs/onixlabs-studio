@@ -72,56 +72,6 @@
   color: var(--form-muted-foreground-color);
 }
 
-// The counts against the right edge: label over value, a hairline between each. A warning or error
-// count is toned, with its level named beside it, so the tone is never alone.
-.logs__chips {
-  display: flex;
-  flex: 0 1 auto;
-  margin: 0 0 0 auto;
-  padding: 0.45rem 0.25rem;
-  overflow: hidden;
-  border: 1px solid var(--dock-border-color);
-  border-radius: calc(0.75rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
-  list-style: none;
-}
-
-.logs__chip {
-  display: flex;
-  flex-direction: column;
-  min-inline-size: 3.5rem;
-  padding: 0 1.1rem;
-  border-inline-start: 1px solid var(--dock-border-color);
-
-  &:first-child {
-    border-inline-start: none;
-  }
-}
-
-.logs__chip-label {
-  font-size: 0.72rem;
-  white-space: nowrap;
-  color: var(--form-muted-foreground-color);
-}
-
-.logs__chip-value {
-  font-size: 0.95rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: var(--body-foreground-color);
-}
-
-.logs__chip--warning .logs__chip-value,
-.logs__chip--warning .logs__chip-label {
-  color: var(--warning-color);
-}
-
-.logs__chip--error .logs__chip-value,
-.logs__chip--error .logs__chip-label {
-  color: var(--danger-color);
-}
-
 // The session, the levels, the search taking the spare width, then the counts and menus.
 .logs__toolbar {
   display: flex;

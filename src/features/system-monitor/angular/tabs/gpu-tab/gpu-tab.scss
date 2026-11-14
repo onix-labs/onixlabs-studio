@@ -44,33 +44,6 @@
   color: var(--form-muted-foreground-color);
 }
 
-.gpu__chips {
-  display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  margin: 0 0 0 auto;
-  padding: 0;
-  list-style: none;
-}
-
-.gpu__chip {
-  padding: 0.4rem 0.75rem;
-  border: 1px solid var(--dock-border-color);
-  border-radius: calc(0.6rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
-  font-size: 0.78rem;
-  white-space: nowrap;
-  color: var(--form-muted-foreground-color);
-}
-
-.gpu__chip-value {
-  font-weight: 600;
-  color: var(--body-foreground-color);
-}
-
 // Twelve columns, so the rows split them as the sketch does. Each card is a size container whose
 // height never comes from what it holds, so every row's height is stated.
 .gpu__grid {

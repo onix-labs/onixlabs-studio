@@ -12,21 +12,7 @@ import { CpuCoresCard } from './cpu-cores-card/cpu-cores-card';
 import { CpuGroupsCard } from './cpu-groups-card/cpu-groups-card';
 import { CpuInformationCard } from './cpu-information-card/cpu-information-card';
 import { CpuProcessesCard } from './cpu-processes-card/cpu-processes-card';
-
-/**
- * Describes one of the header's summary chips (`48 Logical Cores`).
- */
-interface SummaryChip {
-  /**
-   * Gets the chip's reading.
-   */
-  readonly value: string;
-
-  /**
-   * Gets what the reading is.
-   */
-  readonly label: string;
-}
+import { SummaryItem, ViewSummary } from '../view-summary/view-summary';
 
 /**
  * Represents the System Monitor's CPU view: the processor named with its headline facts, its total
@@ -36,6 +22,7 @@ interface SummaryChip {
 @Component({
   selector: 'app-system-monitor-cpu-tab',
   imports: [
+    ViewSummary,
     AppIcon,
     DashboardCard,
     DashboardBadge,
@@ -76,13 +63,13 @@ export class CpuTab {
    * Gets the header's chips: the cores, the frequencies (the maximum only where the platform reports
    * one) and the memory.
    */
-  protected readonly chips: Signal<readonly SummaryChip[]> = computed(
-    (): readonly SummaryChip[] => {
+  protected readonly chips: Signal<readonly SummaryItem[]> = computed(
+    (): readonly SummaryItem[] => {
       const info: SystemInfo | null = this.readings.info();
       if (info === null) {
         return [];
       }
-      const chips: SummaryChip[] = [{ value: `${info.logicalCores}`, label: 'Logical Cores' }];
+      const chips: SummaryItem[] = [{ value: `${info.logicalCores}`, label: 'Logical Cores' }];
       if (info.physicalCores !== undefined) {
         chips.push({ value: `${info.physicalCores}`, label: 'Physical Cores' });
       }

@@ -17,21 +17,7 @@ import { StorageIopsCard } from './storage-iops-card/storage-iops-card';
 import { StorageStatisticsCard } from './storage-statistics-card/storage-statistics-card';
 import { StorageUtilisationCard } from './storage-utilisation-card/storage-utilisation-card';
 import { StorageVolumesCard } from './storage-volumes-card/storage-volumes-card';
-
-/**
- * Describes one figure in the header's summary.
- */
-interface SummaryChip {
-  /**
-   * Gets the figure's label.
-   */
-  readonly label: string;
-
-  /**
-   * Gets the figure's value.
-   */
-  readonly value: string;
-}
+import { SummaryItem, ViewSummary } from '../view-summary/view-summary';
 
 /**
  * Represents the System Monitor's Storage view: the machine's drives and volumes. A header counts them
@@ -44,6 +30,7 @@ interface SummaryChip {
 @Component({
   selector: 'app-system-monitor-storage-tab',
   imports: [
+    ViewSummary,
     AppIcon,
     StorageActivityCard,
     StorageDeviceCard,
@@ -117,8 +104,8 @@ export class StorageTab {
    * Gets the header's summary: the drives' capacity, the space used and free on their volumes, and the
    * live reads and writes.
    */
-  protected readonly chips: Signal<readonly SummaryChip[]> = computed(
-    (): readonly SummaryChip[] => {
+  protected readonly chips: Signal<readonly SummaryItem[]> = computed(
+    (): readonly SummaryItem[] => {
       const devices: readonly StorageDevice[] = this.storage.devices();
       const volumes: readonly VolumeMetric[] = this.localVolumes();
       const size: number = volumes.reduce(
@@ -130,7 +117,7 @@ export class StorageTab {
         0,
       );
       const totals: StorageTotals = this.storage.totals();
-      const chips: SummaryChip[] = [];
+      const chips: SummaryItem[] = [];
       if (devices.length > 0) {
         chips.push({
           label: 'Total Capacity',

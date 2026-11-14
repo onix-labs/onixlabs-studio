@@ -51,14 +51,15 @@ describe('MemoryTab', () => {
 
     expect(host.textContent).toContain('256.0 GB DDR4 ECC');
     const chips: string[] = Array.from(host.querySelectorAll('[aria-label="Summary"] li')).map(
-      (chip: Element): string => chip.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+      (chip: Element): string =>
+        `${chip.querySelector('.view-summary__label')?.textContent?.trim() ?? ''} ${chip.querySelector('.view-summary__value')?.textContent?.trim() ?? ''}`,
     );
     expect(chips).toEqual([
-      'In Use: 49.0 GB (19%)',
-      'Available: 207.0 GB',
-      'Compressed: 512.0 MB',
-      'Swap: 0 B',
-      'Speed: 2400 MT/s',
+      'In Use 49.0 GB (19%)',
+      'Available 207.0 GB',
+      'Compressed 512.0 MB',
+      'Swap 0 B',
+      'Speed 2400 MT/s',
     ]);
   });
 

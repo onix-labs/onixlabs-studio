@@ -31,24 +31,15 @@
           <app-system-monitor-gpu-tab />
         }
         @case (Tab.Logs) {
-          @let counts = severityCounts();
           <section class="logs" data-testid="logs-view">
             <header class="logs__header">
               <app-icon class="logs__icon" [icon]="Icon.MONITOR_LOGS" [size]="1.75" />
               <h2 class="logs__title">Logs</h2>
               <span class="logs__subtitle">Application logs • {{ summary().session }}</span>
-              <ul class="logs__chips" aria-label="Records by level">
-                <li class="logs__chip">
-                  <span class="logs__chip-label">Total</span>
-                  <strong class="logs__chip-value">{{ counts.total }}</strong>
-                </li>
-                @for (severity of severities; track severity) {
-                  <li class="logs__chip" [class]="'logs__chip--' + severity">
-                    <span class="logs__chip-label">{{ severityName(severity) }}</span>
-                    <strong class="logs__chip-value">{{ counts.bySeverity[severity] }}</strong>
-                  </li>
-                }
-              </ul>
+              <app-system-monitor-view-summary
+                ariaLabel="Records by level"
+                [items]="logSummary()"
+              />
             </header>
 
             <div class="logs__toolbar">

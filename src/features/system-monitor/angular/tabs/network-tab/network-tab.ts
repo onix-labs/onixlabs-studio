@@ -14,21 +14,7 @@ import {
 import { NetworkPacketsCard } from './network-packets-card/network-packets-card';
 import { NetworkStatisticsCard } from './network-statistics-card/network-statistics-card';
 import { NetworkThroughputCard } from './network-throughput-card/network-throughput-card';
-
-/**
- * Describes one figure in the header's summary.
- */
-interface SummaryChip {
-  /**
-   * Gets the figure's label.
-   */
-  readonly label: string;
-
-  /**
-   * Gets the figure's value.
-   */
-  readonly value: string;
-}
+import { SummaryItem, ViewSummary } from '../view-summary/view-summary';
 
 /**
  * Represents the System Monitor's Network view: the machine's interfaces and connections. A header
@@ -42,6 +28,7 @@ interface SummaryChip {
 @Component({
   selector: 'app-system-monitor-network-tab',
   imports: [
+    ViewSummary,
     AppIcon,
     NetworkActivityCard,
     NetworkConnectionsCard,
@@ -82,8 +69,8 @@ export class NetworkTab {
    * Gets the header's summary: the live download and upload, the totals since boot, the connections
    * and the DNS server's latency.
    */
-  protected readonly chips: Signal<readonly SummaryChip[]> = computed(
-    (): readonly SummaryChip[] => {
+  protected readonly chips: Signal<readonly SummaryItem[]> = computed(
+    (): readonly SummaryItem[] => {
       const totals: NetworkTotals = this.network.totals();
       const connections: readonly NetworkConnection[] | null = this.network.connections();
       const latency: number | null = this.network.dnsLatencyMs();

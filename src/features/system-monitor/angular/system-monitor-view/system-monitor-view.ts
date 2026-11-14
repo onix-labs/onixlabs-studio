@@ -30,6 +30,7 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { Icon } from '@shared/angular/icons/icon';
 import { LogContextCard } from '../tabs/logs-tab/log-context-card/log-context-card';
+import { SummaryItem, ViewSummary } from '../tabs/view-summary/view-summary';
 import { LogDetailsCard } from '../tabs/logs-tab/log-details-card/log-details-card';
 import { formatLogTime, SEVERITY_TONES } from '../tabs/logs-tab/log-format';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
@@ -215,6 +216,7 @@ interface AuditEntry {
     LogContextCard,
     LogDetailsCard,
     Menu,
+    ViewSummary,
     ButtonRow,
     Dropdown,
     TextField,
@@ -602,6 +604,35 @@ export class SystemMonitorView implements OnInit {
     }
     return { total: this.records().length, bySeverity };
   });
+
+  /**
+   * Gets the Logs header's summary: the session's records in all, then by level, a warning or error
+   * count toned while there are any.
+   */
+  protected readonly logSummary: Signal<readonly SummaryItem[]> = computed(
+    (): readonly SummaryItem[] => {
+      const counts: SeverityCounts = this.severityCounts();
+      return [
+        { label: 'Total', value: `${counts.total}` },
+        ...SEVERITIES.map((severity: Severity): SummaryItem => {
+          const count: number = counts.bySeverity[severity];
+          const tone: SummaryItem['tone'] =
+            count === 0
+              ? undefined
+              : severity === 'error'
+                ? 'danger'
+                : severity === 'warning'
+                  ? 'warning'
+                  : undefined;
+          return {
+            label: this.severityName(severity),
+            value: `${count}`,
+            ...(tone === undefined ? {} : { tone }),
+          };
+        }),
+      ];
+    },
+  );
 
   /**
    * Gets whether every severity is shown, so the All filter reads pressed.

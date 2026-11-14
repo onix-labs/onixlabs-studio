@@ -3,14 +3,7 @@
     <app-icon class="storage__icon" [icon]="Icon.MONITOR_STORAGE" [size]="1.75" />
     <h2 class="storage__title">Storage</h2>
     <span class="storage__count">{{ count() }}</span>
-    <ul class="storage__chips" aria-label="Summary">
-      @for (chip of chips(); track chip.label) {
-        <li class="storage__chip">
-          <span class="storage__chip-label">{{ chip.label }}</span>
-          <strong class="storage__chip-value">{{ chip.value }}</strong>
-        </li>
-      }
-    </ul>
+    <app-system-monitor-view-summary [items]="chips()" />
   </header>
 
   <div class="storage__grid">

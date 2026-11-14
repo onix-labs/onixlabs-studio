@@ -1,0 +1,58 @@
+// The strip takes no more than its figures need, and sits against the header's right edge.
+:host {
+  display: block;
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  margin-inline-start: auto;
+}
+
+.view-summary {
+  display: flex;
+  margin: 0;
+  padding: 0.45rem 0.25rem;
+  overflow: hidden;
+  border: 1px solid var(--dock-border-color);
+  border-radius: calc(0.75rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
+  list-style: none;
+}
+
+// A figure: its label over its value, a hairline before every one but the first.
+.view-summary__item {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 3.5rem;
+  padding: 0 1.1rem;
+  border-inline-start: 1px solid var(--dock-border-color);
+
+  &:first-child {
+    border-inline-start: none;
+  }
+}
+
+.view-summary__label {
+  font-size: 0.72rem;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
+}
+
+.view-summary__value {
+  overflow: hidden;
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--body-foreground-color);
+}
+
+.view-summary__item--warning .view-summary__label,
+.view-summary__item--warning .view-summary__value {
+  color: var(--warning-color);
+}
+
+.view-summary__item--danger .view-summary__label,
+.view-summary__item--danger .view-summary__value {
+  color: var(--danger-color);
+}

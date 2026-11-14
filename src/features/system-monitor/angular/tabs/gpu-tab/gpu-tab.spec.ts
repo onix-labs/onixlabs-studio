@@ -41,14 +41,15 @@ describe('GpuTab', () => {
 
     expect(host.textContent).toContain('AMD Radeon RX 6900 XT');
     const chips: string[] = Array.from(host.querySelectorAll('[aria-label="Summary"] li')).map(
-      (chip: Element): string => chip.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+      (chip: Element): string =>
+        `${chip.querySelector('.view-summary__label')?.textContent?.trim() ?? ''} ${chip.querySelector('.view-summary__value')?.textContent?.trim() ?? ''}`,
     );
     expect(chips).toEqual([
-      'Driver: AMDRadeonX6000 7.0.1',
-      'VRAM: 16.0 GB',
-      'Bus: PCIe ×16',
-      'Power: 71 W',
-      'Temp: 62 °C',
+      'Driver AMDRadeonX6000 7.0.1',
+      'VRAM 16.0 GB',
+      'Bus PCIe ×16',
+      'Power 71 W',
+      'Temp 62 °C',
     ]);
   });
 

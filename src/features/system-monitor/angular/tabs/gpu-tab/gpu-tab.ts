@@ -13,21 +13,7 @@ import { GpuMemoryHistoryCard } from './gpu-memory-history-card/gpu-memory-histo
 import { GpuProcessesCard } from './gpu-processes-card/gpu-processes-card';
 import { GpuThermalsCard } from './gpu-thermals-card/gpu-thermals-card';
 import { GpuUtilisationCard } from './gpu-utilisation-card/gpu-utilisation-card';
-
-/**
- * Describes one of the header's summary chips (`Temp: 62 °C`).
- */
-interface SummaryChip {
-  /**
-   * Gets what the reading is.
-   */
-  readonly label: string;
-
-  /**
-   * Gets the reading.
-   */
-  readonly value: string;
-}
+import { SummaryItem, ViewSummary } from '../view-summary/view-summary';
 
 /**
  * Represents the System Monitor's GPU view: the GPU named with its headline figures, then its
@@ -39,6 +25,7 @@ interface SummaryChip {
 @Component({
   selector: 'app-system-monitor-gpu-tab',
   imports: [
+    ViewSummary,
     AppIcon,
     GpuUtilisationCard,
     GpuMemoryCard,
@@ -80,11 +67,11 @@ export class GpuTab {
    * Gets the header's chips, those the platform reports: the driver, video memory, bus, power and
    * temperature.
    */
-  protected readonly chips: Signal<readonly SummaryChip[]> = computed(
-    (): readonly SummaryChip[] => {
+  protected readonly chips: Signal<readonly SummaryItem[]> = computed(
+    (): readonly SummaryItem[] => {
       const info: GpuInfo | undefined = this.readings.info()?.gpus[0];
       const reading: GpuReading | null = this.gpu.latest();
-      const chips: SummaryChip[] = [];
+      const chips: SummaryItem[] = [];
       if (info?.driver !== undefined) {
         chips.push({ label: 'Driver', value: info.driver });
       }

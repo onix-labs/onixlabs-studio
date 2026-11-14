@@ -45,46 +45,6 @@
   color: var(--form-muted-foreground-color);
 }
 
-// The summary against the right edge: label over value, a hairline between each.
-.storage__chips {
-  display: flex;
-  flex: 0 1 auto;
-  margin: 0 0 0 auto;
-  padding: 0.45rem 0.25rem;
-  overflow: hidden;
-  border: 1px solid var(--dock-border-color);
-  border-radius: calc(0.75rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
-  list-style: none;
-}
-
-.storage__chip {
-  display: flex;
-  flex-direction: column;
-  min-inline-size: 0;
-  padding: 0 1.1rem;
-  border-inline-start: 1px solid var(--dock-border-color);
-
-  &:first-child {
-    border-inline-start: none;
-  }
-}
-
-.storage__chip-label {
-  font-size: 0.72rem;
-  white-space: nowrap;
-  color: var(--form-muted-foreground-color);
-}
-
-.storage__chip-value {
-  font-size: 0.95rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  color: var(--body-foreground-color);
-}
-
 // Twelve columns, so the rows split them as the sketch does. Each card is a size container whose
 // height never comes from what it holds, so every row's height is stated.
 .storage__grid {

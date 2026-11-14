@@ -37,7 +37,8 @@ describe('CpuTab', () => {
    */
   function chips(): string[] {
     return Array.from(host.querySelectorAll('[aria-label="Summary"] li')).map(
-      (chip: Element): string => chip.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+      (chip: Element): string =>
+        `${chip.querySelector('.view-summary__label')?.textContent?.trim() ?? ''} ${chip.querySelector('.view-summary__value')?.textContent?.trim() ?? ''}`,
     );
   }
 
@@ -62,10 +63,10 @@ describe('CpuTab', () => {
 
     expect(host.textContent).toContain('Intel(R) Xeon(R) W-3265 CPU @ 2.70GHz');
     expect(chips()).toEqual([
-      '48 Logical Cores',
-      '24 Physical Cores',
-      '2.70 GHz Base',
-      '256.0 GB RAM',
+      'Logical Cores 48',
+      'Physical Cores 24',
+      'Base 2.70 GHz',
+      'RAM 256.0 GB',
     ]);
   });
 
@@ -74,7 +75,7 @@ describe('CpuTab', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(chips()).toContain('4.40 GHz Max (Turbo)');
+    expect(chips()).toContain('Max (Turbo) 4.40 GHz');
   });
 
   it('laysOutTheSketchsCards', () => {
