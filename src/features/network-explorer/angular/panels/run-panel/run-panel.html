@@ -1,0 +1,106 @@
+@if (run(); as run) {
+  <app-panel-toolbar>
+    <app-icon
+      class="run__icon"
+      [icon]="run.kind === 'ping' ? Icon.NETWORK_PING : Icon.NETWORK_ROUTE"
+    />
+    <span class="run__heading" data-testid="run-heading">{{ heading() }}</span>
+    @if (run.address && run.address !== run.host) {
+      <span class="run__address">{{ run.address }}</span>
+    }
+    <app-chip [tone]="toneOf(run.status)" data-testid="run-status">{{
+      labelOf(run.status)
+    }}</app-chip>
+    <span class="panel-toolbar__spacer"></span>
+    @if (run.status === 'running') {
+      <app-button variant="none" [icon]="Icon.STOP" label="Stop" (click)="stop()" />
+    } @else {
+      <app-button variant="none" [icon]="Icon.REFRESH" label="Run Again" (click)="rerun()" />
+    }
+  </app-panel-toolbar>
+
+  @if (run.status === 'failed' && run.message) {
+    <p class="run__message" role="alert" data-testid="run-message">{{ run.message }}</p>
+  }
+
+  <div class="run__body">
+    @if (run.kind === 'ping') {
+      @let summary = pingSummary();
+      <dl class="run__summary" data-testid="ping-summary">
+        <div>
+          <dt>Sent</dt>
+          <dd>{{ summary.sent }} of {{ pingCount }}</dd>
+        </div>
+        <div>
+          <dt>Received</dt>
+          <dd>{{ summary.received }}</dd>
+        </div>
+        <div>
+          <dt>Loss</dt>
+          <dd>{{ summary.lossPercent }}%</dd>
+        </div>
+        @if (summary.rtt; as rtt) {
+          <div>
+            <dt>Min / Avg / Max</dt>
+            <dd>{{ formatMs(rtt.min) }} / {{ formatMs(rtt.avg) }} / {{ formatMs(rtt.max) }}</dd>
+          </div>
+        }
+      </dl>
+      <table class="run__table" data-testid="ping-replies">
+        <thead>
+          <tr>
+            <th class="run__number-column">Seq</th>
+            <th>From</th>
+            <th class="run__number-column">TTL</th>
+            <th class="run__time-column">Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (reply of replies(); track reply.sequence) {
+            <tr [class.run__row--lost]="reply.rttMs === undefined">
+              <td>{{ reply.sequence }}</td>
+              <td class="run__mono">{{ reply.address ?? '—' }}</td>
+              <td>{{ reply.ttl ?? '—' }}</td>
+              <td class="run__mono">
+                {{ reply.rttMs === undefined ? 'Timed out' : formatMs(reply.rttMs) }}
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="4" class="run__none">
+                {{ run.status === 'running' ? 'Waiting for the first reply…' : 'No replies.' }}
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    } @else {
+      <table class="run__table" data-testid="route-hops">
+        <thead>
+          <tr>
+            <th class="run__number-column">Hop</th>
+            <th>Address</th>
+            <th class="run__times-column">Round Trips</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of hops(); track row.hop.index) {
+            <tr [class.run__row--lost]="row.addresses.length === 0">
+              <td>{{ row.hop.index }}</td>
+              <td class="run__mono" [title]="row.addresses.join(', ')">
+                {{ row.addresses.length === 0 ? 'No answer' : row.addresses.join(', ') }}
+              </td>
+              <td class="run__mono">{{ row.times.join('   ') }}</td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="3" class="run__none">
+                {{ run.status === 'running' ? 'Probing the first hop…' : 'No hops.' }}
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </div>
+}

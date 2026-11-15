@@ -7,11 +7,43 @@ import {
   sampleConnections,
   sampleNetwork,
 } from '../../network-activity/network-samples.testing';
+import { NetworkRuns } from '../../network-runs/network-runs';
 import { NetworkProbe } from '../../network-probe/network-probe';
 import { FakeNetworkProbe } from '../../network-probe/network-probe.fake';
 import { ConnectionsPanel } from './connections-panel';
 
+/**
+ * A stand-in for the tab's runs that records what it is asked to run.
+ */
+class RecordingRuns {
+  /**
+   * Gets what was asked, in order.
+   */
+  public readonly calls: string[] = [];
+
+  /**
+   * Records a ping.
+   * @param host The host.
+   * @returns Returns a run id.
+   */
+  public ping(host: string): string {
+    this.calls.push(`ping ${host}`);
+    return 'ping';
+  }
+
+  /**
+   * Records a trace.
+   * @param host The host.
+   * @returns Returns a run id.
+   */
+  public trace(host: string): string {
+    this.calls.push(`trace ${host}`);
+    return 'trace';
+  }
+}
+
 describe('ConnectionsPanel', () => {
+  let runs: RecordingRuns;
   let fixture: ComponentFixture<ConnectionsPanel>;
   let host: HTMLElement;
   let probe: FakeNetworkProbe;
@@ -20,9 +52,14 @@ describe('ConnectionsPanel', () => {
   beforeEach(async () => {
     probe = new FakeNetworkProbe();
     probe.network = sampleNetwork;
+    runs = new RecordingRuns();
     await TestBed.configureTestingModule({
       imports: [ConnectionsPanel],
-      providers: [NetworkActivity, { provide: NetworkProbe, useValue: probe }],
+      providers: [
+        NetworkActivity,
+        { provide: NetworkProbe, useValue: probe },
+        { provide: NetworkRuns, useValue: runs },
+      ],
     }).compileComponents();
 
     store = TestBed.inject(NetworkActivity);
@@ -94,5 +131,16 @@ describe('ConnectionsPanel', () => {
     await fixture.whenStable();
 
     expect(rows()).toEqual(['No connections.']);
+  });
+
+  it('eachConnection_pingsOrTracesItsRemotePeer', async () => {
+    await load();
+
+    host.querySelector<HTMLButtonElement>('button[aria-label="Ping 140.82.112.3"]')!.click();
+    host
+      .querySelector<HTMLButtonElement>('button[aria-label="Trace Route to 140.82.112.3"]')!
+      .click();
+
+    expect(runs.calls).toEqual(['ping 140.82.112.3', 'trace 140.82.112.3']);
   });
 });

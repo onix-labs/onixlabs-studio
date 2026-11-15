@@ -39,6 +39,7 @@
           <th>Local Address</th>
           <th class="connections__protocol-column">Protocol</th>
           <th class="connections__state-column">State</th>
+          <th class="connections__actions-column"><span class="connections__hidden">Actions</span></th>
         </tr>
       </thead>
       <tbody>
@@ -59,10 +60,28 @@
                 <app-chip [tone]="toneOf(row.connection.state)">{{ row.connection.state }}</app-chip>
               }
             </td>
+            <td class="connections__actions">
+              <app-button
+                variant="none"
+                size="small"
+                [icon]="Icon.NETWORK_PING"
+                [ariaLabel]="'Ping ' + row.remoteHost"
+                tooltip="Ping"
+                (click)="ping(row)"
+              />
+              <app-button
+                variant="none"
+                size="small"
+                [icon]="Icon.NETWORK_ROUTE"
+                [ariaLabel]="'Trace Route to ' + row.remoteHost"
+                tooltip="Trace Route"
+                (click)="trace(row)"
+              />
+            </td>
           </tr>
         } @empty {
           <tr>
-            <td colspan="5" class="connections__none">No connections.</td>
+            <td colspan="6" class="connections__none">No connections.</td>
           </tr>
         }
       </tbody>

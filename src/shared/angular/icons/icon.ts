@@ -1849,6 +1849,16 @@ export class Icon {
    */
   public static readonly NETWORK_CONNECTIONS: Icon = new Icon('ph-duotone ph-arrows-left-right');
 
+  /**
+   * Gets the icon of a ping, on its button and its document in the Network Explorer's well.
+   */
+  public static readonly NETWORK_PING: Icon = new Icon('ph-duotone ph-broadcast');
+
+  /**
+   * Gets the icon of a traced route, on its button and its document in the Network Explorer's well.
+   */
+  public static readonly NETWORK_ROUTE: Icon = new Icon('ph-duotone ph-path');
+
   // --- API Explorer ---
 
   /**

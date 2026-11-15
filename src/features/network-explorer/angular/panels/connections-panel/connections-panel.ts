@@ -14,7 +14,8 @@ import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-too
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { NetworkInterfaceInfo } from '@shared/api/system-monitor-channels';
-import { NetworkActivity } from '../../network-activity/network-activity';
+import { ConnectionRow, NetworkActivity } from '../../network-activity/network-activity';
+import { NetworkRuns } from '../../network-runs/network-runs';
 
 /**
  * The Network Explorer's Connections panel: every connection this machine has open to a remote peer,
@@ -24,7 +25,7 @@ import { NetworkActivity } from '../../network-activity/network-activity';
  * unless asked for, are connections between this machine and itself. Choosing an interface in the
  * Interfaces panel narrows the list to the connections made over it.
  *
- * Each row's remote peer is what ping and traceroute will be run against.
+ * Each row can ping its remote peer, or trace the route to it; either opens in the well.
  */
 @Component({
   selector: 'app-connections-panel',
@@ -43,6 +44,11 @@ export class ConnectionsPanel {
    * Holds the tab's network readings and selection.
    */
   protected readonly activity: NetworkActivity = inject(NetworkActivity);
+
+  /**
+   * Holds the tab's pings and traces.
+   */
+  private readonly runs: NetworkRuns = inject(NetworkRuns);
 
   /**
    * Holds the icon tokens used by the template.
@@ -72,5 +78,21 @@ export class ConnectionsPanel {
       return 'success';
     }
     return state.startsWith('SYN') || state.endsWith('WAIT') ? 'warning' : 'neutral';
+  }
+
+  /**
+   * Pings a connection's remote peer.
+   * @param row The connection's row.
+   */
+  protected ping(row: ConnectionRow): void {
+    this.runs.ping(row.remoteHost);
+  }
+
+  /**
+   * Traces the route to a connection's remote peer.
+   * @param row The connection's row.
+   */
+  protected trace(row: ConnectionRow): void {
+    this.runs.trace(row.remoteHost);
   }
 }

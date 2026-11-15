@@ -32,6 +32,9 @@ import {
   NetworkExplorerCommands,
 } from '../network-explorer-commands/network-explorer-commands';
 import { NETWORK_EXPLORER_DOCK_BLUEPRINT } from '../network-explorer-dock-blueprint';
+import { NETWORK_RUN_PANEL } from '../network-runs/network-run-panel';
+import { NetworkRuns } from '../network-runs/network-runs';
+import { RunPanel } from '../panels/run-panel/run-panel';
 
 /**
  * The Network Explorer tab: a dock surface for looking at the machine's network — its interfaces, the
@@ -53,8 +56,11 @@ import { NETWORK_EXPLORER_DOCK_BLUEPRINT } from '../network-explorer-dock-bluepr
   styleUrl: './network-explorer-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [
-    // The network readings and selection: one per tab, shared by every panel in it.
+    // The network readings and selection, and the pings and traces run from them: one each per tab,
+    // shared by every panel in it.
     NetworkActivity,
+    NetworkRuns,
+    { provide: NETWORK_RUN_PANEL, useValue: RunPanel },
     // The dock framework, instantiated per dock-hosting view.
     DockTabContext,
     DockState,
@@ -87,6 +93,11 @@ export class NetworkExplorerView implements OnInit, OnDestroy, NetworkExplorerCo
    * Holds the tab's network readings and selection.
    */
   private readonly activity: NetworkActivity = inject(NetworkActivity);
+
+  /**
+   * Holds the tab's pings and traces.
+   */
+  private readonly runs: NetworkRuns = inject(NetworkRuns);
 
   /**
    * Holds the ribbon's command registry this view registers itself with while it is active.
@@ -141,10 +152,12 @@ export class NetworkExplorerView implements OnInit, OnDestroy, NetworkExplorerCo
   }
 
   /**
-   * Stops reading the network and releases the ribbon, so a closed tab drives nothing.
+   * Stops reading the network, stops every ping and trace still going, and releases the ribbon, so a
+   * closed tab drives nothing.
    */
   public ngOnDestroy(): void {
     this.activity.close();
+    this.runs.stopAll();
     this.commands.clear(this);
   }
 
