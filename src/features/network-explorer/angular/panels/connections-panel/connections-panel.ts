@@ -15,6 +15,8 @@ import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { NetworkInterfaceInfo } from '@shared/api/system-monitor-channels';
 import { ConnectionRow, NetworkActivity } from '../../network-activity/network-activity';
+import { endpointPort } from '../../network-activity/network-endpoints';
+import { NetworkCaptures } from '../../network-captures/network-captures';
 import { NetworkRuns } from '../../network-runs/network-runs';
 
 /**
@@ -25,7 +27,8 @@ import { NetworkRuns } from '../../network-runs/network-runs';
  * unless asked for, are connections between this machine and itself. Choosing an interface in the
  * Interfaces panel narrows the list to the connections made over it.
  *
- * Each row can ping its remote peer, or trace the route to it; either opens in the well.
+ * Each row can ping its remote peer, trace the route to it, or watch it — capture the packets to and
+ * from that peer on the interface the connection is made over; each opens in the well.
  */
 @Component({
   selector: 'app-connections-panel',
@@ -49,6 +52,11 @@ export class ConnectionsPanel {
    * Holds the tab's pings and traces.
    */
   private readonly runs: NetworkRuns = inject(NetworkRuns);
+
+  /**
+   * Holds the tab's packet captures.
+   */
+  private readonly captures: NetworkCaptures = inject(NetworkCaptures);
 
   /**
    * Holds the icon tokens used by the template.
@@ -94,5 +102,42 @@ export class ConnectionsPanel {
    */
   protected trace(row: ConnectionRow): void {
     this.runs.trace(row.remoteHost);
+  }
+
+  /**
+   * Gets the interface a connection would be watched on: the one it is made over, or the default
+   * route's when its local address matches none.
+   * @param row The connection's row.
+   * @returns Returns the interface's id, or undefined when there is none to watch on.
+   */
+  private watchInterfaceOf(row: ConnectionRow): string | undefined {
+    return (
+      row.interfaceId ??
+      this.activity.info()?.interfaces.find((info: NetworkInterfaceInfo): boolean => info.isDefault)
+        ?.id
+    );
+  }
+
+  /**
+   * Gets whether a connection can be watched: it has a port, and an interface to capture on.
+   * @param row The connection's row.
+   * @returns Returns true when Watch can start.
+   */
+  protected canWatch(row: ConnectionRow): boolean {
+    return (
+      endpointPort(row.connection.remote) !== undefined && this.watchInterfaceOf(row) !== undefined
+    );
+  }
+
+  /**
+   * Captures the packets to and from a connection's remote peer.
+   * @param row The connection's row.
+   */
+  protected watch(row: ConnectionRow): void {
+    const port: number | undefined = endpointPort(row.connection.remote);
+    const interfaceId: string | undefined = this.watchInterfaceOf(row);
+    if (port !== undefined && interfaceId !== undefined) {
+      this.captures.watchConnection(interfaceId, row.remoteHost, port);
+    }
   }
 }

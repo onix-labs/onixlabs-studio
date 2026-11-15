@@ -1,0 +1,54 @@
+@if (packet(); as packet) {
+  <div class="details__layers" aria-label="Packet layers" data-testid="packet-layers">
+    @for (layer of packet.layers; track layer.protocol + layer.offset) {
+      @let open = !collapsed().has(layer.protocol);
+      <div class="details__layer">
+        <button
+          type="button"
+          class="details__layer-summary"
+          [attr.aria-expanded]="open"
+          (click)="toggle(layer)"
+        >
+          <span class="details__caret" [class.details__caret--open]="open" aria-hidden="true"
+            >▸</span
+          >
+          {{ layer.summary }}
+        </button>
+        @if (open) {
+          <ul class="details__fields">
+            @for (entry of layer.fields; track entry.label + entry.offset) {
+              <li>
+                <button type="button" class="details__field" (click)="choose(entry)">
+                  <span class="details__field-label">{{ entry.label }}:</span>
+                  <span class="details__field-value">{{ entry.value }}</span>
+                </button>
+              </li>
+            }
+          </ul>
+        }
+      </div>
+    }
+    @if (packet.truncated) {
+      <p class="details__note">The capture cut this packet short of its last layer.</p>
+    }
+  </div>
+  <div class="details__hex" aria-label="Packet bytes" data-testid="packet-hex">
+    @for (line of lines(); track line.offset) {
+      <div class="details__hex-line">
+        <span class="details__hex-offset">{{ line.label }}</span>
+        <span class="details__hex-bytes">
+          @for (byte of line.bytes; track byte.offset) {
+            <span [class.details__byte--on]="isHighlighted(byte.offset)">{{ byte.hex }}</span>
+          }
+        </span>
+        <span class="details__hex-text">
+          @for (byte of line.bytes; track byte.offset) {
+            <span [class.details__byte--on]="isHighlighted(byte.offset)">{{ byte.text }}</span>
+          }
+        </span>
+      </div>
+    }
+  </div>
+} @else {
+  <p class="details__empty">Choose a packet to see its layers and bytes.</p>
+}

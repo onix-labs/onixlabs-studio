@@ -1,0 +1,134 @@
+@if (capture(); as capture) {
+  <app-panel-toolbar>
+    <app-icon class="capture__icon" [icon]="Icon.NETWORK_CAPTURE" />
+    <span class="capture__title" data-testid="capture-title">{{ capture.title }}</span>
+    <app-chip [tone]="toneOf(capture.status)" data-testid="capture-status">{{
+      labelOf(capture.status)
+    }}</app-chip>
+    <span class="capture__totals" data-testid="capture-totals">{{ totals() }}</span>
+    <span class="panel-toolbar__spacer"></span>
+    <app-text-field
+      class="capture__filter"
+      kind="search"
+      placeholder="Filter Packets"
+      ariaLabel="Filter Packets"
+      [value]="query()"
+      (valueChange)="query.set($event)"
+    />
+    <app-button
+      variant="none"
+      label="Follow"
+      tooltip="Keep the newest packet in view"
+      [pressed]="follow()"
+      (click)="follow.set(!follow())"
+    />
+    @if (capture.status === 'capturing' || capture.status === 'starting') {
+      <app-button variant="none" [icon]="Icon.STOP" label="Stop" (click)="stop()" />
+    } @else if (capture.source.kind === 'interface') {
+      <app-button variant="none" [icon]="Icon.REFRESH" label="Capture Again" (click)="restart()" />
+    }
+    <app-button
+      variant="none"
+      [icon]="Icon.SAVE"
+      label="Save"
+      tooltip="Save the capture as a pcap file"
+      [disabled]="capture.count === 0"
+      (click)="save()"
+    />
+  </app-panel-toolbar>
+
+  @if (capture.status === 'failed' && capture.permission) {
+    <div class="capture__help" role="alert" data-testid="capture-permission">
+      <p class="capture__help-title">Studio isn't allowed to capture packets yet</p>
+      <p>
+        Capturing reads the network through <code>/dev/bpf*</code>, which macOS lets only
+        administrators open. Wireshark's <strong>ChmodBPF</strong> helper fixes this for good: it
+        lets members of the <code>access_bpf</code> group capture, and sets that up at every start.
+      </p>
+      <ol>
+        <li>
+          Install Wireshark, or just the <em>Install ChmodBPF</em> package inside its disk image.
+        </li>
+        <li>Make sure your account is in the <code>access_bpf</code> group.</li>
+        <li>Log out and back in, then choose <strong>Capture Again</strong>.</li>
+      </ol>
+      <p class="capture__help-detail">{{ capture.message }}</p>
+      <app-button variant="solid" label="Capture Again" (click)="restart()" />
+    </div>
+  } @else {
+    @if (capture.message) {
+      <p
+        class="capture__message"
+        [class.capture__message--error]="capture.status === 'failed'"
+        role="status"
+        data-testid="capture-message"
+      >
+        {{ capture.message }}
+      </p>
+    }
+    <div class="capture__body">
+      <div class="capture__list">
+        <div class="capture__row capture__row--header" aria-hidden="true">
+          <span class="capture__number">No.</span>
+          <span class="capture__time">Time</span>
+          <span class="capture__address">Source</span>
+          <span class="capture__address">Destination</span>
+          <span class="capture__protocol">Protocol</span>
+          <span class="capture__length">Length</span>
+          <span class="capture__info">Info</span>
+        </div>
+        <cdk-virtual-scroll-viewport
+          class="capture__viewport"
+          aria-label="Packets"
+          tabindex="0"
+          data-testid="capture-packets"
+          [itemSize]="rowHeight"
+          (scrolledIndexChange)="onScrolled($event)"
+          (keydown)="onKeydown($event)"
+        >
+          <button
+            type="button"
+            *cdkVirtualFor="let row of rows(); trackBy: trackRow"
+            class="capture__row"
+            [class.capture__row--chosen]="row.number === chosenNumber()"
+            [attr.data-protocol]="row.summary.protocol"
+            [attr.aria-pressed]="row.number === chosenNumber()"
+            (click)="choose(row)"
+          >
+            <span class="capture__number">{{ row.number }}</span>
+            <span class="capture__time">{{ timeOf(row) }}</span>
+            <span class="capture__address" [title]="row.summary.source">{{
+              row.summary.source
+            }}</span>
+            <span class="capture__address" [title]="row.summary.destination">{{
+              row.summary.destination
+            }}</span>
+            <span class="capture__protocol">{{ row.summary.protocol }}</span>
+            <span class="capture__length">{{ row.length }}</span>
+            <span class="capture__info" [title]="row.summary.info">{{ row.summary.info }}</span>
+          </button>
+        </cdk-virtual-scroll-viewport>
+        @if (rows().length === 0) {
+          <p class="capture__empty">
+            @switch (capture.status) {
+              @case ('starting') {
+                Starting the capture…
+              }
+              @case ('capturing') {
+                Waiting for the first packet…
+              }
+              @default {
+                No packets.
+              }
+            }
+          </p>
+        }
+      </div>
+      <app-packet-details
+        class="capture__details"
+        [packet]="chosen()?.dissected"
+        [data]="chosen()?.data"
+      />
+    </div>
+  }
+}

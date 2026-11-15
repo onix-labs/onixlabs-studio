@@ -97,7 +97,9 @@ export class NetworkActivity {
    * Holds the latest activity of each interface, keyed by interface id.
    */
   private readonly readingsState: WritableSignal<ReadonlyMap<string, NetworkInterfaceReading>> =
-    signal<ReadonlyMap<string, NetworkInterfaceReading>>(new Map<string, NetworkInterfaceReading>());
+    signal<ReadonlyMap<string, NetworkInterfaceReading>>(
+      new Map<string, NetworkInterfaceReading>(),
+    );
 
   /**
    * Holds the latest connections, or null before the first listing arrives.
@@ -151,14 +153,12 @@ export class NetworkActivity {
       const interfaces: readonly NetworkInterfaceInfo[] = this.infoState()?.interfaces ?? [];
       return (this.connectionsState() ?? [])
         .filter(hasRemotePeer)
-        .map(
-          (connection: NetworkConnection, index: number): ConnectionRow => ({
-            connection,
-            key: `${connection.protocol} ${connection.local} ${connection.remote} ${connection.pid ?? ''} ${index}`,
-            remoteHost: endpointHost(connection.remote),
-            interfaceId: interfaceOf(connection, interfaces),
-          }),
-        );
+        .map((connection: NetworkConnection, index: number): ConnectionRow => ({
+          connection,
+          key: `${connection.protocol} ${connection.local} ${connection.remote} ${connection.pid ?? ''} ${index}`,
+          remoteHost: endpointHost(connection.remote),
+          interfaceId: interfaceOf(connection, interfaces),
+        }));
     },
   );
 
@@ -178,13 +178,11 @@ export class NetworkActivity {
       const showIdle: boolean = this.showIdleInterfaces();
       return (this.infoState()?.interfaces ?? [])
         .filter((info: NetworkInterfaceInfo): boolean => showIdle || isInUse(info))
-        .map(
-          (info: NetworkInterfaceInfo): InterfaceRow => ({
-            info,
-            reading: readings.get(info.id),
-            connections: counts.get(info.id) ?? 0,
-          }),
-        )
+        .map((info: NetworkInterfaceInfo): InterfaceRow => ({
+          info,
+          reading: readings.get(info.id),
+          connections: counts.get(info.id) ?? 0,
+        }))
         .sort(
           (a: InterfaceRow, b: InterfaceRow): number =>
             Number(b.info.isDefault) - Number(a.info.isDefault),
@@ -200,7 +198,9 @@ export class NetworkActivity {
       const id: string | null = this.selectedInterfaceId();
       return id === null
         ? undefined
-        : this.infoState()?.interfaces.find((info: NetworkInterfaceInfo): boolean => info.id === id);
+        : this.infoState()?.interfaces.find(
+            (info: NetworkInterfaceInfo): boolean => info.id === id,
+          );
     },
   );
 
@@ -245,7 +245,9 @@ export class NetworkActivity {
     if (this.unsubscribe !== null) {
       return;
     }
-    this.unsubscribe = this.probe.onReading((reading: NetworkReading): void => this.accept(reading));
+    this.unsubscribe = this.probe.onReading((reading: NetworkReading): void =>
+      this.accept(reading),
+    );
     this.probe.start();
     void this.refresh();
   }

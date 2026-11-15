@@ -7,6 +7,14 @@
     />
   </app-ribbon-strip-group>
 
+  <app-ribbon-strip-group title="Capture">
+    <app-ribbon-strip-button
+      [icon]="Icon.NETWORK_OPEN_CAPTURE"
+      label="Open Capture"
+      (action)="commands.openCapture()"
+    />
+  </app-ribbon-strip-group>
+
   <app-ribbon-strip-group title="Show">
     <app-ribbon-strip-column>
       <app-ribbon-strip-button-small

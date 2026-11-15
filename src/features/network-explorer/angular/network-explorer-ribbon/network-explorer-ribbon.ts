@@ -9,11 +9,12 @@ import { Icon } from '@shared/angular/icons/icon';
 import { NetworkExplorerCommands } from '../network-explorer-commands/network-explorer-commands';
 
 /**
- * The contextual ribbon shown while a Network Explorer tab is active: refresh the interfaces, and
- * choose what the panels list. Its actions drive the active view through the
+ * The contextual ribbon shown while a Network Explorer tab is active: refresh the interfaces, open a
+ * capture file, and choose what the panels list. Its actions drive the active view through the
  * {@link NetworkExplorerCommands} registry.
  *
- * The Capture and Tools groups — watching an interface, ping, traceroute — join it as those arrive.
+ * Capturing an interface or a connection starts from its row, where the thing to watch is; the
+ * ribbon opens a capture saved earlier.
  */
 @Component({
   selector: 'app-network-explorer-ribbon',

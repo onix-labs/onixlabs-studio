@@ -31,6 +31,11 @@ export interface NetworkExplorerCommandHandler {
    * Lists loopback connections, or stops listing them.
    */
   toggleLoopback(): void;
+
+  /**
+   * Opens a capture file the user chooses.
+   */
+  openCapture(): Promise<void>;
 }
 
 /**
@@ -97,5 +102,12 @@ export class NetworkExplorerCommands {
    */
   public toggleLoopback(): void {
     this.handler()?.toggleLoopback();
+  }
+
+  /**
+   * Opens a capture file.
+   */
+  public openCapture(): void {
+    void this.handler()?.openCapture();
   }
 }

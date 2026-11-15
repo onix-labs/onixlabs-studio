@@ -7,11 +7,46 @@ import {
   sampleConnections,
   sampleNetwork,
 } from '../../network-activity/network-samples.testing';
+import { NetworkCaptures } from '../../network-captures/network-captures';
 import { NetworkProbe } from '../../network-probe/network-probe';
 import { FakeNetworkProbe } from '../../network-probe/network-probe.fake';
 import { InterfacesPanel } from './interfaces-panel';
 
+/**
+ * A stand-in for the tab's captures that records what it is asked to watch.
+ */
+class RecordingCaptures {
+  /**
+   * Gets what was asked, in order.
+   */
+  public readonly watched: string[] = [];
+
+  /**
+   * Records watching an interface.
+   * @param interfaceId The interface's id.
+   * @param name Its name.
+   * @returns Returns a capture id.
+   */
+  public watchInterface(interfaceId: string, name: string): string {
+    this.watched.push(`interface ${interfaceId} ${name}`);
+    return 'capture';
+  }
+
+  /**
+   * Records watching a connection.
+   * @param interfaceId The interface's id.
+   * @param host The remote host.
+   * @param port The remote port.
+   * @returns Returns a capture id.
+   */
+  public watchConnection(interfaceId: string, host: string, port: number): string {
+    this.watched.push(`connection ${interfaceId} ${host} ${String(port)}`);
+    return 'capture';
+  }
+}
+
 describe('InterfacesPanel', () => {
+  let watching: RecordingCaptures;
   let fixture: ComponentFixture<InterfacesPanel>;
   let host: HTMLElement;
   let probe: FakeNetworkProbe;
@@ -19,10 +54,15 @@ describe('InterfacesPanel', () => {
 
   beforeEach(async () => {
     probe = new FakeNetworkProbe();
+    watching = new RecordingCaptures();
     probe.network = sampleNetwork;
     await TestBed.configureTestingModule({
       imports: [InterfacesPanel],
-      providers: [NetworkActivity, { provide: NetworkProbe, useValue: probe }],
+      providers: [
+        NetworkActivity,
+        { provide: NetworkProbe, useValue: probe },
+        { provide: NetworkCaptures, useValue: watching },
+      ],
     }).compileComponents();
 
     store = TestBed.inject(NetworkActivity);
@@ -102,5 +142,13 @@ describe('InterfacesPanel', () => {
     wifi.click();
     await fixture.whenStable();
     expect(store.selectedInterfaceId()).toBeNull();
+  });
+
+  it('watch_capturesTheInterface', async () => {
+    await load();
+
+    host.querySelector<HTMLButtonElement>('button[aria-label="Watch Wi-Fi"]')!.click();
+
+    expect(watching.watched).toEqual(['interface en0 Wi-Fi']);
   });
 });

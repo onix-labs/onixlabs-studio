@@ -8,6 +8,7 @@ import {
   sampleNetwork,
 } from '../../network-activity/network-samples.testing';
 import { NetworkRuns } from '../../network-runs/network-runs';
+import { NetworkCaptures } from '../../network-captures/network-captures';
 import { NetworkProbe } from '../../network-probe/network-probe';
 import { FakeNetworkProbe } from '../../network-probe/network-probe.fake';
 import { ConnectionsPanel } from './connections-panel';
@@ -42,7 +43,41 @@ class RecordingRuns {
   }
 }
 
+/**
+ * A stand-in for the tab's captures that records what it is asked to watch.
+ */
+class RecordingCaptures {
+  /**
+   * Gets what was asked, in order.
+   */
+  public readonly watched: string[] = [];
+
+  /**
+   * Records watching an interface.
+   * @param interfaceId The interface's id.
+   * @param name Its name.
+   * @returns Returns a capture id.
+   */
+  public watchInterface(interfaceId: string, name: string): string {
+    this.watched.push(`interface ${interfaceId} ${name}`);
+    return 'capture';
+  }
+
+  /**
+   * Records watching a connection.
+   * @param interfaceId The interface's id.
+   * @param host The remote host.
+   * @param port The remote port.
+   * @returns Returns a capture id.
+   */
+  public watchConnection(interfaceId: string, host: string, port: number): string {
+    this.watched.push(`connection ${interfaceId} ${host} ${String(port)}`);
+    return 'capture';
+  }
+}
+
 describe('ConnectionsPanel', () => {
+  let watching: RecordingCaptures;
   let runs: RecordingRuns;
   let fixture: ComponentFixture<ConnectionsPanel>;
   let host: HTMLElement;
@@ -51,6 +86,7 @@ describe('ConnectionsPanel', () => {
 
   beforeEach(async () => {
     probe = new FakeNetworkProbe();
+    watching = new RecordingCaptures();
     probe.network = sampleNetwork;
     runs = new RecordingRuns();
     await TestBed.configureTestingModule({
@@ -58,6 +94,7 @@ describe('ConnectionsPanel', () => {
       providers: [
         NetworkActivity,
         { provide: NetworkProbe, useValue: probe },
+        { provide: NetworkCaptures, useValue: watching },
         { provide: NetworkRuns, useValue: runs },
       ],
     }).compileComponents();
@@ -90,9 +127,9 @@ describe('ConnectionsPanel', () => {
    * @returns Returns each row's text.
    */
   function rows(): readonly string[] {
-    return Array.from(host.querySelectorAll<HTMLElement>('[data-testid="connections"] tbody tr')).map(
-      (row: HTMLElement): string => row.textContent.replace(/\s+/g, ' ').trim(),
-    );
+    return Array.from(
+      host.querySelectorAll<HTMLElement>('[data-testid="connections"] tbody tr'),
+    ).map((row: HTMLElement): string => row.textContent.replace(/\s+/g, ' ').trim());
   }
 
   it('saysItIsListing_beforeTheConnectionsArrive', () => {
@@ -142,5 +179,13 @@ describe('ConnectionsPanel', () => {
       .click();
 
     expect(runs.calls).toEqual(['ping 140.82.112.3', 'trace 140.82.112.3']);
+  });
+
+  it('watch_capturesTheConnection_onTheInterfaceItIsMadeOver', async () => {
+    await load();
+
+    host.querySelector<HTMLButtonElement>('button[aria-label="Watch 140.82.112.3:443"]')!.click();
+
+    expect(watching.watched).toEqual(['connection en0 140.82.112.3 443']);
   });
 });

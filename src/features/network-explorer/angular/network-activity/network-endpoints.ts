@@ -18,6 +18,26 @@ export function endpointHost(endpoint: string): string {
 }
 
 /**
+ * Gets the port of an endpoint as the backend joins it: `host:port` or `[v6]:port`.
+ * @param endpoint The endpoint.
+ * @returns Returns the port, or undefined when there is none.
+ */
+export function endpointPort(endpoint: string): number | undefined {
+  const trimmed: string = endpoint.trim();
+  const colon: number = trimmed.lastIndexOf(':');
+  const bracketed: boolean = trimmed.startsWith('[');
+  if (
+    colon < 0 ||
+    (bracketed && colon < trimmed.indexOf(']')) ||
+    (!bracketed && trimmed.indexOf(':') !== colon)
+  ) {
+    return undefined;
+  }
+  const port: number = Number(trimmed.slice(colon + 1));
+  return Number.isInteger(port) && port > 0 && port <= 65535 ? port : undefined;
+}
+
+/**
  * Gets whether a host is unspecified: no host, a wildcard, or the any-address of either family. A
  * connection to one is a socket waiting for a peer, not a connection to anywhere.
  * @param host The host.

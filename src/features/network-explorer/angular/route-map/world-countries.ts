@@ -16,8 +16,9 @@ let loaded: Promise<FeatureCollection> | undefined;
 export function loadWorldCountries(): Promise<FeatureCollection> {
   loaded ??= import('world-atlas/countries-110m.json').then(
     (module: { default: unknown }): FeatureCollection => {
-      const topology: Topology<{ countries: GeometryCollection }> =
-        module.default as Topology<{ countries: GeometryCollection }>;
+      const topology: Topology<{ countries: GeometryCollection }> = module.default as Topology<{
+        countries: GeometryCollection;
+      }>;
       return feature(topology, topology.objects.countries);
     },
   );

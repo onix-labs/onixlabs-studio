@@ -1859,6 +1859,16 @@ export class Icon {
    */
   public static readonly NETWORK_ROUTE: Icon = new Icon('ph-duotone ph-path');
 
+  /**
+   * Gets the icon of a packet capture: on Watch buttons, and on its document in the well.
+   */
+  public static readonly NETWORK_CAPTURE: Icon = new Icon('ph-duotone ph-eye');
+
+  /**
+   * Gets the icon of opening a capture file in the Network Explorer.
+   */
+  public static readonly NETWORK_OPEN_CAPTURE: Icon = new Icon('ph-duotone ph-folder-open');
+
   // --- API Explorer ---
 
   /**

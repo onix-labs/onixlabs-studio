@@ -61,10 +61,7 @@ export class NetworkToolsClient {
    * @param onHop Receives each hop as it is learned, and again as it grows.
    * @returns Returns a promise resolving how the run ended.
    */
-  public async trace(
-    request: TraceRequest,
-    onHop: (hop: TraceHop) => void,
-  ): Promise<TraceOutcome> {
+  public async trace(request: TraceRequest, onHop: (hop: TraceHop) => void): Promise<TraceOutcome> {
     if (this.bridge === undefined) {
       return { kind: 'failed', message: 'Traceroute needs the desktop app.' };
     }

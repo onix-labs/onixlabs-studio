@@ -7,6 +7,7 @@ import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { NetworkInterfaceKind } from '@shared/api/system-monitor-channels';
 import { formatRate } from '../../network-activity/format-rate';
 import { InterfaceRow, NetworkActivity } from '../../network-activity/network-activity';
+import { NetworkCaptures } from '../../network-captures/network-captures';
 
 /**
  * The Network Explorer's Interfaces panel: the machine's network interfaces, what each is, its
@@ -16,7 +17,7 @@ import { InterfaceRow, NetworkActivity } from '../../network-activity/network-ac
  * every interface. Interfaces that are down or carry no address are left out unless asked for — a Mac
  * reports a dozen of them.
  *
- * Each interface is what a capture will watch, so this is where watching one will start.
+ * Each interface can be watched: its packets captured, live, in a document of their own.
  */
 @Component({
   selector: 'app-interfaces-panel',
@@ -35,6 +36,11 @@ export class InterfacesPanel {
    * Holds the tab's network readings and selection.
    */
   protected readonly activity: NetworkActivity = inject(NetworkActivity);
+
+  /**
+   * Holds the tab's packet captures.
+   */
+  private readonly captures: NetworkCaptures = inject(NetworkCaptures);
 
   /**
    * Holds the icon tokens used by the template.
@@ -94,5 +100,13 @@ export class InterfacesPanel {
    */
   protected refresh(): void {
     void this.activity.refresh();
+  }
+
+  /**
+   * Captures an interface's packets, in a document of their own.
+   * @param row The interface's row.
+   */
+  protected watch(row: InterfaceRow): void {
+    this.captures.watchInterface(row.info.id, row.info.name);
   }
 }

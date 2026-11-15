@@ -1,6 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
-import { GeoDatabaseStatus, GeoLocation, NetworkGeoChannel } from '@shared/api/network-geo-channels';
+import {
+  GeoDatabaseStatus,
+  GeoLocation,
+  NetworkGeoChannel,
+} from '@shared/api/network-geo-channels';
 import { NetworkGeo } from './network-geo';
 
 /**
@@ -40,9 +44,12 @@ class GeoBridge implements Bridge {
     const addresses: readonly string[] = args[0] as readonly string[];
     this.lookups.push(addresses);
     return Promise.resolve(
-      addresses.map(
-        (address: string): GeoLocation => ({ address, latitude: 51.5, longitude: -0.1, city: 'London' }),
-      ) as T,
+      addresses.map((address: string): GeoLocation => ({
+        address,
+        latitude: 51.5,
+        longitude: -0.1,
+        city: 'London',
+      })) as T,
     );
   }
 

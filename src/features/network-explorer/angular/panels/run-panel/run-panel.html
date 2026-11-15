@@ -104,9 +104,9 @@
             <div class="run__consent" data-testid="map-consent">
               <p class="run__consent-title">Map this route?</p>
               <p>
-                Placing hops on a map needs DB-IP's free IP to City Lite database: a download of about
-                60 MB, about 120 MB on disk, kept in Studio's data folder and updated only when you ask.
-                Addresses are looked up in that file; none is sent anywhere.
+                Placing hops on a map needs DB-IP's free IP to City Lite database: a download of
+                about 60 MB, about 120 MB on disk, kept in Studio's data folder and updated only
+                when you ask. Addresses are looked up in that file; none is sent anywhere.
               </p>
               @if (database?.state === 'failed' && database?.message) {
                 <p class="run__consent-error" role="alert">{{ database?.message }}</p>

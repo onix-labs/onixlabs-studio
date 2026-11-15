@@ -34,7 +34,10 @@ describe('NetworkRuns', () => {
    * @returns Returns their ids.
    */
   function wellDocuments(): readonly string[] {
-    return firstStackOfRole(fixture.debugElement.injector.get(DockState).layout(), 'document')?.panels ?? [];
+    return (
+      firstStackOfRole(fixture.debugElement.injector.get(DockState).layout(), 'document')?.panels ??
+      []
+    );
   }
 
   /**
@@ -48,7 +51,9 @@ describe('NetworkRuns', () => {
     const id: string = runs.ping('1.1.1.1');
 
     expect(wellDocuments()).toEqual([id]);
-    expect(fixture.debugElement.injector.get(DockPanelRegistry).get(id)?.title).toBe('Ping 1.1.1.1');
+    expect(fixture.debugElement.injector.get(DockPanelRegistry).get(id)?.title).toBe(
+      'Ping 1.1.1.1',
+    );
     expect(client.started[0].request).toEqual({ id, host: '1.1.1.1', count: PING_COUNT });
     expect(runs.run(id)?.status).toBe('running');
   });

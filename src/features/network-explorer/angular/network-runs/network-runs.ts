@@ -1,10 +1,5 @@
 import { inject, Service, Signal, signal, Type, WritableSignal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
-import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
-import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
-import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
-import { DockState } from '@shared/angular/services/dock-layout/dock-state';
-import { firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
 import { Log } from '@shared/angular/services/log/log';
 import {
   NetworkToolOutcomeKind,
@@ -14,6 +9,7 @@ import {
   TraceOutcome,
 } from '@shared/api/network-tools-channels';
 import { NetworkToolsClient } from '../network-tools-client/network-tools-client';
+import { NetworkWell } from '../network-well/network-well';
 import { NETWORK_RUN_PANEL } from './network-run-panel';
 
 /**
@@ -112,19 +108,9 @@ export class NetworkRuns {
   private readonly client: NetworkToolsClient = inject(NetworkToolsClient);
 
   /**
-   * Holds the dock's panel registry, which documents are registered with.
+   * Holds the well runs' documents open in.
    */
-  private readonly registry: DockPanelRegistry = inject(DockPanelRegistry);
-
-  /**
-   * Holds the dock's layout, whose well documents are tabbed into.
-   */
-  private readonly dockState: DockState = inject(DockState);
-
-  /**
-   * Holds the dock's focus, moved to a document as it opens.
-   */
-  private readonly dockFocus: DockFocus = inject(DockFocus);
+  private readonly well: NetworkWell = inject(NetworkWell);
 
   /**
    * Holds the component a run's document renders.
@@ -241,18 +227,7 @@ export class NetworkRuns {
    * @param icon The document's icon.
    */
   private open(id: string, title: string, icon: Icon): void {
-    const well: StackNode | null = firstStackOfRole(this.dockState.layout(), 'document');
-    if (well === null) {
-      this.log.warn('network-explorer.runs', 'No well to open a run in', { id });
-      return;
-    }
-    if (this.registry.has(id)) {
-      this.dockState.setActive(well.id, id);
-    } else {
-      this.registry.register({ id, title, icon, role: 'document', component: this.panel });
-      this.dockState.tabInto(well.id, id);
-    }
-    this.dockFocus.focus(well.id);
+    this.well.open(id, title, icon, this.panel);
   }
 
   /**
@@ -308,8 +283,10 @@ export class NetworkRuns {
           run.kind === 'trace'
             ? {
                 ...run,
-                hops: [...run.hops.filter((known: TraceHop): boolean => known.index !== hop.index), hop]
-                  .sort((a: TraceHop, b: TraceHop): number => a.index - b.index),
+                hops: [
+                  ...run.hops.filter((known: TraceHop): boolean => known.index !== hop.index),
+                  hop,
+                ].sort((a: TraceHop, b: TraceHop): number => a.index - b.index),
               }
             : run,
         ),

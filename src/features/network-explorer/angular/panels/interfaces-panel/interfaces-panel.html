@@ -21,7 +21,7 @@
 } @else {
   <ul class="interfaces__list" aria-label="Network interfaces">
     @for (row of activity.interfaces(); track row.info.id) {
-      <li>
+      <li class="interfaces__item">
         <button
           type="button"
           class="interfaces__row"
@@ -48,10 +48,22 @@
                 <span title="Received">↓ {{ formatRate(reading.rxBytesPerSecond) }}</span>
                 <span title="Sent">↑ {{ formatRate(reading.txBytesPerSecond) }}</span>
               }
-              <span>{{ row.connections }} {{ row.connections === 1 ? 'connection' : 'connections' }}</span>
+              <span
+                >{{ row.connections }}
+                {{ row.connections === 1 ? 'connection' : 'connections' }}</span
+              >
             </span>
           </span>
         </button>
+        <app-button
+          class="interfaces__watch"
+          variant="none"
+          size="small"
+          [icon]="Icon.NETWORK_CAPTURE"
+          [ariaLabel]="'Watch ' + row.info.name"
+          tooltip="Watch: capture this interface's packets"
+          (click)="watch(row)"
+        />
       </li>
     } @empty {
       <li class="interfaces__empty">No interfaces in use.</li>

@@ -9,7 +9,14 @@ import {
  */
 export const sampleNetwork: NetworkInfo = {
   interfaces: [
-    { id: 'lo0', name: 'Loopback', kind: 'loopback', up: true, isDefault: false, ipv4: '127.0.0.1' },
+    {
+      id: 'lo0',
+      name: 'Loopback',
+      kind: 'loopback',
+      up: true,
+      isDefault: false,
+      ipv4: '127.0.0.1',
+    },
     { id: 'en0', name: 'Wi-Fi', kind: 'wifi', up: true, isDefault: true, ipv4: '192.168.1.20' },
     { id: 'awdl0', name: 'AWDL', kind: 'other', up: false, isDefault: false },
   ],

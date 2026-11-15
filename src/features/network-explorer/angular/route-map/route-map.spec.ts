@@ -54,7 +54,9 @@ describe('RouteMap', () => {
       host.querySelectorAll('[data-testid="route-map-marker"]'),
     );
     expect(markers[1].classList.contains('route-map__marker--last')).toBe(true);
-    expect(markers[0].querySelector('title')?.textContent).toBe('Hops 2, 3: London, United Kingdom');
+    expect(markers[0].querySelector('title')?.textContent).toBe(
+      'Hops 2, 3: London, United Kingdom',
+    );
   });
 
   it('keepsEveryMarkerInsideTheDrawing', async () => {
@@ -83,9 +85,11 @@ describe('RouteMap', () => {
     await draw([]);
     await other.whenStable();
 
-    const ids: readonly (string | null | undefined)[] = [host, other.nativeElement as HTMLElement].map(
-      (element: HTMLElement): string | null | undefined =>
-        element.querySelector('clipPath')?.getAttribute('id'),
+    const ids: readonly (string | null | undefined)[] = [
+      host,
+      other.nativeElement as HTMLElement,
+    ].map((element: HTMLElement): string | null | undefined =>
+      element.querySelector('clipPath')?.getAttribute('id'),
     );
     expect(new Set(ids).size).toBe(2);
   });

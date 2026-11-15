@@ -39,14 +39,18 @@
           <th>Local Address</th>
           <th class="connections__protocol-column">Protocol</th>
           <th class="connections__state-column">State</th>
-          <th class="connections__actions-column"><span class="connections__hidden">Actions</span></th>
+          <th class="connections__actions-column">
+            <span class="connections__hidden">Actions</span>
+          </th>
         </tr>
       </thead>
       <tbody>
         @for (row of activity.connections(); track row.key) {
           <tr>
             <td [title]="row.connection.process ?? ''">
-              {{ row.connection.process ?? (row.connection.pid ? 'PID ' + row.connection.pid : '—') }}
+              {{
+                row.connection.process ?? (row.connection.pid ? 'PID ' + row.connection.pid : '—')
+              }}
             </td>
             <td class="connections__address" [title]="row.connection.remote">
               {{ row.connection.remote }}
@@ -57,10 +61,21 @@
             <td>{{ row.connection.protocol }}</td>
             <td>
               @if (row.connection.state) {
-                <app-chip [tone]="toneOf(row.connection.state)">{{ row.connection.state }}</app-chip>
+                <app-chip [tone]="toneOf(row.connection.state)">{{
+                  row.connection.state
+                }}</app-chip>
               }
             </td>
             <td class="connections__actions">
+              <app-button
+                variant="none"
+                size="small"
+                [icon]="Icon.NETWORK_CAPTURE"
+                [ariaLabel]="'Watch ' + row.connection.remote"
+                tooltip="Watch: capture this connection's packets"
+                [disabled]="!canWatch(row)"
+                (click)="watch(row)"
+              />
               <app-button
                 variant="none"
                 size="small"

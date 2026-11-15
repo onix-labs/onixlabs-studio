@@ -49,6 +49,15 @@ class RecordingHandler implements NetworkExplorerCommandHandler {
   public toggleLoopback(): void {
     this.calls.push('loopback');
   }
+
+  /**
+   * Records opening a capture.
+   * @returns Returns a resolved promise.
+   */
+  public openCapture(): Promise<void> {
+    this.calls.push('open');
+    return Promise.resolve();
+  }
 }
 
 describe('NetworkExplorerCommands', () => {
@@ -60,8 +69,9 @@ describe('NetworkExplorerCommands', () => {
     commands.refresh();
     commands.toggleIdleInterfaces();
     commands.toggleLoopback();
+    commands.openCapture();
 
-    expect(handler.calls).toEqual(['refresh', 'idle', 'loopback']);
+    expect(handler.calls).toEqual(['refresh', 'idle', 'loopback', 'open']);
     expect(commands.showIdleInterfaces()).toBe(true);
     expect(commands.showLoopback()).toBe(true);
   });

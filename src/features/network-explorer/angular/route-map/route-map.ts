@@ -151,8 +151,8 @@ export class RouteMap {
   /**
    * Gets the path generator for the projection fitted to the route.
    */
-  private readonly path: Signal<GeoPath> = computed(
-    (): GeoPath => geoPath(fitProjection(this.stops())),
+  private readonly path: Signal<GeoPath> = computed((): GeoPath =>
+    geoPath(fitProjection(this.stops())),
   );
 
   /**

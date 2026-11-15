@@ -1,6 +1,7 @@
 import { NetworkConnection, NetworkInterfaceInfo } from '@shared/api/system-monitor-channels';
 import {
   endpointHost,
+  endpointPort,
   hasRemotePeer,
   interfaceOf,
   isLoopbackHost,
@@ -39,15 +40,24 @@ describe('network endpoints', () => {
     expect(endpointHost('')).toBe('');
   });
 
+  it('endpointPort_readsThePort_ofEitherFamily', () => {
+    expect(endpointPort('140.82.112.3:443')).toBe(443);
+    expect(endpointPort('[2001:db8::1]:8443')).toBe(8443);
+    expect(endpointPort('[fe80::1%en0]:49253')).toBe(49253);
+    expect(endpointPort('*:*')).toBeUndefined();
+    expect(endpointPort('2001:db8::1')).toBeUndefined();
+    expect(endpointPort('')).toBeUndefined();
+  });
+
   it('isUnspecifiedHost_coversWildcardsAndAnyAddresses', () => {
     expect(['', '*', '0.0.0.0', '::'].every(isUnspecifiedHost)).toBe(true);
     expect(isUnspecifiedHost('10.0.0.1')).toBe(false);
   });
 
   it('isLoopbackHost_coversBothFamilies', () => {
-    expect(['127.0.0.1', '127.8.8.8', '::1', 'localhost', '::ffff:127.0.0.1'].every(isLoopbackHost)).toBe(
-      true,
-    );
+    expect(
+      ['127.0.0.1', '127.8.8.8', '::1', 'localhost', '::ffff:127.0.0.1'].every(isLoopbackHost),
+    ).toBe(true);
     expect(isLoopbackHost('10.0.0.1')).toBe(false);
   });
 

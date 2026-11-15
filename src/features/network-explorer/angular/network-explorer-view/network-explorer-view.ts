@@ -23,10 +23,13 @@ import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
 import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { Log } from '@shared/angular/services/log/log';
 import { PanelPopout } from '@shared/angular/services/panel-popout/panel-popout';
 import { TerminalSessions } from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { NetworkActivity } from '../network-activity/network-activity';
+import { NETWORK_CAPTURE_PANEL } from '../network-captures/network-capture-panel';
+import { NetworkCaptures } from '../network-captures/network-captures';
 import {
   NetworkExplorerCommandHandler,
   NetworkExplorerCommands,
@@ -34,6 +37,8 @@ import {
 import { NETWORK_EXPLORER_DOCK_BLUEPRINT } from '../network-explorer-dock-blueprint';
 import { NETWORK_RUN_PANEL } from '../network-runs/network-run-panel';
 import { NetworkRuns } from '../network-runs/network-runs';
+import { NetworkWell } from '../network-well/network-well';
+import { CapturePanel } from '../panels/capture-panel/capture-panel';
 import { RunPanel } from '../panels/run-panel/run-panel';
 
 /**
@@ -59,8 +64,11 @@ import { RunPanel } from '../panels/run-panel/run-panel';
     // The network readings and selection, and the pings and traces run from them: one each per tab,
     // shared by every panel in it.
     NetworkActivity,
+    NetworkWell,
     NetworkRuns,
     { provide: NETWORK_RUN_PANEL, useValue: RunPanel },
+    NetworkCaptures,
+    { provide: NETWORK_CAPTURE_PANEL, useValue: CapturePanel },
     // The dock framework, instantiated per dock-hosting view.
     DockTabContext,
     DockState,
@@ -100,6 +108,16 @@ export class NetworkExplorerView implements OnInit, OnDestroy, NetworkExplorerCo
   private readonly runs: NetworkRuns = inject(NetworkRuns);
 
   /**
+   * Holds the tab's packet captures.
+   */
+  private readonly captures: NetworkCaptures = inject(NetworkCaptures);
+
+  /**
+   * Holds the file client, for choosing a capture file to open.
+   */
+  private readonly fileSystem: FileSystem = inject(FileSystem);
+
+  /**
    * Holds the ribbon's command registry this view registers itself with while it is active.
    */
   private readonly commands: NetworkExplorerCommands = inject(NetworkExplorerCommands);
@@ -117,7 +135,8 @@ export class NetworkExplorerView implements OnInit, OnDestroy, NetworkExplorerCo
   /**
    * Gets whether idle interfaces are listed.
    */
-  public readonly showIdleInterfaces: Signal<boolean> = this.activity.showIdleInterfaces.asReadonly();
+  public readonly showIdleInterfaces: Signal<boolean> =
+    this.activity.showIdleInterfaces.asReadonly();
 
   /**
    * Gets whether loopback connections are listed.
@@ -152,12 +171,13 @@ export class NetworkExplorerView implements OnInit, OnDestroy, NetworkExplorerCo
   }
 
   /**
-   * Stops reading the network, stops every ping and trace still going, and releases the ribbon, so a
-   * closed tab drives nothing.
+   * Stops reading the network, stops every ping and trace still going, stops and forgets every
+   * capture, and releases the ribbon, so a closed tab drives nothing.
    */
   public ngOnDestroy(): void {
     this.activity.close();
     this.runs.stopAll();
+    this.captures.releaseAll();
     this.commands.clear(this);
   }
 
@@ -180,5 +200,15 @@ export class NetworkExplorerView implements OnInit, OnDestroy, NetworkExplorerCo
    */
   public toggleLoopback(): void {
     this.activity.showLoopback.update((shown: boolean): boolean => !shown);
+  }
+
+  /**
+   * Opens a capture file the user chooses, in its own document.
+   */
+  public async openCapture(): Promise<void> {
+    const path: string | null = await this.fileSystem.pickPath('file');
+    if (path !== null) {
+      this.captures.openFile(path);
+    }
   }
 }

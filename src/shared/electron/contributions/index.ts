@@ -4,6 +4,7 @@ import { containersContribution } from './containers/containers.contribution';
 import { databaseContribution } from './database/database.contribution';
 import { desktopNotificationsContribution } from './desktop-notifications/desktop-notifications.contribution';
 import { modelRuntimeContribution } from './model-runtime/model-runtime.contribution';
+import { networkCaptureContribution } from './network-capture/network-capture.contribution';
 import { networkGeoContribution } from './network-geo/network-geo.contribution';
 import { networkToolsContribution } from './network-tools/network-tools.contribution';
 import { pluginsContribution } from './plugins/plugins.contribution';
@@ -24,6 +25,7 @@ export const mainContributions: readonly MainContribution[] = [
   databaseContribution,
   desktopNotificationsContribution,
   modelRuntimeContribution,
+  networkCaptureContribution,
   networkGeoContribution,
   networkToolsContribution,
   pluginsContribution,

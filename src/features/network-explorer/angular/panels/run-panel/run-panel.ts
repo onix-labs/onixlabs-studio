@@ -162,8 +162,8 @@ export class RunPanel {
   /**
    * Gets the run, or undefined when it is gone.
    */
-  protected readonly run: Signal<NetworkRun | undefined> = computed(
-    (): NetworkRun | undefined => this.runs.runs().get(this.panel().id),
+  protected readonly run: Signal<NetworkRun | undefined> = computed((): NetworkRun | undefined =>
+    this.runs.runs().get(this.panel().id),
   );
 
   /**
@@ -180,12 +180,10 @@ export class RunPanel {
   /**
    * Gets the ping's replies, newest last, or none for a trace.
    */
-  protected readonly replies: Signal<readonly PingReply[]> = computed(
-    (): readonly PingReply[] => {
-      const run: NetworkRun | undefined = this.run();
-      return run?.kind === 'ping' ? run.replies : [];
-    },
-  );
+  protected readonly replies: Signal<readonly PingReply[]> = computed((): readonly PingReply[] => {
+    const run: NetworkRun | undefined = this.run();
+    return run?.kind === 'ping' ? run.replies : [];
+  });
 
   /**
    * Gets the ping's replies taken together.
@@ -226,30 +224,28 @@ export class RunPanel {
       return [];
     }
     const locations: ReadonlyMap<string, GeoLocation> = this.geo.locations();
-    return run.hops.map(
-      (hop: TraceHop): HopRow => ({
-        hop,
-        addresses: [
-          ...new Set<string>(
-            hop.probes
-              .map((probe: TraceProbe): string | undefined => probe.address)
-              .filter((address: string | undefined): address is string => address !== undefined),
-          ),
-        ],
-        times: hop.probes.map((probe: TraceProbe): string =>
-          probe.rttMs === undefined
-            ? '*'
-            : `${formatMs(probe.rttMs)}${probe.note === undefined ? '' : ` ${probe.note}`}`,
-        ),
-        place: placeOf(
+    return run.hops.map((hop: TraceHop): HopRow => ({
+      hop,
+      addresses: [
+        ...new Set<string>(
           hop.probes
-            .map((probe: TraceProbe): GeoLocation | undefined =>
-              probe.address === undefined ? undefined : locations.get(probe.address),
-            )
-            .find((location: GeoLocation | undefined): boolean => location !== undefined),
+            .map((probe: TraceProbe): string | undefined => probe.address)
+            .filter((address: string | undefined): address is string => address !== undefined),
         ),
-      }),
-    );
+      ],
+      times: hop.probes.map((probe: TraceProbe): string =>
+        probe.rttMs === undefined
+          ? '*'
+          : `${formatMs(probe.rttMs)}${probe.note === undefined ? '' : ` ${probe.note}`}`,
+      ),
+      place: placeOf(
+        hop.probes
+          .map((probe: TraceProbe): GeoLocation | undefined =>
+            probe.address === undefined ? undefined : locations.get(probe.address),
+          )
+          .find((location: GeoLocation | undefined): boolean => location !== undefined),
+      ),
+    }));
   });
 
   /**
@@ -289,8 +285,9 @@ export class RunPanel {
    * database — for the note beneath the map.
    */
   protected readonly unplaced: Signal<number> = computed((): number => {
-    const answered: number = this.hops().filter((row: HopRow): boolean => row.addresses.length > 0)
-      .length;
+    const answered: number = this.hops().filter(
+      (row: HopRow): boolean => row.addresses.length > 0,
+    ).length;
     return Math.max(0, answered - this.stops().length);
   });
 

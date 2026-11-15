@@ -247,7 +247,9 @@ describe('RunPanel', () => {
     expect(geo.calls).toEqual([]);
 
     Array.from(consent.querySelectorAll('button'))
-      .find((button: HTMLButtonElement): boolean => button.textContent.trim() === 'Download Database')
+      .find(
+        (button: HTMLButtonElement): boolean => button.textContent.trim() === 'Download Database',
+      )
       ?.click();
 
     expect(geo.calls).toEqual(['download']);
@@ -260,11 +262,22 @@ describe('RunPanel', () => {
         ['192.168.1.1', { address: '192.168.1.1', private: true }],
         [
           '51.191.191.254',
-          { address: '51.191.191.254', latitude: 51.5, longitude: -0.12, city: 'London', country: 'United Kingdom' },
+          {
+            address: '51.191.191.254',
+            latitude: 51.5,
+            longitude: -0.12,
+            city: 'London',
+            country: 'United Kingdom',
+          },
         ],
         [
           '192.178.223.95',
-          { address: '192.178.223.95', latitude: 37.4, longitude: -122.08, country: 'United States' },
+          {
+            address: '192.178.223.95',
+            latitude: 37.4,
+            longitude: -122.08,
+            country: 'United States',
+          },
         ],
       ]),
     );
