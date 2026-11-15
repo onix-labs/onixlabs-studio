@@ -343,6 +343,16 @@ export class Icon {
   public static readonly MONITOR_VRAM: Icon = new Icon('ph-duotone ph-circuitry');
 
   /**
+   * Gets the icon for a log record's context (the values logged with its message).
+   */
+  public static readonly MONITOR_CONTEXT: Icon = new Icon('ph ph-brackets-curly');
+
+  /**
+   * Gets the icon for a log record as it is stored.
+   */
+  public static readonly MONITOR_RAW: Icon = new Icon('ph ph-code');
+
+  /**
    * Gets the icon for a storage device in the System Monitor's Storage view.
    */
   public static readonly MONITOR_DRIVE: Icon = new Icon('ph-duotone ph-hard-drive');

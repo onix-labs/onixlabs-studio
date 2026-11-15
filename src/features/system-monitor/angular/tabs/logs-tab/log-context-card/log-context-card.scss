@@ -19,6 +19,12 @@
   background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
 }
 
+// Context and Raw, side by side, the one showing pressed.
+.log-context__views {
+  display: flex;
+  gap: 0.25rem;
+}
+
 .log-context__head {
   display: flex;
   flex: none;

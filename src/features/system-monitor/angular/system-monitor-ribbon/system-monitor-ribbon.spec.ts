@@ -11,7 +11,6 @@ import { SystemMonitorRibbon } from './system-monitor-ribbon';
 interface Testable {
   onRefresh(): void;
   onClear(): void;
-  onCopy(): void;
 }
 
 describe('SystemMonitorRibbon', () => {
@@ -27,17 +26,14 @@ describe('SystemMonitorRibbon', () => {
     commands = TestBed.inject(SystemMonitorCommands);
     const refresh: MockInstance = vi.spyOn(commands, 'refresh');
     const clear: MockInstance = vi.spyOn(commands, 'clearFilters');
-    const copy: MockInstance = vi.spyOn(commands, 'copy');
 
     fixture = TestBed.createComponent(SystemMonitorRibbon);
     const ribbon: Testable = fixture.componentInstance as unknown as Testable;
     ribbon.onRefresh();
     ribbon.onClear();
-    ribbon.onCopy();
 
     expect(refresh).toHaveBeenCalledOnce();
     expect(clear).toHaveBeenCalledOnce();
-    expect(copy).toHaveBeenCalledOnce();
   });
 
   describe('the View group', () => {
@@ -74,14 +70,12 @@ describe('SystemMonitorRibbon', () => {
       commands = TestBed.inject(SystemMonitorCommands);
       tab = signal<SystemMonitorTabId>(SystemMonitorTabId.Overview);
       commands.register({
-        hasRecords: signal<boolean>(true),
         agentShown: signal<boolean>(false),
         tab,
         selectTab: (next: SystemMonitorTabId): void => tab.set(next),
         toggleAgent: vi.fn(),
         refresh: vi.fn(),
         clearFilters: vi.fn(),
-        copy: vi.fn(),
       });
       fixture = TestBed.createComponent(SystemMonitorRibbon);
       host = fixture.nativeElement as HTMLElement;
@@ -113,17 +107,24 @@ describe('SystemMonitorRibbon', () => {
       expect(button('Storage').getAttribute('aria-pressed')).toBe('true');
     });
 
-    it('offersTheAuditCommands_onlyOnTheLogsView', async () => {
-      expect(labels()).not.toContain('Refresh');
-      expect(labels()).not.toContain('Copy');
-
+    it('offersOnlyTheViewsAndTheAgent_evenOnTheLogsView', async () => {
       tab.set(SystemMonitorTabId.Logs);
       fixture.detectChanges();
       await fixture.whenStable();
 
-      expect(labels()).toContain('Refresh');
-      expect(labels()).toContain('Clear Filters');
-      expect(labels()).toContain('Copy');
+      // The logs' refresh, filters and copy are in the Logs view's header, not the ribbon. (The
+      // ribbon's own overflow button has no label.)
+      expect(labels().filter((label: string): boolean => label.length > 0)).toEqual([
+        'Overview',
+        'CPU',
+        'Memory',
+        'GPU',
+        'Processes',
+        'Storage',
+        'Network',
+        'Logs',
+        'Agent',
+      ]);
     });
   });
 });

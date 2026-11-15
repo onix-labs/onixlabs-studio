@@ -1,11 +1,23 @@
 <section class="log-context" aria-label="Log context" data-testid="log-context">
   <header class="log-context__head">
-    <app-tab-list
-      ariaLabel="Context or raw record"
-      [tabs]="tabs"
-      [value]="tab()"
-      (valueChange)="setTab($event)"
-    />
+    <div class="log-context__views" role="group" aria-label="Show">
+      <app-button
+        variant="none"
+        size="small"
+        [icon]="Icon.MONITOR_CONTEXT"
+        label="Context"
+        [pressed]="tab() === 'context'"
+        (click)="setTab('context')"
+      />
+      <app-button
+        variant="none"
+        size="small"
+        [icon]="Icon.MONITOR_RAW"
+        label="Raw"
+        [pressed]="tab() === 'raw'"
+        (click)="setTab('raw')"
+      />
+    </div>
     @if (code()) {
       <app-button
         variant="none"

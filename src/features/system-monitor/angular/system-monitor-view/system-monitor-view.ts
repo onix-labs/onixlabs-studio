@@ -671,13 +671,6 @@ export class SystemMonitorView implements OnInit {
   ]);
 
   /**
-   * Gets whether the audit currently shows any records, gating the ribbon's Copy action.
-   */
-  private readonly hasRecords: Signal<boolean> = computed(
-    (): boolean => this.filtered().length > 0,
-  );
-
-  /**
    * Holds the command registry the ribbon drives this view through while active.
    */
   private readonly commands: SystemMonitorCommands = inject(SystemMonitorCommands);
@@ -686,12 +679,10 @@ export class SystemMonitorView implements OnInit {
    * Holds the handler the ribbon drives the active view through.
    */
   private readonly commandHandler: SystemMonitorCommandHandler = {
-    hasRecords: this.hasRecords,
     agentShown: this.agentVisible,
     toggleAgent: (): void => this.toggleAgent(),
     refresh: (): void => this.refresh(),
     clearFilters: (): void => this.clearFilters(),
-    copy: (): void => void this.copy(),
     tab: this.selectedTab.asReadonly(),
     selectTab: (tab: SystemMonitorTabId): void => this.selectTab(tab),
   };

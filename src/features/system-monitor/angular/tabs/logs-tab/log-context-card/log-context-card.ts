@@ -10,23 +10,14 @@ import {
 } from '@angular/core';
 import { CodeBlock } from '@shared/angular/components/code-block/code-block';
 import { Button } from '@shared/angular/components/forms/button/button';
-import { TabList, TabListTab } from '@shared/angular/components/forms/tab-list/tab-list';
 import { Icon } from '@shared/angular/icons/icon';
 import { LogRecord } from '@shared/api/log-channels';
 import { LogCode, logContext, logRaw } from './log-context';
 
 /**
- * Identifies the card's tabs.
+ * Identifies what the card shows: the record's context, or the record as stored.
  */
 type ContextTab = 'context' | 'raw';
-
-/**
- * The card's tabs.
- */
-const TABS: readonly TabListTab[] = [
-  { value: 'context', label: 'Context' },
-  { value: 'raw', label: 'Raw' },
-];
 
 /**
  * Represents the Logs view's context card: what was logged with the chosen record's message (an
@@ -34,7 +25,7 @@ const TABS: readonly TabListTab[] = [
  */
 @Component({
   selector: 'app-system-monitor-log-context-card',
-  imports: [Button, CodeBlock, TabList],
+  imports: [Button, CodeBlock],
   templateUrl: './log-context-card.html',
   styleUrl: './log-context-card.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -46,17 +37,12 @@ export class LogContextCard {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Gets the card's tabs.
-   */
-  protected readonly tabs: readonly TabListTab[] = TABS;
-
-  /**
    * Gets the record chosen, or null when none is.
    */
   public readonly record: InputSignal<LogRecord | null> = input<LogRecord | null>(null);
 
   /**
-   * Holds the tab shown.
+   * Holds what the card shows: the context, or the raw record.
    */
   protected readonly tab: WritableSignal<ContextTab> = signal<ContextTab>('context');
 
@@ -86,11 +72,11 @@ export class LogContextCard {
   );
 
   /**
-   * Shows a tab.
-   * @param value The tab, as the tab list's value.
+   * Shows the context or the raw record.
+   * @param tab What to show.
    */
-  protected setTab(value: string): void {
-    this.tab.set(value === 'raw' ? 'raw' : 'context');
+  protected setTab(tab: ContextTab): void {
+    this.tab.set(tab);
     this.copied.set(false);
   }
 

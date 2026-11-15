@@ -8,11 +8,6 @@ import { SystemMonitorTabId } from '../tabs/system-monitor-tab-id';
  */
 export interface SystemMonitorCommandHandler {
   /**
-   * Gets whether the audit currently shows any records, so the ribbon can enable/disable Copy.
-   */
-  readonly hasRecords: Signal<boolean>;
-
-  /**
    * Gets whether the docked agent is showing (#966).
    */
   readonly agentShown: Signal<boolean>;
@@ -42,11 +37,6 @@ export interface SystemMonitorCommandHandler {
    * Resets the severity and text filters to their defaults (all severities, no text).
    */
   clearFilters(): void;
-
-  /**
-   * Copies the currently-shown records to the clipboard as text.
-   */
-  copy(): void;
 }
 
 /**
@@ -60,13 +50,6 @@ export class SystemMonitorCommands {
    */
   private readonly handler: WritableSignal<SystemMonitorCommandHandler | null> =
     signal<SystemMonitorCommandHandler | null>(null);
-
-  /**
-   * Gets whether the active view's audit shows any records.
-   */
-  public readonly hasRecords: Signal<boolean> = computed(
-    (): boolean => this.handler()?.hasRecords() ?? false,
-  );
 
   /**
    * Gets whether the active view's agent is showing.
@@ -112,13 +95,6 @@ export class SystemMonitorCommands {
    */
   public clearFilters(): void {
     this.handler()?.clearFilters();
-  }
-
-  /**
-   * Copies the active view's shown records to the clipboard.
-   */
-  public copy(): void {
-    this.handler()?.copy();
   }
 
   /**

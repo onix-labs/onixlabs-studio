@@ -248,6 +248,7 @@ interface Testable {
   focusedRecord: Signal<LogRecord | null>;
   clearSelection(): void;
   copy(): Promise<void>;
+  onMore(id: string): void;
   severityCounts: Signal<SeverityCounts>;
   toggleOrigin(id: string): void;
   onSort(sort: TableSort | null): void;
@@ -593,9 +594,9 @@ describe('SystemMonitorView', () => {
     expect(view.selectedSessionValue()).toBe('current');
   });
 
-  it('whenActive_registersWithTheRibbonCommandsAndReportsRecords', async () => {
-    await create([record({ id: 1 })]);
-    expect(TestBed.inject(SystemMonitorCommands).hasRecords()).toBe(true);
+  it('whenActive_registersWithTheRibbonCommands', async () => {
+    await create([record({ id: 1 })], 'logs');
+    expect(TestBed.inject(SystemMonitorCommands).tab()).toBe('logs');
   });
 
   it('clearFilters_command_resetsSeverityAndText', async () => {
@@ -615,7 +616,7 @@ describe('SystemMonitorView', () => {
     expect(fake.queries.length).toBeGreaterThan(before);
   });
 
-  it('copy_command_writesTheShownRecordsToTheClipboard', async () => {
+  it('copy_fromTheMoreActionsMenu_writesTheShownRecordsToTheClipboard', async () => {
     const writeText: Mock = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     await create([
@@ -627,7 +628,7 @@ describe('SystemMonitorView', () => {
         timestamp: '2026-08-10T10:00:00.000Z',
       }),
     ]);
-    TestBed.inject(SystemMonitorCommands).copy();
+    view.onMore('copy');
     await Promise.resolve();
     expect(writeText).toHaveBeenCalledWith('2026-08-10T10:00:00.000Z [error] S: boom');
   });
@@ -779,7 +780,8 @@ describe('SystemMonitorView', () => {
     fixture.detectChanges();
     expect(metrics.stopped).toBe(1);
     expect(fake.listener).toBeNull();
-    expect(TestBed.inject(SystemMonitorCommands).hasRecords()).toBe(true);
+    // Hidden, it stays the ribbon's monitor: its records stay put for when it returns.
+    expect(view.filtered()).toHaveLength(1);
 
     onScreen.set(true);
     fixture.detectChanges();

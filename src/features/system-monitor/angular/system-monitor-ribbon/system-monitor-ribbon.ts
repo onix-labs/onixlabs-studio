@@ -50,11 +50,9 @@ const VIEWS: readonly MonitorView[] = [
 /**
  * The contextual ribbon shown while a System Monitor tab is active. It is the monitor's tab strip: the
  * View group's buttons switch between its views (Overview, each resource, and Logs), the one
- * showing pressed. Its actions drive the active monitor through the {@link SystemMonitorCommands}
- * registry. The Audit and Clipboard groups belong to the logs, so they appear only on the Logs view:
- * refresh reloads the audit, clear resets the filters, and copy is enabled only when the audit shows
- * records. The stateful filters (session, severity, text) live in the view's own toolbar, alongside
- * the table they act on.
+ * showing pressed; the Agent group shows or hides the docked agent. Its actions drive the active
+ * monitor through the {@link SystemMonitorCommands} registry. The logs' own actions — their filters,
+ * refresh, copy — live in the Logs view's header, alongside the table they act on.
  */
 @Component({
   selector: 'app-system-monitor-ribbon',
@@ -75,11 +73,6 @@ export class SystemMonitorRibbon {
   private readonly commands: SystemMonitorCommands = inject(SystemMonitorCommands);
 
   /**
-   * Gets whether the active view's audit shows any records, gating Copy.
-   */
-  protected readonly hasRecords: Signal<boolean> = this.commands.hasRecords;
-
-  /**
    * Gets whether the active view's agent is showing.
    */
   protected readonly agentShown: Signal<boolean> = this.commands.agentShown;
@@ -88,11 +81,6 @@ export class SystemMonitorRibbon {
    * Gets the view the active monitor is showing.
    */
   protected readonly tab: Signal<SystemMonitorTabId | undefined> = this.commands.tab;
-
-  /**
-   * Gets the view identities, exposed for the template.
-   */
-  protected readonly Tab: typeof SystemMonitorTabId = SystemMonitorTabId;
 
   /**
    * Gets the monitor's views, for the View group.
@@ -105,8 +93,8 @@ export class SystemMonitorRibbon {
   private readonly menu: void = contributeFeatureMenu(
     'system-monitor',
     (): readonly MenuContribution[] => [
-      // No Edit section. Copying the audit is offered by the ribbon's Copy button alone: an entry
-      // here would have to carry ⌘C, and a feature entry claiming that accelerator replaces the
+      // No Edit section. Copying the audit is offered by the Logs view's more-actions menu alone: an
+      // entry here would have to carry ⌘C, and a feature entry claiming that accelerator replaces the
       // core's native role, taking the chord from every text box on the tab.
       {
         id: 'monitor',
@@ -148,7 +136,7 @@ export class SystemMonitorRibbon {
   }
 
   /**
-   * Reloads the logs (the Audit group's Refresh).
+   * Reloads the logs (the Monitor menu's Refresh).
    */
   protected onRefresh(): void {
     this.commands.refresh();
@@ -159,13 +147,6 @@ export class SystemMonitorRibbon {
    */
   protected onClear(): void {
     this.commands.clearFilters();
-  }
-
-  /**
-   * Copies the shown records to the clipboard.
-   */
-  protected onCopy(): void {
-    this.commands.copy();
   }
 
   /**
