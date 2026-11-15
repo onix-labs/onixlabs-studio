@@ -131,6 +131,21 @@ describe('ScrollbarLayer', () => {
     expect(thumb('vertical').style.top).toBe('103px');
   });
 
+  it('startsTheTrackBelowABandContentScrollsUnder_suchAsAPinnedHeader', () => {
+    scroller.style.scrollPaddingTop = '40px';
+
+    hover(row);
+
+    // A 160px track (206, less the 40px band, less 3px at each end) showing half the content.
+    expect(thumb('vertical').style.height).toBe('80px');
+    expect(thumb('vertical').style.top).toBe('43px');
+
+    scroller.scrollTop = 206;
+    layer.update();
+
+    expect(thumb('vertical').style.top).toBe('123px');
+  });
+
   it('keepsALongListsThumbLongEnoughToGrab', () => {
     lay(scroller, { clientWidth: 100, clientHeight: 100, scrollHeight: 100_000 });
 

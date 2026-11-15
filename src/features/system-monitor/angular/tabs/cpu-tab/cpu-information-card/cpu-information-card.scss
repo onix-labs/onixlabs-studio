@@ -1,0 +1,49 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+// The rows scroll on their own when the card is short, so the card never grows its row.
+.cpu-information {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  margin: 0;
+  overflow: auto;
+}
+
+// One fact per row: the label on the left, the value on the right, ruled between rows.
+.cpu-information__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.2rem 0.25rem;
+  border-block-end: 1px solid color-mix(in srgb, var(--dock-border-color) 50%, transparent);
+
+  &:last-child {
+    border-block-end: none;
+  }
+
+  dt {
+    flex: none;
+    font-size: 0.8rem;
+    color: var(--form-muted-foreground-color);
+  }
+
+  dd {
+    min-inline-size: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-align: end;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--body-foreground-color);
+  }
+}
+
+.cpu-information__empty {
+  @include empty;
+}

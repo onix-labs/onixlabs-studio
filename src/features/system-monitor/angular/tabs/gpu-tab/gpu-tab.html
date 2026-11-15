@@ -1,0 +1,23 @@
+<div class="gpu" data-testid="gpu-view">
+  <header class="gpu__header">
+    <app-icon class="gpu__icon" [icon]="Icon.MONITOR_GPU" [size]="1.75" />
+    <h2 class="gpu__title">GPU</h2>
+    <span class="gpu__model" [title]="model()">{{ model() }}</span>
+    <app-system-monitor-view-summary [items]="chips()" />
+  </header>
+
+  @if (readings.gpuMonitoring()) {
+    <div class="gpu__grid">
+      <app-system-monitor-gpu-utilisation-card class="gpu__utilisation" />
+      <app-system-monitor-gpu-memory-card class="gpu__memory" />
+      <app-system-monitor-gpu-thermals-card class="gpu__thermals" />
+      <app-system-monitor-gpu-engines-card class="gpu__engines" />
+      <app-system-monitor-gpu-memory-history-card class="gpu__memory-history" />
+      <app-system-monitor-gpu-processes-card class="gpu__processes" />
+      <app-system-monitor-gpu-information-card class="gpu__information" />
+      <app-system-monitor-gpu-history-card class="gpu__history" />
+    </div>
+  } @else {
+    <p class="gpu__off">GPU Monitoring is off. Turn it on in Settings to read the GPU.</p>
+  }
+</div>

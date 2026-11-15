@@ -1,0 +1,93 @@
+@use '../tabs' as *;
+
+// The Network view fills its tab: a header counting the interfaces with their summary, then
+// the cards in a grid that shares the view's height, fitting a full-screen 1080p display and scrolling
+// below that.
+:host {
+  @include host;
+}
+
+.network {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  box-sizing: border-box;
+  block-size: 100%;
+  min-block-size: 44rem;
+  padding: 0.5rem;
+}
+
+.network__header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.75rem;
+  min-inline-size: 0;
+}
+
+.network__icon {
+  flex: none;
+  color: var(--body-foreground-color);
+}
+
+.network__title {
+  flex: none;
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.network__count {
+  flex: none;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
+}
+
+// Twelve columns, so the rows split them as the sketch does. Each card is a size container whose
+// height never comes from what it holds, so every row's height is stated: the middle row is the
+// tallest, as the chosen interface's details list up to ten facts.
+.network__grid {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-rows:
+    minmax(12rem, 0.85fr)
+    minmax(17rem, 1.2fr)
+    minmax(12rem, 0.95fr);
+  grid-template-areas:
+    'throughput throughput throughput throughput throughput throughput packets packets packets packets packets packets'
+    'interfaces interfaces interfaces interfaces interface interface interface interface activity activity activity activity'
+    'connections connections connections connections connections connections connections statistics statistics statistics statistics statistics';
+  gap: 0.5rem;
+  min-block-size: 0;
+}
+
+.network__throughput {
+  grid-area: throughput;
+}
+
+.network__packets {
+  grid-area: packets;
+}
+
+.network__interfaces {
+  grid-area: interfaces;
+}
+
+.network__interface {
+  grid-area: interface;
+}
+
+.network__activity {
+  grid-area: activity;
+}
+
+.network__connections {
+  grid-area: connections;
+}
+
+.network__statistics {
+  grid-area: statistics;
+}

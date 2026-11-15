@@ -1,0 +1,33 @@
+<app-system-monitor-dashboard-card [icon]="Icon.MONITOR_TEMPERATURE" heading="Temperature & Power">
+  @if (rows().length > 0) {
+    <ul class="gpu-thermals" data-testid="gpu-thermals">
+      @for (row of rows(); track row.label) {
+        <li
+          class="gpu-thermals__row"
+          [class.gpu-thermals__row--warning]="row.tone === 'warning'"
+          [class.gpu-thermals__row--danger]="row.tone === 'danger'"
+        >
+          <app-icon class="gpu-thermals__icon" [icon]="row.icon" [size]="1.15" />
+          <span class="gpu-thermals__value">{{ row.value }}</span>
+          @if (row.percent !== undefined) {
+            <div
+              class="gpu-thermals__track"
+              role="meter"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              [attr.aria-valuenow]="row.percent"
+              [attr.aria-label]="row.label"
+            >
+              <div class="gpu-thermals__fill" [style.inline-size.%]="row.percent"></div>
+            </div>
+          } @else {
+            <span></span>
+          }
+          <span class="gpu-thermals__note">{{ row.note }}</span>
+        </li>
+      }
+    </ul>
+  } @else {
+    <p class="gpu-thermals__empty">This GPU does not report its temperature or power.</p>
+  }
+</app-system-monitor-dashboard-card>

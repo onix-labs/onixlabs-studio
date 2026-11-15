@@ -1,0 +1,40 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+// The rows scroll within the card, the header staying put.
+.gpu-processes__scroll {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+.gpu-processes {
+  @include table;
+
+  th {
+    position: sticky;
+    inset-block-start: 0;
+    background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
+  }
+
+  td {
+    padding-block: 0.3rem;
+  }
+
+  tbody tr:last-child td {
+    border-block-end: none;
+  }
+}
+
+.gpu-processes .gpu-processes__number {
+  @include number;
+
+  inline-size: 14%;
+}
+
+.gpu-processes__empty {
+  @include empty;
+}

@@ -1,0 +1,17 @@
+@use '../../../cards' as *;
+
+:host {
+  @include host;
+}
+
+.network-card__chart {
+  @include leading-chart;
+}
+
+// The sent graph takes the rest of the card beneath the received one, set apart from it so their axes'
+// labels do not meet.
+.network-card__sent {
+  @include chart;
+
+  margin-block-start: 1rem;
+}

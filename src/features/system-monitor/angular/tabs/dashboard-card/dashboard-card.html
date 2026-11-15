@@ -1,0 +1,18 @@
+<article class="dashboard-card" [attr.aria-label]="heading()">
+  <header class="dashboard-card__head" [class.dashboard-card__head--subtitled]="subtitle()">
+    <app-icon class="dashboard-card__icon" [icon]="icon()" [size]="1.75" />
+    <div class="dashboard-card__titles">
+      <h3 class="dashboard-card__title">{{ heading() }}</h3>
+      @if (subtitle()) {
+        <p class="dashboard-card__subtitle" [title]="subtitle()">{{ subtitle() }}</p>
+      }
+    </div>
+    <div class="dashboard-card__badges">
+      <ng-content select="[cardBadges]" />
+    </div>
+  </header>
+
+  <div class="dashboard-card__body">
+    <ng-content />
+  </div>
+</article>

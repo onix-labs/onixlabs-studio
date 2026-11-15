@@ -1,0 +1,52 @@
+<app-system-monitor-dashboard-card [icon]="Icon.MONITOR_CONNECTIONS" [heading]="heading()">
+  @if (rows(); as list) {
+    <div class="network-connections__scroll">
+      <table class="network-connections" data-testid="network-connections">
+        <thead>
+          <tr>
+            <th class="network-connections__process-column">Process</th>
+            <th>Local Address</th>
+            <th>Remote Address</th>
+            <th class="network-connections__protocol-column">Protocol</th>
+            <th class="network-connections__state-column">State</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of list; track row.key) {
+            <tr>
+              <td [title]="row.connection.process ?? ''">
+                <span class="network-connections__process">
+                  @if (icons.icon(row.connection.location, row.connection.process ?? ''); as icon) {
+                    <img class="network-connections__icon" [src]="icon" alt="" />
+                  } @else {
+                    <span class="network-connections__icon network-connections__icon--generic">
+                      <app-icon [icon]="Icon.MONITOR_PROCESS" [size]="0.75" />
+                    </span>
+                  }
+                  {{
+                    row.connection.process ??
+                      (row.connection.pid ? 'PID ' + row.connection.pid : '—')
+                  }}
+                </span>
+              </td>
+              <td [title]="row.connection.local">{{ row.connection.local }}</td>
+              <td [title]="row.connection.remote">{{ row.connection.remote || '—' }}</td>
+              <td>{{ row.connection.protocol }}</td>
+              <td>
+                @if (row.connection.state) {
+                  <app-chip [tone]="row.tone">{{ row.connection.state }}</app-chip>
+                }
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="5" class="network-connections__none">No connections.</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  } @else {
+    <p class="network-connections__empty">Listing connections…</p>
+  }
+</app-system-monitor-dashboard-card>

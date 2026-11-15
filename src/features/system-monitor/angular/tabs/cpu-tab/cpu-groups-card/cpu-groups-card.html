@@ -1,0 +1,27 @@
+<app-system-monitor-dashboard-card
+  [icon]="Icon.MONITOR_GROUPED"
+  heading="Core Utilisation (Grouped)"
+>
+  @if (groups().length > 0) {
+    <ul class="cpu-groups" data-testid="cpu-groups">
+      @for (group of groups(); track group.label) {
+        <li class="cpu-groups__group">
+          <span class="cpu-groups__label">{{ group.label }}</span>
+          <div
+            class="cpu-groups__track"
+            role="meter"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            [attr.aria-valuenow]="group.percent"
+            [attr.aria-label]="group.label"
+          >
+            <div class="cpu-groups__fill" [style.inline-size.%]="group.percent"></div>
+          </div>
+          <span class="cpu-groups__value">{{ group.value }}</span>
+        </li>
+      }
+    </ul>
+  } @else {
+    <p class="cpu-groups__empty">Each group's load appears after the next reading.</p>
+  }
+</app-system-monitor-dashboard-card>

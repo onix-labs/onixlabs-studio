@@ -1,0 +1,18 @@
+<div class="network" data-testid="network-view">
+  <header class="network__header">
+    <app-icon class="network__icon" [icon]="Icon.MONITOR_NETWORK" [size]="1.75" />
+    <h2 class="network__title">Network</h2>
+    <span class="network__count">{{ count() }}</span>
+    <app-system-monitor-view-summary [items]="chips()" />
+  </header>
+
+  <div class="network__grid">
+    <app-system-monitor-network-throughput-card class="network__throughput" />
+    <app-system-monitor-network-packets-card class="network__packets" />
+    <app-system-monitor-network-interfaces-card class="network__interfaces" />
+    <app-system-monitor-network-interface-card class="network__interface" />
+    <app-system-monitor-network-activity-card class="network__activity" />
+    <app-system-monitor-network-connections-card class="network__connections" />
+    <app-system-monitor-network-statistics-card class="network__statistics" />
+  </div>
+</div>

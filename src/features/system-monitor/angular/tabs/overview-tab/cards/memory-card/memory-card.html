@@ -1,0 +1,57 @@
+<app-system-monitor-dashboard-card
+  [icon]="Icon.MONITOR_MEMORY"
+  heading="Memory"
+  subtitle="Memory usage and allocation"
+>
+  <app-system-monitor-dashboard-badge
+    cardBadges
+    [value]="readings.memoryValue()"
+    caption="System"
+  />
+  @if (readings.memoryAppValue(); as studio) {
+    <app-system-monitor-dashboard-badge
+      cardBadges
+      tone="neutral"
+      [value]="studio"
+      caption="Studio"
+    />
+  }
+
+  <!-- The graph leads, as on the CPU, GPU and Network cards, so the four graphs line up. Its two lines
+       are named by the System and Studio badges above, in the same colours. -->
+  <app-system-monitor-line-chart
+    class="memory-card__chart"
+    ariaLabel="Memory in use over time, the system's and Studio's"
+    [series]="series()"
+    [max]="100"
+    [format]="percent"
+    [showLegend]="false"
+    [intervalMs]="readings.intervalMs()"
+  />
+
+  <div class="memory-card__summary">
+    <app-system-monitor-radial-meter
+      class="memory-card__meter"
+      [percent]="used()"
+      label="In Use"
+      [innerPercent]="studio()"
+      innerLabel="Studio"
+    />
+    <dl class="memory-card__entries">
+      @for (entry of entries(); track entry.label) {
+        <div class="memory-card__entry">
+          <dt>
+            <span
+              class="memory-card__key"
+              [class.memory-card__key--used]="entry.key === 'used'"
+              [class.memory-card__key--studio]="entry.key === 'studio'"
+              [class.memory-card__key--free]="entry.key === 'free'"
+            ></span>
+            {{ entry.label }}
+          </dt>
+          <dd>{{ entry.value }}</dd>
+        </div>
+      }
+    </dl>
+  </div>
+</app-system-monitor-dashboard-card>

@@ -1,0 +1,32 @@
+<app-system-monitor-dashboard-card [icon]="Icon.MONITOR_GROUPED" heading="Memory Breakdown">
+  @if (parts().length > 0) {
+    <div
+      class="memory-breakdown__bar"
+      role="img"
+      aria-label="Memory breakdown"
+      data-testid="memory-breakdown"
+    >
+      @for (part of parts(); track part.key) {
+        <div
+          class="memory-breakdown__part"
+          [style.flex-grow]="part.percent"
+          [style.background-color]="part.colour"
+          [title]="part.label + ': ' + part.value"
+        ></div>
+      }
+    </div>
+    <ul class="memory-breakdown__legend">
+      @for (part of parts(); track part.key) {
+        <li class="memory-breakdown__item">
+          <span class="memory-breakdown__name">
+            <span class="memory-breakdown__key" [style.background-color]="part.colour"></span>
+            {{ part.label }}
+          </span>
+          <span class="memory-breakdown__value">{{ part.value }}</span>
+        </li>
+      }
+    </ul>
+  } @else {
+    <p class="memory-breakdown__empty">The breakdown appears after the next reading.</p>
+  }
+</app-system-monitor-dashboard-card>

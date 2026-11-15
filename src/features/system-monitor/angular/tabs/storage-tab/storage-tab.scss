@@ -1,0 +1,92 @@
+@use '../tabs' as *;
+
+// The Storage view fills its tab: a header counting the drives and volumes with their summary, then
+// the cards in a grid that shares the view's height, fitting a full-screen 1080p display and scrolling
+// below that.
+:host {
+  @include host;
+}
+
+.storage {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  box-sizing: border-box;
+  block-size: 100%;
+  min-block-size: 44rem;
+  padding: 0.5rem;
+}
+
+.storage__header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.75rem;
+  min-inline-size: 0;
+}
+
+.storage__icon {
+  flex: none;
+  color: var(--body-foreground-color);
+}
+
+.storage__title {
+  flex: none;
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.storage__count {
+  flex: none;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
+}
+
+// Twelve columns, so the rows split them as the sketch does. Each card is a size container whose
+// height never comes from what it holds, so every row's height is stated.
+.storage__grid {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-rows:
+    minmax(13rem, 1fr)
+    minmax(13rem, 1fr)
+    minmax(12rem, 1fr);
+  grid-template-areas:
+    'activity activity activity activity activity activity iops iops iops iops iops iops'
+    'devices devices devices device device device device utilisation utilisation utilisation utilisation utilisation'
+    'volumes volumes volumes volumes volumes volumes volumes volumes statistics statistics statistics statistics';
+  gap: 0.5rem;
+  min-block-size: 0;
+}
+
+.storage__activity {
+  grid-area: activity;
+}
+
+.storage__iops {
+  grid-area: iops;
+}
+
+.storage__devices {
+  grid-area: devices;
+}
+
+.storage__device {
+  grid-area: device;
+}
+
+.storage__utilisation {
+  grid-area: utilisation;
+}
+
+.storage__volumes {
+  grid-area: volumes;
+}
+
+.storage__statistics {
+  grid-area: statistics;
+}

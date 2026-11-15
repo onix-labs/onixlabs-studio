@@ -1,0 +1,73 @@
+<div class="stacked-area-chart">
+  <div class="stacked-area-chart__ticks" aria-hidden="true">
+    @for (tick of ticks(); track tick.top) {
+      <span class="stacked-area-chart__tick" [style.top.%]="tick.top">{{ tick.label }}</span>
+    }
+  </div>
+
+  <div
+    class="stacked-area-chart__plot"
+    role="img"
+    tabindex="0"
+    [attr.aria-label]="ariaLabel()"
+    (pointermove)="onPointerMove($event)"
+    (pointerleave)="onPointerLeave()"
+    (focus)="onFocus()"
+    (blur)="onPointerLeave()"
+    (keydown)="onKeydown($event)"
+  >
+    <svg
+      class="stacked-area-chart__svg"
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      @for (tick of ticks(); track tick.top) {
+        <line
+          class="stacked-area-chart__grid"
+          x1="0"
+          x2="100"
+          [attr.y1]="tick.top"
+          [attr.y2]="tick.top"
+          vector-effect="non-scaling-stroke"
+        />
+      }
+      @for (band of drawn(); track band.layer.label) {
+        <path
+          class="stacked-area-chart__band"
+          [attr.d]="band.path"
+          [style.fill]="band.layer.color"
+          vector-effect="non-scaling-stroke"
+        />
+      }
+      @if (readout(); as hover) {
+        <line
+          class="stacked-area-chart__crosshair"
+          [attr.x1]="hover.left"
+          [attr.x2]="hover.left"
+          y1="0"
+          y2="100"
+          vector-effect="non-scaling-stroke"
+        />
+      }
+    </svg>
+
+    @if (readout(); as hover) {
+      <div
+        class="stacked-area-chart__readout"
+        [class.stacked-area-chart__readout--flipped]="hover.flipped"
+        [style.left.%]="hover.left"
+        role="status"
+      >
+        <span class="stacked-area-chart__when">{{ hover.when }}</span>
+        @for (row of hover.rows; track row.label) {
+          <span class="stacked-area-chart__row">
+            <span class="stacked-area-chart__key" [style.background-color]="row.color"></span>
+            <strong class="stacked-area-chart__value">{{ row.value }}</strong>
+            <span class="stacked-area-chart__label">{{ row.label }}</span>
+          </span>
+        }
+      </div>
+    }
+  </div>
+</div>

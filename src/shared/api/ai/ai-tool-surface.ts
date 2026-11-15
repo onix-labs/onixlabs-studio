@@ -361,6 +361,20 @@ export const READ_SYSTEM_METRICS: string = 'read_system_metrics';
 export const SET_LOG_LEVEL: string = 'set_log_level';
 
 /**
+ * The System Monitor capability that lists the machine's processes now — busiest first by CPU, memory,
+ * GPU, threads or uptime, narrowed to the user's, the system's or Studio's, or by text — whatever view
+ * is showing.
+ */
+export const LIST_PROCESSES: string = 'list_processes';
+
+/**
+ * The System Monitor capability that reads one resource in full — the system, CPU, memory, GPU,
+ * storage or network — as its view shows it: what the hardware is, how it is being used now and over
+ * the sampled window, and (for CPU and memory) the processes using the most of it.
+ */
+export const READ_RESOURCE: string = 'read_resource';
+
+/**
  * The AI Manager capability that lists the local model runtime, its installed and running models and their disk use (#967).
  */
 export const LIST_LOCAL_MODELS: string = 'list_local_models';

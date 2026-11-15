@@ -14,13 +14,26 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
-import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
-import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
+import {
+  Table,
+  TableColumn,
+  TableRow,
+  TableRowDef,
+  TableRowSelect,
+  TableSort,
+} from '@shared/angular/components/table/table';
+import { CdkMenuTrigger } from '@angular/cdk/menu';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
+import { Icon } from '@shared/angular/icons/icon';
+import { LogContextCard } from '../tabs/logs-tab/log-context-card/log-context-card';
+import { SummaryItem, ViewSummary } from '../tabs/view-summary/view-summary';
+import { LogDetailsCard } from '../tabs/logs-tab/log-details-card/log-details-card';
+import { formatLogTime, SEVERITY_TONES } from '../tabs/logs-tab/log-format';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
-import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { Log } from '@shared/angular/services/log/log';
 import { DocumentVisibility } from '@shared/angular/services/document-visibility/document-visibility';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -28,9 +41,32 @@ import {
   createViewInjectorRegistrar,
   ViewInjectorRegistrar,
 } from '@shared/angular/services/view-injectors/view-injector-registration';
-import { LogRecord, LogSession, SEVERITIES, Severity } from '@shared/api/log-channels';
-import { historySamples, MetricsSample } from '@shared/api/system-monitor-channels';
-import { MetricTile, TileChannel } from '../metric-tile/metric-tile';
+import { LogOrigin, LogRecord, LogSession, SEVERITIES, Severity } from '@shared/api/log-channels';
+import { fullMessage } from '@shared/api/log-format';
+import {
+  GpuReading,
+  MetricsSample,
+  NetworkInfo,
+  NetworkReading,
+  ProcessesSnapshot,
+  StorageInfo,
+  StorageReading,
+  SystemInfo,
+} from '@shared/api/system-monitor-channels';
+import { SystemMonitorReadings } from '../readings/system-monitor-readings';
+import { SystemMonitorProcesses } from '../readings/system-monitor-processes';
+import { SystemMonitorGpu } from '../readings/system-monitor-gpu';
+import { SystemMonitorStorage } from '../readings/system-monitor-storage';
+import { SystemMonitorNetwork } from '../readings/system-monitor-network';
+import { SystemMonitorTabId } from '../tabs/system-monitor-tab-id';
+import { OverviewTab } from '../tabs/overview-tab/overview-tab';
+import { ProcessesTab } from '../tabs/processes-tab/processes-tab';
+import { CpuTab } from '../tabs/cpu-tab/cpu-tab';
+import { MemoryTab } from '../tabs/memory-tab/memory-tab';
+import { StorageTab } from '../tabs/storage-tab/storage-tab';
+import { LogsOverview } from '../tabs/overview-tab/logs-overview';
+import { NetworkTab } from '../tabs/network-tab/network-tab';
+import { GpuTab } from '../tabs/gpu-tab/gpu-tab';
 import { SystemMonitorMetrics } from '../metrics/system-monitor-metrics';
 import {
   SystemMonitorCommandHandler,
@@ -52,11 +88,39 @@ import { SystemMonitorAgentPanel } from '../system-monitor-agent/system-monitor-
  * and the flexing message.
  */
 const AUDIT_COLUMNS: readonly TableColumn[] = [
-  { id: 'severity', header: 'Severity', width: '6rem' },
-  { id: 'where', header: 'Where', width: '12rem' },
+  { id: 'time', header: 'Time', width: '8.5rem', sortable: true },
+  { id: 'level', header: 'Level', width: '6.5rem' },
+  { id: 'component', header: 'Component', width: '15rem' },
   { id: 'message', header: 'Message' },
-  { id: 'timestamp', header: 'Timestamp', width: '9rem' },
 ];
+
+/**
+ * The origins the Filters menu offers, in order, with how each is named.
+ */
+const ORIGIN_LABELS: Readonly<Record<LogOrigin, string>> = {
+  main: 'Main process',
+  renderer: 'Renderer windows',
+};
+
+/**
+ * Describes the viewed session's records counted by severity, for the Logs header.
+ */
+export interface SeverityCounts {
+  /**
+   * Gets every record in the session.
+   */
+  readonly total: number;
+
+  /**
+   * Gets the records of each severity.
+   */
+  readonly bySeverity: Readonly<Record<Severity, number>>;
+}
+
+/**
+ * The number of latest records the Overview's Logs card lists.
+ */
+const OVERVIEW_RECORDS: number = 9;
 
 /**
  * What the System Monitor tab's status strip reports.
@@ -104,17 +168,6 @@ export interface SystemMonitorSummary {
 }
 
 /**
- * The chip tone each severity is labelled in: trace quiet, then rising to danger for an error.
- */
-const SEVERITY_TONES: Readonly<Record<Severity, ChipTone>> = {
-  trace: 'neutral',
-  debug: 'info',
-  info: 'accent',
-  warning: 'warning',
-  error: 'danger',
-};
-
-/**
  * One audit row's display strings, built once per record so change detection only reads them (#980
  * P5).
  */
@@ -155,14 +208,25 @@ interface AuditEntry {
 @Component({
   selector: 'app-system-monitor-view',
   imports: [
+    AppIcon,
+    CdkMenuTrigger,
     Chip,
     Button,
-    ButtonRow,
+    LogContextCard,
+    LogDetailsCard,
+    Menu,
+    ViewSummary,
     Dropdown,
     TextField,
     Table,
     TableRowDef,
-    MetricTile,
+    OverviewTab,
+    ProcessesTab,
+    CpuTab,
+    MemoryTab,
+    StorageTab,
+    NetworkTab,
+    GpuTab,
     Panel,
     PanelLayout,
     SystemMonitorAgentPanel,
@@ -174,6 +238,12 @@ interface AuditEntry {
     AgentConversation,
     { provide: AGENT_CONVERSATION_KIND, useValue: 'monitor' },
     SystemMonitorAgentCapabilities,
+    // One monitor's readings and process listing, shared by its tabs; a second monitor keeps its own.
+    SystemMonitorReadings,
+    SystemMonitorProcesses,
+    SystemMonitorGpu,
+    SystemMonitorStorage,
+    SystemMonitorNetwork,
   ],
   templateUrl: './system-monitor-view.html',
   styleUrl: './system-monitor-view.scss',
@@ -181,9 +251,14 @@ interface AuditEntry {
 })
 export class SystemMonitorView implements OnInit {
   /**
-   * Gets the edges the resources panel may sit on: only its own, since it is part of the view.
+   * Gets the tab identities, exposed for the template.
    */
-  protected readonly sideEdges: readonly PanelEdge[] = ['left'];
+  protected readonly Tab: typeof SystemMonitorTabId = SystemMonitorTabId;
+
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
 
   /**
    * Gets the severities in display order, exposed for the filter chips.
@@ -227,17 +302,36 @@ export class SystemMonitorView implements OnInit {
   private readonly settings: Settings = inject(Settings);
 
   /**
-   * Gets whether the GPU is read and its tile shown.
+   * Holds this monitor's machine readings, shared with its tabs.
    */
-  protected readonly gpuMonitoring: Signal<boolean> = this.settings.value(
-    'systemMonitor.gpuMonitoring',
-  );
+  protected readonly readings: SystemMonitorReadings = inject(SystemMonitorReadings);
 
   /**
-   * Gets how many samples a sparkline holds: Graph History's span of time at the Refresh Rate.
+   * Holds this monitor's process listing, shared with the Processes tab.
    */
-  private readonly historyLength: Signal<number> = computed((): number =>
-    historySamples(this.settings.value('systemMonitor.graphHistoryMinutes')(), this.refreshRate()),
+  private readonly processes: SystemMonitorProcesses = inject(SystemMonitorProcesses);
+
+  /**
+   * Holds this monitor's GPU readings, shared with the GPU view.
+   */
+  private readonly gpu: SystemMonitorGpu = inject(SystemMonitorGpu);
+
+  /**
+   * Holds this monitor's storage readings, shared with the Storage tab.
+   */
+  private readonly storage: SystemMonitorStorage = inject(SystemMonitorStorage);
+
+  /**
+   * Holds this monitor's network readings, shared with the Network tab.
+   */
+  private readonly network: SystemMonitorNetwork = inject(SystemMonitorNetwork);
+
+  /**
+   * Holds the view chosen, which the ribbon's View group shows pressed. Overview first: it is the
+   * monitor at a glance.
+   */
+  protected readonly selectedTab: WritableSignal<SystemMonitorTabId> = signal<SystemMonitorTabId>(
+    SystemMonitorTabId.Overview,
   );
 
   /**
@@ -245,240 +339,6 @@ export class SystemMonitorView implements OnInit {
    * "active"; nothing it shows can be seen, so its feeds pause (audit P4).
    */
   private readonly onScreen: Signal<boolean> = inject(DocumentVisibility).visible;
-
-  /**
-   * Holds the most recent metrics sample, or null before the first arrives.
-   */
-  private readonly latest: WritableSignal<MetricsSample | null> = signal<MetricsSample | null>(
-    null,
-  );
-
-  /**
-   * Holds the recent CPU utilisation history (percent), oldest first, for the CPU sparkline.
-   */
-  protected readonly cpuHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
-
-  /**
-   * Holds the recent memory-use history (percent), oldest first, for the memory sparkline.
-   */
-  protected readonly memoryHistory: WritableSignal<readonly number[]> = signal<readonly number[]>(
-    [],
-  );
-
-  /**
-   * Holds the recent app CPU-share history (percent), oldest first, overlaid on the CPU sparkline.
-   */
-  protected readonly appCpuHistory: WritableSignal<readonly number[]> = signal<readonly number[]>(
-    [],
-  );
-
-  /**
-   * Holds the recent app memory-share history (percent), oldest first, overlaid on the memory sparkline.
-   */
-  protected readonly appMemoryHistory: WritableSignal<readonly number[]> = signal<
-    readonly number[]
-  >([]);
-
-  /**
-   * Gets the CPU tile's current machine-wide reading, formatted as a percentage.
-   */
-  protected readonly cpuValue: Signal<string> = computed((): string => {
-    const sample: MetricsSample | null = this.latest();
-    return sample === null ? '—' : `${Math.round(sample.cpu)}%`;
-  });
-
-  /**
-   * Gets the CPU tile's app-share reading, formatted as a percentage, or null when the app share was
-   * not read (so the tile shows the machine reading alone).
-   */
-  protected readonly cpuAppValue: Signal<string | null> = computed((): string | null => {
-    const usage: MetricsSample['app'] = this.latest()?.app;
-    return usage === undefined ? null : `${Math.round(usage.cpuPercent)}%`;
-  });
-
-  /**
-   * Gets the total physical memory, formatted for the memory tile's label suffix, or null before the
-   * first sample.
-   */
-  protected readonly memoryTotal: Signal<string | null> = computed((): string | null => {
-    const sample: MetricsSample | null = this.latest();
-    return sample === null ? null : this.formatBytes(sample.memory.totalBytes);
-  });
-
-  /**
-   * Gets the memory tile's current machine-wide reading: used bytes with the percentage (the total is
-   * shown against the tile label).
-   */
-  protected readonly memoryValue: Signal<string> = computed((): string => {
-    const sample: MetricsSample | null = this.latest();
-    if (sample === null) {
-      return '—';
-    }
-    const { usedBytes, percent }: MetricsSample['memory'] = sample.memory;
-    return `${this.formatBytes(usedBytes)} (${Math.round(percent)}%)`;
-  });
-
-  /**
-   * Gets the memory tile's app-share reading, formatted as bytes with the percentage, or null when the
-   * app share was not read.
-   */
-  protected readonly memoryAppValue: Signal<string | null> = computed((): string | null => {
-    const usage: MetricsSample['app'] = this.latest()?.app;
-    return usage === undefined
-      ? null
-      : `${this.formatBytes(usage.memoryBytes)} (${Math.round(usage.memoryPercent)}%)`;
-  });
-
-  /**
-   * Holds the recent inbound (received) network-throughput history (bytes/sec), oldest first.
-   */
-  protected readonly networkRxHistory: WritableSignal<readonly number[]> = signal<
-    readonly number[]
-  >([]);
-
-  /**
-   * Holds the recent outbound (sent) network-throughput history (bytes/sec), oldest first.
-   */
-  protected readonly networkTxHistory: WritableSignal<readonly number[]> = signal<
-    readonly number[]
-  >([]);
-
-  /**
-   * Holds the recent disk read-throughput history (bytes/sec), oldest first.
-   */
-  protected readonly diskReadHistory: WritableSignal<readonly number[]> = signal<readonly number[]>(
-    [],
-  );
-
-  /**
-   * Holds the recent disk write-throughput history (bytes/sec), oldest first.
-   */
-  protected readonly diskWriteHistory: WritableSignal<readonly number[]> = signal<
-    readonly number[]
-  >([]);
-
-  /**
-   * Holds the recent GPU-utilisation history (percent), oldest first.
-   */
-  protected readonly gpuHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
-
-  /**
-   * Gets the network tile's received-throughput reading, or a placeholder when unavailable.
-   */
-  protected readonly networkRxValue: Signal<string> = computed((): string => {
-    const network: MetricsSample['network'] = this.latest()?.network;
-    return network === undefined ? '—' : this.formatRate(network.rxBytesPerSec);
-  });
-
-  /**
-   * Gets the network tile's sent-throughput reading, or a placeholder when unavailable.
-   */
-  protected readonly networkTxValue: Signal<string> = computed((): string => {
-    const network: MetricsSample['network'] = this.latest()?.network;
-    return network === undefined ? '—' : this.formatRate(network.txBytesPerSec);
-  });
-
-  /**
-   * Gets the disk tile's read-throughput reading, or a placeholder when unavailable.
-   */
-  protected readonly diskReadValue: Signal<string> = computed((): string => {
-    const disk: MetricsSample['disk'] = this.latest()?.disk;
-    return disk === undefined ? '—' : this.formatRate(disk.readBytesPerSec);
-  });
-
-  /**
-   * Gets the disk tile's write-throughput reading, or a placeholder when unavailable.
-   */
-  protected readonly diskWriteValue: Signal<string> = computed((): string => {
-    const disk: MetricsSample['disk'] = this.latest()?.disk;
-    return disk === undefined ? '—' : this.formatRate(disk.writeBytesPerSec);
-  });
-
-  /**
-   * Gets the GPU tile's current value: its utilisation, or `N/A` where the platform does not report it.
-   */
-  protected readonly gpuValue: Signal<string> = computed((): string => {
-    const gpu: MetricsSample['gpu'] = this.latest()?.gpu;
-    if (this.latest() === null) {
-      return '—';
-    }
-    return gpu?.available === true ? `${Math.round(gpu.percent)}%` : 'N/A';
-  });
-
-  /**
-   * Gets the CPU tile's channel: a single graph with the machine reading and the app overlay.
-   */
-  protected readonly cpuChannels: Signal<readonly TileChannel[]> = computed(
-    (): readonly TileChannel[] => [
-      {
-        value: this.cpuValue(),
-        values: this.cpuHistory(),
-        appValue: this.cpuAppValue(),
-        appValues: this.appCpuHistory(),
-      },
-    ],
-  );
-
-  /**
-   * Gets the GPU tile's channel: a single utilisation graph (no app attribution is possible).
-   */
-  protected readonly gpuChannels: Signal<readonly TileChannel[]> = computed(
-    (): readonly TileChannel[] => [{ value: this.gpuValue(), values: this.gpuHistory() }],
-  );
-
-  /**
-   * Gets the Memory tile's channel: a single graph with the used reading and the app overlay.
-   */
-  protected readonly memoryChannels: Signal<readonly TileChannel[]> = computed(
-    (): readonly TileChannel[] => [
-      {
-        value: this.memoryValue(),
-        values: this.memoryHistory(),
-        appValue: this.memoryAppValue(),
-        appValues: this.appMemoryHistory(),
-      },
-    ],
-  );
-
-  /**
-   * Gets the Network tile's channels: independently-scaled Received and Sent graphs.
-   */
-  protected readonly networkChannels: Signal<readonly TileChannel[]> = computed(
-    (): readonly TileChannel[] => [
-      {
-        caption: 'Received',
-        value: this.networkRxValue(),
-        values: this.networkRxHistory(),
-        max: Math.max(1, ...this.networkRxHistory()),
-      },
-      {
-        caption: 'Sent',
-        value: this.networkTxValue(),
-        values: this.networkTxHistory(),
-        max: Math.max(1, ...this.networkTxHistory()),
-      },
-    ],
-  );
-
-  /**
-   * Gets the Disk tile's channels: independently-scaled Read and Write graphs.
-   */
-  protected readonly diskChannels: Signal<readonly TileChannel[]> = computed(
-    (): readonly TileChannel[] => [
-      {
-        caption: 'Read',
-        value: this.diskReadValue(),
-        values: this.diskReadHistory(),
-        max: Math.max(1, ...this.diskReadHistory()),
-      },
-      {
-        caption: 'Write',
-        value: this.diskWriteValue(),
-        values: this.diskWriteHistory(),
-        max: Math.max(1, ...this.diskWriteHistory()),
-      },
-    ],
-  );
 
   /**
    * Holds the records of the selected session, oldest first.
@@ -511,6 +371,23 @@ export class SystemMonitorView implements OnInit {
   protected readonly enabled: WritableSignal<ReadonlySet<Severity>> = signal<ReadonlySet<Severity>>(
     new Set<Severity>(this.settings.get('systemMonitor.defaultSeverities')),
   );
+
+  /**
+   * Holds the origins shown (the main process, the renderer windows); the Filters menu changes them.
+   */
+  protected readonly origins: WritableSignal<ReadonlySet<LogOrigin>> = signal<
+    ReadonlySet<LogOrigin>
+  >(new Set<LogOrigin>(['main', 'renderer']));
+
+  /**
+   * Holds the order the records are listed in by time: oldest first, or newest first.
+   */
+  private readonly newestFirst: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the id (as a string) of the record whose details are shown: the one last clicked.
+   */
+  protected readonly focusedId: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
    * Holds the case-insensitive text the source or message must contain; empty shows all.
@@ -549,14 +426,15 @@ export class SystemMonitorView implements OnInit {
    */
   protected readonly filtered: Signal<readonly LogRecord[]> = computed((): readonly LogRecord[] => {
     const enabled: ReadonlySet<Severity> = this.enabled();
+    const origins: ReadonlySet<LogOrigin> = this.origins();
     const needle: string = this.text().trim().toLowerCase();
     return this.records().filter((record: LogRecord): boolean => {
-      if (!enabled.has(record.severity)) {
+      if (!enabled.has(record.severity) || !origins.has(record.origin)) {
         return false;
       }
       if (
         needle.length > 0 &&
-        !`${record.source} ${record.message}`.toLowerCase().includes(needle)
+        !`${record.source} ${fullMessage(record)}`.toLowerCase().includes(needle)
       ) {
         return false;
       }
@@ -586,9 +464,41 @@ export class SystemMonitorView implements OnInit {
       warnings: records.filter((record: LogRecord): boolean => record.severity === 'warning')
         .length,
       selected: this.selectedCount(),
-      appCpu: this.cpuAppValue(),
-      appMemory: this.memoryAppValue(),
+      appCpu: this.readings.cpuAppValue(),
+      appMemory: this.readings.memoryAppValue(),
     };
+  });
+
+  /**
+   * Gets the logs at a glance for the Overview: the viewed session's counts by severity, and its latest
+   * records as the Logs view's filters show them, newest first — so the card and the view agree.
+   */
+  protected readonly logsOverview: Signal<LogsOverview> = computed((): LogsOverview => {
+    const records: readonly LogRecord[] = this.records();
+    let info: number = 0;
+    let warnings: number = 0;
+    let errors: number = 0;
+    for (const record of records) {
+      if (record.severity === 'info') {
+        info += 1;
+      } else if (record.severity === 'warning') {
+        warnings += 1;
+      } else if (record.severity === 'error') {
+        errors += 1;
+      }
+    }
+    return { info, warnings, errors, recent: this.filtered().slice(-OVERVIEW_RECORDS).reverse() };
+  });
+
+  /**
+   * Gets when the current logging session started, or null before the sessions have loaded.
+   */
+  protected readonly sessionStartedAt: Signal<string | null> = computed((): string | null => {
+    const current: string | null = this.currentSessionId();
+    return (
+      this.sessions().find((session: LogSession): boolean => session.id === current)?.startedAt ??
+      null
+    );
   });
 
   /**
@@ -657,16 +567,106 @@ export class SystemMonitorView implements OnInit {
    * Gets the filtered records adapted to the table's row shape, oldest first. Each row carries its
    * {@link AuditEntry} display strings, so the template formats nothing.
    */
-  protected readonly rows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] =>
-    this.filtered().map((record: LogRecord): TableRow => this.rowFor(record)),
+  protected readonly rows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] => {
+    const rows: TableRow[] = this.filtered().map((record: LogRecord): TableRow =>
+      this.rowFor(record),
+    );
+    return this.newestFirst() ? rows.reverse() : rows;
+  });
+
+  /**
+   * Gets the record whose details are shown, or null when none has been chosen (or it has left the
+   * session's records).
+   */
+  protected readonly focusedRecord: Signal<LogRecord | null> = computed((): LogRecord | null => {
+    const id: string | null = this.focusedId();
+    return id === null
+      ? null
+      : (this.records().find((record: LogRecord): boolean => String(record.id) === id) ?? null);
+  });
+
+  /**
+   * Gets the viewed session's records counted by severity, over the whole session whatever the
+   * filters show.
+   */
+  protected readonly severityCounts: Signal<SeverityCounts> = computed((): SeverityCounts => {
+    const bySeverity: Record<Severity, number> = {
+      trace: 0,
+      debug: 0,
+      info: 0,
+      warning: 0,
+      error: 0,
+    };
+    for (const record of this.records()) {
+      bySeverity[record.severity] += 1;
+    }
+    return { total: this.records().length, bySeverity };
+  });
+
+  /**
+   * Gets the Logs header's summary: the session's records in all, then by level, a warning or error
+   * count toned while there are any.
+   */
+  protected readonly logSummary: Signal<readonly SummaryItem[]> = computed(
+    (): readonly SummaryItem[] => {
+      const counts: SeverityCounts = this.severityCounts();
+      return [
+        { label: 'Total', value: `${counts.total}` },
+        ...SEVERITIES.map((severity: Severity): SummaryItem => {
+          const count: number = counts.bySeverity[severity];
+          const tone: SummaryItem['tone'] =
+            count === 0
+              ? undefined
+              : severity === 'error'
+                ? 'danger'
+                : severity === 'warning'
+                  ? 'warning'
+                  : undefined;
+          return {
+            label: this.severityName(severity),
+            value: `${count}`,
+            ...(tone === undefined ? {} : { tone }),
+          };
+        }),
+      ];
+    },
   );
 
   /**
-   * Gets whether the audit currently shows any records, gating the ribbon's Copy action.
+   * Gets whether every severity is shown, so the All filter reads pressed.
    */
-  private readonly hasRecords: Signal<boolean> = computed(
-    (): boolean => this.filtered().length > 0,
+  protected readonly allSeverities: Signal<boolean> = computed(
+    (): boolean => this.enabled().size === SEVERITIES.length,
   );
+
+  /**
+   * Gets the Filters menu: each origin, ticked while shown.
+   */
+  protected readonly filterItems: Signal<readonly MenuItem[]> = computed(
+    (): readonly MenuItem[] => {
+      const origins: ReadonlySet<LogOrigin> = this.origins();
+      return (Object.keys(ORIGIN_LABELS) as LogOrigin[]).map((origin: LogOrigin): MenuItem => ({
+        id: origin,
+        label: ORIGIN_LABELS[origin],
+        checked: origins.has(origin),
+      }));
+    },
+  );
+
+  /**
+   * Gets the Logs view's more-actions menu.
+   */
+  protected readonly moreItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] => [
+    { id: 'refresh', label: 'Refresh', icon: Icon.REFRESH },
+    {
+      id: 'copy',
+      label: this.selectedCount() > 0 ? 'Copy Selected' : 'Copy Shown',
+      icon: Icon.COPY,
+      disabled: this.filtered().length === 0,
+    },
+    { id: 'select-none', label: 'Clear Selection', disabled: this.selectedCount() === 0 },
+    { id: 'clear-filters', label: 'Reset Filters' },
+  ]);
 
   /**
    * Holds the command registry the ribbon drives this view through while active.
@@ -677,12 +677,12 @@ export class SystemMonitorView implements OnInit {
    * Holds the handler the ribbon drives the active view through.
    */
   private readonly commandHandler: SystemMonitorCommandHandler = {
-    hasRecords: this.hasRecords,
     agentShown: this.agentVisible,
     toggleAgent: (): void => this.toggleAgent(),
     refresh: (): void => this.refresh(),
     clearFilters: (): void => this.clearFilters(),
-    copy: (): void => void this.copy(),
+    tab: this.selectedTab.asReadonly(),
+    selectTab: (tab: SystemMonitorTabId): void => this.selectTab(tab),
   };
 
   /**
@@ -713,19 +713,115 @@ export class SystemMonitorView implements OnInit {
     void this.loadRecords();
 
     const unsubscribeSamples: () => void = this.metrics.onSample((sample: MetricsSample): void =>
-      this.accept(sample),
+      this.readings.accept(sample),
     );
+    const unsubscribeProcesses: () => void = this.metrics.onProcesses(
+      (snapshot: ProcessesSnapshot): void => this.processes.accept(snapshot),
+    );
+    const unsubscribeGpu: () => void = this.metrics.onGpu((reading: GpuReading): void => {
+      this.gpu.accept(reading);
+      this.processes.acceptGpu(reading);
+    });
+    void this.loadInfo();
 
     // Whether this view has asked the backend to sample (one start per stop, whatever the rate does).
     let sampling: boolean = false;
     const destroy: DestroyRef = inject(DestroyRef);
     destroy.onDestroy(unsubscribeSamples);
+    destroy.onDestroy(unsubscribeProcesses);
+    destroy.onDestroy(unsubscribeGpu);
+    destroy.onDestroy(
+      this.metrics.onStorage((reading: StorageReading): void => this.storage.accept(reading)),
+    );
+    destroy.onDestroy(
+      this.metrics.onNetwork((reading: NetworkReading): void => this.network.accept(reading)),
+    );
     destroy.onDestroy((): void => this.unsubscribeFromLiveRecords());
     destroy.onDestroy((): void => this.commands.unregister(this.commandHandler));
     destroy.onDestroy((): void => {
       if (sampling) {
         this.metrics.stop();
       }
+    });
+
+    // Whether this view has asked the backend to list processes.
+    let listing: boolean = false;
+    destroy.onDestroy((): void => {
+      if (listing) {
+        this.metrics.stopProcesses();
+      }
+    });
+
+    // Whether this view has asked the backend to read the GPU.
+    // Storage devices are read only while the Storage view is in front of the user. The devices are
+    // looked up again each time it comes forward, so a drive plugged in since is listed.
+    let readingStorage: boolean = false;
+    destroy.onDestroy((): void => {
+      if (readingStorage) {
+        this.metrics.stopStorage();
+      }
+    });
+    effect((): void => {
+      const wanted: boolean =
+        this.isActive() && this.onScreen() && this.selectedTab() === SystemMonitorTabId.Storage;
+      untracked((): void => {
+        if (wanted && !readingStorage) {
+          this.metrics.startStorage();
+          void this.loadStorageInfo();
+        } else if (!wanted && readingStorage) {
+          this.metrics.stopStorage();
+        }
+        readingStorage = wanted;
+      });
+    });
+
+    // The network is read only while the Network view is in front of the user. The interfaces are
+    // looked up again each time it comes forward, so one that came up since is listed.
+    let readingNetwork: boolean = false;
+    destroy.onDestroy((): void => {
+      if (readingNetwork) {
+        this.metrics.stopNetwork();
+      }
+    });
+    effect((): void => {
+      const wanted: boolean =
+        this.isActive() && this.onScreen() && this.selectedTab() === SystemMonitorTabId.Network;
+      untracked((): void => {
+        if (wanted && !readingNetwork) {
+          this.metrics.startNetwork();
+          void this.loadNetworkInfo();
+        } else if (!wanted && readingNetwork) {
+          this.metrics.stopNetwork();
+        }
+        readingNetwork = wanted;
+      });
+    });
+
+    let readingGpu: boolean = false;
+    destroy.onDestroy((): void => {
+      if (readingGpu) {
+        this.metrics.stopGpu();
+      }
+    });
+
+    // The GPU is read in detail only while the GPU or Processes view is in front of the user and GPU
+    // Monitoring is on; its engines and processes are costlier than a sample, and no other view shows
+    // them.
+    effect((): void => {
+      const tab: SystemMonitorTabId = this.selectedTab();
+      const wanted: boolean =
+        this.isActive() &&
+        this.onScreen() &&
+        (tab === SystemMonitorTabId.Gpu || tab === SystemMonitorTabId.Processes) &&
+        this.readings.gpuMonitoring();
+      untracked((): void => {
+        if (wanted && !readingGpu) {
+          this.metrics.startGpu();
+        } else if (!wanted && readingGpu) {
+          this.metrics.stopGpu();
+        }
+        readingGpu = wanted;
+      });
     });
 
     // The ribbon handler follows the tab: its actions belong to the tab in front, on screen or not.
@@ -761,7 +857,7 @@ export class SystemMonitorView implements OnInit {
     // The backend's ref-count sees one start per stop, whatever the rate does in between.
     effect((): void => {
       const rate: number = this.refreshRate();
-      const gpu: boolean = this.gpuMonitoring();
+      const gpu: boolean = this.readings.gpuMonitoring();
       const wanted: boolean = this.isActive() && this.onScreen() && rate > 0;
       untracked((): void => {
         if (wanted) {
@@ -773,6 +869,30 @@ export class SystemMonitorView implements OnInit {
           this.metrics.stop();
         }
         sampling = wanted;
+      });
+    });
+
+    // Processes are listed only while a view showing them is in front of the user — Processes, the
+    // Overview's Processes card, the CPU and Memory views' top processes, or the GPU view's (whose
+    // readings on Windows carry pids, not names): a listing is a `ps` (or WMI query) every couple of
+    // seconds, far costlier than a sample.
+    effect((): void => {
+      const tab: SystemMonitorTabId = this.selectedTab();
+      const wanted: boolean =
+        this.isActive() &&
+        this.onScreen() &&
+        (tab === SystemMonitorTabId.Processes ||
+          tab === SystemMonitorTabId.Overview ||
+          tab === SystemMonitorTabId.Cpu ||
+          tab === SystemMonitorTabId.Memory ||
+          tab === SystemMonitorTabId.Gpu);
+      untracked((): void => {
+        if (wanted && !listing) {
+          this.metrics.startProcesses();
+        } else if (!wanted && listing) {
+          this.metrics.stopProcesses();
+        }
+        listing = wanted;
       });
     });
   }
@@ -826,65 +946,41 @@ export class SystemMonitorView implements OnInit {
   }
 
   /**
-   * Records one metrics sample: it becomes the current reading and is appended to the sparkline
-   * histories, which hold {@link historyLength} points.
-   * @param sample The sample to accept.
+   * Shows a view, as the ribbon's View group asks.
+   * @param tab The view to show.
    */
-  private accept(sample: MetricsSample): void {
-    this.latest.set(sample);
-    this.push(this.cpuHistory, sample.cpu);
-    this.push(this.memoryHistory, sample.memory.percent);
-    if (sample.app !== undefined) {
-      this.push(this.appCpuHistory, sample.app.cpuPercent);
-      this.push(this.appMemoryHistory, sample.app.memoryPercent);
-    }
-    if (sample.network !== undefined) {
-      this.push(this.networkRxHistory, sample.network.rxBytesPerSec);
-      this.push(this.networkTxHistory, sample.network.txBytesPerSec);
-    }
-    if (sample.disk !== undefined) {
-      this.push(this.diskReadHistory, sample.disk.readBytesPerSec);
-      this.push(this.diskWriteHistory, sample.disk.writeBytesPerSec);
-    }
-    if (sample.gpu?.available === true && this.gpuMonitoring()) {
-      this.push(this.gpuHistory, sample.gpu.percent);
+  protected selectTab(tab: SystemMonitorTabId): void {
+    this.selectedTab.set(tab);
+  }
+
+  /**
+   * Reads the machine's network interfaces, DNS servers and gateway, for the Network tab.
+   */
+  private async loadNetworkInfo(): Promise<void> {
+    const info: NetworkInfo | null = await this.metrics.networkInfo();
+    if (info !== null) {
+      this.network.setInfo(info);
     }
   }
 
   /**
-   * Appends one value to a bounded history signal.
-   * @param history The history signal to append to.
-   * @param value The value to append.
+   * Reads the machine's storage devices and the device each volume is on, for the Storage tab.
    */
-  private push(history: WritableSignal<readonly number[]>, value: number): void {
-    history.update((values: readonly number[]): readonly number[] =>
-      [...values, value].slice(-this.historyLength()),
-    );
-  }
-
-  /**
-   * Formats a byte count as a human-readable size.
-   * @param bytes The size in bytes.
-   * @returns Returns the formatted size (for example `6.1 GB`).
-   */
-  protected formatBytes(bytes: number): string {
-    const units: readonly string[] = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let size: number = bytes;
-    let unit: number = 0;
-    while (size >= 1024 && unit < units.length - 1) {
-      size /= 1024;
-      unit += 1;
+  private async loadStorageInfo(): Promise<void> {
+    const info: StorageInfo | null = await this.metrics.storageInfo();
+    if (info !== null) {
+      this.storage.setInfo(info);
     }
-    return `${unit === 0 ? size : size.toFixed(1)} ${units[unit]}`;
   }
 
   /**
-   * Formats a per-second byte rate as a human-readable throughput.
-   * @param bytesPerSec The rate in bytes per second.
-   * @returns Returns the formatted throughput (for example `1.2 MB/s`).
+   * Reads the machine's description once, for the Overview and CPU tabs.
    */
-  protected formatRate(bytesPerSec: number): string {
-    return `${this.formatBytes(bytesPerSec)}/s`;
+  private async loadInfo(): Promise<void> {
+    const info: SystemInfo | null = await this.metrics.info();
+    if (info !== null) {
+      this.readings.setInfo(info);
+    }
   }
 
   /**
@@ -900,6 +996,7 @@ export class SystemMonitorView implements OnInit {
    */
   protected clearFilters(): void {
     this.enabled.set(new Set<Severity>(this.settings.get('systemMonitor.defaultSeverities')));
+    this.origins.set(new Set<LogOrigin>(['main', 'renderer']));
     this.text.set('');
   }
 
@@ -918,7 +1015,7 @@ export class SystemMonitorView implements OnInit {
     const text: string = records
       .map(
         (record: LogRecord): string =>
-          `${record.timestamp} [${record.severity}] ${record.source}: ${record.message}`,
+          `${record.timestamp} [${record.severity}] ${record.source}: ${fullMessage(record)}`,
       )
       .join('\n');
     try {
@@ -929,18 +1026,88 @@ export class SystemMonitorView implements OnInit {
   }
 
   /**
-   * Toggles whether a clicked row is selected, so Copy can act on a chosen subset. Clicking a selected
-   * row deselects it.
-   * @param row The clicked table row.
+   * Chooses a clicked row: a plain click selects it alone and shows its details; ⌘ or Ctrl adds it to
+   * the selection or takes it out; Shift selects every row shown from the last one chosen to it. Copy
+   * acts on the selection.
+   * @param select The click, with its modifier keys.
    */
-  protected toggleRow(row: TableRow): void {
-    this.selected.update((selected: ReadonlySet<string>): ReadonlySet<string> => {
-      const next: Set<string> = new Set<string>(selected);
-      if (!next.delete(row.id)) {
-        next.add(row.id);
+  protected selectRow(select: TableRowSelect): void {
+    const id: string = select.row.id;
+    const anchor: string | null = this.focusedId();
+    if (select.range && anchor !== null) {
+      const ids: readonly string[] = this.rows().map((row: TableRow): string => row.id);
+      const from: number = ids.indexOf(anchor);
+      const to: number = ids.indexOf(id);
+      if (from >= 0 && to >= 0) {
+        this.selected.set(new Set<string>(ids.slice(Math.min(from, to), Math.max(from, to) + 1)));
+        return;
+      }
+    }
+    if (select.toggle) {
+      this.selected.update((selected: ReadonlySet<string>): ReadonlySet<string> => {
+        const next: Set<string> = new Set<string>(selected);
+        if (!next.delete(id)) {
+          next.add(id);
+        }
+        return next;
+      });
+    } else {
+      this.selected.set(new Set<string>([id]));
+    }
+    this.focusedId.set(id);
+  }
+
+  /**
+   * Lists the records oldest or newest first, as the Time header asks.
+   * @param sort The sort, or null to return to oldest first.
+   */
+  protected onSort(sort: TableSort | null): void {
+    this.newestFirst.set(sort?.direction === 'desc');
+  }
+
+  /**
+   * Shows every severity (the All filter).
+   */
+  protected showAllSeverities(): void {
+    this.enabled.set(new Set<Severity>(SEVERITIES));
+  }
+
+  /**
+   * Shows or hides an origin (the Filters menu).
+   * @param id The origin, as the menu item's id.
+   */
+  protected toggleOrigin(id: string): void {
+    const origin: LogOrigin = id === 'main' ? 'main' : 'renderer';
+    this.origins.update((origins: ReadonlySet<LogOrigin>): ReadonlySet<LogOrigin> => {
+      const next: Set<LogOrigin> = new Set<LogOrigin>(origins);
+      if (!next.delete(origin)) {
+        next.add(origin);
       }
       return next;
     });
+  }
+
+  /**
+   * Runs an action from the more-actions menu.
+   * @param id The action's id.
+   */
+  protected onMore(id: string): void {
+    switch (id) {
+      case 'refresh':
+        this.refresh();
+        break;
+      case 'copy':
+        void this.copy();
+        break;
+      case 'select-none':
+        this.clearSelection();
+        break;
+      case 'clear-filters':
+        this.clearFilters();
+        break;
+      default:
+        break;
+    }
   }
 
   /**
@@ -1014,12 +1181,21 @@ export class SystemMonitorView implements OnInit {
         severityLabel: this.severityLabel(record.severity),
         tone: this.severityTone(record.severity),
         origin: this.origin(record),
-        time: this.formatTime(record.timestamp),
+        time: formatLogTime(record.timestamp),
       };
       row = { id: String(record.id), data: entry };
       this.rowCache.set(record, row);
     }
     return row;
+  }
+
+  /**
+   * Gets a severity's name as a filter or count reads it (`Warning`).
+   * @param severity The severity.
+   * @returns Returns the name.
+   */
+  protected severityName(severity: Severity): string {
+    return `${severity.charAt(0).toUpperCase()}${severity.slice(1)}`;
   }
 
   /**
@@ -1047,17 +1223,6 @@ export class SystemMonitorView implements OnInit {
    */
   private origin(record: LogRecord): string {
     return record.window ? `${record.origin} · ${record.window}` : record.origin;
-  }
-
-  /**
-   * Formats a record timestamp as a locale time. About 1.5 µs a call, so it runs once per record (in
-   * {@link rowFor}), never per change-detection pass.
-   * @param timestamp The ISO-8601 timestamp.
-   * @returns Returns the formatted time, or the timestamp itself when it does not parse.
-   */
-  private formatTime(timestamp: string): string {
-    const date: Date = new Date(timestamp);
-    return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleTimeString();
   }
 
   /**

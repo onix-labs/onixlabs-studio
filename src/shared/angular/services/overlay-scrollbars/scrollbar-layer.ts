@@ -69,6 +69,12 @@ interface Drag {
 interface Overflow {
   readonly vertical: boolean;
   readonly horizontal: boolean;
+
+  /**
+   * The band at the top of the area that content scrolls under (a sticky header), in pixels: the
+   * area's `scroll-padding-top`. The vertical track starts below it.
+   */
+  readonly topInset: number;
 }
 
 /**
@@ -664,7 +670,8 @@ export class ScrollbarLayer {
       Math.max(MIN_THUMB_PX, Math.round((track * visible) / content)),
     );
     const travel: number = Math.max(0, track - length);
-    const offset: number = INSET_PX + Math.round((position / (content - visible)) * travel);
+    const start: number = axis === 'vertical' ? overflow.topInset : 0;
+    const offset: number = start + INSET_PX + Math.round((position / (content - visible)) * travel);
     return { offset, length };
   }
 
@@ -709,17 +716,21 @@ export class ScrollbarLayer {
   private trackOf(scroller: HTMLElement, axis: Axis, overflow: Overflow): number {
     const side: number = axis === 'vertical' ? scroller.clientHeight : scroller.clientWidth;
     const corner: boolean = axis === 'vertical' ? overflow.horizontal : overflow.vertical;
-    return side - INSET_PX * 2 - (corner ? CORNER_PX : 0);
+    const start: number = axis === 'vertical' ? overflow.topInset : 0;
+    return Math.max(0, side - start - INSET_PX * 2 - (corner ? CORNER_PX : 0));
   }
 
   /**
-   * Gets which axes an area scrolls along, from a single style lookup.
+   * Gets which axes an area scrolls along, and the band at its top that content scrolls under, from a
+   * single style lookup.
    * @param scroller The area.
-   * @returns Returns whether it scrolls down and whether it scrolls across.
+   * @returns Returns whether it scrolls down and whether it scrolls across, and its top inset.
    */
   private overflow(scroller: HTMLElement): Overflow {
     const style: CSSStyleDeclaration = this.view.getComputedStyle(scroller);
+    const topInset: number = Number.parseFloat(style.scrollPaddingTop);
     return {
+      topInset: Number.isFinite(topInset) ? Math.max(0, topInset) : 0,
       vertical:
         scroller.scrollHeight > scroller.clientHeight && SCROLLING_OVERFLOW.has(style.overflowY),
       horizontal:

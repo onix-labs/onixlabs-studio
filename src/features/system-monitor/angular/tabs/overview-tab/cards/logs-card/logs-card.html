@@ -1,0 +1,52 @@
+<app-system-monitor-dashboard-card
+  [icon]="Icon.MONITOR_LOGS"
+  heading="Logs"
+  subtitle="System events, warnings and errors"
+>
+  <span cardBadges title="Informational records">
+    <app-system-monitor-dashboard-badge
+      [icon]="Icon.INFO_FILL"
+      tone="info"
+      [value]="counts().info"
+    />
+  </span>
+  <span cardBadges title="Warnings">
+    <app-system-monitor-dashboard-badge
+      [icon]="Icon.WARNING_FILL"
+      tone="warning"
+      [value]="counts().warnings"
+    />
+  </span>
+  <span cardBadges title="Errors">
+    <app-system-monitor-dashboard-badge
+      [icon]="Icon.ERROR_FILL"
+      tone="danger"
+      [value]="counts().errors"
+    />
+  </span>
+
+  @if (rows().length > 0) {
+    <table class="logs-card__table" data-testid="logs-card-records">
+      <thead>
+        <tr>
+          <th class="logs-card__time">Time</th>
+          <th class="logs-card__level">Level</th>
+          <th>Message</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of rows(); track row.id) {
+          <tr>
+            <td class="logs-card__time">{{ row.time }}</td>
+            <td class="logs-card__level">
+              <app-chip [tone]="row.tone">{{ row.level }}</app-chip>
+            </td>
+            <td [title]="row.message">{{ row.message }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  } @else {
+    <p class="logs-card__empty">No records yet.</p>
+  }
+</app-system-monitor-dashboard-card>

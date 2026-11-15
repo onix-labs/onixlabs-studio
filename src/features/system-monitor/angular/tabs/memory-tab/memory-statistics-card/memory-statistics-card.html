@@ -1,0 +1,14 @@
+<app-system-monitor-dashboard-card [icon]="Icon.MONITOR_STATISTICS" heading="Memory Statistics">
+  @if (statistics().length > 0) {
+    <dl class="memory-statistics" data-testid="memory-statistics">
+      @for (statistic of statistics(); track statistic.label) {
+        <div class="memory-statistics__row">
+          <dt>{{ statistic.label }}</dt>
+          <dd>{{ statistic.value }}</dd>
+        </div>
+      }
+    </dl>
+  } @else {
+    <p class="memory-statistics__empty">Statistics appear after the next reading.</p>
+  }
+</app-system-monitor-dashboard-card>

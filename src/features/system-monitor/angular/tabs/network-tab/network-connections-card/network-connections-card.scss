@@ -1,0 +1,68 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+// The table scrolls within the card; there are usually hundreds of connections.
+.network-connections__scroll {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+.network-connections {
+  @include table;
+
+  thead th {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 1;
+    background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
+  }
+}
+
+.network-connections__process-column {
+  inline-size: 24%;
+}
+
+.network-connections__protocol-column {
+  inline-size: 5.5rem;
+}
+
+.network-connections__state-column {
+  inline-size: 8.5rem;
+}
+
+.network-connections__process {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-inline-size: 100%;
+}
+
+// An app's own icon, or a generic one on a quiet tile of the same size.
+.network-connections__icon {
+  flex: none;
+  inline-size: 1.1rem;
+  block-size: 1.1rem;
+}
+
+.network-connections__icon--generic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background-color: color-mix(in srgb, var(--accent-color) 18%, transparent);
+  color: var(--accent-color);
+}
+
+.network-connections__none {
+  text-align: center;
+  color: var(--form-muted-foreground-color);
+}
+
+.network-connections__empty {
+  @include empty;
+}

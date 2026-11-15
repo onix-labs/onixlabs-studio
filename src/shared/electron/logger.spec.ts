@@ -88,4 +88,15 @@ describe('Logger severity floor', () => {
 
     expect(messages(logger)).toEqual(['error']);
   });
+
+  it('keepsTheDetails_apartFromTheMessage', () => {
+    const logger: InstanceType<typeof Logger> = new Logger();
+    logger.setFloor('trace');
+
+    logger.info('Src', 'seeded', { providerCount: 7 });
+
+    const record: LogRecord | undefined = logger.query({}).at(-1);
+    expect(record?.message).toBe('seeded');
+    expect(record?.details).toEqual(['{"providerCount":7}']);
+  });
 });

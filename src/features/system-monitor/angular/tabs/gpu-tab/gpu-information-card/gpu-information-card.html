@@ -1,0 +1,14 @@
+<app-system-monitor-dashboard-card [icon]="Icon.MONITOR_SYSTEM" heading="GPU Information">
+  @if (rows().length > 0) {
+    <dl class="gpu-information" data-testid="gpu-information">
+      @for (row of rows(); track row.label) {
+        <div class="gpu-information__row">
+          <dt>{{ row.label }}</dt>
+          <dd [title]="row.value">{{ row.value }}</dd>
+        </div>
+      }
+    </dl>
+  } @else {
+    <p class="gpu-information__empty">Reading the GPU…</p>
+  }
+</app-system-monitor-dashboard-card>

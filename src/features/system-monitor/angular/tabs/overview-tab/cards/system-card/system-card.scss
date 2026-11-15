@@ -1,0 +1,11 @@
+@use '../../../cards' as *;
+
+:host {
+  @include host;
+}
+
+// The facts take the rest of the card, sharing it between their rows.
+.system-card__facts {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}

@@ -1,0 +1,56 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+.gpu-engines__unit {
+  font-size: 0.72rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.gpu-engines {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: 0.35rem;
+  min-block-size: 0;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+// The engine's glyph and name, its activity, then its graph taking the rest of the row.
+.gpu-engines__row {
+  display: grid;
+  grid-template-columns: auto 8rem 4.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.8rem;
+}
+
+.gpu-engines__icon {
+  color: var(--form-muted-foreground-color);
+}
+
+.gpu-engines__name {
+  white-space: nowrap;
+  color: var(--body-foreground-color);
+}
+
+.gpu-engines__value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+  color: var(--body-foreground-color);
+}
+
+.gpu-engines__graph {
+  block-size: 1.4rem;
+}
+
+.gpu-engines__empty {
+  @include empty;
+}

@@ -1,0 +1,36 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+// The rows scroll within the card when it is short, the header staying put.
+.memory-processes__scroll {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+.memory-processes {
+  @include table;
+
+  th {
+    position: sticky;
+    inset-block-start: 0;
+    background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
+  }
+
+  tbody tr:last-child td {
+    border-block-end: none;
+  }
+}
+
+.memory-processes .memory-processes__number {
+  @include number;
+
+  inline-size: 16%;
+}
+
+.memory-processes__empty {
+  @include empty;
+}

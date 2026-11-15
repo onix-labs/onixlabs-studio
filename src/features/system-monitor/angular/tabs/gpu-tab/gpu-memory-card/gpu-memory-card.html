@@ -1,0 +1,26 @@
+<app-system-monitor-dashboard-card [icon]="Icon.MONITOR_MEMORY" heading="Memory (VRAM)">
+  <app-system-monitor-dashboard-badge cardBadges [value]="summary()" />
+  @let used = percent();
+  @if (used !== undefined) {
+    <div class="gpu-memory">
+      <app-system-monitor-radial-meter class="gpu-memory__meter" [percent]="used" label="In Use" />
+      <dl class="gpu-memory__entries">
+        @for (entry of entries(); track entry.label) {
+          <div class="gpu-memory__entry">
+            <dt>
+              <span
+                class="gpu-memory__key"
+                [class.gpu-memory__key--used]="entry.key === 'used'"
+                [class.gpu-memory__key--free]="entry.key === 'free'"
+              ></span>
+              {{ entry.label }}
+            </dt>
+            <dd>{{ entry.value }}</dd>
+          </div>
+        }
+      </dl>
+    </div>
+  } @else {
+    <p class="gpu-memory__empty">This GPU does not report its video memory in use.</p>
+  }
+</app-system-monitor-dashboard-card>

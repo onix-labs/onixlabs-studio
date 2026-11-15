@@ -1,0 +1,45 @@
+<div class="cpu" data-testid="cpu-view">
+  <header class="cpu__header">
+    <app-icon class="cpu__icon" [icon]="Icon.MONITOR_CPU" [size]="1.75" />
+    <h2 class="cpu__title">CPU</h2>
+    <span class="cpu__model" [title]="model()">{{ model() }}</span>
+    <app-system-monitor-view-summary [items]="chips()" />
+  </header>
+
+  <div class="cpu__grid">
+    <app-system-monitor-dashboard-card
+      class="cpu__total"
+      [icon]="Icon.MONITOR_TREND"
+      heading="Total Utilisation"
+    >
+      <app-system-monitor-dashboard-badge
+        cardBadges
+        [value]="readings.cpuValue()"
+        caption="System"
+      />
+      @if (readings.cpuAppValue(); as studio) {
+        <app-system-monitor-dashboard-badge
+          cardBadges
+          tone="neutral"
+          [value]="studio"
+          caption="Studio"
+        />
+      }
+      <app-system-monitor-line-chart
+        class="cpu__chart"
+        ariaLabel="CPU utilisation over time, the system's and Studio's"
+        [series]="series()"
+        [max]="100"
+        [format]="percent"
+        [showLegend]="false"
+        [intervalMs]="readings.intervalMs()"
+      />
+      <span class="cpu__span">{{ readings.historyLabel() }}</span>
+    </app-system-monitor-dashboard-card>
+
+    <app-system-monitor-cpu-information-card class="cpu__information" />
+    <app-system-monitor-cpu-cores-card class="cpu__cores" />
+    <app-system-monitor-cpu-groups-card class="cpu__groups" />
+    <app-system-monitor-cpu-processes-card class="cpu__processes" />
+  </div>
+</div>

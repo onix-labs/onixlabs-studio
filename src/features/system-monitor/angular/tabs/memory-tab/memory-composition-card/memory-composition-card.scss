@@ -1,0 +1,62 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+// The graph with its legend to the right, as the bands stack. The row takes the legend's height, and
+// the graph (which has none of its own) stretches to it.
+.memory-composition {
+  display: flex;
+  flex: none;
+  gap: 1.25rem;
+}
+
+.memory-composition__chart {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.memory-composition__legend {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.6rem;
+  min-inline-size: 10rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.memory-composition__item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.memory-composition__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.memory-composition__key {
+  inline-size: 0.6rem;
+  block-size: 0.6rem;
+  border-radius: 2px;
+}
+
+.memory-composition__value {
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--body-foreground-color);
+}
+
+.memory-composition__empty {
+  @include empty;
+}

@@ -722,6 +722,21 @@ export class Table {
       });
     });
 
+    // The pinned header covers the top of the scroll area, so it is the area's top scroll padding: the
+    // scroll bar's track starts below it, and rows scrolled into view are not left under it. Measured,
+    // so a header that wraps or a display-scale change is followed.
+    afterRenderEffect({
+      earlyRead: (): number =>
+        this.host.nativeElement.querySelector('.table-head')?.getBoundingClientRect().height ?? 0,
+      write: (height: Signal<number>): void => {
+        const element: HTMLElement | undefined = this.scroller()?.nativeElement;
+        const padding: string = `${height()}px`;
+        if (element !== undefined && element.style.scrollPaddingBlockStart !== padding) {
+          element.style.scrollPaddingBlockStart = padding;
+        }
+      },
+    });
+
     // The row height is measured, not assumed, so a font-size or display-scale change is followed.
     // Read in the render's read phase, after the rows are laid out.
     afterRenderEffect({

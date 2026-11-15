@@ -1,0 +1,86 @@
+// A card fills its grid cell: the head, then a body that takes the rest.
+:host {
+  display: block;
+  block-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+// Each card is a size container: what it holds can size itself by the card's height (a leading graph is a
+// share of it), and since the cards of a row share one height, those shares line up across the row.
+// What does not fit is clipped rather than pushing the card, and so its row, taller.
+.dashboard-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-sizing: border-box;
+  block-size: 100%;
+  container-type: size;
+  overflow: hidden;
+  padding: 0.9rem 1rem 0.7rem;
+  border: 1px solid var(--dock-border-color);
+  border-radius: calc(1rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  // A shade darker than the panel, so each card reads as a well its readings sit in.
+  background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
+}
+
+// A head centres its title against its badges; with a subtitle, every head is as tall as a two-line
+// one, so a subtitle that wraps beside wide badges does not push its card's body down out of line with
+// its neighbours'.
+.dashboard-card__head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.dashboard-card__head--subtitled {
+  align-items: flex-start;
+  min-block-size: 3.4rem;
+}
+
+.dashboard-card__icon {
+  flex: none;
+  color: var(--body-foreground-color);
+}
+
+.dashboard-card__titles {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.dashboard-card__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+// At most two lines, the full text in its tooltip, so no head outgrows the height the row shares.
+.dashboard-card__subtitle {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  margin: 0.1rem 0 0;
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+}
+
+// The badges share one height (the tallest's), each centring its own content.
+.dashboard-card__badges {
+  display: flex;
+  flex: none;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.dashboard-card__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-block-size: 0;
+}

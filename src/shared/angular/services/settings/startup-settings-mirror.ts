@@ -47,6 +47,7 @@ export class StartupSettingsMirror {
     ollamaStart: this.settings.value('aiManager.startRuntime')(),
     ollamaKeepAliveMinutes: this.settings.value('aiManager.keepModelsLoadedMinutes')(),
     skillLibraryFolder: this.settings.value('aiManager.skillLibraryFolder')(),
+    gpuMonitoring: this.settings.value('systemMonitor.gpuMonitoring')(),
   }));
 
   /**

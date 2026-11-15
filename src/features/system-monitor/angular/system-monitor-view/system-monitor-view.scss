@@ -1,5 +1,6 @@
-// The System Monitor view fills its tab (#951): the resource graphs stacked in a side panel, and beside
-// them the log audit — a filter toolbar over a scrolling, column-aligned table — filling the rest.
+// The System Monitor view fills its tab with the view the ribbon's View group has chosen (Overview,
+// each resource, Logs). The Logs view is the log audit: a header holding its filters and counting the
+// session's records by level, a scrolling table, and the chosen record's details beneath.
 :host {
   display: block;
   block-size: 100%;
@@ -9,42 +10,6 @@
   block-size: 100%;
 }
 
-// The side panel: a small title over the graphs, one per row, scrolling once the panel is too short to
-// hold them all.
-.system-monitor__resources {
-  display: flex;
-  flex-direction: column;
-  block-size: 100%;
-  min-block-size: 0;
-  overflow: auto;
-  padding: 0.5rem 0.75rem 0.75rem;
-}
-
-.system-monitor__resources-title {
-  flex: none;
-  margin: 0 0 0.5rem;
-  padding-inline: 0.25rem;
-  color: var(--form-muted-foreground-color);
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-// The metric tiles, stacked, sharing the panel's height equally. A tile shrinks no further than its
-// own content (its readings and a legible graph), and the list no further than its tiles, so a panel
-// too short for all five scrolls rather than squashing them.
-.system-monitor__tiles {
-  display: flex;
-  flex: 1 0 auto;
-  flex-direction: column;
-  gap: 0.75rem;
-
-  > app-metric-tile {
-    flex: 1 1 0;
-  }
-}
-
 .system-monitor__main {
   display: flex;
   flex-direction: column;
@@ -52,87 +17,131 @@
   min-block-size: 0;
 }
 
-.system-monitor__audit {
+// The chosen tab's body fills what the strip leaves; each tab scrolls its own content.
+.system-monitor__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-block-size: 0;
+
+  > * {
+    flex: 1 1 auto;
+    min-block-size: 0;
+  }
+}
+
+// The Logs view fills its tab: the header, the table (which scrolls its own rows) and the chosen
+// record's details, fitting a full-screen 1080p display and scrolling below that.
+.logs {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
-  min-block-size: 0;
+  gap: 0.5rem;
+  box-sizing: border-box;
+  min-block-size: 36rem;
+  padding: 0.5rem;
+  overflow: auto;
 }
 
-// The filter toolbar: session picker, severity chips, free-text search, and a match count.
-.system-monitor__toolbar {
+// The title, the session, the levels and the filter, then the Filters and more-actions menus against
+// the summary at the right edge, wrapping onto a second line when the view is narrow.
+.logs__header {
   display: flex;
   flex: none;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.6rem 1rem;
-  border-block-end: 1px solid var(--dock-border-color);
+  min-inline-size: 0;
 }
 
-.system-monitor__session {
-  flex: none;
-  min-inline-size: 14rem;
-}
+// The controls beside the filter stand as tall as it: a button's height is the control height, which
+// these groups set to the floating field's (the session picker is a floating one already).
+.logs__levels,
+.logs__actions {
+  --control-height: 2.75rem;
 
-.system-monitor__severities {
   display: flex;
   flex: none;
   gap: 0.3rem;
 }
 
-.system-monitor__search {
-  flex: 1 1 auto;
-  min-inline-size: 8rem;
-}
-
-.system-monitor__count {
+.logs__session {
   flex: none;
-  font-size: 0.78rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--form-muted-foreground-color);
+  min-inline-size: 16rem;
 }
 
-// The "n selected" indicator shown when rows are selected, ahead of the contextual Copy/Clear actions.
-.system-monitor__selection {
+.logs__search {
+  flex: 0 1 20rem;
+  min-inline-size: 12rem;
+}
+
+// The menus sit against the summary, the spare width falling between them and the filter.
+.logs__actions {
+  margin-inline-start: auto;
+}
+
+.logs__summary {
+  margin-inline-start: 0;
+}
+
+.logs__icon {
   flex: none;
-  font-size: 0.78rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--accent-color);
-}
-
-// Copy and Clear sit in the toolbar's flow right after the indicator, so the row holds its place there
-// rather than pushing to the trailing edge, and it never gives up width to the flexing search field.
-.system-monitor__selection-actions {
-  flex: none;
-}
-
-// The audit table (the shared app-table) fills the remaining height and scrolls its own body.
-.system-monitor__table {
-  flex: 1 1 auto;
-  min-block-size: 0;
-}
-
-// The severity, as a chip toned by how severe it is (see `severityTone`).
-.system-monitor__badge {
-  letter-spacing: 0.03em;
-}
-
-.system-monitor__where {
-  color: var(--form-muted-foreground-color);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.system-monitor__message {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   color: var(--body-foreground-color);
 }
 
-.system-monitor__time {
+.logs__title {
+  flex: none;
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+// The table sits in a well like the other views' cards, its rows scrolling within it.
+.logs__list {
+  display: flex;
+  flex: 1 1 auto;
+  min-block-size: 14rem;
+  overflow: hidden;
+  border: 1px solid var(--dock-border-color);
+  border-radius: calc(1rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
+}
+
+.logs__table {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.logs__time {
   font-variant-numeric: tabular-nums;
-  color: var(--form-muted-foreground-color);
   white-space: nowrap;
+  color: var(--body-foreground-color);
+}
+
+.logs__badge {
+  letter-spacing: 0.03em;
+}
+
+.logs__component {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--body-foreground-color);
+}
+
+.logs__message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--body-foreground-color);
+}
+
+// The chosen record's details beside its context, a third of the view's height.
+.logs__details {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  block-size: clamp(13rem, 30%, 17rem);
 }

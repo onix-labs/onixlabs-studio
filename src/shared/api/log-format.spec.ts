@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { appendDetails, serializeDetail } from './log-format';
+import {
+  appendDetails,
+  fullMessage,
+  MAX_LOG_DETAILS,
+  sanitizeDetails,
+  serializeDetail,
+  serializeDetails,
+} from './log-format';
 
 describe('serializeDetail', () => {
   it('passesStringsThrough', () => {
@@ -30,5 +37,29 @@ describe('appendDetails', () => {
 
   it('appendsSerialisedDetails', () => {
     expect(appendDetails('failed', ['at step', { code: 2 }])).toBe('failed at step {"code":2}');
+  });
+});
+
+describe('serializeDetails', () => {
+  it('keepsEachDetail_orNoneWhenThereAreNone', () => {
+    expect(serializeDetails([])).toBeUndefined();
+    expect(serializeDetails(['a', { b: 1 }])).toEqual(['a', '{"b":1}']);
+  });
+});
+
+describe('sanitizeDetails', () => {
+  it('keepsOnlyStrings_capped', () => {
+    expect(sanitizeDetails('nope')).toBeUndefined();
+    expect(sanitizeDetails([1, 'a'])).toEqual(['a']);
+    expect(sanitizeDetails(Array.from({ length: 20 }, (): string => 'x'))).toHaveLength(
+      MAX_LOG_DETAILS,
+    );
+  });
+});
+
+describe('fullMessage', () => {
+  it('appendsTheDetails', () => {
+    expect(fullMessage({ message: 'seeded', details: ['{"a":1}'] })).toBe('seeded {"a":1}');
+    expect(fullMessage({ message: 'seeded' })).toBe('seeded');
   });
 });

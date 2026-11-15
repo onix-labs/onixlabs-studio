@@ -1,0 +1,168 @@
+// A line chart fills the box its host gives it: the value axis on the left, the plot beside it, and
+// any legend beneath.
+:host {
+  display: block;
+  min-block-size: 0;
+}
+
+// The plot takes the chart's spare height, or exactly --line-chart-plot-height where a host sets one,
+// so graphs side by side line up whether or not each has a legend beneath it.
+.line-chart {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: var(--line-chart-plot-height, minmax(0, 1fr)) auto;
+  block-size: 100%;
+  column-gap: 0.5rem;
+}
+
+.line-chart--bare {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+// The ticks are placed against the plot's height, so the column is a positioning context for them.
+.line-chart__ticks {
+  position: relative;
+  min-inline-size: 2.5rem;
+}
+
+.line-chart__tick {
+  position: absolute;
+  inset-inline-end: 0;
+  transform: translateY(-50%);
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
+}
+
+.line-chart__plot {
+  position: relative;
+  min-block-size: 0;
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  outline: none;
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px var(--accent-color);
+  }
+}
+
+// The SVG is laid over the plot rather than sizing it: an SVG with a viewBox takes its height from its
+// width, which would make every chart as tall as it is wide.
+.line-chart__svg {
+  position: absolute;
+  inset: 0;
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  overflow: visible;
+}
+
+// Hairline, solid and recessive: one step off the surface.
+.line-chart__grid {
+  stroke: color-mix(in srgb, var(--dock-border-color) 70%, transparent);
+  stroke-width: 1;
+}
+
+.line-chart__area {
+  fill: var(--accent-color);
+  fill-opacity: 0.1;
+}
+
+.line-chart__area--secondary {
+  fill: var(--form-muted-foreground-color);
+}
+
+.line-chart__line {
+  fill: none;
+  stroke: var(--accent-color);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.line-chart__line--secondary {
+  stroke: var(--form-muted-foreground-color);
+}
+
+.line-chart__crosshair {
+  stroke: var(--form-muted-foreground-color);
+  stroke-width: 1;
+}
+
+// The readout floats beside the crosshair, opening away from the nearer edge.
+.line-chart__readout {
+  position: absolute;
+  inset-block-start: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-inline-start: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--tooltip-border-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background-color: var(--tooltip-background-color);
+  box-shadow: 0 2px 8px var(--tooltip-shadow-color);
+  color: var(--tooltip-foreground-color);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.line-chart__readout--flipped {
+  margin-inline-start: 0;
+  transform: translateX(calc(-100% - 0.5rem));
+}
+
+.line-chart__when {
+  color: var(--form-muted-foreground-color);
+}
+
+.line-chart__row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.line-chart__value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.line-chart__label {
+  color: var(--form-muted-foreground-color);
+}
+
+// A series' key is a short stroke of its line, in its own colour.
+.line-chart__key {
+  display: inline-block;
+  flex: none;
+  inline-size: 0.75rem;
+  block-size: 2px;
+  border-radius: 1px;
+  background-color: var(--accent-color);
+}
+
+.line-chart__key--secondary {
+  background-color: var(--form-muted-foreground-color);
+}
+
+.line-chart__legend {
+  display: flex;
+  grid-column: 1 / -1;
+  justify-content: center;
+  gap: 1rem;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.72rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.line-chart__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}

@@ -1,0 +1,29 @@
+// The System Monitor views' shared page drawing: the scrolling page box, number and muted columns,
+// and the empty message. Each view's stylesheet `@use`s this and includes the mixins on its own
+// classes; the cards' own drawing is in `_cards.scss`.
+
+// The tab's own box: it fills the view's tab body and scrolls its page.
+@mixin host {
+  display: block;
+  block-size: 100%;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+// A number column in a list.
+@mixin number {
+  text-align: end;
+  white-space: nowrap;
+}
+
+// Secondary text in a list.
+@mixin muted {
+  color: var(--form-muted-foreground-color);
+}
+
+// The message shown where a section has nothing to list.
+@mixin empty {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--form-muted-foreground-color);
+}

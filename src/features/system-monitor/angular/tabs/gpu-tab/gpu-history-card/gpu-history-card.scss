@@ -1,0 +1,20 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+.gpu-history__ranges {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.gpu-history__chart {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+.gpu-history__empty {
+  @include empty;
+}

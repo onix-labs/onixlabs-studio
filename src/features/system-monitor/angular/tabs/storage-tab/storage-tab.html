@@ -1,0 +1,18 @@
+<div class="storage" data-testid="storage-view">
+  <header class="storage__header">
+    <app-icon class="storage__icon" [icon]="Icon.MONITOR_STORAGE" [size]="1.75" />
+    <h2 class="storage__title">Storage</h2>
+    <span class="storage__count">{{ count() }}</span>
+    <app-system-monitor-view-summary [items]="chips()" />
+  </header>
+
+  <div class="storage__grid">
+    <app-system-monitor-storage-activity-card class="storage__activity" />
+    <app-system-monitor-storage-iops-card class="storage__iops" />
+    <app-system-monitor-storage-devices-card class="storage__devices" />
+    <app-system-monitor-storage-device-card class="storage__device" />
+    <app-system-monitor-storage-utilisation-card class="storage__utilisation" />
+    <app-system-monitor-storage-volumes-card class="storage__volumes" />
+    <app-system-monitor-storage-statistics-card class="storage__statistics" />
+  </div>
+</div>

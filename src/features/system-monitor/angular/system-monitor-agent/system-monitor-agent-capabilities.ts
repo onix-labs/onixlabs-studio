@@ -1,7 +1,9 @@
 import { DestroyRef, inject, Service } from '@angular/core';
 import {
   LIST_LOG_SESSIONS,
+  LIST_PROCESSES,
   QUERY_LOGS,
+  READ_RESOURCE,
   READ_SYSTEM_METRICS,
   SET_LOG_LEVEL,
   type AiBridgeScope,
@@ -14,11 +16,45 @@ import {
   SEVERITIES,
   Severity,
 } from '@shared/api/log-channels';
-import { MetricsSample, METRICS_HISTORY } from '@shared/api/system-monitor-channels';
+import {
+  GpuReading,
+  MetricsSample,
+  METRICS_HISTORY,
+  NetworkSnapshot,
+  ProcessesSnapshot,
+  StorageSnapshot,
+  SystemInfo,
+} from '@shared/api/system-monitor-channels';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { SystemMonitorMetrics } from '../metrics/system-monitor-metrics';
+import { SystemMonitorReadings } from '../readings/system-monitor-readings';
+import {
+  describeGpu,
+  describeNetwork,
+  describeStorage,
+  listProcesses,
+  ProcessQuery,
+  readProcessQuery,
+} from './agent-resources';
+
+/**
+ * The resources {@link READ_RESOURCE} reads, one per view.
+ */
+export const RESOURCES: readonly string[] = [
+  'system',
+  'cpu',
+  'memory',
+  'gpu',
+  'storage',
+  'network',
+];
+
+/**
+ * The processes a resource's reading lists as the busiest of it.
+ */
+const TOP_PROCESSES: number = 10;
 
 /**
  * The most records one query may return. The main side clamps too; this is the renderer's own bound,
@@ -128,8 +164,19 @@ export class SystemMonitorAgentCapabilities {
   /**
    * Registers the capabilities and the reading buffer, and releases both with the view.
    */
+  /**
+   * Holds the backend, read on demand for what no view may be showing (processes, GPU, storage,
+   * network).
+   */
+  private readonly metrics: SystemMonitorMetrics = inject(SystemMonitorMetrics);
+
+  /**
+   * Holds the view's readings: the machine's description and its sampled history.
+   */
+  private readonly readings: SystemMonitorReadings = inject(SystemMonitorReadings);
+
   public constructor() {
-    const metrics: SystemMonitorMetrics = inject(SystemMonitorMetrics);
+    const metrics: SystemMonitorMetrics = this.metrics;
     const releases: readonly (() => void)[] = [
       metrics.onSample((sample: MetricsSample): void => {
         this.samples = [...this.samples, sample].slice(-METRICS_HISTORY);
@@ -146,6 +193,12 @@ export class SystemMonitorAgentCapabilities {
         READ_SYSTEM_METRICS,
         (_input: unknown, scope?: AiBridgeScope) =>
           this.mine(scope) ? this.readMetrics() : unavailable(),
+      ),
+      this.runtime.registerCapability(LIST_PROCESSES, (input: unknown, scope?: AiBridgeScope) =>
+        this.mine(scope) ? this.listProcesses(input) : unavailable(),
+      ),
+      this.runtime.registerCapability(READ_RESOURCE, (input: unknown, scope?: AiBridgeScope) =>
+        this.mine(scope) ? this.readResource(input) : unavailable(),
       ),
       this.runtime.registerCapability(SET_LOG_LEVEL, (input: unknown, scope?: AiBridgeScope) =>
         this.mine(scope) ? this.setLevel(input) : unavailable(),
@@ -301,6 +354,145 @@ export class SystemMonitorAgentCapabilities {
         ),
       },
     };
+  }
+
+  /**
+   * Lists the processes now, as the model asked: busiest first by its order, in its scope, matching
+   * its text, up to its limit. A GPU order reads the GPU too, for each process's share.
+   * @param input The model's input.
+   * @returns Returns the listing, or why there is none.
+   */
+  private async listProcesses(
+    input: unknown,
+  ): Promise<{ available: true; result?: Record<string, unknown>; error?: string }> {
+    const query: ProcessQuery = readProcessQuery(input);
+    const [snapshot, gpu]: [ProcessesSnapshot | null, GpuReading | null] = await Promise.all([
+      this.metrics.readProcessesNow(),
+      query.sort === 'gpu' ? this.metrics.readGpuNow() : Promise.resolve(null),
+    ]);
+    if (snapshot === null) {
+      return { available: true, error: 'The processes could not be listed.' };
+    }
+    return { available: true, result: listProcesses(snapshot, query, gpu) };
+  }
+
+  /**
+   * Reads one resource in full, as its view shows it: the system, CPU, memory, GPU, storage or
+   * network. What the views sample continuously (CPU, memory) comes from the view's history; what
+   * they read only while shown (processes, GPU, storage, network) is read now.
+   * @param input The model's input: `{ resource }`.
+   * @returns Returns the reading, or why there is none.
+   */
+  private async readResource(
+    input: unknown,
+  ): Promise<{ available: true; result?: Record<string, unknown>; error?: string }> {
+    const resource: unknown =
+      input !== null && typeof input === 'object'
+        ? (input as Record<string, unknown>)['resource']
+        : undefined;
+    const info: SystemInfo | null = this.readings.info();
+    const latest: MetricsSample | null = this.readings.latest();
+    const window: Record<string, unknown> = {
+      samples: this.readings.cpuHistory().length,
+      intervalMs: this.readings.intervalMs(),
+      note: 'Statistics are latest, low, average and high over the samples taken while the monitor has been open.',
+    };
+    const top: (sort: 'cpu' | 'memory') => Promise<Record<string, unknown> | null> = async (
+      sort: 'cpu' | 'memory',
+    ): Promise<Record<string, unknown> | null> => {
+      const snapshot: ProcessesSnapshot | null = await this.metrics.readProcessesNow();
+      return snapshot === null
+        ? null
+        : listProcesses(snapshot, { sort, scope: 'all', text: '', limit: TOP_PROCESSES }, null);
+    };
+    switch (resource) {
+      case 'system':
+        return {
+          available: true,
+          result: {
+            machine: info,
+            ...(info?.bootTime === undefined
+              ? {}
+              : { uptimeSeconds: Math.round((Date.now() - info.bootTime) / 1000) }),
+            health: this.readings.health(),
+            studio: latest?.app ?? null,
+          },
+        };
+      case 'cpu':
+        return {
+          available: true,
+          result: {
+            processor:
+              info === null
+                ? null
+                : {
+                    model: info.cpuModel,
+                    architecture: info.architecture,
+                    logicalCores: info.logicalCores,
+                    physicalCores: info.physicalCores,
+                    performanceCores: info.performanceCores,
+                    efficiencyCores: info.efficiencyCores,
+                    baseGhz: info.speedGhz,
+                    maxGhz: info.maxSpeedGhz,
+                    caches: info.caches,
+                  },
+            window,
+            utilisationPercent: statsOf(this.readings.cpuHistory()),
+            perCorePercentNow: this.readings.cores(),
+            studioPercent: statsOf(this.readings.appCpuHistory()),
+            busiestProcesses: await top('cpu'),
+          },
+        };
+      case 'memory':
+        return {
+          available: true,
+          result: {
+            totalBytes: latest?.memory.totalBytes ?? info?.totalMemoryBytes ?? null,
+            usedBytesNow: latest?.memory.usedBytes ?? null,
+            window,
+            usedPercent: statsOf(this.readings.memoryHistory()),
+            swapPercent: statsOf(this.readings.swapHistory()),
+            studioPercent: statsOf(this.readings.appMemoryHistory()),
+            breakdownNow: this.readings.memoryDetail(),
+            modules: info?.memoryModules ?? [],
+            ...(info?.memorySlots === undefined ? {} : { slots: info.memorySlots }),
+            ...(info?.memoryEcc === undefined ? {} : { ecc: info.memoryEcc }),
+            biggestProcesses: await top('memory'),
+          },
+        };
+      case 'gpu': {
+        const [gpu, snapshot]: [GpuReading | null, ProcessesSnapshot | null] = await Promise.all([
+          this.metrics.readGpuNow(),
+          this.metrics.readProcessesNow(),
+        ]);
+        return {
+          available: true,
+          result: {
+            gpus: info?.gpus ?? [],
+            window,
+            utilisationPercent: statsOf(this.readings.gpuHistory()),
+            now: gpu === null ? null : describeGpu(gpu, snapshot),
+          },
+        };
+      }
+      case 'storage': {
+        const storage: StorageSnapshot | null = await this.metrics.readStorageNow();
+        return storage === null
+          ? { available: true, error: 'The storage could not be read.' }
+          : { available: true, result: describeStorage(storage, this.readings.volumes()) };
+      }
+      case 'network': {
+        const network: NetworkSnapshot | null = await this.metrics.readNetworkNow();
+        return network === null
+          ? { available: true, error: 'The network could not be read.' }
+          : { available: true, result: describeNetwork(network) };
+      }
+      default:
+        return {
+          available: true,
+          error: `"${String(resource)}" is not a resource; ask for one of ${RESOURCES.join(', ')}.`,
+        };
+    }
   }
 
   /**

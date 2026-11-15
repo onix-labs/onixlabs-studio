@@ -1,0 +1,43 @@
+<app-system-monitor-dashboard-card
+  [icon]="Icon.MONITOR_NETWORK"
+  heading="Network"
+  subtitle="Network activity and interface statistics"
+>
+  <!-- The badges name the graph's lines in their colours: Received in the accent, Sent in grey. -->
+  <app-system-monitor-dashboard-badge
+    cardBadges
+    [icon]="Icon.MONITOR_IN"
+    [value]="readings.networkRxValue()"
+    caption="Received"
+  />
+  <app-system-monitor-dashboard-badge
+    cardBadges
+    [icon]="Icon.MONITOR_OUT"
+    tone="neutral"
+    [value]="readings.networkTxValue()"
+    caption="Sent"
+  />
+
+  <!-- Each direction has a graph of its own, on its own scale: received leads, in line with the
+       neighbouring cards' graphs; sent takes the rest of the card beneath it. -->
+  <app-system-monitor-line-chart
+    class="network-card__chart"
+    ariaLabel="Network data received over time"
+    [series]="received()"
+    [base]="1024"
+    [floor]="1024"
+    [format]="rate"
+    [showLegend]="false"
+    [intervalMs]="readings.intervalMs()"
+  />
+  <app-system-monitor-line-chart
+    class="network-card__sent"
+    ariaLabel="Network data sent over time"
+    [series]="sent()"
+    [base]="1024"
+    [floor]="1024"
+    [format]="rate"
+    [showLegend]="false"
+    [intervalMs]="readings.intervalMs()"
+  />
+</app-system-monitor-dashboard-card>

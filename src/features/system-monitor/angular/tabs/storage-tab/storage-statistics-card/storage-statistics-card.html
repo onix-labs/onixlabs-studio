@@ -1,0 +1,14 @@
+<app-system-monitor-dashboard-card [icon]="Icon.MONITOR_STATISTICS" [heading]="heading()">
+  @if (statistics().length > 0) {
+    <dl class="storage-statistics" data-testid="storage-statistics">
+      @for (statistic of statistics(); track statistic.label) {
+        <div class="storage-statistics__row">
+          <dt>{{ statistic.label }}</dt>
+          <dd>{{ statistic.value }}</dd>
+        </div>
+      }
+    </dl>
+  } @else {
+    <p class="storage-statistics__empty">Reading the drive…</p>
+  }
+</app-system-monitor-dashboard-card>

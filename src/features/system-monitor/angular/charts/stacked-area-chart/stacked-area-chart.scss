@@ -1,0 +1,118 @@
+// A stacked area chart fills the box its host gives it: the value axis on the left, the plot beside it.
+:host {
+  display: block;
+  min-block-size: 0;
+}
+
+.stacked-area-chart {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  block-size: 100%;
+  column-gap: 0.5rem;
+}
+
+.stacked-area-chart__ticks {
+  position: relative;
+  min-inline-size: 3rem;
+}
+
+.stacked-area-chart__tick {
+  position: absolute;
+  inset-inline-end: 0;
+  transform: translateY(-50%);
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
+}
+
+.stacked-area-chart__plot {
+  position: relative;
+  min-block-size: 0;
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  outline: none;
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px var(--accent-color);
+  }
+}
+
+// Laid over the plot, so its viewBox does not size it.
+.stacked-area-chart__svg {
+  position: absolute;
+  inset: 0;
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  overflow: visible;
+}
+
+.stacked-area-chart__grid {
+  stroke: color-mix(in srgb, var(--dock-border-color) 70%, transparent);
+  stroke-width: 1;
+}
+
+// Each band wears its layer's colour; a hairline of the card's surface separates it from the next.
+.stacked-area-chart__band {
+  stroke: color-mix(in srgb, var(--panel-surface-color), black 6%);
+  stroke-width: 1;
+}
+
+.stacked-area-chart__crosshair {
+  stroke: var(--form-muted-foreground-color);
+  stroke-width: 1;
+}
+
+.stacked-area-chart__readout {
+  position: absolute;
+  inset-block-start: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-inline-start: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--tooltip-border-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background-color: var(--tooltip-background-color);
+  box-shadow: 0 2px 8px var(--tooltip-shadow-color);
+  color: var(--tooltip-foreground-color);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.stacked-area-chart__readout--flipped {
+  margin-inline-start: 0;
+  transform: translateX(calc(-100% - 0.5rem));
+}
+
+.stacked-area-chart__when {
+  color: var(--form-muted-foreground-color);
+}
+
+.stacked-area-chart__row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+// A layer's key is a swatch of its band, as its area is a fill.
+.stacked-area-chart__key {
+  display: inline-block;
+  flex: none;
+  inline-size: 0.6rem;
+  block-size: 0.6rem;
+  border-radius: 2px;
+}
+
+.stacked-area-chart__value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.stacked-area-chart__label {
+  color: var(--form-muted-foreground-color);
+}

@@ -1,0 +1,52 @@
+:host {
+  display: flex;
+  flex-direction: column;
+}
+
+// The facts fill the height their host is given, sharing it equally between their rows.
+.system-facts {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  margin: 0;
+}
+
+// One fact per row: the icon and label on the left, the value on the right, ruled between; the last
+// has no rule, the card's edge closing it.
+.system-facts__fact {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.55rem 0.25rem;
+  border-block-end: 1px solid color-mix(in srgb, var(--dock-border-color) 50%, transparent);
+
+  &:last-child {
+    border-block-end: none;
+  }
+}
+
+.system-facts__label {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--body-foreground-color);
+}
+
+.system-facts__icon {
+  color: var(--form-muted-foreground-color);
+}
+
+.system-facts__value {
+  min-inline-size: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--body-foreground-color);
+}

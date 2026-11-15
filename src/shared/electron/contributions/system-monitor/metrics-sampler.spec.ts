@@ -35,6 +35,23 @@ describe('MetricsSampler', () => {
     expect(sample.cpu).toBe(50);
   });
 
+  it('cores_reportEachCoresOwnLoad_onceADeltaExists', () => {
+    const sampler: MetricsSampler = new MetricsSampler();
+    const first: MetricsSample = sampler.sample([core(0, 100), core(0, 100)], 1000, 250, 't0');
+    expect(first.cores).toBeUndefined();
+
+    // Core A fully busy, core B a quarter busy.
+    const sample: MetricsSample = sampler.sample([core(100, 100), core(25, 175)], 1000, 250, 't1');
+    expect(sample.cores).toEqual([100, 25]);
+  });
+
+  it('cores_areOmitted_whenTheCoreCountChanges', () => {
+    const sampler: MetricsSampler = new MetricsSampler();
+    sampler.sample([core(0, 100), core(0, 100)], 1000, 250, 't0');
+    const sample: MetricsSample = sampler.sample([core(50, 150)], 1000, 250, 't1');
+    expect(sample.cores).toBeUndefined();
+  });
+
   it('cpu_isZeroWhenNoTimePassed', () => {
     const sampler: MetricsSampler = new MetricsSampler();
     sampler.sample([core(0, 100)], 1000, 250, 't0');

@@ -33,6 +33,7 @@ import { SkillHandlers } from './ai/skills/skill-handlers';
 import { SkillLibrary } from './ai/skills/skill-library';
 import { mainContributions } from '@shared/electron/contributions';
 import { databaseContribution } from '@shared/electron/contributions/database/database.contribution';
+import { systemMonitorContribution } from '@shared/electron/contributions/system-monitor/system-monitor.contribution';
 import {
   ContributionContext,
   ContributionListener,
@@ -1150,6 +1151,7 @@ class Program {
         this.startupSettings = parsed;
         setProjectScanDepth(parsed.projectScanDepth);
         this.applyLogLimits(parsed);
+        systemMonitorContribution.setGpuHistory(parsed.gpuMonitoring);
         StartupPreferencesStore.write({ settings: parsed });
       },
     );
@@ -1472,6 +1474,9 @@ class Program {
     this.logger.pruneSessions(this.startupSettings.keepSessionLogsDays);
     this.installApplicationMenu();
     this.registerIpcHandlers();
+    // Keep the GPU's history from launch, as GPU Monitoring says, so the System Monitor's longer spans
+    // have readings whether or not it is ever opened.
+    systemMonitorContribution.setGpuHistory(this.startupSettings.gpuMonitoring);
     // Resolve the GPU rendering recommendation before the window exists, so the value is ready when
     // the renderer's preload reads it synchronously (before the first paint).
     await this.resolveGpuRenderingRecommendation();

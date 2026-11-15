@@ -1,0 +1,30 @@
+<app-system-monitor-dashboard-card [icon]="Icon.MONITOR_RANKED" heading="Top Processes by CPU">
+  @if (listed()) {
+    <table class="cpu-processes" data-testid="cpu-processes">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th class="cpu-processes__number">PID</th>
+          <th class="cpu-processes__number" aria-sort="descending">% CPU</th>
+          <th class="cpu-processes__number">Threads</th>
+          <th class="cpu-processes__number">CPU Time</th>
+          <th class="cpu-processes__number">Memory</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of rows(); track row.pid) {
+          <tr>
+            <td [title]="row.command">{{ row.name }}</td>
+            <td class="cpu-processes__number">{{ row.pid }}</td>
+            <td class="cpu-processes__number">{{ row.cpu }}</td>
+            <td class="cpu-processes__number">{{ row.threads }}</td>
+            <td class="cpu-processes__number">{{ row.cpuTime }}</td>
+            <td class="cpu-processes__number">{{ row.memory }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  } @else {
+    <p class="cpu-processes__empty">Listing processes…</p>
+  }
+</app-system-monitor-dashboard-card>

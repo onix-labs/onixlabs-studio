@@ -1,0 +1,11 @@
+<app-system-monitor-dashboard-card [icon]="Icon.MONITOR_ACTIVITY" [heading]="heading()">
+  <app-system-monitor-dashboard-badge cardBadges tone="neutral" [value]="readings.historyLabel()" />
+  <app-system-monitor-line-chart
+    class="network-activity__chart"
+    ariaLabel="The interface's download and upload over time"
+    [series]="series()"
+    [base]="1024"
+    [format]="format"
+    [intervalMs]="intervalMs"
+  />
+</app-system-monitor-dashboard-card>

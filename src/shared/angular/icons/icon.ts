@@ -185,6 +185,273 @@ export class Icon {
    */
   public static readonly SYSTEM_MONITOR: Icon = new Icon('ph-duotone ph-gauge');
 
+  // --- System Monitor: its views (the ribbon's View group, and the Overview's cards) ---
+
+  /**
+   * Gets the System Monitor's Overview icon.
+   */
+  public static readonly MONITOR_OVERVIEW: Icon = new Icon('ph-duotone ph-squares-four');
+
+  /**
+   * Gets the System Monitor's CPU icon.
+   */
+  public static readonly MONITOR_CPU: Icon = new Icon('ph-duotone ph-cpu');
+
+  /**
+   * Gets the System Monitor's Memory icon.
+   */
+  public static readonly MONITOR_MEMORY: Icon = new Icon('ph-duotone ph-memory');
+
+  /**
+   * Gets the System Monitor's GPU icon.
+   */
+  public static readonly MONITOR_GPU: Icon = new Icon('ph-duotone ph-graphics-card');
+
+  /**
+   * Gets the System Monitor's Processes icon.
+   */
+  public static readonly MONITOR_PROCESSES: Icon = new Icon('ph-duotone ph-stack');
+
+  /**
+   * Gets the System Monitor's Storage icon.
+   */
+  public static readonly MONITOR_STORAGE: Icon = new Icon('ph-duotone ph-hard-drives');
+
+  /**
+   * Gets the System Monitor's Network icon.
+   */
+  public static readonly MONITOR_NETWORK: Icon = new Icon('ph-duotone ph-wifi-high');
+
+  /**
+   * Gets the System Monitor's System icon.
+   */
+  public static readonly MONITOR_SYSTEM: Icon = new Icon('ph-duotone ph-info');
+
+  /**
+   * Gets the System Monitor's Logs icon.
+   */
+  public static readonly MONITOR_LOGS: Icon = new Icon('ph-duotone ph-file-text');
+
+  /**
+   * Gets the icon for a graph over time in the System Monitor.
+   */
+  public static readonly MONITOR_TREND: Icon = new Icon('ph-duotone ph-chart-line');
+
+  /**
+   * Gets the icon for readings grouped into bars in the System Monitor.
+   */
+  public static readonly MONITOR_GROUPED: Icon = new Icon('ph-duotone ph-chart-bar-horizontal');
+
+  /**
+   * Gets the icon for a ranked list in the System Monitor.
+   */
+  public static readonly MONITOR_RANKED: Icon = new Icon('ph-duotone ph-list-numbers');
+
+  /**
+   * Gets the icon for swap in the System Monitor.
+   */
+  public static readonly MONITOR_SWAP: Icon = new Icon('ph-duotone ph-arrows-left-right');
+
+  /**
+   * Gets the icon for statistics in the System Monitor.
+   */
+  public static readonly MONITOR_STATISTICS: Icon = new Icon('ph-duotone ph-chart-bar');
+
+  /**
+   * Gets the icon for a composition over time in the System Monitor.
+   */
+  public static readonly MONITOR_COMPOSITION: Icon = new Icon('ph-duotone ph-stack-simple');
+
+  /**
+   * Gets the icon for temperature in the System Monitor.
+   */
+  public static readonly MONITOR_TEMPERATURE: Icon = new Icon('ph ph-thermometer');
+
+  /**
+   * Gets the icon for power in the System Monitor.
+   */
+  public static readonly MONITOR_POWER: Icon = new Icon('ph ph-lightning');
+
+  /**
+   * Gets the icon for a fan in the System Monitor.
+   */
+  public static readonly MONITOR_FAN: Icon = new Icon('ph ph-fan');
+
+  /**
+   * Gets the icon for the GPU's 3D engine in the System Monitor.
+   */
+  public static readonly MONITOR_ENGINE_3D: Icon = new Icon('ph ph-cube');
+
+  /**
+   * Gets the icon for the GPU's video decoder in the System Monitor.
+   */
+  public static readonly MONITOR_ENGINE_DECODE: Icon = new Icon('ph ph-film-strip');
+
+  /**
+   * Gets the icon for the GPU's video encoder in the System Monitor.
+   */
+  public static readonly MONITOR_ENGINE_ENCODE: Icon = new Icon('ph ph-video-camera');
+
+  /**
+   * Gets the icon for the GPU's copy engine in the System Monitor.
+   */
+  public static readonly MONITOR_ENGINE_COPY: Icon = new Icon('ph ph-copy-simple');
+
+  /**
+   * Gets the icon for the GPU's compute engine in the System Monitor.
+   */
+  public static readonly MONITOR_ENGINE_COMPUTE: Icon = new Icon('ph ph-function');
+
+  /**
+   * Gets the icon for a grid layout in the System Monitor.
+   */
+  public static readonly MONITOR_GRID: Icon = new Icon('ph ph-squares-four');
+
+  /**
+   * Gets the icon for a list layout in the System Monitor.
+   */
+  public static readonly MONITOR_LIST: Icon = new Icon('ph ph-rows');
+
+  /**
+   * Gets the icon for the System Monitor's process list with roomy rows that carry graphs.
+   */
+  public static readonly MONITOR_COMFORTABLE: Icon = new Icon('ph ph-rows');
+
+  /**
+   * Gets the icon for the System Monitor's process list with dense rows.
+   */
+  public static readonly MONITOR_COMPACT: Icon = new Icon('ph ph-list');
+
+  /**
+   * Gets the icon for choosing the columns the System Monitor's process list shows.
+   */
+  public static readonly MONITOR_COLUMNS: Icon = new Icon('ph ph-columns');
+
+  /**
+   * Gets the icon for going to the first page of a paged list.
+   */
+  public static readonly PAGE_FIRST: Icon = new Icon('ph ph-caret-double-left');
+
+  /**
+   * Gets the icon for going to the last page of a paged list.
+   */
+  public static readonly PAGE_LAST: Icon = new Icon('ph ph-caret-double-right');
+
+  /**
+   * Gets the icon for a GPU's video memory in the System Monitor.
+   */
+  public static readonly MONITOR_VRAM: Icon = new Icon('ph-duotone ph-circuitry');
+
+  /**
+   * Gets the icon for a log record's context (the values logged with its message).
+   */
+  public static readonly MONITOR_CONTEXT: Icon = new Icon('ph ph-brackets-curly');
+
+  /**
+   * Gets the icon for a log record as it is stored.
+   */
+  public static readonly MONITOR_RAW: Icon = new Icon('ph ph-code');
+
+  /**
+   * Gets the icon for a storage device in the System Monitor's Storage view.
+   */
+  public static readonly MONITOR_DRIVE: Icon = new Icon('ph-duotone ph-hard-drive');
+
+  /**
+   * Gets the icon for a USB storage device in the System Monitor's Storage view.
+   */
+  public static readonly MONITOR_DRIVE_USB: Icon = new Icon('ph-duotone ph-usb');
+
+  /**
+   * Gets the icon for a storage device's input/output operations in the System Monitor.
+   */
+  public static readonly MONITOR_IOPS: Icon = new Icon('ph-duotone ph-speedometer');
+
+  /**
+   * Gets the icon for a device's activity (how busy it is) in the System Monitor.
+   */
+  public static readonly MONITOR_ACTIVITY: Icon = new Icon('ph-duotone ph-pulse');
+
+  /**
+   * Gets the icon for a wired (Ethernet) network interface in the System Monitor.
+   */
+  public static readonly MONITOR_ETHERNET: Icon = new Icon('ph-duotone ph-network');
+
+  /**
+   * Gets the icon for a Wi-Fi network interface in the System Monitor.
+   */
+  public static readonly MONITOR_WIFI: Icon = new Icon('ph-duotone ph-wifi-high');
+
+  /**
+   * Gets the icon for the loopback network interface in the System Monitor.
+   */
+  public static readonly MONITOR_LOOPBACK: Icon = new Icon('ph-duotone ph-arrows-clockwise');
+
+  /**
+   * Gets the icon for a VPN or tunnel network interface in the System Monitor.
+   */
+  public static readonly MONITOR_VPN: Icon = new Icon('ph-duotone ph-lock-key');
+
+  /**
+   * Gets the icon for a bridge network interface in the System Monitor.
+   */
+  public static readonly MONITOR_BRIDGE: Icon = new Icon('ph-duotone ph-share-network');
+
+  /**
+   * Gets the icon for a virtual network interface in the System Monitor.
+   */
+  public static readonly MONITOR_VIRTUAL: Icon = new Icon('ph-duotone ph-cube');
+
+  /**
+   * Gets the icon for network packets in the System Monitor.
+   */
+  public static readonly MONITOR_PACKETS: Icon = new Icon('ph-duotone ph-package');
+
+  /**
+   * Gets the icon for network connections in the System Monitor.
+   */
+  public static readonly MONITOR_CONNECTIONS: Icon = new Icon('ph-duotone ph-arrows-left-right');
+
+  /**
+   * Gets the icon for a volume in the System Monitor's storage list.
+   */
+  public static readonly MONITOR_VOLUME: Icon = new Icon('ph ph-hard-drive');
+
+  /**
+   * Gets the icon for a process in the System Monitor's process lists.
+   */
+  public static readonly MONITOR_PROCESS: Icon = new Icon('ph ph-app-window');
+
+  /**
+   * Gets the icon for a shell process in the System Monitor's process lists.
+   */
+  public static readonly MONITOR_SHELL: Icon = new Icon('ph ph-terminal-window');
+
+  /**
+   * Gets the icon for the operating system in the System Monitor's system facts.
+   */
+  public static readonly MONITOR_OS: Icon = new Icon('ph ph-desktop-tower');
+
+  /**
+   * Gets the icon for uptime in the System Monitor's system facts.
+   */
+  public static readonly MONITOR_UPTIME: Icon = new Icon('ph ph-clock');
+
+  /**
+   * Gets the icon for the logging session in the System Monitor's system facts.
+   */
+  public static readonly MONITOR_SESSION: Icon = new Icon('ph ph-user');
+
+  /**
+   * Gets the arrow marking a received or read rate in the System Monitor.
+   */
+  public static readonly MONITOR_IN: Icon = new Icon('ph-bold ph-arrow-down');
+
+  /**
+   * Gets the arrow marking a sent or written rate in the System Monitor.
+   */
+  public static readonly MONITOR_OUT: Icon = new Icon('ph-bold ph-arrow-up');
+
   /**
    * Gets the AI Manager content icon, which also stands for its Local Models sub-view.
    */

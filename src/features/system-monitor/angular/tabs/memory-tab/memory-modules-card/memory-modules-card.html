@@ -1,0 +1,41 @@
+<app-system-monitor-dashboard-card [icon]="Icon.MONITOR_MEMORY" [heading]="heading()">
+  @if (rows().length > 0) {
+    <div class="memory-modules__scroll">
+      <table class="memory-modules" data-testid="memory-modules">
+        <thead>
+          <tr>
+            <th>Slot</th>
+            <th>Size</th>
+            <th>Type</th>
+            <th>Speed</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of rows(); track row.slot) {
+            <tr [title]="row.detail">
+              <td>{{ row.slot }}</td>
+              <td>{{ row.size }}</td>
+              <td>{{ row.type }}</td>
+              <td>{{ row.speed }}</td>
+              <td>
+                @if (row.status) {
+                  <app-chip [tone]="row.ok ? 'success' : 'warning'">{{ row.status }}</app-chip>
+                } @else {
+                  —
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  } @else if (described()) {
+    <p class="memory-modules__empty">
+      This platform does not report its memory modules (on Linux, reading them needs administrator
+      rights).
+    </p>
+  } @else {
+    <p class="memory-modules__empty">Reading the memory modules…</p>
+  }
+</app-system-monitor-dashboard-card>

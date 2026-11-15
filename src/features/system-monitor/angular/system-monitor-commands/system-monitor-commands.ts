@@ -1,4 +1,5 @@
 import { computed, Service, Signal, signal, WritableSignal } from '@angular/core';
+import { SystemMonitorTabId } from '../tabs/system-monitor-tab-id';
 
 /**
  * The contract the active System Monitor view implements so the ribbon can drive it. Mirrors the
@@ -7,14 +8,20 @@ import { computed, Service, Signal, signal, WritableSignal } from '@angular/core
  */
 export interface SystemMonitorCommandHandler {
   /**
-   * Gets whether the audit currently shows any records, so the ribbon can enable/disable Copy.
-   */
-  readonly hasRecords: Signal<boolean>;
-
-  /**
    * Gets whether the docked agent is showing (#966).
    */
   readonly agentShown: Signal<boolean>;
+
+  /**
+   * Gets the view the monitor is showing.
+   */
+  readonly tab: Signal<SystemMonitorTabId>;
+
+  /**
+   * Shows a view.
+   * @param tab The view to show.
+   */
+  selectTab(tab: SystemMonitorTabId): void;
 
   /**
    * Shows the docked agent, or hides it.
@@ -30,11 +37,6 @@ export interface SystemMonitorCommandHandler {
    * Resets the severity and text filters to their defaults (all severities, no text).
    */
   clearFilters(): void;
-
-  /**
-   * Copies the currently-shown records to the clipboard as text.
-   */
-  copy(): void;
 }
 
 /**
@@ -50,17 +52,17 @@ export class SystemMonitorCommands {
     signal<SystemMonitorCommandHandler | null>(null);
 
   /**
-   * Gets whether the active view's audit shows any records.
-   */
-  public readonly hasRecords: Signal<boolean> = computed(
-    (): boolean => this.handler()?.hasRecords() ?? false,
-  );
-
-  /**
    * Gets whether the active view's agent is showing.
    */
   public readonly agentShown: Signal<boolean> = computed(
     (): boolean => this.handler()?.agentShown() ?? false,
+  );
+
+  /**
+   * Gets the view the active monitor is showing, or undefined when no monitor is active.
+   */
+  public readonly tab: Signal<SystemMonitorTabId | undefined> = computed(
+    (): SystemMonitorTabId | undefined => this.handler()?.tab(),
   );
 
   /**
@@ -96,16 +98,17 @@ export class SystemMonitorCommands {
   }
 
   /**
-   * Copies the active view's shown records to the clipboard.
-   */
-  public copy(): void {
-    this.handler()?.copy();
-  }
-
-  /**
    * Shows or hides the active view's agent.
    */
   public toggleAgent(): void {
     this.handler()?.toggleAgent();
+  }
+
+  /**
+   * Shows a view in the active monitor.
+   * @param tab The view to show.
+   */
+  public selectTab(tab: SystemMonitorTabId): void {
+    this.handler()?.selectTab(tab);
   }
 }
