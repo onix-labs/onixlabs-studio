@@ -2,13 +2,12 @@
   <header class="processes__header">
     <app-icon class="processes__icon" [icon]="Icon.MONITOR_PROCESSES" [size]="1.75" />
     <h2 class="processes__title">Processes</h2>
-    <span class="processes__count">{{ count() }}</span>
 
     <app-text-field
       class="processes__search"
       kind="search"
-      placeholder="Filter by name, PID, path or user…"
-      ariaLabel="Filter processes"
+      variant="floating"
+      label="Filter by name, PID, path or user"
       [value]="text()"
       (valueChange)="setText($event)"
       (escape)="setText('')"
@@ -18,7 +17,6 @@
       @for (option of scopes; track option.scope) {
         <app-button
           variant="none"
-          size="small"
           [label]="option.label"
           [pressed]="scope() === option.scope"
           [disabled]="option.scope === 'gpu' && !gpuRead()"
@@ -32,11 +30,9 @@
       }
     </div>
 
-    <span class="processes__spacer"></span>
-
     <app-button
+      class="processes__columns"
       variant="none"
-      size="small"
       label="Columns"
       [icon]="Icon.MONITOR_COLUMNS"
       [cdkMenuTriggerFor]="columnsMenu.panel() ?? null"
@@ -52,7 +48,6 @@
     <div class="processes__density" role="group" aria-label="Rows">
       <app-button
         variant="none"
-        size="small"
         ariaLabel="Compact rows"
         tooltip="Compact rows"
         [icon]="Icon.MONITOR_COMPACT"
@@ -61,7 +56,6 @@
       />
       <app-button
         variant="none"
-        size="small"
         ariaLabel="Comfortable rows"
         tooltip="Comfortable rows"
         [icon]="Icon.MONITOR_COMFORTABLE"
@@ -69,6 +63,8 @@
         (click)="rowSize.set('comfortable')"
       />
     </div>
+
+    <app-system-monitor-view-summary [items]="summary()" />
   </header>
 
   <div class="processes__list">

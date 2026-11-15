@@ -29,13 +29,14 @@ import {
   StudioProcessKind,
 } from '@shared/api/system-monitor-channels';
 import { Sparkline } from '../../charts/sparkline/sparkline';
-import { formatBytes, formatDuration, formatShare } from '../../readings/format';
+import { formatBytes, formatCount, formatDuration, formatShare } from '../../readings/format';
 import {
   PROCESS_HISTORY,
   ProcessHistory,
   SystemMonitorProcesses,
 } from '../../readings/system-monitor-processes';
 import { ProcessIcons } from '../../readings/process-icons';
+import { SummaryItem, ViewSummary } from '../view-summary/view-summary';
 import { pageNumbers } from './pagination';
 
 /**
@@ -245,6 +246,7 @@ function accountOf(user: string): string {
     Table,
     TableRowDef,
     TextField,
+    ViewSummary,
   ],
   templateUrl: './processes-tab.html',
   styleUrl: './processes-tab.scss',
@@ -347,14 +349,32 @@ export class ProcessesTab {
   );
 
   /**
-   * Gets the count shown beside the title: the processes running, and how many are listed.
+   * Gets the header's summary: the processes running and how many are listed, then how many of those
+   * listed are the user's own, the system's and Studio's. Dashes until the first listing.
    */
-  protected readonly count: Signal<string> = computed((): string => {
-    const snapshot: ProcessesSnapshot | null = this.listing.snapshot();
-    return snapshot === null
-      ? ''
-      : `${snapshot.total} processes • ${snapshot.processes.length} shown`;
-  });
+  protected readonly summary: Signal<readonly SummaryItem[]> = computed(
+    (): readonly SummaryItem[] => {
+      const snapshot: ProcessesSnapshot | null = this.listing.snapshot();
+      const rows: readonly ProcessRow[] = this.allRows();
+      const account: string = accountOf(snapshot?.user ?? '');
+      const count: (scope: ProcessScope) => string = (scope: ProcessScope): string =>
+        snapshot === null
+          ? '—'
+          : formatCount(
+              rows.filter((row: ProcessRow): boolean => inScope(row, scope, account)).length,
+            );
+      return [
+        { label: 'Running', value: snapshot === null ? '—' : formatCount(snapshot.total) },
+        {
+          label: 'Listed',
+          value: snapshot === null ? '—' : formatCount(snapshot.processes.length),
+        },
+        { label: 'User', value: count('user') },
+        { label: 'System', value: count('system') },
+        { label: 'Studio', value: count('studio') },
+      ];
+    },
+  );
 
   /**
    * Gets whether the GPU is read per process, so the GPU Active scope has something to go on.

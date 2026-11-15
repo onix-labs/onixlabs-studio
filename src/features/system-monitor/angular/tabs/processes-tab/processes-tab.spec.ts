@@ -142,7 +142,14 @@ describe('ProcessesTab', () => {
     await settle();
 
     expect(names()).toEqual(['WindowServer', 'ONIXLabs Studio', 'zsh', 'Finder']);
-    expect(host.textContent).toContain('512 processes • 4 shown');
+    // Running and listed, then the listed processes by owner: three are the user's, one the system's,
+    // two Studio's.
+    expect(
+      Array.from(host.querySelectorAll('[aria-label="Summary"] li')).map(
+        (item: Element): string =>
+          `${item.querySelector('.view-summary__label')?.textContent?.trim()} ${item.querySelector('.view-summary__value')?.textContent?.trim()}`,
+      ),
+    ).toEqual(['Running 512', 'Listed 4', 'User 3', 'System 1', 'Studio 2']);
     expect(host.textContent).toContain('Started by Studio');
     // A small share keeps its decimal, so idle processes stay distinguishable.
     expect(host.textContent).toContain('4.3%');

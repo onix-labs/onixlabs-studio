@@ -1,7 +1,7 @@
 @use '../tabs' as *;
 
-// The Processes view fills its tab: a header holding the filters, the list (which scrolls its own
-// rows) and the pager, fitting a full-screen 1080p display and scrolling below that.
+// The Processes view fills its tab: a header holding the filters and summary, the list (which scrolls
+// its own rows) and the pager, fitting a full-screen 1080p display and scrolling below that.
 :host {
   @include host;
 }
@@ -16,8 +16,8 @@
   padding: 0.5rem;
 }
 
-// The title and count, then the filter, the scopes, and the column and row choices against the right
-// edge, wrapping onto a second line when the view is narrow.
+// The title, the filter, the scopes and the column and row choices, then the summary against the
+// right edge, wrapping onto a second line when the view is narrow.
 .processes__header {
   display: flex;
   flex: none;
@@ -40,18 +40,17 @@
   color: var(--body-foreground-color);
 }
 
-.processes__count {
-  flex: none;
-  margin-inline-end: 0.5rem;
-  font-size: 0.82rem;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  color: var(--form-muted-foreground-color);
-}
-
 .processes__search {
   flex: 0 1 24rem;
   min-inline-size: 12rem;
+}
+
+// The buttons beside the filter stand as tall as it: a button's height is the control height, which
+// these groups set to the floating field's.
+.processes__scopes,
+.processes__density,
+.processes__columns {
+  --control-height: 2.75rem;
 }
 
 .processes__scopes,
@@ -61,8 +60,8 @@
   gap: 0.3rem;
 }
 
-.processes__spacer {
-  flex: 1 1 auto;
+.processes__columns {
+  flex: none;
 }
 
 // The list sits in a well like the other views' cards, its rows scrolling within it.
