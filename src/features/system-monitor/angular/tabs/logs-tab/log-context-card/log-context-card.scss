@@ -33,12 +33,59 @@
   gap: 0.75rem;
 }
 
-// The code scrolls within the card.
+// The code scrolls within the card, in a well of its own.
 .log-context__body {
   flex: 1 1 auto;
   min-block-size: 0;
   overflow: auto;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background-color: var(--panel-surface-color);
+}
+
+.log-context__code {
+  margin: 0;
+  padding: 0.5rem 0.75rem 0.5rem 0;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.55;
   user-select: text;
+}
+
+// A line: its number in the gutter, then its text, which keeps its spacing and wraps no further.
+.log-context__line {
+  display: flex;
+}
+
+.log-context__number {
+  flex: none;
+  inline-size: 2.5rem;
+  padding-inline-end: 0.9rem;
+  text-align: end;
+  color: var(--form-muted-foreground-color);
+  user-select: none;
+}
+
+.log-context__text {
+  white-space: pre;
+  color: var(--body-foreground-color);
+}
+
+.log-context__token--key {
+  color: var(--accent-color);
+}
+
+.log-context__token--string {
+  color: var(--success-color);
+}
+
+.log-context__token--number,
+.log-context__token--literal {
+  color: var(--info-color);
+}
+
+.log-context__token--punctuation {
+  color: var(--form-muted-foreground-color);
 }
 
 .log-context__empty {

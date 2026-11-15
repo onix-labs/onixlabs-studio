@@ -29,9 +29,13 @@
       />
     }
   </header>
-  @if (code(); as shown) {
+  @if (code()) {
+    <!-- The text with its line numbers in a gutter; the numbers are not part of a selection. -->
     <div class="log-context__body">
-      <app-code-block [code]="shown.text" [lang]="shown.lang" [footer]="false" />
+      <pre
+        class="log-context__code"
+        data-testid="log-context-code"
+      ><code>@for (line of lines(); track $index) {<span class="log-context__line"><span class="log-context__number" aria-hidden="true">{{ $index + 1 }}</span><span class="log-context__text">@for (token of line; track $index) {<span [class]="'log-context__token--' + token.kind">{{ token.text }}</span>}</span></span>}</code></pre>
     </div>
   } @else {
     <p class="log-context__empty">{{ emptyText() }}</p>

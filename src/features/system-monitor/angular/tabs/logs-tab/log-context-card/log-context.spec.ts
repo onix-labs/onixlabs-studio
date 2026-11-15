@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LogRecord } from '@shared/api/log-channels';
-import { LogCode, logContext, logRaw } from './log-context';
+import { CodeToken, codeLines, LogCode, logContext, logRaw } from './log-context';
 
 /**
  * Builds a record with the given details.
@@ -53,5 +53,39 @@ describe('logContext', () => {
 describe('logRaw', () => {
   it('showsTheRecordAsStored', () => {
     expect(JSON.parse(logRaw(record(['x'])).text)).toEqual(record(['x']));
+  });
+});
+
+describe('codeLines', () => {
+  it('splitsJson_intoKeysStringsNumbersLiteralsAndPunctuation', () => {
+    const [line]: readonly (readonly CodeToken[])[] = codeLines({
+      text: '  "count": 7, "name": "a\\"b", "on": null',
+      lang: 'json',
+    });
+
+    expect(line.filter((token: CodeToken): boolean => token.kind !== 'text')).toEqual([
+      { kind: 'key', text: '"count"' },
+      { kind: 'punctuation', text: ':' },
+      { kind: 'number', text: '7' },
+      { kind: 'punctuation', text: ',' },
+      { kind: 'key', text: '"name"' },
+      { kind: 'punctuation', text: ':' },
+      { kind: 'string', text: '"a\\"b"' },
+      { kind: 'punctuation', text: ',' },
+      { kind: 'key', text: '"on"' },
+      { kind: 'punctuation', text: ':' },
+      { kind: 'literal', text: 'null' },
+    ]);
+    // Nothing is lost: the pieces make the line again.
+    expect(line.map((token: CodeToken): string => token.text).join('')).toBe(
+      '  "count": 7, "name": "a\\"b", "on": null',
+    );
+  });
+
+  it('keepsAnythingElse_asPlainLines', () => {
+    expect(codeLines({ text: 'Error: boom\n    at main', lang: '' })).toEqual([
+      [{ kind: 'text', text: 'Error: boom' }],
+      [{ kind: 'text', text: '    at main' }],
+    ]);
   });
 });

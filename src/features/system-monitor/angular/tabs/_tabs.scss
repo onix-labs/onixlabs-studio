@@ -1,6 +1,6 @@
-// The System Monitor tabs' shared drawing: the pieces every resource tab repeats — the scrolling page,
-// section headings, the large graph, facts, small lists and usage bars — so the tabs read as one
-// system. Each tab's stylesheet `@use`s this and includes the mixins on its own classes.
+// The System Monitor views' shared page drawing: the scrolling page box, number and muted columns,
+// and the empty message. Each view's stylesheet `@use`s this and includes the mixins on its own
+// classes; the cards' own drawing is in `_cards.scss`.
 
 // The tab's own box: it fills the view's tab body and scrolls its page.
 @mixin host {
@@ -8,88 +8,6 @@
   block-size: 100%;
   min-block-size: 0;
   overflow: auto;
-}
-
-// The page: sections stacked with room between them.
-@mixin page {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  padding: 1rem;
-}
-
-// A quiet uppercase heading over a section, matching the graphs' own labels.
-@mixin heading {
-  margin: 0 0 0.5rem;
-  color: var(--form-muted-foreground-color);
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-// The tab's main graph: tall enough to read a trend at a glance.
-@mixin hero {
-  display: block;
-  block-size: 14rem;
-}
-
-// Graphs side by side, stacking when the tab is narrow. Put it on the grid; the graphs size from
-// `$height`.
-@mixin pair($height: 11rem) {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
-  gap: 0.75rem;
-
-  > app-metric-tile {
-    block-size: $height;
-  }
-}
-
-// Facts under a graph: label over value, flowing into as many columns as fit. Put it on a `<dl>`.
-@mixin facts {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
-  gap: 0.75rem 1.25rem;
-  margin: 0;
-
-  dt {
-    font-size: 0.72rem;
-    color: var(--form-muted-foreground-color);
-  }
-
-  dd {
-    margin: 0.1rem 0 0;
-    overflow: hidden;
-    font-size: 0.9rem;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--body-foreground-color);
-  }
-}
-
-// A small list (interfaces, volumes) as a table: names on the left, readings in aligned columns.
-@mixin list {
-  inline-size: 100%;
-  border-collapse: collapse;
-  font-size: 0.82rem;
-
-  th {
-    padding: 0.35rem 0.5rem;
-    border-block-end: 1px solid var(--dock-border-color);
-    font-weight: 600;
-    text-align: start;
-    color: var(--form-muted-foreground-color);
-  }
-
-  td {
-    padding: 0.4rem 0.5rem;
-    border-block-end: 1px solid color-mix(in srgb, var(--dock-border-color) 50%, transparent);
-    font-variant-numeric: tabular-nums;
-    color: var(--body-foreground-color);
-  }
 }
 
 // A number column in a list.

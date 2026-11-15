@@ -8,11 +8,10 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import { CodeBlock } from '@shared/angular/components/code-block/code-block';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
 import { LogRecord } from '@shared/api/log-channels';
-import { LogCode, logContext, logRaw } from './log-context';
+import { CodeToken, codeLines, LogCode, logContext, logRaw } from './log-context';
 
 /**
  * Identifies what the card shows: the record's context, or the record as stored.
@@ -25,7 +24,7 @@ type ContextTab = 'context' | 'raw';
  */
 @Component({
   selector: 'app-system-monitor-log-context-card',
-  imports: [Button, CodeBlock],
+  imports: [Button],
   templateUrl: './log-context-card.html',
   styleUrl: './log-context-card.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -61,6 +60,16 @@ export class LogContextCard {
     }
     return this.tab() === 'raw' ? logRaw(record) : logContext(record);
   });
+
+  /**
+   * Gets the shown text's lines, each split into coloured pieces.
+   */
+  protected readonly lines: Signal<readonly (readonly CodeToken[])[]> = computed(
+    (): readonly (readonly CodeToken[])[] => {
+      const code: LogCode | null = this.code();
+      return code === null ? [] : codeLines(code);
+    },
+  );
 
   /**
    * Gets what the card says when it has nothing to show.

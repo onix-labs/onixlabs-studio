@@ -8,7 +8,6 @@ import {
   SystemInfo,
   VolumeMetric,
 } from '@shared/api/system-monitor-channels';
-import { TileChannel } from '../metric-tile/metric-tile';
 import { formatBytes, formatPercent, formatRate, formatShare } from './format';
 import { MachineHealth } from './machine-health';
 import { MemorySegment } from './memory-segment';
@@ -338,81 +337,6 @@ export class SystemMonitorReadings {
       reasons,
     };
   });
-
-  /**
-   * Gets the CPU graph's channel: the machine reading with the app overlaid.
-   */
-  public readonly cpuChannels: Signal<readonly TileChannel[]> = computed(
-    (): readonly TileChannel[] => [
-      {
-        value: this.cpuValue(),
-        values: this.cpuHistory(),
-        appValue: this.cpuAppValue(),
-        appValues: this.appCpuHistory(),
-      },
-    ],
-  );
-
-  /**
-   * Gets the GPU graph's channel: utilisation alone, since no app attribution is possible.
-   */
-  public readonly gpuChannels: Signal<readonly TileChannel[]> = computed(
-    (): readonly TileChannel[] => [{ value: this.gpuValue(), values: this.gpuHistory() }],
-  );
-
-  /**
-   * Gets the memory graph's channel: the used reading with the app overlaid.
-   */
-  public readonly memoryChannels: Signal<readonly TileChannel[]> = computed(
-    (): readonly TileChannel[] => [
-      {
-        value: this.memoryValue(),
-        values: this.memoryHistory(),
-        appValue: this.memoryAppValue(),
-        appValues: this.appMemoryHistory(),
-      },
-    ],
-  );
-
-  /**
-   * Gets the network graphs' channels: independently scaled Received and Sent.
-   */
-  public readonly networkChannels: Signal<readonly TileChannel[]> = computed(
-    (): readonly TileChannel[] => [
-      {
-        caption: 'Received',
-        value: this.networkRxValue(),
-        values: this.networkRxHistory(),
-        max: Math.max(1, ...this.networkRxHistory()),
-      },
-      {
-        caption: 'Sent',
-        value: this.networkTxValue(),
-        values: this.networkTxHistory(),
-        max: Math.max(1, ...this.networkTxHistory()),
-      },
-    ],
-  );
-
-  /**
-   * Gets the disk graphs' channels: independently scaled Read and Write.
-   */
-  public readonly diskChannels: Signal<readonly TileChannel[]> = computed(
-    (): readonly TileChannel[] => [
-      {
-        caption: 'Read',
-        value: this.diskReadValue(),
-        values: this.diskReadHistory(),
-        max: Math.max(1, ...this.diskReadHistory()),
-      },
-      {
-        caption: 'Write',
-        value: this.diskWriteValue(),
-        values: this.diskWriteHistory(),
-        max: Math.max(1, ...this.diskWriteHistory()),
-      },
-    ],
-  );
 
   /**
    * Records one sample: it becomes the latest reading and is appended to the histories, each held to

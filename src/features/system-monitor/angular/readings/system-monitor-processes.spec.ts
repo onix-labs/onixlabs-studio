@@ -32,15 +32,19 @@ function snapshot(...processes: ProcessSample[]): ProcessesSnapshot {
 }
 
 describe('SystemMonitorProcesses', () => {
-  it('keepsAHistoryPerProcess_forTheChosenOnesGraphs', () => {
+  it('keepsAHistoryPerProcess_forItsGraphs', () => {
     const listing: SystemMonitorProcesses = new SystemMonitorProcesses();
     listing.accept(snapshot(process(7, 1), process(8, 2)));
     listing.accept(snapshot(process(7, 3), process(8, 4)));
 
-    listing.select(7);
-
-    expect(listing.selected()?.process.cpuPercent).toBe(3);
-    expect(listing.selectedHistory()).toEqual({ cpu: [1, 3], memory: [700, 700], gpu: [0, 0] });
+    expect(listing.allHistories().get(7)).toEqual({
+      cpu: [1, 3],
+      memory: [700, 700],
+      gpu: [0, 0],
+    });
+    expect(listing.processes().map((each: ProcessSample): number => each.cpuPercent)).toEqual([
+      3, 4,
+    ]);
   });
 
   it('dropsTheHistoryOfAProcessNoLongerListed', () => {
@@ -49,9 +53,8 @@ describe('SystemMonitorProcesses', () => {
     listing.accept(snapshot(process(8, 1)));
     listing.accept(snapshot(process(7, 5)));
 
-    listing.select(7);
-
-    expect(listing.selectedHistory().cpu).toEqual([5]);
+    expect(listing.allHistories().get(7)?.cpu).toEqual([5]);
+    expect(listing.allHistories().has(8)).toBe(false);
   });
 
   it('startsAFreshHistory_whenAPidIsReusedByAnotherProcess', () => {
@@ -59,9 +62,7 @@ describe('SystemMonitorProcesses', () => {
     listing.accept(snapshot(process(7, 1, 'old')));
     listing.accept(snapshot(process(7, 9, 'new')));
 
-    listing.select(7);
-
-    expect(listing.selectedHistory().cpu).toEqual([9]);
+    expect(listing.allHistories().get(7)?.cpu).toEqual([9]);
   });
 
   it('holdsEachHistoryToItsLength', () => {
@@ -70,31 +71,23 @@ describe('SystemMonitorProcesses', () => {
       listing.accept(snapshot(process(7, cpu)));
     }
 
-    listing.select(7);
-
-    expect(listing.selectedHistory().cpu).toHaveLength(PROCESS_HISTORY);
-    expect(listing.selectedHistory().cpu.at(-1)).toBe(PROCESS_HISTORY + 4);
+    const cpu: readonly number[] = listing.allHistories().get(7)?.cpu ?? [];
+    expect(cpu).toHaveLength(PROCESS_HISTORY);
+    expect(cpu.at(-1)).toBe(PROCESS_HISTORY + 4);
   });
 
-  it('keepsTheChosenProcess_frozenAndMarkedUnlisted_onceItIsNoLongerListed', () => {
+  it('select_choosesAListedProcess_andIgnoresOneNotListed', () => {
     const listing: SystemMonitorProcesses = new SystemMonitorProcesses();
     listing.accept(snapshot(process(7, 1)));
+
     listing.select(7);
-    listing.accept(snapshot(process(7, 4)));
-    listing.accept(snapshot(process(8, 1)));
-
-    expect(listing.selected()?.listed).toBe(false);
-    expect(listing.selected()?.process.cpuPercent).toBe(4);
-    expect(listing.selectedHistory().cpu).toEqual([1, 4]);
-  });
-
-  it('select_ignoresAProcessNotListed', () => {
-    const listing: SystemMonitorProcesses = new SystemMonitorProcesses();
-    listing.accept(snapshot(process(7, 1)));
+    expect(listing.selectedPid()).toBe(7);
 
     listing.select(99);
+    expect(listing.selectedPid()).toBeNull();
 
-    expect(listing.selected()).toBeNull();
+    listing.select(7);
+    listing.select(null);
     expect(listing.selectedPid()).toBeNull();
   });
 
@@ -106,5 +99,13 @@ describe('SystemMonitorProcesses', () => {
 
     expect(listing.allHistories().get(7)?.gpu).toEqual([0, 12]);
     expect(listing.allHistories().get(8)?.gpu).toEqual([0]);
+  });
+
+  it('keepsTheLastGpuShares_throughAReadingThatNamesNone', () => {
+    const listing: SystemMonitorProcesses = new SystemMonitorProcesses();
+    listing.acceptGpu({ timestamp: 't', engines: [], processes: [{ pid: 7, gpuPercent: 12 }] });
+    listing.acceptGpu({ timestamp: 't', engines: [], processes: [{ pid: 7 }] });
+
+    expect(listing.gpuShares()?.get(7)).toBe(12);
   });
 });

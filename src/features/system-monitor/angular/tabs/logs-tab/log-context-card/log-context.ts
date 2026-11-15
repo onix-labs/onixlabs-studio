@@ -60,3 +60,72 @@ export function logContext(record: LogRecord): LogCode | null {
 export function logRaw(record: LogRecord): LogCode {
   return { text: JSON.stringify(record, null, 2), lang: 'json' };
 }
+
+/**
+ * Identifies what a piece of a shown line is, for its colour: a JSON key, string, number or literal
+ * (`true`, `false`, `null`), punctuation, or plain text.
+ */
+export type CodeTokenKind = 'key' | 'string' | 'number' | 'literal' | 'punctuation' | 'text';
+
+/**
+ * Describes one piece of a shown line.
+ */
+export interface CodeToken {
+  /**
+   * Gets what the piece is.
+   */
+  readonly kind: CodeTokenKind;
+
+  /**
+   * Gets its text.
+   */
+  readonly text: string;
+}
+
+/**
+ * The pieces of a line of JSON: a string (a key when a colon follows it), a number, a literal,
+ * punctuation, a run of spaces, or any other character.
+ */
+const JSON_TOKEN: RegExp =
+  /("(?:[^"\\]|\\.)*")(\s*:)?|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|\b(true|false|null)\b|([{}[\],:])|(\s+)|(.)/g;
+
+/**
+ * Splits a line of JSON into its pieces.
+ * @param line The line.
+ * @returns Returns its pieces, in order.
+ */
+function jsonTokens(line: string): readonly CodeToken[] {
+  const tokens: CodeToken[] = [];
+  for (const match of line.matchAll(JSON_TOKEN)) {
+    const [, string, colon, number, literal, punctuation, space, other] = match;
+    if (string !== undefined) {
+      tokens.push({ kind: colon === undefined ? 'string' : 'key', text: string });
+      if (colon !== undefined) {
+        tokens.push({ kind: 'punctuation', text: colon });
+      }
+    } else if (number !== undefined) {
+      tokens.push({ kind: 'number', text: number });
+    } else if (literal !== undefined) {
+      tokens.push({ kind: 'literal', text: literal });
+    } else if (punctuation !== undefined) {
+      tokens.push({ kind: 'punctuation', text: punctuation });
+    } else {
+      tokens.push({ kind: 'text', text: space ?? other ?? '' });
+    }
+  }
+  return tokens;
+}
+
+/**
+ * Splits shown text into lines of pieces for display: JSON coloured by what each piece is, anything
+ * else as plain text.
+ * @param code The text and its language.
+ * @returns Returns each line's pieces.
+ */
+export function codeLines(code: LogCode): readonly (readonly CodeToken[])[] {
+  return code.text
+    .split('\n')
+    .map((line: string): readonly CodeToken[] =>
+      code.lang === 'json' ? jsonTokens(line) : [{ kind: 'text', text: line }],
+    );
+}
