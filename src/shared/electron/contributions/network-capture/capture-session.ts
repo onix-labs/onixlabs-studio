@@ -1,8 +1,9 @@
 import { copyFile, open, truncate } from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
 import { CapturedPacket, CapturedPacketRow } from '@shared/api/network-capture-channels';
-import { dissectPacket } from '@shared/api/packets/dissect-packet';
-import { PcapRecord } from '@shared/api/packets/packet-model';
+import { dissect } from '@shared/api/packets/dissect-packet';
+import { HostNameSighting, PcapRecord } from '@shared/api/packets/packet-model';
+import { PacketDissection } from '@shared/api/packets/packet-dissection';
 import { PcapStreamReader } from '@shared/api/packets/pcap-reader';
 
 /**
@@ -19,6 +20,11 @@ interface PacketLocation {
    */
   readonly length: number;
 }
+
+/**
+ * Hears of the host names a chunk of a capture named for addresses.
+ */
+export type HostNameSightingsListener = (sightings: readonly HostNameSighting[]) => void;
 
 /**
  * How many of the newest packets keep their bytes in memory, so looking at a packet just captured
@@ -65,10 +71,13 @@ export class CaptureSession {
    * Creates a session.
    * @param id The capture's id.
    * @param file The file the stream is (being) written to.
+   * @param onHostNames Hears of the host names each chunk's packets named — DNS answers, TLS server
+   * names — so connections to those addresses can be called by them.
    */
   public constructor(
     public readonly id: string,
     public readonly file: string,
+    private readonly onHostNames: HostNameSightingsListener = (): void => undefined,
   ) {}
 
   /**
@@ -103,18 +112,24 @@ export class CaptureSession {
   public accept(chunk: Uint8Array): void {
     const records: readonly PcapRecord[] = this.reader.push(chunk);
     const linkType: number = this.reader.linkType ?? 0;
+    const sightings: HostNameSighting[] = [];
     for (const record of records) {
       const number: number = this.locations.length + 1;
       this.locations.push({ offset: this.consumed + 16, length: record.data.length });
       this.consumed += 16 + record.data.length;
       this.recent.set(number, record.data);
       this.recent.delete(number - RECENT_PACKETS);
+      const dissection: PacketDissection = dissect(linkType, record.data);
+      sightings.push(...dissection.hostNames);
       this.pending.push({
         number,
         timestampMs: record.timestampMs,
         length: record.originalLength,
-        summary: dissectPacket(linkType, record.data).summary,
+        summary: dissection.finish().summary,
       });
+    }
+    if (sightings.length > 0) {
+      this.onHostNames(sightings);
     }
   }
 

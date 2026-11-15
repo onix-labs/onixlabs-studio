@@ -11,6 +11,7 @@ import { Chip, ChipTone } from '@shared/angular/components/chip/chip';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
+import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { NetworkInterfaceInfo } from '@shared/api/system-monitor-channels';
@@ -20,8 +21,22 @@ import { NetworkCaptures } from '../../network-captures/network-captures';
 import { NetworkRuns } from '../../network-runs/network-runs';
 
 /**
+ * The list's columns, in order. The actions column has no visible heading, as elsewhere in Studio.
+ */
+const COLUMNS: readonly TableColumn[] = [
+  { id: 'process', header: 'Process', width: '18%' },
+  { id: 'host', header: 'Host', width: '22%' },
+  { id: 'remote', header: 'Remote Address' },
+  { id: 'local', header: 'Local Address' },
+  { id: 'protocol', header: 'Protocol', width: '5rem' },
+  { id: 'state', header: 'State', width: '8.5rem' },
+  { id: 'actions', header: '', width: '6.5rem', align: 'end' },
+];
+
+/**
  * The Network Explorer's Connections panel: every connection this machine has open to a remote peer,
- * with the process that owns it, both ends, its protocol and its state.
+ * with the process that owns it, the remote host's name where one is known, both ends, its protocol
+ * and its state.
  *
  * Listening sockets are left out — they are waiting for a peer, not connected to one — and so,
  * unless asked for, are connections between this machine and itself. Choosing an interface in the
@@ -32,7 +47,7 @@ import { NetworkRuns } from '../../network-runs/network-runs';
  */
 @Component({
   selector: 'app-connections-panel',
-  imports: [Button, Chip, PanelToolbar, TextField],
+  imports: [Button, Chip, PanelToolbar, Table, TableRowDef, TextField],
   templateUrl: './connections-panel.html',
   styleUrl: './connections-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -64,6 +79,39 @@ export class ConnectionsPanel {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
+   * Gets the list's columns.
+   */
+  protected readonly columns: readonly TableColumn[] = COLUMNS;
+
+  /**
+   * Gets the connections listed, by row key, so a table row finds the connection it stands for.
+   */
+  private readonly rowsByKey: Signal<ReadonlyMap<string, ConnectionRow>> = computed(
+    (): ReadonlyMap<string, ConnectionRow> =>
+      new Map<string, ConnectionRow>(
+        this.activity
+          .connections()
+          .map((row: ConnectionRow): [string, ConnectionRow] => [row.key, row]),
+      ),
+  );
+
+  /**
+   * Gets the table's rows, one per connection.
+   */
+  protected readonly rows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] =>
+    this.activity
+      .connections()
+      .map((row: ConnectionRow): TableRow => ({ id: row.key, data: row.key })),
+  );
+
+  /**
+   * Gets what the empty list says: that the connections are still being listed, or that none match.
+   */
+  protected readonly emptyText: Signal<string> = computed((): string =>
+    this.activity.connectionsLoaded() ? 'No connections.' : 'Listing connections…',
+  );
+
+  /**
    * Gets what the list is showing, for the strip: how many connections, and over which interface.
    */
   protected readonly summary: Signal<string> = computed((): string => {
@@ -74,6 +122,15 @@ export class ConnectionsPanel {
       ? `${count} ${noun}`
       : `${count} ${noun} over ${selected.name} (${selected.id})`;
   });
+
+  /**
+   * Gets the connection a table row stands for.
+   * @param row The table row.
+   * @returns Returns the connection's row, or undefined when it has just closed.
+   */
+  protected rowOf(row: TableRow): ConnectionRow | undefined {
+    return this.rowsByKey().get(row.id);
+  }
 
   /**
    * Gets the tone a connection's state is shown in: established connections are good, ones opening or

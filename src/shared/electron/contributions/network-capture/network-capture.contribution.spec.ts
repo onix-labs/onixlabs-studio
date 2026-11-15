@@ -1,5 +1,3 @@
-import { ChildProcess } from 'node:child_process';
-import { EventEmitter } from 'node:events';
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -16,55 +14,109 @@ import { PcapStreamReader } from '@shared/api/packets/pcap-reader';
 import { pcapHeader, pcapRecord } from '@shared/api/packets/pcap-writer';
 import {
   bytesOf,
+  dnsAliasResponse,
   dnsQuery,
   ethernet,
   hostMac,
   ipv4,
   routerMac,
   tcp,
+  tlsClientHello,
   udp,
 } from '@shared/api/packets/packet-samples.testing';
 import { ContributionContext, ContributionListener, InvokeHandler } from '../main-contribution';
+import { HostNameBook } from '../network-names/host-name-book';
+import { CaptureExit, CaptureLaunch } from './capture-launch';
 import { NetworkCaptureContribution } from './network-capture.contribution';
 
 /**
- * A stand-in for tcpdump: the test writes its output and decides how it ends.
+ * A stand-in for tcpdump, however it was launched: the test writes its output and decides how it
+ * ends.
  */
-class FakeTcpdump extends EventEmitter {
+class FakeTcpdump implements CaptureLaunch {
   /**
-   * Gets its standard output, where the pcap stream goes.
+   * Gets the pcap stream.
    */
-  public readonly stdout: PassThrough = new PassThrough();
+  public readonly packets: PassThrough = new PassThrough();
 
   /**
-   * Gets its standard error, where it says what it is doing.
+   * Gets a promise resolving once it is listening.
    */
-  public readonly stderr: PassThrough = new PassThrough();
+  public readonly listening: Promise<void>;
 
   /**
-   * Gets the signals it was sent.
+   * Gets a promise resolving how it ended.
    */
-  public readonly signals: string[] = [];
+  public readonly exited: Promise<CaptureExit>;
 
   /**
-   * Ends it with an exit code.
-   * @param code The exit code.
+   * Gets how often it was asked to stop.
    */
-  public exit(code: number): void {
-    this.stdout.end();
-    this.stderr.end();
-    setTimeout((): void => void this.emit('close', code), 5);
+  public stops: number = 0;
+
+  /**
+   * Gets whether it was disposed.
+   */
+  public disposed: boolean = false;
+
+  /**
+   * Holds what says it is listening.
+   */
+  private hear: () => void = (): void => undefined;
+
+  /**
+   * Holds what says it has ended.
+   */
+  private finish: (exit: CaptureExit) => void = (): void => undefined;
+
+  /**
+   * Creates the stand-in.
+   */
+  public constructor() {
+    this.listening = new Promise<void>((resolve: () => void): void => {
+      this.hear = resolve;
+    });
+    this.exited = new Promise<CaptureExit>((resolve: (exit: CaptureExit) => void): void => {
+      this.finish = resolve;
+    });
   }
 
   /**
-   * Records a signal, and exits as tcpdump does on Ctrl-C.
-   * @param signal The signal.
-   * @returns Returns true.
+   * Says it is listening, as tcpdump does on opening the interface.
    */
-  public kill(signal: string): boolean {
-    this.signals.push(signal);
+  public listen(): void {
+    this.hear();
+  }
+
+  /**
+   * Ends it.
+   * @param code The exit code.
+   * @param errors What it wrote to its error stream.
+   * @param refused Whether permission was refused.
+   */
+  public exit(code: number, errors: string = '', refused: boolean = false): void {
+    this.packets.end();
+    this.packets.resume();
+    setTimeout((): void => this.finish({ code, errors, refused }), 5);
+  }
+
+  /**
+   * Records the stop, and exits as tcpdump does on Ctrl-C.
+   * @returns Returns a resolved promise.
+   */
+  public stop(): Promise<void> {
+    this.stops += 1;
     this.exit(0);
-    return true;
+    return Promise.resolve();
+  }
+
+  /**
+   * Records the disposal.
+   * @returns Returns a resolved promise.
+   */
+  public dispose(): Promise<void> {
+    this.disposed = true;
+    return Promise.resolve();
   }
 }
 
@@ -199,21 +251,24 @@ const capture: Uint8Array = bytesOf(
 describe('NetworkCaptureContribution', () => {
   let directory: string;
   let context: FakeContext;
-  let spawned: { command: string; args: readonly string[]; process: FakeTcpdump }[];
+  let spawned: { interfaceId: string; filter: string; process: FakeTcpdump }[];
   let contribution: NetworkCaptureContribution;
+  let names: HostNameBook;
 
   beforeEach(async () => {
     directory = await mkdtemp(join(tmpdir(), 'network-capture-'));
     context = new FakeContext();
     spawned = [];
+    names = new HostNameBook();
     contribution = new NetworkCaptureContribution(
-      (command: string, args: readonly string[]): ChildProcess => {
+      (interfaceId: string, filter: string): Promise<CaptureLaunch> => {
         const process: FakeTcpdump = new FakeTcpdump();
-        spawned.push({ command, args, process });
-        return process as unknown as ChildProcess;
+        spawned.push({ interfaceId, filter, process });
+        return Promise.resolve(process);
       },
       'darwin',
       join(directory, 'live'),
+      names,
     );
     contribution.activate(context as unknown as ContributionContext);
   });
@@ -251,24 +306,15 @@ describe('NetworkCaptureContribution', () => {
       },
     );
     const tcpdump: FakeTcpdump = await startedTcpdump();
-    tcpdump.stderr.write('tcpdump: listening on en0, link-type EN10MB (Ethernet)\n');
+    tcpdump.listen();
     expect(await started).toEqual({ kind: 'started' });
-    expect(spawned[0].args).toEqual([
-      '-i',
-      'en0',
-      '-n',
-      '-U',
-      '-s',
-      '0',
-      '-w',
-      '-',
-      '--',
-      'udp or tcp',
-    ]);
+    expect(spawned[0]).toEqual(
+      expect.objectContaining({ interfaceId: 'en0', filter: 'udp or tcp' }),
+    );
 
     // Arriving in awkward pieces, as a pipe delivers it.
-    tcpdump.stdout.write(capture.subarray(0, 30));
-    tcpdump.stdout.write(capture.subarray(30));
+    tcpdump.packets.write(capture.subarray(0, 30));
+    tcpdump.packets.write(capture.subarray(30));
     await nextBatch();
 
     const batches: readonly CaptureBatch[] = context.payloads<CaptureBatch>(
@@ -295,7 +341,8 @@ describe('NetworkCaptureContribution', () => {
 
     context.emit(NetworkCaptureChannel.Stop, 'c1');
     await nextBatch();
-    expect(tcpdump.signals).toEqual(['SIGINT']);
+    expect(tcpdump.stops).toBe(1);
+    expect(tcpdump.disposed).toBe(true);
     expect(context.payloads<CaptureEnd>(NetworkCaptureChannel.Ended)).toEqual([{ id: 'c1' }]);
 
     context.emit(NetworkCaptureChannel.Release, 'c1');
@@ -313,15 +360,58 @@ describe('NetworkCaptureContribution', () => {
       },
     );
     const tcpdump: FakeTcpdump = await startedTcpdump();
-    tcpdump.stderr.write(
+    tcpdump.exit(
+      1,
       "tcpdump: en0: You don't have permission to capture on that device\n((cannot open BPF device) /dev/bpf0: Permission denied)\n",
     );
-    tcpdump.exit(1);
 
     expect(await started).toEqual({
       kind: 'failed',
       message: '((cannot open BPF device) /dev/bpf0: Permission denied)',
       permission: true,
+    });
+  });
+
+  it('aRefusedPermissionDialog_failsSayingSo_andCleansUp', async () => {
+    const started: Promise<CaptureStart> = context.invoke<CaptureStart>(
+      NetworkCaptureChannel.Start,
+      {
+        id: 'c1',
+        interfaceId: 'en0',
+        filter: '',
+      },
+    );
+    const tcpdump: FakeTcpdump = await startedTcpdump();
+    tcpdump.exit(1, '', true);
+
+    expect(await started).toEqual({
+      kind: 'failed',
+      message: 'Permission to capture was not given, so nothing was captured.',
+      permission: true,
+    });
+    expect(tcpdump.disposed).toBe(true);
+    await nextBatch();
+    expect(await readdir(join(directory, 'live'))).toEqual([]);
+  });
+
+  it('aFailedLaunch_failsSayingWhy', async () => {
+    contribution = new NetworkCaptureContribution(
+      (): Promise<CaptureLaunch> => Promise.reject(new Error('mkfifo failed')),
+      'darwin',
+      join(directory, 'live'),
+    );
+    contribution.activate(context as unknown as ContributionContext);
+
+    expect(
+      await context.invoke<CaptureStart>(NetworkCaptureChannel.Start, {
+        id: 'c1',
+        interfaceId: 'en0',
+        filter: '',
+      }),
+    ).toEqual({
+      kind: 'failed',
+      message: 'Could not start tcpdump: mkfifo failed',
+      permission: false,
     });
   });
 
@@ -353,6 +443,60 @@ describe('NetworkCaptureContribution', () => {
     expect(rows).toBe(2);
     expect(context.payloads<CaptureEnd>(NetworkCaptureChannel.Ended)).toEqual([{ id: 'f1' }]);
     expect(await readFile(file)).toEqual(Buffer.from(capture));
+  });
+
+  it('namesSeenInACapture_reachTheBook', async () => {
+    const file: string = join(directory, 'names.pcap');
+    await writeFile(
+      file,
+      bytesOf(
+        pcapHeader(LINKTYPE_ETHERNET),
+        pcapRecord(
+          record(
+            1_000,
+            ethernet(
+              routerMac,
+              hostMac,
+              0x0800,
+              ipv4(
+                '192.168.1.1',
+                '192.168.1.43',
+                17,
+                udp(
+                  53,
+                  53000,
+                  dnsAliasResponse(7, 'api.github.com', ['lb.github.com'], '140.82.113.25'),
+                ),
+              ),
+            ),
+          ),
+        ),
+        pcapRecord(
+          record(
+            2_000,
+            ethernet(
+              hostMac,
+              routerMac,
+              0x0800,
+              ipv4(
+                '192.168.1.43',
+                '151.101.1.69',
+                6,
+                tcp(50001, 443, 0x18, tlsClientHello('stackoverflow.com')),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await context.invoke<CaptureStart>(NetworkCaptureChannel.Open, { id: 'f1', path: file });
+    await nextBatch();
+
+    expect(names.lookup('140.82.113.25')).toEqual(
+      expect.objectContaining({ name: 'api.github.com', source: 'capture' }),
+    );
+    expect(names.lookup('151.101.1.69')?.name).toBe('stackoverflow.com');
   });
 
   it('aFileThatIsNotACapture_failsToOpen', async () => {

@@ -151,3 +151,20 @@ export interface DissectedPacket {
    */
   readonly truncated: boolean;
 }
+
+/**
+ * A host's name seen in a packet, with the address it stands for: a DNS answer's name and address,
+ * or the server name a TLS Client Hello asked for and the address it was sent to. What an application
+ * actually called the host it connected to.
+ */
+export interface HostNameSighting {
+  /**
+   * Gets the name, lower-case, without a trailing dot.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the address the name stands for.
+   */
+  readonly address: string;
+}

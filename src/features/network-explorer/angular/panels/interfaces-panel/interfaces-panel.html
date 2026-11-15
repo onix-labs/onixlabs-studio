@@ -4,6 +4,7 @@
     [icon]="Icon.REFRESH"
     tooltip="Refresh Interfaces"
     ariaLabel="Refresh Interfaces"
+    data-testid="refresh-interfaces"
     (click)="refresh()"
   />
   <span class="panel-toolbar__spacer"></span>
@@ -11,62 +12,70 @@
     variant="none"
     label="Idle"
     tooltip="Show interfaces that are down or have no address"
+    data-testid="show-idle-interfaces"
     [pressed]="activity.showIdleInterfaces()"
     (click)="activity.showIdleInterfaces.set(!activity.showIdleInterfaces())"
   />
 </app-panel-toolbar>
 
 @if (activity.info() === null) {
-  <p class="interfaces__empty">Reading the network interfaces…</p>
+  <p class="interfaces__reading">Reading the network interfaces…</p>
 } @else {
-  <ul class="interfaces__list" aria-label="Network interfaces">
-    @for (row of activity.interfaces(); track row.info.id) {
-      <li class="interfaces__item">
-        <button
-          type="button"
-          class="interfaces__row"
-          [class.interfaces__row--selected]="activity.selectedInterfaceId() === row.info.id"
-          [class.interfaces__row--down]="!row.info.up"
-          [attr.aria-pressed]="activity.selectedInterfaceId() === row.info.id"
-          [attr.data-testid]="'interface-' + row.info.id"
-          (click)="choose(row)"
+  <!-- The interfaces are the shared list's rows: it owns selection, hover, focus and the keyboard,
+       and this panel projects what each row says and its Watch action. -->
+  <app-list-view
+    [rows]="rows()"
+    [selectedId]="activity.selectedInterfaceId()"
+    emptyText="No interfaces in use."
+    (rowClick)="choose($event)"
+  >
+    <ng-template let-row>
+      @let item = interfacesById().get(row.id);
+      @if (item) {
+        <span
+          class="interfaces__item"
+          [class.interfaces__item--down]="!item.info.up"
+          [attr.data-testid]="'interface-' + item.info.id"
         >
-          <app-icon class="interfaces__icon" [icon]="iconFor(row.info.kind)" />
+          <app-icon class="interfaces__icon" [icon]="iconFor(item.info.kind)" />
           <span class="interfaces__body">
             <span class="interfaces__title">
-              <span class="interfaces__name">{{ row.info.name }}</span>
-              @if (row.info.name !== row.info.id) {
-                <span class="interfaces__id">{{ row.info.id }}</span>
+              <span class="interfaces__name">{{ item.info.name }}</span>
+              @if (item.info.name !== item.info.id) {
+                <span class="interfaces__id" data-testid="device-name">{{ item.info.id }}</span>
               }
-              @if (row.info.isDefault) {
+              @if (item.info.isDefault) {
                 <span class="interfaces__badge">Default</span>
               }
             </span>
-            <span class="interfaces__addresses" [title]="addresses(row)">{{ addresses(row) }}</span>
+            <span class="interfaces__addresses" [title]="addresses(item)">{{
+              addresses(item)
+            }}</span>
             <span class="interfaces__meta">
-              @if (row.reading; as reading) {
+              @if (item.reading; as reading) {
                 <span title="Received">↓ {{ formatRate(reading.rxBytesPerSecond) }}</span>
                 <span title="Sent">↑ {{ formatRate(reading.txBytesPerSecond) }}</span>
               }
               <span
-                >{{ row.connections }}
-                {{ row.connections === 1 ? 'connection' : 'connections' }}</span
+                >{{ item.connections }}
+                {{ item.connections === 1 ? 'connection' : 'connections' }}</span
               >
             </span>
           </span>
-        </button>
+        </span>
+        <!-- The row's own keys choose it, so the action keeps its Enter and Space to itself. -->
         <app-button
           class="interfaces__watch"
           variant="none"
           size="small"
           [icon]="Icon.NETWORK_CAPTURE"
-          [ariaLabel]="'Watch ' + row.info.name"
+          [ariaLabel]="'Watch ' + item.info.name"
           tooltip="Watch: capture this interface's packets"
-          (click)="watch(row)"
+          (click)="watch(item, $event)"
+          (keydown.enter)="$event.stopPropagation()"
+          (keydown.space)="$event.stopPropagation()"
         />
-      </li>
-    } @empty {
-      <li class="interfaces__empty">No interfaces in use.</li>
-    }
-  </ul>
+      }
+    </ng-template>
+  </app-list-view>
 }

@@ -6,7 +6,9 @@ import {
   NetworkInterfaceReading,
   NetworkReading,
 } from '@shared/api/system-monitor-channels';
+import { canonicalAddress } from '@shared/api/network-names-channels';
 import { Log } from '@shared/angular/services/log/log';
+import { NetworkNames } from '../network-names/network-names';
 import { NetworkProbe } from '../network-probe/network-probe';
 import { endpointHost, hasRemotePeer, interfaceOf, isLoopbackHost } from './network-endpoints';
 
@@ -51,6 +53,12 @@ export interface ConnectionRow {
   readonly remoteHost: string;
 
   /**
+   * Gets the remote peer's host name — one an application was seen using in a capture, or else its
+   * reverse DNS name — or undefined while none is known.
+   */
+  readonly remoteName: string | undefined;
+
+  /**
    * Gets the id of the interface the connection is made over, or undefined when none carries its
    * local address.
    */
@@ -87,6 +95,11 @@ export class NetworkActivity {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds what the remote hosts are called.
+   */
+  private readonly names: NetworkNames = inject(NetworkNames);
 
   /**
    * Holds the machine's interfaces, DNS servers and gateway, or null before they are read.
@@ -151,14 +164,19 @@ export class NetworkActivity {
   private readonly remoteRows: Signal<readonly ConnectionRow[]> = computed(
     (): readonly ConnectionRow[] => {
       const interfaces: readonly NetworkInterfaceInfo[] = this.infoState()?.interfaces ?? [];
+      const names: ReadonlyMap<string, string> = this.names.names();
       return (this.connectionsState() ?? [])
         .filter(hasRemotePeer)
-        .map((connection: NetworkConnection, index: number): ConnectionRow => ({
-          connection,
-          key: `${connection.protocol} ${connection.local} ${connection.remote} ${connection.pid ?? ''} ${index}`,
-          remoteHost: endpointHost(connection.remote),
-          interfaceId: interfaceOf(connection, interfaces),
-        }));
+        .map((connection: NetworkConnection, index: number): ConnectionRow => {
+          const remoteHost: string = endpointHost(connection.remote);
+          return {
+            connection,
+            key: `${connection.protocol} ${connection.local} ${connection.remote} ${connection.pid ?? ''} ${index}`,
+            remoteHost,
+            remoteName: names.get(canonicalAddress(remoteHost)),
+            interfaceId: interfaceOf(connection, interfaces),
+          };
+        });
     },
   );
 
@@ -206,8 +224,8 @@ export class NetworkActivity {
 
   /**
    * Gets the connections the Connections panel lists: those with a remote peer, over the selected
-   * interface, without loopback ones unless asked, and matching the filter by process, address,
-   * protocol or state.
+   * interface, without loopback ones unless asked, and matching the filter by process, host name,
+   * address, protocol or state.
    */
   public readonly connections: Signal<readonly ConnectionRow[]> = computed(
     (): readonly ConnectionRow[] => {
@@ -227,6 +245,7 @@ export class NetworkActivity {
         const connection: NetworkConnection = row.connection;
         return [
           connection.process ?? '',
+          row.remoteName ?? '',
           connection.local,
           connection.remote,
           connection.protocol,
@@ -307,6 +326,13 @@ export class NetworkActivity {
     );
     if (reading.connections !== undefined) {
       this.connectionsState.set(reading.connections);
+      // Only addresses not already named, or asked about, are asked about; new connections bring new ones.
+      void this.names.resolve(
+        reading.connections
+          .filter(hasRemotePeer)
+          .map((connection: NetworkConnection): string => endpointHost(connection.remote))
+          .filter((host: string): boolean => !isLoopbackHost(host)),
+      );
     }
   }
 }

@@ -39,19 +39,12 @@
 
   @if (capture.status === 'failed' && capture.permission) {
     <div class="capture__help" role="alert" data-testid="capture-permission">
-      <p class="capture__help-title">Studio isn't allowed to capture packets yet</p>
+      <p class="capture__help-title">Studio wasn't allowed to capture packets</p>
       <p>
-        Capturing reads the network through <code>/dev/bpf*</code>, which macOS lets only
-        administrators open. Wireshark's <strong>ChmodBPF</strong> helper fixes this for good: it
-        lets members of the <code>access_bpf</code> group capture, and sets that up at every start.
+        Capturing reads every packet on the interface, so Studio asks an administrator's permission
+        each time you capture, and keeps none of it afterwards. Choose
+        <strong>Capture Again</strong> to be asked again.
       </p>
-      <ol>
-        <li>
-          Install Wireshark, or just the <em>Install ChmodBPF</em> package inside its disk image.
-        </li>
-        <li>Make sure your account is in the <code>access_bpf</code> group.</li>
-        <li>Log out and back in, then choose <strong>Capture Again</strong>.</li>
-      </ol>
       <p class="capture__help-detail">{{ capture.message }}</p>
       <app-button variant="solid" label="Capture Again" (click)="restart()" />
     </div>
@@ -67,62 +60,49 @@
       </p>
     }
     <div class="capture__body">
-      <div class="capture__list">
-        <div class="capture__row capture__row--header" aria-hidden="true">
-          <span class="capture__number">No.</span>
-          <span class="capture__time">Time</span>
-          <span class="capture__address">Source</span>
-          <span class="capture__address">Destination</span>
-          <span class="capture__protocol">Protocol</span>
-          <span class="capture__length">Length</span>
-          <span class="capture__info">Info</span>
-        </div>
-        <cdk-virtual-scroll-viewport
-          class="capture__viewport"
-          aria-label="Packets"
-          tabindex="0"
-          data-testid="capture-packets"
-          [itemSize]="rowHeight"
-          (scrolledIndexChange)="onScrolled($event)"
-          (keydown)="onKeydown($event)"
+      <!-- The list takes the focus, so the arrow keys move the choice through it. -->
+      <div
+        class="capture__list"
+        role="region"
+        aria-label="Packets"
+        tabindex="0"
+        data-testid="capture-packets"
+        (keydown)="onKeydown($event)"
+      >
+        <app-table
+          class="capture__table"
+          gridlines="horizontal"
+          [virtual]="true"
+          [columns]="columns"
+          [rows]="tableRows()"
+          [selectedIds]="chosenIds()"
+          [emptyText]="emptyText()"
+          (rowClick)="onRowClick($event)"
+          (scrolledToEnd)="onScrolled($event)"
         >
-          <button
-            type="button"
-            *cdkVirtualFor="let row of rows(); trackBy: trackRow"
-            class="capture__row"
-            [class.capture__row--chosen]="row.number === chosenNumber()"
-            [attr.data-protocol]="row.summary.protocol"
-            [attr.aria-pressed]="row.number === chosenNumber()"
-            (click)="choose(row)"
-          >
-            <span class="capture__number">{{ row.number }}</span>
-            <span class="capture__time">{{ timeOf(row) }}</span>
-            <span class="capture__address" [title]="row.summary.source">{{
-              row.summary.source
-            }}</span>
-            <span class="capture__address" [title]="row.summary.destination">{{
-              row.summary.destination
-            }}</span>
-            <span class="capture__protocol">{{ row.summary.protocol }}</span>
-            <span class="capture__length">{{ row.length }}</span>
-            <span class="capture__info" [title]="row.summary.info">{{ row.summary.info }}</span>
-          </button>
-        </cdk-virtual-scroll-viewport>
-        @if (rows().length === 0) {
-          <p class="capture__empty">
-            @switch (capture.status) {
-              @case ('starting') {
-                Starting the capture…
-              }
-              @case ('capturing') {
-                Waiting for the first packet…
-              }
-              @default {
-                No packets.
-              }
+          <ng-template appTableRow let-tableRow>
+            @let row = rowOf(tableRow);
+            @if (row) {
+              <td class="capture__cell" data-testid="packet-number">{{ row.number }}</td>
+              <td class="capture__cell">{{ timeOf(row) }}</td>
+              <td class="capture__cell" [title]="row.summary.source">{{ row.summary.source }}</td>
+              <td class="capture__cell" [title]="row.summary.destination">
+                {{ row.summary.destination }}
+              </td>
+              <td
+                class="capture__cell capture__protocol"
+                data-testid="packet-protocol"
+                [attr.data-protocol]="row.summary.protocol"
+              >
+                {{ row.summary.protocol }}
+              </td>
+              <td class="capture__cell">{{ row.length }}</td>
+              <td class="capture__cell" data-testid="packet-info" [title]="row.summary.info">
+                {{ row.summary.info }}
+              </td>
             }
-          </p>
-        }
+          </ng-template>
+        </app-table>
       </div>
       <app-packet-details
         class="capture__details"

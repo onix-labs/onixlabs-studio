@@ -50,18 +50,20 @@ export function isValidFilter(filter: string): boolean {
 }
 
 /**
- * Builds the command that captures on an interface: numeric, unbuffered pcap written to standard
- * output, every byte of every packet. The filter goes after `--`, so even one tcpdump would otherwise
- * read as an option is only ever its expression.
+ * Builds the command that captures on an interface: numeric, unbuffered pcap, every byte of every
+ * packet. The filter goes after `--`, so even one tcpdump would otherwise read as an option is only
+ * ever its expression.
  * @param interfaceId The interface, already validated.
  * @param filter The capture filter, already validated; empty for every packet.
  * @param platform The operating system.
+ * @param output Where the pcap is written: `-` for standard output, or a path.
  * @returns Returns the command, or undefined where capturing is not supported yet.
  */
 export function captureCommand(
   interfaceId: string,
   filter: string,
   platform: NodeJS.Platform,
+  output: string = '-',
 ): CaptureCommand | undefined {
   const args: readonly string[] = [
     '-i',
@@ -71,7 +73,7 @@ export function captureCommand(
     '-s',
     '0',
     '-w',
-    '-',
+    output,
     ...(filter.trim().length > 0 ? ['--', filter.trim()] : []),
   ];
   if (platform === 'darwin') {
@@ -84,9 +86,8 @@ export function captureCommand(
 }
 
 /**
- * Gets whether tcpdump's complaint means it lacks permission to capture, which the user can grant —
- * on macOS by letting their account read the BPF devices — rather than anything wrong with the
- * request.
+ * Gets whether tcpdump's complaint means it lacks permission to capture, which the user can grant,
+ * rather than anything wrong with the request.
  * @param message What tcpdump wrote to its error stream.
  * @returns Returns true when the failure is one of permission.
  */

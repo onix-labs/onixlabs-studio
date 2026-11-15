@@ -128,6 +128,7 @@ function dissectIpv4(dissection: PacketDissection, start: number): void {
   );
   dissection.source = source;
   dissection.destination = destination;
+  dissection.destinationAddress = destination;
   if (headerLength < 20) {
     return;
   }
@@ -174,6 +175,7 @@ function dissectIpv6(dissection: PacketDissection, start: number): void {
   );
   dissection.source = source;
   dissection.destination = destination;
+  dissection.destinationAddress = destination;
   let position: number = start + 40;
   for (let walked: number = 0; IPV6_EXTENSIONS.has(next) && walked < 8; walked += 1) {
     const header: number | undefined = bytes.u8(position);
@@ -299,6 +301,18 @@ function dissectRawIp(dissection: PacketDissection, start: number): void {
  * @returns Returns the dissected packet.
  */
 export function dissectPacket(linkType: number, data: Uint8Array): DissectedPacket {
+  return dissect(linkType, data).finish();
+}
+
+/**
+ * Takes a captured packet apart, as {@link dissectPacket} does, keeping the dissection itself: what
+ * it learned along the way that is not part of the packet's description, such as the host names the
+ * packet names.
+ * @param linkType The capture's link-layer header type.
+ * @param data The packet's captured bytes.
+ * @returns Returns the finished dissection.
+ */
+export function dissect(linkType: number, data: Uint8Array): PacketDissection {
   const dissection: PacketDissection = new PacketDissection(new PacketBytes(data));
   try {
     switch (linkType) {
@@ -336,5 +350,5 @@ export function dissectPacket(linkType: number, data: Uint8Array): DissectedPack
     // capture never stops over one packet.
     dissection.truncated = true;
   }
-  return dissection.finish();
+  return dissection;
 }

@@ -9,74 +9,69 @@ import {
   signal,
   WritableSignal,
 } from '@angular/core';
+import { BinaryEditor, BinaryRange } from '@shared/angular/components/binary-editor/binary-editor';
+import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 import { DissectedPacket, PacketField, PacketLayer } from '@shared/api/packets/packet-model';
 
 /**
- * A span of a packet's bytes: what is highlighted in the hex dump.
+ * One node of the dissection tree: a layer, or one of its fields.
  */
-interface ByteSpan {
+type PacketNode = PacketLayerNode | PacketFieldNode;
+
+/**
+ * A layer's row in the dissection tree.
+ */
+interface PacketLayerNode {
   /**
-   * Gets the span's first byte.
+   * Gets the node's kind.
    */
-  readonly offset: number;
+  readonly kind: 'layer';
 
   /**
-   * Gets its length.
+   * Gets the layer.
    */
-  readonly length: number;
+  readonly layer: PacketLayer;
+
+  /**
+   * Gets the bytes the layer was read from.
+   */
+  readonly range: BinaryRange;
 }
 
 /**
- * One line of the hex dump: sixteen bytes, as hex and as text.
+ * A field's row in the dissection tree.
  */
-interface HexLine {
+interface PacketFieldNode {
   /**
-   * Gets the line's first byte's offset.
+   * Gets the node's kind.
    */
-  readonly offset: number;
+  readonly kind: 'field';
 
   /**
-   * Gets the line's offset as the dump shows it.
+   * Gets the field.
    */
-  readonly label: string;
+  readonly field: PacketField;
 
   /**
-   * Gets the line's bytes, each as two hex digits and as a character.
+   * Gets the tree id of the layer the field belongs to.
    */
-  readonly bytes: readonly HexByte[];
+  readonly layerId: string;
+
+  /**
+   * Gets the bytes the field was read from; at least one, for a field that is a fraction of a byte.
+   */
+  readonly range: BinaryRange;
 }
 
 /**
- * One byte of the hex dump.
- */
-interface HexByte {
-  /**
-   * Gets the byte's offset in the packet.
-   */
-  readonly offset: number;
-
-  /**
-   * Gets the byte as two hex digits.
-   */
-  readonly hex: string;
-
-  /**
-   * Gets the byte as a printable character, or `.`.
-   */
-  readonly text: string;
-}
-
-/**
- * The bytes on each line of the hex dump.
- */
-const BYTES_PER_LINE: number = 16;
-
-/**
- * One packet taken apart: each layer, collapsible, with its fields, beside the packet's bytes in hex.
- * Choosing a layer or a field highlights the bytes it was read from, the way Wireshark's panes do.
+ * One packet taken apart: each layer, collapsible, with its fields, on the shared tree, beside the
+ * packet's bytes on the shared binary editor, read-only. Choosing a layer or a field selects the bytes
+ * it was read from, and selecting bytes chooses the narrowest field they lie in, the way Wireshark's
+ * panes follow each other.
  */
 @Component({
   selector: 'app-packet-details',
+  imports: [TreeView, BinaryEditor],
   templateUrl: './packet-details.html',
   styleUrl: './packet-details.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -97,79 +92,170 @@ export class PacketDetails {
   );
 
   /**
-   * Holds the layers that are collapsed, by protocol; every layer starts open.
+   * Holds the layers that are collapsed, by tree id; every layer starts open.
    */
   protected readonly collapsed: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
     new Set<string>(),
   );
 
   /**
-   * Holds the span highlighted, cleared when another packet is chosen.
+   * Gets every node of the dissection, by tree id, in the order the tree shows them.
    */
-  protected readonly highlighted: WritableSignal<ByteSpan | undefined> = linkedSignal<
+  protected readonly nodes: Signal<ReadonlyMap<string, PacketNode>> = computed(
+    (): ReadonlyMap<string, PacketNode> => {
+      const nodes: Map<string, PacketNode> = new Map<string, PacketNode>();
+      this.packet()?.layers.forEach((layer: PacketLayer, layerIndex: number): void => {
+        const layerId: string = `layer:${layerIndex}`;
+        nodes.set(layerId, {
+          kind: 'layer',
+          layer,
+          range: { start: layer.offset, end: layer.offset + layer.length },
+        });
+        layer.fields.forEach((field: PacketField, fieldIndex: number): void => {
+          nodes.set(`${layerId}/field:${fieldIndex}`, {
+            kind: 'field',
+            field,
+            layerId,
+            range: { start: field.offset, end: field.offset + Math.max(1, field.length) },
+          });
+        });
+      });
+      return nodes;
+    },
+  );
+
+  /**
+   * Gets the tree's visible rows: each layer, and the fields of those that are open.
+   */
+  protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] => {
+    const collapsed: ReadonlySet<string> = this.collapsed();
+    const rows: TreeRow[] = [];
+    this.nodes().forEach((node: PacketNode, id: string): void => {
+      if (node.kind === 'layer') {
+        rows.push({
+          id,
+          depth: 0,
+          expandable: node.layer.fields.length > 0,
+          expanded: !collapsed.has(id),
+          data: node,
+        });
+      } else if (!collapsed.has(node.layerId)) {
+        rows.push({ id, depth: 1, expandable: false, expanded: false, data: node });
+      }
+    });
+    return rows;
+  });
+
+  /**
+   * Holds the tree row chosen, cleared when another packet is chosen.
+   */
+  protected readonly chosenId: WritableSignal<string | null> = linkedSignal<
     Uint8Array | undefined,
-    ByteSpan | undefined
+    string | null
   >({
     source: this.data,
-    computation: (): ByteSpan | undefined => undefined,
+    computation: (): string | null => null,
   });
 
   /**
-   * Gets the hex dump's lines.
+   * Holds the bytes selected, cleared when another packet is chosen.
    */
-  protected readonly lines: Signal<readonly HexLine[]> = computed((): readonly HexLine[] => {
-    const data: Uint8Array | undefined = this.data();
-    if (data === undefined) {
-      return [];
+  protected readonly selection: WritableSignal<BinaryRange | null> = linkedSignal<
+    Uint8Array | undefined,
+    BinaryRange | null
+  >({
+    source: this.data,
+    computation: (): BinaryRange | null => null,
+  });
+
+  /**
+   * Holds the byte the bytes view is asked to scroll to, when a choice in the tree selects bytes.
+   */
+  protected readonly revealOffset: WritableSignal<number | null> = signal<number | null>(null);
+
+  /**
+   * Holds the count of reveals asked for, so choosing the same bytes again still scrolls to them.
+   */
+  protected readonly revealVersion: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Gets the reader the bytes view takes the packet's bytes through, replaced with each packet.
+   */
+  protected readonly byteAt: Signal<(offset: number) => number | null> = computed(
+    (): ((offset: number) => number | null) => {
+      const data: Uint8Array = this.data() ?? new Uint8Array(0);
+      return (offset: number): number | null => data[offset] ?? null;
+    },
+  );
+
+  /**
+   * Gets the layer a tree row stands for.
+   * @param row The row.
+   * @returns Returns the layer, or undefined for a field's row.
+   */
+  protected layerOf(row: TreeRow): PacketLayer | undefined {
+    const node: PacketNode | undefined = this.nodes().get(row.id);
+    return node?.kind === 'layer' ? node.layer : undefined;
+  }
+
+  /**
+   * Gets the field a tree row stands for.
+   * @param row The row.
+   * @returns Returns the field, or undefined for a layer's row.
+   */
+  protected fieldOf(row: TreeRow): PacketField | undefined {
+    const node: PacketNode | undefined = this.nodes().get(row.id);
+    return node?.kind === 'field' ? node.field : undefined;
+  }
+
+  /**
+   * Chooses a row: opens or closes a layer, and selects the bytes the row was read from.
+   * @param row The row.
+   */
+  protected choose(row: TreeRow): void {
+    const node: PacketNode | undefined = this.nodes().get(row.id);
+    if (node === undefined) {
+      return;
     }
-    const lines: HexLine[] = [];
-    for (let offset: number = 0; offset < data.length; offset += BYTES_PER_LINE) {
-      lines.push({
-        offset,
-        label: offset.toString(16).padStart(4, '0'),
-        bytes: Array.from(
-          data.subarray(offset, offset + BYTES_PER_LINE),
-          (byte: number, index: number): HexByte => ({
-            offset: offset + index,
-            hex: byte.toString(16).padStart(2, '0'),
-            text: byte >= 0x20 && byte < 0x7f ? String.fromCharCode(byte) : '.',
-          }),
-        ),
+    if (node.kind === 'layer' && row.expandable) {
+      this.collapsed.update((collapsed: ReadonlySet<string>): ReadonlySet<string> => {
+        const next: Set<string> = new Set<string>(collapsed);
+        if (!next.delete(row.id)) {
+          next.add(row.id);
+        }
+        return next;
       });
     }
-    return lines;
-  });
-
-  /**
-   * Gets whether a byte is highlighted.
-   * @param offset The byte's offset.
-   * @returns Returns true when it lies in the highlighted span.
-   */
-  protected isHighlighted(offset: number): boolean {
-    const span: ByteSpan | undefined = this.highlighted();
-    return span !== undefined && offset >= span.offset && offset < span.offset + span.length;
+    this.chosenId.set(row.id);
+    this.selection.set(node.range);
+    this.revealOffset.set(node.range.start);
+    this.revealVersion.update((version: number): number => version + 1);
   }
 
   /**
-   * Opens or closes a layer, and highlights its bytes.
-   * @param layer The layer.
+   * Follows a selection made in the bytes: chooses the narrowest field the bytes lie wholly in, or
+   * the narrowest layer when they lie in no field shown.
+   * @param range The bytes selected.
    */
-  protected toggle(layer: PacketLayer): void {
-    this.collapsed.update((collapsed: ReadonlySet<string>): ReadonlySet<string> => {
-      const next: Set<string> = new Set<string>(collapsed);
-      if (!next.delete(layer.protocol)) {
-        next.add(layer.protocol);
+  protected onBytesSelected(range: BinaryRange): void {
+    this.selection.set(range);
+    const collapsed: ReadonlySet<string> = this.collapsed();
+    let chosen: string | null = null;
+    let narrowest: number = Number.POSITIVE_INFINITY;
+    for (const [id, node] of this.nodes()) {
+      const visible: boolean = node.kind === 'layer' || !collapsed.has(node.layerId);
+      const width: number = node.range.end - node.range.start;
+      // Fields come after their layer, so a field as wide as its layer still wins the tie.
+      if (
+        visible &&
+        node.range.start <= range.start &&
+        node.range.end >= range.end &&
+        width <= narrowest
+      ) {
+        chosen = id;
+        narrowest = width;
       }
-      return next;
-    });
-    this.highlighted.set({ offset: layer.offset, length: layer.length });
-  }
-
-  /**
-   * Highlights a field's bytes.
-   * @param fieldOfLayer The field.
-   */
-  protected choose(fieldOfLayer: PacketField): void {
-    this.highlighted.set({ offset: fieldOfLayer.offset, length: Math.max(1, fieldOfLayer.length) });
+    }
+    this.chosenId.set(chosen);
   }
 }

@@ -249,6 +249,54 @@ export function dnsResponse(id: number, name: string, address: string): Uint8Arr
 }
 
 /**
+ * Builds a DNS response answering a query for a name through a chain of CNAMEs, ending in an address
+ * record — A for an IPv4 address, AAAA for IPv6 — for the last name in the chain. Names are written in
+ * full, uncompressed.
+ * @param id The transaction id.
+ * @param name The name asked for.
+ * @param aliases The canonical names the chain passes through, in order; none for a direct answer.
+ * @param address The answer's address.
+ * @param replyCode The response code; 0 for no error.
+ * @returns Returns the message.
+ */
+export function dnsAliasResponse(
+  id: number,
+  name: string,
+  aliases: readonly string[],
+  address: string,
+  replyCode: number = 0,
+): Uint8Array {
+  const ipv6Address: boolean = address.includes(':');
+  const chain: readonly string[] = [name, ...aliases];
+  const cnames: readonly Uint8Array[] = aliases.map((alias: string, index: number): Uint8Array => {
+    const target: readonly number[] = dnsName(alias);
+    return bytesOf(dnsName(chain[index]), u16(5), u16(1), u32(300), u16(target.length), target);
+  });
+  const data: readonly number[] = ipv6Address ? ipv6Bytes(address) : ipv4Bytes(address);
+  const record: Uint8Array = bytesOf(
+    dnsName(chain[chain.length - 1]),
+    u16(ipv6Address ? 28 : 1),
+    u16(1),
+    u32(60),
+    u16(data.length),
+    data,
+  );
+  return bytesOf(
+    u16(id),
+    u16(0x8180 | replyCode),
+    u16(1),
+    u16(aliases.length + 1),
+    u16(0),
+    u16(0),
+    dnsName(name),
+    u16(ipv6Address ? 28 : 1),
+    u16(1),
+    ...cnames,
+    record,
+  );
+}
+
+/**
  * Builds a TLS record carrying a Client Hello that asks for a server by name and offers protocols.
  * @param serverName The server name.
  * @param protocols The application protocols offered.

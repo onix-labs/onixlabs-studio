@@ -1,4 +1,6 @@
 import { TestBed } from '@angular/core/testing';
+import { NetworkNames } from '../network-names/network-names';
+import { FakeNetworkNames } from '../network-names/network-names.fake';
 import { NetworkProbe } from '../network-probe/network-probe';
 import { FakeNetworkProbe } from '../network-probe/network-probe.fake';
 import { ConnectionRow, InterfaceRow, NetworkActivity } from './network-activity';
@@ -6,13 +8,19 @@ import { activity, sampleConnections, sampleNetwork } from './network-samples.te
 
 describe('NetworkActivity', () => {
   let probe: FakeNetworkProbe;
+  let names: FakeNetworkNames;
   let activityStore: NetworkActivity;
 
   beforeEach(async () => {
     probe = new FakeNetworkProbe();
     probe.network = sampleNetwork;
+    names = new FakeNetworkNames();
     TestBed.configureTestingModule({
-      providers: [NetworkActivity, { provide: NetworkProbe, useValue: probe }],
+      providers: [
+        NetworkActivity,
+        { provide: NetworkProbe, useValue: probe },
+        { provide: NetworkNames, useValue: names },
+      ],
     });
     activityStore = TestBed.inject(NetworkActivity);
     activityStore.open();
@@ -87,6 +95,20 @@ describe('NetworkActivity', () => {
 
     activityStore.connectionQuery.set('safari');
     expect(listedProcesses()).toEqual(['Safari']);
+  });
+
+  it('asksForTheNamesOfRemoteHosts_butNotTheLoopback', () => {
+    expect(names.asked).toEqual(['140.82.112.3']);
+  });
+
+  it('connections_carryTheRemoteHostsName_andTheFilterMatchesIt', () => {
+    names.name('140.82.112.3', 'api.github.com');
+
+    activityStore.connectionQuery.set('GITHUB');
+
+    expect(activityStore.connections().map((row: ConnectionRow) => row.remoteName)).toEqual([
+      'api.github.com',
+    ]);
   });
 
   it('aReadingWithoutConnections_keepsTheLastList', () => {

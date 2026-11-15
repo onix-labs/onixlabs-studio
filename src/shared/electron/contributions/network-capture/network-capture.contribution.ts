@@ -1,4 +1,3 @@
-import { ChildProcess, spawn } from 'node:child_process';
 import { createReadStream, createWriteStream, ReadStream, WriteStream } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -12,20 +11,17 @@ import {
   MAX_CAPTURE_PACKETS,
   NetworkCaptureChannel,
 } from '@shared/api/network-capture-channels';
+import { HostNameSighting } from '@shared/api/packets/packet-model';
 import { ContributionContext, MainContribution } from '../main-contribution';
+import { HostNameBook, hostNameBook } from '../network-names/host-name-book';
 import {
-  CaptureCommand,
   captureCommand,
   isPermissionError,
   isValidFilter,
   isValidInterface,
 } from './capture-command';
+import { CaptureExit, CaptureLaunch, CaptureLauncher, platformLauncher } from './capture-launch';
 import { CaptureSession } from './capture-session';
-
-/**
- * Starts tcpdump. A seam, so the contribution can be tested without capturing anything.
- */
-export type CaptureSpawner = (command: string, args: readonly string[]) => ChildProcess;
 
 /**
  * How often the packets captured are sent to the renderer, in milliseconds: often enough to look
@@ -52,7 +48,7 @@ interface CaptureEntry {
   /**
    * Gets tcpdump, while a live capture runs.
    */
-  process?: ChildProcess;
+  launch?: CaptureLaunch;
 
   /**
    * Gets the stream a live capture is written to, while it runs.
@@ -78,16 +74,6 @@ interface CaptureEntry {
    * Gets why the capture ended, when it was not asked to.
    */
   problem?: string;
-}
-
-/**
- * Starts tcpdump with nothing read from its standard input.
- * @param command The executable.
- * @param args Its arguments.
- * @returns Returns the process.
- */
-function spawnCapture(command: string, args: readonly string[]): ChildProcess {
-  return spawn(command, [...args], { stdio: ['ignore', 'pipe', 'pipe'] });
 }
 
 /**
@@ -139,21 +125,30 @@ export class NetworkCaptureContribution implements MainContribution {
   private timer: ReturnType<typeof setInterval> | undefined;
 
   /**
+   * Holds what starts tcpdump.
+   */
+  private readonly launcher: CaptureLauncher;
+
+  /**
    * Holds the contribution context, once activated.
    */
   private context: ContributionContext | undefined;
 
   /**
    * Creates the contribution.
-   * @param spawner Starts tcpdump.
+   * @param launcher Starts tcpdump; by default, as the platform needs.
    * @param platform The operating system.
    * @param directory Where live captures are written while they run.
+   * @param names The book the host names captures see are written to.
    */
   public constructor(
-    private readonly spawner: CaptureSpawner = spawnCapture,
+    launcher?: CaptureLauncher,
     private readonly platform: NodeJS.Platform = process.platform,
     private readonly directory: string = join(tmpdir(), 'onixlabs-studio-captures'),
-  ) {}
+    private readonly names: HostNameBook = hostNameBook,
+  ) {
+    this.launcher = launcher ?? platformLauncher(platform, join(directory, 'fifos'));
+  }
 
   /**
    * Wires the capture channels.
@@ -228,12 +223,7 @@ export class NetworkCaptureContribution implements MainContribution {
         permission: false,
       };
     }
-    const command: CaptureCommand | undefined = captureCommand(
-      request.interfaceId,
-      request.filter,
-      this.platform,
-    );
-    if (command === undefined) {
+    if (captureCommand(request.interfaceId, request.filter, this.platform) === undefined) {
       return {
         kind: 'failed',
         message: 'Capturing is not supported on this platform yet.',
@@ -243,17 +233,27 @@ export class NetworkCaptureContribution implements MainContribution {
     if (this.captures.has(request.id)) {
       return { kind: 'failed', message: 'That capture is already running.', permission: false };
     }
-    await mkdir(this.directory, { recursive: true });
+    await mkdir(this.directory, { recursive: true, mode: 0o700 });
     const file: string = join(this.directory, `${request.id}.pcap`);
     const entry: CaptureEntry = {
-      session: new CaptureSession(request.id, file),
+      session: this.createSession(request.id, file),
       temporary: true,
       stopping: false,
     };
     this.captures.set(request.id, entry);
-    const child: ChildProcess = this.spawner(command.command, command.args);
+    let launch: CaptureLaunch;
+    try {
+      launch = await this.launcher(request.interfaceId, request.filter);
+    } catch (error: unknown) {
+      void this.release(request.id);
+      return {
+        kind: 'failed',
+        message: `Could not start tcpdump: ${error instanceof Error ? error.message : String(error)}`,
+        permission: false,
+      };
+    }
     const output: WriteStream = createWriteStream(file);
-    entry.process = child;
+    entry.launch = launch;
     entry.output = output;
     this.context?.log.info('Capture started', {
       interface: request.interfaceId,
@@ -261,38 +261,33 @@ export class NetworkCaptureContribution implements MainContribution {
     });
     return new Promise<CaptureStart>((resolve: (start: CaptureStart) => void): void => {
       let settled: boolean = false;
-      let errors: string = '';
       const settle: (start: CaptureStart) => void = (start: CaptureStart): void => {
         if (!settled) {
           settled = true;
           resolve(start);
         }
       };
-      child.stderr?.on('data', (chunk: Buffer): void => {
-        errors += chunk.toString('utf8');
-        // tcpdump says it is listening before it has a packet to write; that is the capture starting.
-        if (/listening on/i.test(errors)) {
-          settle({ kind: 'started' });
-        }
-      });
-      child.stdout?.on('data', (chunk: Buffer): void => {
+      launch.packets.on('data', (chunk: Buffer): void => {
         settle({ kind: 'started' });
         output.write(chunk);
         this.read(entry, chunk);
       });
-      child.once('error', (error: Error): void => {
-        settle({
-          kind: 'failed',
-          message: `Could not start tcpdump: ${error.message}`,
-          permission: false,
-        });
+      const listen: () => Promise<void> = async (): Promise<void> => {
+        await launch.listening;
+        settle({ kind: 'started' });
+      };
+      void listen();
+      const drained: Promise<void> = new Promise<void>((done: () => void): void => {
+        launch.packets.once('close', done);
       });
-      child.once('close', (code: number | null): void => {
+      const finish: () => Promise<void> = async (): Promise<void> => {
+        const [exit]: [CaptureExit, void] = await Promise.all([launch.exited, drained]);
         output.end();
-        entry.process = undefined;
+        entry.launch = undefined;
         entry.output = undefined;
+        await launch.dispose();
         const complaint: string =
-          errors
+          exit.errors
             .split('\n')
             .map((line: string): string => line.trim())
             .filter(
@@ -301,19 +296,28 @@ export class NetworkCaptureContribution implements MainContribution {
             )
             .at(-1) ?? '';
         if (!settled) {
-          settle({
-            kind: 'failed',
-            message: complaint || `tcpdump exited with code ${String(code)}.`,
-            permission: isPermissionError(errors),
-          });
+          settle(
+            exit.refused
+              ? {
+                  kind: 'failed',
+                  message: 'Permission to capture was not given, so nothing was captured.',
+                  permission: true,
+                }
+              : {
+                  kind: 'failed',
+                  message: complaint || `tcpdump exited with code ${String(exit.code)}.`,
+                  permission: isPermissionError(exit.errors),
+                },
+          );
           void this.release(request.id);
           return;
         }
-        if (!entry.stopping && entry.problem === undefined && code !== 0) {
-          entry.problem = complaint || `tcpdump exited with code ${String(code)}.`;
+        if (!entry.stopping && entry.problem === undefined && exit.code !== 0) {
+          entry.problem = complaint || `tcpdump exited with code ${String(exit.code)}.`;
         }
         this.end(entry);
-      });
+      };
+      void finish();
     });
   }
 
@@ -334,7 +338,7 @@ export class NetworkCaptureContribution implements MainContribution {
     }
     const request: CaptureFileRequest = { id, path };
     const entry: CaptureEntry = {
-      session: new CaptureSession(request.id, request.path),
+      session: this.createSession(request.id, request.path),
       temporary: false,
       stopping: false,
     };
@@ -398,12 +402,12 @@ export class NetworkCaptureContribution implements MainContribution {
       entry.session.accept(chunk);
     } catch (error: unknown) {
       entry.problem = error instanceof Error ? error.message : String(error);
-      this.halt(entry);
+      void this.halt(entry);
       return;
     }
     if (entry.session.count >= MAX_CAPTURE_PACKETS) {
       entry.problem = `The capture stopped at ${MAX_CAPTURE_PACKETS.toLocaleString('en')} packets.`;
-      this.halt(entry);
+      void this.halt(entry);
     }
     this.timer ??= setInterval((): void => this.flush(), BATCH_INTERVAL_MS);
   }
@@ -412,10 +416,11 @@ export class NetworkCaptureContribution implements MainContribution {
    * Stops reading a capture: interrupts tcpdump, the way Ctrl-C does, so it ends its file whole, or
    * stops reading the file.
    * @param entry The capture.
+   * @returns Returns a promise resolving once tcpdump has been told to stop.
    */
-  private halt(entry: CaptureEntry): void {
-    entry.process?.kill('SIGINT');
+  private async halt(entry: CaptureEntry): Promise<void> {
     entry.input?.destroy();
+    await entry.launch?.stop();
   }
 
   /**
@@ -426,7 +431,7 @@ export class NetworkCaptureContribution implements MainContribution {
     const entry: CaptureEntry | undefined = this.captures.get(id);
     if (entry !== undefined) {
       entry.stopping = true;
-      this.halt(entry);
+      void this.halt(entry);
     }
   }
 
@@ -459,7 +464,7 @@ export class NetworkCaptureContribution implements MainContribution {
           packets: rows.slice(start, start + MAX_BATCH),
         });
       }
-      waiting ||= entry.process !== undefined || entry.input !== undefined;
+      waiting ||= entry.launch !== undefined || entry.input !== undefined;
     }
     if (!waiting) {
       clearInterval(this.timer);
@@ -507,10 +512,24 @@ export class NetworkCaptureContribution implements MainContribution {
     }
     this.captures.delete(id);
     entry.stopping = true;
-    this.halt(entry);
+    const launch: CaptureLaunch | undefined = entry.launch;
+    await this.halt(entry);
+    await launch?.dispose();
     if (entry.temporary) {
       await rm(entry.session.file, { force: true });
     }
+  }
+
+  /**
+   * Starts a capture's session, writing the host names its packets name to the book.
+   * @param id The capture's id.
+   * @param file The file the capture is (being) written to.
+   * @returns Returns the session.
+   */
+  private createSession(id: string, file: string): CaptureSession {
+    return new CaptureSession(id, file, (sightings: readonly HostNameSighting[]): void =>
+      this.names.learnFromCapture(sightings),
+    );
   }
 
   /**

@@ -445,6 +445,13 @@ export class Table {
   public readonly sortChange: OutputEmitterRef<TableSort | null> = output<TableSort | null>();
 
   /**
+   * Emits, each time the body is scrolled, whether its last rows are in view (within two rows of the
+   * end), so a consumer that follows the newest row — a live log or capture — can tell when the user
+   * has scrolled away from it.
+   */
+  public readonly scrolledToEnd: OutputEmitterRef<boolean> = output<boolean>();
+
+  /**
    * Holds the active sort, or null when unsorted. Drives the header indicator; the consumer applies the
    * ordering it is told about through {@link sortChange}.
    */
@@ -751,6 +758,44 @@ export class Table {
         }
       },
     });
+
+    // Every scroll reports whether the end is in view; listened to outside the template, so a table
+    // nobody follows pays an output emit per scroll and nothing more.
+    effect((onCleanup: (cleanup: () => void) => void): void => {
+      const element: HTMLElement | undefined = this.scroller()?.nativeElement;
+      if (element === undefined) {
+        return;
+      }
+      const report: () => void = (): void => {
+        const remaining: number = element.scrollHeight - element.scrollTop - element.clientHeight;
+        this.scrolledToEnd.emit(remaining <= this.rowHeight() * 2);
+      };
+      element.addEventListener('scroll', report, { passive: true });
+      onCleanup((): void => element.removeEventListener('scroll', report));
+    });
+  }
+
+  /**
+   * Scrolls the body just far enough that a row is in view below the pinned header, or not at all
+   * when it already is. Rows are taken to be one height — a {@link virtual} table's measured row
+   * height — so this suits a virtual table, whose unrendered rows have no element to scroll to.
+   * @param index The row's index among the rendered rows (a collapsed group's rows are not counted).
+   */
+  public scrollToIndex(index: number): void {
+    const element: HTMLElement | undefined = this.scroller()?.nativeElement;
+    if (element === undefined) {
+      return;
+    }
+    const header: number =
+      this.host.nativeElement.querySelector('.table-head')?.getBoundingClientRect().height ?? 0;
+    const height: number = this.rowHeight();
+    const top: number = index * height;
+    const bottom: number = header + (index + 1) * height;
+    if (top < element.scrollTop) {
+      element.scrollTop = top;
+    } else if (bottom > element.scrollTop + element.clientHeight) {
+      element.scrollTop = bottom - element.clientHeight;
+    }
   }
 
   /**

@@ -1,6 +1,15 @@
-import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  InputSignal,
+  Signal,
+} from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { ListRow, ListView } from '@shared/angular/components/list-view/list-view';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
@@ -18,10 +27,13 @@ import { NetworkCaptures } from '../../network-captures/network-captures';
  * reports a dozen of them.
  *
  * Each interface can be watched: its packets captured, live, in a document of their own.
+ *
+ * The interfaces are the shared list's rows, so selection, hover, focus and the keyboard read as every
+ * other list in Studio does; the panel projects each row's content and its Watch action.
  */
 @Component({
   selector: 'app-interfaces-panel',
-  imports: [AppIcon, Button, PanelToolbar],
+  imports: [AppIcon, Button, ListView, PanelToolbar],
   templateUrl: './interfaces-panel.html',
   styleUrl: './interfaces-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -51,6 +63,29 @@ export class InterfacesPanel {
    * Formats a rate for the template.
    */
   protected readonly formatRate: (bytesPerSecond: number) => string = formatRate;
+
+  /**
+   * Gets the listed interfaces as the shared list's rows, keyed by interface id, in the store's order.
+   */
+  protected readonly rows: Signal<readonly ListRow[]> = computed((): readonly ListRow[] =>
+    this.activity
+      .interfaces()
+      .map((row: InterfaceRow): ListRow => ({ id: row.info.id, data: row })),
+  );
+
+  /**
+   * Gets the listed interfaces by id, so a list row's template can read its interface without
+   * narrowing the list's untyped payload.
+   */
+  protected readonly interfacesById: Signal<ReadonlyMap<string, InterfaceRow>> = computed(
+    (): ReadonlyMap<string, InterfaceRow> => {
+      const byId: Map<string, InterfaceRow> = new Map<string, InterfaceRow>();
+      for (const row of this.activity.interfaces()) {
+        byId.set(row.info.id, row);
+      }
+      return byId;
+    },
+  );
 
   /**
    * Gets the icon an interface's kind is shown with.
@@ -88,11 +123,11 @@ export class InterfacesPanel {
   }
 
   /**
-   * Narrows the Connections panel to an interface, or widens it back.
-   * @param row The interface's row.
+   * Narrows the Connections panel to the chosen interface, or widens it back.
+   * @param row The list row that was clicked or keyboard-activated.
    */
-  protected choose(row: InterfaceRow): void {
-    this.activity.select(row.info.id);
+  protected choose(row: ListRow): void {
+    this.activity.select(row.id);
   }
 
   /**
@@ -103,10 +138,12 @@ export class InterfacesPanel {
   }
 
   /**
-   * Captures an interface's packets, in a document of their own.
+   * Captures an interface's packets, in a document of their own, without choosing its row.
    * @param row The interface's row.
+   * @param event The click that asked for it.
    */
-  protected watch(row: InterfaceRow): void {
+  protected watch(row: InterfaceRow, event: Event): void {
+    event.stopPropagation();
     this.captures.watchInterface(row.info.id, row.info.name);
   }
 }

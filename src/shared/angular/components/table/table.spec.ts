@@ -32,6 +32,7 @@ import {
       (rowClick)="onRow($event)"
       (rowSelect)="selects.push($event)"
       (sortChange)="onSort($event)"
+      (scrolledToEnd)="ends.push($event)"
     >
       <ng-template appTableGroup let-row>
         <span class="probe-group">{{ $any(row.data).label }}</span>
@@ -64,6 +65,7 @@ class TestHost {
   public readonly clicked: TableRow[] = [];
   public readonly sorts: (TableSort | null)[] = [];
   public readonly selects: TableRowSelect[] = [];
+  public readonly ends: boolean[] = [];
 
   public onRow(row: TableRow): void {
     this.clicked.push(row);
@@ -309,6 +311,59 @@ describe('Table', () => {
       expect(names[0]).toBe('row 80');
       expect(names.at(-1)).toBe('row 139');
       expect(spacers()).toEqual([`${80 * 24}px`, `${360 * 24}px`]);
+    });
+
+    /**
+     * Gives the scroll area a layout, which the test DOM has none of.
+     * @param clientHeight The area's visible height.
+     * @param scrollHeight The height of everything it scrolls.
+     * @returns Returns the scroll area, its scroll position writable.
+     */
+    function laidOut(clientHeight: number, scrollHeight: number): HTMLElement {
+      const scroller: HTMLElement = host.querySelector<HTMLElement>('.table-scroll')!;
+      let scrollTop: number = 0;
+      Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: clientHeight });
+      Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: scrollHeight });
+      Object.defineProperty(scroller, 'scrollTop', {
+        configurable: true,
+        get: (): number => scrollTop,
+        set: (value: number): void => {
+          scrollTop = value;
+        },
+      });
+      return scroller;
+    }
+
+    it('scrollToIndex_bringsARowIntoView_andLeavesOneInViewAlone', () => {
+      manyRows();
+      component.virtual.set(true);
+      fixture.detectChanges();
+      const scroller: HTMLElement = laidOut(240, 500 * 24);
+      const table: Table = fixture.debugElement.query(By.directive(Table)).injector.get(Table);
+
+      table.scrollToIndex(100);
+      // Row 100's bottom edge meets the area's: 101 rows of 24px, less the 240px in view.
+      expect(scroller.scrollTop).toBe(101 * 24 - 240);
+
+      table.scrollToIndex(95);
+      expect(scroller.scrollTop).toBe(101 * 24 - 240);
+
+      table.scrollToIndex(3);
+      expect(scroller.scrollTop).toBe(3 * 24);
+    });
+
+    it('scrolledToEnd_saysWhetherTheLastRowsAreInView', () => {
+      manyRows();
+      component.virtual.set(true);
+      fixture.detectChanges();
+      const scroller: HTMLElement = laidOut(240, 500 * 24);
+
+      scroller.scrollTop = 500 * 24 - 240;
+      scroller.dispatchEvent(new Event('scroll'));
+      scroller.scrollTop = 1000;
+      scroller.dispatchEvent(new Event('scroll'));
+
+      expect(component.ends).toEqual([true, false]);
     });
 
     it('stillShowsTheEmptyText_withNoRows', () => {

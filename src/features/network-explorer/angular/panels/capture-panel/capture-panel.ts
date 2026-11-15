@@ -1,15 +1,13 @@
-import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import {
+  afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
   computed,
-  effect,
   inject,
   input,
   InputSignal,
   signal,
   Signal,
-  untracked,
   viewChild,
   WritableSignal,
 } from '@angular/core';
@@ -18,6 +16,7 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
+import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
@@ -49,9 +48,17 @@ interface ChosenPacket {
 }
 
 /**
- * The height of a packet row, in pixels: the virtual list lays rows out by it.
+ * The packet list's columns, in order.
  */
-const ROW_HEIGHT: number = 22;
+const COLUMNS: readonly TableColumn[] = [
+  { id: 'number', header: 'No.', width: '5rem', align: 'end' },
+  { id: 'time', header: 'Time', width: '7.5rem', align: 'end' },
+  { id: 'source', header: 'Source', width: '14rem' },
+  { id: 'destination', header: 'Destination', width: '14rem' },
+  { id: 'protocol', header: 'Protocol', width: '5.5rem' },
+  { id: 'length', header: 'Length', width: '4.75rem', align: 'end' },
+  { id: 'info', header: 'Info' },
+];
 
 /**
  * Formats a byte count.
@@ -79,7 +86,7 @@ function formatBytes(bytes: number): string {
  */
 @Component({
   selector: 'app-capture-panel',
-  imports: [AppIcon, Button, Chip, PacketDetails, PanelToolbar, ScrollingModule, TextField],
+  imports: [AppIcon, Button, Chip, PacketDetails, PanelToolbar, Table, TableRowDef, TextField],
   templateUrl: './capture-panel.html',
   styleUrl: './capture-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -111,20 +118,26 @@ export class CapturePanel {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Gets the height of a packet row, for the virtual list.
+   * Gets the packet list's columns.
    */
-  protected readonly rowHeight: number = ROW_HEIGHT;
+  protected readonly columns: readonly TableColumn[] = COLUMNS;
 
   /**
-   * Identifies a row for the virtual list by its packet's number, which never changes.
-   * @param _index The row's index, unused.
-   * @param row The row.
-   * @returns Returns the packet's number.
+   * Holds the table row standing for each packet row, made once per packet, so a capture of a
+   * million packets does not make a million rows again with every batch that arrives.
    */
-  protected readonly trackRow: (_index: number, row: CapturedPacketRow) => number = (
-    _index: number,
-    row: CapturedPacketRow,
-  ): number => row.number;
+  private readonly tableRowsByPacket: WeakMap<CapturedPacketRow, TableRow> = new WeakMap<
+    CapturedPacketRow,
+    TableRow
+  >();
+
+  /**
+   * Holds the packet row each table row stands for.
+   */
+  private readonly packetsByTableRow: WeakMap<TableRow, CapturedPacketRow> = new WeakMap<
+    TableRow,
+    CapturedPacketRow
+  >();
 
   /**
    * Holds the filter typed into the strip.
@@ -151,10 +164,9 @@ export class CapturePanel {
   >(undefined);
 
   /**
-   * Gets the virtual list.
+   * Gets the packet list.
    */
-  private readonly viewport: Signal<CdkVirtualScrollViewport | undefined> =
-    viewChild(CdkVirtualScrollViewport);
+  private readonly table: Signal<Table | undefined> = viewChild(Table);
 
   /**
    * Gets the capture, or undefined when it is gone.
@@ -172,7 +184,7 @@ export class CapturePanel {
       const rows: readonly CapturedPacketRow[] = this.captures.rows(this.panel().id);
       const needle: string = this.query().trim().toLowerCase();
       if (needle.length === 0) {
-        // A fresh array, so the virtual list sees the rows have changed.
+        // A fresh array, so the list sees the rows have changed.
         return rows.slice();
       }
       return rows.filter((row: CapturedPacketRow): boolean =>
@@ -182,6 +194,36 @@ export class CapturePanel {
       );
     },
   );
+
+  /**
+   * Gets the packet list's rows, one per packet the filter keeps.
+   */
+  protected readonly tableRows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] =>
+    this.rows().map((row: CapturedPacketRow): TableRow => this.tableRowOf(row)),
+  );
+
+  /**
+   * Gets the chosen packet's row id, as a set for the list's selection.
+   */
+  protected readonly chosenIds: Signal<ReadonlySet<string>> = computed((): ReadonlySet<string> => {
+    const number: number | undefined = this.chosenNumber();
+    return new Set<string>(number === undefined ? [] : [String(number)]);
+  });
+
+  /**
+   * Gets what the empty list says: that the capture is starting, that it is waiting for its first
+   * packet, or that there are none (or none the filter keeps).
+   */
+  protected readonly emptyText: Signal<string> = computed((): string => {
+    switch (this.capture()?.status) {
+      case 'starting':
+        return 'Starting the capture…';
+      case 'capturing':
+        return 'Waiting for the first packet…';
+      default:
+        return 'No packets.';
+    }
+  });
 
   /**
    * Gets when the capture's first packet was captured, which every row's time counts from.
@@ -209,14 +251,24 @@ export class CapturePanel {
    * Keeps the newest packet in view while following.
    */
   public constructor() {
-    effect((): void => {
+    // After the render, so the list has already grown to hold the newest row it scrolls to.
+    afterRenderEffect((): void => {
       const count: number = this.rows().length;
-      const viewport: CdkVirtualScrollViewport | undefined = this.viewport();
-      if (viewport === undefined || count === 0 || !this.follow()) {
+      const table: Table | undefined = this.table();
+      if (table === undefined || count === 0 || !this.follow()) {
         return;
       }
-      untracked((): void => viewport.scrollToIndex(count - 1));
+      table.scrollToIndex(count - 1);
     });
+  }
+
+  /**
+   * Gets the packet a table row stands for.
+   * @param row The table row.
+   * @returns Returns the packet's row, or undefined when the capture has started again without it.
+   */
+  protected rowOf(row: TableRow): CapturedPacketRow | undefined {
+    return this.packetsByTableRow.get(row);
   }
 
   /**
@@ -305,21 +357,27 @@ export class CapturePanel {
       rows[Math.min(rows.length - 1, Math.max(0, index + (event.key === 'ArrowDown' ? 1 : -1)))];
     if (next !== undefined) {
       void this.choose(next);
-      this.viewport()?.scrollToIndex(rows.indexOf(next));
+      this.table()?.scrollToIndex(rows.indexOf(next));
+    }
+  }
+
+  /**
+   * Chooses the packet whose row was clicked.
+   * @param row The table row.
+   */
+  protected onRowClick(row: TableRow): void {
+    const packet: CapturedPacketRow | undefined = this.rowOf(row);
+    if (packet !== undefined) {
+      void this.choose(packet);
     }
   }
 
   /**
    * Stops following the newest packet when the user scrolls up from it.
-   * @param index The first row in view.
+   * @param atEnd Whether the list's last rows are still in view.
    */
-  protected onScrolled(index: number): void {
-    const viewport: CdkVirtualScrollViewport | undefined = this.viewport();
-    if (viewport === undefined || !this.follow()) {
-      return;
-    }
-    const visible: number = Math.ceil(viewport.getViewportSize() / ROW_HEIGHT);
-    if (index + visible < this.rows().length - 2) {
+  protected onScrolled(atEnd: boolean): void {
+    if (!atEnd && this.follow()) {
       this.follow.set(false);
     }
   }
@@ -355,5 +413,21 @@ export class CapturePanel {
     if (path !== null) {
       await this.captures.save(capture.id, path);
     }
+  }
+
+  /**
+   * Gets the table row standing for a packet row, making it the first time the packet is listed.
+   * @param row The packet's row.
+   * @returns Returns its table row.
+   */
+  private tableRowOf(row: CapturedPacketRow): TableRow {
+    const existing: TableRow | undefined = this.tableRowsByPacket.get(row);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const tableRow: TableRow = { id: String(row.number), data: row.number };
+    this.tableRowsByPacket.set(row, tableRow);
+    this.packetsByTableRow.set(tableRow, row);
+    return tableRow;
   }
 }

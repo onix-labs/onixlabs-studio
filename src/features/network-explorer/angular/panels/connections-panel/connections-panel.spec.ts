@@ -7,6 +7,8 @@ import {
   sampleConnections,
   sampleNetwork,
 } from '../../network-activity/network-samples.testing';
+import { NetworkNames } from '../../network-names/network-names';
+import { FakeNetworkNames } from '../../network-names/network-names.fake';
 import { NetworkRuns } from '../../network-runs/network-runs';
 import { NetworkCaptures } from '../../network-captures/network-captures';
 import { NetworkProbe } from '../../network-probe/network-probe';
@@ -83,9 +85,11 @@ describe('ConnectionsPanel', () => {
   let host: HTMLElement;
   let probe: FakeNetworkProbe;
   let store: NetworkActivity;
+  let names: FakeNetworkNames;
 
   beforeEach(async () => {
     probe = new FakeNetworkProbe();
+    names = new FakeNetworkNames();
     watching = new RecordingCaptures();
     probe.network = sampleNetwork;
     runs = new RecordingRuns();
@@ -96,6 +100,7 @@ describe('ConnectionsPanel', () => {
         { provide: NetworkProbe, useValue: probe },
         { provide: NetworkCaptures, useValue: watching },
         { provide: NetworkRuns, useValue: runs },
+        { provide: NetworkNames, useValue: names },
       ],
     }).compileComponents();
 
@@ -123,17 +128,49 @@ describe('ConnectionsPanel', () => {
   }
 
   /**
-   * Gets the text of the table's body rows.
-   * @returns Returns each row's text.
+   * Gets the text of the connections listed, one entry per connection.
+   * @returns Returns each connection's row text.
    */
   function rows(): readonly string[] {
     return Array.from(
-      host.querySelectorAll<HTMLElement>('[data-testid="connections"] tbody tr'),
-    ).map((row: HTMLElement): string => row.textContent.replace(/\s+/g, ' ').trim());
+      host.querySelectorAll<HTMLElement>(
+        '[data-testid="connections"] [data-testid="connection-process"]',
+      ),
+    ).map((cell: HTMLElement): string =>
+      (cell.closest('tr')?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+    );
+  }
+
+  /**
+   * Gets the text the list shows.
+   * @returns Returns it, whitespace collapsed.
+   */
+  function listText(): string {
+    return (host.querySelector('[data-testid="connections"]')?.textContent ?? '')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   it('saysItIsListing_beforeTheConnectionsArrive', () => {
-    expect(host.textContent).toContain('Listing connections');
+    expect(listText()).toContain('Listing connections');
+    expect(rows()).toEqual([]);
+  });
+
+  it('headsTheColumns', async () => {
+    await load();
+
+    const headers: readonly string[] = Array.from(
+      host.querySelectorAll<HTMLElement>('[data-testid="connections"] th'),
+    ).map((cell: HTMLElement): string => cell.textContent.trim());
+    expect(headers).toEqual([
+      'Process',
+      'Host',
+      'Remote Address',
+      'Local Address',
+      'Protocol',
+      'State',
+      '',
+    ]);
   });
 
   it('listsRemoteConnections_withTheirProcessEndsAndState', async () => {
@@ -167,7 +204,32 @@ describe('ConnectionsPanel', () => {
     store.connectionQuery.set('nothing-like-it');
     await fixture.whenStable();
 
-    expect(rows()).toEqual(['No connections.']);
+    expect(rows()).toEqual([]);
+    expect(listText()).toContain('No connections.');
+  });
+
+  it('showsTheRemoteHostsName_orAQuietDashUntilOneIsKnown', async () => {
+    await load();
+    const cell: () => HTMLElement | null = (): HTMLElement | null =>
+      host.querySelector<HTMLElement>('[data-testid="connection-host"]');
+    expect(cell()?.textContent.trim()).toBe('—');
+
+    names.name('140.82.112.3', 'api.github.com');
+    await fixture.whenStable();
+
+    expect(cell()?.textContent.trim()).toBe('api.github.com');
+    expect(cell()?.title).toBe('api.github.com');
+  });
+
+  it('theFilter_findsConnectionsByHostName', async () => {
+    await load();
+    names.name('140.82.112.3', 'api.github.com');
+
+    store.connectionQuery.set('github');
+    await fixture.whenStable();
+
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toContain('Safari');
   });
 
   it('eachConnection_pingsOrTracesItsRemotePeer', async () => {

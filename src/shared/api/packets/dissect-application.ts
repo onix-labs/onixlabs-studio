@@ -97,6 +97,49 @@ interface DnsName {
 }
 
 /**
+ * Describes an address a DNS response gives, and the name it gives it for.
+ */
+interface DnsAddress {
+  /**
+   * Gets the name the address record is for: the end of any CNAME chain.
+   */
+  readonly owner: string;
+
+  /**
+   * Gets the address.
+   */
+  readonly address: string;
+}
+
+/**
+ * Gets the name an application asked for that an address record answers: the question whose CNAME
+ * chain ends at the record's name, or, when none does, the record's own name. `api.github.com` asked
+ * for and answered through a CNAME to `lb.github.com` is called `api.github.com`.
+ * @param owner The name the address record is for.
+ * @param questions The names the response's questions asked about.
+ * @param aliases The response's CNAMEs, alias to canonical name, lower-case.
+ * @returns Returns the name.
+ */
+function queriedName(
+  owner: string,
+  questions: readonly string[],
+  aliases: ReadonlyMap<string, string>,
+): string {
+  const target: string = owner.toLowerCase();
+  for (const question of questions) {
+    let name: string | undefined = question.toLowerCase();
+    // A chain longer than a few links is a loop or nonsense; DNS resolvers give up sooner.
+    for (let links: number = 0; name !== undefined && links < 8; links += 1) {
+      if (name === target) {
+        return question;
+      }
+      name = aliases.get(name);
+    }
+  }
+  return owner;
+}
+
+/**
  * Names a DNS record type.
  * @param type The type's number.
  * @returns Returns its mnemonic, or `TYPE<n>`.
@@ -173,6 +216,9 @@ function dissectDns(dissection: PacketDissection, start: number, end: number): b
   ];
   let position: number = start + 12;
   const asked: string[] = [];
+  const questionNames: string[] = [];
+  const aliases: Map<string, string> = new Map<string, string>();
+  const addresses: DnsAddress[] = [];
   for (let index: number = 0; index < Math.min(questions, 16); index += 1) {
     const name: DnsName | undefined = readDnsName(bytes, start, position);
     const type: number | undefined = name === undefined ? undefined : bytes.u16(name.next);
@@ -181,6 +227,7 @@ function dissectDns(dissection: PacketDissection, start: number, end: number): b
       break;
     }
     asked.push(`${dnsType(type)} ${name.name}`);
+    questionNames.push(name.name);
     fields.push(
       field('Query', `${name.name}: type ${dnsType(type)}`, position, name.next + 4 - position),
     );
@@ -200,10 +247,15 @@ function dissectDns(dissection: PacketDissection, start: number, end: number): b
     let value: string = `${String(dataLength)} bytes`;
     if (type === 1 && dataLength === 4 && bytes.has(data, 4)) {
       value = formatIpv4(bytes.slice(data, 4));
+      addresses.push({ owner: name.name, address: value });
     } else if (type === 28 && dataLength === 16 && bytes.has(data, 16)) {
       value = formatIpv6(bytes.slice(data, 16));
+      addresses.push({ owner: name.name, address: value });
     } else if (type === 5 || type === 12 || type === 2) {
       value = readDnsName(bytes, start, data)?.name ?? value;
+      if (type === 5) {
+        aliases.set(name.name.toLowerCase(), value.toLowerCase());
+      }
     }
     answered.push(`${dnsType(type)} ${value}`);
     fields.push(
@@ -215,6 +267,11 @@ function dissectDns(dissection: PacketDissection, start: number, end: number): b
       ),
     );
     position = data + dataLength;
+  }
+  if (response && rcode === 0) {
+    for (const answer of addresses) {
+      dissection.sight(queriedName(answer.owner, questionNames, aliases), answer.address);
+    }
   }
   const kind: string = response ? 'Standard query response' : 'Standard query';
   const failure: string = response && rcode !== 0 ? ` ${DNS_RCODES[rcode] ?? String(rcode)}` : '';
@@ -326,6 +383,9 @@ function dissectTls(dissection: PacketDissection, start: number, end: number): b
         const serverName: string | undefined = readTlsExtensions(bytes, next, fields);
         if (serverName !== undefined) {
           info = `${name} (${serverName})`;
+          if (message === 1) {
+            dissection.sight(serverName, dissection.destinationAddress);
+          }
         }
       }
     } else {

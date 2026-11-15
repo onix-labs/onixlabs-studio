@@ -50,14 +50,8 @@
   font-size: 0.8125rem;
   line-height: 1.5;
 
-  p,
-  ol {
+  p {
     margin: 0;
-  }
-
-  code {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
-    font-size: 0.75rem;
   }
 }
 
@@ -80,17 +74,11 @@
 }
 
 .capture__list {
-  position: relative;
   display: flex;
   flex-direction: column;
   flex: 3 1 0;
   min-block-size: 6rem;
   border-block-end: 1px solid var(--dock-border-color);
-}
-
-.capture__viewport {
-  flex: 1 1 auto;
-  min-block-size: 0;
 
   &:focus-visible {
     outline: 1px solid var(--accent-color);
@@ -98,104 +86,34 @@
   }
 }
 
+.capture__table {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
 .capture__details {
   flex: 2 1 0;
   min-block-size: 6rem;
 }
 
-.capture__row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  inline-size: 100%;
-  block-size: 22px;
-  padding: 0 0.5rem;
-  color: inherit;
-  text-align: start;
-  background: transparent;
-  border: 0;
+// Packet cells read as a packet tool's: monospaced and dense.
+.capture__cell {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 0.6875rem;
-  white-space: nowrap;
-  cursor: default;
-
-  &:hover {
-    background: var(--accent-surface-background-color);
-  }
-
-  > span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
 }
 
 // Protocols tinted the way packet tools have taught the eye to read them: quiet, not a rainbow.
-.capture__row[data-protocol='DNS'] .capture__protocol {
+.capture__protocol[data-protocol='DNS'] {
   color: var(--info-color, var(--accent-color));
 }
 
-.capture__row[data-protocol='TLS'] .capture__protocol,
-.capture__row[data-protocol='HTTP'] .capture__protocol {
+.capture__protocol[data-protocol='TLS'],
+.capture__protocol[data-protocol='HTTP'] {
   color: var(--success-color);
 }
 
-.capture__row[data-protocol='ARP'] .capture__protocol,
-.capture__row[data-protocol='ICMP'] .capture__protocol,
-.capture__row[data-protocol='ICMPv6'] .capture__protocol {
+.capture__protocol[data-protocol='ARP'],
+.capture__protocol[data-protocol='ICMP'],
+.capture__protocol[data-protocol='ICMPv6'] {
   color: var(--warning-color);
-}
-
-.capture__row--header {
-  flex: none;
-  font-family: inherit;
-  font-weight: 500;
-  color: var(--form-muted-foreground-color);
-  border-block-end: 1px solid var(--dock-border-color);
-
-  &:hover {
-    background: transparent;
-  }
-}
-
-.capture__row--chosen,
-.capture__row--chosen:hover {
-  background: color-mix(in srgb, var(--accent-color) 22%, transparent);
-}
-
-.capture__number {
-  flex: 0 0 4rem;
-  text-align: end;
-}
-
-.capture__time {
-  flex: 0 0 6.5rem;
-  text-align: end;
-}
-
-.capture__address {
-  flex: 0 0 13rem;
-}
-
-.capture__protocol {
-  flex: 0 0 4.5rem;
-}
-
-.capture__length {
-  flex: 0 0 3.5rem;
-  text-align: end;
-}
-
-.capture__info {
-  flex: 1 1 auto;
-  min-inline-size: 0;
-}
-
-.capture__empty {
-  position: absolute;
-  inset-block-start: 2.5rem;
-  inset-inline: 0;
-  margin: 0;
-  font-size: 0.75rem;
-  text-align: center;
-  color: var(--form-muted-foreground-color);
 }

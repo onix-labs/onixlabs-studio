@@ -6,6 +6,7 @@ import { desktopNotificationsContribution } from './desktop-notifications/deskto
 import { modelRuntimeContribution } from './model-runtime/model-runtime.contribution';
 import { networkCaptureContribution } from './network-capture/network-capture.contribution';
 import { networkGeoContribution } from './network-geo/network-geo.contribution';
+import { networkNamesContribution } from './network-names/network-names.contribution';
 import { networkToolsContribution } from './network-tools/network-tools.contribution';
 import { pluginsContribution } from './plugins/plugins.contribution';
 import { systemMonitorContribution } from './system-monitor/system-monitor.contribution';
@@ -27,6 +28,7 @@ export const mainContributions: readonly MainContribution[] = [
   modelRuntimeContribution,
   networkCaptureContribution,
   networkGeoContribution,
+  networkNamesContribution,
   networkToolsContribution,
   pluginsContribution,
   systemMonitorContribution,

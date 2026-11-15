@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { NetworkInterfaceInfo } from '@shared/api/system-monitor-channels';
 import { NetworkActivity } from '../../network-activity/network-activity';
 import {
   activity,
@@ -45,14 +46,14 @@ class RecordingCaptures {
   }
 }
 
-describe('InterfacesPanel', () => {
+describe('InterfacesPanel', (): void => {
   let watching: RecordingCaptures;
   let fixture: ComponentFixture<InterfacesPanel>;
   let host: HTMLElement;
   let probe: FakeNetworkProbe;
   let store: NetworkActivity;
 
-  beforeEach(async () => {
+  beforeEach(async (): Promise<void> => {
     probe = new FakeNetworkProbe();
     watching = new RecordingCaptures();
     probe.network = sampleNetwork;
@@ -93,6 +94,51 @@ describe('InterfacesPanel', () => {
   }
 
   /**
+   * Gets an element by its test id, failing the test when it is not rendered.
+   * @param testId The test id.
+   * @returns Returns the element.
+   */
+  function byTestId(testId: string): HTMLElement {
+    const element: HTMLElement | null = host.querySelector<HTMLElement>(
+      `[data-testid="${testId}"]`,
+    );
+    if (element === null) {
+      throw new Error(`Nothing rendered with test id ${testId}`);
+    }
+    return element;
+  }
+
+  /**
+   * Gets the list option an interface is rendered in.
+   * @param id The interface's id.
+   * @returns Returns the option.
+   */
+  function optionFor(id: string): HTMLElement {
+    const option: HTMLElement | null = byTestId(`interface-${id}`).closest<HTMLElement>(
+      '[role="option"]',
+    );
+    if (option === null) {
+      throw new Error(`Interface ${id} is not a list option`);
+    }
+    return option;
+  }
+
+  /**
+   * Gets the Watch action for an interface, by its accessible name.
+   * @param name The interface's name.
+   * @returns Returns the button.
+   */
+  function watchButton(name: string): HTMLButtonElement {
+    const button: HTMLButtonElement | null = host.querySelector<HTMLButtonElement>(
+      `button[aria-label="Watch ${name}"]`,
+    );
+    if (button === null) {
+      throw new Error(`No Watch action for ${name}`);
+    }
+    return button;
+  }
+
+  /**
    * Gets the listed interfaces' ids, in order.
    * @returns Returns the ids.
    */
@@ -102,53 +148,115 @@ describe('InterfacesPanel', () => {
     );
   }
 
-  it('saysItIsReading_beforeTheInterfacesArrive', () => {
+  it('says it is reading before the interfaces arrive', (): void => {
     expect(host.textContent).toContain('Reading the network interfaces');
+    expect(host.querySelector('[role="listbox"]')).toBeNull();
   });
 
-  it('listsTheInterfacesInUse_defaultFirst_withTheirActivity', async () => {
+  it('lists the interfaces in use as list options, default first, with their activity', async (): Promise<void> => {
     await load();
 
     expect(listedIds()).toEqual(['en0', 'lo0']);
-    const wifi: HTMLElement = host.querySelector<HTMLElement>('[data-testid="interface-en0"]')!;
+    expect(host.querySelectorAll('[role="listbox"] [role="option"]').length).toBe(2);
+    const wifi: HTMLElement = byTestId('interface-en0');
     expect(wifi.textContent).toContain('Wi-Fi');
+    expect(wifi.textContent).toContain('en0');
+    expect(wifi.textContent).toContain('Default');
     expect(wifi.textContent).toContain('192.168.1.20');
     expect(wifi.textContent).toContain('2.0 KB/s');
     expect(wifi.textContent).toContain('1 connection');
   });
 
-  it('namesAnInterfaceOnce_whenItsNameIsItsDevice', async () => {
+  it('names an interface once when its name is its device', async (): Promise<void> => {
     probe.network = {
       ...sampleNetwork,
       interfaces: [{ ...sampleNetwork.interfaces[1], name: 'en0' }],
     };
     await load();
 
-    const row: HTMLElement = host.querySelector<HTMLElement>('[data-testid="interface-en0"]')!;
-    expect(row.querySelector('.interfaces__id')).toBeNull();
+    expect(byTestId('interface-en0').querySelector('[data-testid="device-name"]')).toBeNull();
   });
 
-  it('choosingAnInterface_selectsIt_andChoosingItAgainClears', async () => {
+  it('says so when no interface is in use', async (): Promise<void> => {
+    probe.network = {
+      ...sampleNetwork,
+      interfaces: sampleNetwork.interfaces.filter(
+        (info: NetworkInterfaceInfo): boolean => !info.up,
+      ),
+    };
     await load();
-    const wifi: HTMLButtonElement = host.querySelector<HTMLButtonElement>(
-      '[data-testid="interface-en0"]',
-    )!;
 
-    wifi.click();
+    expect(listedIds()).toEqual([]);
+    expect(host.textContent).toContain('No interfaces in use.');
+  });
+
+  it('lists the idle interfaces too when asked', async (): Promise<void> => {
+    await load();
+
+    byTestId('show-idle-interfaces').querySelector('button')?.click();
+    await fixture.whenStable();
+
+    expect(listedIds()).toEqual(['en0', 'lo0', 'awdl0']);
+  });
+
+  it('re-reads the interfaces when refreshed', async (): Promise<void> => {
+    await load();
+    probe.network = {
+      ...sampleNetwork,
+      interfaces: sampleNetwork.interfaces.filter(
+        (info: NetworkInterfaceInfo): boolean => info.isDefault,
+      ),
+    };
+
+    byTestId('refresh-interfaces').querySelector('button')?.click();
+    await vi.waitFor((): void => {
+      fixture.detectChanges();
+      expect(listedIds()).toEqual(['en0']);
+    });
+  });
+
+  it('selects an interface when clicked, and clears it when clicked again', async (): Promise<void> => {
+    await load();
+
+    byTestId('interface-en0').click();
     await fixture.whenStable();
     expect(store.selectedInterfaceId()).toBe('en0');
-    expect(wifi.getAttribute('aria-pressed')).toBe('true');
+    expect(optionFor('en0').getAttribute('aria-selected')).toBe('true');
+    expect(optionFor('lo0').getAttribute('aria-selected')).toBe('false');
 
-    wifi.click();
+    byTestId('interface-en0').click();
     await fixture.whenStable();
+    expect(store.selectedInterfaceId()).toBeNull();
+    expect(optionFor('en0').getAttribute('aria-selected')).toBeNull();
+  });
+
+  it('selects an interface from the keyboard', async (): Promise<void> => {
+    await load();
+
+    optionFor('lo0').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await fixture.whenStable();
+
+    expect(store.selectedInterfaceId()).toBe('lo0');
+  });
+
+  it('watches an interface without choosing its row', async (): Promise<void> => {
+    await load();
+
+    watchButton('Wi-Fi').click();
+    await fixture.whenStable();
+
+    expect(watching.watched).toEqual(['interface en0 Wi-Fi']);
     expect(store.selectedInterfaceId()).toBeNull();
   });
 
-  it('watch_capturesTheInterface', async () => {
+  it('keeps Enter on the Watch action from choosing its row', async (): Promise<void> => {
     await load();
 
-    host.querySelector<HTMLButtonElement>('button[aria-label="Watch Wi-Fi"]')!.click();
+    watchButton('Wi-Fi').dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+    );
+    await fixture.whenStable();
 
-    expect(watching.watched).toEqual(['interface en0 Wi-Fi']);
+    expect(store.selectedInterfaceId()).toBeNull();
   });
 });

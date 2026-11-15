@@ -1,4 +1,5 @@
-// One packet: its layers on the left, its bytes on the right.
+// One packet: its layers on the shared tree on the left, its bytes on the shared binary editor on
+// the right.
 
 :host {
   display: flex;
@@ -14,51 +15,34 @@
 }
 
 .details__layers {
-  flex: 1 1 55%;
+  display: flex;
+  flex: 1 1 45%;
+  flex-direction: column;
   min-inline-size: 0;
   overflow: auto;
-  padding-block: 0.25rem;
   border-inline-end: 1px solid var(--dock-border-color);
 }
 
-.details__layer-summary,
+.details__layers app-tree-view {
+  flex: 1;
+  min-block-size: 0;
+}
+
+.details__layer,
+.details__field {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.details__layer {
+  font-weight: 600;
+}
+
 .details__field {
   display: flex;
   align-items: baseline;
   gap: 0.35rem;
-  inline-size: 100%;
-  padding: 0.15rem 0.5rem;
-  font: inherit;
-  text-align: start;
-  color: inherit;
-  white-space: nowrap;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-
-  &:hover {
-    background: var(--accent-surface-background-color);
-  }
-}
-
-.details__layer-summary {
-  font-weight: 600;
-}
-
-.details__caret {
-  display: inline-block;
-  inline-size: 0.75rem;
-  transition: transform 0.1s ease;
-}
-
-.details__caret--open {
-  transform: rotate(90deg);
-}
-
-.details__fields {
-  margin: 0;
-  padding: 0 0 0 1.25rem;
-  list-style: none;
 }
 
 .details__field-label {
@@ -75,33 +59,15 @@
   color: var(--warning-color);
 }
 
-.details__hex {
-  flex: 1 1 45%;
+.details__bytes {
+  display: flex;
+  flex: 1 1 55%;
+  flex-direction: column;
   min-inline-size: 0;
-  overflow: auto;
-  padding: 0.35rem 0.5rem;
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 0.6875rem;
-  line-height: 1.5;
+  min-block-size: 0;
 }
 
-.details__hex-line {
-  display: flex;
-  gap: 1rem;
-  white-space: pre;
-}
-
-.details__hex-offset {
-  color: var(--form-muted-foreground-color);
-}
-
-.details__hex-bytes {
-  display: flex;
-  gap: 0.4em;
-}
-
-.details__byte--on {
-  color: var(--accent-foreground-color, var(--body-foreground-color));
-  background: color-mix(in srgb, var(--accent-color) 35%, transparent);
-  border-radius: 2px;
+.details__bytes app-binary-editor {
+  flex: 1;
+  min-block-size: 0;
 }

@@ -1,5 +1,12 @@
-import { DissectedPacket, PacketField, PacketLayer } from './packet-model';
+import { DissectedPacket, HostNameSighting, PacketField, PacketLayer } from './packet-model';
 import { PacketBytes } from './packet-bytes';
+
+/**
+ * Matches a host name worth remembering: dotted labels of letters, digits, hyphens and underscores
+ * (service names such as `_dns-sd._udp.local` carry them), at most 253 characters.
+ */
+const HOST_NAME: RegExp =
+  /^(?=.{1,253}$)[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?(?:\.[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?)*$/;
 
 /**
  * A packet being taken apart: the layers recognised so far, and what each has said about the packet
@@ -38,6 +45,17 @@ export class PacketDissection {
   public truncated: boolean = false;
 
   /**
+   * Gets the IP address the packet was sent to, without a port, once its IP layer is read.
+   */
+  public destinationAddress: string = '';
+
+  /**
+   * Gets the host names the packet names for addresses: a DNS response's answers, a TLS Client
+   * Hello's server name.
+   */
+  public readonly hostNames: HostNameSighting[] = [];
+
+  /**
    * Starts a dissection.
    * @param bytes The packet.
    */
@@ -60,6 +78,18 @@ export class PacketDissection {
   ): void {
     this.layers.push({ protocol, summary, offset, length, fields });
     this.protocol = protocol;
+  }
+
+  /**
+   * Notes a host name the packet names for an address, when both look like what they are.
+   * @param name The name, as the packet writes it.
+   * @param address The address it stands for.
+   */
+  public sight(name: string, address: string): void {
+    const lowered: string = name.toLowerCase().replace(/\.$/, '');
+    if (address.length > 0 && HOST_NAME.test(lowered)) {
+      this.hostNames.push({ name: lowered, address });
+    }
   }
 
   /**
