@@ -60,8 +60,15 @@
   gap: 0.3rem;
 }
 
+// The column and row choices sit against the summary at the right edge, the space falling between
+// them and the scopes.
 .processes__columns {
   flex: none;
+  margin-inline-start: auto;
+}
+
+.processes__summary {
+  margin-inline-start: 0;
 }
 
 // The list sits in a well like the other views' cards, its rows scrolling within it.
