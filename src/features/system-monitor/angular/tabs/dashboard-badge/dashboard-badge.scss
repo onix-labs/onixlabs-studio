@@ -4,8 +4,9 @@
   display: flex;
 }
 
-// A badge is a soft wash of its tone with the tone's border, its reading and glyph in the tone itself
-// (neutral reads in the muted grey that marks Studio's own share elsewhere), its caption in muted text.
+// A badge is a soft wash of its tone with the tone's border, and everything in it — reading, caption
+// and glyph — in the tone itself (neutral reads in the muted grey that marks Studio's own share
+// elsewhere), so a badge reads as one colour.
 .dashboard-badge {
   --dashboard-badge-tone: var(--accent-color);
 
@@ -61,5 +62,5 @@
 
 .dashboard-badge__caption {
   font-size: 0.66rem;
-  color: var(--form-muted-foreground-color);
+  color: var(--dashboard-badge-tone);
 }
