@@ -45,4 +45,28 @@ describe('StorageCard', () => {
     expect(rows[1].textContent).toContain('<1%');
     expect(host.textContent).toContain('2.0 KB/s');
   });
+
+  it('graphsTheDisksReadsAndWrites_aboveTheVolumes', async () => {
+    readings.accept({
+      timestamp: 't',
+      cpu: 0,
+      memory: { usedBytes: 1, totalBytes: 2, percent: 50 },
+      disk: { readBytesPerSec: 2048, writeBytesPerSec: 1024 },
+      volumes: [{ mount: '/', type: 'apfs', sizeBytes: 100, usedBytes: 50 }],
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const chart: Element | null = host.querySelector('app-system-monitor-line-chart');
+    const volumes: Element | null = host.querySelector('[data-testid="storage-card-volumes"]');
+    expect(chart).not.toBeNull();
+    // The graph comes before the volumes.
+    expect(
+      chart !== null &&
+        volumes !== null &&
+        (chart.compareDocumentPosition(volumes) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+    ).toBe(true);
+    // Write is grey, as its line is.
+    expect(host.querySelectorAll('.dashboard-badge--neutral')).toHaveLength(1);
+  });
 });

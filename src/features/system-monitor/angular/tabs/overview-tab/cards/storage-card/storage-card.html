@@ -12,8 +12,21 @@
   <app-system-monitor-dashboard-badge
     cardBadges
     [icon]="Icon.MONITOR_OUT"
+    tone="neutral"
     [value]="readings.diskWriteValue()"
     caption="Write"
+  />
+
+  <!-- The badges name the graph's lines in their colours: Read in the accent, Write in grey. -->
+  <app-system-monitor-line-chart
+    class="storage-card__chart"
+    ariaLabel="Disk reads and writes over time"
+    [series]="series()"
+    [base]="1024"
+    [floor]="1024"
+    [format]="rate"
+    [showLegend]="false"
+    [intervalMs]="readings.intervalMs()"
   />
 
   @if (volumes().length > 0) {

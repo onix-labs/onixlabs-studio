@@ -8,36 +8,10 @@
   @include leading-chart;
 }
 
-// The interfaces sit at the card's foot; the spare height goes between them and the graph.
-.network-card__interfaces {
-  display: flex;
-  flex: none;
-  margin-block-start: auto;
-  flex-direction: column;
-  gap: 0.3rem;
-}
+// The sent graph takes the rest of the card beneath the received one, set apart from it so their axes'
+// labels do not meet.
+.network-card__sent {
+  @include chart;
 
-.network-card__heading {
-  @include heading;
-}
-
-.network-card__table {
-  @include table;
-
-  td {
-    padding-block: 0.3rem;
-  }
-
-  // The last interface closes the card, so it has no rule beneath.
-  tbody tr:last-child td {
-    border-block-end: none;
-  }
-}
-
-.network-card__table .network-card__number {
-  @include number;
-}
-
-.network-card__none {
-  color: var(--form-muted-foreground-color);
+  margin-block-start: 1rem;
 }

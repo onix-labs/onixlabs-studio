@@ -22,32 +22,24 @@ describe('NetworkCard', () => {
     globalThis.localStorage?.clear();
   });
 
-  it('graphsReceivedAndSent_namedByTheBadges_andListsTheThreeBusiestInterfaces', async () => {
+  it('graphsReceivedAndSentApart_namedByTheBadges', async () => {
     readings.accept({
       timestamp: 't',
       cpu: 0,
       memory: { usedBytes: 1, totalBytes: 2, percent: 50 },
       network: { rxBytesPerSec: 4096, txBytesPerSec: 1024 },
-      interfaces: ['en2', 'en7', 'lo0', 'utun0'].map((name: string) => ({
-        name,
-        rxBytesPerSec: 1,
-        txBytesPerSec: 1,
-      })),
     });
     fixture.detectChanges();
     await fixture.whenStable();
 
-    // The badges name the lines in their colours, so the graph carries no legend.
-    expect(host.querySelector('[aria-label="Legend"]')).toBeNull();
-    expect(host.textContent).toContain('Sent');
-    expect(host.textContent).toContain('4.0 KB/s');
-    const rows: NodeListOf<HTMLTableRowElement> = host.querySelectorAll(
-      '[data-testid="network-card-interfaces"] tbody tr',
+    // A graph each, received then sent; the badges name them in their colours, so neither has a legend.
+    const graphs: string[] = Array.from(host.querySelectorAll('app-system-monitor-line-chart')).map(
+      (chart: Element): string => chart.getAttribute('ariaLabel') ?? '',
     );
-    expect(
-      Array.from(rows).map(
-        (row: HTMLTableRowElement): string => row.cells[0].textContent?.trim() ?? '',
-      ),
-    ).toEqual(['en2', 'en7', 'lo0']);
+    expect(graphs).toEqual(['Network data received over time', 'Network data sent over time']);
+    expect(host.querySelector('[aria-label="Legend"]')).toBeNull();
+    expect(host.textContent).toContain('4.0 KB/s');
+    // The interfaces are the Network view's.
+    expect(host.querySelector('table')).toBeNull();
   });
 });

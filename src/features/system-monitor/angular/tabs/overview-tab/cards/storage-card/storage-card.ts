@@ -2,7 +2,9 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Icon } from '@shared/angular/icons/icon';
 import { VolumeMetric } from '@shared/api/system-monitor-channels';
-import { formatBytes } from '../../../../readings/format';
+import { ChartSeries } from '../../../../charts/chart-series';
+import { LineChart } from '../../../../charts/line-chart/line-chart';
+import { formatAxisRate, formatBytes } from '../../../../readings/format';
 import { SystemMonitorReadings } from '../../../../readings/system-monitor-readings';
 import { DashboardBadge } from '../../../dashboard-badge/dashboard-badge';
 import { DashboardCard } from '../../../dashboard-card/dashboard-card';
@@ -52,7 +54,7 @@ interface VolumeRow {
  */
 @Component({
   selector: 'app-system-monitor-storage-card',
-  imports: [DashboardCard, DashboardBadge, AppIcon],
+  imports: [DashboardCard, DashboardBadge, AppIcon, LineChart],
   templateUrl: './storage-card.html',
   styleUrl: './storage-card.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -67,6 +69,22 @@ export class StorageCard {
    * Gets the view's readings.
    */
   protected readonly readings: SystemMonitorReadings = inject(SystemMonitorReadings);
+
+  /**
+   * Gets the axis's formatting.
+   */
+  protected readonly rate: (value: number) => string = formatAxisRate;
+
+  /**
+   * Gets the disk's reads and writes over Graph History: reads in the accent, writes in grey, as their
+   * badges are.
+   */
+  protected readonly series: Signal<readonly ChartSeries[]> = computed(
+    (): readonly ChartSeries[] => [
+      { label: 'Read', values: this.readings.diskReadHistory(), emphasis: 'primary' },
+      { label: 'Write', values: this.readings.diskWriteHistory(), emphasis: 'secondary' },
+    ],
+  );
 
   /**
    * Gets one row per volume.

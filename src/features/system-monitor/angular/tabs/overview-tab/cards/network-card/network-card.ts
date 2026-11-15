@@ -1,37 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
-import { InterfaceMetric } from '@shared/api/system-monitor-channels';
 import { ChartSeries } from '../../../../charts/chart-series';
 import { LineChart } from '../../../../charts/line-chart/line-chart';
-import { formatAxisRate, formatRate } from '../../../../readings/format';
+import { formatAxisRate } from '../../../../readings/format';
 import { SystemMonitorReadings } from '../../../../readings/system-monitor-readings';
 import { DashboardBadge } from '../../../dashboard-badge/dashboard-badge';
 import { DashboardCard } from '../../../dashboard-card/dashboard-card';
-
-/**
- * The number of interfaces the card lists.
- */
-const SHOWN: number = 3;
-
-/**
- * Describes one interface's row.
- */
-interface InterfaceRow {
-  /**
-   * Gets the interface's name.
-   */
-  readonly name: string;
-
-  /**
-   * Gets the received throughput, formatted.
-   */
-  readonly received: string;
-
-  /**
-   * Gets the sent throughput, formatted.
-   */
-  readonly sent: string;
-}
 
 /**
  * Represents the Overview's Network card: received and sent throughput over time on one axis (the same
@@ -62,27 +36,18 @@ export class NetworkCard {
   protected readonly rate: (value: number) => string = formatAxisRate;
 
   /**
-   * Gets the graph's series: received, emphasised, and sent beside it.
+   * Gets the received graph's one line, in the accent, as its badge is.
    */
-  protected readonly series: Signal<readonly ChartSeries[]> = computed(
+  protected readonly received: Signal<readonly ChartSeries[]> = computed(
     (): readonly ChartSeries[] => [
       { label: 'Received', values: this.readings.networkRxHistory(), emphasis: 'primary' },
-      { label: 'Sent', values: this.readings.networkTxHistory(), emphasis: 'secondary' },
     ],
   );
 
   /**
-   * Gets the busiest interfaces' rows; the readings already come busiest first.
+   * Gets the sent graph's one line, in grey, as its badge is.
    */
-  protected readonly interfaces: Signal<readonly InterfaceRow[]> = computed(
-    (): readonly InterfaceRow[] =>
-      this.readings
-        .interfaces()
-        .slice(0, SHOWN)
-        .map((metric: InterfaceMetric): InterfaceRow => ({
-          name: metric.name,
-          received: formatRate(metric.rxBytesPerSec),
-          sent: formatRate(metric.txBytesPerSec),
-        })),
-  );
+  protected readonly sent: Signal<readonly ChartSeries[]> = computed((): readonly ChartSeries[] => [
+    { label: 'Sent', values: this.readings.networkTxHistory(), emphasis: 'secondary' },
+  ]);
 }

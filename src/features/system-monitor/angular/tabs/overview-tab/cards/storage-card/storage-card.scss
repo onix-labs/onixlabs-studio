@@ -4,6 +4,11 @@
   @include host;
 }
 
+// The disk's activity leads, as the graphs of the row above do; the volumes follow beneath it.
+.storage-card__chart {
+  @include leading-chart;
+}
+
 .storage-card__table {
   @include table;
 
