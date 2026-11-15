@@ -1,16 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  inject,
-  signal,
-  Signal,
-  WritableSignal,
-} from '@angular/core';
-import {
-  ButtonGroup,
-  ButtonGroupOption,
-} from '@shared/angular/components/forms/button-group/button-group';
+import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import {
   NETWORK_SAMPLE_INTERVAL_MS,
@@ -18,30 +6,19 @@ import {
 } from '@shared/api/system-monitor-channels';
 import { ChartSeries } from '../../../charts/chart-series';
 import { LineChart } from '../../../charts/line-chart/line-chart';
-import { formatAxisRate } from '../../../readings/format';
+import { formatAxisRate, formatRate } from '../../../readings/format';
 import { SystemMonitorNetwork } from '../../../readings/system-monitor-network';
+import { SystemMonitorReadings } from '../../../readings/system-monitor-readings';
+import { DashboardBadge } from '../../dashboard-badge/dashboard-badge';
 import { DashboardCard } from '../../dashboard-card/dashboard-card';
 
 /**
- * Identifies which direction the graph shows.
- */
-type Direction = 'download' | 'upload';
-
-/**
- * The directions offered.
- */
-const DIRECTIONS: readonly ButtonGroupOption[] = [
-  { value: 'download', label: 'Download', icon: Icon.MONITOR_IN },
-  { value: 'upload', label: 'Upload', icon: Icon.MONITOR_OUT },
-];
-
-/**
- * Represents the Network view's Interface Activity card: the chosen interface's download or upload over
- * Graph History, one at a time.
+ * Represents the Network view's Interface Activity card: the chosen interface's download and upload
+ * over Graph History, on one graph, each named with its latest rate.
  */
 @Component({
   selector: 'app-system-monitor-network-activity-card',
-  imports: [ButtonGroup, DashboardCard, LineChart],
+  imports: [DashboardBadge, DashboardCard, LineChart],
   templateUrl: './network-activity-card.html',
   styleUrl: './network-activity-card.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -53,9 +30,9 @@ export class NetworkActivityCard {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Gets the directions offered.
+   * Gets the view's readings, for Graph History's label.
    */
-  protected readonly directions: readonly ButtonGroupOption[] = DIRECTIONS;
+  protected readonly readings: SystemMonitorReadings = inject(SystemMonitorReadings);
 
   /**
    * Holds the view's network readings.
@@ -73,11 +50,6 @@ export class NetworkActivityCard {
   protected readonly intervalMs: number = NETWORK_SAMPLE_INTERVAL_MS;
 
   /**
-   * Holds the direction shown.
-   */
-  protected readonly direction: WritableSignal<Direction> = signal<Direction>('download');
-
-  /**
    * Gets the card's heading, naming the interface.
    */
   protected readonly heading: Signal<string> = computed((): string => {
@@ -86,30 +58,28 @@ export class NetworkActivityCard {
   });
 
   /**
-   * Gets the graph's one series: the chosen direction.
+   * Gets the download and upload, each named with its latest rate.
    */
   protected readonly series: Signal<readonly ChartSeries[]> = computed(
     (): readonly ChartSeries[] => {
-      const download: boolean = this.direction() === 'download';
+      const history: readonly NetworkInterfaceReading[] = this.network.selectedHistory();
+      const latest: NetworkInterfaceReading | null = this.network.selectedReading();
       return [
         {
-          label: download ? 'Download' : 'Upload',
-          values: this.network
-            .selectedHistory()
-            .map((reading: NetworkInterfaceReading): number =>
-              download ? reading.rxBytesPerSecond : reading.txBytesPerSecond,
-            ),
+          label: `Download ${formatRate(latest?.rxBytesPerSecond ?? 0)}`,
+          values: history.map(
+            (reading: NetworkInterfaceReading): number => reading.rxBytesPerSecond,
+          ),
           emphasis: 'primary',
+        },
+        {
+          label: `Upload ${formatRate(latest?.txBytesPerSecond ?? 0)}`,
+          values: history.map(
+            (reading: NetworkInterfaceReading): number => reading.txBytesPerSecond,
+          ),
+          emphasis: 'secondary',
         },
       ];
     },
   );
-
-  /**
-   * Shows a direction.
-   * @param value The direction, as the button group's value.
-   */
-  protected setDirection(value: string): void {
-    this.direction.set(value === 'upload' ? 'upload' : 'download');
-  }
 }

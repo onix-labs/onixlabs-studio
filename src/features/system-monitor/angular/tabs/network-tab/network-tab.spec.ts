@@ -165,4 +165,15 @@ describe('NetworkTab', () => {
     expect(rows[0].textContent).toContain('ESTABLISHED');
     expect(rows[1].textContent).toContain('mDNSResponder');
   });
+
+  it('graphsTheInterfacesDownloadAndUpload_together', async () => {
+    network.setInfo(INFO);
+    network.accept(READING);
+    await settle();
+
+    const card: HTMLElement | null = host.querySelector('app-system-monitor-network-activity-card');
+    expect(card?.querySelector('app-button-group')).toBeNull();
+    expect(card?.textContent).toContain('Download 1.0 MB/s');
+    expect(card?.textContent).toContain('Upload 512.0 KB/s');
+  });
 });
