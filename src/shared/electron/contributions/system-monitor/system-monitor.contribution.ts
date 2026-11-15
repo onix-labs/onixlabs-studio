@@ -79,7 +79,7 @@ import {
 } from './process-extras';
 import { ElectronProcess, readProcesses } from './process-readers';
 import { iconTarget } from './process-icons';
-import { architectureOf, parseIoregStatistics } from './gpu-readers';
+import { architectureOf, GpuFigures, parseIoregStatistics } from './gpu-readers';
 import { GpuSampler, GpuSources } from './gpu-sampler';
 import { MetricsSampler } from './metrics-sampler';
 import {
@@ -1686,7 +1686,21 @@ export class SystemMonitorContribution implements MainContribution {
         { timeout: 800, maxBuffer: 16 * 1024 * 1024 },
       );
       const gpu: GpuMetric = parseIoregGpu(stdout);
-      return gpu.available ? { ...gpu, source: 'ioreg' } : undefined;
+      if (!gpu.available) {
+        return undefined;
+      }
+      // The same statistics carry the video memory the GPU view reads; the Overview's GPU card shows it.
+      const figures: GpuFigures | undefined = parseIoregStatistics(stdout)?.figures;
+      return {
+        ...gpu,
+        source: 'ioreg',
+        ...(figures?.memoryUsedBytes === undefined
+          ? {}
+          : { memoryUsedBytes: figures.memoryUsedBytes }),
+        ...(figures?.memoryTotalBytes === undefined
+          ? {}
+          : { memoryTotalBytes: figures.memoryTotalBytes }),
+      };
     } catch {
       return undefined;
     }

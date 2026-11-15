@@ -889,6 +889,16 @@ export interface GpuMetric {
    * Gets where the reading came from, or undefined when none was obtained.
    */
   readonly source?: GpuSource;
+
+  /**
+   * Gets the video memory in use, in bytes, where the source reports it.
+   */
+  readonly memoryUsedBytes?: number;
+
+  /**
+   * Gets the video memory there is, in bytes, where the source reports it.
+   */
+  readonly memoryTotalBytes?: number;
 }
 
 /**

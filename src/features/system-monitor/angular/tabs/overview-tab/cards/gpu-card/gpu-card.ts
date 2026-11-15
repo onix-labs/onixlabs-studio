@@ -1,26 +1,31 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
-import { GpuInfo } from '@shared/api/system-monitor-channels';
 import { ChartSeries } from '../../../../charts/chart-series';
 import { LineChart } from '../../../../charts/line-chart/line-chart';
+import { RadialMeter } from '../../../../charts/radial-meter/radial-meter';
 import { formatBytes, formatPercent } from '../../../../readings/format';
 import { SystemMonitorReadings } from '../../../../readings/system-monitor-readings';
 import { DashboardBadge } from '../../../dashboard-badge/dashboard-badge';
 import { DashboardCard } from '../../../dashboard-card/dashboard-card';
 
 /**
- * Describes one fact under the GPU graph.
+ * Describes one line of the video memory's breakdown beside its meter.
  */
-interface GpuFact {
+interface VramEntry {
   /**
-   * Gets the fact's label.
+   * Gets the entry's label.
    */
   readonly label: string;
 
   /**
-   * Gets the fact's value.
+   * Gets the entry's value, formatted.
    */
   readonly value: string;
+
+  /**
+   * Gets which part of the meter the entry's key mirrors, or null for none (the total).
+   */
+  readonly key: 'used' | 'free' | null;
 }
 
 /**
@@ -29,7 +34,7 @@ interface GpuFact {
  */
 @Component({
   selector: 'app-system-monitor-gpu-card',
-  imports: [DashboardCard, DashboardBadge, LineChart],
+  imports: [DashboardCard, DashboardBadge, LineChart, RadialMeter],
   templateUrl: './gpu-card.html',
   styleUrl: './gpu-card.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -60,17 +65,43 @@ export class GpuCard {
   );
 
   /**
-   * Gets the GPU's facts: the first controller's model and its video memory. Its utilisation is the
-   * badge above.
+   * Gets the video memory there is, in bytes: as the latest reading reports it, else as the GPU
+   * describes itself; undefined when neither does.
    */
-  protected readonly facts: Signal<readonly GpuFact[]> = computed((): readonly GpuFact[] => {
-    const controller: GpuInfo | undefined = this.readings.info()?.gpus[0];
+  private readonly vramTotal: Signal<number | undefined> = computed(
+    (): number | undefined =>
+      this.readings.latest()?.gpu?.memoryTotalBytes ?? this.readings.info()?.gpus[0]?.memoryBytes,
+  );
+
+  /**
+   * Gets the share of the video memory in use, 0–100, for the meter; 0 when it is not reported.
+   */
+  protected readonly vramUsed: Signal<number> = computed((): number => {
+    const used: number | undefined = this.readings.latest()?.gpu?.memoryUsedBytes;
+    const total: number | undefined = this.vramTotal();
+    return used === undefined || total === undefined || total <= 0
+      ? 0
+      : Math.min(100, (used / total) * 100);
+  });
+
+  /**
+   * Gets the video memory's breakdown: in use, available and in all, dashes where not reported.
+   */
+  protected readonly entries: Signal<readonly VramEntry[]> = computed((): readonly VramEntry[] => {
+    const used: number | undefined = this.readings.latest()?.gpu?.memoryUsedBytes;
+    const total: number | undefined = this.vramTotal();
+    const bytes: (value: number | undefined) => string = (value: number | undefined): string =>
+      value === undefined ? '—' : formatBytes(value);
     return [
-      { label: 'Model', value: controller?.model ?? '—' },
+      { label: 'In Use', value: bytes(used), key: 'used' },
       {
-        label: 'Memory',
-        value: controller?.memoryBytes === undefined ? '—' : formatBytes(controller.memoryBytes),
+        label: 'Available',
+        value: bytes(
+          used === undefined || total === undefined ? undefined : Math.max(0, total - used),
+        ),
+        key: 'free',
       },
+      { label: 'Total', value: bytes(total), key: null },
     ];
   });
 }

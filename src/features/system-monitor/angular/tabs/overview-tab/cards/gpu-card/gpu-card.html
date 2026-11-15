@@ -20,14 +20,28 @@
       [intervalMs]="readings.intervalMs()"
     />
 
-    <dl class="gpu-card__facts">
-      @for (fact of facts(); track fact.label) {
-        <div>
-          <dt>{{ fact.label }}</dt>
-          <dd [title]="fact.value">{{ fact.value }}</dd>
-        </div>
-      }
-    </dl>
+    <div class="gpu-card__summary">
+      <app-system-monitor-radial-meter
+        class="gpu-card__meter"
+        [percent]="vramUsed()"
+        label="VRAM"
+      />
+      <dl class="gpu-card__entries" data-testid="gpu-card-vram">
+        @for (entry of entries(); track entry.label) {
+          <div class="gpu-card__entry">
+            <dt>
+              <span
+                class="gpu-card__key"
+                [class.gpu-card__key--used]="entry.key === 'used'"
+                [class.gpu-card__key--free]="entry.key === 'free'"
+              ></span>
+              {{ entry.label }}
+            </dt>
+            <dd>{{ entry.value }}</dd>
+          </div>
+        }
+      </dl>
+    </div>
   } @else {
     <p class="gpu-card__off">GPU Monitoring is off. Turn it on in Settings to read the GPU.</p>
   }

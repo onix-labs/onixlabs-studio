@@ -8,13 +8,6 @@
   @include leading-chart;
 }
 
-// The facts sit at the card's foot, under the core graphs that take the card's spare height.
-.cpu-card__facts {
-  @include fact-grid;
-
-  flex: none;
-}
-
 // The core graphs take the card's spare height, so a taller view gives each core a taller graph, and
 // they give it up first on a short view, shrinking toward a sliver before anything spills.
 .cpu-card__cores-section {

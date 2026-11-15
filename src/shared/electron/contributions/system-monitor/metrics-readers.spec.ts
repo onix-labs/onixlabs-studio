@@ -65,6 +65,15 @@ describe('pickGpu', () => {
     });
   });
 
+  it('readsTheVideoMemory_fromMiB', () => {
+    expect(pickGpu([{ utilizationGpu: 5, memoryUsed: 2048, memoryTotal: 8192 }])).toEqual({
+      available: true,
+      percent: 5,
+      memoryUsedBytes: 2048 * 1024 * 1024,
+      memoryTotalBytes: 8192 * 1024 * 1024,
+    });
+  });
+
   it('clampsUtilisationToThe0to100Range', () => {
     expect(pickGpu([{ utilizationGpu: 140 }]).percent).toBe(100);
   });

@@ -22,7 +22,7 @@ describe('CpuCard', () => {
     globalThis.localStorage?.clear();
   });
 
-  it('describesTheProcessor_andDrawsAGraphPerCore', async () => {
+  it('drawsAGraphPerCore_leavingTheProcessorsDetailsToTheCpuView', async () => {
     readings.setInfo({
       cpuModel: 'Test CPU',
       logicalCores: 4,
@@ -45,17 +45,14 @@ describe('CpuCard', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(host.textContent).toContain('2.70 GHz');
+    // The processor's model, speed and core counts are the CPU view's; the card is its load.
+    expect(host.textContent).not.toContain('2.70 GHz');
+    expect(host.querySelector('dl')).toBeNull();
     // The system's load and Studio's share each have a badge, and share the graph.
     expect(host.textContent).toContain('System');
     expect(host.textContent).toContain('Studio');
     // The badges name the graph's two lines, so it carries no legend.
     expect(host.querySelector('[aria-label="Legend"]')).toBeNull();
-    expect(
-      Array.from(host.querySelectorAll('dt')).map(
-        (term: Element): string => term.textContent?.trim() ?? '',
-      ),
-    ).toEqual(['Model', 'Base Speed', 'Physical Cores', 'Logical Cores']);
     expect(host.textContent).toContain('6%');
     const cores: NodeListOf<HTMLElement> = host.querySelectorAll(
       '[data-testid="cpu-card-cores"] > div',

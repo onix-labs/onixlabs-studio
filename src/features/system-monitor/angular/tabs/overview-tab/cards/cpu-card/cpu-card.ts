@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
-import { SystemInfo } from '@shared/api/system-monitor-channels';
 import { ChartSeries } from '../../../../charts/chart-series';
 import { LineChart } from '../../../../charts/line-chart/line-chart';
 import { formatPercent } from '../../../../readings/format';
@@ -31,23 +30,9 @@ interface CoreGraph {
 }
 
 /**
- * Describes one fact under the CPU graph.
- */
-interface CpuFact {
-  /**
-   * Gets the fact's label.
-   */
-  readonly label: string;
-
-  /**
-   * Gets the fact's value.
-   */
-  readonly value: string;
-}
-
-/**
- * Represents the Overview's CPU card: the machine's load over time with Studio's own share, a small
- * graph per logical core so a single busy core stands out, and the processor in four facts at its foot.
+ * Represents the Overview's CPU card: the machine's load over time with Studio's own share, then a small
+ * graph per logical core, taking the rest of the card, so a single busy core stands out. The processor
+ * itself is described on the CPU view.
  */
 @Component({
   selector: 'app-system-monitor-cpu-card',
@@ -82,26 +67,6 @@ export class CpuCard {
       { label: 'Studio', values: this.readings.appCpuHistory(), emphasis: 'secondary' },
     ],
   );
-
-  /**
-   * Gets the processor's facts, two to a row: its model and base speed, then its physical and logical
-   * cores. Its load is the badge above.
-   */
-  protected readonly facts: Signal<readonly CpuFact[]> = computed((): readonly CpuFact[] => {
-    const info: SystemInfo | null = this.readings.info();
-    return [
-      { label: 'Model', value: info?.cpuModel ?? '—' },
-      {
-        label: 'Base Speed',
-        value: info?.speedGhz === undefined ? '—' : `${info.speedGhz.toFixed(2)} GHz`,
-      },
-      {
-        label: 'Physical Cores',
-        value: info?.physicalCores === undefined ? '—' : `${info.physicalCores}`,
-      },
-      { label: 'Logical Cores', value: info === null ? '—' : `${info.logicalCores}` },
-    ];
-  });
 
   /**
    * Gets one small graph per logical core.

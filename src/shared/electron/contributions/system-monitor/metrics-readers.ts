@@ -85,6 +85,8 @@ export interface GpuController {
   readonly driverVersion?: string;
   readonly bus?: string;
   readonly utilizationGpu?: number | null;
+  readonly memoryUsed?: number | null;
+  readonly memoryTotal?: number | null;
 }
 
 /**
@@ -218,7 +220,17 @@ export function parseIoregGpu(output: string): GpuMetric {
 export function pickGpu(controllers: readonly GpuController[]): GpuMetric {
   for (const controller of controllers) {
     if (typeof controller.utilizationGpu === 'number') {
-      return { available: true, percent: Math.min(100, Math.max(0, controller.utilizationGpu)) };
+      // nvidia-smi's memory figures, as systeminformation reports them, are in MiB.
+      const used: number | null | undefined = controller.memoryUsed;
+      const total: number | null | undefined = controller.memoryTotal;
+      return {
+        available: true,
+        percent: Math.min(100, Math.max(0, controller.utilizationGpu)),
+        ...(typeof used === 'number' && used >= 0 ? { memoryUsedBytes: used * 1024 * 1024 } : {}),
+        ...(typeof total === 'number' && total > 0
+          ? { memoryTotalBytes: total * 1024 * 1024 }
+          : {}),
+      };
     }
   }
   return { available: false, percent: 0 };

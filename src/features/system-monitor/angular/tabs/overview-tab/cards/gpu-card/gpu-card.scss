@@ -4,14 +4,75 @@
   @include host;
 }
 
-// The graph takes the card's spare height, its top still in line with its neighbours' (every card head
-// is one height).
+// The graph leads, as on the CPU, Memory and Network cards, so the four graphs line up; the video
+// memory's meter and breakdown sit at the foot, as the Memory card's do.
 .gpu-card__chart {
-  @include chart;
+  @include leading-chart;
 }
 
-.gpu-card__facts {
-  @include fact-grid;
+// The meter beside its breakdown, at the card's foot: the spare height goes between the graph and
+// them.
+.gpu-card__summary {
+  display: flex;
+  flex: none;
+  margin-block-start: auto;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.gpu-card__meter {
+  flex: none;
+  // A share of the card's height, taking most of the spare room between the graph and the stats, so
+  // the readings in the middle have space; bounded so it stays legible on a short view and in
+  // proportion on a tall one.
+  inline-size: clamp(5.5rem, 41cqb, 12rem);
+}
+
+.gpu-card__entries {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0;
+}
+
+.gpu-card__entry {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+
+  dt {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--form-muted-foreground-color);
+  }
+
+  dd {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--body-foreground-color);
+  }
+}
+
+// The keys mirror the meter: the fill for in use, the track for available, none for the total.
+.gpu-card__key {
+  display: inline-block;
+  inline-size: 0.5rem;
+  block-size: 0.5rem;
+  border-radius: 50%;
+}
+
+.gpu-card__key--used {
+  background-color: var(--accent-color);
+}
+
+.gpu-card__key--free {
+  background-color: color-mix(in srgb, var(--accent-color) 25%, transparent);
 }
 
 .gpu-card__off {
