@@ -14,7 +14,6 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
-import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import {
@@ -217,7 +216,6 @@ interface AuditEntry {
     LogDetailsCard,
     Menu,
     ViewSummary,
-    ButtonRow,
     Dropdown,
     TextField,
     Table,
