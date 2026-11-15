@@ -75,11 +75,60 @@
         </tbody>
       </table>
     } @else {
+      @let database = geo.status();
+      <section class="run__map" aria-label="Route map">
+        @switch (database?.state) {
+          @case ('ready') {
+            <app-route-map class="run__map-drawing" [stops]="stops()" />
+            <p class="run__map-note">
+              @if (unplaced() > 0) {
+                <span>
+                  {{ unplaced() }} {{ unplaced() === 1 ? 'hop has' : 'hops have' }} no place on the
+                  map: private, or unknown to the database. Router locations are approximate.
+                </span>
+              } @else {
+                <span>Router locations are approximate.</span>
+              }
+              <button type="button" class="run__attribution" (click)="openAttribution()">
+                {{ attribution }}
+              </button>
+            </p>
+          }
+          @case ('downloading') {
+            <div class="run__consent">
+              <p>Downloading DB-IP's IP to City Lite database…</p>
+              <app-progress-bar class="run__progress" [label]="downloadLabel()" />
+            </div>
+          }
+          @default {
+            <div class="run__consent" data-testid="map-consent">
+              <p class="run__consent-title">Map this route?</p>
+              <p>
+                Placing hops on a map needs DB-IP's free IP to City Lite database: a download of about
+                60 MB, about 120 MB on disk, kept in Studio's data folder and updated only when you ask.
+                Addresses are looked up in that file; none is sent anywhere.
+              </p>
+              @if (database?.state === 'failed' && database?.message) {
+                <p class="run__consent-error" role="alert">{{ database?.message }}</p>
+              }
+              <app-button
+                variant="solid"
+                [label]="database?.state === 'failed' ? 'Try Again' : 'Download Database'"
+                (click)="downloadDatabase()"
+              />
+              <button type="button" class="run__attribution" (click)="openAttribution()">
+                {{ attribution }}
+              </button>
+            </div>
+          }
+        }
+      </section>
       <table class="run__table" data-testid="route-hops">
         <thead>
           <tr>
             <th class="run__number-column">Hop</th>
             <th>Address</th>
+            <th class="run__place-column">Location</th>
             <th class="run__times-column">Round Trips</th>
           </tr>
         </thead>
@@ -90,11 +139,12 @@
               <td class="run__mono" [title]="row.addresses.join(', ')">
                 {{ row.addresses.length === 0 ? 'No answer' : row.addresses.join(', ') }}
               </td>
+              <td [title]="row.place">{{ row.place }}</td>
               <td class="run__mono">{{ row.times.join('   ') }}</td>
             </tr>
           } @empty {
             <tr>
-              <td colspan="3" class="run__none">
+              <td colspan="4" class="run__none">
                 {{ run.status === 'running' ? 'Probing the first hop…' : 'No hops.' }}
               </td>
             </tr>

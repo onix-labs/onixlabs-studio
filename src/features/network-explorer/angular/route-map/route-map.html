@@ -1,0 +1,32 @@
+<svg
+  class="route-map"
+  [attr.viewBox]="viewBox"
+  preserveAspectRatio="xMidYMid meet"
+  role="img"
+  aria-label="Map of the route"
+  data-testid="route-map"
+>
+  <defs>
+    <clipPath [attr.id]="clipId">
+      <path [attr.d]="sphere()" />
+    </clipPath>
+  </defs>
+  <path class="route-map__sphere" [attr.d]="sphere()" />
+  <g [attr.clip-path]="'url(#' + clipId + ')'">
+    <path class="route-map__graticule" [attr.d]="graticule()" />
+    <path class="route-map__land" [attr.d]="land()" />
+    <path class="route-map__route" [attr.d]="route()" data-testid="route-map-line" />
+  </g>
+  @for (marker of markers(); track marker.key) {
+    <g
+      class="route-map__marker"
+      [class.route-map__marker--last]="marker.last"
+      [attr.transform]="'translate(' + marker.x + ',' + marker.y + ')'"
+      data-testid="route-map-marker"
+    >
+      <title>{{ marker.title }}</title>
+      <circle r="6" />
+      <text y="-11" text-anchor="middle">{{ marker.label }}</text>
+    </g>
+  }
+</svg>

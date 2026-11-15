@@ -1,0 +1,61 @@
+// A route on a world map: the globe, its countries, and the route's hops joined over them.
+
+:host {
+  display: block;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.route-map {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+.route-map__sphere {
+  fill: color-mix(in srgb, var(--accent-color) 6%, var(--panel-surface-color));
+  stroke: var(--dock-border-color);
+}
+
+.route-map__graticule {
+  fill: none;
+  stroke: color-mix(in srgb, var(--dock-border-color) 45%, transparent);
+  stroke-width: 0.5;
+}
+
+.route-map__land {
+  fill: color-mix(in srgb, var(--form-muted-foreground-color) 22%, var(--panel-surface-color));
+  stroke: var(--panel-surface-color);
+  stroke-width: 0.6;
+}
+
+.route-map__route {
+  fill: none;
+  stroke: var(--accent-color);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.route-map__marker {
+  circle {
+    fill: var(--panel-surface-color);
+    stroke: var(--accent-color);
+    stroke-width: 2.5;
+  }
+
+  text {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 12px;
+    font-weight: 700;
+    fill: var(--body-foreground-color);
+    paint-order: stroke;
+    stroke: var(--panel-surface-color);
+    stroke-width: 3px;
+  }
+}
+
+// The route's end is where it was going: filled, so it reads as the destination.
+.route-map__marker--last circle {
+  fill: var(--accent-color);
+}

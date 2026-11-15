@@ -86,6 +86,81 @@
   }
 }
 
+// The map sits above the hops and scrolls away with them, keeping at least enough height to read.
+.run__map {
+  display: flex;
+  flex-direction: column;
+  block-size: 55%;
+  min-block-size: 14rem;
+  border-block-end: 1px solid var(--dock-border-color);
+}
+
+.run__map-drawing {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+.run__map-note {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.6875rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.run__attribution {
+  padding: 0;
+  font: inherit;
+  font-size: 0.6875rem;
+  color: var(--accent-color);
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.run__consent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  block-size: 100%;
+  padding: 1rem 2rem;
+  font-size: 0.75rem;
+  text-align: center;
+  color: var(--form-muted-foreground-color);
+
+  p {
+    max-inline-size: 34rem;
+    margin: 0;
+  }
+}
+
+.run__consent-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.run__consent-error {
+  color: var(--error-color);
+}
+
+.run__progress {
+  inline-size: 16rem;
+}
+
+.run__place-column {
+  inline-size: 22%;
+}
+
 .run__number-column {
   inline-size: 4rem;
 }
@@ -95,7 +170,7 @@
 }
 
 .run__times-column {
-  inline-size: 40%;
+  inline-size: 30%;
 }
 
 .run__mono {
