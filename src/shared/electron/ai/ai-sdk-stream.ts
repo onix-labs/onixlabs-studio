@@ -13,6 +13,8 @@ import {
   QUERY_LOGS,
   READ_SYSTEM_METRICS,
   SET_LOG_LEVEL,
+  LIST_PROCESSES,
+  READ_RESOURCE,
   LIST_LOCAL_MODELS,
   SEARCH_MODEL_CATALOG,
   READ_MACHINE_FACTS,
@@ -154,6 +156,8 @@ import {
   queryLogs,
   readSystemMetrics,
   setLogLevel,
+  listProcesses,
+  readResource,
 } from './monitor-tools';
 import {
   AI_MANAGER_PROMPT_APPENDIX,
@@ -1339,6 +1343,54 @@ export async function createMonitorTools(context: AgentRunContext): Promise<Tool
         'Summarise the recent CPU, memory, GPU, network and disk readings: the latest, and the low, average and high over the sampled window.',
       inputSchema: z.object({}),
       execute: (): Promise<string> => readSystemMetrics(context),
+    }),
+    [READ_RESOURCE]: tool({
+      description:
+        "Read one resource in full, as the System Monitor's view of it shows: the hardware, its use now and over the sampled window, and (for cpu and memory) the processes using the most of it. Storage covers each drive's activity, health and volumes; network each interface, the DNS servers and latency, and the connections with their processes.",
+      inputSchema: z.object({
+        resource: z
+          .enum(['system', 'cpu', 'memory', 'gpu', 'storage', 'network'])
+          .describe('The resource to read.'),
+      }),
+      execute: (args: { resource: string }): Promise<string> =>
+        readResource(context, args.resource),
+    }),
+    [LIST_PROCESSES]: tool({
+      description:
+        "List the machine's processes now, busiest first. Each carries its PID, parent, user, CPU share of the whole machine, memory, threads, CPU time, uptime, command line and, for Studio's own, its role. Only Studio's processes and the busiest of the rest are listed.",
+      inputSchema: z.object({
+        sort: z
+          .enum(['cpu', 'memory', 'gpu', 'threads', 'uptime'])
+          .optional()
+          .describe(
+            "What to order by, most first; cpu when omitted. gpu also reads each process's GPU share.",
+          ),
+        scope: z
+          .enum(['all', 'user', 'system', 'studio'])
+          .optional()
+          .describe(
+            "Only the user's own, the system's (other accounts') or Studio's; all when omitted.",
+          ),
+        text: z
+          .string()
+          .optional()
+          .describe(
+            'Only processes whose name, command or user contains this, or whose PID it is.',
+          ),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe('How many to return, at most 100; 25 when omitted.'),
+      }),
+      execute: (args: {
+        sort?: string;
+        scope?: string;
+        text?: string;
+        limit?: number;
+      }): Promise<string> => listProcesses(context, args),
     }),
   };
   if (context.mode === 'chat') {

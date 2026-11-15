@@ -1,7 +1,9 @@
 import { fullMessage } from '@shared/api/log-format';
 import {
   LIST_LOG_SESSIONS,
+  LIST_PROCESSES,
   QUERY_LOGS,
+  READ_RESOURCE,
   READ_SYSTEM_METRICS,
   SET_LOG_LEVEL,
 } from '@shared/api/ai-types';
@@ -34,15 +36,22 @@ const MAX_MESSAGE_CHARS: number = 500;
  * it can reach, and what it is not for.
  */
 export const MONITOR_PROMPT_APPENDIX: string = [
-  "You are running inside ONIXLabs Studio, docked to the System Monitor: the app's own log audit and",
-  'its resource readings. You help the user understand what the app has been doing. You can:',
+  "You are running inside ONIXLabs Studio, docked to the System Monitor: the machine's resources and",
+  "processes, and the app's own log audit. You help the user understand how the machine and the app",
+  'are behaving, and why. You can:',
+  `- "${READ_SYSTEM_METRICS}" summarises the recent CPU, memory, GPU, network and disk readings.`,
+  `- "${READ_RESOURCE}" reads one resource in full — system, cpu, memory, gpu, storage or network: the`,
+  '  hardware, its use now and over the sampled window, and the processes using the most of it.',
+  `- "${LIST_PROCESSES}" lists the processes now, busiest first by CPU, memory, GPU, threads or uptime,`,
+  "  narrowed to the user's, the system's or Studio's own, or by name, command, user or PID.",
   `- "${LIST_LOG_SESSIONS}" lists the app's runs ("sessions") whose logs are kept, newest first.`,
   `- "${QUERY_LOGS}" reads log records, newest first, filtered by session, severity, text and time.`,
-  `- "${READ_SYSTEM_METRICS}" summarises the recent CPU, memory, GPU, network and disk readings.`,
   `- "${SET_LOG_LEVEL}" changes how much the app logs, which is a setting that lasts.`,
-  'Work from the records rather than from guesses: query narrowly (a severity, a source, a phrase or a',
-  'time window) and widen only when that finds nothing. Quote the records that support what you say,',
-  'with their times, and say plainly when the logs do not explain something.',
+  'Work from readings and records rather than from guesses. When something is slow, busy or full,',
+  'find what is responsible (the processes, the drive, the interface) before suggesting a cause. Query',
+  'logs narrowly (a severity, a source, a phrase or a time window) and widen only when that finds',
+  'nothing. Quote the readings and records that support what you say, with their times, and say',
+  'plainly when they do not explain something.',
   'Change the log level only when the user asks, or when you need more detail to answer them — and say',
   'that you changed it and how to put it back.',
   'You are kept to this view. You cannot read or change files, run commands, or act anywhere else in',
@@ -175,6 +184,74 @@ export async function readSystemMetrics(context: AgentRunContext): Promise<strin
     return 'The System Monitor is not open, so there are no readings.';
   }
   return JSON.stringify(read.summary ?? {}, null, 2);
+}
+
+/**
+ * Asks the renderer for a reading and renders it for the model as JSON, with any secret in it (a token
+ * on a command line, say) redacted.
+ * @param context The agent run context (carries the bridge).
+ * @param name The capability.
+ * @param input The model's input.
+ * @param unavailable What to say when the System Monitor is not open.
+ * @returns Returns the reading, or why there is none.
+ */
+async function readThroughBridge(
+  context: AgentRunContext,
+  name: string,
+  input: Record<string, unknown>,
+  unavailable: string,
+): Promise<string> {
+  logger.trace('MonitorTools', `Tool invoked: ${name}`);
+  const answer: unknown = await context.bridge.request(name, input);
+  const read: { available?: boolean; result?: unknown; error?: string } = answer ?? {};
+  if (read.available !== true) {
+    return unavailable;
+  }
+  if (read.error !== undefined) {
+    return read.error;
+  }
+  // Fractions are kept to one decimal: a rate's sixteenth digit costs the model tokens and says nothing.
+  return redactSecrets(
+    JSON.stringify(
+      read.result ?? {},
+      (_key: string, value: unknown): unknown =>
+        typeof value === 'number' && !Number.isInteger(value) ? Math.round(value * 10) / 10 : value,
+      2,
+    ),
+  );
+}
+
+/**
+ * Lists the machine's processes through the renderer bridge.
+ * @param context The agent run context (carries the bridge).
+ * @param query What the model asked for: its order, scope, text and limit.
+ * @returns Returns the listing, or why there is none.
+ */
+export function listProcesses(
+  context: AgentRunContext,
+  query: { sort?: string; scope?: string; text?: string; limit?: number },
+): Promise<string> {
+  return readThroughBridge(
+    context,
+    LIST_PROCESSES,
+    { ...query },
+    'The System Monitor is not open, so the processes cannot be listed.',
+  );
+}
+
+/**
+ * Reads one resource in full through the renderer bridge.
+ * @param context The agent run context (carries the bridge).
+ * @param resource The resource: system, cpu, memory, gpu, storage or network.
+ * @returns Returns the reading, or why there is none.
+ */
+export function readResource(context: AgentRunContext, resource: string): Promise<string> {
+  return readThroughBridge(
+    context,
+    READ_RESOURCE,
+    { resource },
+    'The System Monitor is not open, so the resource cannot be read.',
+  );
 }
 
 /**

@@ -6,10 +6,12 @@ import {
   MetricsSample,
   NetworkInfo,
   NetworkReading,
+  NetworkSnapshot,
   ProcessesSnapshot,
   SamplingRate,
   StorageInfo,
   StorageReading,
+  StorageSnapshot,
   SystemInfo,
   SystemMonitorChannel,
 } from '@shared/api/system-monitor-channels';
@@ -267,6 +269,55 @@ export class SystemMonitorMetrics {
         location,
         name,
       );
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Lists the processes now, whatever view is showing (for the monitor's agent).
+   * @returns Returns the listing, or null outside Electron or when it could not be read.
+   */
+  public readProcessesNow(): Promise<ProcessesSnapshot | null> {
+    return this.invokeOrNull<ProcessesSnapshot>(SystemMonitorChannel.ProcessesRead);
+  }
+
+  /**
+   * Reads the GPU in detail now (for the monitor's agent).
+   * @returns Returns the reading, or null outside Electron or when it could not be read.
+   */
+  public readGpuNow(): Promise<GpuReading | null> {
+    return this.invokeOrNull<GpuReading>(SystemMonitorChannel.GpuRead);
+  }
+
+  /**
+   * Reads the storage devices and their activity now (for the monitor's agent).
+   * @returns Returns the storage, or null outside Electron or when it could not be read.
+   */
+  public readStorageNow(): Promise<StorageSnapshot | null> {
+    return this.invokeOrNull<StorageSnapshot>(SystemMonitorChannel.StorageRead);
+  }
+
+  /**
+   * Reads the network interfaces, their activity, the connections and the DNS latency now (for the
+   * monitor's agent).
+   * @returns Returns the network, or null outside Electron or when it could not be read.
+   */
+  public readNetworkNow(): Promise<NetworkSnapshot | null> {
+    return this.invokeOrNull<NetworkSnapshot>(SystemMonitorChannel.NetworkRead);
+  }
+
+  /**
+   * Invokes a backend channel, treating a missing bridge or a failure as no answer.
+   * @param channel The channel.
+   * @returns Returns the answer, or null.
+   */
+  private async invokeOrNull<T>(channel: SystemMonitorChannel): Promise<T | null> {
+    if (this.bridge === undefined) {
+      return null;
+    }
+    try {
+      return (await this.bridge.invoke<T | null>(channel)) ?? null;
     } catch {
       return null;
     }

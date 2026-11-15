@@ -119,6 +119,61 @@ export enum SystemMonitorChannel {
    * {@link NetworkInfo}.
    */
   NetworkInfo = 'system-monitor:network-info',
+
+  /**
+   * Renderer → main (invoke): one listing of the processes now, a {@link ProcessesSnapshot}, whatever
+   * view is showing. For the monitor's agent, which can be asked about processes from any view.
+   */
+  ProcessesRead = 'system-monitor:processes-read',
+
+  /**
+   * Renderer → main (invoke): one detailed GPU reading now, a {@link GpuReading} (two readings a moment
+   * apart, so per-process shares have something to compare with), or null where it cannot be read.
+   */
+  GpuRead = 'system-monitor:gpu-read',
+
+  /**
+   * Renderer → main (invoke): the storage devices and their activity now, a {@link StorageSnapshot}.
+   */
+  StorageRead = 'system-monitor:storage-read',
+
+  /**
+   * Renderer → main (invoke): the network interfaces, their activity, the connections and the DNS
+   * server's latency now, a {@link NetworkSnapshot}.
+   */
+  NetworkRead = 'system-monitor:network-read',
+}
+
+/**
+ * Describes the machine's storage at one moment, for the monitor's agent: the devices, and their
+ * activity over a moment's reading.
+ */
+export interface StorageSnapshot {
+  /**
+   * Gets the devices and the device each volume is on.
+   */
+  readonly info: StorageInfo;
+
+  /**
+   * Gets the devices' activity, or null where it could not be read.
+   */
+  readonly reading: StorageReading | null;
+}
+
+/**
+ * Describes the machine's network at one moment, for the monitor's agent: the interfaces, and their
+ * activity, connections and DNS latency over a moment's reading.
+ */
+export interface NetworkSnapshot {
+  /**
+   * Gets the interfaces, DNS servers and gateway.
+   */
+  readonly info: NetworkInfo;
+
+  /**
+   * Gets the interfaces' activity, the connections and the DNS server's latency.
+   */
+  readonly reading: NetworkReading;
 }
 
 /**

@@ -32,8 +32,10 @@ import {
   ProcessSample,
   SamplingRate,
   STORAGE_SAMPLE_INTERVAL_MS,
+  NetworkSnapshot,
   StorageInfo,
   StorageReading,
+  StorageSnapshot,
   StorageVolumeDevice,
   SystemInfo,
   SystemMonitorChannel,
@@ -421,6 +423,19 @@ export class SystemMonitorContribution implements MainContribution {
     context.on(SystemMonitorChannel.ProcessesStart, (): void => this.addProcessConsumer());
     context.on(SystemMonitorChannel.ProcessesStop, (): void => this.removeProcessConsumer());
     context.handle(SystemMonitorChannel.Info, (): Promise<SystemInfo> => this.readInfo());
+    context.handle(
+      SystemMonitorChannel.ProcessesRead,
+      async (): Promise<ProcessesSnapshot | null> => (await this.readProcesses()) ?? null,
+    );
+    context.handle(SystemMonitorChannel.GpuRead, (): Promise<GpuReading | null> =>
+      this.readGpuNow(),
+    );
+    context.handle(SystemMonitorChannel.StorageRead, (): Promise<StorageSnapshot> =>
+      this.readStorageNow(),
+    );
+    context.handle(SystemMonitorChannel.NetworkRead, (): Promise<NetworkSnapshot> =>
+      this.readNetworkNow(),
+    );
     context.on(SystemMonitorChannel.NetworkStart, (): void => this.addNetworkConsumer());
     context.on(SystemMonitorChannel.NetworkStop, (): void => this.removeNetworkConsumer());
     context.handle(SystemMonitorChannel.NetworkInfo, (): Promise<NetworkInfo> =>
@@ -1006,6 +1021,68 @@ export class SystemMonitorContribution implements MainContribution {
         }),
       }));
     return { points, intervalMs };
+  }
+
+  /**
+   * Reads the GPU in detail now, for the monitor's agent: two readings a moment apart, so the second
+   * has per-process shares where the platform reports them.
+   * @returns Returns the reading, or null where the GPU cannot be read.
+   */
+  private async readGpuNow(): Promise<GpuReading | null> {
+    try {
+      const sampler: GpuSampler = new GpuSampler(gpuSources(), true);
+      await sampler.read();
+      await delay(MOMENT_MS);
+      return (await sampler.read()) ?? null;
+    } catch (error: unknown) {
+      logger.debug('SystemMonitorContribution', 'Could not read the GPU for the agent', error);
+      return null;
+    }
+  }
+
+  /**
+   * Reads the storage devices now, for the monitor's agent: what they are, and their activity over a
+   * moment (two readings of their counters a moment apart).
+   * @returns Returns the storage.
+   */
+  private async readStorageNow(): Promise<StorageSnapshot> {
+    const sampler: StorageSampler = new StorageSampler(gpuSources());
+    const [info]: [StorageInfo, StorageReading | undefined] = await Promise.all([
+      this.readStorageInfo(),
+      sampler.read(),
+    ]);
+    await delay(MOMENT_MS);
+    return { info, reading: (await sampler.read()) ?? null };
+  }
+
+  /**
+   * Reads the network now, for the monitor's agent: the interfaces, their activity over a moment (two
+   * readings of their counters a moment apart), the connections and the DNS server's latency.
+   * @returns Returns the network.
+   */
+  private async readNetworkNow(): Promise<NetworkSnapshot> {
+    const sampler: NetworkSampler = new NetworkSampler(gpuSources());
+    const [info, , connections, dnsLatencyMs]: [
+      NetworkInfo,
+      readonly NetworkInterfaceReading[],
+      readonly NetworkConnection[] | undefined,
+      number | undefined,
+    ] = await Promise.all([
+      this.readNetworkInfo(),
+      sampler.read(),
+      this.readConnections(),
+      measureDnsLatency(),
+    ]);
+    await delay(MOMENT_MS);
+    return {
+      info,
+      reading: {
+        timestamp: new Date().toISOString(),
+        interfaces: await sampler.read(),
+        ...(connections === undefined ? {} : { connections }),
+        ...(dnsLatencyMs === undefined ? {} : { dnsLatencyMs }),
+      },
+    };
   }
 
   /**
@@ -1643,6 +1720,23 @@ function readBootTime(): number | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The moment an on-demand reading waits between its two readings, in milliseconds, so rates and shares
+ * have something to compare with.
+ */
+const MOMENT_MS: number = 1_000;
+
+/**
+ * Waits a while.
+ * @param ms The time to wait, in milliseconds.
+ * @returns Returns a promise that resolves after it.
+ */
+function delay(ms: number): Promise<void> {
+  return new Promise<void>((resolve: () => void): void => {
+    setTimeout(resolve, ms);
+  });
 }
 
 /**
