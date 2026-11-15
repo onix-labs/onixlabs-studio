@@ -36,10 +36,17 @@
           />
         }
       }
+      <!-- Every wash beneath every line, so no series' wash dims another's line. -->
       @for (drawn of drawn(); track drawn.series.label) {
         @if (drawn.area) {
-          <path class="line-chart__area" [attr.d]="drawn.area" />
+          <path
+            class="line-chart__area"
+            [class.line-chart__area--secondary]="drawn.series.emphasis === 'secondary'"
+            [attr.d]="drawn.area"
+          />
         }
+      }
+      @for (drawn of drawn(); track drawn.series.label) {
         <path
           class="line-chart__line"
           [class.line-chart__line--secondary]="drawn.series.emphasis === 'secondary'"

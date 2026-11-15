@@ -129,8 +129,8 @@ function plain(value: number): string {
 
 /**
  * Represents a line chart over time: one or two series against a single value axis, the newest sample
- * at the right. The primary series is the accent line over a faint wash; a secondary series is a muted
- * line alone, so the two read apart by more than colour, and a legend names them. The axis has clean
+ * at the right. The primary series is the accent line over a faint accent wash, a secondary series the
+ * muted grey line over a faint grey one; a legend (or the badges beside the graph) names them. The axis has clean
  * quarter ticks with hairline gridlines, and is either fixed (a percentage, 0–100) or scaled to the
  * data's peak.
  *
@@ -246,8 +246,8 @@ export class LineChart {
         );
         const line: string = points.length > 0 ? `M${points.join('L')}` : '';
         const first: string = points.length > 0 ? `${this.x(0, series.values.length, length)}` : '';
-        const area: string =
-          series.emphasis === 'primary' && points.length > 1 ? `${line}L100,100L${first},100Z` : '';
+        // Every line has its wash, the accent's or the grey's, so every graph reads as one style.
+        const area: string = points.length > 1 ? `${line}L100,100L${first},100Z` : '';
         return { series, line, area };
       });
     },

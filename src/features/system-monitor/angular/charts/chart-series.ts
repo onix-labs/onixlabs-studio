@@ -13,8 +13,8 @@ export interface ChartSeries {
   readonly values: readonly number[];
 
   /**
-   * Gets how the series is drawn: `primary` as the accent line over a faint wash, `secondary` as a
-   * muted line alone, so two series read apart by more than colour.
+   * Gets how the series is drawn: `primary` as the accent line over a faint accent wash, `secondary` as
+   * the muted grey line over a faint grey wash.
    */
   readonly emphasis: 'primary' | 'secondary';
 }

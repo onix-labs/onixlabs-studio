@@ -62,6 +62,22 @@ describe('LineChart', () => {
     expect(host.querySelector('.line-chart__tick')?.textContent?.trim()).toBe('80');
   });
 
+  it('shadesEveryLine_theAccentsAndTheGreys_beneathAllTheLines', async () => {
+    await draw([
+      { label: 'Received', values: [1, 2, 3], emphasis: 'primary' },
+      { label: 'Sent', values: [3, 2, 1], emphasis: 'secondary' },
+    ]);
+
+    const areas: Element[] = Array.from(host.querySelectorAll('.line-chart__area'));
+    expect(areas).toHaveLength(2);
+    expect(areas[1].classList).toContain('line-chart__area--secondary');
+    // Both washes come before the first line, so neither dims a line.
+    const shapes: string[] = Array.from(host.querySelectorAll('svg path')).map(
+      (path: Element): string => path.getAttribute('class') ?? '',
+    );
+    expect(shapes.findIndex((name: string): boolean => name.includes('line-chart__line'))).toBe(2);
+  });
+
   it('namesTwoSeriesInALegend_butNotOne', async () => {
     await draw([{ label: 'CPU', values: [1], emphasis: 'primary' }]);
     expect(host.querySelector('[aria-label="Legend"]')).toBeNull();

@@ -69,6 +69,10 @@
   fill-opacity: 0.1;
 }
 
+.line-chart__area--secondary {
+  fill: var(--form-muted-foreground-color);
+}
+
 .line-chart__line {
   fill: none;
   stroke: var(--accent-color);

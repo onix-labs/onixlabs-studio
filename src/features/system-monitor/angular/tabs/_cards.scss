@@ -121,6 +121,23 @@
   }
 }
 
+// A table that fills the rest of its card: its body rows share the spare height equally (the header
+// keeps its own), and the last row has no rule beneath, the card's edge closing it. Put it on a
+// `<table>` that is a flex child of the card's body, alongside `table`.
+@mixin filling-table {
+  flex: 1 1 auto;
+  min-block-size: 0;
+
+  // A header row with a height of its own keeps it; the table shares the rest between the body rows.
+  thead tr {
+    block-size: 1.75rem;
+  }
+
+  tbody tr:last-child td {
+    border-block-end: none;
+  }
+}
+
 // A number column: right-aligned, its digits lined up.
 @mixin number {
   font-variant-numeric: tabular-nums;

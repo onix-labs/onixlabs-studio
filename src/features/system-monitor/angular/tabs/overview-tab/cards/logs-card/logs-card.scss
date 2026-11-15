@@ -6,6 +6,7 @@
 
 .logs-card__table {
   @include table;
+  @include filling-table;
 
   td {
     padding-block: 0.45rem;
