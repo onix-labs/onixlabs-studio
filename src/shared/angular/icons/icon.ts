@@ -1827,6 +1827,28 @@ export class Icon {
    */
   public static readonly WELCOME_DATABASE: Icon = new Icon('ph-duotone ph-database');
 
+  /**
+   * Gets the duotone Network Explorer icon shown on the welcome screen.
+   */
+  public static readonly WELCOME_NETWORK: Icon = new Icon('ph-duotone ph-network');
+
+  // --- Network Explorer ---
+
+  /**
+   * Gets the icon of the Network Explorer tab.
+   */
+  public static readonly NETWORK_EXPLORER: Icon = new Icon('ph-duotone ph-network');
+
+  /**
+   * Gets the icon of the Network Explorer's Interfaces panel.
+   */
+  public static readonly NETWORK_INTERFACES: Icon = new Icon('ph-duotone ph-plugs');
+
+  /**
+   * Gets the icon of the Network Explorer's Connections panel.
+   */
+  public static readonly NETWORK_CONNECTIONS: Icon = new Icon('ph-duotone ph-arrows-left-right');
+
   // --- API Explorer ---
 
   /**

@@ -29,6 +29,7 @@ const NEW_TAB_TYPES: readonly { readonly type: TabType; readonly label: string }
   { type: 'agent', label: 'Agent' },
   { type: 'api-explorer', label: 'API Request' },
   { type: 'database-explorer', label: 'Database Explorer' },
+  { type: 'network-explorer', label: 'Network Explorer' },
 ];
 
 /**

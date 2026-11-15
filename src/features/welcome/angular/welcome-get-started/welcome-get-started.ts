@@ -142,6 +142,7 @@ export class WelcomeGetStarted {
     { label: 'New Agent', icon: Icon.WELCOME_AGENT, run: 'agent' },
     { label: 'New API Explorer', icon: Icon.WELCOME_API_EXPLORER, run: 'api-explorer' },
     { label: 'New Database Explorer', icon: Icon.WELCOME_DATABASE, run: 'database-explorer' },
+    { label: 'New Network Explorer', icon: Icon.WELCOME_NETWORK, run: 'network-explorer' },
   ];
 
   /**

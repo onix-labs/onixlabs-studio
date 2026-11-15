@@ -1,0 +1,71 @@
+<app-panel-toolbar>
+  <app-text-field
+    class="connections__filter"
+    kind="search"
+    placeholder="Filter Connections"
+    ariaLabel="Filter Connections"
+    [value]="activity.connectionQuery()"
+    (valueChange)="activity.connectionQuery.set($event)"
+  />
+  <span class="connections__summary" data-testid="connections-summary">{{ summary() }}</span>
+  <span class="panel-toolbar__spacer"></span>
+  @if (activity.selectedInterface()) {
+    <app-button
+      variant="none"
+      [icon]="Icon.CLOSE"
+      label="All Interfaces"
+      tooltip="Show the connections over every interface"
+      (click)="activity.select(null)"
+    />
+  }
+  <app-button
+    variant="none"
+    label="Loopback"
+    tooltip="Show connections between this machine and itself"
+    [pressed]="activity.showLoopback()"
+    (click)="activity.showLoopback.set(!activity.showLoopback())"
+  />
+</app-panel-toolbar>
+
+@if (!activity.connectionsLoaded()) {
+  <p class="connections__empty">Listing connections…</p>
+} @else {
+  <div class="connections__scroll">
+    <table class="connections" data-testid="connections">
+      <thead>
+        <tr>
+          <th class="connections__process-column">Process</th>
+          <th>Remote Address</th>
+          <th>Local Address</th>
+          <th class="connections__protocol-column">Protocol</th>
+          <th class="connections__state-column">State</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of activity.connections(); track row.key) {
+          <tr>
+            <td [title]="row.connection.process ?? ''">
+              {{ row.connection.process ?? (row.connection.pid ? 'PID ' + row.connection.pid : '—') }}
+            </td>
+            <td class="connections__address" [title]="row.connection.remote">
+              {{ row.connection.remote }}
+            </td>
+            <td class="connections__address" [title]="row.connection.local">
+              {{ row.connection.local }}
+            </td>
+            <td>{{ row.connection.protocol }}</td>
+            <td>
+              @if (row.connection.state) {
+                <app-chip [tone]="toneOf(row.connection.state)">{{ row.connection.state }}</app-chip>
+              }
+            </td>
+          </tr>
+        } @empty {
+          <tr>
+            <td colspan="5" class="connections__none">No connections.</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

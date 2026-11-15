@@ -1,0 +1,60 @@
+<app-panel-toolbar>
+  <app-button
+    variant="none"
+    [icon]="Icon.REFRESH"
+    tooltip="Refresh Interfaces"
+    ariaLabel="Refresh Interfaces"
+    (click)="refresh()"
+  />
+  <span class="panel-toolbar__spacer"></span>
+  <app-button
+    variant="none"
+    label="Idle"
+    tooltip="Show interfaces that are down or have no address"
+    [pressed]="activity.showIdleInterfaces()"
+    (click)="activity.showIdleInterfaces.set(!activity.showIdleInterfaces())"
+  />
+</app-panel-toolbar>
+
+@if (activity.info() === null) {
+  <p class="interfaces__empty">Reading the network interfaces…</p>
+} @else {
+  <ul class="interfaces__list" aria-label="Network interfaces">
+    @for (row of activity.interfaces(); track row.info.id) {
+      <li>
+        <button
+          type="button"
+          class="interfaces__row"
+          [class.interfaces__row--selected]="activity.selectedInterfaceId() === row.info.id"
+          [class.interfaces__row--down]="!row.info.up"
+          [attr.aria-pressed]="activity.selectedInterfaceId() === row.info.id"
+          [attr.data-testid]="'interface-' + row.info.id"
+          (click)="choose(row)"
+        >
+          <app-icon class="interfaces__icon" [icon]="iconFor(row.info.kind)" />
+          <span class="interfaces__body">
+            <span class="interfaces__title">
+              <span class="interfaces__name">{{ row.info.name }}</span>
+              @if (row.info.name !== row.info.id) {
+                <span class="interfaces__id">{{ row.info.id }}</span>
+              }
+              @if (row.info.isDefault) {
+                <span class="interfaces__badge">Default</span>
+              }
+            </span>
+            <span class="interfaces__addresses" [title]="addresses(row)">{{ addresses(row) }}</span>
+            <span class="interfaces__meta">
+              @if (row.reading; as reading) {
+                <span title="Received">↓ {{ formatRate(reading.rxBytesPerSecond) }}</span>
+                <span title="Sent">↑ {{ formatRate(reading.txBytesPerSecond) }}</span>
+              }
+              <span>{{ row.connections }} {{ row.connections === 1 ? 'connection' : 'connections' }}</span>
+            </span>
+          </span>
+        </button>
+      </li>
+    } @empty {
+      <li class="interfaces__empty">No interfaces in use.</li>
+    }
+  </ul>
+}

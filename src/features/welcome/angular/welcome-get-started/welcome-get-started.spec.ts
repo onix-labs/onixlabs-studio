@@ -63,7 +63,7 @@ describe('WelcomeGetStarted', () => {
       ?.click();
   }
 
-  it('actions_areTheSevenWaysIn_inOrder', () => {
+  it('actions_areTheEightWaysIn_inOrder', () => {
     expect(
       Array.from(host.querySelectorAll<HTMLElement>('.welcome__action-label')).map(
         (label: HTMLElement): string => label.textContent.trim(),
@@ -76,6 +76,7 @@ describe('WelcomeGetStarted', () => {
       'New Agent',
       'New API Explorer',
       'New Database Explorer',
+      'New Network Explorer',
     ]);
   });
 
@@ -90,10 +91,16 @@ describe('WelcomeGetStarted', () => {
     expect(host.textContent).not.toContain('New Project');
   });
 
-  it('newDatabaseExplorer_asksForItsTab_andNoActionLooksUnavailable', () => {
+  it('newDatabaseExplorer_asksForItsTab', () => {
     clickAction('New Database Explorer');
 
     expect(opened).toEqual(['database-explorer']);
+  });
+
+  it('newNetworkExplorer_asksForItsTab_andNoActionLooksUnavailable', () => {
+    clickAction('New Network Explorer');
+
+    expect(opened).toEqual(['network-explorer']);
     expect(host.querySelector('.welcome__action--unavailable')).toBeNull();
   });
 

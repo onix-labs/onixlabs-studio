@@ -45,6 +45,7 @@ const TAB_CATEGORY_LABELS: Readonly<Record<TabType, string>> = {
   image: 'Images',
   'api-explorer': 'API Explorers',
   'database-explorer': 'Database Explorers',
+  'network-explorer': 'Network Explorers',
   terminal: 'Terminals',
   agent: 'Agents',
   containers: 'Tools',

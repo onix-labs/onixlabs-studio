@@ -1,0 +1,30 @@
+<app-ribbon-overflow>
+  <app-ribbon-strip-group title="Network">
+    <app-ribbon-strip-button
+      [icon]="Icon.REFRESH_DUOTONE"
+      label="Refresh"
+      (action)="commands.refresh()"
+    />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Show">
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small
+        [icon]="Icon.NETWORK_INTERFACES"
+        label="Idle Interfaces"
+        tooltip="Show interfaces that are down or have no address"
+        [toggle]="true"
+        [pressed]="commands.showIdleInterfaces()"
+        (action)="commands.toggleIdleInterfaces()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.MONITOR_LOOPBACK"
+        label="Loopback"
+        tooltip="Show connections between this machine and itself"
+        [toggle]="true"
+        [pressed]="commands.showLoopback()"
+        (action)="commands.toggleLoopback()"
+      />
+    </app-ribbon-strip-column>
+  </app-ribbon-strip-group>
+</app-ribbon-overflow>

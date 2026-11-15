@@ -1,0 +1,88 @@
+// Every connection to a remote peer: one row each, established ones first.
+
+// The strip stays put while the table beneath it scrolls.
+:host {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.connections__filter {
+  flex: 0 1 16rem;
+  min-inline-size: 0;
+}
+
+.connections__summary {
+  font-size: 0.6875rem;
+  color: var(--form-muted-foreground-color);
+  white-space: nowrap;
+}
+
+.connections__empty {
+  margin: 0;
+  padding: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+}
+
+// There are usually hundreds of connections.
+.connections__scroll {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+.connections {
+  inline-size: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 0.75rem;
+
+  th {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 1;
+    padding: 0.3rem 0.5rem;
+    border-block-end: 1px solid var(--dock-border-color);
+    font-weight: 500;
+    text-align: start;
+    color: var(--form-muted-foreground-color);
+    background-color: var(--panel-surface-color);
+  }
+
+  td {
+    padding: 0.3rem 0.5rem;
+    overflow: hidden;
+    border-block-end: 1px solid color-mix(in srgb, var(--dock-border-color) 50%, transparent);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--body-foreground-color);
+  }
+
+  tbody tr:hover td {
+    background: var(--accent-surface-background-color);
+  }
+}
+
+.connections__process-column {
+  inline-size: 20%;
+}
+
+.connections__protocol-column {
+  inline-size: 5rem;
+}
+
+.connections__state-column {
+  inline-size: 8.5rem;
+}
+
+.connections__address {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.6875rem;
+}
+
+.connections__none {
+  text-align: center;
+  color: var(--form-muted-foreground-color);
+}

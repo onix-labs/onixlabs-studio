@@ -21,6 +21,8 @@ export const featureContributions: readonly (() => Promise<{ descriptor: Feature
   (): Promise<{ descriptor: FeatureDescriptor }> =>
     import('@features/database-explorer/angular/database-explorer.feature'),
   (): Promise<{ descriptor: FeatureDescriptor }> =>
+    import('@features/network-explorer/angular/network-explorer.feature'),
+  (): Promise<{ descriptor: FeatureDescriptor }> =>
     import('@features/containers/angular/containers.feature'),
   (): Promise<{ descriptor: FeatureDescriptor }> =>
     import('@features/ai-manager/angular/ai-manager.feature'),
