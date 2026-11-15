@@ -26,7 +26,7 @@
   <section class="cpu-card__cores-section" aria-label="Core utilisation">
     <h4 class="cpu-card__heading">Core Utilisation</h4>
     @if (cores().length > 0) {
-      <div class="cpu-card__cores" data-testid="cpu-card-cores">
+      <div class="cpu-card__cores" data-testid="cpu-card-cores" [style.--cores-per-row]="perRow()">
         @for (core of cores(); track core.number) {
           <div class="cpu-card__core" [title]="core.title">
             <app-sparkline [values]="core.values" [max]="100" />

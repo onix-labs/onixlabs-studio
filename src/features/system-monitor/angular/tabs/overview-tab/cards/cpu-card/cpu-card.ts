@@ -8,6 +8,7 @@ import { SystemMonitorReadings } from '../../../../readings/system-monitor-readi
 import { Sparkline } from '../../../../sparkline/sparkline';
 import { DashboardBadge } from '../../../dashboard-badge/dashboard-badge';
 import { DashboardCard } from '../../../dashboard-card/dashboard-card';
+import { coresPerRow } from '../../../cores-per-row';
 
 /**
  * Describes one core's small graph.
@@ -115,4 +116,11 @@ export class CpuCard {
         title: `Core ${index + 1}: ${formatPercent(latest[index] ?? 0)}`,
       }));
   });
+
+  /**
+   * Gets how many core graphs a row of the grid holds, so every row is full.
+   */
+  protected readonly perRow: Signal<number> = computed((): number =>
+    coresPerRow(this.cores().length),
+  );
 }

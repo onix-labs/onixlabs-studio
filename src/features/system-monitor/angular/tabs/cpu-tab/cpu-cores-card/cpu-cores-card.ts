@@ -13,6 +13,7 @@ import { formatPercent } from '../../../readings/format';
 import { SystemMonitorReadings } from '../../../readings/system-monitor-readings';
 import { Sparkline } from '../../../sparkline/sparkline';
 import { DashboardCard } from '../../dashboard-card/dashboard-card';
+import { coresPerRow } from '../../cores-per-row';
 
 /**
  * Identifies how the cores are laid out: a grid of tiles, or a list of rows.
@@ -85,6 +86,13 @@ export class CpuCoresCard {
           return { number: index + 1, percent, value: formatPercent(percent), values };
         });
     },
+  );
+
+  /**
+   * Gets how many core tiles a row of the grid holds, so every row is full.
+   */
+  protected readonly perRow: Signal<number> = computed((): number =>
+    coresPerRow(this.cores().length),
   );
 
   /**

@@ -29,18 +29,20 @@
   @include heading;
 }
 
-// The per-core graphs: as many small wells as fit a row, each a core's load.
+// The per-core graphs, a core's load in each small well, 8 or 6 to a row so every row is full.
 .cpu-card__cores {
   display: grid;
   flex: 1 1 0;
-  grid-template-columns: repeat(auto-fill, minmax(1.4rem, 1fr));
-  grid-auto-rows: minmax(0.6rem, 1fr);
+  grid-template-columns: repeat(var(--cores-per-row, 8), minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
   gap: 0.2rem;
   min-block-size: 0;
 }
 
+// A well clips its graph, so it shrinks with its row rather than holding the graph's natural height.
 .cpu-card__core {
   min-block-size: 0;
+  overflow: hidden;
   padding: 1px;
   border-radius: calc(0.25rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);

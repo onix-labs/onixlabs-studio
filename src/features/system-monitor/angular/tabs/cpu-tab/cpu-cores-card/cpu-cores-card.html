@@ -21,7 +21,7 @@
   @if (cores().length === 0) {
     <p class="cpu-cores__empty">Each core's load appears after the next reading.</p>
   } @else if (layout() === 'grid') {
-    <div class="cpu-cores__grid" data-testid="cpu-cores-grid">
+    <div class="cpu-cores__grid" data-testid="cpu-cores-grid" [style.--cores-per-row]="perRow()">
       @for (core of cores(); track core.number) {
         <div class="cpu-cores__tile" [attr.aria-label]="'Core ' + core.number + ': ' + core.value">
           <span class="cpu-cores__number">{{ core.number }}</span>
