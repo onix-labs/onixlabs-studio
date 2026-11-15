@@ -1,6 +1,6 @@
 // The System Monitor view fills its tab with the view the ribbon's View group has chosen (Overview,
-// each resource, Logs). The Logs view is the log audit: a header counting the session's records by
-// level, a filter toolbar, a scrolling table, and the chosen record's details beneath.
+// each resource, Logs). The Logs view is the log audit: a header holding its filters and counting the
+// session's records by level, a scrolling table, and the chosen record's details beneath.
 :host {
   display: block;
   block-size: 100%;
@@ -30,7 +30,7 @@
   }
 }
 
-// The Logs view fills its tab: header, toolbar, the table (which scrolls its own rows) and the chosen
+// The Logs view fills its tab: the header, the table (which scrolls its own rows) and the chosen
 // record's details, fitting a full-screen 1080p display and scrolling below that.
 .logs {
   display: flex;
@@ -42,12 +42,45 @@
   overflow: auto;
 }
 
+// The title, the session, the levels and the filter, then the Filters and more-actions menus against
+// the summary at the right edge, wrapping onto a second line when the view is narrow.
 .logs__header {
   display: flex;
   flex: none;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem;
   min-inline-size: 0;
+}
+
+// The controls beside the filter stand as tall as it: a button's height is the control height, which
+// these groups set to the floating field's (the session picker is a floating one already).
+.logs__levels,
+.logs__actions {
+  --control-height: 2.75rem;
+
+  display: flex;
+  flex: none;
+  gap: 0.3rem;
+}
+
+.logs__session {
+  flex: none;
+  min-inline-size: 16rem;
+}
+
+.logs__search {
+  flex: 0 1 20rem;
+  min-inline-size: 12rem;
+}
+
+// The menus sit against the summary, the spare width falling between them and the filter.
+.logs__actions {
+  margin-inline-start: auto;
+}
+
+.logs__summary {
+  margin-inline-start: 0;
 }
 
 .logs__icon {
@@ -61,56 +94,6 @@
   font-size: 1.3rem;
   font-weight: 600;
   color: var(--body-foreground-color);
-}
-
-.logs__subtitle {
-  min-inline-size: 0;
-  overflow: hidden;
-  font-size: 0.82rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--form-muted-foreground-color);
-}
-
-// The session, the levels, the search taking the spare width, then the counts and menus.
-.logs__toolbar {
-  display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.logs__session {
-  flex: none;
-  min-inline-size: 16rem;
-}
-
-.logs__levels {
-  display: flex;
-  flex: none;
-  gap: 0.2rem;
-  padding: 0.2rem;
-  border: 1px solid var(--dock-border-color);
-  border-radius: calc(0.6rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-}
-
-.logs__search {
-  flex: 1 1 14rem;
-  min-inline-size: 10rem;
-}
-
-.logs__count,
-.logs__selection {
-  flex: none;
-  font-size: 0.78rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--form-muted-foreground-color);
-}
-
-.logs__selection {
-  color: var(--accent-color);
 }
 
 // The table sits in a well like the other views' cards, its rows scrolling within it.

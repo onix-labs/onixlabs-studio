@@ -35,17 +35,10 @@
             <header class="logs__header">
               <app-icon class="logs__icon" [icon]="Icon.MONITOR_LOGS" [size]="1.75" />
               <h2 class="logs__title">Logs</h2>
-              <span class="logs__subtitle">Application logs • {{ summary().session }}</span>
-              <app-system-monitor-view-summary
-                ariaLabel="Records by level"
-                [items]="logSummary()"
-              />
-            </header>
 
-            <div class="logs__toolbar">
               <app-dropdown
                 class="logs__session"
-                ariaLabel="Session"
+                label="Session"
                 [options]="sessionOptions()"
                 [value]="selectedSessionValue()"
                 (valueChange)="selectSession($event)"
@@ -54,7 +47,6 @@
               <div class="logs__levels" role="group" aria-label="Filter by level">
                 <app-button
                   variant="none"
-                  size="small"
                   label="All"
                   [pressed]="allSeverities()"
                   (click)="showAllSeverities()"
@@ -62,7 +54,6 @@
                 @for (severity of severities; track severity) {
                   <app-button
                     variant="none"
-                    size="small"
                     [label]="severityName(severity)"
                     [pressed]="isEnabled(severity)"
                     (click)="toggleSeverity(severity)"
@@ -73,48 +64,49 @@
               <app-text-field
                 class="logs__search"
                 kind="search"
-                placeholder="Filter messages…"
-                ariaLabel="Filter messages"
+                variant="floating"
+                label="Filter messages"
                 [value]="text()"
                 (valueChange)="text.set($event)"
                 (escape)="clearText()"
               />
 
-              @if (selectedCount() > 1) {
-                <span class="logs__selection">{{ selectedCount() }} selected</span>
-              }
-              <span class="logs__count">{{ filtered().length }} / {{ records().length }}</span>
+              <div class="logs__actions">
+                <app-button
+                  variant="none"
+                  label="Filters"
+                  [icon]="Icon.FILTER"
+                  [cdkMenuTriggerFor]="filtersMenu.panel() ?? null"
+                  [cdkMenuPosition]="filtersMenu.position()"
+                />
+                <app-menu
+                  #filtersMenu
+                  [items]="filterItems()"
+                  placement="down-end"
+                  (selected)="toggleOrigin($event)"
+                />
+                <app-button
+                  variant="none"
+                  ariaLabel="More Actions"
+                  tooltip="More Actions"
+                  [icon]="Icon.DOTS_THREE_BOLD"
+                  [cdkMenuTriggerFor]="moreMenu.panel() ?? null"
+                  [cdkMenuPosition]="moreMenu.position()"
+                />
+                <app-menu
+                  #moreMenu
+                  [items]="moreItems()"
+                  placement="down-end"
+                  (selected)="onMore($event)"
+                />
+              </div>
 
-              <app-button
-                variant="none"
-                size="small"
-                label="Filters"
-                [icon]="Icon.FILTER"
-                [cdkMenuTriggerFor]="filtersMenu.panel() ?? null"
-                [cdkMenuPosition]="filtersMenu.position()"
+              <app-system-monitor-view-summary
+                class="logs__summary"
+                ariaLabel="Records by level"
+                [items]="logSummary()"
               />
-              <app-menu
-                #filtersMenu
-                [items]="filterItems()"
-                placement="down-end"
-                (selected)="toggleOrigin($event)"
-              />
-              <app-button
-                variant="none"
-                size="small"
-                ariaLabel="More Actions"
-                tooltip="More Actions"
-                [icon]="Icon.DOTS_THREE_BOLD"
-                [cdkMenuTriggerFor]="moreMenu.panel() ?? null"
-                [cdkMenuPosition]="moreMenu.position()"
-              />
-              <app-menu
-                #moreMenu
-                [items]="moreItems()"
-                placement="down-end"
-                (selected)="onMore($event)"
-              />
-            </div>
+            </header>
 
             <div class="logs__list">
               <app-table
