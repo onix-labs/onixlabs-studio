@@ -9,8 +9,11 @@
   @include leading-chart;
 }
 
+// The volumes follow the graph, set apart from it so its axis's last label does not meet their header.
 .storage-card__table {
   @include table;
+
+  margin-block-start: 0.5rem;
 
   td {
     padding-block: 0.6rem;

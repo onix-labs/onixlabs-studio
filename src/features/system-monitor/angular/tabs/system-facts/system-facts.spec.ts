@@ -54,7 +54,10 @@ describe('SystemFacts', () => {
     expect(text).toContain('256.0 GB');
     expect(text).toContain('2d 01:02:03');
     expect(text).toContain('GPUs');
-    expect(text).toContain('AMD Radeon RX 6900 XT (16.0 GB VRAM), Intel UHD 630');
+    // The GPUs and their video memory are rows of their own, the memory in the GPUs' order.
+    expect(text).toContain('AMD Radeon RX 6900 XT, Intel UHD 630');
+    expect(text).toContain('VRAM');
+    expect(text).toContain('16.0 GB, —');
   });
 
   it('showsPlaceholders_untilTheMachineIsDescribed', async () => {

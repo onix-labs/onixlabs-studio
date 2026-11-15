@@ -52,26 +52,33 @@ function formatSpan(ms: number): string {
 }
 
 /**
- * Describes the machine's GPUs in a line: each model with its dedicated memory where it has some
- * (`AMD Radeon RX 6900 XT (16.0 GB VRAM)`).
+ * Names the machine's GPUs in a line (`AMD Radeon RX 6900 XT`).
  * @param gpus The machine's GPUs.
  * @returns Returns the line, or a placeholder when none is known.
  */
 function describeGpus(gpus: readonly GpuInfo[]): string {
-  if (gpus.length === 0) {
+  return gpus.length === 0 ? '—' : gpus.map((gpu: GpuInfo): string => gpu.model).join(', ');
+}
+
+/**
+ * Describes the machine's GPUs' dedicated video memory in a line, in the order the GPUs are named
+ * (`16.0 GB`), a dash for a GPU that reports none.
+ * @param gpus The machine's GPUs.
+ * @returns Returns the line, or a placeholder when no GPU reports any.
+ */
+function describeVram(gpus: readonly GpuInfo[]): string {
+  if (gpus.every((gpu: GpuInfo): boolean => gpu.memoryBytes === undefined)) {
     return '—';
   }
   return gpus
     .map((gpu: GpuInfo): string =>
-      gpu.memoryBytes === undefined
-        ? gpu.model
-        : `${gpu.model} (${formatBytes(gpu.memoryBytes)} VRAM)`,
+      gpu.memoryBytes === undefined ? '—' : formatBytes(gpu.memoryBytes),
     )
     .join(', ');
 }
 
 /**
- * Represents the machine's facts: its operating system, processor, cores, memory, GPU and its video
+ * Represents the machine's facts: its operating system, processor, cores, memory, GPU, its video
  * memory, how long it has been up, and when the logging session started. Shown by the Overview's
  * System card.
  */
@@ -120,6 +127,11 @@ export class SystemFacts {
         icon: Icon.MONITOR_GPU,
         label: info !== null && info.gpus.length > 1 ? 'GPUs' : 'GPU',
         value: info === null ? '—' : describeGpus(info.gpus),
+      },
+      {
+        icon: Icon.MONITOR_VRAM,
+        label: 'VRAM',
+        value: info === null ? '—' : describeVram(info.gpus),
       },
       {
         icon: Icon.MONITOR_UPTIME,

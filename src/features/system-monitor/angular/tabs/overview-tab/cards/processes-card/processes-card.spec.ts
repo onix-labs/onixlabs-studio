@@ -44,17 +44,19 @@ describe('ProcessesCard', () => {
     expect(host.textContent).toContain('Listing processes…');
   });
 
-  it('countsEveryProcess_andListsTheFiveBusiest', async () => {
+  it('countsEveryProcess_andListsTheEightBusiest', async () => {
     listing.accept({
       timestamp: 't',
       total: 712,
       user: 'me',
-      processes: [1, 2, 3, 4, 5, 6, 7].map((pid: number): ProcessSample => process(pid, `p${pid}`)),
+      processes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((pid: number): ProcessSample =>
+        process(pid, `p${pid}`),
+      ),
     });
     fixture.detectChanges();
     await fixture.whenStable();
 
     expect(host.textContent).toContain('712');
-    expect(host.querySelectorAll('[data-testid="processes-card-table"] tbody tr')).toHaveLength(5);
+    expect(host.querySelectorAll('[data-testid="processes-card-table"] tbody tr')).toHaveLength(8);
   });
 });

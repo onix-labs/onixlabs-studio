@@ -121,7 +121,7 @@ export interface SeverityCounts {
 /**
  * The number of latest records the Overview's Logs card lists.
  */
-const OVERVIEW_RECORDS: number = 6;
+const OVERVIEW_RECORDS: number = 9;
 
 /**
  * What the System Monitor tab's status strip reports.

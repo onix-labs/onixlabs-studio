@@ -10,7 +10,7 @@ import { DashboardCard } from '../../../dashboard-card/dashboard-card';
 /**
  * The number of processes the card lists.
  */
-const SHOWN: number = 5;
+const SHOWN: number = 8;
 
 /**
  * The shells, whose processes are marked with a terminal rather than a window.

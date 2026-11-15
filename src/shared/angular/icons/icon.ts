@@ -338,6 +338,11 @@ export class Icon {
   public static readonly PAGE_LAST: Icon = new Icon('ph ph-caret-double-right');
 
   /**
+   * Gets the icon for a GPU's video memory in the System Monitor.
+   */
+  public static readonly MONITOR_VRAM: Icon = new Icon('ph-duotone ph-circuitry');
+
+  /**
    * Gets the icon for a storage device in the System Monitor's Storage view.
    */
   public static readonly MONITOR_DRIVE: Icon = new Icon('ph-duotone ph-hard-drive');
