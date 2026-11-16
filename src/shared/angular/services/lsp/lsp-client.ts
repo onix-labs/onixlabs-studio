@@ -2884,8 +2884,9 @@ export class LspClient implements OnDestroy {
     }
     // The server's hints are stale (a setting changed, a project finished loading): every editor
     // showing them asks again (#1145).
-    // The server's diagnostics are stale and it has no workspace pull to report them through: its open
-    // documents are pulled again (#1210), once a burst of refreshes has settled.
+    // The server's diagnostics are stale: its open documents are pulled again (#1210), once a burst of
+    // refreshes has settled. A workspace pull, where there is one, is refreshed by the main process,
+    // but does not cover them — Roslyn's leaves open documents to their own pulls.
     if (message.method === 'workspace/diagnostic/refresh') {
       if (this.pullCapable.has(message.sessionId)) {
         for (const tracked of this.tracked.values()) {

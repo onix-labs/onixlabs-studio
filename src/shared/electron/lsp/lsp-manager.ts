@@ -46,6 +46,8 @@ import {
   LspSettingsChange,
 } from './lsp-server-registry';
 import { FileEvent, LspFileWatcher } from './lsp-file-watcher';
+import { SolutionReopener } from './lsp-solution-reopen';
+import type { LspPostInitialize } from './language-server-descriptor';
 import {
   createsCompilationDatabase,
   hasCompilationDatabase,
@@ -699,6 +701,9 @@ export class LspManager {
     // first appears once it is running, so the CMake configure that writes one restarts it, once.
     let awaitingDatabase: boolean =
       readsCompilationDatabase(parsed.serverId) && !hasCompilationDatabase(parsed.rootPath);
+    // And Roslyn does not watch its solution: a project added to it, removed or renamed is loaded
+    // only once the solution is opened again.
+    const solution: SolutionReopener = new SolutionReopener(spec.postInitialize);
     const watcher: LspFileWatcher = new LspFileWatcher(
       parsed.rootPath,
       (events: readonly FileEvent[]): void => {
@@ -715,6 +720,18 @@ export class LspManager {
               `A compilation database appeared under ${parsed.rootPath}; restarting ${parsed.sessionId}`,
             );
             void this.restart(parsed.sessionId);
+          }
+        }
+      },
+      (relativePaths: readonly string[]): void => {
+        const reopen: readonly LspPostInitialize[] = solution.reopenFor(
+          parsed.rootPath,
+          relativePaths,
+        );
+        if (reopen.length > 0 && this.sessions.get(parsed.sessionId)?.child === child) {
+          logger.info('LspManager', `The solution changed; ${parsed.sessionId} opens it again`);
+          for (const message of reopen) {
+            this.tell(connection, message.method, message.params);
           }
         }
       },
@@ -1190,14 +1207,13 @@ export class LspManager {
     );
     connection.onRequest('window/workDoneProgress/create', (): null => null);
     // The server's diagnostics changed in a way an open workspace pull will not report (a project
-    // finished loading, the analysis scope changed): pull afresh (#1144). A server with no workspace
-    // pull has its open documents pulled again by the renderer (#1210).
+    // finished loading, the analysis scope changed): pull afresh (#1144). Its open documents are
+    // pulled again by the renderer (#1210) whether or not there is a workspace pull: Roslyn's leaves
+    // open documents out, so a file an agent fixed on disk left the error it caused in an open
+    // document standing until that document was itself edited.
     connection.onRequest('workspace/diagnostic/refresh', (): null => {
-      if (session.workspaceDiagnostics) {
-        session.workspaceDiagnostics.refresh();
-      } else {
-        this.forwardNotification(sessionId, 'workspace/diagnostic/refresh', undefined);
-      }
+      session.workspaceDiagnostics?.refresh();
+      this.forwardNotification(sessionId, 'workspace/diagnostic/refresh', undefined);
       return null;
     });
     // A server sends this when its semantic classification has improved (a project finished loading)

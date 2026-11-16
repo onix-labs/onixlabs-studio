@@ -98,6 +98,55 @@ describe('LspFileWatcher', () => {
     ).toBe(false);
   });
 
+  it('reportsAFileInsideABuildOutput_whenARegistrationMatchesIt', async () => {
+    // Roslyn 5.13's shape: each project watches `**/*.json` beneath it, which takes in the
+    // obj/project.assets.json a restore rewrites. Dropping it with the rest of obj kept a project's
+    // restored references from the server; what no pattern asks for there is still dropped.
+    mkdirSync(path.join(root, 'A', 'obj'), { recursive: true });
+    mkdirSync(path.join(root, 'A', 'node_modules', 'pkg'), { recursive: true });
+    start();
+    watcher?.register('a', [
+      {
+        globPattern: {
+          baseUri: pathToFileURL(path.join(root, 'A')).href,
+          pattern: '{**/*.csproj,**/*.cs,**/*.json}',
+        },
+      },
+    ]);
+    await settle();
+    writeFileSync(path.join(root, 'A', 'obj', 'project.assets.json'), '{}');
+    writeFileSync(path.join(root, 'A', 'obj', 'A.csproj.nuget.g.props'), 'x');
+    writeFileSync(path.join(root, 'A', 'node_modules', 'pkg', 'index.js'), 'x');
+    await settle();
+
+    const uris: string[] = events().map((event: FileEvent): string => event.uri);
+    expect(uris.some((uri: string): boolean => uri.endsWith('/A/obj/project.assets.json'))).toBe(
+      true,
+    );
+    expect(uris.some((uri: string): boolean => uri.endsWith('.nuget.g.props'))).toBe(false);
+    expect(uris.some((uri: string): boolean => uri.endsWith('/index.js'))).toBe(false);
+  });
+
+  it('observe_isToldEveryChangedPath_includingThoseNoRegistrationAsksFor', async () => {
+    // Roslyn does not watch its solution; the manager has to see it change all the same.
+    const observed: string[] = [];
+    watcher = new LspFileWatcher(
+      root,
+      (delivered: readonly FileEvent[]): void => void batches.push(delivered),
+      (relativePaths: readonly string[]): void => void observed.push(...relativePaths),
+    );
+    watcher.register('cs', [{ globPattern: '**/*.cs' }]);
+    internals().onEvent('change', 'App.slnx');
+    internals().onEvent('change', 'A/Program.cs');
+    internals().onEvent('change', 'A/obj/A.csproj.nuget.g.props');
+    await internals().flush();
+
+    expect(observed.sort()).toEqual(['A/Program.cs', 'App.slnx']);
+    expect(events().map((event: FileEvent): string => path.basename(event.uri))).toEqual([
+      'Program.cs',
+    ]);
+  });
+
   it('honoursRegisteredPatterns_reportingOnlyMatches', async () => {
     start();
     watcher?.register('r1', [{ globPattern: '**/*.rs' }]);

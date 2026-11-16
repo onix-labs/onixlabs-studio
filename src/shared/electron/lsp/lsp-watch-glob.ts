@@ -129,6 +129,11 @@ export class WatchRegistrations {
   private readonly byId: Map<string, readonly RegExp[]> = new Map<string, readonly RegExp[]>();
 
   /**
+   * Holds the union of every live registration's patterns, or null when it must be rebuilt.
+   */
+  private union: readonly RegExp[] | null = null;
+
+  /**
    * Initializes a new instance of the {@link WatchRegistrations} class.
    * @param root The absolute watched root the patterns are compiled against.
    */
@@ -153,6 +158,7 @@ export class WatchRegistrations {
       }
     }
     this.byId.set(id, compiled);
+    this.union = null;
   }
 
   /**
@@ -161,7 +167,19 @@ export class WatchRegistrations {
    * @returns Returns true when it was known.
    */
   public unregister(id: string): boolean {
+    this.union = null;
     return this.byId.delete(id);
+  }
+
+  /**
+   * Determines whether a path matches one of the live registrations. False when there are none: a
+   * server that registered nothing asked for nothing in particular.
+   * @param relativePath The changed entry's path relative to the watched root (either separator).
+   * @returns Returns true when the server asked to hear about the path.
+   */
+  public matches(relativePath: string): boolean {
+    const patterns: readonly RegExp[] | null = this.patterns();
+    return patterns !== null && matchesAny(relativePath, patterns);
   }
 
   /**
@@ -181,6 +199,7 @@ export class WatchRegistrations {
     if (this.byId.size === 0) {
       return null;
     }
-    return [...this.byId.values()].flat();
+    this.union ??= [...this.byId.values()].flat();
+    return this.union;
   }
 }

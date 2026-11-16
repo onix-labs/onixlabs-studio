@@ -190,4 +190,19 @@ describe('WatchRegistrations', () => {
     expect(matchesAny('A/X.cs', patterns)).toBe(false);
     expect(matchesAny('A/X.razor', patterns)).toBe(true);
   });
+
+  it('matches_isFalseWithNothingRegistered_andAnswersTheUnionOnceThereIs', () => {
+    const registrations: WatchRegistrations = new WatchRegistrations(root);
+    expect(registrations.matches('A/obj/project.assets.json')).toBe(false);
+
+    registrations.register('a', [watcher('A', '{**/*.cs,**/*.json}')]);
+    expect(registrations.matches('A/obj/project.assets.json')).toBe(true);
+    expect(registrations.matches('B/obj/project.assets.json')).toBe(false);
+
+    // The union is rebuilt as registrations come and go.
+    registrations.register('b', [watcher('B', '**/*.json')]);
+    expect(registrations.matches('B/obj/project.assets.json')).toBe(true);
+    registrations.unregister('b');
+    expect(registrations.matches('B/obj/project.assets.json')).toBe(false);
+  });
 });

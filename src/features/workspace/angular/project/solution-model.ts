@@ -230,6 +230,13 @@ export class SolutionModel {
   private readonly inFlight: Set<string> = new Set<string>();
 
   /**
+   * Holds the paths a newer load wanted re-evaluated while an older fetch of them was still in flight.
+   * That fetch's answer belongs to the older load and is discarded, so each is queued again as it
+   * settles; otherwise a project changed mid-evaluation kept its old contents.
+   */
+  private readonly refetch: Set<string> = new Set<string>();
+
+  /**
    * Holds the generic transport, or undefined when running outside Electron.
    */
   private readonly bridge: Bridge | undefined = window.bridge;
@@ -889,8 +896,20 @@ export class SolutionModel {
     if (model === null) {
       this.itemsByProject.set(new Map<string, ProjectItems>());
       this.loadingProjects.set(new Set<string>());
+      this.refetch.clear();
       this.expandedKeys.set(new Set<string>());
       return;
+    }
+    // A project renamed or removed mid-evaluation is no row of the new model: its spinner goes now,
+    // rather than keeping the root spinning until its evaluation gives up.
+    const present: ReadonlySet<string> = new Set<string>(
+      model.projects.map((project: ProjectEntry): string => project.path),
+    );
+    const loading: ReadonlySet<string> = this.loadingProjects();
+    if ([...loading].some((path: string): boolean => !present.has(path))) {
+      this.loadingProjects.set(
+        new Set<string>([...loading].filter((path: string): boolean => present.has(path))),
+      );
     }
     // Drop cached contents of projects that left the model, keep the rest visible while any fresh
     // contents arrive, and re-evaluate only what the burst could have affected: a project is skipped
@@ -947,6 +966,7 @@ export class SolutionModel {
     this.searchQuery.set('');
     this.selectedKeySignal.set(null);
     this.loadingProjects.set(new Set<string>());
+    this.refetch.clear();
     this.expandedKeys.set(model !== null ? new Set<string>([ROOT_KEY]) : new Set<string>());
   }
 
@@ -958,13 +978,23 @@ export class SolutionModel {
    * @param generation The load generation this work belongs to.
    */
   private scheduleContents(paths: readonly string[], generation: number): void {
-    this.queue = paths.filter((path: string): boolean => !this.inFlight.has(path));
+    this.queue = [];
+    for (const path of paths) {
+      if (this.inFlight.has(path)) {
+        this.refetch.add(path);
+      } else {
+        this.queue.push(path);
+      }
+    }
     this.pump(generation);
   }
 
   /**
    * Drains the background queue up to the concurrency bound, fetching one project's contents per
-   * worker and re-pumping as each completes. Stops when the generation is superseded.
+   * worker and re-pumping as each completes. Stops when the generation is superseded. A worker that
+   * settles pumps whatever queue is current: a newer load replaced the queue while it ran, and that
+   * load's own pump found every worker busy, so pumping only the worker's own (superseded) generation
+   * left the new queue undrained and its projects pending for good.
    * @param generation The load generation the queue belongs to.
    */
   private pump(generation: number): void {
@@ -975,12 +1005,13 @@ export class SolutionModel {
     ) {
       const next: string = this.queue.shift()!;
       if (this.inFlight.has(next)) {
+        this.refetch.add(next);
         continue;
       }
       this.activeWorkers += 1;
       void this.fetchItems(next, generation).finally((): void => {
         this.activeWorkers -= 1;
-        this.pump(generation);
+        this.pump(this.generation);
       });
     }
   }
@@ -1001,8 +1032,10 @@ export class SolutionModel {
 
   /**
    * Fetches one project's contents, marking it loading while the fetch is in flight and applying the
-   * result unless the load generation has been superseded. The spinner clears whether or not the
-   * evaluation yielded contents, so it never spins forever.
+   * result unless the load generation has been superseded. The spinner clears however the fetch ends
+   * — with contents, without, superseded by a newer load, or failed — so it never spins forever: a
+   * superseded fetch used to return before clearing it, which a burst of solution edits (an agent
+   * adding a project, then creating it) left spinning until the whole solution was reloaded.
    * @param path The absolute project-file path.
    * @param generation The load generation this fetch belongs to.
    * @returns Returns a promise that resolves once the fetch has settled.
@@ -1010,18 +1043,41 @@ export class SolutionModel {
   private async fetchItems(path: string, generation: number): Promise<void> {
     this.inFlight.add(path);
     this.setLoading(path, true);
-    const items: ProjectItems | null =
-      (await this.bridge?.invoke<ProjectItems | null>(ProjectChannel.ItemsLoad, path)) ?? null;
-    this.inFlight.delete(path);
-    if (generation !== this.generation) {
+    try {
+      const items: ProjectItems | null =
+        (await this.bridge?.invoke<ProjectItems | null>(ProjectChannel.ItemsLoad, path)) ?? null;
+      if (generation === this.generation && items !== null) {
+        const cache: Map<string, ProjectItems> = new Map<string, ProjectItems>(
+          this.itemsByProject(),
+        );
+        cache.set(items.projectPath, items);
+        this.itemsByProject.set(cache);
+      }
+    } catch (error: unknown) {
+      this.log.warn('workspace.solution', `Could not evaluate ${path}`, error);
+    } finally {
+      this.inFlight.delete(path);
+      this.setLoading(path, false);
+      this.requeueIfWanted(path);
+    }
+  }
+
+  /**
+   * Queues a project again when a newer load asked for it while an older fetch of it was in flight,
+   * and it is still part of the solution.
+   * @param path The absolute project-file path whose fetch has just settled.
+   */
+  private requeueIfWanted(path: string): void {
+    if (!this.refetch.delete(path)) {
       return;
     }
-    if (items !== null) {
-      const cache: Map<string, ProjectItems> = new Map<string, ProjectItems>(this.itemsByProject());
-      cache.set(items.projectPath, items);
-      this.itemsByProject.set(cache);
+    const inModel: boolean =
+      this.current()?.projects.some((project: ProjectEntry): boolean => project.path === path) ===
+      true;
+    if (inModel && !this.queue.includes(path)) {
+      this.queue.push(path);
+      this.pump(this.generation);
     }
-    this.setLoading(path, false);
   }
 
   /**
