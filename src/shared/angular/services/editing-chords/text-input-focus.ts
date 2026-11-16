@@ -18,6 +18,27 @@ const TERMINAL_SELECTOR: string = '.xterm';
 const EDITABLE_SELECTOR: string = '[contenteditable]:not([contenteditable="false"])';
 
 /**
+ * Determines whether an element is a text area. Read from the tag rather than through `instanceof`,
+ * because a pop-out window's elements are created by the opener's document: they carry the opener's
+ * classes, so an `instanceof` against the pop-out's own classes fails for every one of them.
+ * @param element The element to test.
+ * @returns Returns true when the element is a text area.
+ */
+function isTextArea(element: Element): element is HTMLTextAreaElement {
+  return element.tagName === 'TEXTAREA';
+}
+
+/**
+ * Determines whether an element is an input, read from the tag for the reason {@link isTextArea}
+ * gives.
+ * @param element The element to test.
+ * @returns Returns true when the element is an input.
+ */
+function isInput(element: Element): element is HTMLInputElement {
+  return element.tagName === 'INPUT';
+}
+
+/**
  * Resolves the text box the user is typing into, or null when focus is anywhere else.
  *
  * This is what lets the editing chords follow focus. A tab that binds Cut, Copy or Paste to something
@@ -32,23 +53,19 @@ const EDITABLE_SELECTOR: string = '[contenteditable]:not([contenteditable="false
  * region's host rather than the node the caret sits in, so a caller acts on the whole thing.
  *
  * @param document The document to read focus from. Passed rather than assumed, because a pop-out
- * window has its own; element types are resolved through that document's view so the checks hold
- * across realms.
+ * window has its own. Element types are read from their tags, so the checks hold whichever window's
+ * document created the element.
  * @returns Returns the focused text box, or null when focus is not in one.
  */
 export function focusedTextInput(document: Document): HTMLElement | null {
-  const view: (Window & typeof globalThis) | null = document.defaultView;
   const active: Element | null = document.activeElement;
-  if (view === null || active === null || !(active instanceof view.HTMLElement)) {
+  if (active?.closest(TERMINAL_SELECTOR) !== null) {
     return null;
   }
-  if (active.closest(TERMINAL_SELECTOR) !== null) {
-    return null;
-  }
-  if (active instanceof view.HTMLTextAreaElement) {
+  if (isTextArea(active)) {
     return active;
   }
-  if (active instanceof view.HTMLInputElement) {
+  if (isInput(active)) {
     return TEXT_INPUT_TYPES.includes(active.type) ? active : null;
   }
   return active.closest<HTMLElement>(EDITABLE_SELECTOR);
@@ -64,18 +81,14 @@ export function focusedTextInput(document: Document): HTMLElement | null {
  * @param element The text box to select the contents of.
  */
 export function selectAllWithin(element: HTMLElement): void {
-  const document: Document = element.ownerDocument;
-  const view: (Window & typeof globalThis) | null = document.defaultView;
-  if (
-    view !== null &&
-    (element instanceof view.HTMLInputElement || element instanceof view.HTMLTextAreaElement)
-  ) {
+  if (isInput(element) || isTextArea(element)) {
     element.setSelectionRange(0, element.value.length);
     return;
   }
+  const document: Document = element.ownerDocument;
   const range: Range = document.createRange();
   range.selectNodeContents(element);
-  const selection: Selection | null = view?.getSelection() ?? null;
+  const selection: Selection | null = document.getSelection();
   selection?.removeAllRanges();
   selection?.addRange(range);
 }
