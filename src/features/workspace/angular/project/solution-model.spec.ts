@@ -25,6 +25,7 @@ class FakeProject implements Bridge {
   public readonly itemRequests: string[] = [];
   public modelLoads: number = 0;
   public deferItems: boolean = false;
+  public readonly failingItems: Set<string> = new Set<string>();
   public readonly renames: { root: string; folderPath: string; name: string }[] = [];
   public renameResult: ProjectOperationResult = { success: true };
   private resolvers: (() => void)[] = [];
@@ -66,6 +67,9 @@ class FakeProject implements Bridge {
 
   private loadItems(projectPath: string): Promise<ProjectItems | null> {
     this.itemRequests.push(projectPath);
+    if (this.failingItems.has(projectPath)) {
+      return Promise.reject(new Error(`Cannot evaluate ${projectPath}`));
+    }
     const value: ProjectItems | null = this.itemsByPath.get(projectPath) ?? null;
     if (this.deferItems) {
       return new Promise<ProjectItems | null>(
@@ -528,6 +532,94 @@ describe('SolutionModel', () => {
     expect(project.modelLoads).toBe(loadsAfterOpen + 1);
     expect(project.itemRequests.slice(requestsAfterOpen)).toEqual(['/root/A/A.csproj']);
     void model;
+  });
+
+  it('treeChange_whileAProjectEvaluates_clearsItsSpinner_reEvaluatesIt_andDrainsTheRest', async () => {
+    project.model = sampleModel();
+    project.deferItems = true;
+    project.itemsByPath.set('/root/A/A.csproj', {
+      projectPath: '/root/A/A.csproj',
+      tree: [{ type: 'file', name: 'a.cs', path: '/root/A/a.cs' }],
+    });
+    project.itemsByPath.set('/root/B/B.csproj', {
+      projectPath: '/root/B/B.csproj',
+      tree: [{ type: 'file', name: 'b.cs', path: '/root/B/b.cs' }],
+    });
+    const model: SolutionModel = build();
+    await open(model);
+    expect(project.itemRequests).toEqual(['/root/A/A.csproj']);
+
+    // An agent edits A while its evaluation is in flight: the reload supersedes that evaluation.
+    treeChanged!({ root: '/root', directories: ['/root/A'], overflow: false });
+    await waitForReloadDebounce();
+    project.resolveAll();
+    await flush();
+
+    // A's superseded answer is discarded, but its spinner goes with it, and the reload's queue drains
+    // (B starts) rather than stalling behind the worker of the older load.
+    expect(rowFor(model, 'Group')?.loading).toBe(false);
+    expect(project.itemRequests).toEqual(['/root/A/A.csproj', '/root/B/B.csproj']);
+
+    project.resolveAll();
+    await flush();
+    // A is evaluated again for the newer load, since the change may have altered its contents.
+    expect(project.itemRequests).toEqual([
+      '/root/A/A.csproj',
+      '/root/B/B.csproj',
+      '/root/A/A.csproj',
+    ]);
+
+    project.resolveAll();
+    await flush();
+    expect(rowFor(model, 'root')?.loading).toBe(false);
+    expect(rowFor(model, 'root')?.pending).toBe(false);
+    expect(rowFor(model, 'B')?.pending).toBe(false);
+  });
+
+  it('treeChange_removingAProjectMidEvaluation_dropsItsSpinnerAndDoesNotEvaluateItAgain', async () => {
+    project.model = sampleModel();
+    project.deferItems = true;
+    const model: SolutionModel = build();
+    await open(model);
+    expect(rowFor(model, 'root')?.loading).toBe(true);
+
+    // A is renamed away (or removed from the solution) while it evaluates.
+    project.model = {
+      ...sampleModel(),
+      projects: [{ name: 'B', path: '/root/B/B.csproj' }],
+      tree: [{ type: 'project', name: 'B', path: '/root/B/B.csproj' }],
+    };
+    treeChanged!({ root: '/root', directories: ['/root/A'], overflow: false });
+    await waitForReloadDebounce();
+
+    // B waits its turn behind A's evaluation, so nothing in the new model is in flight.
+    expect(rowFor(model, 'root')?.loading).toBe(false);
+
+    project.resolveAll();
+    await flush();
+    project.resolveAll();
+    await flush();
+    expect(project.itemRequests).toEqual(['/root/A/A.csproj', '/root/B/B.csproj']);
+    expect(rowFor(model, 'root')?.loading).toBe(false);
+  });
+
+  it('fetch_anEvaluationThatFails_clearsItsSpinner_andLetsItBeEvaluatedAgain', async () => {
+    project.model = sampleModel();
+    project.failingItems.add('/root/A/A.csproj');
+    const model: SolutionModel = build();
+    await open(model);
+    expect(rowFor(model, 'root')?.loading).toBe(false);
+
+    project.failingItems.clear();
+    project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+    treeChanged!({ root: '/root', directories: ['/root/A'], overflow: false });
+    await waitForReloadDebounce();
+    await flush();
+
+    expect(
+      project.itemRequests.filter((path: string): boolean => path === '/root/A/A.csproj'),
+    ).toHaveLength(2);
+    expect(rowFor(model, 'root')?.loading).toBe(false);
   });
 
   it('setActive_whileHidden_defersTheWatchDrivenReloadAndRunsItOnceOnReactivation', async () => {

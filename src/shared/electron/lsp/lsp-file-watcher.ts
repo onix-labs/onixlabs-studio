@@ -57,7 +57,8 @@ export interface FileEvent {
  * an agent — rather than seeing the workspace exactly once, at spawn.
  *
  * Events are filtered through the same policy the explorers use (build outputs, dependency caches and
- * git's internal bookkeeping are dropped), coalesced, and deduplicated per path. When the server has
+ * git's internal bookkeeping are dropped, unless one of the server's registrations matches them),
+ * coalesced, and deduplicated per path. When the server has
  * registered watch patterns (`client/registerCapability` for `workspace/didChangeWatchedFiles`), only
  * paths matching one of its live registrations are reported; a server that registered nothing gets
  * everything that survives the filter, which is what a server relying on the client's default
@@ -73,6 +74,12 @@ export class LspFileWatcher {
    * Holds the callback that delivers a coalesced batch of events.
    */
   private readonly deliver: (events: readonly FileEvent[]) => void;
+
+  /**
+   * Holds the callback told every path of a window that survived the tree-watch filter, whether or
+   * not the server asked for it, or undefined when nobody listens.
+   */
+  private readonly observe: ((relativePaths: readonly string[]) => void) | undefined;
 
   /**
    * Holds the native recursive watcher, or null once closed or when the root could not be watched.
@@ -108,10 +115,17 @@ export class LspFileWatcher {
    * Initializes a new instance of the {@link LspFileWatcher} class and starts watching.
    * @param root The absolute workspace root to watch.
    * @param deliver The callback that receives each coalesced batch of events.
+   * @param observe The callback told each window's changed paths before the server's patterns are
+   * applied — for what the client has to act on itself, such as a solution the server does not watch.
    */
-  public constructor(root: string, deliver: (events: readonly FileEvent[]) => void) {
+  public constructor(
+    root: string,
+    deliver: (events: readonly FileEvent[]) => void,
+    observe?: (relativePaths: readonly string[]) => void,
+  ) {
     this.root = root;
     this.deliver = deliver;
+    this.observe = observe;
     this.registrations = new WatchRegistrations(root);
     try {
       this.watcher = watch(
@@ -177,7 +191,15 @@ export class LspFileWatcher {
     if (this.watcher === null || typeof filename !== 'string' || filename.length === 0) {
       return;
     }
-    if (!shouldForwardTreeEvent(filename)) {
+    // The explorers' filter drops build outputs and dependency caches, but what a server asked for
+    // by its own patterns it hears about wherever it is, as it would from VS Code: Roslyn watches
+    // `**/*.json` under each project, which takes in the `obj/project.assets.json` a restore rewrites.
+    // A server that registered nothing still hears nothing from there.
+    if (
+      !this.pending.has(filename) &&
+      !shouldForwardTreeEvent(filename) &&
+      !this.registrations.matches(filename)
+    ) {
       return;
     }
     // A rename after a change (write then move into place, as editors and package managers do) is
@@ -216,6 +238,7 @@ export class LspFileWatcher {
     const window: readonly [string, WatchEventType][] = [...this.pending];
     this.pending = new Map<string, WatchEventType>();
     this.overflowed = false;
+    this.observe?.(window.map(([relative]: [string, WatchEventType]): string => relative));
     const patterns: readonly RegExp[] | null = this.registrations.patterns();
     const wanted: readonly [string, WatchEventType][] =
       patterns === null

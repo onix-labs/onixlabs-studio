@@ -604,13 +604,18 @@ describe('LspManager (#1015)', () => {
   });
 
   describe('workspace diagnostics (#1144)', () => {
-    it('aServersRefresh_pullsAfresh_andIsAnswered', async () => {
+    it('aServersRefresh_pullsAfresh_andRepullsTheOpenDocuments_andIsAnswered', async () => {
       const manager: InstanceType<typeof LspManager> = new LspManager(
         (): BrowserWindow | null => null,
         new WorkspaceContext(),
         {} as LspServerRegistry,
         new LspApplyEditForwarder(),
       );
+      const forwarded: string[] = [];
+      vi.spyOn(
+        manager as unknown as { notifyRenderer(id: string, method: string): void },
+        'notifyRenderer',
+      ).mockImplementation((_id: string, method: string): void => void forwarded.push(method));
       let refreshed: number = 0;
       const connection: FakeConnection = fakeConnection();
       (manager as unknown as ManagerInternals).answerServerRequests(connection, '/root::csharp', {
@@ -626,6 +631,8 @@ describe('LspManager (#1015)', () => {
 
       expect(answer).toBeNull();
       expect(refreshed).toBe(1);
+      // Roslyn's workspace pull leaves open documents out: the renderer pulls those again.
+      expect(forwarded).toEqual(['workspace/diagnostic/refresh']);
     });
 
     it('aServerWithNoWorkspacePull_hasTheRefreshSentOnToTheRenderer (#1210)', async () => {
