@@ -434,8 +434,8 @@
     <div class="agent__exclusion-review" role="status">
       <p class="agent__exclusion-review-text">
         This workspace's repository asks to run these commands outside the sandbox:
-        <code>{{ pendingExclusions().join(', ') }}</code
-        >. They are ignored until you allow them, and still ask for permission when they run.
+        <code>{{ pendingExclusions().join(', ') }}</code>. They are ignored until you allow them,
+        and still ask for permission when they run.
       </p>
       <span class="agent__exclusion-review-actions">
         <app-button variant="ghost" size="small" label="Allow" (click)="allowSharedExclusions()" />
