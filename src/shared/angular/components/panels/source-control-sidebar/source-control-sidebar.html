@@ -55,7 +55,7 @@
                expanded, that branch is the highlighted row beneath it, so saying it twice would be
                noise. -->
           @if (node.kind === 'worktree' && !row.expanded && node.worktree?.branch) {
-            <span class="rail__worktree-branch">({{ node.worktree?.branch }})</span>
+            <span class="rail__worktree-branch">({{ node.worktree.branch }})</span>
           }
         </span>
       }
