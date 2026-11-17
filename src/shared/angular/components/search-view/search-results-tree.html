@@ -21,8 +21,10 @@
           ><bdi dir="ltr">{{ lead(result.item.before) }}</bdi></span
         >
         @if (replacement() !== null) {
-          <del class="search-results__removed">{{ result.item.text }}</del
-          ><ins class="search-results__added">{{ replacement() }}</ins>
+          <del class="search-results__removed">{{ result.item.text }}</del><ins
+            class="search-results__added"
+            >{{ replacement() }}</ins
+          >
         } @else {
           <span class="search-results__text">{{ result.item.text }}</span>
         }

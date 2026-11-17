@@ -348,8 +348,7 @@ const RECENT_KEY: string = 'markdown.recent-emoji';
               </div>
             } @else {
               <p class="emoji-empty">
-                No emoji match <strong>{{ query() }}</strong
-                >.
+                No emoji match <strong>{{ query() }}</strong>.
               </p>
             }
           } @else {

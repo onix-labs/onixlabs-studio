@@ -3,8 +3,7 @@
   [tone]="item().permissionState === 'pending' ? 'pending' : 'settled'"
 >
   <p class="agent__permission-text">
-    Allow <strong>{{ item().permissionName }}</strong
-    >?
+    Allow <strong>{{ item().permissionName }}</strong>?
     @if (item().permissionDetail && !item().permissionDiff) {
       <span class="agent__permission-detail">{{ item().permissionDetail }}</span>
     }
