@@ -72,6 +72,22 @@ describe('focusedTextInput', () => {
     expect(focusedTextInput(document)).toBeNull();
   });
 
+  it('focusedTextInput_whenTheTextAreaWasCreatedByAnotherWindow_returnsIt', () => {
+    // A pop-out window's elements are created by the opener's document, so they carry the opener's
+    // classes while living in, and taking focus in, the pop-out's document.
+    const frame: HTMLIFrameElement = document.createElement('iframe');
+    document.body.appendChild(frame);
+    added.push(frame);
+    const popout: Document = frame.contentDocument!;
+    const box: HTMLTextAreaElement = popout.body.appendChild(document.createElement('textarea'));
+    box.value = 'the whole draft';
+    box.focus();
+
+    expect(focusedTextInput(popout)).toBe(box);
+    selectAllWithin(box);
+    expect(box.selectionEnd).toBe('the whole draft'.length);
+  });
+
   it('focusedTextInput_whenNothingHasFocus_returnsNull', () => {
     document.body.focus();
 
