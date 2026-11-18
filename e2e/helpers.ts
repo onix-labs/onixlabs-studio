@@ -42,31 +42,29 @@ export async function modalWindow(
 }
 
 /**
- * Holds the prefix of the trust prompt's page (#1504): a window the main process opens and owns, with
- * its own page, so it is no modal window of the renderer's.
- */
-const TRUST_PROMPT_URL_PREFIX: string = 'data:text/html';
-
-/**
- * Determines whether a window is the trust prompt that is still open.
- * @param window The window to test.
- * @returns Returns true when it is.
- */
-export function isTrustPrompt(window: Page): boolean {
-  return !window.isClosed() && window.url().startsWith(TRUST_PROMPT_URL_PREFIX);
-}
-
-/**
- * Resolves the trust prompt ("Do you trust this folder?"), waiting for it to appear.
+ * Resolves the trust question ("Do you trust this folder?", #1504), waiting for it to appear. It is a
+ * dialog in a modal window like any other, told apart by its title, since the welcome screen may be
+ * open in a modal window too.
  * @param app The launched application.
- * @returns Returns the prompt's window.
+ * @returns Returns the dialog's window.
  */
 export async function trustPrompt(app: ElectronApplication): Promise<Page> {
-  const open: Page | undefined = app.windows().find(isTrustPrompt);
-  if (open !== undefined) {
-    return open;
-  }
-  return app.waitForEvent('window', { predicate: isTrustPrompt });
+  let found: Page | undefined;
+  await expect
+    .poll(
+      async (): Promise<boolean> => {
+        for (const window of app.windows().filter(isModalWindow)) {
+          if ((await window.locator('.trust__title').count()) > 0) {
+            found = window;
+            return true;
+          }
+        }
+        return false;
+      },
+      { timeout: 15_000 },
+    )
+    .toBe(true);
+  return found!;
 }
 
 /**
@@ -79,7 +77,7 @@ export async function answerTrustPrompt(
   answer: 'Trust' | "Don't Trust" | 'Scan with AI',
 ): Promise<void> {
   const prompt: Page = await trustPrompt(app);
-  await expect(prompt.locator('#folder')).not.toBeEmpty();
+  await expect(prompt.locator('.trust__path')).not.toBeEmpty();
   await prompt.getByRole('button', { name: answer, exact: true }).click();
 }
 

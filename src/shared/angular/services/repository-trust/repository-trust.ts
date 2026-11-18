@@ -1,17 +1,34 @@
-import { DestroyRef, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import {
+  computed,
+  DestroyRef,
+  inject,
+  Service,
+  signal,
+  Signal,
+  WritableSignal,
+} from '@angular/core';
 import type { Bridge } from '@shared/api/bridge';
 import type { RepositoryInfo, RepositoryTrustDecision } from '@shared/api/source-control-channels';
-import { TrustChannel, type TrustChange, type TrustScanRequest } from '@shared/api/trust-channels';
+import {
+  TrustChannel,
+  type TrustAnswer,
+  type TrustChange,
+  type TrustQuestion,
+  type TrustQuestionRequest,
+  type TrustScanRequest,
+} from '@shared/api/trust-channels';
 import { Log } from '@shared/angular/services/log/log';
 
 /**
- * Asks, on the renderer's behalf, whether the user trusts a folder (#1504). Nothing runs from a folder
- * until they do: no language server, no project tool, no version control, no package manager.
+ * The renderer's side of the trust question (#1504). Nothing runs from a folder until the user trusts
+ * it: no language server, no project tool, no version control, no package manager.
  *
- * ⛔ The renderer can ask the question but never answer it. The main process puts it to the user in a
- * window of its own and records the answer itself; this service only asks, and follows what changes.
- * Every folder Studio opens is asked about once, whatever plugins are installed, and a folder the user
- * did not trust stays that way until they choose Trust from the status bar or a panel.
+ * The main process owns the question: it decides when to ask, one folder at a time, and records the
+ * answer. This service asks for the question on a surface's behalf, shows the one being asked (the
+ * trust dialog at the application root renders {@link pending}), sends back the user's answer, and
+ * follows what changes. Every folder Studio opens is asked about once, whatever plugins are installed;
+ * a folder the user did not trust stays that way until they choose Trust from the status bar or a
+ * panel.
  */
 @Service()
 export class RepositoryTrust {
@@ -24,6 +41,19 @@ export class RepositoryTrust {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the question the main process is asking, or null when none is.
+   */
+  private readonly asking: WritableSignal<TrustQuestionRequest | null> =
+    signal<TrustQuestionRequest | null>(null);
+
+  /**
+   * Gets the folder being asked about, or null when nothing is being asked.
+   */
+  public readonly pending: Signal<TrustQuestion | null> = computed(
+    (): TrustQuestion | null => this.asking()?.question ?? null,
+  );
 
   /**
    * Holds the last change to any folder's trust, or null before one.
@@ -64,6 +94,12 @@ export class RepositoryTrust {
         this.lastChange.set(typed);
       },
     );
+    const stopQuestions: (() => void) | undefined = this.bridge?.on(
+      TrustChannel.Question,
+      (request: unknown): void => {
+        this.asking.set(request as TrustQuestionRequest);
+      },
+    );
     const stopScans: (() => void) | undefined = this.bridge?.on(
       TrustChannel.ScanRequested,
       (request: unknown): void => {
@@ -74,8 +110,23 @@ export class RepositoryTrust {
     );
     inject(DestroyRef).onDestroy((): void => {
       stop?.();
+      stopQuestions?.();
       stopScans?.();
     });
+  }
+
+  /**
+   * Sends the user's answer to the question being asked, and puts the question away.
+   * @param answer The button the user pressed; dismissing the dialog is not trusting the folder.
+   */
+  public answer(answer: TrustAnswer): void {
+    const request: TrustQuestionRequest | null = this.asking();
+    if (request === null) {
+      return;
+    }
+    this.asking.set(null);
+    this.log.info('RepositoryTrust', `${request.question.folder}: ${answer}`);
+    void this.bridge?.invoke<boolean>(TrustChannel.Answer, request.id, answer);
   }
 
   /**

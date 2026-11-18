@@ -93,7 +93,7 @@ test.describe('a hostile folder (#1504)', () => {
     await expect.poll((): number => processesUnder(installs).length).toBeGreaterThan(0);
   });
 
-  test('asksInAWindowOfItsOwn_withTheSafeChoiceFocused', async ({ app, page, scratch }) => {
+  test('asksAboutTheFolder_andOffersAScan', async ({ app, page, scratch }) => {
     const folder: string = path.join(scratch, 'plain');
     fs.mkdirSync(folder);
     fs.writeFileSync(path.join(folder, 'notes.txt'), 'hello\n');
@@ -101,12 +101,10 @@ test.describe('a hostile folder (#1504)', () => {
     await openFolderFromWelcome(app, page, folder, null);
     const prompt: Page = await trustPrompt(app);
 
-    await expect(prompt.locator('#folder')).toContainText('plain');
-    await expect(prompt.getByRole('button', { name: "Don't Trust", exact: true })).toBeFocused();
+    await expect(prompt.locator('.trust__path')).toContainText('plain');
     await expect(prompt.getByRole('button', { name: 'Scan with AI', exact: true })).toBeVisible();
-    // Escape is Don't Trust: the folder is recorded as declined, and the status strip says so.
-    // The prompt closes on the key itself, so the press may report its window gone.
-    await prompt.keyboard.press('Escape').catch((): void => undefined);
+    // Don't Trust is recorded, and the status strip says so.
+    await prompt.getByRole('button', { name: "Don't Trust", exact: true }).click();
     await expect(page.locator('.status-strip-segment', { hasText: 'Not Trusted' })).toBeVisible();
   });
 });

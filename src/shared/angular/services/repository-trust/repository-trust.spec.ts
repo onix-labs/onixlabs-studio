@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Bridge } from '@shared/api/bridge';
 import type { RepositoryInfo, RepositoryTrustDecision } from '@shared/api/source-control-channels';
-import { TrustChannel, type TrustChange } from '@shared/api/trust-channels';
+import { TrustChannel, type TrustChange, type TrustQuestion } from '@shared/api/trust-channels';
 import { RepositoryTrust } from './repository-trust';
 
 describe('RepositoryTrust (#1504)', () => {
@@ -10,6 +10,8 @@ describe('RepositoryTrust (#1504)', () => {
   let asked: string[];
   let answer: RepositoryTrustDecision;
   let changed: ((change: unknown) => void) | null;
+  let questioned: ((request: unknown) => void) | null;
+  let answers: unknown[][];
   let trust: RepositoryTrust;
 
   /**
@@ -27,10 +29,16 @@ describe('RepositoryTrust (#1504)', () => {
     asked = [];
     answer = 'trusted';
     changed = null;
+    questioned = null;
+    answers = [];
     (window as unknown as { bridge: Bridge }).bridge = {
-      invoke: <T>(channel: string, folder: string): Promise<T> => {
+      invoke: <T>(channel: string, folder: string, ...rest: unknown[]): Promise<T> => {
         if (channel === (TrustChannel.State as string)) {
           return Promise.resolve((decisions.get(folder) ?? 'unknown') as T);
+        }
+        if (channel === (TrustChannel.Answer as string)) {
+          answers.push([folder, ...rest]);
+          return Promise.resolve(true as T);
         }
         if (channel === (TrustChannel.Ask as string)) {
           asked.push(folder);
@@ -42,6 +50,9 @@ describe('RepositoryTrust (#1504)', () => {
       on: (channel: string, listener: (...args: unknown[]) => void): (() => void) => {
         if (channel === (TrustChannel.Changed as string)) {
           changed = listener;
+        }
+        if (channel === (TrustChannel.Question as string)) {
+          questioned = listener;
         }
         return (): void => undefined;
       },
@@ -101,5 +112,19 @@ describe('RepositoryTrust (#1504)', () => {
     changed?.(change);
 
     expect(trust.changed()).toEqual(change);
+  });
+
+  it('showsTheQuestionTheMainProcessAsks_andSendsBackTheAnswerOnce', () => {
+    const question: TrustQuestion = { name: 'shop', folder: '/work/shop', scannable: true };
+    expect(trust.pending()).toBeNull();
+
+    questioned?.({ id: 4, question });
+    expect(trust.pending()).toEqual(question);
+
+    trust.answer('trusted');
+    trust.answer('restricted');
+
+    expect(trust.pending()).toBeNull();
+    expect(answers).toEqual([[4, 'trusted']]);
   });
 });
