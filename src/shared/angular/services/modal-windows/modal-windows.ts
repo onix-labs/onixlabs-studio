@@ -300,7 +300,7 @@ export class ModalWindows implements OnDestroy {
       contentHost,
       document: doc,
       view: child,
-      fit: (width: number, height: number): void => this.fit(child, owner, width, height),
+      fit: (width: number, height: number): void => this.fit(child, width, height),
       focus: (): void => child.focus(),
       close: (): void => child.close(),
       onClosed: (listener: () => void): void => {
@@ -345,22 +345,30 @@ export class ModalWindows implements OnDestroy {
   }
 
   /**
-   * Resizes a modal window to hold the given content size and re-centres it over its owner. The
-   * window's frame is measured rather than assumed, so the content lands at exactly the requested
+   * Resizes a modal window to hold the given content size, keeping it centred where it already is.
+   * The window's frame is measured rather than assumed, so the content lands at exactly the requested
    * size whatever chrome the platform draws around it.
+   *
+   * It grows and shrinks about its own centre (and a third of the way down, as it was first placed)
+   * rather than being centred over its owner again. Opened where it asked, that is the same place;
+   * but the main process may have placed it elsewhere — over the welcome screen, when the window
+   * that raised it is hidden behind it (#1504) — and the user may have moved it since. Centring over
+   * the owner again would throw it back over a window that may not be on screen at all.
    * @param child The modal window.
-   * @param owner The window it was raised from.
    * @param width The content width, in CSS pixels.
    * @param height The content height, in CSS pixels.
    */
-  private fit(child: Window, owner: Window, width: number, height: number): void {
+  private fit(child: Window, width: number, height: number): void {
     if (child.closed) {
       return;
     }
     const frame: ModalWindowSize = this.frame(child);
     const outerWidth: number = Math.round(width + frame.width);
     const outerHeight: number = Math.round(height + frame.height);
-    const position: ModalWindowPosition = this.centredOver(owner, outerWidth, outerHeight);
+    const position: ModalWindowPosition = {
+      x: child.screenX + (child.outerWidth - outerWidth) / 2,
+      y: child.screenY + (child.outerHeight - outerHeight) / 3,
+    };
     child.resizeTo(outerWidth, outerHeight);
     child.moveTo(Math.round(position.x), Math.round(position.y));
   }

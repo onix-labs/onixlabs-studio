@@ -116,6 +116,31 @@ test.describe('a hostile folder (#1504)', () => {
   });
 });
 
+/**
+ * Describes where the trust question sits against the window it belongs to.
+ */
+interface Placement {
+  /**
+   * Gets the question's bounds, to tell when it has stopped moving.
+   */
+  readonly bounds: string;
+
+  /**
+   * Gets whether the window it belongs to is on screen.
+   */
+  readonly parentVisible: boolean;
+
+  /**
+   * Gets how far its centre is from that window's, across.
+   */
+  readonly offsetX: number;
+
+  /**
+   * Gets how far its top is from where centring over that window puts it.
+   */
+  readonly offsetY: number;
+}
+
 test.describe('a clone through Studio (#1504)', () => {
   test.use({
     seedUserData: {
@@ -159,26 +184,41 @@ test.describe('a clone through Studio (#1504)', () => {
     expect(fs.existsSync(destination)).toBe(false);
     // Raised from the hidden main window while the welcome screen stands in for it, the question sits
     // centred over the welcome screen and moves with it.
-    const placement: { parentVisible: boolean; offset: number } = await app.evaluate(
-      ({ BrowserWindow }, title: string): { parentVisible: boolean; offset: number } => {
+    // Measured once it has stopped moving: the dialog fits itself to its content after it opens,
+    // and that refit must not throw it back over the hidden window that raised it.
+    const measure: () => Promise<Placement> = (): Promise<Placement> =>
+      app.evaluate(({ BrowserWindow }, title: string): Placement => {
         const question: Electron.BrowserWindow | undefined = BrowserWindow.getAllWindows().find(
           (window: Electron.BrowserWindow): boolean => window.getTitle() === title,
         );
         const parent: Electron.BrowserWindow | null = question?.getParentWindow() ?? null;
         if (question === undefined || parent === null) {
-          return { parentVisible: false, offset: Infinity };
+          return { bounds: '', parentVisible: false, offsetX: Infinity, offsetY: Infinity };
         }
         const inner: Electron.Rectangle = question.getBounds();
         const outer: Electron.Rectangle = parent.getBounds();
         return {
+          bounds: JSON.stringify(inner),
           parentVisible: parent.isVisible(),
-          offset: Math.abs(inner.x + inner.width / 2 - (outer.x + outer.width / 2)),
+          offsetX: Math.abs(inner.x + inner.width / 2 - (outer.x + outer.width / 2)),
+          offsetY: Math.abs(inner.y - (outer.y + Math.max(0, (outer.height - inner.height) / 3))),
         };
-      },
-      'Do you trust this repository?',
-    );
+      }, 'Do you trust this repository?');
+    let previous: string = '';
+    let placement: Placement = await measure();
+    await expect
+      .poll(async (): Promise<boolean> => {
+        previous = placement.bounds;
+        await new Promise<void>((resolve: () => void): void => {
+          setTimeout(resolve, 300);
+        });
+        placement = await measure();
+        return placement.bounds !== '' && placement.bounds === previous;
+      })
+      .toBe(true);
     expect(placement.parentVisible).toBe(true);
-    expect(placement.offset).toBeLessThanOrEqual(1);
+    expect(placement.offsetX).toBeLessThanOrEqual(2);
+    expect(placement.offsetY).toBeLessThanOrEqual(2);
 
     await prompt.keyboard.press('Escape');
 
