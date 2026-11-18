@@ -21,6 +21,8 @@ class FakeChildWindow {
   public innerHeight: number = 300;
   public outerWidth: number = 400;
   public outerHeight: number = 300;
+  public screenX: number = 600;
+  public screenY: number = 300;
   public devicePixelRatio: number = 2;
 
   public matchMedia(): MediaQueryList {
@@ -294,6 +296,20 @@ describe('ModalWindows', () => {
     modal!.fit(500, 400);
 
     expect(owner.child.resized[1]).toEqual({ width: 500, height: 420 });
+  });
+
+  it('fit_keepsTheWindowCentredWhereItIs_notOverItsOwner (#1504)', () => {
+    // The main process placed this modal over the welcome screen, not over the hidden window that
+    // raised it: growing it must not throw it back there.
+    const modal: ModalWindow | null = open();
+    owner.child.outerWidth = 400;
+    owner.child.outerHeight = 300;
+    owner.child.innerWidth = 400;
+    owner.child.innerHeight = 300;
+
+    modal!.fit(500, 360);
+
+    expect(owner.child.moved).toEqual([{ x: 600 - 50, y: 300 - 20 }]);
   });
 
   it('fit_whenTheWindowHasClosed_doesNothing', () => {

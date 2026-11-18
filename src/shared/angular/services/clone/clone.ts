@@ -75,7 +75,8 @@ export class Clone implements CloneClient {
 
   /**
    * Raises a finished clone's notification: Cloned, with Open, or Couldn't Clone, with the reason.
-   * Both pop up, and reach the desktop while Studio is in the background.
+   * Both pop up, and reach the desktop while Studio is in the background. A clone the user cancelled
+   * raises nothing.
    * @param name The repository's name.
    * @param outcome How the clone ended.
    */
@@ -92,6 +93,10 @@ export class Clone implements CloneClient {
         desktop: true,
         reveal: open,
       });
+      return;
+    }
+    if (outcome.cancelled === true) {
+      // The user chose not to clone: nothing to report.
       return;
     }
     this.notifications.notify({

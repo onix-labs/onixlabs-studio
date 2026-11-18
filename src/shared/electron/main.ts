@@ -710,14 +710,15 @@ class Program {
   );
 
   /**
-   * Clones repositories into a folder the user chose in this process's own dialog (#805), trusting the
-   * result so it opens like any folder they opened themselves.
+   * Clones repositories into a folder the user chose in this process's own dialog (#805), asking first,
+   * before anything is downloaded, whether the user trusts what it brings in (#1504).
    */
   private readonly cloneManager: CloneManager = new CloneManager(
     path.join(app.getPath('userData'), 'clone.json'),
     (): BrowserWindow | null => this.windows.main(),
     this.versionControlHost,
     this.trustedPaths,
+    this.trustManager,
   );
 
   /**

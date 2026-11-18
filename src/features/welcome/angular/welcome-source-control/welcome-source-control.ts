@@ -807,7 +807,7 @@ export class WelcomeSourceControl implements OnInit {
         shallow: this.settings.get('versionControl.shallowClone') === 'latest',
       });
       if (!outcome.ok) {
-        this.cloneError.set(outcome.error);
+        this.cloneError.set(outcome.cancelled === true ? null : outcome.error);
         return;
       }
       if (await this.fileOpener.reopenDirectory(outcome.path)) {

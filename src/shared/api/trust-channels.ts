@@ -77,12 +77,19 @@ export interface TrustQuestion {
    * the scanning agent runs.
    */
   readonly scannable: boolean;
+
+  /**
+   * Gets the address a clone would come from, when the question is asked before cloning (#1504):
+   * nothing is downloaded until it is answered. Undefined for a folder already on disk.
+   */
+  readonly source?: string;
 }
 
 /**
- * Lists the answers a trust prompt can give: trust it, don't, or scan it first and decide later.
+ * Lists the answers a trust prompt can give: trust it, don't, scan it first, decide once it is cloned,
+ * or (for a clone) not clone it at all.
  */
-export type TrustAnswer = 'trusted' | 'restricted' | 'scan';
+export type TrustAnswer = 'trusted' | 'restricted' | 'scan' | 'later' | 'cancel';
 
 /**
  * Determines whether a value is a {@link TrustAnswer}.
@@ -90,7 +97,13 @@ export type TrustAnswer = 'trusted' | 'restricted' | 'scan';
  * @returns Returns true when it is one.
  */
 export function isTrustAnswer(value: unknown): value is TrustAnswer {
-  return value === 'trusted' || value === 'restricted' || value === 'scan';
+  return (
+    value === 'trusted' ||
+    value === 'restricted' ||
+    value === 'scan' ||
+    value === 'later' ||
+    value === 'cancel'
+  );
 }
 
 /**

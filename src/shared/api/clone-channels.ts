@@ -91,6 +91,12 @@ export type CloneOutcome =
        * Gets why, worded for the user.
        */
       readonly error: string;
+
+      /**
+       * Gets whether the user chose not to clone, closing the trust question asked before it (#1504):
+       * nothing went wrong, and nothing was downloaded. Undefined otherwise.
+       */
+      readonly cancelled?: true;
     };
 
 /**

@@ -87,6 +87,61 @@ describe('TrustManager (#1504)', () => {
     expect(changes).toEqual([{ folder: ROOT, decision: 'trusted' }]);
   });
 
+  describe('before a clone', () => {
+    const DESTINATION: string = path.resolve('/clones/b');
+
+    it('askBeforeClone_putsTheAddress_offersNoScan_andRecordsNothingYet', async () => {
+      expect(await manager.askBeforeClone('https://github.com/a/b.git', DESTINATION)).toBe(
+        'trusted',
+      );
+
+      expect(asked).toEqual([
+        { name: 'b', folder: DESTINATION, scannable: false, source: 'https://github.com/a/b.git' },
+      ]);
+      expect(store.decisionFor(DESTINATION)).toBe('unknown');
+      expect(changes).toEqual([]);
+    });
+
+    it('askBeforeClone_answeredWithScan_isNotCloning', async () => {
+      // Nothing is on disk to scan, and the dialog does not offer it; an answer that says so anyway
+      // clones nothing.
+      answers = ['scan'];
+
+      expect(await manager.askBeforeClone('https://github.com/a/b.git', DESTINATION)).toBe(
+        'cancel',
+      );
+    });
+
+    it('askBeforeClone_whosePromptFails_isNotCloning', async () => {
+      manager = new TrustManager(
+        store,
+        { openRoots: (): readonly string[] => [], holdsOpenedFileIn: (): boolean => false },
+        { ask: (): Promise<TrustAnswer> => Promise.reject(new Error('no window')) },
+        (change: TrustChange): void => void changes.push(change),
+      );
+
+      expect(await manager.askBeforeClone('https://github.com/a/b.git', DESTINATION)).toBe(
+        'cancel',
+      );
+    });
+
+    it('recordClone_recordsTheAnswer_andTellsEveryWindow', () => {
+      manager.recordClone(DESTINATION, 'trusted');
+
+      expect(store.decisionFor(path.join(DESTINATION, 'src'))).toBe('trusted');
+      expect(changes).toEqual([{ folder: DESTINATION, decision: 'trusted' }]);
+    });
+  });
+
+  it('ask_answeredLaterOrCancel_decidesNothing', async () => {
+    // A folder question offers neither; an answer naming them is taken as no answer.
+    answers = ['later', 'cancel'];
+
+    expect(await manager.ask(ROOT)).toBe('unknown');
+    expect(await manager.ask(ROOT)).toBe('unknown');
+    expect(changes).toEqual([]);
+  });
+
   it('ask_aboutATrustedFolder_asksNothing', async () => {
     store.decide(ROOT, 'trusted');
 
