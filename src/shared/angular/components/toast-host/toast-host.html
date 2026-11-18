@@ -19,7 +19,9 @@
       (mouseenter)="onEnter(item.toast)"
       (mouseleave)="onLeave(item.toast)"
       (closed)="dismiss(item.toast)"
+      [silenceable]="silencer.canSilence(item.toast)"
       (acted)="onAction(item.toast, $event)"
+      (silenced)="onSilence(item.toast)"
     />
   }
 </div>

@@ -30,3 +30,29 @@
     }
   </div>
 }
+<!-- Choices about the kind of notification rather than this one, kept apart from its own actions and
+     quieter than them (#1487). -->
+@if (silenceable() || configurable()) {
+  <div class="toast__options">
+    @if (silenceable()) {
+      <app-button
+        variant="none"
+        size="small"
+        label="Don't Show Again"
+        data-testid="toast-silence"
+        (pointerdown)="$event.preventDefault()"
+        (click)="silenced.emit(); $event.stopPropagation()"
+      />
+    }
+    @if (configurable()) {
+      <app-button
+        variant="none"
+        size="small"
+        label="Notification Settings"
+        data-testid="toast-configure"
+        (pointerdown)="$event.preventDefault()"
+        (click)="configured.emit(); $event.stopPropagation()"
+      />
+    }
+  </div>
+}

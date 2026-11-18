@@ -107,4 +107,36 @@ describe('ToastCard', () => {
       'button--tone-neutral',
     );
   });
+
+  describe("Don't Show Again (#1487)", () => {
+    it('isOfferedOnlyWhenTheSurfaceSaysSo', () => {
+      render(notification('error'));
+
+      expect(host.querySelector('.toast__options')).toBeNull();
+    });
+
+    it('reportsDontShowAgain_andNotificationSettings', () => {
+      let silenced: number = 0;
+      let configured: number = 0;
+      fixture.componentInstance.silenced.subscribe((): number => (silenced += 1));
+      fixture.componentInstance.configured.subscribe((): number => (configured += 1));
+      fixture.componentRef.setInput('silenceable', true);
+      fixture.componentRef.setInput('configurable', true);
+      render(notification('error'));
+
+      host.querySelector<HTMLButtonElement>('[data-testid="toast-silence"] button')?.click();
+      host.querySelector<HTMLButtonElement>('[data-testid="toast-configure"] button')?.click();
+
+      expect(silenced).toBe(1);
+      expect(configured).toBe(1);
+    });
+
+    it('keepsTheChoicesApartFromTheNotificationsOwnActions', () => {
+      fixture.componentRef.setInput('silenceable', true);
+      render(notification('error', [{ label: 'Show Logs', run: (): void => undefined }]));
+
+      expect(host.querySelector('.toast__actions [data-testid="toast-silence"]')).toBeNull();
+      expect(host.querySelector('.toast__options [data-testid="toast-silence"]')).not.toBeNull();
+    });
+  });
 });

@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import { ToastCard } from '@shared/angular/components/toast-card/toast-card';
 import { Log } from '@shared/angular/services/log/log';
+import { NotificationSilencer } from '@shared/angular/services/notifications/notification-silencer';
 import {
   Notification,
   NotificationAction,
@@ -111,6 +112,11 @@ export class ToastHost implements OnDestroy {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the Don't Show Again service the cards offer (#1487).
+   */
+  protected readonly silencer: NotificationSilencer = inject(NotificationSilencer);
 
   /**
    * Holds the auto-dismiss countdowns of the live transient toasts, keyed by toast identifier.
@@ -236,6 +242,15 @@ export class ToastHost implements OnDestroy {
    * Dismisses a toast; its tray entry stays.
    * @param toast The toast.
    */
+  /**
+   * Handles Don't Show Again on a toast: its kind goes to the history only, and the toast goes.
+   * @param toast The toast.
+   */
+  protected onSilence(toast: Notification): void {
+    this.dismiss(toast);
+    this.silencer.silence(toast);
+  }
+
   protected dismiss(toast: Notification): void {
     if (this.hoveredId === toast.id) {
       this.hoveredId = null;
