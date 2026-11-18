@@ -12,6 +12,7 @@ import type {
   PackageManagerResponse,
 } from '@shared/api/package-manager-protocol';
 import { PackageManagerClient } from './package-manager-client';
+import { trustedToken } from '../process/run-token.fixture';
 
 /**
  * The vcpkg plugin's directory.
@@ -138,7 +139,7 @@ describe('vcpkg plugin contract', () => {
     // Act
     const response: PackageManagerResponse<'load'> = await client.request(
       'load',
-      workspace,
+      trustedToken(workspace),
       {},
       15_000,
     );
@@ -163,7 +164,7 @@ describe('vcpkg plugin contract', () => {
     // Act
     const response: PackageManagerResponse<'search'> = await client.request(
       'search',
-      workspace,
+      trustedToken(workspace),
       { source: 'vcpkg', query: 'fmt', skip: 0, take: 20, prerelease: false },
       15_000,
     );
@@ -183,7 +184,7 @@ describe('vcpkg plugin contract', () => {
     // Act
     const response: PackageManagerResponse<'install'> = await client.request(
       'install',
-      workspace,
+      trustedToken(workspace),
       { project: path.join(workspace, 'vcpkg.json'), name: 'zlib', version: null },
       15_000,
     );

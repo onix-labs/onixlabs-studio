@@ -40,6 +40,7 @@ import {
 } from './test-adapter-checks';
 import { DirectoryEntry, folderHoldsMarker } from './marker-scan';
 
+import { RunToken, RunTokens } from '../process/launch';
 /**
  * Specifies how long discovering a folder's tests may take: a plugin reads every test file of a large
  * solution.
@@ -224,11 +225,17 @@ export class TestAdapterHost {
   private readonly runs: Map<string, PlannedRun> = new Map<string, PlannedRun>();
 
   /**
+   * Issues the run tokens work for a folder is sent with (#1504): one only for a trusted folder.
+   */
+  private readonly tokens: RunTokens;
+
+  /**
    * Initializes the host.
    * @param options What the host depends on.
    */
   public constructor(options: TestAdapterHostOptions) {
     this.options = options;
+    this.tokens = new RunTokens(options.trust);
   }
 
   /**
@@ -500,8 +507,9 @@ export class TestAdapterHost {
       return refused(refusal);
     }
     const resolvedRoot: string = path.resolve(root as string);
-    const decision: RepositoryTrustDecision = this.options.trust.decisionFor(resolvedRoot);
-    if (decision !== 'trusted') {
+    const token: RunToken | null = this.tokens.issue(resolvedRoot);
+    if (token === null) {
+      const decision: RepositoryTrustDecision = this.options.trust.decisionFor(resolvedRoot);
       logger.debug('TestAdapterHost', `Refused a request in ${decision} folder ${resolvedRoot}`);
       return {
         ok: false,
@@ -521,7 +529,7 @@ export class TestAdapterHost {
     if (descriptor === undefined) {
       return refused(`No test-adapter plugin named ${String(pluginId)} is installed.`);
     }
-    return { descriptor, root: resolvedRoot };
+    return { descriptor, root: resolvedRoot, token };
   }
 
   /**
@@ -551,7 +559,7 @@ export class TestAdapterHost {
         code: 'unsupported',
       };
     }
-    return adapter.client.request(op, target.root, params, timeoutMs);
+    return adapter.client.request(op, target.token, params, timeoutMs);
   }
 
   /**
@@ -692,6 +700,11 @@ interface Target {
    * Gets the resolved folder.
    */
   readonly root: string;
+
+  /**
+   * Gets the folder's run token, without which no work for it is sent (#1504).
+   */
+  readonly token: RunToken;
 }
 
 /**

@@ -1,4 +1,5 @@
-import { ChildProcess, spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import { Launcher, launchStudioOwned } from '../../process/launch';
 import {
   CONTAINER_ENGINE_OP_CAPABILITY,
   CONTAINER_ENGINE_PROTOCOL_VERSION,
@@ -28,6 +29,11 @@ import { pluginEnvironment } from '../../plugin-environment';
 import { pidJournal } from '../../pid-journal';
 import type { NodeRuntimeSpec } from '../plugins/plugin-loader';
 import { ContainerEngine, StreamHandle } from './container-engine';
+
+/**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('plugin-process');
 
 /**
  * How long a plugin has to answer `initialize` before it is given up on.
@@ -394,7 +400,7 @@ export class ContainerEngineClient implements ContainerEngine {
    */
   private async startProcess(): Promise<boolean> {
     try {
-      this.process = spawn(this.spec.command, [...this.spec.args], {
+      this.process = launch.spawn(this.spec.command, [...this.spec.args], {
         stdio: ['pipe', 'pipe', 'pipe'],
         // Only what a program needs to run, never the user's whole shell (audit S6).
         env: pluginEnvironment(this.spec.env),

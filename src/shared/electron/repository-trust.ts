@@ -40,36 +40,6 @@ export const UNTRUSTED_FOLDER_REASON: string =
   'This folder is not trusted, so nothing runs from it. Trust it from the status bar first.';
 
 /**
- * Decides whether something may run from a folder, for the paths that take a folder the renderer
- * names: a terminal's working folder, a debug session's root, a program to run (#1504).
- */
-export interface RunGate {
-  /**
-   * Gets why nothing may run from a folder, or null when something may: the folder lies outside every
-   * open workspace (the user's own home folder, say), or within a trusted one.
-   * @param target The absolute folder or file.
-   * @returns Returns the reason, or null.
-   */
-  refusal(target: string): string | null;
-}
-
-/**
- * Builds the run gate over the open workspaces and the trust store.
- * @param scope The open workspaces.
- * @param trust The trust store.
- * @returns Returns the gate.
- */
-export function workspaceRunGate(
-  scope: { isWithin(target: unknown): boolean },
-  trust: FolderTrustSource,
-): RunGate {
-  return {
-    refusal: (target: string): string | null =>
-      scope.isWithin(target) && !mayRunIn(trust, target) ? UNTRUSTED_FOLDER_REASON : null,
-  };
-}
-
-/**
  * The shape of the persisted file.
  */
 interface PersistedTrust {

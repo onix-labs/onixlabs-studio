@@ -1,4 +1,3 @@
-import { execFile } from 'node:child_process';
 import { Dirent } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
@@ -19,6 +18,7 @@ import { buildItemTree, EvaluatedItem } from './item-tree';
 import { listProjectFiles } from './project-listing';
 import { renameSolutionFolder, SolutionFolderRename } from './solution-folders';
 import { ProjectLoadOptions, ProjectSystem } from './project-system';
+import { launchFor, launchStudioOwned, RunToken } from '../process/launch';
 import { logger } from '../logger';
 
 /**
@@ -50,7 +50,7 @@ const DOTNET_CAPABILITIES: ProjectCapabilities = {
 /**
  * Runs a child process and resolves with its standard output and error.
  */
-const execFileAsync: (
+type ExecFileAsync = (
   file: string,
   args: readonly string[],
   options: {
@@ -59,7 +59,22 @@ const execFileAsync: (
     killSignal?: NodeJS.Signals;
     env?: NodeJS.ProcessEnv;
   },
-) => Promise<{ stdout: string; stderr: string }> = promisify(execFile);
+) => Promise<{ stdout: string; stderr: string }>;
+
+/**
+ * Gets the runner for MSBuild in a trusted folder: only with its run token (#1504).
+ * @param token The folder's run token.
+ * @returns Returns the runner.
+ */
+function execFileFor(token: RunToken): ExecFileAsync {
+  return promisify(launchFor(token).execFile);
+}
+
+/**
+ * Runs `dotnet --version` to find a working SDK: a fixed probe of a tool on the machine, which reads
+ * no project.
+ */
+const probe: ExecFileAsync = promisify(launchStudioOwned('tool-probe').execFile);
 
 /**
  * The maximum bytes of `dotnet` output buffered, generous so a large project's item listing is not
@@ -303,6 +318,7 @@ export class DotnetProjectSystem implements ProjectSystem {
    * EmbeddedResource), honouring linked files. Concurrent requests for the same project share one
    * evaluation.
    * @param projectPath The absolute path of the project file.
+   * @param options The folder's run token; without one, the files are listed instead.
    * @returns Returns the contents, or null when `dotnet` is unavailable or evaluation fails.
    */
   public loadProjectItems(
@@ -311,7 +327,8 @@ export class DotnetProjectSystem implements ProjectSystem {
   ): Promise<ProjectItems | null> {
     // ⛔ MSBuild evaluates the project's own files (its imports, Directory.Build.*, property functions),
     // so it runs only once the folder is trusted (#1504). Until then the project's files are listed.
-    if (options?.mayRun !== true) {
+    const token: RunToken | null = options?.token ?? null;
+    if (token === null) {
       return this.listFiles(projectPath);
     }
     const existing: Promise<ProjectItems | null> | undefined = this.inFlightItems.get(projectPath);
@@ -323,11 +340,12 @@ export class DotnetProjectSystem implements ProjectSystem {
       return existing;
     }
     logger.trace('DotnetProjectSystem', `Evaluating items for '${projectPath}'.`);
-    const load: Promise<ProjectItems | null> = this.evaluateProjectItems(projectPath).finally(
-      (): void => {
-        this.inFlightItems.delete(projectPath);
-      },
-    );
+    const load: Promise<ProjectItems | null> = this.evaluateProjectItems(
+      projectPath,
+      token,
+    ).finally((): void => {
+      this.inFlightItems.delete(projectPath);
+    });
     this.inFlightItems.set(projectPath, load);
     return load;
   }
@@ -337,9 +355,13 @@ export class DotnetProjectSystem implements ProjectSystem {
    * project needs a second, framework-pinned evaluation — its items live in the per-framework inner
    * build — but the common single-target project resolves in one process.
    * @param projectPath The absolute path of the project file.
+   * @param token The folder's run token.
    * @returns Returns the contents, or null when `dotnet` is unavailable or evaluation fails.
    */
-  private async evaluateProjectItems(projectPath: string): Promise<ProjectItems | null> {
+  private async evaluateProjectItems(
+    projectPath: string,
+    token: RunToken,
+  ): Promise<ProjectItems | null> {
     const dotnet: string | null = await this.resolveDotnet();
     if (dotnet === null) {
       return null;
@@ -347,14 +369,14 @@ export class DotnetProjectSystem implements ProjectSystem {
     const combined: {
       frameworks: { single: string; many: string };
       items: EvaluatedItem[];
-    } | null = await this.queryProject(dotnet, projectPath);
+    } | null = await this.queryProject(dotnet, projectPath, token);
     if (combined === null) {
       return null;
     }
     let items: EvaluatedItem[] | null = combined.items;
     if (combined.frameworks.single.length === 0 && combined.frameworks.many.length > 0) {
       const framework: string = combined.frameworks.many.split(';')[0].trim();
-      items = await this.queryItems(dotnet, projectPath, framework);
+      items = await this.queryItems(dotnet, projectPath, framework, token);
       if (items === null) {
         return null;
       }
@@ -369,11 +391,13 @@ export class DotnetProjectSystem implements ProjectSystem {
    * of the workspace's model, or is a project file path relative to the root.
    * @param configuration The run configuration being launched under the debugger.
    * @param root The absolute workspace root, which the project must lie within.
+   * @param token The folder's run token, which building needs.
    * @returns Returns the launch target, or a reason it could not be resolved.
    */
   public async resolveDebugTarget(
     configuration: RunConfiguration,
     root: string,
+    token: RunToken,
   ): Promise<DebugResolveResult> {
     const model: ProjectModel | null = await this.load(root);
     const projectPath: string = resolveProjectPath(
@@ -405,12 +429,16 @@ export class DotnetProjectSystem implements ProjectSystem {
       `Building '${projectPath}' (${configurationName}) to resolve a debug target.`,
     );
     try {
-      await execFileAsync(dotnet, ['build', projectPath, '-c', configurationName, '--nologo'], {
-        maxBuffer: ITEM_QUERY_BUFFER,
-        timeout: BUILD_TIMEOUT_MS,
-        killSignal: 'SIGKILL',
-        env: dotnetEnv(),
-      });
+      await execFileFor(token)(
+        dotnet,
+        ['build', projectPath, '-c', configurationName, '--nologo'],
+        {
+          maxBuffer: ITEM_QUERY_BUFFER,
+          timeout: BUILD_TIMEOUT_MS,
+          killSignal: 'SIGKILL',
+          env: dotnetEnv(),
+        },
+      );
     } catch (error: unknown) {
       logger.error('DotnetProjectSystem', `Debug build failed for '${projectPath}'.`, error);
       return { target: null, error: `Build failed.\n${buildErrorText(error)}` };
@@ -419,6 +447,7 @@ export class DotnetProjectSystem implements ProjectSystem {
       dotnet,
       projectPath,
       configurationName,
+      token,
     );
     if (targetPath === null) {
       logger.warn(
@@ -459,11 +488,13 @@ export class DotnetProjectSystem implements ProjectSystem {
    * an assembly that is not its own — which reads as the decoder being wrong rather than the guess.
    * @param sourcePath The absolute path of the source file.
    * @param configurationId The selected build configuration, or undefined for Debug.
+   * @param token The folder's run token, which asking MSBuild needs.
    * @returns Returns the artefact, or null when there is no project, no dotnet, or nothing built yet.
    */
   public async resolveArtifact(
     sourcePath: string,
-    configurationId?: string,
+    configurationId: string | undefined,
+    token: RunToken,
   ): Promise<CompiledArtifact | null> {
     const projectPath: string | null = await nearestProject(sourcePath);
     if (projectPath === null) {
@@ -477,6 +508,7 @@ export class DotnetProjectSystem implements ProjectSystem {
       dotnet,
       projectPath,
       this.buildConfigurationName(configurationId),
+      token,
     );
     if (artifactPath === null) {
       return null;
@@ -500,15 +532,17 @@ export class DotnetProjectSystem implements ProjectSystem {
    * @param dotnet The `dotnet` executable.
    * @param projectPath The absolute path of the project file.
    * @param configurationName The MSBuild configuration to evaluate against.
+   * @param token The folder's run token.
    * @returns Returns the assembly path, or null when it is empty or the query fails.
    */
   private async queryTargetPath(
     dotnet: string,
     projectPath: string,
     configurationName: string,
+    token: RunToken,
   ): Promise<string | null> {
     try {
-      const { stdout }: { stdout: string } = await execFileAsync(
+      const { stdout }: { stdout: string } = await execFileFor(token)(
         dotnet,
         ['build', projectPath, '-c', configurationName, '--no-restore', '--getProperty:TargetPath'],
         {
@@ -559,7 +593,7 @@ export class DotnetProjectSystem implements ProjectSystem {
     );
     for (const candidate of candidates) {
       try {
-        await execFileAsync(candidate, ['--version'], {
+        await probe(candidate, ['--version'], {
           maxBuffer: ITEM_QUERY_BUFFER,
           timeout: PROBE_TIMEOUT_MS,
           killSignal: 'SIGKILL',
@@ -583,11 +617,13 @@ export class DotnetProjectSystem implements ProjectSystem {
    * bounded by a timeout, and run with MSBuild's background-process reuse disabled.
    * @param dotnet The `dotnet` executable.
    * @param projectPath The absolute path of the project file.
+   * @param token The folder's run token.
    * @returns Returns the frameworks and items, or null when evaluation fails.
    */
   private async queryProject(
     dotnet: string,
     projectPath: string,
+    token: RunToken,
   ): Promise<{
     frameworks: { single: string; many: string };
     items: EvaluatedItem[];
@@ -603,7 +639,7 @@ export class DotnetProjectSystem implements ProjectSystem {
       args.push(`--getItem:${type}`);
     }
     try {
-      const { stdout }: { stdout: string } = await execFileAsync(dotnet, args, {
+      const { stdout }: { stdout: string } = await execFileFor(token)(dotnet, args, {
         maxBuffer: ITEM_QUERY_BUFFER,
         timeout: EVALUATION_TIMEOUT_MS,
         killSignal: 'SIGKILL',
@@ -639,12 +675,14 @@ export class DotnetProjectSystem implements ProjectSystem {
    * @param dotnet The `dotnet` executable.
    * @param projectPath The absolute path of the project file.
    * @param framework The framework to evaluate against.
+   * @param token The folder's run token.
    * @returns Returns the items (identity and link), or null when evaluation fails.
    */
   private async queryItems(
     dotnet: string,
     projectPath: string,
     framework: string,
+    token: RunToken,
   ): Promise<EvaluatedItem[] | null> {
     const args: string[] = ['build', projectPath, '--no-restore'];
     for (const type of ITEM_TYPES) {
@@ -652,7 +690,7 @@ export class DotnetProjectSystem implements ProjectSystem {
     }
     args.push(`-p:TargetFramework=${framework}`);
     try {
-      const { stdout }: { stdout: string } = await execFileAsync(dotnet, args, {
+      const { stdout }: { stdout: string } = await execFileFor(token)(dotnet, args, {
         maxBuffer: ITEM_QUERY_BUFFER,
         timeout: EVALUATION_TIMEOUT_MS,
         killSignal: 'SIGKILL',

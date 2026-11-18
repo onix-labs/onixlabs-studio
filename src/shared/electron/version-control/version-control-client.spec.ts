@@ -8,6 +8,7 @@ import {
 } from '@shared/api/version-control-protocol';
 import { VersionControlClient } from './version-control-client';
 import { VersionControlSpec } from './version-control-descriptor';
+import { trustedToken } from '../process/run-token.fixture';
 
 /**
  * Holds the directory the stub plugins are written into.
@@ -105,7 +106,7 @@ describe('VersionControlClient', () => {
 
     const response: VersionControlResponse<'status'> = await client.request(
       'status',
-      '/repo',
+      trustedToken('/repo'),
       {},
       2_000,
     );
@@ -121,7 +122,7 @@ describe('VersionControlClient', () => {
 
     const response: VersionControlResponse<'merge'> = await client.request(
       'merge',
-      '/repo',
+      trustedToken('/repo'),
       { branch: 'feature', mode: 'default' },
       2_000,
     );
@@ -156,7 +157,7 @@ describe('VersionControlClient', () => {
 
     const response: VersionControlResponse<'status'> = await client.request(
       'status',
-      '/repo',
+      trustedToken('/repo'),
       {},
       100,
     );
@@ -181,7 +182,7 @@ describe('VersionControlClient', () => {
 
     const response: VersionControlResponse<'status'> = await client.request(
       'status',
-      '/repo',
+      trustedToken('/repo'),
       {},
       2_000,
     );
@@ -215,14 +216,19 @@ describe('VersionControlClient', () => {
 
     const refused: VersionControlResponse<'status'> = await client.request(
       'status',
-      '/r',
+      trustedToken('/r'),
       {},
       2_000,
     );
     await new Promise<void>((resolve): void => {
       setTimeout(resolve, 150);
     });
-    const next: VersionControlResponse<'status'> = await client.request('status', '/r', {}, 2_000);
+    const next: VersionControlResponse<'status'> = await client.request(
+      'status',
+      trustedToken('/r'),
+      {},
+      2_000,
+    );
 
     expect(refused).toMatchObject({
       ok: false,
@@ -235,6 +241,8 @@ describe('VersionControlClient', () => {
   it('request_whenNotStarted_failsWithoutSpawning', async () => {
     const client: VersionControlClient = stub('idle', WELL_BEHAVED);
 
-    expect(await client.request('status', '/repo', {}, 100)).toMatchObject({ ok: false });
+    expect(await client.request('status', trustedToken('/repo'), {}, 100)).toMatchObject({
+      ok: false,
+    });
   });
 });

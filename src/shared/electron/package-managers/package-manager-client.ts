@@ -1,4 +1,5 @@
-import { ChildProcess, spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import { Launcher, launchStudioOwned } from '../process/launch';
 import {
   isCompatiblePackageManagerProtocol,
   isPackageManagerCapability,
@@ -11,11 +12,17 @@ import {
   PackageManagerResponse,
 } from '@shared/api/package-manager-protocol';
 import { logger } from '../logger';
+import { folderOf, RunToken } from '../process/launch';
 import { LineSplitter, MAX_LINE_LENGTH } from '../line-splitter';
 import { pluginEnvironment } from '../plugin-environment';
 import { pidJournal } from '../pid-journal';
 import { PackageManagerSpec } from './package-manager-descriptor';
 import { PackageManagerEndpoint } from './package-manager-endpoint';
+
+/**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('plugin-process');
 
 /**
  * Specifies how long the initialize handshake may take. A plugin that cannot say what it is promptly
@@ -133,7 +140,7 @@ export class PackageManagerClient implements PackageManagerEndpoint {
       return this.description;
     }
     try {
-      this.process = spawn(this.spec.command, [...this.spec.args], {
+      this.process = launch.spawn(this.spec.command, [...this.spec.args], {
         stdio: ['pipe', 'pipe', 'pipe'],
         // Only what a program needs to run, never the user's whole shell (audit S6). A token exported
         // in a profile is exactly what a plugin is not handed.
@@ -200,21 +207,22 @@ export class PackageManagerClient implements PackageManagerEndpoint {
   /**
    * Asks the plugin to perform an operation.
    * @param op The operation.
-   * @param root The absolute folder it acts on.
+   * @param token The folder's run token.
    * @param params The operation's parameters.
    * @param timeoutMs How long to wait before abandoning it.
    * @returns Returns the plugin's answer, or a failure saying why there was none.
    */
   public async request<Op extends PackageManagerOp>(
     op: Op,
-    root: string,
+    token: RunToken,
     params: PackageManagerParams<Op>,
     timeoutMs: number,
   ): Promise<PackageManagerResponse<Op>> {
     if (this.description === null) {
       return { id: 0, ok: false, error: `${this.id} is not running.` };
     }
-    return await this.send(op, root, params, timeoutMs);
+    // Work for a folder is sent only with its run token (#1504).
+    return await this.send(op, folderOf(token), params, timeoutMs);
   }
 
   /**

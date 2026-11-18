@@ -17,11 +17,12 @@ import type { ProjectItems, ProjectModel } from '@shared/api/project-system';
 import type { RunConfiguration } from '@shared/api/studio';
 import { ProjectEntry } from '@shared/api/project-system';
 import { DotnetProjectSystem, resolveProjectPath } from './dotnet-project-system';
+import { trustedToken } from '../process/run-token.fixture';
 
 /**
  * Loads a project as a trusted folder does, letting the provider ask its tool.
  */
-const TRUSTED_LOAD: ProjectLoadOptions = { mayRun: true };
+const TRUSTED_LOAD: ProjectLoadOptions = { token: trustedToken('/') };
 
 describe('resolveProjectPath (#882)', () => {
   const root: string = path.resolve('/w');
@@ -76,6 +77,7 @@ describe('DotnetProjectSystem.resolveDebugTarget (#882)', () => {
     const result: DebugResolveResult = await new DotnetProjectSystem().resolveDebugTarget(
       configuration,
       root,
+      trustedToken('/'),
     );
 
     expect(result).toEqual({ target: null, error: 'The project is outside the workspace.' });
@@ -323,6 +325,7 @@ esac`);
       const result: DebugResolveResult = await provider.resolveDebugTarget(
         { ...CONFIGURATION, target: path.join(scratch, 'app', 'app.csproj') },
         scratch,
+        trustedToken('/'),
       );
 
       expect(result).toEqual({
@@ -339,6 +342,7 @@ esac`);
       const result: DebugResolveResult = await provider.resolveDebugTarget(
         { ...CONFIGURATION, target: '/elsewhere/evil.csproj' },
         scratch,
+        trustedToken('/'),
       );
 
       expect(result).toEqual({ target: null, error: 'The project is outside the workspace.' });
@@ -352,6 +356,7 @@ esac`);
       const result: DebugResolveResult = await provider.resolveDebugTarget(
         { ...CONFIGURATION, target: path.join(scratch, 'app', 'app.csproj') },
         scratch,
+        trustedToken('/'),
       );
 
       expect(result.target).toBeNull();
@@ -365,6 +370,7 @@ esac`);
       const result: DebugResolveResult = await provider.resolveDebugTarget(
         { ...CONFIGURATION, target: path.join(scratch, 'app', 'app.csproj') },
         scratch,
+        trustedToken('/'),
       );
 
       expect(result.error).toMatch(/output assembly/);
@@ -375,14 +381,26 @@ esac`);
     it('isNull_forASourceWithNoProject', async () => {
       write({ 'loose.cs': '' });
 
-      expect(await provider.resolveArtifact(path.join(scratch, 'loose.cs'))).toBeNull();
+      expect(
+        await provider.resolveArtifact(
+          path.join(scratch, 'loose.cs'),
+          undefined,
+          trustedToken('/'),
+        ),
+      ).toBeNull();
     });
 
     it('isNull_whenNotBuiltYet', async () => {
       write({ 'app/app.csproj': '', 'app/a.cs': '' });
       dotnet(`echo "${scratch}/app/bin/app.dll"`);
 
-      expect(await provider.resolveArtifact(path.join(scratch, 'app', 'a.cs'))).toBeNull();
+      expect(
+        await provider.resolveArtifact(
+          path.join(scratch, 'app', 'a.cs'),
+          undefined,
+          trustedToken('/'),
+        ),
+      ).toBeNull();
     });
 
     it('findsTheOutputAndItsSymbols_andSaysWhenTheSourceIsNewer', async () => {
@@ -390,7 +408,13 @@ esac`);
       utimesSync(path.join(scratch, 'app/bin/app.dll'), 1_000, 1_000);
       dotnet(`echo "${scratch}/app/bin/app.dll"`);
 
-      expect(await provider.resolveArtifact(path.join(scratch, 'app', 'a.cs'))).toEqual({
+      expect(
+        await provider.resolveArtifact(
+          path.join(scratch, 'app', 'a.cs'),
+          undefined,
+          trustedToken('/'),
+        ),
+      ).toEqual({
         artifactPath: `${scratch}/app/bin/app.dll`,
         symbolsPath: `${scratch}/app/bin/app.pdb`,
         stale: true,

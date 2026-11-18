@@ -5,6 +5,7 @@ import {
   VersionControlResponse,
   VcsParams,
 } from '@shared/api/version-control-protocol';
+import type { RunToken } from '../process/launch';
 
 /**
  * Something the version-control host can ask the protocol's questions: a plugin's process, through
@@ -29,14 +30,14 @@ export interface VersionControlEndpoint {
   /**
    * Asks the endpoint to perform an operation. Always resolves — to the answer, or to a failure.
    * @param op The operation.
-   * @param root The absolute repository root it acts on, or undefined for a global operation.
+   * @param token The folder's run token, or undefined for work that names no folder: work for a folder is sent only with it (#1504).
    * @param params The operation's parameters.
    * @param timeoutMs How long to wait before abandoning it.
    * @returns Returns the answer.
    */
   request<Op extends VersionControlOp>(
     op: Op,
-    root: string | undefined,
+    token: RunToken | undefined,
     params: VcsParams<Op>,
     timeoutMs: number,
   ): Promise<VersionControlResponse<Op>>;

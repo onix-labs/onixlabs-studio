@@ -12,6 +12,7 @@ import { WorkspaceContext } from '../workspace-context';
 import { VersionControlClient } from './version-control-client';
 import { VersionControlDescriptor } from './version-control-descriptor';
 import { RepositoryTrustSource, VersionControlHost } from './version-control-host';
+import type { RunToken } from '../process/launch';
 
 /**
  * The open workspace root every test works inside.
@@ -76,10 +77,10 @@ function fakeClient(
       },
       request: async (
         op: VersionControlOp,
-        root: string | undefined,
+        token: RunToken | undefined,
         params: unknown,
       ): Promise<VersionControlResponse> => {
-        record.requests.push({ op, root, params });
+        record.requests.push({ op, root: token?.folder, params });
         if (op === 'resolveRoot') {
           const asked: string = (params as { path: string }).path;
           return {
@@ -234,7 +235,9 @@ describe('VersionControlHost', () => {
     expect(await vcs.describe(ROOT)).toMatchObject({ ok: true });
   });
 
-  it('requestGlobal_whenACloneTargetsARestrictedContainer_isRefused_butResolvingARootIsNot', async () => {
+  it('requestGlobal_inAFolderNotTrusted_neitherClonesNorRunsTheTool', async () => {
+    // Resolving a root runs the tool in the folder, where the repository's own settings can name
+    // commands it runs (#1504), so it waits for trust as a clone does.
     const fake: FakeClient = fakeClient(['clone']);
     const vcs: VersionControlHost = host([plugin('git', '.git', 100, ['clone'])], [], fake, {
       decisionFor: (): RepositoryTrustDecision => 'restricted',
@@ -247,9 +250,10 @@ describe('VersionControlHost', () => {
       }),
     ).toMatchObject({ ok: false, code: 'untrusted' });
     expect(await vcs.requestGlobal('git', 'resolveRoot', { path: ROOT })).toMatchObject({
-      ok: true,
+      ok: false,
+      code: 'untrusted',
     });
-    expect(fake.requests.map((request) => request.op)).toEqual(['resolveRoot']);
+    expect(fake.requests).toEqual([]);
   });
 
   it('isOpen_namesOnlyTheRootsThatAreOpenRightNow', () => {
@@ -486,11 +490,14 @@ describe('VersionControlHost', () => {
      * @param fake The client the plugin gets.
      * @returns Returns the host.
      */
-    function elsewhere(fake: FakeClient): VersionControlHost {
+    function elsewhere(
+      fake: FakeClient,
+      trust: RepositoryTrustSource = TRUSTING,
+    ): VersionControlHost {
       return new VersionControlHost({
         descriptors: () => [plugin('git', '.git')],
         roots: new WorkspaceContext(),
-        trust: TRUSTING,
+        trust,
         executableFor: (): null => null,
         exists: (target: string): boolean => target === path.join(ELSEWHERE, '.git'),
         createClient: (): VersionControlClient => fake.client,
@@ -511,6 +518,22 @@ describe('VersionControlHost', () => {
         root: undefined,
         params: { path: path.join(ELSEWHERE, 'src', 'app') },
       });
+    });
+
+    it('openRepository_inARepositoryNotTrusted_findsTheRootOnDisk_withoutRunningTheTool', async () => {
+      // Matthew's railway token (#1504): with no token, the plugin is not asked even where the root is.
+      const fake: FakeClient = fakeClient([]);
+      const vcs: VersionControlHost = elsewhere(fake, {
+        decisionFor: (): RepositoryTrustDecision => 'unknown',
+      });
+
+      expect(await vcs.openRepository(path.join(ELSEWHERE, 'src', 'app'))).toEqual({
+        root: ELSEWHERE,
+        name: 'project',
+        pluginId: 'git',
+      });
+      expect(fake.requests).toEqual([]);
+      expect(fake.starts).toEqual([]);
     });
 
     it('openRepository_whenNoRepositoryContainsTheFolder_isNull', async () => {

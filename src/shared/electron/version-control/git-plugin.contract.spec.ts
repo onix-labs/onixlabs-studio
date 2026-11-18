@@ -13,6 +13,7 @@ import {
   VersionControlResponse,
 } from '@shared/api/version-control-protocol';
 import { VersionControlClient } from './version-control-client';
+import { trustedToken } from '../process/run-token.fixture';
 
 /**
  * The Git plugin's directory.
@@ -98,13 +99,13 @@ describe('Git plugin contract', () => {
     await client.start(null);
     const status: VersionControlResponse<'status'> = await client.request(
       'status',
-      repo,
+      trustedToken(repo),
       {},
       10_000,
     );
     const log: VersionControlResponse<'log'> = await client.request(
       'log',
-      repo,
+      trustedToken(repo),
       { limit: 5 },
       10_000,
     );
@@ -119,14 +120,18 @@ describe('Git plugin contract', () => {
   it('carriesFailuresAndTheirCodesOverTheWire', TIMEOUT, async () => {
     await client.start(null);
 
-    expect(await client.request('checkout', repo, { branch: '--orphan' }, 10_000)).toMatchObject({
+    expect(
+      await client.request('checkout', trustedToken(repo), { branch: '--orphan' }, 10_000),
+    ).toMatchObject({
       ok: false,
       error: 'Invalid branch name',
     });
-    expect(await client.request('operationContinue', repo, {}, 10_000)).toMatchObject({
-      ok: false,
-      code: 'no-operation',
-    });
+    expect(await client.request('operationContinue', trustedToken(repo), {}, 10_000)).toMatchObject(
+      {
+        ok: false,
+        code: 'no-operation',
+      },
+    );
   });
 
   it('reportsAMissingGitAsAProblem_ratherThanRefusingToStart', TIMEOUT, async () => {

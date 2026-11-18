@@ -7,6 +7,7 @@ import {
   PackageManagerResponse,
 } from '@shared/api/package-manager-protocol';
 import { PackageManagerClient, PackageManagerCredentialSource } from './package-manager-client';
+import { trustedToken } from '../process/run-token.fixture';
 
 /**
  * Holds the directory the stub plugins are written into.
@@ -156,7 +157,7 @@ describe('PackageManagerClient', () => {
 
     const response: PackageManagerResponse<'load'> = await client.request(
       'load',
-      '/workspace',
+      trustedToken('/workspace'),
       {},
       5_000,
     );
@@ -171,7 +172,7 @@ describe('PackageManagerClient', () => {
     await expect(
       client.request(
         'search',
-        '/workspace',
+        trustedToken('/workspace'),
         { source: 's', query: 'q', skip: 0, take: 1, prerelease: false },
         5_000,
       ),
@@ -181,7 +182,9 @@ describe('PackageManagerClient', () => {
   it('request_failsWhenThePluginIsNotRunning', async () => {
     const client: PackageManagerClient = stub('idle', WELL_BEHAVED);
 
-    await expect(client.request('load', '/workspace', {}, 5_000)).resolves.toMatchObject({
+    await expect(
+      client.request('load', trustedToken('/workspace'), {}, 5_000),
+    ).resolves.toMatchObject({
       ok: false,
     });
   });
@@ -198,10 +201,12 @@ describe('PackageManagerClient', () => {
     );
     await client.start();
 
-    await expect(client.request('load', '/workspace', {}, 50)).resolves.toMatchObject({
-      ok: false,
-      error: 'slow did not answer in time.',
-    });
+    await expect(client.request('load', trustedToken('/workspace'), {}, 50)).resolves.toMatchObject(
+      {
+        ok: false,
+        error: 'slow did not answer in time.',
+      },
+    );
   });
 
   it('request_failsWhenThePluginExits', async () => {
@@ -218,7 +223,9 @@ describe('PackageManagerClient', () => {
     );
     await client.start();
 
-    await expect(client.request('load', '/workspace', {}, 5_000)).resolves.toMatchObject({
+    await expect(
+      client.request('load', trustedToken('/workspace'), {}, 5_000),
+    ).resolves.toMatchObject({
       ok: false,
       error: 'dies exited.',
     });
@@ -242,7 +249,9 @@ describe('PackageManagerClient', () => {
     );
     await client.start();
 
-    await expect(client.request('load', '/workspace', {}, 5_000)).resolves.toMatchObject({
+    await expect(
+      client.request('load', trustedToken('/workspace'), {}, 5_000),
+    ).resolves.toMatchObject({
       ok: false,
       error: 'oversized sent an answer too large to read.',
     });
@@ -258,7 +267,7 @@ describe('PackageManagerClient', () => {
 
     const response: PackageManagerResponse<'sources'> = await client.request(
       'sources',
-      '/workspace',
+      trustedToken('/workspace'),
       {},
       5_000,
     );
@@ -271,7 +280,9 @@ describe('PackageManagerClient', () => {
     const client: PackageManagerClient = stub('no-credential', WELL_BEHAVED);
     await client.start();
 
-    await expect(client.request('sources', '/workspace', {}, 5_000)).resolves.toMatchObject({
+    await expect(
+      client.request('sources', trustedToken('/workspace'), {}, 5_000),
+    ).resolves.toMatchObject({
       result: { sources: [{ name: 'null' }] },
     });
   });
@@ -282,7 +293,9 @@ describe('PackageManagerClient', () => {
     );
     await client.start();
 
-    await expect(client.request('sources', '/workspace', {}, 5_000)).resolves.toMatchObject({
+    await expect(
+      client.request('sources', trustedToken('/workspace'), {}, 5_000),
+    ).resolves.toMatchObject({
       result: { sources: [{ name: 'null' }] },
     });
   });
@@ -301,7 +314,7 @@ describe('PackageManagerClient', () => {
 
     const pending: Promise<PackageManagerResponse<'load'>> = client.request(
       'load',
-      '/workspace',
+      trustedToken('/workspace'),
       {},
       5_000,
     );

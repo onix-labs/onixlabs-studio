@@ -1,4 +1,5 @@
-import { ChildProcess, spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import { Launcher, launchStudioOwned } from '../process/launch';
 import { CodeListing } from '@shared/api/code-listing';
 import {
   DecoderDescription,
@@ -11,6 +12,11 @@ import { LineSplitter, MAX_LINE_LENGTH } from '../line-splitter';
 import { pluginEnvironment } from '../plugin-environment';
 import { pidJournal } from '../pid-journal';
 import { DecoderSpec } from './decoder-descriptor';
+
+/**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('decoder');
 
 /**
  * Specifies how long a single request may take before it is abandoned.
@@ -118,7 +124,7 @@ export class DecoderClient {
       return this.description;
     }
     try {
-      this.process = spawn(this.spec.command, [...this.spec.args], {
+      this.process = launch.spawn(this.spec.command, [...this.spec.args], {
         stdio: ['pipe', 'pipe', 'pipe'],
         // Only what a program needs to run, never the user's whole shell (audit S6).
         env: pluginEnvironment(this.spec.env),

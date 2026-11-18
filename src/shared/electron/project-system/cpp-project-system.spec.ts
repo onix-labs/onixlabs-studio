@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { BuildConfiguration, ProjectItemNode, ProjectItems } from '@shared/api/project-system';
 import { buildTargetTree, CppProjectSystem, parseCmakeProjectName } from './cpp-project-system';
+import { trustedToken } from '../process/run-token.fixture';
 
 /**
  * Reads a contents tree as slash-joined paths, folders marked with a trailing slash.
@@ -138,7 +139,7 @@ describe('CppProjectSystem.loadProjectItems with a configured build tree (#1213)
   ): Promise<{ calls: readonly string[]; tree: readonly string[] }> {
     const items: ProjectItems | null = await new CppProjectSystem().loadProjectItems(
       path.join(root, 'CMakeLists.txt'),
-      { mayRun: trusted },
+      { token: trusted ? trustedToken(root) : null },
     );
     const calls: readonly string[] = existsSync(invoked)
       ? readFileSync(invoked, 'utf8').trim().split('\n')

@@ -1,4 +1,3 @@
-import { execFile } from 'node:child_process';
 import { Dirent } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
@@ -28,6 +27,7 @@ import type { DebugResolveResult } from '@shared/api/debug-channels';
 import type { RunConfiguration } from '@shared/api/studio';
 import { listProjectFiles, sourceFilter } from './project-listing';
 import { ProjectLoadOptions, ProjectSystem } from './project-system';
+import { launchFor, RunToken } from '../process/launch';
 import { logger } from '../logger';
 
 /**
@@ -108,7 +108,7 @@ const DEBUG_BUILD_TIMEOUT_MS: number = 15 * 60_000;
 /**
  * Runs a child process and resolves with its standard output.
  */
-const execFileAsync: (
+type ExecFileAsync = (
   file: string,
   args: readonly string[],
   options: {
@@ -119,7 +119,16 @@ const execFileAsync: (
     killSignal: NodeJS.Signals;
     windowsHide: boolean;
   },
-) => Promise<{ stdout: string; stderr: string }> = promisify(execFile);
+) => Promise<{ stdout: string; stderr: string }>;
+
+/**
+ * Gets the runner for a trusted folder's tool: only with its run token (#1504).
+ * @param token The folder's run token.
+ * @returns Returns the runner.
+ */
+function execFileFor(token: RunToken): ExecFileAsync {
+  return promisify(launchFor(token).execFile);
+}
 
 /**
  * Reads a crate's name from the `name` key of a Cargo manifest's `[package]` table.
@@ -271,7 +280,7 @@ export class RustProjectSystem implements ProjectSystem {
   ): Promise<ProjectItems | null> {
     // `cargo metadata` only once the folder is trusted (#1504); until then, its files.
     const tree: readonly ProjectItemNode[] | null =
-      (options?.mayRun === true ? await this.targetTree(projectPath) : null) ??
+      (options?.token == null ? null : await this.targetTree(projectPath, options.token)) ??
       (await listProjectFiles(
         path.dirname(projectPath),
         { remaining: MAX_ITEMS },
@@ -290,9 +299,13 @@ export class RustProjectSystem implements ProjectSystem {
    * declares it, which only the compiler knows, and a file listed under two groups would be two rows
    * with one identity.
    * @param projectPath The absolute path of the crate manifest.
+   * @param token The folder's run token, which running Cargo needs.
    * @returns Returns the contents, or null when Cargo has no answer or the crate no targets.
    */
-  private async targetTree(projectPath: string): Promise<readonly ProjectItemNode[] | null> {
+  private async targetTree(
+    projectPath: string,
+    token: RunToken,
+  ): Promise<readonly ProjectItemNode[] | null> {
     let manifestPath: string;
     try {
       // Cargo answers with resolved paths, so the manifest is resolved first to find it in the answer.
@@ -300,7 +313,7 @@ export class RustProjectSystem implements ProjectSystem {
     } catch {
       return null;
     }
-    const sources: readonly string[] | null = await this.targetSources(manifestPath);
+    const sources: readonly string[] | null = await this.targetSources(manifestPath, token);
     if (sources === null || sources.length === 0) {
       return null;
     }
@@ -338,12 +351,16 @@ export class RustProjectSystem implements ProjectSystem {
    * from a `rust-toolchain.toml` in the workspace, and that can name a folder of the workspace's own
    * to run `cargo` from. Cargo's `.cargo/config.toml` is found the same way and is left unread too.
    * @param manifestPath The absolute path of the crate manifest.
+   * @param token The folder's run token, which running Cargo needs.
    * @returns Returns the targets' source files, or null when no Cargo could answer.
    */
-  private async targetSources(manifestPath: string): Promise<readonly string[] | null> {
+  private async targetSources(
+    manifestPath: string,
+    token: RunToken,
+  ): Promise<readonly string[] | null> {
     for (const cargo of this.cargoExecutables()) {
       try {
-        const { stdout }: { stdout: string } = await execFileAsync(
+        const { stdout }: { stdout: string } = await execFileFor(token)(
           cargo,
           cargoMetadataArguments(manifestPath),
           {
@@ -381,11 +398,13 @@ export class RustProjectSystem implements ProjectSystem {
    * build scripts. A configuration that runs a program directly launches that program.
    * @param configuration The run configuration being launched under the debugger.
    * @param root The absolute workspace root, which the build must run within.
+   * @param token The folder's run token, which building with Cargo needs.
    * @returns Returns the launch target, or a reason it could not be resolved.
    */
   public async resolveDebugTarget(
     configuration: RunConfiguration,
     root: string,
+    token: RunToken,
   ): Promise<DebugResolveResult> {
     const cwd: string = path.resolve(root, configuration.cwd ?? '.');
     // The configuration arrives from the renderer, so a hostile one must not run Cargo elsewhere.
@@ -426,7 +445,7 @@ export class RustProjectSystem implements ProjectSystem {
           'RustProjectSystem',
           `Building for the debugger: cargo ${build.build.join(' ')}`,
         );
-        ({ stdout } = await execFileAsync(cargo, build.build, {
+        ({ stdout } = await execFileFor(token)(cargo, build.build, {
           cwd,
           env: { ...process.env, ...env },
           maxBuffer: METADATA_BUFFER,

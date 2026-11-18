@@ -7,6 +7,8 @@ import type { DebugProtocol } from '@vscode/debugprotocol';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DapMessageDecoder, encodeMessage } from './dap-protocol';
 import { JsDebugSession } from './js-debug-session';
+import { launchFor } from '../process/launch';
+import { trustedToken } from '../process/run-token.fixture';
 
 /**
  * Waits for a condition.
@@ -179,7 +181,11 @@ describe.skipIf(process.platform === 'win32')('JsDebugSession', () => {
        console.log('Debug server listening at 127.0.0.1:${port}');
        setInterval(() => undefined, 1000);`,
     );
-    session = new JsDebugSession({ command: process.execPath, args: [banner] }, scratch);
+    session = new JsDebugSession(
+      { command: process.execPath, args: [banner] },
+      scratch,
+      launchFor(trustedToken(scratch)),
+    );
     session.onEvent((event: DebugProtocol.Event): void => void events.push(event));
     session.onExit((code: number | null): void => void exits.push(code));
   });

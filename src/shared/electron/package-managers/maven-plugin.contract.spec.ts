@@ -12,6 +12,7 @@ import type {
   PackageManagerResponse,
 } from '@shared/api/package-manager-protocol';
 import { PackageManagerClient } from './package-manager-client';
+import { trustedToken } from '../process/run-token.fixture';
 
 /**
  * The Maven and Gradle plugin's directory.
@@ -162,7 +163,7 @@ describe('Maven plugin contract', () => {
 
     const response: PackageManagerResponse<'load'> = await client.request(
       'load',
-      workspace,
+      trustedToken(workspace),
       {},
       15_000,
     );
@@ -185,7 +186,9 @@ describe('Maven plugin contract', () => {
   it('namesMavenCentralAsItsOnlySource', TIMEOUT, async () => {
     await client.start();
 
-    await expect(client.request('sources', workspace, {}, 15_000)).resolves.toMatchObject({
+    await expect(
+      client.request('sources', trustedToken(workspace), {}, 15_000),
+    ).resolves.toMatchObject({
       ok: true,
       result: { sources: [{ name: 'Maven Central' }] },
     });
@@ -196,7 +199,7 @@ describe('Maven plugin contract', () => {
 
     const response: PackageManagerResponse<'search'> = await client.request(
       'search',
-      workspace,
+      trustedToken(workspace),
       { source: 'Maven Central', query: 'guava', skip: 0, take: 20, prerelease: false },
       15_000,
     );
@@ -213,7 +216,12 @@ describe('Maven plugin contract', () => {
     await client.start();
 
     await expect(
-      client.request('restore', workspace, { project: path.join(workspace, 'pom.xml') }, 15_000),
+      client.request(
+        'restore',
+        trustedToken(workspace),
+        { project: path.join(workspace, 'pom.xml') },
+        15_000,
+      ),
     ).resolves.toMatchObject({
       ok: true,
       result: { executable: 'mvn', args: ['-f', 'pom.xml', 'dependency:resolve'], cwd: workspace },

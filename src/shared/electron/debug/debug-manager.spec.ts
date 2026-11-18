@@ -9,6 +9,10 @@ import type {
   DebugRunInTerminalRequest,
   DebugStartResult,
 } from '@shared/api/debug-channels';
+import { RunTokens } from '../process/launch';
+import { TRUSTED_TOKENS } from '../process/run-token.fixture';
+import { UNTRUSTED_FOLDER_REASON } from '../repository-trust';
+import type { RepositoryTrustDecision } from '@shared/api/source-control-channels';
 
 /**
  * A handler the manager registered on the IPC bus.
@@ -259,7 +263,9 @@ describe.skipIf(process.platform === 'win32')('DebugManager', () => {
       (): BrowserWindow | null => window as BrowserWindow,
       workspace,
       registry as DebugAdapterRegistry,
-      { refusal: (): string | null => refusal },
+      new RunTokens({
+        decisionFor: (): RepositoryTrustDecision => (refusal === null ? 'trusted' : 'unknown'),
+      }),
     );
     manager.register();
   });
@@ -390,7 +396,7 @@ describe.skipIf(process.platform === 'win32')('DebugManager', () => {
         rootPath: root,
       });
 
-      expect(result).toEqual({ success: false, error: refusal });
+      expect(result).toEqual({ success: false, error: UNTRUSTED_FOLDER_REASON });
       expect(started()).toHaveLength(0);
     });
 
@@ -638,7 +644,7 @@ describe.skipIf(process.platform === 'win32')('DebugManager', () => {
       (): BrowserWindow | null => null,
       new WorkspaceContext(),
       {} as DebugAdapterRegistry,
-      { refusal: (): string | null => null },
+      TRUSTED_TOKENS,
     );
 
     expect((): void => quiet.disposeAll()).not.toThrow();

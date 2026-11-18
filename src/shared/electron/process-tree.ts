@@ -1,5 +1,10 @@
-import { execFile } from 'node:child_process';
+import { Launcher, launchStudioOwned } from './process/launch';
 import { logger } from './logger';
+
+/**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('process-control');
 
 /**
  * Process-tree lifecycle helpers: the one place that knows how to end a child process AND its
@@ -46,7 +51,7 @@ export function signalProcessTree(
 ): void {
   if (process.platform === 'win32') {
     logger.debug('ProcessTree', `taskkill /T /F pid ${pid}`);
-    execFile('taskkill', ['/pid', String(pid), '/T', '/F'], (): void => undefined);
+    launch.execFile('taskkill', ['/pid', String(pid), '/T', '/F'], (): void => undefined);
     return;
   }
   try {

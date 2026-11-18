@@ -1,9 +1,15 @@
-import { ChildProcess, spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import { Launcher, launchStudioOwned } from '../process/launch';
 import * as readline from 'node:readline';
 import { logger } from '@shared/electron/logger';
 import { pidJournal } from '../pid-journal';
 import { detachedSpawnOptions, killProcessTree } from '../process-tree';
 import type { HarnessTransport } from './harness-host';
+
+/**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('agent-harness');
 
 /**
  * How to start a harness process.
@@ -121,7 +127,7 @@ export class HarnessProcess implements HarnessTransport {
    */
   public constructor(spec: HarnessSpawnSpec) {
     logger.info('HarnessProcess', `Starting harness: ${spec.command}`);
-    this.child = spawn(spec.command, [...spec.args], {
+    this.child = launch.spawn(spec.command, [...spec.args], {
       cwd: spec.cwd,
       env: harnessEnvironment(spec.env),
       // stdin and stdout carry the protocol; stderr is a pipe so it can be drained to the log rather

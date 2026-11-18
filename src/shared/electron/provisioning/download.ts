@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { Launcher, launchStudioOwned } from '../process/launch';
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import * as fs from 'node:fs/promises';
@@ -7,6 +7,11 @@ import { Readable } from 'node:stream';
 import { createGunzip } from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
+
+/**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('download');
 
 // The primitives every provisioner is built from: fetch a file, hash it, and — only once the hash
 // matches what was pinned — unpack it. They live here rather than on a provisioner because there is now
@@ -20,7 +25,7 @@ import { promisify } from 'node:util';
 const execFileAsync: (
   file: string,
   args: readonly string[],
-) => Promise<{ stdout: string; stderr: string }> = promisify(execFile);
+) => Promise<{ stdout: string; stderr: string }> = promisify(launch.execFile);
 
 /**
  * The archive kinds the extractor understands.

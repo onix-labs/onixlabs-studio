@@ -12,6 +12,7 @@ import type {
   PackageManagerResponse,
 } from '@shared/api/package-manager-protocol';
 import { PackageManagerClient } from './package-manager-client';
+import { trustedToken } from '../process/run-token.fixture';
 
 /**
  * The npm plugin's directory.
@@ -135,7 +136,7 @@ describe('npm plugin contract', () => {
 
     const response: PackageManagerResponse<'load'> = await client.request(
       'load',
-      workspace,
+      trustedToken(workspace),
       {},
       15_000,
     );
@@ -156,7 +157,7 @@ describe('npm plugin contract', () => {
 
     const response: PackageManagerResponse<'sources'> = await client.request(
       'sources',
-      workspace,
+      trustedToken(workspace),
       {},
       15_000,
     );
@@ -172,7 +173,7 @@ describe('npm plugin contract', () => {
 
     const response: PackageManagerResponse<'search'> = await client.request(
       'search',
-      workspace,
+      trustedToken(workspace),
       {
         source: registry.replace('http://', ''),
         query: 'left-pad',
@@ -193,7 +194,7 @@ describe('npm plugin contract', () => {
 
     const response: PackageManagerResponse<'install'> = await client.request(
       'install',
-      workspace,
+      trustedToken(workspace),
       { project: path.join(workspace, 'package.json'), name: 'left-pad', version: '1.3.0' },
       15_000,
     );
@@ -216,7 +217,7 @@ describe('npm plugin contract', () => {
     await expect(
       client.request(
         'remove',
-        workspace,
+        trustedToken(workspace),
         { project: path.join(workspace, 'package.json'), name: '--global' },
         15_000,
       ),
