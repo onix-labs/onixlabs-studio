@@ -11,6 +11,7 @@ import { Decoders } from './decoders';
 import { JitCaptureResult } from '@shared/api/jit-capture';
 import { JitCapture } from './jit-capture';
 
+import type { RunGate } from '../repository-trust';
 /**
  * Hosts the decoder registry and answers the renderer's decode requests.
  *
@@ -33,6 +34,26 @@ export class DecoderHost {
    * Holds the JIT capture, which runs a program rather than decoding a file.
    */
   private readonly jit: JitCapture = new JitCapture();
+
+  /**
+   * Holds the open workspaces a program to run must lie within.
+   */
+  private readonly scope: { isWithin(target: unknown): boolean };
+
+  /**
+   * Holds the gate a program to run is checked against (#1504).
+   */
+  private readonly gate: RunGate;
+
+  /**
+   * Initializes a new instance of the {@link DecoderHost} class.
+   * @param scope The open workspaces a program to run must lie within.
+   * @param gate Refuses a program in a workspace the user has not trusted.
+   */
+  public constructor(scope: { isWithin(target: unknown): boolean }, gate: RunGate) {
+    this.scope = scope;
+    this.gate = gate;
+  }
 
   /**
    * Registers every contributed decoder and the decode IPC handler.
@@ -101,6 +122,16 @@ export class DecoderHost {
   ): Promise<JitCaptureResult> {
     if (typeof assemblyPath !== 'string' || assemblyPath.length === 0) {
       return Promise.resolve({ ok: false, error: 'No assembly to run.' });
+    }
+    // ⛔ This runs a program. It must be one the open workspace built, and the workspace trusted: the
+    // path comes from the renderer, and the project's own build could name any file (#1504).
+    if (!this.scope.isWithin(assemblyPath)) {
+      logger.warn('DecoderHost', 'Refused to run an assembly outside the open workspace');
+      return Promise.resolve({ ok: false, error: 'That program is not in the open workspace.' });
+    }
+    const refusal: string | null = this.gate.refusal(assemblyPath);
+    if (refusal !== null) {
+      return Promise.resolve({ ok: false, error: refusal });
     }
     const pattern: string =
       typeof methodPattern === 'string' && methodPattern.length > 0 ? methodPattern : '*';

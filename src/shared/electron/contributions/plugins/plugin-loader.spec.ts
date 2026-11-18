@@ -340,6 +340,7 @@ describe('plugin loader', () => {
       );
       const resolveContext: Parameters<LanguageServerDescriptor['resolve']>[0] = {
         rootPath: '/w',
+        trusted: true,
         settings: { get: (): never => ({ serverPaths: {} }) as never } as never,
         provisioner: stubProvisioner('/tree'),
         nodePackageServer: (entry: string) => ({
@@ -477,6 +478,7 @@ describe('plugin loader', () => {
     ): Parameters<LanguageServerDescriptor['resolve']>[0] {
       return {
         rootPath: '/w',
+        trusted: true,
         settings: { get: (): never => ({ serverPaths }) as never } as never,
         provisioner: stubProvisioner(installedPath),
         nodePackageServer: (entry: string) => ({

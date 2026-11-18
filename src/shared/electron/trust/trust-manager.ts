@@ -2,7 +2,12 @@ import { homedir } from 'node:os';
 import * as path from 'node:path';
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import type { RepositoryTrustDecision } from '@shared/api/source-control-channels';
-import { TrustChannel, type TrustAnswer, type TrustChange } from '@shared/api/trust-channels';
+import {
+  TrustChannel,
+  type TrustAnswer,
+  type TrustChange,
+  type TrustScanRequest,
+} from '@shared/api/trust-channels';
 import { logger } from '../logger';
 import type { RepositoryTrustChoice } from '../repository-trust';
 import type { TrustAsker } from './trust-prompt';
@@ -35,6 +40,14 @@ export interface TrustScope {
    * @returns Returns their absolute paths.
    */
   openRoots(): readonly string[];
+
+  /**
+   * Gets whether the user opened a file that lies directly in a folder: a file opened on its own,
+   * outside any workspace, whose folder its language server would run in.
+   * @param folder The resolved folder.
+   * @returns Returns true when they did.
+   */
+  holdsOpenedFileIn(folder: string): boolean;
 }
 
 /**
@@ -95,6 +108,11 @@ export class TrustManager implements TrustGrants {
   private readonly announce: (change: TrustChange) => void;
 
   /**
+   * Tells every window that the user asked for a folder to be scanned before deciding.
+   */
+  private readonly requestScan: (request: TrustScanRequest) => void;
+
+  /**
    * Holds each question being asked, by folder, so a second request for it shares the first's answer.
    */
   private readonly inFlight: Map<string, Promise<RepositoryTrustDecision>> = new Map<
@@ -113,17 +131,20 @@ export class TrustManager implements TrustGrants {
    * @param scope The workspace the folders asked about must belong to.
    * @param asker The prompt that asks the user.
    * @param announce Tells every window that a folder's decision changed.
+   * @param requestScan Tells every window that the user asked for a folder to be scanned first.
    */
   public constructor(
     store: TrustStore,
     scope: TrustScope,
     asker: TrustAsker,
     announce: (change: TrustChange) => void,
+    requestScan: (request: TrustScanRequest) => void = (): void => undefined,
   ) {
     this.store = store;
     this.scope = scope;
     this.asker = asker;
     this.announce = announce;
+    this.requestScan = requestScan;
   }
 
   /**
@@ -217,9 +238,20 @@ export class TrustManager implements TrustGrants {
     }
     let answer: TrustAnswer;
     try {
-      answer = await this.asker.ask({ name: path.basename(folder) || folder, folder });
+      answer = await this.asker.ask({
+        name: path.basename(folder) || folder,
+        folder,
+        scannable: this.scope.openRoots().includes(folder),
+      });
     } catch (error: unknown) {
       logger.error('TrustManager', 'The trust question could not be asked', error);
+      return this.store.decisionFor(folder);
+    }
+    if (answer === 'scan') {
+      // Scanning decides nothing: the folder stays as it was until the user answers, having read the
+      // report. The scan itself only reads the folder.
+      logger.info('TrustManager', `Scan requested for ${folder}`);
+      this.requestScan({ folder });
       return this.store.decisionFor(folder);
     }
     this.record(folder, answer);
@@ -237,8 +269,8 @@ export class TrustManager implements TrustGrants {
   }
 
   /**
-   * Resolves a folder a renderer named, when Studio has it open: an open root, a folder within one, or
-   * the repository an open root lies in.
+   * Resolves a folder a renderer named, when Studio has it open: an open root, a folder within one, the
+   * repository an open root lies in, or the folder of a file the user opened on its own.
    * @param folder The folder, untrusted.
    * @returns Returns the resolved folder, or null when it is not one Studio has open.
    */
@@ -255,7 +287,7 @@ export class TrustManager implements TrustGrants {
     const related: boolean = this.scope
       .openRoots()
       .some((root: string): boolean => within(resolved, root) || within(root, resolved));
-    return related ? resolved : null;
+    return related || this.scope.holdsOpenedFileIn(resolved) ? resolved : null;
   }
 }
 

@@ -7,6 +7,7 @@ import * as path from 'node:path';
 import * as pty from 'node-pty';
 import { readFileSync } from 'node:fs';
 import { logger } from './logger';
+import type { RunGate } from './repository-trust';
 import { pidJournal } from './pid-journal';
 import { killProcessTree, signalProcessTree } from './process-tree';
 import {
@@ -115,11 +116,18 @@ export class TerminalManager {
   private readonly flow: TerminalFlowControl = new TerminalFlowControl();
 
   /**
+   * Holds the gate a terminal's working folder is checked against (#1504).
+   */
+  private readonly gate: RunGate;
+
+  /**
    * Initializes a new instance of the {@link TerminalManager} class.
    * @param windowGetter A function that returns the window terminal output is sent to.
+   * @param gate Refuses a terminal whose working folder is in a workspace the user has not trusted.
    */
-  public constructor(windowGetter: () => BrowserWindow | null) {
+  public constructor(windowGetter: () => BrowserWindow | null, gate: RunGate) {
     this.windowGetter = windowGetter;
+    this.gate = gate;
   }
 
   /**
@@ -285,6 +293,16 @@ export class TerminalManager {
     const rows: number = this.isDimension(candidate.rows) ? candidate.rows : DEFAULT_ROWS;
     const cwd: string =
       typeof candidate.cwd === 'string' && candidate.cwd.length > 0 ? candidate.cwd : os.homedir();
+    // ⛔ A shell, a run or a task started in a workspace the user has not trusted would run its code,
+    // or let the user's own shell hooks act on it (direnv, version managers): none starts there (#1504).
+    const refusal: string | null = this.gate.refusal(cwd);
+    if (refusal !== null) {
+      logger.info(
+        'TerminalManager.create',
+        `Held a ${kind} terminal in an untrusted folder ${cwd}`,
+      );
+      return { success: false, error: refusal };
+    }
     const shellArgs: readonly string[] | null = interactiveShellArgs(
       process.platform,
       typeof candidate.shellArguments === 'string' ? candidate.shellArguments : undefined,

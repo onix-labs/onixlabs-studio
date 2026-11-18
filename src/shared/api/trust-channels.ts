@@ -23,6 +23,12 @@ export enum TrustChannel {
    * renderer, send).
    */
   Changed = 'trust:changed',
+
+  /**
+   * Tells every window that the user asked for a folder to be scanned for threats before deciding,
+   * leaving it undecided (main → renderer, send). The workspace showing it starts a read-only agent.
+   */
+  ScanRequested = 'trust:scan-requested',
 }
 
 /**
@@ -69,12 +75,18 @@ export interface TrustQuestion {
    * Gets the folder's absolute path.
    */
   readonly folder: string;
+
+  /**
+   * Gets whether the prompt offers Scan with AI: only for a workspace Studio has open, which is where
+   * the scanning agent runs.
+   */
+  readonly scannable: boolean;
 }
 
 /**
- * Lists the answers a trust prompt can give.
+ * Lists the answers a trust prompt can give: trust it, don't, or scan it first and decide later.
  */
-export type TrustAnswer = 'trusted' | 'restricted';
+export type TrustAnswer = 'trusted' | 'restricted' | 'scan';
 
 /**
  * Determines whether a value is a {@link TrustAnswer}.
@@ -82,5 +94,15 @@ export type TrustAnswer = 'trusted' | 'restricted';
  * @returns Returns true when it is one.
  */
 export function isTrustAnswer(value: unknown): value is TrustAnswer {
-  return value === 'trusted' || value === 'restricted';
+  return value === 'trusted' || value === 'restricted' || value === 'scan';
+}
+
+/**
+ * Describes a folder the user asked to have scanned, as {@link TrustChannel.ScanRequested} reports it.
+ */
+export interface TrustScanRequest {
+  /**
+   * Gets the folder to scan.
+   */
+  readonly folder: string;
 }

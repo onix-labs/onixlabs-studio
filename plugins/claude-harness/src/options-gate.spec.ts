@@ -600,6 +600,13 @@ describe('the permission gate', () => {
       expect(recorded.audits[0][0]).toBe('Bash');
     });
 
+    it('loadsOnlyTheUsersOwnSettings_inAWorkspaceNotTrusted (#1504)', () => {
+      expect(options({ projectSettings: false }).settingSources).toEqual(['user']);
+      // A trusted one, or an older Studio, leaves the SDK's default sources alone.
+      expect('settingSources' in options()).toBe(false);
+      expect('settingSources' in options({ projectSettings: true })).toBe(false);
+    });
+
     it('auditsAShellCommand_asRunOutsideTheSandbox_whenItCarriedTheFlag', async () => {
       recorded.turn = turn({ permissionPosture: 'auto-all' });
       const built: Options = buildOptions(

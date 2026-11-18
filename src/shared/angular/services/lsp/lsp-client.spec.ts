@@ -1,3 +1,5 @@
+import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
+import type { RepositoryTrustDecision } from '@shared/api/source-control-channels';
 import { signal, WritableSignal } from '@angular/core';
 import {
   SETTINGS_DEFAULTS,
@@ -91,6 +93,11 @@ class FakeLsp implements Bridge {
   public readonly running: Set<string> = new Set<string>();
   public startResult: LspStartResult = { success: true };
   /**
+   * When set, what every Start after the next is answered with: a server held for an untrusted
+   * folder, then started once the folder is trusted.
+   */
+  public heldStartAnswer: LspStartResult | null = null;
+  /**
    * When set, a Start is left unanswered until the test answers it — a server still in its
    * handshake, which is when a start-up crash happens.
    */
@@ -140,7 +147,14 @@ class FakeLsp implements Bridge {
         if (this.startResult.success) {
           this.running.add((args[0] as LspStartRequest).sessionId);
         }
-        return Promise.resolve(this.startResult as T);
+        {
+          const answer: LspStartResult = this.startResult;
+          if (this.heldStartAnswer !== null) {
+            this.startResult = this.heldStartAnswer;
+            this.heldStartAnswer = null;
+          }
+          return Promise.resolve(answer as T);
+        }
       case LspChannel.Restart as string: {
         const sessionId: string = args[0] as string;
         this.restarts.push(sessionId);
@@ -424,6 +438,8 @@ describe('LspClient', () => {
   let monaco: FakeMonaco;
   let root: WritableSignal<DirectoryListing | null>;
   let disabledServers: Set<string>;
+  let askedFolders: string[];
+  let loneFolderAnswer: RepositoryTrustDecision;
   let offeredLanguages: string[];
   let installedServers: WritableSignal<readonly LspServerSummary[]>;
   let catalogueLoaded: WritableSignal<boolean>;
@@ -450,6 +466,15 @@ describe('LspClient', () => {
         },
         // The servers' own lens switches are kept in step elsewhere (#1215).
         { provide: CodeLensServerSync, useValue: {} },
+        {
+          provide: RepositoryTrust,
+          useValue: {
+            ensureAsked: (folder: string): Promise<RepositoryTrustDecision> => {
+              askedFolders.push(folder);
+              return Promise.resolve(loneFolderAnswer);
+            },
+          },
+        },
         {
           provide: LspSettings,
           useValue: {
@@ -481,6 +506,8 @@ describe('LspClient', () => {
     diagnostics = new FakeDiagnostics();
     monaco = new FakeMonaco();
     disabledServers = new Set<string>();
+    askedFolders = [];
+    loneFolderAnswer = 'unknown';
     offeredLanguages = [];
     installedServers = signal<readonly LspServerSummary[]>(CATALOGUE);
     catalogueLoaded = signal<boolean>(true);
@@ -2206,6 +2233,50 @@ describe('LspClient', () => {
       },
     ]);
     expect(lsp.notificationsTo('didOpen')).toHaveLength(1);
+  });
+
+  it('aLoneFilesHeldServer_asksAboutItsFolderOnce_andStartsOnceTrusted (#1504)', async () => {
+    root.set(null);
+    lsp.startResult = {
+      success: false,
+      error: 'This folder is not trusted, so no language server runs in it.',
+      untrusted: true,
+    };
+    loneFolderAnswer = 'trusted';
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/tmp/scratch/a.ts',
+      languageId: 'typescript',
+      content: 'const a = 1;',
+    });
+    // The fake answers the next start as trusted; the first was held before the question was asked.
+    lsp.heldStartAnswer = { success: true, capabilities: {} };
+    await flush();
+    await flush();
+
+    expect(askedFolders).toEqual(['/tmp/scratch']);
+    // Held, then started once the folder was trusted.
+    expect(lsp.starts).toHaveLength(2);
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(1);
+  });
+
+  it('aLoneFilesFolderTheUserDeclined_isNotAskedAboutAgain', async () => {
+    root.set(null);
+    lsp.startResult = { success: false, error: 'Not trusted.', untrusted: true };
+    loneFolderAnswer = 'restricted';
+    const client: LspClient = build();
+    for (const name of ['a', 'b']) {
+      client.syncDocument({
+        documentId: `doc-${name}`,
+        path: `/tmp/scratch/${name}.ts`,
+        languageId: 'typescript',
+        content: '',
+      });
+      await flush();
+    }
+
+    expect(askedFolders).toEqual(['/tmp/scratch']);
   });
 
   it('syncDocument_outsideTheWorkspaceRoot_isIgnored', async () => {

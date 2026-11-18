@@ -135,6 +135,12 @@ export interface AgentRunContext {
   readonly workspaceRoot: string | null;
 
   /**
+   * Gets whether the user trusts the workspace (#1504). An agent in an untrusted one loads none of the
+   * workspace's own configuration, whose hooks would be commands run on its behalf.
+   */
+  readonly workspaceTrusted: boolean;
+
+  /**
    * Gets the identifier of the model to run the turn with (already resolved to one the provider
    * offers).
    */

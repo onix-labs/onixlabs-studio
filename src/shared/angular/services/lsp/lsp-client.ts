@@ -1,6 +1,7 @@
 import { DestroyRef, effect, inject, Injector, OnDestroy, Service, untracked } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Bridge } from '@shared/api/bridge';
+import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
 import { Log } from '@shared/angular/services/log/log';
 import {
   LspApplyEditReply,
@@ -993,6 +994,17 @@ export class LspClient implements OnDestroy {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the trust question's client, asked about the folder of a file opened on its own (#1504).
+   */
+  private readonly repositoryTrust: RepositoryTrust = inject(RepositoryTrust);
+
+  /**
+   * Holds the folders of files opened on their own that have been asked about this session, so a
+   * folder the user declined is not asked about again with every file opened from it.
+   */
+  private readonly askedLoneFolders: Set<string> = new Set<string>();
 
   /**
    * Holds the disposer that withdraws this client's document resolver, or null when not registered.
@@ -2290,6 +2302,21 @@ export class LspClient implements OnDestroy {
   }
 
   /**
+   * Asks, once a session, whether the user trusts the folder of a file opened on its own, and opens
+   * its documents against their servers if they do (#1504).
+   * @param folder The file's folder.
+   */
+  private async askAboutLoneFolder(folder: string): Promise<void> {
+    if (this.askedLoneFolders.has(folder)) {
+      return;
+    }
+    this.askedLoneFolders.add(folder);
+    if ((await this.repositoryTrust.ensureAsked(folder)) === 'trusted') {
+      this.retryTrusted(folder);
+    }
+  }
+
+  /**
    * Opens, against their servers, the documents that waited on a folder the user has just trusted
    * (#1504): their servers were held while it was not, so they were never opened. Documents already
    * open are left alone, so a second call sends nothing twice.
@@ -2698,6 +2725,11 @@ export class LspClient implements OnDestroy {
           this.status.setState(sessionId, 'unavailable', result.error);
           this.log.info('LspClient', `Server '${serverId}' held: the folder is not trusted`);
           this.sessions.delete(sessionId);
+          // A workspace asks about its folder as it opens; a file opened on its own has nothing that
+          // does, so its server asks about the file's folder here.
+          if (standaloneFile !== undefined) {
+            void this.askAboutLoneFolder(rootPath);
+          }
           return false;
         }
         if (!result.success) {

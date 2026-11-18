@@ -254,8 +254,19 @@ import { AiEvent } from './ai/ai-event-types';
  * `excluded` source an `audit` record may give, for a shell command that ran outside the sandbox because
  * it was excluded. Optional, so every published harness is unaffected: one written before it sandboxes
  * every command, as before.
+ *
+ * `1.20.0` adds a turn's optional `projectSettings` (#1504). `false` tells the harness not to load the
+ * workspace's own configuration: its instructions files, its hooks, its tool servers. A folder the user
+ * has not trusted runs nothing, and a hook is a command. Optional, so a harness written before it reads
+ * the request it always did; Studio therefore runs an agent in an untrusted folder only on a harness
+ * that declares 1.20.0 or later, and refuses otherwise.
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.19.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.20.0';
+
+/**
+ * The first protocol version whose harnesses honour a turn's `projectSettings` (#1504).
+ */
+export const PROJECT_SETTINGS_PROTOCOL_VERSION: string = '1.20.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
@@ -489,6 +500,14 @@ export interface TurnRequest {
    * harness with no way to run one command outside its sandbox ignores them. Absent or empty means none.
    */
   readonly excludedCommands?: readonly string[];
+
+  /**
+   * Gets whether the harness may load the workspace's own configuration (1.20.0, #1504): instructions
+   * files, hooks, tool servers, permission rules. `false` for a folder the user has not trusted, whose
+   * hooks would be commands run on its behalf; the user's own configuration still applies. Absent means
+   * it may, as before.
+   */
+  readonly projectSettings?: boolean;
 
   /**
    * Gets whether the harness's own built-in tools are offered (1.16.0, #965). `'none'` withholds them

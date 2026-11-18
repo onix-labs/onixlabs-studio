@@ -87,6 +87,7 @@ function contextFor(overrides: Partial<Record<string, unknown>> = {}): AgentRunC
     systemPromptExtra: '',
     skills: [],
     workspaceRoot: '/ws',
+    workspaceTrusted: true,
     allowedWritePaths: [],
     deniedWritePaths: [],
     permissionPosture: 'prompt',
@@ -108,6 +109,17 @@ function names(offer: { tools: readonly HarnessTool[] }): readonly string[] {
 }
 
 describe('describeOffer', () => {
+  it('offersNothing_toAnAgentInAWorkspaceNotTrusted (#1504)', async () => {
+    const untrusted: AgentRunContext = contextFor({ surface: 'editor', workspaceTrusted: false });
+    const { invokeTool } = await import('./harness-tools');
+
+    expect(names(await describeOffer(untrusted))).toEqual([]);
+    expect(await invokeTool(untrusted, SAVE_RUN_CONFIGURATIONS, { configurations: [] })).toEqual({
+      result: null,
+      error: `Studio has no tool called '${SAVE_RUN_CONFIGURATIONS}'.`,
+    });
+  });
+
   it('offersTheRunConfigurationToolsOnTheWorkspaceScopedSurfaces', async () => {
     // ⚠️ The parity gap the Claude port made load-bearing. These tools existed only in the in-core
     // Claude provider's own declarations, so an agent on any other connection simply could not author

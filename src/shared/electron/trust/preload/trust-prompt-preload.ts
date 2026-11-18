@@ -21,8 +21,10 @@ window.addEventListener('DOMContentLoaded', (): void => {
   };
   const trust: HTMLElement | null = document.getElementById('trust');
   const restrict: HTMLElement | null = document.getElementById('restrict');
+  const scan: HTMLElement | null = document.getElementById('scan');
   trust?.addEventListener('click', (): void => answer('trusted'));
   restrict?.addEventListener('click', (): void => answer('restricted'));
+  scan?.addEventListener('click', (): void => answer('scan'));
   // Escape is the same as Don't Trust, as closing the window is.
   window.addEventListener('keydown', (event: KeyboardEvent): void => {
     if (event.key === 'Escape') {
@@ -42,6 +44,10 @@ window.addEventListener('DOMContentLoaded', (): void => {
       }
       if (folder !== null) {
         folder.textContent = question.folder;
+      }
+      if (question.scannable) {
+        scan?.removeAttribute('hidden');
+        document.getElementById('scan-note')?.removeAttribute('hidden');
       }
       // The safe choice has the keyboard, so a stray Enter never trusts a folder.
       restrict?.focus();

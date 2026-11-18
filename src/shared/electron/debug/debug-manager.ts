@@ -21,6 +21,7 @@ import {
 } from './debug-adapter-registry';
 import { JsDebugSession } from './js-debug-session';
 
+import type { RunGate } from '../repository-trust';
 /**
  * Specifies how long, in milliseconds, to wait for an adapter to answer `disconnect` when a session is
  * stopped. The adapter is killed regardless, so this only bounds how long a wedged one can hold up the
@@ -63,6 +64,11 @@ export class DebugManager {
   private readonly workspaceContext: WorkspaceContext;
 
   /**
+   * Holds the gate a session's root is checked against (#1504).
+   */
+  private readonly gate: RunGate;
+
+  /**
    * Holds the registry that resolves an adapter identifier into a spawn specification.
    */
   private readonly registry: DebugAdapterRegistry;
@@ -84,15 +90,18 @@ export class DebugManager {
    * @param windowGetter A function that returns the window adapter events are sent to.
    * @param workspaceContext The open-workspace tracker used to confine sessions to opened roots.
    * @param registry The registry that resolves adapter identifiers into spawn specifications.
+   * @param gate Refuses a session in a workspace the user has not trusted.
    */
   public constructor(
     windowGetter: () => BrowserWindow | null,
     workspaceContext: WorkspaceContext,
     registry: DebugAdapterRegistry,
+    gate: RunGate,
   ) {
     this.windowGetter = windowGetter;
     this.workspaceContext = workspaceContext;
     this.registry = registry;
+    this.gate = gate;
   }
 
   /**
@@ -165,6 +174,12 @@ export class DebugManager {
     if (!this.workspaceContext.isRoot(parsed.rootPath)) {
       logger.warn('DebugManager', `Debug start denied for non-open root ${parsed.rootPath}`);
       return { success: false, error: 'Workspace root is not open' };
+    }
+    // A debug adapter runs the program, and may come from the workspace itself (#1504).
+    const refusal: string | null = this.gate.refusal(parsed.rootPath);
+    if (refusal !== null) {
+      logger.info('DebugManager', `Debug start held for untrusted root ${parsed.rootPath}`);
+      return { success: false, error: refusal };
     }
     const disposals: number = this.disposals;
     const resolution: DebugAdapterResolution = await this.registry.resolve(
