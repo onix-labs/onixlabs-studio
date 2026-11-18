@@ -13,6 +13,11 @@ import type { RepositoryTrustChoice } from '../repository-trust';
 import type { TrustAsker } from './trust-asker';
 
 /**
+ * Lists the answers to the question asked before a clone.
+ */
+export type CloneTrustAnswer = Exclude<TrustAnswer, 'scan'>;
+
+/**
  * The part of the trust store the manager reads and writes.
  */
 export interface TrustStore {
@@ -227,6 +232,47 @@ export class TrustManager implements TrustGrants {
   }
 
   /**
+   * Asks the user, before a clone downloads anything, whether they trust the repository it brings in
+   * (#1504). The main process asks this itself, for a clone the user started in Studio; nothing is
+   * recorded until the clone has been made, by {@link recordClone}.
+   * @param source The address the clone comes from, with any credentials removed.
+   * @param destination The folder the clone would create.
+   * @returns Returns the user's answer: trust it, don't, decide once it is open, or don't clone it.
+   */
+  public askBeforeClone(source: string, destination: string): Promise<CloneTrustAnswer> {
+    const folder: string = path.resolve(destination);
+    const asked: Promise<CloneTrustAnswer> = this.queue.then(
+      async (): Promise<CloneTrustAnswer> => {
+        let answer: TrustAnswer;
+        try {
+          answer = await this.asker.ask({
+            name: path.basename(folder) || folder,
+            folder,
+            scannable: false,
+            source,
+          });
+        } catch (error: unknown) {
+          logger.error('TrustManager', 'The trust question could not be asked', error);
+          return 'cancel';
+        }
+        // Scan with AI is not offered before there is anything to read.
+        return answer === 'scan' ? 'cancel' : answer;
+      },
+    );
+    this.queue = asked.catch((): void => undefined);
+    return asked;
+  }
+
+  /**
+   * Records what the user said, before cloning, about the folder the clone made.
+   * @param folder The folder the clone made.
+   * @param choice The decision.
+   */
+  public recordClone(folder: string, choice: RepositoryTrustChoice): void {
+    this.record(path.resolve(folder), choice);
+  }
+
+  /**
    * Puts the question, records the answer and tells every window.
    * @param folder The resolved folder.
    * @returns Returns the decision in force afterwards.
@@ -245,6 +291,10 @@ export class TrustManager implements TrustGrants {
       });
     } catch (error: unknown) {
       logger.error('TrustManager', 'The trust question could not be asked', error);
+      return this.store.decisionFor(folder);
+    }
+    if (answer === 'later' || answer === 'cancel') {
+      // Not answers a folder question offers; taken as deciding nothing.
       return this.store.decisionFor(folder);
     }
     if (answer === 'scan') {

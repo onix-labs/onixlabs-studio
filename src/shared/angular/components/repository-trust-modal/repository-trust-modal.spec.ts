@@ -11,6 +11,8 @@ describe('RepositoryTrustModal', () => {
   let accepted: number;
   let declined: number;
   let scanned: number;
+  let deferred: number;
+  let cancelled: number;
 
   /**
    * A representative question.
@@ -31,6 +33,10 @@ describe('RepositoryTrustModal', () => {
     fixture.componentInstance.scanned.subscribe((): number => (scanned += 1));
     fixture.componentInstance.accepted.subscribe((): number => (accepted += 1));
     fixture.componentInstance.declined.subscribe((): number => (declined += 1));
+    deferred = 0;
+    cancelled = 0;
+    fixture.componentInstance.deferred.subscribe((): number => (deferred += 1));
+    fixture.componentInstance.cancelled.subscribe((): number => (cancelled += 1));
   });
 
   /**
@@ -131,5 +137,59 @@ describe('RepositoryTrustModal', () => {
 
     expect(declined).toBe(1);
     expect(accepted).toBe(0);
+  });
+
+  describe('before a clone (#1504)', () => {
+    /**
+     * A question asked before a clone.
+     */
+    const clone: TrustQuestion = {
+      folder: '/clones/aero',
+      name: 'aero',
+      scannable: false,
+      source: 'https://github.com/a/aero.git',
+    };
+
+    it('asksAboutTheRepository_namingWhereItComesFrom', async (): Promise<void> => {
+      const host: HTMLElement | null = await present(clone);
+
+      expect(host?.querySelector('.trust__title')?.textContent).toContain(
+        'Do you trust this repository?',
+      );
+      expect(host?.querySelector('[data-testid="trust-source"]')?.textContent).toBe(
+        'https://github.com/a/aero.git',
+      );
+      expect(host?.querySelector('.trust')?.textContent).toContain(
+        'Nothing has been downloaded yet',
+      );
+    });
+
+    it('offersDecideLater_inPlaceOfScanWithAi', async (): Promise<void> => {
+      const host: HTMLElement | null = await present(clone);
+
+      expect(host?.querySelector('[data-testid="trust-scan"]')).toBeNull();
+      const later: HTMLElement | null = host?.querySelector('[data-testid="trust-later"]') ?? null;
+      expect(later?.textContent?.trim()).toBe('Decide Later');
+      later?.querySelector('button')?.click();
+
+      expect(deferred).toBe(1);
+      expect(accepted + declined + cancelled).toBe(0);
+    });
+
+    it('dismissing_clonesNothing', async (): Promise<void> => {
+      await present(clone);
+
+      windows.notifyClosed();
+
+      expect(cancelled).toBe(1);
+      expect(declined).toBe(0);
+    });
+  });
+
+  it('aFolderQuestion_namesNoSource_andOffersNoDecideLater', async (): Promise<void> => {
+    const host: HTMLElement | null = await present(question);
+
+    expect(host?.querySelector('[data-testid="trust-source"]')).toBeNull();
+    expect(host?.querySelector('[data-testid="trust-later"]')).toBeNull();
   });
 });

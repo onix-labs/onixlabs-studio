@@ -17,6 +17,9 @@ import type { TrustQuestion } from '@shared/api/trust-channels';
  * nothing from it. It offers Trust, Don't Trust and, for an open workspace, Scan with AI, which has
  * a read-only agent look for code that would run before the user decides. Dismissing the window is
  * Don't Trust.
+ *
+ * Asked before a clone, it names the address the repository comes from and offers Decide Later in place
+ * of Scan with AI, since there is nothing to read yet; dismissing it then clones nothing.
  */
 @Component({
   selector: 'app-repository-trust-modal',
@@ -28,24 +31,46 @@ import type { TrustQuestion } from '@shared/api/trust-channels';
         [open]="true"
         [width]="34"
         [frameless]="true"
-        ariaLabel="Do you trust this folder?"
-        (dismiss)="declined.emit()"
+        [ariaLabel]="
+          pending.source === undefined
+            ? 'Do you trust this folder?'
+            : 'Do you trust this repository?'
+        "
+        (dismiss)="pending.source === undefined ? declined.emit() : cancelled.emit()"
       >
         <ng-template appModalContent>
           <div class="trust">
-            <h2 class="trust__title">Do you trust this folder?</h2>
+            @if (pending.source === undefined) {
+              <h2 class="trust__title">Do you trust this folder?</h2>
 
-            <p class="trust__body">
-              A folder can hold code that runs on this computer as soon as an editor works with it:
-              build scripts, project files, the tools its language uses. Trust it only if you know
-              where it came from.
-            </p>
-            <p class="trust__body">
-              Until you trust it, Studio shows its files and runs nothing from it. You can trust it
-              later from the status bar.
-            </p>
+              <p class="trust__body">
+                A folder can hold code that runs on this computer as soon as an editor works with
+                it: build scripts, project files, the tools its language uses. Trust it only if you
+                know where it came from.
+              </p>
+              <p class="trust__body">
+                Until you trust it, Studio shows its files and runs nothing from it. You can trust
+                it later from the status bar.
+              </p>
+            } @else {
+              <h2 class="trust__title">Do you trust this repository?</h2>
+
+              <p class="trust__body">
+                Nothing has been downloaded yet. A repository can hold code that runs on this
+                computer as soon as an editor works with it: build scripts, project files, the tools
+                its language uses. Trust it only if you know who it came from.
+              </p>
+              <p class="trust__body">
+                Whatever you choose, cloning only copies its files. Until you trust it, Studio runs
+                nothing from it.
+              </p>
+            }
 
             <dl class="trust__facts">
+              @if (pending.source !== undefined) {
+                <dt>From</dt>
+                <dd class="trust__path" data-testid="trust-source">{{ pending.source }}</dd>
+              }
               <dt>Folder</dt>
               <dd>{{ pending.name }}</dd>
               <dt>Location</dt>
@@ -69,6 +94,14 @@ import type { TrustQuestion } from '@shared/api/trust-channels';
                   data-testid="trust-scan"
                   (click)="scanned.emit()"
                 />
+              } @else if (pending.source !== undefined) {
+                <app-button
+                  class="trust__scan"
+                  variant="ghost"
+                  label="Decide Later"
+                  data-testid="trust-later"
+                  (click)="deferred.emit()"
+                />
               }
               <app-button-row>
                 <app-button variant="solid" label="Trust" (click)="accepted.emit()" />
@@ -87,10 +120,18 @@ import type { TrustQuestion } from '@shared/api/trust-channels';
   `,
   styles: [
     `
+      /* The dialog has no title bar, so it moves by any part of it that is not a control or a value
+         the user may want to copy. */
       .trust {
         display: flex;
         flex-direction: column;
         gap: 0.9rem;
+        -webkit-app-region: drag;
+      }
+
+      .trust__actions,
+      .trust__facts dd {
+        -webkit-app-region: no-drag;
       }
 
       .trust__title {
@@ -163,4 +204,14 @@ export class RepositoryTrustModal {
    * Emitted when the user asks for the folder to be scanned before deciding.
    */
   public readonly scanned: OutputEmitterRef<void> = output<void>();
+
+  /**
+   * Emitted when, asked before a clone, the user would rather decide once it is open.
+   */
+  public readonly deferred: OutputEmitterRef<void> = output<void>();
+
+  /**
+   * Emitted when, asked before a clone, the user dismisses the window: nothing is cloned.
+   */
+  public readonly cancelled: OutputEmitterRef<void> = output<void>();
 }

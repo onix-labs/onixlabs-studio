@@ -644,6 +644,41 @@ describe('WindowManager', () => {
       expect(second.parent).toBeNull();
     });
 
+    it('aModalRaisedFromAHiddenWindow_belongsToTheModalInFront_centredOverIt', () => {
+      // The trust question is raised from the main window while the welcome screen stands in for it
+      // (#1504): it is shown over the welcome screen and moves with it, not over a window not shown.
+      const hidden: FakeWindow = new FakeWindow();
+      const welcome: FakeWindow = new FakeWindow();
+      welcome.visible = true;
+      welcome.getBounds = (): object => ({ x: 400, y: 200, width: 1000, height: 700 });
+      manager.adoptModalWindow(real(welcome), 'welcome');
+      const question: FakeWindow = new FakeWindow();
+
+      const options: Electron.BrowserWindowConstructorOptions = manager.modalWindowOptions(
+        'width=500,height=400,left=0,top=0',
+        real(hidden),
+      );
+      manager.adoptModalWindow(real(question), 'question');
+
+      expect(options).toMatchObject({ x: 650, y: 300 });
+      expect(question.parent).toBe(welcome);
+    });
+
+    it('aModalRaisedFromAVisibleWindow_keepsThePlaceItAskedFor', () => {
+      const opener: FakeWindow = new FakeWindow();
+      opener.visible = true;
+      const welcome: FakeWindow = new FakeWindow();
+      welcome.visible = true;
+      manager.adoptModalWindow(real(welcome), 'welcome');
+
+      const options: Electron.BrowserWindowConstructorOptions = manager.modalWindowOptions(
+        'width=500,height=400,left=10,top=20',
+        real(opener),
+      );
+
+      expect(options).toMatchObject({ x: 10, y: 20 });
+    });
+
     it('adopt_hardensTheWindow', () => {
       const modal: FakeWindow = new FakeWindow();
 

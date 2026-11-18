@@ -17,6 +17,8 @@ import { RepositoryTrustModal } from './repository-trust-modal';
       (accepted)="trust.answer('trusted')"
       (declined)="trust.answer('restricted')"
       (scanned)="trust.answer('scan')"
+      (deferred)="trust.answer('later')"
+      (cancelled)="trust.answer('cancel')"
     />
   `,
 })

@@ -84,6 +84,14 @@ describe('Clone (#1493)', () => {
     });
   });
 
+  it('aCloneTheUserCancelled_raisesNothing (#1504)', async () => {
+    outcome = { ok: false, error: 'The clone was cancelled.', cancelled: true };
+    const clone: Clone = TestBed.inject(Clone);
+
+    expect(await clone.clone(REQUEST)).toEqual(outcome);
+    expect(raised).toEqual([]);
+  });
+
   it('outsideTheDesktopApp_clonesNothing_andRaisesNothing', async () => {
     delete (window as unknown as { bridge?: Bridge }).bridge;
     const clone: Clone = TestBed.inject(Clone);

@@ -541,9 +541,12 @@ export class WindowManager {
   ): Electron.BrowserWindowConstructorOptions {
     logger.trace('WindowManager.modalWindowOptions', 'building modal options', features);
     const resizable: boolean = parseFeatureFlag(features, 'resizable', false);
-    this.pendingModalParent = parseFeatureFlag(features, MODAL_UNPARENTED_FEATURE, false)
-      ? null
-      : opener;
+    const unparented: boolean = parseFeatureFlag(features, MODAL_UNPARENTED_FEATURE, false);
+    // Raised from a window that is hidden — the main window, while the welcome screen stands in for it
+    // — the modal belongs to the modal window the user is looking at instead: centred over it and
+    // moving with it, rather than placed over a window they cannot see.
+    const standIn: BrowserWindow | null = unparented ? null : this.visibleStandIn(opener);
+    this.pendingModalParent = unparented ? null : (standIn ?? opener);
     // A modal may state its own resize bounds; otherwise it may shrink to the size of a short
     // confirmation and has no ceiling but the display.
     const minimum: { width: number; height: number } = parseNamedSize(features, 'min') ?? {
@@ -559,7 +562,8 @@ export class WindowManager {
       width: Math.max(minimum.width, Math.min(requested.width, maximum?.width ?? Infinity)),
       height: Math.max(minimum.height, Math.min(requested.height, maximum?.height ?? Infinity)),
     };
-    const position: { x: number; y: number } | null = parseRequestedPosition(features);
+    const position: { x: number; y: number } | null =
+      standIn === null ? parseRequestedPosition(features) : centredOver(standIn.getBounds(), size);
     const rect: WindowRect | null = restoreWindowRect(
       {
         bounds: {
@@ -609,6 +613,24 @@ export class WindowManager {
         ? { frame: false }
         : this.chrome()),
     };
+  }
+
+  /**
+   * Finds the window a modal raised from a hidden window is shown over: the newest modal window still
+   * on screen, which is the one in front of the user.
+   * @param opener The window the modal was raised from.
+   * @returns Returns that window, or null when the opener is on screen itself (or there is none).
+   */
+  private visibleStandIn(opener: BrowserWindow | null): BrowserWindow | null {
+    if (opener === null || opener.isDestroyed() || opener.isVisible()) {
+      return null;
+    }
+    const modals: BrowserWindow[] = this.registry
+      .all()
+      .filter((entry: RegisteredWindow<BrowserWindow>): boolean => entry.kind === 'modal')
+      .map((entry: RegisteredWindow<BrowserWindow>): BrowserWindow => entry.window)
+      .filter((window: BrowserWindow): boolean => !window.isDestroyed() && window.isVisible());
+    return modals.at(-1) ?? null;
   }
 
   /**
@@ -884,4 +906,21 @@ export class WindowManager {
       fullScreen: window.isFullScreen(),
     });
   }
+}
+
+/**
+ * Computes where a window of a given size sits centred over another: horizontally centred, and a
+ * little above centre vertically, as the renderer centres a modal over the window that raised it.
+ * @param bounds The window to centre over.
+ * @param size The size of the window being placed.
+ * @returns Returns the position of its top-left corner.
+ */
+function centredOver(
+  bounds: Electron.Rectangle,
+  size: { width: number; height: number },
+): { x: number; y: number } {
+  return {
+    x: Math.round(bounds.x + (bounds.width - size.width) / 2),
+    y: Math.round(bounds.y + Math.max(0, (bounds.height - size.height) / 3)),
+  };
 }

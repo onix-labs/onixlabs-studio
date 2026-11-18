@@ -75,7 +75,7 @@ export class WindowTrustAsker implements TrustAsker {
     const window: BrowserWindow | null = this.window();
     if (window === null || window.isDestroyed()) {
       logger.warn('WindowTrustAsker', `No window to ask about ${question.folder}; not trusted`);
-      return Promise.resolve('restricted');
+      return Promise.resolve(unanswered(question));
     }
     const id: number = this.nextId++;
     return new Promise<TrustAnswer>((resolve: (answer: TrustAnswer) => void): void => {
@@ -85,8 +85,8 @@ export class WindowTrustAsker implements TrustAsker {
           resolve(answer);
         }
       };
-      // A window closed with the question unanswered is not trusting the folder.
-      const closed: () => void = (): void => settle('restricted');
+      // A window closed with the question unanswered is not trusting the folder, nor cloning it.
+      const closed: () => void = (): void => settle(unanswered(question));
       this.pending.set(id, settle);
       window.once('closed', closed);
       const request: TrustQuestionRequest = { id, question };
@@ -111,4 +111,14 @@ export class WindowTrustAsker implements TrustAsker {
     settle(answer);
     return true;
   }
+}
+
+/**
+ * Gives the answer to a question that could not be put, or was left unanswered: a folder on disk is not
+ * trusted, and a clone is not made.
+ * @param question The question.
+ * @returns Returns the answer.
+ */
+function unanswered(question: TrustQuestion): TrustAnswer {
+  return question.source === undefined ? 'restricted' : 'cancel';
 }

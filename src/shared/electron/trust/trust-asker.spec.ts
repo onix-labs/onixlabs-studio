@@ -127,4 +127,22 @@ describe('WindowTrustAsker (#1504)', () => {
     expect(await asker.ask(QUESTION)).toBe('restricted');
     expect(window.sent).toEqual([]);
   });
+
+  it('aCloneQuestionClosedUnanswered_orWithNoWindow_clonesNothing', async () => {
+    const clone: TrustQuestion = { ...QUESTION, source: 'https://github.com/a/b.git' };
+    const asked: Promise<TrustAnswer> = asker.ask(clone);
+
+    window.closed?.();
+
+    expect(await asked).toBe('cancel');
+    window.destroyed = true;
+    expect(await asker.ask(clone)).toBe('cancel');
+  });
+
+  it('takesLaterAndCancel_asAnswers', async () => {
+    const asked: Promise<TrustAnswer> = asker.ask(QUESTION);
+
+    expect(answer(1, 'later')).toBe(true);
+    expect(await asked).toBe('later');
+  });
 });
