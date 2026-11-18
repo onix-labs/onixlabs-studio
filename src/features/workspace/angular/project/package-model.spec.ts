@@ -8,6 +8,10 @@ import {
 } from '@shared/api/package-channels';
 import type { PackageManagerModel } from '@shared/api/package-management';
 import type { PluginSummary } from '@shared/api/plugin-channels';
+import {
+  NotificationRequest,
+  Notifications,
+} from '@shared/angular/services/notifications/notifications';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 import {
   RepositoryTrust,
@@ -74,6 +78,8 @@ describe('PackageModel', () => {
   let launched: TerminalLaunchOptions[];
   let exitCode: number;
   let command: unknown;
+  let raised: NotificationRequest[];
+  let activateAndReveal: ReturnType<typeof vi.fn>;
 
   /**
    * Builds the model and lets its first refresh land.
@@ -95,6 +101,8 @@ describe('PackageModel', () => {
     pending = signal<RepositoryTrustQuestion | null>(null);
     launched = [];
     exitCode = 0;
+    raised = [];
+    activateAndReveal = vi.fn();
     command = {
       ok: true,
       result: {
@@ -142,9 +150,17 @@ describe('PackageModel', () => {
           useValue: {
             launch: (options: TerminalLaunchOptions): Promise<unknown> => {
               launched.push(options);
-              return Promise.resolve({ exited: Promise.resolve(exitCode) });
+              return Promise.resolve({
+                session: { id: 'task-1' },
+                exited: Promise.resolve(exitCode),
+              });
             },
+            activateAndReveal,
           },
+        },
+        {
+          provide: Notifications,
+          useValue: { notify: (request: NotificationRequest): void => void raised.push(request) },
         },
       ],
     });
@@ -294,6 +310,57 @@ describe('PackageModel', () => {
       await packages.write('npm', 'install', { project: '/work/package.json', name: 'left-pad' });
 
       expect(packages.writeError()).toBe('Install left-pad ended with exit code 1.');
+    });
+
+    it('write_thatFinishes_isReportedToTheHistoryByDefault (#1492)', async () => {
+      const packages: PackageModel = await create();
+
+      await packages.write('npm', 'install', {
+        project: '/work/package.json',
+        name: 'left-pad',
+        version: '1.3.0',
+      });
+
+      expect(raised).toEqual([
+        expect.objectContaining({
+          severity: 'success',
+          title: 'Installed left-pad 1.3.0',
+          type: 'packages.finished',
+        }),
+      ]);
+    });
+
+    it('write_thatFails_popsUpWithShowOutput', async () => {
+      exitCode = 1;
+      const packages: PackageModel = await create();
+
+      await packages.write('npm', 'remove', { project: '/work/package.json', name: 'left-pad' });
+
+      expect(raised[0]).toMatchObject({
+        severity: 'error',
+        title: "Couldn't remove left-pad",
+        detail: 'Exited with code 1.',
+        type: 'packages.failed',
+      });
+      raised[0].actions?.[0].run();
+      expect(activateAndReveal).toHaveBeenCalledWith('task-1');
+    });
+
+    it('restore_namesTheProjectAsItsManagerReportedIt', async () => {
+      const packages: PackageModel = await create();
+
+      await packages.write('npm', 'restore', { project: '/work/npm.manifest' });
+
+      expect(raised[0].title).toBe('Restored packages for npm-app');
+    });
+
+    it('write_whoseTerminalTheUserClosed_raisesNothing', async () => {
+      exitCode = -1;
+      const packages: PackageModel = await create();
+
+      await packages.write('npm', 'install', { project: '/work/package.json', name: 'left-pad' });
+
+      expect(raised).toEqual([]);
     });
   });
 });
