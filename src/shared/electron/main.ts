@@ -644,6 +644,7 @@ class Program {
     (): BrowserWindow | null => this.windows.main(),
     this.workspaceContext,
     this.trustedPaths,
+    this.repositoryTrust,
   );
 
   /**
@@ -739,6 +740,7 @@ class Program {
     (): BrowserWindow | null => this.windows.main(),
     this.workspaceContext,
     this.lspServerRegistry,
+    this.repositoryTrust,
   );
 
   /**

@@ -377,6 +377,12 @@ export interface LspStartResult {
   readonly exited?: true;
 
   /**
+   * Gets whether the server was not started because the user has not trusted the folder (#1504): not
+   * a failure to report, but a wait until they do.
+   */
+  readonly untrusted?: true;
+
+  /**
    * Gets the server's own last words when it ended during its handshake, when it left any.
    */
   readonly reason?: string;

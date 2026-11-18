@@ -2847,6 +2847,18 @@ describe('LspClient', () => {
       );
     });
 
+    it('aStartHeldForAnUntrustedFolder_saysSo_andIsNotLoggedAsAFailure (#1504)', async () => {
+      const status: LspStatus = await startHeld();
+      const error: MockInstance = vi.spyOn(TestBed.inject(Log), 'error');
+      const reason: string = 'This folder is not trusted, so no language server runs in it.';
+
+      lsp.answerStarts({ success: false, error: reason, untrusted: true });
+      await flush();
+
+      expect(row(status)).toMatchObject({ state: 'unavailable', detail: reason });
+      expect(error).not.toHaveBeenCalled();
+    });
+
     it('aStartThatFailsForAnotherReason_isStillShownAsItWas', async () => {
       const status: LspStatus = await startHeld();
 

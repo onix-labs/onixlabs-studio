@@ -1,3 +1,5 @@
+import type { FolderTrustSource } from '../repository-trust';
+import type { RepositoryTrustDecision } from '@shared/api/source-control-channels';
 import { EventEmitter } from 'node:events';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -5,6 +7,11 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BrowserWindow } from 'electron';
 import type { LspExit, LspMessage, LspStartResult } from '@shared/api/lsp-channels';
+
+/**
+ * A trust store that trusts every folder, for the tests that are about something other than trust.
+ */
+const TRUSTED: FolderTrustSource = { decisionFor: (): RepositoryTrustDecision => 'trusted' };
 
 /**
  * A handler the manager registered on the IPC bus.
@@ -244,6 +251,7 @@ describe.skipIf(process.platform === 'win32')('LspManager sessions', () => {
       (): BrowserWindow | null => null,
       workspace,
       registry as LspServerRegistry,
+      TRUSTED,
     );
     manager.register();
   });
@@ -384,6 +392,7 @@ describe.skipIf(process.platform === 'win32')('LspManager sessions', () => {
         (): BrowserWindow | null => null,
         workspace,
         refusing as LspServerRegistry,
+        TRUSTED,
       );
       const internal: { start(request: unknown, sender: unknown): Promise<LspStartResult> } =
         other as unknown as { start(request: unknown, sender: unknown): Promise<LspStartResult> };
@@ -395,6 +404,35 @@ describe.skipIf(process.platform === 'win32')('LspManager sessions', () => {
 
       expect(result).toEqual({ success: false, error: 'Java 21+ runtime not found' });
     });
+  });
+
+  describe('trust (#1504)', () => {
+    it.each(['unknown', 'restricted'] as const)(
+      'startsNothing_andResolvesNothing_inAFolderThatIs_%s',
+      async (decision: RepositoryTrustDecision) => {
+        const resolve: ReturnType<typeof vi.fn> = vi.fn();
+        const untrusting: Manager = new LspManager(
+          (): BrowserWindow | null => null,
+          workspace,
+          { resolve } as unknown as LspServerRegistry,
+          { decisionFor: (): RepositoryTrustDecision => decision },
+        );
+        const internal: { start(request: unknown, sender: unknown): Promise<LspStartResult> } =
+          untrusting as unknown as {
+            start(request: unknown, sender: unknown): Promise<LspStartResult>;
+          };
+
+        const result: LspStartResult = await internal.start(
+          { sessionId: 's', serverId: 'fake', rootPath: root },
+          new FakeRenderer(),
+        );
+
+        expect(result).toMatchObject({ success: false, untrusted: true });
+        // Not even resolved: resolving can download a server, and an untrusted folder gets nothing.
+        expect(resolve).not.toHaveBeenCalled();
+        expect(await started()).toHaveLength(0);
+      },
+    );
   });
 
   describe('confinement', () => {

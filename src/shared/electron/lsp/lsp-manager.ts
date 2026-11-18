@@ -59,8 +59,14 @@ import {
   writeGeneratedView,
 } from './lsp-generated-views';
 import { LspServerTail } from './lsp-server-tail';
+import { FolderTrustSource, mayRunIn } from '../repository-trust';
 import { ApplyEditResult, LspApplyEditForwarder } from './lsp-apply-edit';
 import { clientCapabilities } from './lsp-client-capabilities';
+
+/**
+ * The reason a server start is held for a folder the user has not trusted.
+ */
+const UNTRUSTED_ERROR: string = 'This folder is not trusted, so no language server runs in it.';
 
 /**
  * Specifies how long, in milliseconds, to wait for a server's `initialize` response before giving up
@@ -263,6 +269,11 @@ export class LspManager {
   private readonly registry: LspServerRegistry;
 
   /**
+   * Holds the trust store every server start is checked against (#1504).
+   */
+  private readonly trust: FolderTrustSource;
+
+  /**
    * Holds the running sessions, keyed by session identifier.
    */
   private readonly sessions: Map<string, LspSession> = new Map<string, LspSession>();
@@ -308,6 +319,7 @@ export class LspManager {
    * @param windowGetter A function that returns the window server notifications are sent to.
    * @param workspaceContext The open-workspace tracker used to confine sessions to opened roots.
    * @param registry The registry that resolves server identifiers into spawn specifications.
+   * @param trust The trust store a server start is checked against: none starts in an untrusted folder.
    * @param applyEdits The forwarder that hands a server's edits to the renderer.
    * @param attaches The forwarder that asks the renderer to attach the debugger (#1150).
    * @param questions The forwarder that puts a server's questions to the user (#1154).
@@ -317,6 +329,7 @@ export class LspManager {
     windowGetter: () => BrowserWindow | null,
     workspaceContext: WorkspaceContext,
     registry: LspServerRegistry,
+    trust: FolderTrustSource,
     applyEdits: LspApplyEditForwarder = new LspApplyEditForwarder(),
     attaches: LspAttachDebuggerForwarder = new LspAttachDebuggerForwarder(),
     questions: LspShowMessageForwarder = new LspShowMessageForwarder(),
@@ -325,6 +338,7 @@ export class LspManager {
     this.windowGetter = windowGetter;
     this.workspaceContext = workspaceContext;
     this.registry = registry;
+    this.trust = trust;
     this.applyEdits = applyEdits;
     this.attaches = attaches;
     this.questions = questions;
@@ -594,6 +608,13 @@ export class LspManager {
     if (!this.isAllowedRoot(parsed)) {
       logger.warn('LspManager', `LSP start denied for non-open root ${parsed.rootPath}`);
       return { success: false, error: 'Workspace root is not open' };
+    }
+    // ⛔ A language server reads the folder's own configuration and, for many, runs its code: build
+    // scripts, project imports, interpreters. None starts in a folder the user has not trusted, and the
+    // check comes before resolving, so an untrusted folder does not even download one (#1504).
+    if (!mayRunIn(this.trust, parsed.rootPath)) {
+      logger.info('LspManager', `LSP start held for untrusted root ${parsed.rootPath}`);
+      return { success: false, error: UNTRUSTED_ERROR, untrusted: true };
     }
     const disposals: number = this.disposals;
     const resolution: LspResolution = await this.registry.resolve(

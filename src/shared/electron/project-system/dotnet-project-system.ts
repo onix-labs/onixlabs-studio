@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import {
   ProjectCapabilities,
   ProjectEntry,
+  ProjectItemNode,
   ProjectItems,
   ProjectModel,
   ProjectNode,
@@ -15,8 +16,9 @@ import { CompiledArtifact } from '@shared/api/project-system';
 import { DebugResolveResult } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
 import { buildItemTree, EvaluatedItem } from './item-tree';
+import { listProjectFiles } from './project-listing';
 import { renameSolutionFolder, SolutionFolderRename } from './solution-folders';
-import { ProjectSystem } from './project-system';
+import { ProjectLoadOptions, ProjectSystem } from './project-system';
 import { logger } from '../logger';
 
 /**
@@ -108,6 +110,11 @@ const PROJECT_EXTENSIONS: readonly string[] = ['.csproj', '.fsproj', '.vbproj'];
  * reconstructs and can edit.
  */
 const SLNX_EXTENSION: string = '.slnx';
+
+/**
+ * Caps how many files an untrusted project's plain listing holds, as the other providers' listings are.
+ */
+const UNTRUSTED_LISTING_LIMIT: number = 5_000;
 
 /**
  * The directories skipped when scanning for loose projects: hidden, dependency, and build-output
@@ -298,7 +305,15 @@ export class DotnetProjectSystem implements ProjectSystem {
    * @param projectPath The absolute path of the project file.
    * @returns Returns the contents, or null when `dotnet` is unavailable or evaluation fails.
    */
-  public loadProjectItems(projectPath: string): Promise<ProjectItems | null> {
+  public loadProjectItems(
+    projectPath: string,
+    options?: ProjectLoadOptions,
+  ): Promise<ProjectItems | null> {
+    // ⛔ MSBuild evaluates the project's own files (its imports, Directory.Build.*, property functions),
+    // so it runs only once the folder is trusted (#1504). Until then the project's files are listed.
+    if (options?.mayRun !== true) {
+      return this.listFiles(projectPath);
+    }
     const existing: Promise<ProjectItems | null> | undefined = this.inFlightItems.get(projectPath);
     if (existing !== undefined) {
       logger.trace(
@@ -900,6 +915,20 @@ export class DotnetProjectSystem implements ProjectSystem {
       }
     }
     return results;
+  }
+
+  /**
+   * Lists a project's files without asking MSBuild, for a folder that is not trusted.
+   * @param projectPath The absolute path of the project file.
+   * @returns Returns the contents, or null when the directory cannot be read.
+   */
+  private async listFiles(projectPath: string): Promise<ProjectItems | null> {
+    const tree: readonly ProjectItemNode[] | null = await listProjectFiles(
+      path.dirname(projectPath),
+      { remaining: UNTRUSTED_LISTING_LIMIT },
+      { skipDirectory: (name: string): boolean => this.isSkipped(name) },
+    );
+    return tree === null ? null : { projectPath, tree };
   }
 
   /**

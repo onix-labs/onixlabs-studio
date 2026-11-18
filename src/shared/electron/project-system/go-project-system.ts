@@ -16,7 +16,7 @@ import type { RunConfiguration } from '@shared/api/studio';
 import { goDebugTarget } from './go-debug-target';
 import { buildGoPackageTree, GoPackage, goListArguments, parseGoPackages } from './go-list';
 import { listProjectFiles, sourceFilter } from './project-listing';
-import { ProjectSystem } from './project-system';
+import { ProjectLoadOptions, ProjectSystem } from './project-system';
 import { logger } from '../logger';
 
 /**
@@ -196,10 +196,15 @@ export class GoProjectSystem implements ProjectSystem {
    * @param projectPath The absolute path of the module manifest.
    * @returns Returns the contents, or null when the directory cannot be read.
    */
-  public async loadProjectItems(projectPath: string): Promise<ProjectItems | null> {
+  public async loadProjectItems(
+    projectPath: string,
+    options?: ProjectLoadOptions,
+  ): Promise<ProjectItems | null> {
     const directory: string = path.dirname(projectPath);
-    const tree: readonly ProjectItemNode[] | null =
-      (await this.packageTree(projectPath, directory)) ?? (await this.listing(directory));
+    // `go list` only once the folder is trusted (#1504); until then, its files.
+    const packages: readonly ProjectItemNode[] | null =
+      options?.mayRun === true ? await this.packageTree(projectPath, directory) : null;
+    const tree: readonly ProjectItemNode[] | null = packages ?? (await this.listing(directory));
     return tree === null ? null : { projectPath, tree };
   }
 

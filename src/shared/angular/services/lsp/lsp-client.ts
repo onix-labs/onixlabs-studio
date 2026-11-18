@@ -2678,6 +2678,14 @@ export class LspClient implements OnDestroy {
         ...(braceStyle === undefined ? {} : { braceStyle }),
       })
       .then((result: LspStartResult): boolean => {
+        if (result.untrusted === true) {
+          // Held, not failed (#1504): the folder is not trusted yet. It counts towards no cooldown or
+          // attempt cap, so trusting the folder later can start it straight away.
+          this.status.setState(sessionId, 'unavailable', result.error);
+          this.log.info('LspClient', `Server '${serverId}' held: the folder is not trusted`);
+          this.sessions.delete(sessionId);
+          return false;
+        }
         if (!result.success) {
           this.reportFailedStart(sessionId, result);
           this.log.error('LspClient', `Server '${serverId}' failed to start`, result.error);

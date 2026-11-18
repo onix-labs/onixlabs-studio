@@ -1,5 +1,7 @@
+import type { ProjectLoadOptions } from './project-system';
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -13,6 +15,11 @@ import * as path from 'node:path';
 import { ProjectItemNode, ProjectItems } from '@shared/api/project-system';
 import { buildGoPackageTree, GoPackage, goListArguments, parseGoPackages } from './go-list';
 import { GoProjectSystem, parseGoModulePath } from './go-project-system';
+
+/**
+ * Loads a project as a trusted folder does, letting the provider ask its tool.
+ */
+const TRUSTED_LOAD: ProjectLoadOptions = { mayRun: true };
 
 /**
  * Reads a contents tree as slash-joined paths, folders marked with a trailing slash.
@@ -176,15 +183,27 @@ describe.skipIf(process.platform === 'win32')('GoProjectSystem.loadProjectItems 
 
     const items: ProjectItems | null = await new GoProjectSystem().loadProjectItems(
       path.join(root, 'go.mod'),
+      TRUSTED_LOAD,
     );
 
     expect(paths(items!.tree)).toEqual(['go.mod', 'go.sum', 'main.go']);
   });
 
+  it('inAFolderNotTrusted_runsNoGo_andListsTheFiles (#1504)', async () => {
+    go(`echo '{"Dir": "${root}", "GoFiles": ["main.go"]}'`);
+
+    const items: ProjectItems | null = await new GoProjectSystem().loadProjectItems(
+      path.join(root, 'go.mod'),
+    );
+
+    expect(existsSync(path.join(bin, 'go.log'))).toBe(false);
+    expect(paths(items!.tree)).toContain('main.go');
+  });
+
   it('asksFromOutsideTheModule_withNoDownloads', async () => {
     go(`echo '{"Dir": "${root}", "GoFiles": ["main.go"]}'`);
 
-    await new GoProjectSystem().loadProjectItems(path.join(root, 'go.mod'));
+    await new GoProjectSystem().loadProjectItems(path.join(root, 'go.mod'), TRUSTED_LOAD);
 
     const [cwd, args, env]: string[] = readFileSync(path.join(bin, 'go.log'), 'utf8').split('\n');
     expect(cwd.startsWith(root)).toBe(false);
@@ -199,6 +218,7 @@ describe.skipIf(process.platform === 'win32')('GoProjectSystem.loadProjectItems 
 
     const items: ProjectItems | null = await new GoProjectSystem().loadProjectItems(
       path.join(link, 'go.mod'),
+      TRUSTED_LOAD,
     );
 
     expect(items!.tree.at(-1)).toMatchObject({ path: path.join(link, 'main.go') });
@@ -214,6 +234,7 @@ describe.skipIf(process.platform === 'win32')('GoProjectSystem.loadProjectItems 
 
     const items: ProjectItems | null = await new GoProjectSystem().loadProjectItems(
       path.join(root, 'go.mod'),
+      TRUSTED_LOAD,
     );
 
     // Sources and the module's files only (#899): the build output and its log are left to the File
@@ -227,6 +248,7 @@ describe.skipIf(process.platform === 'win32')('GoProjectSystem.loadProjectItems 
 
     const items: ProjectItems | null = await new GoProjectSystem().loadProjectItems(
       path.join(root, 'go.mod'),
+      TRUSTED_LOAD,
     );
 
     expect(paths(items!.tree)).toContain('tools/gen.go');
@@ -243,6 +265,7 @@ describe.skipIf(process.platform === 'win32')('GoProjectSystem.loadProjectItems 
 
     const items: ProjectItems | null = await new GoProjectSystem().loadProjectItems(
       path.join(root, 'go.mod'),
+      TRUSTED_LOAD,
     );
 
     expect(paths(items!.tree)).toEqual(['go.mod', 'go.sum', 'main.go']);
@@ -250,7 +273,10 @@ describe.skipIf(process.platform === 'win32')('GoProjectSystem.loadProjectItems 
 
   it('isNull_whenTheModuleCannotBeRead', async () => {
     expect(
-      await new GoProjectSystem().loadProjectItems(path.join(scratch, 'gone', 'go.mod')),
+      await new GoProjectSystem().loadProjectItems(
+        path.join(scratch, 'gone', 'go.mod'),
+        TRUSTED_LOAD,
+      ),
     ).toBeNull();
   });
 });

@@ -1,3 +1,4 @@
+import type { RepositoryTrustDecision } from '@shared/api/source-control-channels';
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -82,6 +83,7 @@ describe('WorkspaceManager', () => {
   let secret: string;
   let workspace: InstanceType<typeof WorkspaceContext>;
   let trusted: InstanceType<typeof TrustedPaths>;
+  let decision: RepositoryTrustDecision;
   let temporaryDirectory: string | undefined;
 
   /**
@@ -132,7 +134,10 @@ describe('WorkspaceManager', () => {
     workspace = new WorkspaceContext();
     workspace.addRoot(workspaceRoot);
     trusted = new TrustedPaths(path.join(sandbox, 'trusted.json'));
-    new WorkspaceManager((): BrowserWindow | null => null, workspace, trusted).register();
+    decision = 'trusted';
+    new WorkspaceManager((): BrowserWindow | null => null, workspace, trusted, {
+      decisionFor: (): RepositoryTrustDecision => decision,
+    }).register();
   });
 
   afterEach(() => {
@@ -1272,6 +1277,56 @@ describe('WorkspaceManager', () => {
 
       expect(declines).toHaveBeenCalledWith(file, undefined);
       expect(answers).toHaveBeenCalledWith(file, undefined);
+    });
+
+    describe('in a folder that is not trusted (#1504)', () => {
+      beforeEach(() => {
+        decision = 'unknown';
+      });
+
+      it('itemsLoad_tellsTheSystemNotToRunItsTool', async () => {
+        const loads: Mock = vi.fn().mockResolvedValue(null);
+        vi.spyOn(projectSystems, 'matchProject').mockReturnValue({
+          loadProjectItems: loads,
+        } as never);
+        const project: string = inWorkspace('app.csproj');
+
+        await invoke(ProjectChannel.ItemsLoad, project);
+
+        expect(loads).toHaveBeenCalledWith(project, { mayRun: false });
+      });
+
+      it('resolveArtifact_asksNoSystem', async () => {
+        const resolves: Mock = vi.fn().mockResolvedValue({ path: '/bin/a' });
+        vi.spyOn(projectSystems, 'all').mockReturnValue([{ resolveArtifact: resolves }] as never);
+
+        expect(
+          await invoke(ProjectChannel.ArtifactResolve, inWorkspace('a.cs'), 'Debug'),
+        ).toBeNull();
+        expect(resolves).not.toHaveBeenCalled();
+      });
+
+      it('formatDocument_runsNoFormatter', async () => {
+        const formats: Mock = vi
+          .fn()
+          .mockResolvedValue({ text: '', error: null, formatter: 'ruff' });
+        vi.spyOn(projectSystems, 'all').mockReturnValue([{ formatDocument: formats }] as never);
+
+        expect(await invoke(ProjectChannel.DocumentFormat, inWorkspace('a.py'), 'x=1')).toBeNull();
+        expect(formats).not.toHaveBeenCalled();
+      });
+    });
+
+    it('itemsLoad_inATrustedFolder_letsTheSystemRunItsTool', async () => {
+      const loads: Mock = vi.fn().mockResolvedValue(null);
+      vi.spyOn(projectSystems, 'matchProject').mockReturnValue({
+        loadProjectItems: loads,
+      } as never);
+      const project: string = inWorkspace('app.csproj');
+
+      await invoke(ProjectChannel.ItemsLoad, project);
+
+      expect(loads).toHaveBeenCalledWith(project, { mayRun: true });
     });
 
     it('formatDocument_asksEachSystemInTurn_withTheFilesRoot', async () => {

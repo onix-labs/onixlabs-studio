@@ -11,6 +11,16 @@ import { RunConfiguration } from '@shared/api/studio';
 import { logger } from '../logger';
 
 /**
+ * Says what a project system may do while loading a project's contents.
+ */
+export interface ProjectLoadOptions {
+  /**
+   * Gets whether a tool may run to answer: only once the user has trusted the folder (#1504).
+   */
+  readonly mayRun: boolean;
+}
+
+/**
  * Understands one ecosystem's notion of a project/solution structure (for example .NET solutions, npm
  * workspaces, Cargo workspaces) and turns a workspace root into a logical {@link ProjectModel}. A
  * provider is deliberately language-server-agnostic: it describes the project structure, and callers
@@ -49,10 +59,18 @@ export interface ProjectSystem {
   /**
    * Loads a single project's logical contents (its files), on demand when its node is expanded.
    * Optional: a provider whose projects have no drillable contents need not implement it.
+   *
+   * ⛔ A provider that asks a tool for the contents (MSBuild, `go list`, `cargo metadata`) does so only
+   * when {@link ProjectLoadOptions.mayRun} says it may, and otherwise lists the files: the tool reads
+   * the project's own configuration, and an untrusted folder runs nothing (#1504).
    * @param projectPath The absolute path of the project file.
+   * @param options Whether a tool may run; absent means it may not.
    * @returns Returns the contents, or null when they could not be loaded.
    */
-  loadProjectItems?(projectPath: string): Promise<ProjectItems | null>;
+  loadProjectItems?(
+    projectPath: string,
+    options?: ProjectLoadOptions,
+  ): Promise<ProjectItems | null>;
 
   /**
    * Resolves the compiled artefact the project containing a source file produces.
