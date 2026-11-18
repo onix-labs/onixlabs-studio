@@ -3,6 +3,7 @@ import { AI_MANAGER_KEYBINDINGS } from './ai-manager-keybindings';
 import { AiManagerRibbon } from './ai-manager-ribbon/ai-manager-ribbon';
 import { AiManagerStatusStrip } from './ai-manager-status/ai-manager-status-strip';
 import { AiManagerView } from './ai-manager-view/ai-manager-view';
+import { MODEL_NOTIFICATION_TYPES } from './model-runtime/model-notification-types';
 
 /**
  * Describes the AI Manager feature's contribution to the application shell (#948): a singleton tool
@@ -20,4 +21,5 @@ export const descriptor: FeatureDescriptor = {
   ribbon: AiManagerRibbon,
   status: AiManagerStatusStrip,
   keybindings: AI_MANAGER_KEYBINDINGS,
+  notificationTypes: MODEL_NOTIFICATION_TYPES,
 };
