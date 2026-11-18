@@ -58,6 +58,7 @@ describe('DecoderHost', () => {
   let decode: MockInstance<InstanceType<typeof Decoders>['decode']>;
   let info: MockInstance<InstanceType<typeof Decoders>['info']>;
   let capture: MockInstance<InstanceType<typeof JitCapture>['capture']>;
+  let refusal: string | null;
 
   /**
    * Calls a channel as the renderer would.
@@ -92,7 +93,11 @@ describe('DecoderHost', () => {
     capture = vi
       .spyOn(JitCapture.prototype, 'capture')
       .mockResolvedValue({ ok: false, error: 'not run' });
-    host = new DecoderHost();
+    refusal = null;
+    host = new DecoderHost(
+      { isWithin: (target: unknown): boolean => String(target).startsWith('/fixture/') },
+      { refusal: (): string | null => refusal },
+    );
     host.register();
   });
 
@@ -183,6 +188,24 @@ describe('DecoderHost', () => {
       expect(await call(BinaryChannel.JitCapture, assemblyPath, '*', 'tier0')).toEqual({
         ok: false,
         error: 'No assembly to run.',
+      });
+      expect(capture).not.toHaveBeenCalled();
+    });
+
+    it('refusesAProgramOutsideTheOpenWorkspace (#1504)', async () => {
+      expect(await call(BinaryChannel.JitCapture, '/usr/bin/evil.dll', '*', 'tier0')).toEqual({
+        ok: false,
+        error: 'That program is not in the open workspace.',
+      });
+      expect(capture).not.toHaveBeenCalled();
+    });
+
+    it('refusesAProgramInAWorkspaceNotTrusted (#1504)', async () => {
+      refusal = 'This folder is not trusted, so nothing runs from it.';
+
+      expect(await call(BinaryChannel.JitCapture, '/fixture/a.dll', '*', 'tier0')).toEqual({
+        ok: false,
+        error: refusal,
       });
       expect(capture).not.toHaveBeenCalled();
     });

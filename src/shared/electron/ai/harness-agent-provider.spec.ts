@@ -5,8 +5,12 @@ import { ASK_USER } from '@shared/api/ai/ai-tool-surface';
 
 vi.mock('electron', () => ({ app: { isPackaged: false } }));
 
-const { HarnessAgentProvider, readProposedChange, toTurnRequest } =
-  await import('./harness-agent-provider');
+const {
+  HarnessAgentProvider,
+  readProposedChange,
+  refuseUnheededUntrustedWorkspace,
+  toTurnRequest,
+} = await import('./harness-agent-provider');
 type ProviderType = InstanceType<typeof HarnessAgentProvider>;
 
 /**
@@ -237,6 +241,7 @@ function contextFor(overrides: Partial<Record<string, unknown>> = {}): {
     requestId: 'r1',
     prompt: 'do the thing',
     workspaceRoot: '/ws',
+    workspaceTrusted: true,
     model: 'm1',
     agentSessionId: null,
     effort: 'high',
@@ -832,6 +837,40 @@ describe('toTurnRequest', () => {
     expect(turn['agentShell']).toBe('/bin/zsh');
     expect(turn['owningTabId']).toBe('tab-2');
     expect(turn['resumeSessionAt']).toBeNull();
+  });
+
+  it('tellsTheHarnessToLeaveAnUntrustedWorkspacesSettingsAlone (#1504)', () => {
+    const { context } = contextFor();
+
+    const untrusted: Record<string, unknown> = toTurnRequest({
+      ...context,
+      workspaceTrusted: false,
+    }) as unknown as Record<string, unknown>;
+    const trusted: Record<string, unknown> = toTurnRequest(context) as unknown as Record<
+      string,
+      unknown
+    >;
+
+    expect(untrusted['projectSettings']).toBe(false);
+    // Left out for a trusted one, so a harness written before it reads the envelope it always did.
+    expect('projectSettings' in trusted).toBe(false);
+  });
+
+  it('refusesAnUntrustedWorkspace_onAHarnessTooOldToLeaveItsSettingsAlone (#1504)', () => {
+    const { context } = contextFor();
+    const untrusted: AgentRunContext = { ...context, workspaceTrusted: false };
+    const declaring: (version: string) => never = (version: string): never =>
+      ({ protocolVersion: version }) as never;
+
+    expect(() =>
+      refuseUnheededUntrustedWorkspace(untrusted, declaring('1.19.0'), 'Claude'),
+    ).toThrow(/not trusted/);
+    expect(() =>
+      refuseUnheededUntrustedWorkspace(untrusted, declaring('1.20.0'), 'Claude'),
+    ).not.toThrow();
+    expect(() =>
+      refuseUnheededUntrustedWorkspace(context, declaring('1.10.0'), 'Claude'),
+    ).not.toThrow();
   });
 
   it('carriesTheBlockedCommands_onlyWhenThereAreAny', () => {

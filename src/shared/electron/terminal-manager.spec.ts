@@ -137,6 +137,15 @@ const { TerminalManager } = await import('./terminal-manager');
 
 describe('TerminalManager', () => {
   let manager: InstanceType<typeof TerminalManager>;
+
+  /**
+   * Says whether a folder is in a workspace the user has not trusted, for the gate's tests.
+   * @param target The folder.
+   * @returns Returns true when it is.
+   */
+  function untrusted(target: string): boolean {
+    return target.startsWith('/untrusted');
+  }
   let windowOpen: boolean;
   let windowDestroyed: boolean;
   let kill: MockInstance;
@@ -216,15 +225,17 @@ describe('TerminalManager', () => {
     fakes.execCalls = [];
     windowOpen = true;
     windowDestroyed = false;
-    manager = new TerminalManager((): BrowserWindow | null =>
-      windowOpen
-        ? ({
-            isDestroyed: (): boolean => windowDestroyed,
-            webContents: {
-              send: (...message: unknown[]): void => void fakes.sent.push(message),
-            },
-          } as unknown as BrowserWindow)
-        : null,
+    manager = new TerminalManager(
+      (): BrowserWindow | null =>
+        windowOpen
+          ? ({
+              isDestroyed: (): boolean => windowDestroyed,
+              webContents: {
+                send: (...message: unknown[]): void => void fakes.sent.push(message),
+              },
+            } as unknown as BrowserWindow)
+          : null,
+      { refusal: (target: string): string | null => (untrusted(target) ? 'Not trusted.' : null) },
     );
     manager.register();
   });
@@ -245,6 +256,21 @@ describe('TerminalManager', () => {
           error: 'Invalid terminal options',
         });
 
+        expect(fakes.spawns).toEqual([]);
+      },
+    );
+
+    it.each(['shell', 'task', 'run'] as const)(
+      'create_aTerminalOfKind_%s_inAWorkspaceNotTrusted_startsNothing (#1504)',
+      async (kind: 'shell' | 'task' | 'run') => {
+        const result: TerminalCreateResult = await invoke(TerminalChannel.Create, {
+          id: 't1',
+          kind,
+          cwd: '/untrusted/shop',
+          ...(kind === 'shell' ? {} : { command: 'npm', args: ['test'] }),
+        });
+
+        expect(result).toEqual({ success: false, error: 'Not trusted.' });
         expect(fakes.spawns).toEqual([]);
       },
     );

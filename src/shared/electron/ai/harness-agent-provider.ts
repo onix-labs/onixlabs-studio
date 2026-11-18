@@ -21,6 +21,10 @@ import type {
   TurnImage,
   TurnRequest,
 } from '@shared/api/agent-protocol';
+import {
+  isProtocolCompatible,
+  PROJECT_SETTINGS_PROTOCOL_VERSION,
+} from '@shared/api/agent-protocol';
 import { withholdsBuiltInTools } from '@shared/api/ai-types';
 import { logger } from '@shared/electron/logger';
 import type {
@@ -380,6 +384,7 @@ export class HarnessAgentProvider implements AgentProvider {
         throw new Error(`${this.definition.label} could not be started.`);
       }
       this.declared = capabilities;
+      refuseUnheededUntrustedWorkspace(context, capabilities, this.definition.label);
       // ⚠️ Stopped during the handshake: an abort sent then named a turn the harness had not been given.
       if (context.signal.aborted) {
         return;
@@ -530,6 +535,7 @@ export class HarnessAgentSession implements AgentSession {
     context.signal.addEventListener('abort', abort);
     try {
       const capabilities: HarnessCapabilities | null = host.capabilities;
+      refuseUnheededUntrustedWorkspace(context, capabilities, this.definition.label);
       context.setSteerHandler(
         (capabilities?.answers ?? []).includes('steer')
           ? (text: string): boolean => host.steer(context.requestId, text)
@@ -1007,6 +1013,31 @@ function toSelection(value: unknown): AiInputSelection | undefined {
 }
 
 /**
+ * Refuses a turn in a workspace the user has not trusted on a harness too old to be told to leave the
+ * workspace's own configuration alone (#1504). Such a harness ignores `projectSettings`, so it would
+ * load the folder's hooks and tool servers, which are commands run on the folder's behalf.
+ * @param context The turn.
+ * @param capabilities What the harness declared, or null when it is not known.
+ * @param label The harness's name, for the message.
+ */
+export function refuseUnheededUntrustedWorkspace(
+  context: AgentRunContext,
+  capabilities: HarnessCapabilities | null,
+  label: string,
+): void {
+  if (context.workspaceRoot === null || context.workspaceTrusted) {
+    return;
+  }
+  const declared: string = capabilities?.protocolVersion ?? '';
+  if (!isProtocolCompatible(PROJECT_SETTINGS_PROTOCOL_VERSION, declared)) {
+    throw new Error(
+      `This folder is not trusted, and this version of ${label} cannot be told to ignore the ` +
+        "folder's own settings. Trust the folder from the status bar, or update the plugin.",
+    );
+  }
+}
+
+/**
  * Builds the turn envelope from a run context, dropping everything that cannot cross a wire.
  *
  * The field names match `AgentRunContext` deliberately, so this reads as a projection rather than a
@@ -1049,6 +1080,10 @@ export function toTurnRequest(
     ...((context.excludedCommands ?? []).length === 0
       ? {}
       : { excludedCommands: [...(context.excludedCommands ?? [])] }),
+    // A folder the user has not trusted (#1504): the harness loads none of its own configuration.
+    ...(context.workspaceRoot !== null && !context.workspaceTrusted
+      ? { projectSettings: false }
+      : {}),
     // A terminal's or a tool view's agent works through Studio's tools alone (#965).
     ...(withholdsBuiltInTools(context.surface) ? { builtInTools: 'none' as const } : {}),
     images: context.images.map((image: AiImageRef): TurnImage => ({

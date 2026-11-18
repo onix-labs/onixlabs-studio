@@ -99,6 +99,7 @@ import { ExcludedCommandStore } from './excluded-command-store';
 import { sanitizeExcludedCommands } from '@shared/api/excluded-commands';
 import type { SkillOfferer } from './skills/skill-library';
 
+import { FolderTrustSource, mayRunIn } from '../repository-trust';
 /**
  * A pending permission prompt: the resolver, plus the tool and workspace the request was for so a
  * remembered grant can be recorded when the reply arrives.
@@ -384,6 +385,12 @@ export class AiManager {
   private readonly openRoots: OpenRoots;
 
   /**
+   * Holds the trust store a run's workspace is read from (#1504): an agent in an untrusted one loads
+   * none of the workspace's own configuration.
+   */
+  private readonly trust: FolderTrustSource;
+
+  /**
    * Holds the sign-in driver, which asks a connection's provider to sign its user in and streams the
    * progress to the renderer's sign-in window (#1080).
    */
@@ -481,18 +488,21 @@ export class AiManager {
    * @param windowGetter A function that returns the window agent events are sent to.
    * @param skills The skill library runs draw their in-scope skills from.
    * @param openRoots The open workspace roots, which a run's root must be or lie inside.
+   * @param trust The trust store a run's workspace is read from.
    * @param hosting The agents' way to the installed hosting plugins, or null for none.
    */
   public constructor(
     windowGetter: () => BrowserWindow | null,
     skills: SkillOfferer,
     openRoots: OpenRoots,
+    trust: FolderTrustSource,
     hosting: HostingAgentAccess | null = null,
   ) {
     this.windowGetter = windowGetter;
     this.skills = skills;
     this.hosting = hosting;
     this.openRoots = openRoots;
+    this.trust = trust;
     this.bridge = new RendererBridge(windowGetter);
 
     // Contributed harnesses, and nothing else. `coreAgentProviders()` is empty — every provider is a
@@ -1232,6 +1242,8 @@ export class AiManager {
       requestId: request.requestId,
       prompt: request.prompt,
       workspaceRoot: request.workspaceRoot,
+      workspaceTrusted:
+        request.workspaceRoot !== null && mayRunIn(this.trust, request.workspaceRoot),
       model,
       agentSessionId: request.agentSessionId ?? null,
       effort,

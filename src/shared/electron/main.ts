@@ -140,7 +140,7 @@ import { CloneManager } from '@shared/electron/clone/clone-manager';
 import { NewProjectManager } from '@shared/electron/new-project/new-project-manager';
 import { TerminalManager } from '@shared/electron/terminal-manager';
 import { TrustedPaths } from './trusted-paths';
-import { RepositoryTrust } from './repository-trust';
+import { RepositoryTrust, RunGate, workspaceRunGate } from './repository-trust';
 import { TrustManager } from './trust/trust-manager';
 import { TrustPrompt } from './trust/trust-prompt';
 import { TrustChannel, type TrustChange } from '@shared/api/trust-channels';
@@ -362,6 +362,8 @@ class Program {
    */
   private readonly terminalManager: TerminalManager = new TerminalManager(
     (): BrowserWindow | null => this.windows.main(),
+    // Read when a terminal starts, by which time the gate below exists.
+    { refusal: (target: string): string | null => this.runGate.refusal(target) },
   );
 
   /**
@@ -388,6 +390,12 @@ class Program {
   private readonly repositoryTrust: RepositoryTrust = new RepositoryTrust(
     path.join(app.getPath('userData'), 'repository-trust.json'),
   );
+
+  /**
+   * Refuses whatever would run from a folder in a workspace the user has not trusted: terminals,
+   * debug sessions, programs to run (#1504).
+   */
+  private readonly runGate: RunGate = workspaceRunGate(this.workspaceContext, this.repositoryTrust);
 
   /**
    * Asks "do you trust this folder?" in a window the main process opens and owns, so no renderer code
@@ -626,6 +634,7 @@ class Program {
     (): BrowserWindow | null => this.windows.main(),
     this.skillLibrary,
     this.workspaceContext,
+    this.repositoryTrust,
     new HostingAgentAccess(this.hostingHost, this.versionControlHost),
   );
 
@@ -729,7 +738,7 @@ class Program {
   /**
    * Holds the decoder host: the registry of installed decoder plugins and the processes they run in.
    */
-  private readonly decoderHost: DecoderHost = new DecoderHost();
+  private readonly decoderHost: DecoderHost = new DecoderHost(this.workspaceContext, this.runGate);
 
   /**
    * Assembles machine code for the binary/hex editor's agent, the write-side counterpart to the
@@ -788,6 +797,7 @@ class Program {
     (): BrowserWindow | null => this.windows.main(),
     this.workspaceContext,
     this.debugAdapterRegistry,
+    this.runGate,
   );
 
   /**

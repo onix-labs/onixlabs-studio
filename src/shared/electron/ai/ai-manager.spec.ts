@@ -1,3 +1,4 @@
+import type { RepositoryTrustDecision } from '@shared/api/source-control-channels';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -234,6 +235,7 @@ describe('AiManager', () => {
   let provider: FakeProvider;
   let offerSkills: () => Promise<readonly never[]>;
   let windowOpen: boolean;
+  let decision: RepositoryTrustDecision = 'trusted';
 
   /**
    * Invokes a captured `ipcMain.handle` handler.
@@ -329,6 +331,7 @@ describe('AiManager', () => {
           : null,
       { offer: (): Promise<readonly never[]> => offerSkills() },
       { isWithin: (target: unknown): boolean => target === root },
+      { decisionFor: (): RepositoryTrustDecision => decision },
     );
     const harnesses: AgentProviderRegistry = Reflect.get(
       built,
@@ -2160,6 +2163,37 @@ describe('AiManager', () => {
       expect(provider.sessions[0]?.closed).toBe(1);
       expect(provider.contexts[0]?.signal.aborted).toBe(true);
       held.resolve();
+    });
+  });
+
+  describe('workspace trust (#1504)', () => {
+    beforeEach(async () => {
+      await invoke(AiChannel.ListProviders, [connection()]);
+    });
+
+    afterEach(() => {
+      decision = 'trusted';
+    });
+
+    it.each([
+      ['trusted', true],
+      ['restricted', false],
+      ['unknown', false],
+    ] as const)(
+      'aRunInAWorkspaceThatIs_%s_saysWhetherItIsTrusted',
+      async (given: RepositoryTrustDecision, trusted: boolean) => {
+        decision = given;
+
+        await run();
+
+        expect(provider.contexts[0]?.workspaceTrusted).toBe(trusted);
+      },
+    );
+
+    it('aRunWithNoWorkspace_isNotCalledTrusted', async () => {
+      await run({ workspaceRoot: null });
+
+      expect(provider.contexts[0]?.workspaceTrusted).toBe(false);
     });
   });
 });
