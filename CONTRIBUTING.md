@@ -48,6 +48,11 @@ There is no tolerated baseline of failures. If a step can't stay green, the chan
 it. The E2E suite (`npm run e2e`, after a build) and a packaging smoke also run in CI; they are not
 required to merge but a failure will be looked at.
 
+The E2E suite drives the real application, so it opens real windows, which take the screen while it
+runs. `npm run e2e:docker` runs it in a Linux container instead, on a virtual display, as CI does:
+nothing appears on screen. It builds what it needs itself, keeps its own `node_modules` in a Docker
+volume, and passes anything after `--` to Playwright (`npm run e2e:docker -- trust -g clone`).
+
 Coverage thresholds live in `angular.json` and only ever go up. A change that lowers coverage needs
 tests, not a lower threshold.
 
