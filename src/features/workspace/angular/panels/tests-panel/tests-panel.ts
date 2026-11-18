@@ -152,9 +152,10 @@ export class TestsPanel {
   );
 
   /**
-   * Holds whether only failed tests are shown.
+   * Gets whether only failed tests are shown, which the explorer keeps so a finished run's
+   * notification can turn it on.
    */
-  protected readonly failedOnly: WritableSignal<boolean> = signal<boolean>(false);
+  protected readonly failedOnly: Signal<boolean> = this.explorer.failedOnly;
 
   /**
    * Holds the selected row's key.
@@ -382,7 +383,7 @@ export class TestsPanel {
         this.explorer.showOutput();
         break;
       case MENU_FAILED_ONLY:
-        this.failedOnly.update((value: boolean): boolean => !value);
+        this.explorer.setFailedOnly(!this.failedOnly());
         break;
     }
   }

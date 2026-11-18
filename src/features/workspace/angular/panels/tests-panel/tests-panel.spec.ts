@@ -65,6 +65,7 @@ describe('TestsPanel (#1352)', () => {
       },
     ]);
     states = signal<ReadonlyMap<string, TestState>>(new Map<string, TestState>());
+    const failedOnly: WritableSignal<boolean> = signal<boolean>(false);
     phase = signal<TestExplorerPhase>('idle');
     problems = signal<ReadonlyMap<string, TestAdapterProblem>>(
       new Map<string, TestAdapterProblem>(),
@@ -94,6 +95,8 @@ describe('TestsPanel (#1352)', () => {
       stop: vi.fn(),
       refresh: vi.fn(() => Promise.resolve()),
       showOutput: vi.fn(),
+      failedOnly,
+      setFailedOnly: (value: boolean): void => failedOnly.set(value),
     };
     goTo = vi.fn(() => Promise.resolve());
     await TestBed.configureTestingModule({
