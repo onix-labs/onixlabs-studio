@@ -82,7 +82,7 @@ describe('TrustManager (#1504)', () => {
   it('ask_putsTheQuestion_recordsTheAnswer_andTellsEveryWindow', async () => {
     expect(await manager.ask(ROOT)).toBe('trusted');
 
-    expect(asked).toEqual([{ name: 'shop', folder: ROOT }]);
+    expect(asked).toEqual([{ name: 'shop', folder: ROOT, scannable: true }]);
     expect(store.decisionFor(ROOT)).toBe('trusted');
     expect(changes).toEqual([{ folder: ROOT, decision: 'trusted' }]);
   });
@@ -199,5 +199,28 @@ describe('TrustManager (#1504)', () => {
 
     expect(await lone.ask(downloads)).toBe('trusted');
     expect(await lone.ask(path.resolve('/elsewhere'))).toBe('unknown');
+  });
+
+  it('ask_answeredWithScan_decidesNothing_andAsksForTheScan', async () => {
+    const scans: string[] = [];
+    const scanning: TrustManager = new TrustManager(
+      store,
+      { openRoots: (): readonly string[] => [ROOT], holdsOpenedFileIn: (): boolean => false },
+      { ask: (): Promise<TrustAnswer> => Promise.resolve('scan') },
+      (change: TrustChange): void => void changes.push(change),
+      (request: { folder: string }): void => void scans.push(request.folder),
+    );
+
+    expect(await scanning.ask(ROOT)).toBe('unknown');
+
+    expect(scans).toEqual([ROOT]);
+    expect(store.decisions.size).toBe(0);
+    expect(changes).toEqual([]);
+  });
+
+  it('ask_offersAScanOnlyForAnOpenWorkspace', async () => {
+    await manager.ask(path.dirname(ROOT));
+
+    expect(asked[0].scannable).toBe(false);
   });
 });

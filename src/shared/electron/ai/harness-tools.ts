@@ -65,6 +65,12 @@ const byTurn: WeakMap<AgentRunContext, Promise<Record<string, ToolLike>>> = new 
  * @returns Returns the tools, keyed by name.
  */
 async function toolsFor(context: AgentRunContext): Promise<Record<string, ToolLike>> {
+  // ⛔ An agent in a workspace the user has not trusted gets none of Studio's tools (#1504): only the
+  // harness's own reading, listing and searching, which is what a scan before trusting needs. Studio's
+  // tools edit files, run commands and drive panels; none of that belongs to a folder not yet trusted.
+  if (context.workspaceRoot !== null && !context.workspaceTrusted) {
+    return {};
+  }
   let pending: Promise<Record<string, ToolLike>> | undefined = byTurn.get(context);
   if (pending === undefined) {
     // `toolsForSurface` itself imports the AI SDK and Zod dynamically, inside the call, so nothing

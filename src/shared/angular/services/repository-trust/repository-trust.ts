@@ -1,7 +1,7 @@
 import { DestroyRef, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type { Bridge } from '@shared/api/bridge';
 import type { RepositoryInfo, RepositoryTrustDecision } from '@shared/api/source-control-channels';
-import { TrustChannel, type TrustChange } from '@shared/api/trust-channels';
+import { TrustChannel, type TrustChange, type TrustScanRequest } from '@shared/api/trust-channels';
 import { Log } from '@shared/angular/services/log/log';
 
 /**
@@ -39,6 +39,19 @@ export class RepositoryTrust {
   public readonly changed: Signal<TrustChange | null> = this.lastChange.asReadonly();
 
   /**
+   * Holds the last folder the user asked to have scanned before deciding, or null before one.
+   */
+  private readonly lastScanRequest: WritableSignal<TrustScanRequest | null> =
+    signal<TrustScanRequest | null>(null);
+
+  /**
+   * Gets the last folder the user asked to have scanned before deciding, or null before one: what the
+   * workspace showing that folder follows, to start its scanning agent.
+   */
+  public readonly scanRequested: Signal<TrustScanRequest | null> =
+    this.lastScanRequest.asReadonly();
+
+  /**
    * Initializes a new instance of the {@link RepositoryTrust} class, following the main process's
    * announcements of changed decisions until the service is destroyed.
    */
@@ -51,7 +64,18 @@ export class RepositoryTrust {
         this.lastChange.set(typed);
       },
     );
-    inject(DestroyRef).onDestroy((): void => stop?.());
+    const stopScans: (() => void) | undefined = this.bridge?.on(
+      TrustChannel.ScanRequested,
+      (request: unknown): void => {
+        const typed: TrustScanRequest = request as TrustScanRequest;
+        this.log.info('RepositoryTrust', `A scan of ${typed.folder} was asked for`);
+        this.lastScanRequest.set(typed);
+      },
+    );
+    inject(DestroyRef).onDestroy((): void => {
+      stop?.();
+      stopScans?.();
+    });
   }
 
   /**

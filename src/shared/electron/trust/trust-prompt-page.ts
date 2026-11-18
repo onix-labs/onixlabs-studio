@@ -76,6 +76,12 @@ const PAGE: string = `<!doctype html>
     gap: 8px;
     margin-top: 4px;
   }
+  .actions .scan {
+    margin-right: auto;
+  }
+  [hidden] {
+    display: none !important;
+  }
   button {
     min-width: 96px;
     padding: 6px 14px;
@@ -114,7 +120,12 @@ const PAGE: string = `<!doctype html>
     <dt>Location</dt>
     <dd id="folder"></dd>
   </dl>
+  <p id="scan-note" hidden>
+    Scan with AI has an agent read the folder for code that would run when it opens, and report what it
+    finds. It can only read; it runs nothing. The folder stays untrusted until you decide.
+  </p>
   <div class="actions">
+    <button id="scan" type="button" class="scan" hidden>Scan with AI</button>
     <button id="restrict" type="button">Don't Trust</button>
     <button id="trust" type="button" class="primary">Trust</button>
   </div>

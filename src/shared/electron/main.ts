@@ -143,7 +143,7 @@ import { TrustedPaths } from './trusted-paths';
 import { RepositoryTrust, RunGate, workspaceRunGate } from './repository-trust';
 import { TrustManager } from './trust/trust-manager';
 import { TrustPrompt } from './trust/trust-prompt';
-import { TrustChannel, type TrustChange } from '@shared/api/trust-channels';
+import { TrustChannel, type TrustChange, type TrustScanRequest } from '@shared/api/trust-channels';
 import { WindowManager } from '@shared/electron/window-manager';
 import { WorkspaceContext } from './workspace-context';
 import { WorkspaceManager } from './workspace-manager';
@@ -425,6 +425,13 @@ class Program {
       for (const window of BrowserWindow.getAllWindows()) {
         if (!window.isDestroyed()) {
           window.webContents.send(TrustChannel.Changed, change);
+        }
+      }
+    },
+    (request: TrustScanRequest): void => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) {
+          window.webContents.send(TrustChannel.ScanRequested, request);
         }
       }
     },

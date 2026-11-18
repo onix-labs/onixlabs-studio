@@ -107,7 +107,7 @@ export class TrustPrompt implements TrustAsker {
     const parent: BrowserWindow | null = this.parent();
     const window: BrowserWindow = new BrowserWindow({
       width: 520,
-      height: 300,
+      height: 370,
       useContentSize: true,
       resizable: false,
       minimizable: false,

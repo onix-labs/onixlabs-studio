@@ -879,6 +879,14 @@ export async function answerRequest(
       return { kind: 'edit-decision', decision: decision === 'yes' ? 'yes' : 'no' };
     }
     case 'bridge': {
+      // The same tools by another road, so withheld in an untrusted workspace for the same reason.
+      if (context.workspaceRoot !== null && !context.workspaceTrusted) {
+        return {
+          kind: 'bridge',
+          result: null,
+          error: 'This folder is not trusted, so Studio offers no tools in it.',
+        };
+      }
       try {
         const result: unknown = await context.bridge.request(
           text(asked['capability'], ''),

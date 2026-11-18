@@ -129,7 +129,8 @@ import { PackageExplorer } from '@features/workspace/angular/project/package-exp
 import { Output } from '@shared/angular/services/output/output';
 import { Repository } from '@shared/angular/services/repository/repository';
 import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
-import type { TrustChange } from '@shared/api/trust-channels';
+import type { TrustChange, TrustScanRequest } from '@shared/api/trust-channels';
+import { TRUST_SCAN_BRIEF, TRUST_SCAN_PROMPT } from '../trust/trust-scan';
 import type { GitBranch, GitFileChange } from '@shared/angular/services/repository/repository-data';
 import { ForgeRepository } from '@shared/angular/services/forge-repository/forge-repository';
 import {
@@ -1626,6 +1627,19 @@ export class DirectoryView implements OnInit, OnDestroy {
       });
     });
 
+    // The user asked for this folder to be scanned before deciding whether to trust it (#1504): a
+    // fresh, read-only conversation reads it and reports. The folder stays untrusted meanwhile.
+    effect((): void => {
+      const request: TrustScanRequest | null = this.repositoryTrust.scanRequested();
+      const root: string | null = untracked(
+        (): string | null => this.workspace.root()?.path ?? null,
+      );
+      if (request === null || root === null || request.folder !== root) {
+        return;
+      }
+      untracked((): void => this.startTrustScan());
+    });
+
     // Release a long-hidden view's language servers, and bring them back on activation. A worktree
     // container keeps every visited checkout's view alive with its own LSP client; without a reap,
     // each visited checkout would hold its own live server (Roslyn on a big solution is easily
@@ -2303,6 +2317,19 @@ export class DirectoryView implements OnInit, OnDestroy {
     if (start !== undefined) {
       this.startAgent(start);
     }
+  }
+
+  /**
+   * Starts the agent that scans this folder for threats before the user decides whether to trust it
+   * (#1504): a fresh conversation, in chat mode, which can only read, list and search files.
+   */
+  private startTrustScan(): void {
+    this.log.info('workspace', 'Scanning the folder before it is trusted');
+    this.agentConversation.newChat();
+    this.agent.setMode('chat');
+    this.agent.setBrief(TRUST_SCAN_BRIEF);
+    void this.agent.sendWhenReady(TRUST_SCAN_PROMPT, this.tabId(), 'workspace', []);
+    this.dockReveal.reveal('agent');
   }
 
   /**
