@@ -412,7 +412,14 @@ class Program {
    */
   private readonly trustManager: TrustManager = new TrustManager(
     this.repositoryTrust,
-    this.workspaceContext,
+    {
+      openRoots: (): readonly string[] => this.workspaceContext.openRoots(),
+      // A file opened on its own, through a dialog or the operating system, vouches for its folder.
+      holdsOpenedFileIn: (folder: string): boolean =>
+        this.trustedPaths
+          .list()
+          .some((opened: string): boolean => path.dirname(path.resolve(opened)) === folder),
+    },
     this.trustPrompt,
     (change: TrustChange): void => {
       for (const window of BrowserWindow.getAllWindows()) {
@@ -768,6 +775,7 @@ class Program {
   private readonly lspServerRegistry: LspServerRegistry = new LspServerRegistry(
     process.execPath,
     this.lspSettingsManager,
+    this.repositoryTrust,
   );
 
   /**

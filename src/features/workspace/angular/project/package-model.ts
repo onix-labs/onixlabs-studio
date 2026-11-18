@@ -40,6 +40,7 @@ import { RepositoryTrust } from '@shared/angular/services/repository-trust/repos
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { Log } from '@shared/angular/services/log/log';
 import { PackageNotificationType } from './package-notification-types';
+import type { TrustChange } from '@shared/api/trust-channels';
 
 /**
  * Words each change's outcome for its notification: what it is called once done, and when it failed.
@@ -422,10 +423,20 @@ export class PackageModel {
       void this.refresh(root);
     });
     effect((): void => {
-      // Trust is decided in the main process's own window; once a decision changes, ask again.
-      if (this.repositoryTrust.changed() !== null) {
-        untracked((): void => this.refreshNow());
+      // Trust is decided in the main process's own window; once a decision changes, ask again. The
+      // moment the user trusts this folder, its packages are restored too (#1504).
+      const change: TrustChange | null = this.repositoryTrust.changed();
+      if (change === null) {
+        return;
       }
+      untracked((): void => {
+        const root: string | null = this.workspace.root()?.path ?? null;
+        if (change.decision === 'trusted' && root !== null && isWithinFolder(root, change.folder)) {
+          void this.restoreAfterTrust(root);
+        } else {
+          this.refreshNow();
+        }
+      });
     });
   }
 
@@ -558,6 +569,36 @@ export class PackageModel {
   }
 
   /**
+   * Reads a folder the user has just trusted, then restores every project each package manager found
+   * in it, one after another, each in a visible terminal (#1504). Only when trust is granted: a folder
+   * that was already trusted when it opened is not restored again.
+   * @param root The folder.
+   * @returns Returns a promise that resolves once every restore has ended.
+   */
+  public async restoreAfterTrust(root: string): Promise<void> {
+    await this.refresh(root);
+    const restores: { pluginId: string; project: string }[] = [];
+    for (const state of this.statesSignal()) {
+      if (!state.manager.capabilities.includes('restore')) {
+        continue;
+      }
+      for (const project of state.model?.projects ?? []) {
+        restores.push({ pluginId: state.manager.pluginId, project: project.manifestPath });
+      }
+    }
+    if (restores.length > 0) {
+      this.log.info('workspace.packages', `Restoring ${restores.length} project(s) after trust`);
+    }
+    for (const restore of restores) {
+      // The folder may have closed, or another been opened in its place, while the last one ran.
+      if ((this.workspace.root()?.path ?? null) !== root) {
+        return;
+      }
+      await this.write(restore.pluginId, 'restore', { project: restore.project });
+    }
+  }
+
+  /**
    * Trusts the open folder, from the panel, so its package managers may read it.
    * @returns Returns a promise that resolves once the folder has been asked about again.
    */
@@ -659,4 +700,15 @@ function ordered(packages: readonly InstalledPackage[]): readonly InstalledPacka
     const byStatus: number = rank[a.status] - rank[b.status];
     return byStatus !== 0 ? byStatus : a.name.localeCompare(b.name);
   });
+}
+
+/**
+ * Determines whether a folder is another or lies beneath it, on either separator.
+ * @param target The folder.
+ * @param folder The folder it may lie within.
+ * @returns Returns true when it does.
+ */
+function isWithinFolder(target: string, folder: string): boolean {
+  const base: string = folder.replace(/[\\/]+$/, '');
+  return target === base || target.startsWith(`${base}/`) || target.startsWith(`${base}\\`);
 }

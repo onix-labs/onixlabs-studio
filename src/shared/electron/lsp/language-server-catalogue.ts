@@ -101,19 +101,27 @@ export function csharpOpenPlan(
 }
 
 /**
- * Points the TypeScript language server at the compiler Studio installed beside it, always.
+ * Decides which compiler the TypeScript language server drives for a workspace: the workspace's own
+ * TypeScript when the user trusts the workspace and it has one (version-accurate diagnostics for that
+ * project), else the compiler Studio installed beside the server.
  *
- * ⛔ Never the workspace's own `node_modules/typescript`: that is code the repository ships, and the
- * server would run it the moment the folder opened, before the user had trusted anything (#1504).
- * Naming the path is what stops the server looking in the workspace itself, so there is no fallback
- * to its own search either.
- * @param bundled The bundled compiler's `tsserver.js`.
- * @returns Returns the `initializationOptions` to pass.
+ * ⛔ Never the workspace's own before it is trusted: that is code the repository ships, and the server
+ * would run it (#1504). The path is always named, so the server never looks for one itself.
+ * @param rootPath The workspace root.
+ * @param bundled The bundled compiler's `tsserver.js`, or null when it is not installed.
+ * @param trusted Whether the user trusts the workspace.
+ * @returns Returns the `initializationOptions` to pass, or null when there is no compiler to run.
  */
-export function typescriptInitializationOptions(bundled: string): {
-  tsserver: { path: string };
-} {
-  return { tsserver: { path: bundled } };
+export function typescriptInitializationOptions(
+  rootPath: string,
+  bundled: string | null,
+  trusted: boolean,
+): { tsserver: { path: string } } | null {
+  const local: string = path.join(rootPath, 'node_modules', 'typescript', 'lib', 'tsserver.js');
+  if (trusted && existsSync(local)) {
+    return { tsserver: { path: local } };
+  }
+  return bundled === null ? null : { tsserver: { path: bundled } };
 }
 
 /**
@@ -337,15 +345,18 @@ const TYPESCRIPT: LanguageServerDescriptor = {
     },
   ],
   resolve: (context: LanguageServerContext): LspResolution => {
-    const bundled: string | null = context.installedPath(TYPESCRIPT_PROVISION);
-    if (bundled === null) {
-      // Left to its own search, the server would run the workspace's TypeScript instead.
+    const initializationOptions: { tsserver: { path: string } } | null =
+      typescriptInitializationOptions(
+        context.rootPath,
+        context.installedPath(TYPESCRIPT_PROVISION),
+        context.trusted,
+      );
+    if (initializationOptions === null) {
+      // Left to its own search, the server would find the workspace's TypeScript whatever its trust.
       return unavailable(
         'The TypeScript compiler is not installed — reinstall TypeScript in Plugins.',
       );
     }
-    const initializationOptions: { tsserver: { path: string } } =
-      typescriptInitializationOptions(bundled);
     const override: string | undefined = context.settings.get().serverPaths['typescript'];
     if (override !== undefined) {
       if (!existsSync(override)) {

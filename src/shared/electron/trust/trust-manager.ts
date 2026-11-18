@@ -35,6 +35,14 @@ export interface TrustScope {
    * @returns Returns their absolute paths.
    */
   openRoots(): readonly string[];
+
+  /**
+   * Gets whether the user opened a file that lies directly in a folder: a file opened on its own,
+   * outside any workspace, whose folder its language server would run in.
+   * @param folder The resolved folder.
+   * @returns Returns true when they did.
+   */
+  holdsOpenedFileIn(folder: string): boolean;
 }
 
 /**
@@ -237,8 +245,8 @@ export class TrustManager implements TrustGrants {
   }
 
   /**
-   * Resolves a folder a renderer named, when Studio has it open: an open root, a folder within one, or
-   * the repository an open root lies in.
+   * Resolves a folder a renderer named, when Studio has it open: an open root, a folder within one, the
+   * repository an open root lies in, or the folder of a file the user opened on its own.
    * @param folder The folder, untrusted.
    * @returns Returns the resolved folder, or null when it is not one Studio has open.
    */
@@ -255,7 +263,7 @@ export class TrustManager implements TrustGrants {
     const related: boolean = this.scope
       .openRoots()
       .some((root: string): boolean => within(resolved, root) || within(root, resolved));
-    return related ? resolved : null;
+    return related || this.scope.holdsOpenedFileIn(resolved) ? resolved : null;
   }
 }
 

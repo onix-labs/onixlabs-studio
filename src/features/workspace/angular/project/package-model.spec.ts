@@ -255,6 +255,43 @@ describe('PackageModel', () => {
     expect(packages.hasModels()).toBe(true);
   });
 
+  it('aFolderTrusted_restoresEveryProjectOfEachManagerThatCan (#1504)', async () => {
+    status = {
+      managers: [{ ...manager('npm', true), capabilities: ['restore'] }, manager('nuget', true)],
+      trust: 'trusted',
+    };
+    await create();
+    calls = [];
+
+    changed.set({ folder: '/work', decision: 'trusted' });
+    TestBed.tick();
+
+    await vi.waitFor((): void => {
+      expect(launched).toHaveLength(1);
+    });
+    // nuget declared no restore, so only npm's one project is restored.
+    expect(
+      calls.filter((call: string): boolean => call.startsWith(PackageChannel.Command)),
+    ).toEqual([`${PackageChannel.Command} npm restore [object Object]`]);
+  });
+
+  it('aFolderRestricted_restoresNothing', async () => {
+    status = {
+      managers: [{ ...manager('npm', true), capabilities: ['restore'] }],
+      trust: 'trusted',
+    };
+    await create();
+    calls = [];
+
+    changed.set({ folder: '/work', decision: 'restricted' });
+    TestBed.tick();
+
+    await vi.waitFor((): void => {
+      expect(calls[0]).toBe(PackageChannel.Managers);
+    });
+    expect(launched).toEqual([]);
+  });
+
   it('aFolderTrusted_readsTheFolderAgain', async () => {
     await create();
     calls = [];

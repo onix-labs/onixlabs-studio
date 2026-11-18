@@ -60,17 +60,19 @@ describe('the TypeScript server diagnostics (#1207)', () => {
   });
 });
 
-describe('the TypeScript server never runs the workspace TypeScript (#1504)', () => {
+describe('the TypeScript server runs the workspace TypeScript only once it is trusted (#1504)', () => {
   let root: string;
 
   /**
    * Resolves the TypeScript server for {@link root}.
    * @param bundled What the bundled compiler's install answers: its `tsserver.js`, or null.
+   * @param trusted Whether the user trusts the workspace.
    * @returns Returns the resolution.
    */
-  function resolve(bundled: string | null): LspResolution {
+  function resolve(bundled: string | null, trusted: boolean = false): LspResolution {
     const context: LanguageServerContext = {
       rootPath: root,
+      trusted,
       settings: { get: () => ({ serverPaths: {} }) },
       installedPath: (provision: ArchiveProvision): string | null =>
         provision === TYPESCRIPT_PROVISION ? bundled : '/servers/tls/cli.mjs',
@@ -97,6 +99,18 @@ describe('the TypeScript server never runs the workspace TypeScript (#1504)', ()
     expect(resolution.spec?.initializationOptions).toEqual({
       tsserver: { path: '/servers/typescript/lib/tsserver.js' },
     });
+  });
+
+  it('usesTheWorkspacesOwnCompiler_onceTheUserTrustsIt', () => {
+    const resolution: LspResolution = resolve('/servers/typescript/lib/tsserver.js', true);
+
+    expect(resolution.spec?.initializationOptions).toEqual({
+      tsserver: { path: path.join(root, 'node_modules', 'typescript', 'lib', 'tsserver.js') },
+    });
+  });
+
+  it('usesTheWorkspacesOwnCompiler_whenTrusted_evenWithNoBundledOne', () => {
+    expect(resolve(null, true).spec).not.toBeNull();
   });
 
   it('startsNothing_ratherThanLetTheServerFindTheWorkspaceCompiler', () => {

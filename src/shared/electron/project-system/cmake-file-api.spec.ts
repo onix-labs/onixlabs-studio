@@ -2,8 +2,10 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import {
+  cmakeFromCache,
   CmakeTarget,
   codeModelFile,
+  compileCommandsUndecided,
   parseTarget,
   readTargets,
   targetFiles,
@@ -47,6 +49,27 @@ describe('cmake-file-api (#882 follow-up)', () => {
       }),
     ).toEqual({ name: 'app', type: 'EXECUTABLE', sources: ['src/main.c'] });
     expect(parseTarget({ type: 'EXECUTABLE' })).toBeNull();
+  });
+
+  it('compileCommandsUndecided_isOnlyTrueWhileTheCacheSaysNothing', () => {
+    expect(compileCommandsUndecided('CMAKE_BUILD_TYPE:STRING=Release\n')).toBe(true);
+    expect(compileCommandsUndecided('CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=\n')).toBe(true);
+    expect(compileCommandsUndecided('CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=ON\n')).toBe(false);
+    // How CMake records a value given as a bare `-D`.
+    expect(compileCommandsUndecided('CMAKE_EXPORT_COMPILE_COMMANDS:UNINITIALIZED=ON\n')).toBe(
+      false,
+    );
+    // The user's own answer stands.
+    expect(compileCommandsUndecided('CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=OFF\n')).toBe(false);
+  });
+
+  it('cmakeFromCache_readsTheCommandThatConfiguredTheTree', () => {
+    expect(
+      cmakeFromCache(
+        'CMAKE_BUILD_TYPE:STRING=Release\nCMAKE_COMMAND:INTERNAL=/usr/local/bin/cmake\n',
+      ),
+    ).toBe('/usr/local/bin/cmake');
+    expect(cmakeFromCache('CMAKE_BUILD_TYPE:STRING=Release\n')).toBeNull();
   });
 
   describe('readTargets', () => {

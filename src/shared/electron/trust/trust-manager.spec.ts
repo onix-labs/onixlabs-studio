@@ -73,7 +73,7 @@ describe('TrustManager (#1504)', () => {
     };
     manager = new TrustManager(
       store,
-      { openRoots: (): readonly string[] => [ROOT] },
+      { openRoots: (): readonly string[] => [ROOT], holdsOpenedFileIn: (): boolean => false },
       asker,
       (change: TrustChange): void => void changes.push(change),
     );
@@ -145,7 +145,10 @@ describe('TrustManager (#1504)', () => {
     const home: string = path.resolve(homedir());
     const insideHome: TrustManager = new TrustManager(
       store,
-      { openRoots: (): readonly string[] => [path.join(home, 'Code', 'shop')] },
+      {
+        openRoots: (): readonly string[] => [path.join(home, 'Code', 'shop')],
+        holdsOpenedFileIn: (): boolean => false,
+      },
       { ask: (): Promise<TrustAnswer> => Promise.resolve('trusted') },
       (): void => undefined,
     );
@@ -173,12 +176,28 @@ describe('TrustManager (#1504)', () => {
   it('aPromptThatFails_recordsNothing', async () => {
     const failing: TrustManager = new TrustManager(
       store,
-      { openRoots: (): readonly string[] => [ROOT] },
+      { openRoots: (): readonly string[] => [ROOT], holdsOpenedFileIn: (): boolean => false },
       { ask: (): Promise<TrustAnswer> => Promise.reject(new Error('no window')) },
       (): void => undefined,
     );
 
     expect(await failing.ask(ROOT)).toBe('unknown');
     expect(store.decisions.size).toBe(0);
+  });
+
+  it('ask_aboutTheFolderOfAFileOpenedOnItsOwn_isAllowed (#1504)', async () => {
+    const downloads: string = path.resolve('/downloads');
+    const lone: TrustManager = new TrustManager(
+      store,
+      {
+        openRoots: (): readonly string[] => [],
+        holdsOpenedFileIn: (folder: string): boolean => folder === downloads,
+      },
+      { ask: (): Promise<TrustAnswer> => Promise.resolve('trusted') },
+      (): void => undefined,
+    );
+
+    expect(await lone.ask(downloads)).toBe('trusted');
+    expect(await lone.ask(path.resolve('/elsewhere'))).toBe('unknown');
   });
 });
