@@ -1,5 +1,6 @@
 import { Type } from '@angular/core';
 import { KeybindingCatalogueEntry } from '@shared/angular/services/keybindings/keybinding-catalogue';
+import type { NotificationTypeDef } from '@shared/angular/services/notifications/notification-types';
 
 /**
  * Describes the inputs every feature view component receives when the shell mounts it. A feature
@@ -122,4 +123,12 @@ export interface FeatureDescriptor {
    * before it registers the descriptor. Eagerly-wired features leave it unset.
    */
   readonly keybindings?: KeybindingCatalogueEntry;
+
+  /**
+   * Gets the notification types a lazily-contributed feature raises (#1486), for the same reason as
+   * {@link keybindings}: its chunk cannot reach the root `NOTIFICATION_TYPES` multi-provider. The
+   * driver adds them to the list before registering the descriptor. Eagerly-wired features leave it
+   * unset and use `provideNotificationTypes()` instead.
+   */
+  readonly notificationTypes?: readonly NotificationTypeDef[];
 }

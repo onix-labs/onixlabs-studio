@@ -29,6 +29,7 @@ import { PackageRegistryTokens } from './sections/package-registry-tokens/packag
 import { DefaultSeverities } from './sections/default-severities/default-severities';
 import { LogFolder } from './sections/log-folder/log-folder';
 import { PersonalDictionary } from './sections/personal-dictionary/personal-dictionary';
+import { NotificationTypesSettings } from './sections/notification-types/notification-types';
 import { ReadAloudVoice } from './sections/read-aloud-voice/read-aloud-voice';
 import { PluginsFolder } from './sections/plugins-folder/plugins-folder';
 import { PluginSuggestionsDismissed } from './sections/plugin-suggestions-dismissed/plugin-suggestions-dismissed';
@@ -324,6 +325,7 @@ interface SettingsTreeData {
     Modal,
     ModalContent,
     PersonalDictionary,
+    NotificationTypesSettings,
     ReadAloudVoice,
     PluginsFolder,
     PluginSuggestionsDismissed,

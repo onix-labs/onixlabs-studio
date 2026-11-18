@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Settings } from '@shared/angular/services/settings/settings';
 
 import { DesktopNotifications } from './desktop-notifications';
+import { NotificationTypes } from './notification-types';
 import { Notification, Notifications } from './notifications';
 
 describe('Notifications', () => {
@@ -283,23 +284,34 @@ describe('Notifications', () => {
     expect(service.toasts().map((toast: Notification): string => toast.title)).toEqual(['Second']);
   });
 
-  it('notify_whenAFinishIsNotWanted_recordsItWithoutAToast', () => {
-    TestBed.inject(Settings).set('notifications.runFinished', 'failures');
-    service.notify({
-      severity: 'success',
-      title: 'Build succeeded',
-      finished: { kind: 'run', failed: false },
-    });
-    service.notify({
-      severity: 'error',
-      title: 'Build failed',
-      finished: { kind: 'run', failed: true },
-    });
+  it('notify_whenATypeIsHistoryOnly_recordsItWithoutAToast', () => {
+    TestBed.inject(NotificationTypes).set('build.finished', 'history');
+    service.notify({ severity: 'success', title: 'Build succeeded', type: 'build.finished' });
+    service.notify({ severity: 'error', title: 'Build failed', type: 'build.failed' });
 
     expect(service.toasts().map((toast: Notification): string => toast.title)).toEqual([
       'Build failed',
     ]);
     expect(service.history()).toHaveLength(2);
+  });
+
+  it('notify_whenATypeIsOff_recordsNothingAndReleasesItsWaiter', () => {
+    TestBed.inject(NotificationTypes).set('agent.failed', 'off');
+    const onDismiss: () => void = vi.fn();
+
+    service.notify({ severity: 'error', title: 'Agent failed', type: 'agent.failed', onDismiss });
+
+    expect(service.toasts()).toEqual([]);
+    expect(service.history()).toEqual([]);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('notify_whenUntyped_alwaysShows', () => {
+    TestBed.inject(NotificationTypes).set('build.failed', 'off');
+
+    service.notify({ severity: 'error', title: 'Could not push' });
+
+    expect(service.toasts()).toHaveLength(1);
   });
 
   it('muted_whenRememberedAcrossLaunches_startsMutedNextLaunch', () => {
@@ -349,13 +361,13 @@ describe('Notifications on the desktop', () => {
     expect(shown).toEqual([]);
   });
 
-  it('leavesAnUnwantedFinishOut', () => {
-    TestBed.inject(Settings).set('notifications.agentFinished', 'never');
+  it('leavesAHistoryOnlyTypeOut', () => {
+    TestBed.inject(NotificationTypes).set('agent.failed', 'history');
     service.notify({
       severity: 'error',
       title: 'Agent failed — Fix it',
       desktop: true,
-      finished: { kind: 'agent', failed: true },
+      type: 'agent.failed',
     });
 
     expect(shown).toEqual([]);

@@ -1,0 +1,33 @@
+<app-setting-row
+  label="Notification Types"
+  description="For each kind of background notification: pop up, go to the history only, or be switched off. Notifications about something you just did always show."
+>
+  <app-button
+    variant="ghost"
+    label="Reset All to Defaults"
+    [disabled]="!types.changed()"
+    data-testid="notification-types-reset"
+    (click)="types.resetAll()"
+  />
+</app-setting-row>
+
+@for (group of types.areas(); track group.area) {
+  <app-accordion
+    class="notification-types__area"
+    [heading]="group.area"
+    [section]="true"
+    [expanded]="true"
+  >
+    @for (type of group.types; track type.id) {
+      <app-setting-row [label]="type.label" [description]="type.description">
+        <app-dropdown
+          [ariaLabel]="type.label"
+          [options]="choices"
+          [value]="types.shown(type.id)"
+          [attr.data-testid]="'notification-type-' + type.id"
+          (valueChange)="choose(type.id, $event)"
+        />
+      </app-setting-row>
+    }
+  </app-accordion>
+}

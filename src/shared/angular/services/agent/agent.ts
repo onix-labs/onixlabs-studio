@@ -46,6 +46,7 @@ import {
   NotificationAction,
   Notifications,
 } from '@shared/angular/services/notifications/notifications';
+import { CoreNotificationType } from '@shared/angular/services/notifications/core-notification-types';
 import { AgentTasks } from '@shared/angular/services/agent-tasks/agent-tasks';
 import { PromptProfiles } from '@shared/angular/services/prompt-profiles/prompt-profiles';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -2603,7 +2604,7 @@ export class Agent {
       route: watching ? 'history-only' : 'default',
       // Seen on the desktop while the user is elsewhere, watching or not (#927).
       desktop: true,
-      finished: { kind: 'agent', failed },
+      type: failed ? CoreNotificationType.AgentFailed : CoreNotificationType.AgentFinished,
       ...(tabId === undefined ? {} : { reveal: (): void => this.tabs.activate(tabId) }),
     });
   }
@@ -2662,7 +2663,8 @@ export class Agent {
       route: watching ? 'history-only' : 'default',
       // Seen on the desktop while the user is elsewhere, watching or not (#927).
       desktop: true,
-      finished: { kind: 'agent', failed: status === 'failed' },
+      type:
+        status === 'failed' ? CoreNotificationType.AgentFailed : CoreNotificationType.AgentFinished,
       ...(tabId === undefined ? {} : { reveal: (): void => this.tabs.activate(tabId) }),
     });
   }
