@@ -1,5 +1,5 @@
 {
-  "revision": 69,
+  "revision": 70,
   "plugins": [
     {
       "id": "pyright",
@@ -1130,6 +1130,63 @@
                   "flag": "--background-index"
                 }
               ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "taplo",
+      "name": "Taplo",
+      "description": "TOML validation, formatting and schema-aware completion.",
+      "version": "0.10.0",
+      "apiVersion": "1.8.0",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-darwin-aarch64.gz",
+            "sha256": "713734314c3e71894b9e77513c5349835eefbd52908445a0d73b0c7dc469347d",
+            "archive": "gz",
+            "executablePath": "taplo"
+          },
+          "darwin-x64": {
+            "url": "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-darwin-x86_64.gz",
+            "sha256": "898122cde3a0b1cd1cbc2d52d3624f23338218c91b5ddb71518236a4c2c10ef2",
+            "archive": "gz",
+            "executablePath": "taplo"
+          },
+          "linux-arm64": {
+            "url": "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-linux-aarch64.gz",
+            "sha256": "033681d01eec8376c3fd38fa3703c79316f5e14bb013d859943b60a07bccdcc3",
+            "archive": "gz",
+            "executablePath": "taplo"
+          },
+          "linux-x64": {
+            "url": "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-linux-x86_64.gz",
+            "sha256": "8fe196b894ccf9072f98d4e1013a180306e17d244830b03986ee5e8eabeb6156",
+            "archive": "gz",
+            "executablePath": "taplo"
+          },
+          "win32-x64": {
+            "url": "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-windows-x86_64.zip",
+            "sha256": "1615eed140039bd58e7089109883b1c434de5d6de8f64a993e6e8c80ca57bdf9",
+            "archive": "zip",
+            "members": ["taplo.exe"],
+            "executablePath": "taplo.exe"
+          }
+        }
+      },
+      "contributes": {
+        "languageServers": [
+          {
+            "id": "taplo",
+            "displayName": "Taplo",
+            "languages": ["toml"],
+            "priority": 100,
+            "command": {
+              "kind": "executable",
+              "args": ["lsp", "stdio"]
             }
           }
         ]

@@ -832,6 +832,7 @@ export const FEATURE_LANGUAGES: readonly string[] = [
   'shell',
   'sql',
   'svelte',
+  'toml',
   'typescript',
   'yaml',
 ];
