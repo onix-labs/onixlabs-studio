@@ -25,6 +25,7 @@ import { StartupSettingsMirror } from '@shared/angular/services/settings/startup
 import { Theme } from '@shared/angular/services/theme/theme';
 import { FeatureDescriptor, FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
+import { NotificationTypes } from '@shared/angular/services/notifications/notification-types';
 import {
   featureContributions,
   registerFeatureContribution,
@@ -158,16 +159,17 @@ export const config: ApplicationConfig = {
     provideSettingsFeature(),
     // The one-time renderer lazy-load driver (the analog of the main process's contribution registry):
     // resolve every lazily-contributed feature and register its descriptor (and any keybinding
-    // catalogue entry it carries) with the shell. A feature
+    // catalogue entry and notification types it carries) with the shell. A feature
     // added this way touches no shell component — only its own slice and the featureContributions
     // manifest. Registration is fire-and-forget: the FeatureRegistry is signal-backed, so the shell
     // lights the feature up when its chunk resolves, even after first paint.
     provideAppInitializer((): void => {
       const registry: FeatureRegistry = inject(FeatureRegistry);
       const keybindings: Keybindings = inject(Keybindings);
+      const notificationTypes: NotificationTypes = inject(NotificationTypes);
       for (const load of featureContributions) {
         void load().then((module: { descriptor: FeatureDescriptor }): void =>
-          registerFeatureContribution(module.descriptor, registry, keybindings),
+          registerFeatureContribution(module.descriptor, registry, keybindings, notificationTypes),
         );
       }
     }),

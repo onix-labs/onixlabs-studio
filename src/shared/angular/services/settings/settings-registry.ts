@@ -270,10 +270,10 @@ export type QuickResponseMode = 'send' | 'insert';
 export type ScrollBars = 'auto-hide' | 'always';
 
 /**
- * When the end of a piece of work (an agent's turn, a run or build) is announced with a toast and a
- * system notification: always, only when it failed, or never. It is recorded in the tray either way.
+ * What happens to one kind of background notification (#1486): it pops up as a toast (and on the
+ * desktop when it would), goes to the notification centre's history only, or is not recorded at all.
  */
-export type FinishNotifications = 'always' | 'failures' | 'never';
+export type NotificationChoice = 'popup' | 'history' | 'off';
 
 /**
  * Defines how large an agent conversation's text renders: its transcript and its prompt.
@@ -561,8 +561,7 @@ export interface SettingsValues {
   readonly 'notifications.rememberMute': boolean;
   readonly 'notifications.errorsStay': boolean;
   readonly 'notifications.desktopErrors': boolean;
-  readonly 'notifications.agentFinished': FinishNotifications;
-  readonly 'notifications.runFinished': FinishNotifications;
+  readonly 'notifications.types': Readonly<Record<string, NotificationChoice>>;
 
   readonly 'printing.paperSize': PrintPaperSize;
   readonly 'printing.orientation': PrintOrientation;
@@ -1394,36 +1393,13 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: true,
       },
       {
-        key: 'notifications.agentFinished',
-        title: 'Notify When an Agent Finishes',
+        key: 'notifications.types',
+        title: 'Notification Types',
         description:
-          'Announce an agent finishing its turn or a background task: always, only when it ' +
-          'fails, or never. It is recorded in the notification tray either way.',
-        control: {
-          kind: 'select',
-          options: [
-            { value: 'always', label: 'Always' },
-            { value: 'failures', label: 'Failures Only' },
-            { value: 'never', label: 'Never' },
-          ],
-        },
-        default: 'always',
-      },
-      {
-        key: 'notifications.runFinished',
-        title: 'Notify When a Run or Build Finishes',
-        description:
-          'Announce a run or build ending on its own: always, only when it fails, or never. It ' +
-          'is recorded in the notification tray either way.',
-        control: {
-          kind: 'select',
-          options: [
-            { value: 'always', label: 'Always' },
-            { value: 'failures', label: 'Failures Only' },
-            { value: 'never', label: 'Never' },
-          ],
-        },
-        default: 'always',
+          'For each kind of background notification: pop up, go to the history only, or be ' +
+          'switched off. Notifications about something you just did always show.',
+        control: { kind: 'custom', component: 'notification-types' },
+        default: {},
       },
     ],
   },

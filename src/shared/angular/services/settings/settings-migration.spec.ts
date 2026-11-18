@@ -237,4 +237,49 @@ describe('restoreOverrides', () => {
       'notifications.position',
     );
   });
+
+  it('retiredAgentFinishedFailures_sendsAgentSuccessesToTheHistory', () => {
+    const result: SettingsOverrides = restoreOverrides({
+      'notifications.agentFinished': 'failures',
+    });
+
+    expect(result).not.toHaveProperty('notifications.agentFinished');
+    expect(result['notifications.types']).toEqual({ 'agent.finished': 'history' });
+  });
+
+  it('retiredRunFinishedNever_sendsRunsAndBuildsToTheHistory', () => {
+    const result: SettingsOverrides = restoreOverrides({ 'notifications.runFinished': 'never' });
+
+    expect(result).not.toHaveProperty('notifications.runFinished');
+    expect(result['notifications.types']).toEqual({
+      'run.finished': 'history',
+      'run.failed': 'history',
+      'build.finished': 'history',
+      'build.failed': 'history',
+    });
+  });
+
+  it('retiredFinishAlways_isDroppedWithoutStoringTypes', () => {
+    const result: SettingsOverrides = restoreOverrides({
+      'notifications.agentFinished': 'always',
+      'notifications.runFinished': 'always',
+    });
+
+    expect(result).not.toHaveProperty('notifications.agentFinished');
+    expect(result).not.toHaveProperty('notifications.runFinished');
+    expect(result).not.toHaveProperty('notifications.types');
+  });
+
+  it('retiredFinishChoice_keepsATypeChoiceTheUserAlreadyMade', () => {
+    const result: SettingsOverrides = restoreOverrides({
+      'notifications.agentFinished': 'never',
+      'notifications.types': { 'agent.failed': 'off', 'tests.finished': 'popup' },
+    });
+
+    expect(result['notifications.types']).toEqual({
+      'agent.finished': 'history',
+      'agent.failed': 'off',
+      'tests.finished': 'popup',
+    });
+  });
 });
