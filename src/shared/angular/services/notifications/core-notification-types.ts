@@ -1,7 +1,7 @@
 import type { NotificationTypeDef } from './notification-types';
 
 /**
- * Names the notification types the shared services raise: the agent and the build runner.
+ * Names the notification types the shared services raise: the agent, the build runner and cloning.
  */
 export enum CoreNotificationType {
   /**
@@ -33,11 +33,22 @@ export enum CoreNotificationType {
    * A build finished with errors.
    */
   BuildFailed = 'build.failed',
+
+  /**
+   * A repository finished cloning.
+   */
+  CloneFinished = 'clone.finished',
+
+  /**
+   * A repository could not be cloned.
+   */
+  CloneFailed = 'clone.failed',
 }
 
 /**
- * Lists the notification types the shared services raise. Their defaults pop up, success included,
- * because they did before types existed (#1486): an upgrade must not quieten what a user relied on.
+ * Lists the notification types the shared services raise. The agent, run and build ones pop up,
+ * success included, because they did before types existed (#1486): an upgrade must not quieten what a
+ * user relied on. A finished clone pops up too (#1493): the user is waiting on it to open.
  */
 export const CORE_NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   {
@@ -80,6 +91,20 @@ export const CORE_NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
     label: 'Build Failed',
     description: 'A build finished with errors.',
     area: 'Runs and Builds',
+    default: 'popup',
+  },
+  {
+    id: CoreNotificationType.CloneFinished,
+    label: 'Clone Finished',
+    description: 'A repository finished cloning.',
+    area: 'Cloning',
+    default: 'popup',
+  },
+  {
+    id: CoreNotificationType.CloneFailed,
+    label: 'Clone Failed',
+    description: 'A repository could not be cloned.',
+    area: 'Cloning',
     default: 'popup',
   },
 ];

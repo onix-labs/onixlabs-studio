@@ -33,7 +33,7 @@ describe('NotificationTypes', () => {
           typeOf('tests.finished', 'Tests', 'history'),
           typeOf('tests.failed', 'Tests', 'popup'),
         ]),
-        provideNotificationTypes([typeOf('clone.finished', 'Cloning', 'popup')]),
+        provideNotificationTypes([typeOf('downloads.finished', 'Downloads', 'popup')]),
       ],
     });
     types = TestBed.inject(NotificationTypes);
@@ -74,12 +74,12 @@ describe('NotificationTypes', () => {
 
   it('resetAll_returnsEveryTypeToItsDefault', () => {
     types.set('tests.finished', 'off');
-    types.set('clone.finished', 'history');
+    types.set('downloads.finished', 'history');
 
     types.resetAll();
 
     expect(types.choice('tests.finished')).toBe('history');
-    expect(types.choice('clone.finished')).toBe('popup');
+    expect(types.choice('downloads.finished')).toBe('popup');
   });
 
   it('areas_groupTheTypesAlphabeticallyByArea', () => {
@@ -87,7 +87,7 @@ describe('NotificationTypes', () => {
       .areas()
       .map((group: NotificationArea): string => group.area);
 
-    expect(areas).toEqual(['Agents', 'Cloning', 'Runs and Builds', 'Tests']);
+    expect(areas).toEqual(['Agents', 'Cloning', 'Downloads', 'Runs and Builds', 'Tests']);
     expect(
       types
         .areas()
@@ -119,7 +119,26 @@ describe('NotificationTypes', () => {
         'run.failed',
         'build.finished',
         'build.failed',
+        'clone.finished',
+        'clone.failed',
       ]),
     );
+  });
+
+  it('aTypeProvidedTwice_isListedOnce', () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        provideNotificationTypes([typeOf('agent.finished', 'Elsewhere', 'off')]),
+        provideNotificationTypes([typeOf('x.done', 'X', 'popup'), typeOf('x.done', 'X', 'off')]),
+      ],
+    });
+    const fresh: NotificationTypes = TestBed.inject(NotificationTypes);
+
+    const ids: readonly string[] = fresh.all().map((type: NotificationTypeDef): string => type.id);
+    expect(ids.filter((id: string): boolean => id === 'agent.finished')).toHaveLength(1);
+    expect(ids.filter((id: string): boolean => id === 'x.done')).toHaveLength(1);
+    expect(fresh.choice('agent.finished')).toBe('popup');
+    expect(fresh.choice('x.done')).toBe('popup');
   });
 });

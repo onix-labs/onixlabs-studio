@@ -109,7 +109,12 @@ export class NotificationTypes {
    */
   private readonly typesSignal: WritableSignal<readonly NotificationTypeDef[]> = signal<
     readonly NotificationTypeDef[]
-  >([...CORE_NOTIFICATION_TYPES, ...(inject(NOTIFICATION_TYPES, { optional: true }) ?? []).flat()]);
+  >(
+    withoutRepeats([
+      ...CORE_NOTIFICATION_TYPES,
+      ...(inject(NOTIFICATION_TYPES, { optional: true }) ?? []).flat(),
+    ]),
+  );
 
   /**
    * Gets every contributed type, in contribution order.
@@ -153,15 +158,8 @@ export class NotificationTypes {
    */
   public contribute(types: readonly NotificationTypeDef[]): void {
     this.typesSignal.update(
-      (current: readonly NotificationTypeDef[]): readonly NotificationTypeDef[] => {
-        const known: ReadonlySet<string> = new Set<string>(
-          current.map((type: NotificationTypeDef): string => type.id),
-        );
-        return [
-          ...current,
-          ...types.filter((type: NotificationTypeDef): boolean => !known.has(type.id)),
-        ];
-      },
+      (current: readonly NotificationTypeDef[]): readonly NotificationTypeDef[] =>
+        withoutRepeats([...current, ...types]),
     );
   }
 
@@ -217,4 +215,20 @@ export class NotificationTypes {
   public resetAll(): void {
     this.settings.set('notifications.types', {});
   }
+}
+
+/**
+ * Keeps the first definition of each type identifier, so a kind is never listed twice.
+ * @param types The types, in contribution order.
+ * @returns Returns the types without repeats.
+ */
+function withoutRepeats(types: readonly NotificationTypeDef[]): readonly NotificationTypeDef[] {
+  const seen: Set<string> = new Set<string>();
+  return types.filter((type: NotificationTypeDef): boolean => {
+    if (seen.has(type.id)) {
+      return false;
+    }
+    seen.add(type.id);
+    return true;
+  });
 }
