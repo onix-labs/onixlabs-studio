@@ -37,7 +37,8 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       return answer({ lines: ['one', 'two'], truncated: false });
     case 'watchStart':
       answer(true);
-      return write({ type: 'event', event: { type: 'container', action: 'start', id: 'c1' } });
+      write({ type: 'event', event: { type: 'container', action: 'start', id: 'c1' } });
+      return write({ type: 'event', event: { type: 'container', action: 'die', id: 'c2', name: 'db', exitCode: 3, image: 7, project: '' } });
     case 'watchStop':
       return answer(true);
     case 'stats':
@@ -138,7 +139,12 @@ describe('ContainerEngineClient', () => {
       events.push(event),
     );
     await vi.waitFor((): void => {
-      expect(events).toEqual([{ type: 'container', action: 'start', id: 'c1' }]);
+      // The second carries the details a notification names the container by (#1488); a detail that
+      // is not text, or is empty, is left out rather than passed on.
+      expect(events).toEqual([
+        { type: 'container', action: 'start', id: 'c1' },
+        { type: 'container', action: 'die', id: 'c2', name: 'db', exitCode: 3 },
+      ]);
     });
     handle.close();
   });
