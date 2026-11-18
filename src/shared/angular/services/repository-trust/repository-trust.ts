@@ -1,48 +1,24 @@
-import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import {
-  RepositoryInfo,
-  RepositoryTrustDecision,
-  SourceControlClient,
-} from '@shared/api/source-control-channels';
+import { DestroyRef, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import type { Bridge } from '@shared/api/bridge';
+import type { RepositoryInfo, RepositoryTrustDecision } from '@shared/api/source-control-channels';
+import { TrustChannel, type TrustChange } from '@shared/api/trust-channels';
 import { Log } from '@shared/angular/services/log/log';
-import { SourceControl } from '@shared/angular/services/source-control/source-control';
 
 /**
- * A repository the user is being asked about.
- */
-export interface RepositoryTrustQuestion {
-  /**
-   * Gets the repository's absolute root.
-   */
-  readonly root: string;
-
-  /**
-   * Gets the repository's display name.
-   */
-  readonly name: string;
-}
-
-/**
- * Owns the one question every repository is asked before version control first runs in it: "do you
- * trust this repository?" It holds the repository currently being asked (rendered by the trust host
- * mounted at the application root, in its own window like every modal), resolves each request with
- * the user's answer, and records the answer in the main process, which is what enforces it.
+ * Asks, on the renderer's behalf, whether the user trusts a folder (#1504). Nothing runs from a folder
+ * until they do: no language server, no project tool, no version control, no package manager.
  *
- * A repository can carry settings and scripts its tool runs the moment it looks at the folder, so the
- * answer decides whether the tool looks at all. Declining is the default, and dismissing the window
- * means declining: nothing runs until the user says so, and a repository they declined stays that way
- * until they trust it from the panels' empty state.
- *
- * One place, so that the workspace's explorer decorations and the Repository panel — which open the
- * same repository independently — ask once between them: a second request for a repository already
- * being asked about shares the first's answer, and requests for different repositories take turns.
+ * ⛔ The renderer can ask the question but never answer it. The main process puts it to the user in a
+ * window of its own and records the answer itself; this service only asks, and follows what changes.
+ * Every folder Studio opens is asked about once, whatever plugins are installed, and a folder the user
+ * did not trust stays that way until they choose Trust from the status bar or a panel.
  */
 @Service()
 export class RepositoryTrust {
   /**
-   * Holds the source-control client, or undefined outside Electron.
+   * Holds the generic transport, or undefined outside Electron.
    */
-  private readonly api: SourceControlClient | undefined = inject(SourceControl).client;
+  private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
    * Holds the structured logger.
@@ -50,142 +26,90 @@ export class RepositoryTrust {
   private readonly log: Log = inject(Log);
 
   /**
-   * Holds the repository being asked about, or null when nothing is being asked.
+   * Holds the last change to any folder's trust, or null before one.
    */
-  private readonly asking: WritableSignal<RepositoryTrustQuestion | null> =
-    signal<RepositoryTrustQuestion | null>(null);
+  private readonly lastChange: WritableSignal<TrustChange | null> = signal<TrustChange | null>(
+    null,
+  );
 
   /**
-   * Holds the resolver of the question in flight, or null when nothing is being asked.
+   * Gets the last change to any folder's trust, or null before one: what a surface waiting on a
+   * folder's trust follows, to start once it is trusted.
    */
-  private answer: ((trusted: boolean) => void) | null = null;
+  public readonly changed: Signal<TrustChange | null> = this.lastChange.asReadonly();
 
   /**
-   * Holds the answers in flight, keyed by repository root, so two surfaces opening one repository
-   * share a single question.
+   * Initializes a new instance of the {@link RepositoryTrust} class, following the main process's
+   * announcements of changed decisions until the service is destroyed.
    */
-  private readonly inFlight: Map<string, Promise<boolean>> = new Map<string, Promise<boolean>>();
+  public constructor() {
+    const stop: (() => void) | undefined = this.bridge?.on(
+      TrustChannel.Changed,
+      (change: unknown): void => {
+        const typed: TrustChange = change as TrustChange;
+        this.log.info('RepositoryTrust', `${typed.folder} is now ${typed.decision}`);
+        this.lastChange.set(typed);
+      },
+    );
+    inject(DestroyRef).onDestroy((): void => stop?.());
+  }
 
   /**
-   * Holds the questions waiting their turn, so one repository is asked about at a time.
+   * Gets what the user decided about a folder, asking nothing.
+   * @param folder The folder.
+   * @returns Returns the decision; `unknown` outside Electron.
    */
-  private queue: Promise<void> = Promise.resolve();
+  public async state(folder: string): Promise<RepositoryTrustDecision> {
+    return (
+      (await this.bridge?.invoke<RepositoryTrustDecision>(TrustChannel.State, folder)) ?? 'unknown'
+    );
+  }
 
   /**
-   * Gets the repository being asked about, or null when nothing is being asked.
+   * Makes sure the user has been asked about a folder Studio opened: asks when nothing has been
+   * decided, and leaves a decision already made alone. What a workspace calls as its folder opens.
+   * @param folder The folder.
+   * @returns Returns the decision in force afterwards.
    */
-  public readonly pending: Signal<RepositoryTrustQuestion | null> = this.asking.asReadonly();
+  public async ensureAsked(folder: string): Promise<RepositoryTrustDecision> {
+    const decision: RepositoryTrustDecision = await this.state(folder);
+    return decision === 'unknown' ? this.ask(folder) : decision;
+  }
 
   /**
-   * Makes sure the user has decided about a repository, asking them when they have not yet, and
-   * reports whether version control may run in it.
+   * Makes sure the user has decided about a repository before its version control runs, asking them
+   * when they have not, and reports whether it may run.
    * @param info The opened repository, as the main process described it.
    * @returns Returns true when the repository is trusted.
    */
-  public ensureTrusted(info: RepositoryInfo): Promise<boolean> {
+  public async ensureTrusted(info: RepositoryInfo): Promise<boolean> {
     if (info.trust === 'trusted') {
-      return Promise.resolve(true);
+      return true;
     }
     if (info.trust === 'restricted') {
-      return Promise.resolve(false);
+      return false;
     }
-    return this.ask({ root: info.root, name: info.name });
+    return (await this.ask(info.root)) === 'trusted';
   }
 
   /**
-   * Trusts a repository the user declined earlier, from the panels' empty state.
-   * @param root The repository root.
-   * @returns Returns true when the main process recorded the decision.
+   * Asks the user again whether they trust a folder they declined, from a Trust button.
+   * @param folder The folder.
+   * @returns Returns true when they now trust it.
    */
-  public async trust(root: string): Promise<boolean> {
-    const decision: RepositoryTrustDecision = await this.record(root, 'trusted');
-    return decision === 'trusted';
+  public async trust(folder: string): Promise<boolean> {
+    return (await this.ask(folder)) === 'trusted';
   }
 
   /**
-   * Answers the question being asked: the repository is trusted.
+   * Has the main process ask the user, and answers with the decision it recorded.
+   * @param folder The folder.
+   * @returns Returns the decision in force afterwards; `unknown` outside Electron.
    */
-  public accept(): void {
-    this.settle(true);
-  }
-
-  /**
-   * Answers the question being asked: the repository is not trusted. Dismissing the window means the
-   * same thing, and is deliberately the same outcome: nothing runs.
-   */
-  public decline(): void {
-    this.settle(false);
-  }
-
-  /**
-   * Puts the question in front of the user, sharing an answer already being sought for the same
-   * repository and waiting for any other repository's question to be answered first.
-   * @param question The repository to ask about.
-   * @returns Returns true when the user trusts it.
-   */
-  private ask(question: RepositoryTrustQuestion): Promise<boolean> {
-    const shared: Promise<boolean> | undefined = this.inFlight.get(question.root);
-    if (shared !== undefined) {
-      return shared;
-    }
-    const answered: Promise<boolean> = this.queue.then((): Promise<boolean> =>
-      this.askNow(question),
+  private async ask(folder: string): Promise<RepositoryTrustDecision> {
+    this.log.info('RepositoryTrust', `Asking whether ${folder} is trusted`);
+    return (
+      (await this.bridge?.invoke<RepositoryTrustDecision>(TrustChannel.Ask, folder)) ?? 'unknown'
     );
-    this.inFlight.set(question.root, answered);
-    this.queue = answered.then(
-      (): void => undefined,
-      (): void => undefined,
-    );
-    void answered.finally((): void => {
-      this.inFlight.delete(question.root);
-    });
-    return answered;
-  }
-
-  /**
-   * Shows the question, waits for the answer, and records it.
-   * @param question The repository to ask about.
-   * @returns Returns true when the user trusts it.
-   */
-  private async askNow(question: RepositoryTrustQuestion): Promise<boolean> {
-    this.log.info('RepositoryTrust', `Asking whether ${question.root} is trusted`);
-    this.asking.set(question);
-    const trusted: boolean = await new Promise<boolean>(
-      (resolve: (trusted: boolean) => void): void => {
-        this.answer = resolve;
-      },
-    );
-    const decision: RepositoryTrustDecision = await this.record(
-      question.root,
-      trusted ? 'trusted' : 'restricted',
-    );
-    return decision === 'trusted';
-  }
-
-  /**
-   * Records a decision in the main process, which is what enforces it.
-   * @param root The repository root.
-   * @param decision The decision.
-   * @returns Returns the decision in force afterwards.
-   */
-  private async record(
-    root: string,
-    decision: Exclude<RepositoryTrustDecision, 'unknown'>,
-  ): Promise<RepositoryTrustDecision> {
-    const recorded: RepositoryTrustDecision =
-      (await this.api?.setTrust(root, decision)) ?? 'unknown';
-    this.log.info('RepositoryTrust', `${root} is now ${recorded}`);
-    return recorded;
-  }
-
-  /**
-   * Resolves the question in flight, if any, and clears it.
-   * @param trusted The user's answer.
-   */
-  private settle(trusted: boolean): void {
-    const resolve: ((trusted: boolean) => void) | null = this.answer;
-    this.answer = null;
-    this.asking.set(null);
-    resolve?.(trusted);
   }
 }

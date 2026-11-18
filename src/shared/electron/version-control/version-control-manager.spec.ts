@@ -74,7 +74,8 @@ describe('VersionControlManager', () => {
       executableFor: vi.fn().mockReturnValue(null),
     };
     trust = {
-      decide: vi.fn(),
+      ask: vi.fn().mockResolvedValue('trusted'),
+      restrict: vi.fn().mockReturnValue('restricted'),
       decisionFor: vi.fn().mockReturnValue('trusted'),
     };
     new VersionControlManager(host as never, settings as never, trust as never).register();
@@ -140,7 +141,7 @@ describe('VersionControlManager', () => {
   it('setTrust_forARepositoryNotOpen_isRefused', async () => {
     expect(await invoke(SourceControlChannel.SetTrust, '/repo', 'trusted')).toBe('unknown');
 
-    expect(trust['decide']).not.toHaveBeenCalled();
+    expect(trust['ask']).not.toHaveBeenCalled();
   });
 
   it.each([['maybe'], [undefined], [true]])(
@@ -150,7 +151,8 @@ describe('VersionControlManager', () => {
 
       expect(await invoke(SourceControlChannel.SetTrust, '/repo', decision)).toBe('unknown');
 
-      expect(trust['decide']).not.toHaveBeenCalled();
+      expect(trust['ask']).not.toHaveBeenCalled();
+      expect(trust['restrict']).not.toHaveBeenCalled();
     },
   );
 
@@ -160,12 +162,23 @@ describe('VersionControlManager', () => {
     expect(await invoke(SourceControlChannel.SetTrust, 7, 'trusted')).toBe('unknown');
   });
 
-  it('setTrust_onAnOpenRepository_answersTheDecisionInForce', async () => {
+  it('setTrust_restricting_isRecordedWithoutAQuestion', async () => {
     host['isOpen']?.mockReturnValue(true);
 
-    expect(await invoke(SourceControlChannel.SetTrust, '/repo', 'restricted')).toBe('trusted');
+    expect(await invoke(SourceControlChannel.SetTrust, '/repo', 'restricted')).toBe('restricted');
 
-    expect(trust['decide']).toHaveBeenCalledWith('/repo', 'restricted');
+    expect(trust['restrict']).toHaveBeenCalledWith('/repo');
+    expect(trust['ask']).not.toHaveBeenCalled();
+  });
+
+  it('setTrust_trusting_asksTheUser_ratherThanRecordingIt (#1504)', async () => {
+    host['isOpen']?.mockReturnValue(true);
+    trust['ask']?.mockResolvedValue('restricted');
+
+    // The renderer asked to trust; the user, in the main process's prompt, said no.
+    expect(await invoke(SourceControlChannel.SetTrust, '/repo', 'trusted')).toBe('restricted');
+
+    expect(trust['ask']).toHaveBeenCalledWith('/repo');
   });
 
   it('describe_withANonStringRoot_askNothing', async () => {

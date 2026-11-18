@@ -1,17 +1,29 @@
-import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  signal,
+  Signal,
+  untracked,
+  WritableSignal,
+} from '@angular/core';
 import { StatusStripSegments } from '@shared/angular/components/strips/status-strip/status-strip-segments/status-strip-segments';
 import { Icon } from '@shared/angular/icons/icon';
 import { StatusSegment } from '@shared/angular/services/status-bar/status-segment';
 import { Repository } from '@shared/angular/services/repository/repository';
+import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
+import type { RepositoryTrustDecision } from '@shared/api/source-control-channels';
 import { GitBranch } from '@shared/angular/services/repository/repository-data';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-session';
 
 /**
- * Shows the active workspace view's status at the start of the strip: the open folder, and — when
- * that folder is a git repository — the checkout, the branch, the uncommitted changes, and the
- * commits waiting to be pushed and pulled.
+ * Shows the active workspace view's status at the start of the strip: the open folder, whether it
+ * is trusted, and — when that folder is a git repository — the checkout, the branch, the uncommitted
+ * changes, and the commits waiting to be pushed and pulled.
  *
  * Mounted by the status strip through the active workspace view's injector, so it reads that view's
  * own {@link Workspace} and {@link Repository}. A worktree container tab holds one sub-view per
@@ -45,6 +57,39 @@ export class DirectoryStatusStrip {
   private readonly worktreeSession: WorktreeSession = inject(WorktreeSession);
 
   /**
+   * Holds the trust question's client, which reads and asks for the folder's trust.
+   */
+  private readonly trust: RepositoryTrust = inject(RepositoryTrust);
+
+  /**
+   * Holds what the user decided about the open folder, read again whenever a decision changes.
+   */
+  private readonly decision: WritableSignal<RepositoryTrustDecision | null> =
+    signal<RepositoryTrustDecision | null>(null);
+
+  /**
+   * Initializes a new instance of the {@link DirectoryStatusStrip} class, reading the open folder's
+   * trust as the folder opens and whenever a decision changes.
+   */
+  public constructor() {
+    effect((): void => {
+      const root: string | null = this.workspace.root()?.path ?? null;
+      this.trust.changed();
+      untracked((): void => {
+        if (root === null) {
+          this.decision.set(null);
+          return;
+        }
+        void this.trust.state(root).then((decision: RepositoryTrustDecision): void => {
+          if (this.workspace.root()?.path === root) {
+            this.decision.set(decision);
+          }
+        });
+      });
+    });
+  }
+
+  /**
    * Gets the start-aligned segments: the workspace folder, then the git segments when the folder is
    * a repository.
    */
@@ -62,6 +107,23 @@ export class DirectoryStatusStrip {
       const segments: StatusSegment[] = [
         { id: 'ws-folder', text: workspaceName, title: workspaceName, shrink: 'end' },
       ];
+      // A folder not yet trusted runs nothing (#1504), which explains empty panels; this says so,
+      // and is where the user trusts it once they have decided they do.
+      const decision: RepositoryTrustDecision | null = this.decision();
+      if (decision !== null && decision !== 'trusted') {
+        const folder: string = root.path;
+        segments.push({
+          id: 'ws-trust',
+          text: 'Not Trusted',
+          icon: Icon.LOCK,
+          title:
+            'Nothing runs from this folder: no language servers, build tools or version control. ' +
+            'Click to choose whether to trust it.',
+          activate: (): void => {
+            void this.trust.trust(folder);
+          },
+        });
+      }
       if (!this.repository.isBound()) {
         return segments;
       }

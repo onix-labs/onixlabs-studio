@@ -1,0 +1,15 @@
+/* Type-checks the trust prompt's preload on its own (#1504). It is the one main-process file that works
+   a page, so it alone is given the browser's types; the main process's tsconfig.json leaves this
+   folder out. */
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": [
+    "./*.ts",
+    "../../../api/trust-channels.ts",
+    "../../../api/source-control-channels.ts"
+  ],
+  "exclude": []
+}

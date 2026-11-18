@@ -21,7 +21,6 @@ import { UpstreamConfirmModal } from '@shared/angular/components/upstream-confir
 import { TerminalConfirmModal } from '@shared/angular/components/terminal-confirm-modal/terminal-confirm-modal';
 import { ConversationRetentionPrompt } from '@shared/angular/components/conversation-retention-prompt/conversation-retention-prompt';
 import { PluginConsentHost } from '@shared/angular/components/plugin-consent-modal/plugin-consent-host';
-import { RepositoryTrustHost } from '@shared/angular/components/repository-trust-modal/repository-trust-host';
 import { GoToDialogHost } from '@shared/angular/components/go-to/go-to-dialogs/go-to-dialog-host';
 import { ToastHost } from '@shared/angular/components/toast-host/toast-host';
 import { RibbonStripContainer } from '@shared/angular/components/strips/ribbon-strip/ribbon-strip-container/ribbon-strip-container';
@@ -44,7 +43,6 @@ import { ConfigureDialogPanel } from '@features/workspace/angular/configure-dial
     ContentHost,
     ModalBackdropView,
     PluginConsentHost,
-    RepositoryTrustHost,
     GoToDialogHost,
     AboutHost,
     ConversationRetentionPrompt,
