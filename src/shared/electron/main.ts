@@ -142,7 +142,7 @@ import { TerminalManager } from '@shared/electron/terminal-manager';
 import { TrustedPaths } from './trusted-paths';
 import { RepositoryTrust, RunGate, workspaceRunGate } from './repository-trust';
 import { TrustManager } from './trust/trust-manager';
-import { TrustPrompt } from './trust/trust-prompt';
+import { WindowTrustAsker } from './trust/trust-asker';
 import { TrustChannel, type TrustChange, type TrustScanRequest } from '@shared/api/trust-channels';
 import { WindowManager } from '@shared/electron/window-manager';
 import { WorkspaceContext } from './workspace-context';
@@ -398,17 +398,15 @@ class Program {
   private readonly runGate: RunGate = workspaceRunGate(this.workspaceContext, this.repositoryTrust);
 
   /**
-   * Asks "do you trust this folder?" in a window the main process opens and owns, so no renderer code
-   * can answer it (#1504).
+   * Puts the trust question to the user in the application window (#1504).
    */
-  private readonly trustPrompt: TrustPrompt = new TrustPrompt(
-    TrustPrompt.preloadIn(__dirname),
-    (): BrowserWindow | null => BrowserWindow.getFocusedWindow() ?? this.windows.main(),
+  private readonly trustAsker: WindowTrustAsker = new WindowTrustAsker((): BrowserWindow | null =>
+    this.windows.main(),
   );
 
   /**
    * Owns the trust question for every folder Studio opens, whatever plugins are installed: the
-   * renderer may ask for it, and only the user, through {@link trustPrompt}, answers it (#1504).
+   * renderer may ask for it, and only the user's answer to it is recorded (#1504).
    */
   private readonly trustManager: TrustManager = new TrustManager(
     this.repositoryTrust,
@@ -420,7 +418,7 @@ class Program {
           .list()
           .some((opened: string): boolean => path.dirname(path.resolve(opened)) === folder),
     },
-    this.trustPrompt,
+    this.trustAsker,
     (change: TrustChange): void => {
       for (const window of BrowserWindow.getAllWindows()) {
         if (!window.isDestroyed()) {
@@ -1294,7 +1292,7 @@ class Program {
     this.editorConfigManager.register();
     this.menuManager.register();
     this.codeRunner.register();
-    this.trustPrompt.register();
+    this.trustAsker.register();
     this.trustManager.register();
     this.versionControlManager.register();
     this.hostingManager.register();

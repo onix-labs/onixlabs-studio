@@ -10,7 +10,7 @@ import {
 } from '@shared/api/trust-channels';
 import { logger } from '../logger';
 import type { RepositoryTrustChoice } from '../repository-trust';
-import type { TrustAsker } from './trust-prompt';
+import type { TrustAsker } from './trust-asker';
 
 /**
  * The part of the trust store the manager reads and writes.
@@ -82,9 +82,9 @@ export interface TrustGrants {
  * Owns the question "do you trust this folder?" (#1504): asked for every folder Studio opens, whatever
  * plugins are installed, before anything runs from it.
  *
- * ⛔ The renderer can ask for the question, never answer it. {@link ask} puts it to the user through
- * the main process's own prompt and records the answer here; the decision a renderer could send is
- * never read. Lowering trust needs no question: {@link restrict} records it directly.
+ * The main process owns the question: {@link ask} decides when to put it, one folder at a time, and
+ * records the answer here. A renderer asking for trust gets the question, never the decision it
+ * named. Lowering trust needs no question: {@link restrict} records it directly.
  */
 export class TrustManager implements TrustGrants {
   /**

@@ -2,9 +2,8 @@ import type { RepositoryTrustDecision } from './source-control-channels';
 
 /**
  * Names the IPC channels for folder trust (#1504). Nothing runs from a folder until the user has
- * trusted it, and the renderer can only *ask* for that decision: the main process puts the question
- * to the user in a window of its own and records the answer itself, so no renderer code can grant
- * trust.
+ * trusted it. The main process owns the question: it asks one folder at a time, in the application
+ * window, and records the answer itself.
  */
 export enum TrustChannel {
   /**
@@ -29,22 +28,19 @@ export enum TrustChannel {
    * leaving it undecided (main → renderer, send). The workspace showing it starts a read-only agent.
    */
   ScanRequested = 'trust:scan-requested',
-}
-
-/**
- * Names the IPC channels between the main process and its trust prompt window. Only that window's
- * own preload uses them, and the main process answers only the window it opened.
- */
-export enum TrustPromptChannel {
-  /**
-   * Gets the folder being asked about (invoke).
-   */
-  Question = 'trust-prompt:question',
 
   /**
-   * Gives the user's answer (send).
+   * Puts the trust question to the user in the application window (main → renderer, send): a
+   * {@link TrustQuestionRequest}. The main process asks one folder at a time.
    */
-  Answer = 'trust-prompt:answer',
+  Question = 'trust:question',
+
+  /**
+   * Gives the user's answer to a question the main process asked (invoke): its identifier and a
+   * {@link TrustAnswer}. An answer to a question that was never asked, or one already answered, is
+   * ignored.
+   */
+  Answer = 'trust:answer',
 }
 
 /**
@@ -105,4 +101,19 @@ export interface TrustScanRequest {
    * Gets the folder to scan.
    */
   readonly folder: string;
+}
+
+/**
+ * Describes a question the main process puts to the user, as {@link TrustChannel.Question} sends it.
+ */
+export interface TrustQuestionRequest {
+  /**
+   * Gets the question's identifier, which its answer carries back.
+   */
+  readonly id: number;
+
+  /**
+   * Gets the folder asked about.
+   */
+  readonly question: TrustQuestion;
 }

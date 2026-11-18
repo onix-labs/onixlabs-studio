@@ -4,7 +4,7 @@ import type { RepositoryTrustDecision } from '@shared/api/source-control-channel
 import type { TrustAnswer, TrustChange, TrustQuestion } from '@shared/api/trust-channels';
 import type { RepositoryTrustChoice } from '../repository-trust';
 import { TrustManager, TrustStore } from './trust-manager';
-import type { TrustAsker } from './trust-prompt';
+import type { TrustAsker } from './trust-asker';
 
 /**
  * An open workspace root every test works with.
