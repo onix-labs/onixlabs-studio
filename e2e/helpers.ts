@@ -42,6 +42,48 @@ export async function modalWindow(
 }
 
 /**
+ * Holds the prefix of the trust prompt's page (#1504): a window the main process opens and owns, with
+ * its own page, so it is no modal window of the renderer's.
+ */
+const TRUST_PROMPT_URL_PREFIX: string = 'data:text/html';
+
+/**
+ * Determines whether a window is the trust prompt that is still open.
+ * @param window The window to test.
+ * @returns Returns true when it is.
+ */
+export function isTrustPrompt(window: Page): boolean {
+  return !window.isClosed() && window.url().startsWith(TRUST_PROMPT_URL_PREFIX);
+}
+
+/**
+ * Resolves the trust prompt ("Do you trust this folder?"), waiting for it to appear.
+ * @param app The launched application.
+ * @returns Returns the prompt's window.
+ */
+export async function trustPrompt(app: ElectronApplication): Promise<Page> {
+  const open: Page | undefined = app.windows().find(isTrustPrompt);
+  if (open !== undefined) {
+    return open;
+  }
+  return app.waitForEvent('window', { predicate: isTrustPrompt });
+}
+
+/**
+ * Answers the trust prompt, waiting for it to appear and to have the folder it asks about.
+ * @param app The launched application.
+ * @param answer The button to press.
+ */
+export async function answerTrustPrompt(
+  app: ElectronApplication,
+  answer: 'Trust' | "Don't Trust" | 'Scan with AI',
+): Promise<void> {
+  const prompt: Page = await trustPrompt(app);
+  await expect(prompt.locator('#folder')).not.toBeEmpty();
+  await prompt.getByRole('button', { name: answer, exact: true }).click();
+}
+
+/**
  * Opens a document tab from the welcome screen by clicking one of its actions (for example
  * `New Markdown File` or `New Code File`) and waits for the created view to be visible in the main
  * window. The action is clicked in the welcome screen's own window; the tab it creates appears in
@@ -135,20 +177,26 @@ export function messageBoxesAsked(app: ElectronApplication): Promise<readonly st
 }
 
 /**
- * Opens a folder as a workspace from the welcome screen, through the native dialog's stub.
+ * Opens a folder as a workspace from the welcome screen, through the native dialog's stub, and answers
+ * the trust question it raises (#1504): trusted, unless the test says otherwise.
  * @param app The launched application.
  * @param page The main application window.
  * @param folder The folder to open.
+ * @param trust How to answer the trust question, or null to leave it unanswered.
  */
 export async function openFolderFromWelcome(
   app: ElectronApplication,
   page: Page,
   folder: string,
+  trust: 'Trust' | "Don't Trust" | null = 'Trust',
 ): Promise<void> {
   await answerOpenDialogWith(app, folder);
   const welcome: Page = await modalWindow(app);
   await welcome.getByText('Open Directory or File').click();
   await expect(page.locator('app-directory-view')).toBeVisible();
+  if (trust !== null) {
+    await answerTrustPrompt(app, trust);
+  }
 }
 
 /**

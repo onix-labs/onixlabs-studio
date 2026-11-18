@@ -24,6 +24,7 @@
   /* Exclude src/shared/angular and src/shared/app: they are renderer (Angular) code that must not be
      compiled by this node-only config; the main and preload processes only consume the shared api
      types. Spec files are type-checked and run by the unit-test runner (tsconfig.spec.json), not the
-     electron build. */
-  "exclude": ["../angular/**", "../app/**", "../**/*.spec.ts"]
+     electron build. The trust prompt's preload works its page, so it needs the browser's types, which
+     the rest of the main process must not see: trust/preload/tsconfig.json checks it on its own. */
+  "exclude": ["../angular/**", "../app/**", "../**/*.spec.ts", "./trust/preload/**"]
 }

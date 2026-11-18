@@ -1,4 +1,13 @@
-import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import {
+  computed,
+  effect,
+  inject,
+  Service,
+  signal,
+  Signal,
+  untracked,
+  WritableSignal,
+} from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import {
   PackageAnswer,
@@ -404,7 +413,7 @@ export class PackageModel {
 
   /**
    * Initializes a new instance of the {@link PackageModel} class, refreshing whenever the open root
-   * changes, a package-manager plugin is installed or removed, or a trust question is answered.
+   * changes, a package-manager plugin is installed or removed, or a folder's trust changes.
    */
   public constructor() {
     effect((): void => {
@@ -412,14 +421,11 @@ export class PackageModel {
       this.installedKey();
       void this.refresh(root);
     });
-    let asking: boolean = false;
     effect((): void => {
-      // A repository's trust is asked in a window of its own; once it is answered, ask again.
-      const pending: boolean = this.repositoryTrust.pending() !== null;
-      if (asking && !pending) {
-        this.refreshNow();
+      // Trust is decided in the main process's own window; once a decision changes, ask again.
+      if (this.repositoryTrust.changed() !== null) {
+        untracked((): void => this.refreshNow());
       }
-      asking = pending;
     });
   }
 

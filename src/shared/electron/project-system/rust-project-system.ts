@@ -27,7 +27,7 @@ import {
 import type { DebugResolveResult } from '@shared/api/debug-channels';
 import type { RunConfiguration } from '@shared/api/studio';
 import { listProjectFiles, sourceFilter } from './project-listing';
-import { ProjectSystem } from './project-system';
+import { ProjectLoadOptions, ProjectSystem } from './project-system';
 import { logger } from '../logger';
 
 /**
@@ -265,9 +265,13 @@ export class RustProjectSystem implements ProjectSystem {
    * @param projectPath The absolute path of the crate manifest.
    * @returns Returns the contents, or null when the directory cannot be read.
    */
-  public async loadProjectItems(projectPath: string): Promise<ProjectItems | null> {
+  public async loadProjectItems(
+    projectPath: string,
+    options?: ProjectLoadOptions,
+  ): Promise<ProjectItems | null> {
+    // `cargo metadata` only once the folder is trusted (#1504); until then, its files.
     const tree: readonly ProjectItemNode[] | null =
-      (await this.targetTree(projectPath)) ??
+      (options?.mayRun === true ? await this.targetTree(projectPath) : null) ??
       (await listProjectFiles(
         path.dirname(projectPath),
         { remaining: MAX_ITEMS },

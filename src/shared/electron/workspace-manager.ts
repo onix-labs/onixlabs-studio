@@ -37,6 +37,7 @@ import { projectSystems } from './project-system/default-project-systems';
 import { ProjectSystem } from './project-system/project-system';
 import { readOnlySourcePath } from './lsp/toolchain-source';
 import { TrustedPaths } from './trusted-paths';
+import { FolderTrustSource, mayRunIn } from './repository-trust';
 import { trashOrRemove } from './trash-or-remove';
 import { WorkspaceContext } from './workspace-context';
 import { decodeText, hasUtf16ByteOrderMark, type DecodedText } from './text-encoding';
@@ -104,20 +105,29 @@ export class WorkspaceManager {
   private readonly trusted: TrustedPaths;
 
   /**
+   * Holds what the user decided about each folder's contents: a project tool runs only in a trusted
+   * one (#1504). Distinct from {@link trusted}, which records folders chosen in a dialog.
+   */
+  private readonly folderTrust: FolderTrustSource;
+
+  /**
    * Initializes a new instance of the {@link WorkspaceManager} class.
    * @param windowGetter A function that returns the window dialogs are parented to when the
    * requesting window is gone.
    * @param workspace The shared workspace context to update when a folder is opened or closed.
    * @param trusted The store recording paths the user has opened, gating path-based re-opens.
+   * @param folderTrust The trust store project tools are checked against.
    */
   public constructor(
     windowGetter: () => BrowserWindow | null,
     workspace: WorkspaceContext,
     trusted: TrustedPaths,
+    folderTrust: FolderTrustSource,
   ) {
     this.windowGetter = windowGetter;
     this.workspace = workspace;
     this.trusted = trusted;
+    this.folderTrust = folderTrust;
   }
 
   /**
@@ -348,7 +358,11 @@ export class WorkspaceManager {
       return null;
     }
     const system: ProjectSystem | null = projectSystems.matchProject(projectPath);
-    return (await system?.loadProjectItems?.(projectPath)) ?? null;
+    return (
+      (await system?.loadProjectItems?.(projectPath, {
+        mayRun: mayRunIn(this.folderTrust, projectPath),
+      })) ?? null
+    );
   }
 
   /**
@@ -368,6 +382,11 @@ export class WorkspaceManager {
   ): Promise<CompiledArtifact | null> {
     if (typeof sourcePath !== 'string' || !this.workspace.isWithin(sourcePath)) {
       logger.warn('WorkspaceManager.resolveArtifact', 'Rejected a file outside the workspace');
+      return null;
+    }
+    // Resolving asks the build tool (MSBuild for .NET), which runs the project's own files (#1504).
+    if (!mayRunIn(this.folderTrust, sourcePath)) {
+      logger.debug('WorkspaceManager.resolveArtifact', 'Held for an untrusted folder');
       return null;
     }
     const configuration: string | undefined =
@@ -407,6 +426,12 @@ export class WorkspaceManager {
     }
     const root: string | undefined = this.workspace.rootContaining(filePath);
     if (root === undefined) {
+      return null;
+    }
+    // A formatter here may be one the folder ships (a virtual environment's ruff or black), and reads
+    // the folder's configuration: none runs until the folder is trusted (#1504).
+    if (!mayRunIn(this.folderTrust, filePath)) {
+      logger.debug('WorkspaceManager.formatDocument', 'Held for an untrusted folder');
       return null;
     }
     for (const system of projectSystems.all()) {

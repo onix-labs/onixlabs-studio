@@ -1,5 +1,7 @@
+import type { ProjectLoadOptions } from './project-system';
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -21,6 +23,11 @@ import {
   parseCargoWorkspaceMembers,
   RustProjectSystem,
 } from './rust-project-system';
+
+/**
+ * Loads a project as a trusted folder does, letting the provider ask its tool.
+ */
+const TRUSTED_LOAD: ProjectLoadOptions = { mayRun: true };
 
 describe('parseCargoPackageName', () => {
   it('readsThePackageTableName', () => {
@@ -201,13 +208,14 @@ describe('RustProjectSystem on disk', () => {
 
     const items: ProjectItems | null = await provider.loadProjectItems(
       path.join(root, 'Cargo.toml'),
+      TRUSTED_LOAD,
     );
 
     expect(names(items?.tree ?? [])).toEqual(['src', ' main.rs', 'Cargo.toml']);
   });
 
   it('isNull_forItemsOfAProjectWhoseFolderHasGone', async () => {
-    expect(await provider.loadProjectItems('/no/such/place/Cargo.toml')).toBeNull();
+    expect(await provider.loadProjectItems('/no/such/place/Cargo.toml', TRUSTED_LOAD)).toBeNull();
   });
 });
 
@@ -363,6 +371,7 @@ describe.skipIf(process.platform === 'win32')('RustProjectSystem.loadProjectItem
 
     const items: ProjectItems | null = await new RustProjectSystem().loadProjectItems(
       path.join(root, 'Cargo.toml'),
+      TRUSTED_LOAD,
     );
 
     expect(flat(items!.tree)).toEqual([
@@ -382,10 +391,21 @@ describe.skipIf(process.platform === 'win32')('RustProjectSystem.loadProjectItem
     ]);
   });
 
+  it('inAFolderNotTrusted_runsNoCargo_andListsTheFiles (#1504)', async () => {
+    cargo(answer());
+
+    const items: ProjectItems | null = await new RustProjectSystem().loadProjectItems(
+      path.join(root, 'Cargo.toml'),
+    );
+
+    expect(existsSync(path.join(bin, 'cargo.log'))).toBe(false);
+    expect(flat(items!.tree)).toContain('src/lib.rs');
+  });
+
   it('asksFromOutsideTheWorkspace_soNothingInItPicksTheToolchain', async () => {
     cargo(answer());
 
-    await new RustProjectSystem().loadProjectItems(path.join(root, 'Cargo.toml'));
+    await new RustProjectSystem().loadProjectItems(path.join(root, 'Cargo.toml'), TRUSTED_LOAD);
 
     const [cwd, args, autoInstall]: string[] = readFileSync(
       path.join(bin, 'cargo.log'),
@@ -403,6 +423,7 @@ describe.skipIf(process.platform === 'win32')('RustProjectSystem.loadProjectItem
 
     const items: ProjectItems | null = await new RustProjectSystem().loadProjectItems(
       path.join(link, 'Cargo.toml'),
+      TRUSTED_LOAD,
     );
 
     expect(items!.tree.at(-1)).toMatchObject({ path: path.join(link, 'Cargo.toml') });
@@ -417,6 +438,7 @@ describe.skipIf(process.platform === 'win32')('RustProjectSystem.loadProjectItem
 
     const items: ProjectItems | null = await new RustProjectSystem().loadProjectItems(
       path.join(root, 'Cargo.toml'),
+      TRUSTED_LOAD,
     );
 
     expect(flat(items!.tree)).toEqual(
@@ -437,6 +459,7 @@ describe.skipIf(process.platform === 'win32')('RustProjectSystem.loadProjectItem
 
     const items: ProjectItems | null = await new RustProjectSystem().loadProjectItems(
       path.join(root, 'Cargo.toml'),
+      TRUSTED_LOAD,
     );
 
     // The crate's Rust sources from the tree, outside any target included; notes and logs are left
@@ -454,6 +477,7 @@ describe.skipIf(process.platform === 'win32')('RustProjectSystem.loadProjectItem
 
     const items: ProjectItems | null = await new RustProjectSystem().loadProjectItems(
       path.join(root, 'Cargo.toml'),
+      TRUSTED_LOAD,
     );
 
     expect(flat(items!.tree)).toContain('crates/member/src/lib.rs');
@@ -469,6 +493,7 @@ describe.skipIf(process.platform === 'win32')('RustProjectSystem.loadProjectItem
 
     const items: ProjectItems | null = await new RustProjectSystem().loadProjectItems(
       path.join(root, 'Cargo.toml'),
+      TRUSTED_LOAD,
     );
 
     // Cargo answered: only the targets' sources, never the fallback's walk of the tree.

@@ -21,7 +21,7 @@ import type {
   PackageManagerResult,
 } from '@shared/api/package-manager-protocol';
 import type { RepositoryTrustDecision } from '@shared/api/source-control-channels';
-import type { RepositoryTrustChoice } from '../repository-trust';
+import type { TrustGrants } from '../trust/trust-manager';
 import { logger } from '../logger';
 import { PackageManagerDescriptor } from './package-manager-descriptor';
 import { PackageRegistryTokenStore } from './package-registry-token-store';
@@ -73,25 +73,6 @@ export interface PackageManagerChannelsRoots {
 }
 
 /**
- * The part of the trust store the channels read and write.
- */
-export interface PackageManagerChannelsTrust {
-  /**
-   * Gets the decision in force for a folder.
-   * @param target The folder.
-   * @returns Returns the decision.
-   */
-  decisionFor(target: unknown): RepositoryTrustDecision;
-
-  /**
-   * Records a decision about a folder.
-   * @param target The folder.
-   * @param choice The decision.
-   */
-  decide(target: string, choice: RepositoryTrustChoice): void;
-}
-
-/**
  * Serves the Packages panel and Settings over the package-manager host (#911). Core has no package
  * manager of its own any more: every question names a plugin, and with none installed there is
  * nothing to answer but which plugin would.
@@ -113,7 +94,7 @@ export class PackageManagerChannels {
   /**
    * Holds the trust store, shared with version control so a folder is trusted once.
    */
-  private readonly trust: PackageManagerChannelsTrust;
+  private readonly trust: TrustGrants;
 
   /**
    * Holds the registry tokens saved in Studio.
@@ -130,7 +111,7 @@ export class PackageManagerChannels {
   public constructor(
     host: PackageManagerChannelsHost,
     roots: PackageManagerChannelsRoots,
-    trust: PackageManagerChannelsTrust,
+    trust: TrustGrants,
     tokens: PackageRegistryTokenStore,
   ) {
     this.host = host;
@@ -188,7 +169,7 @@ export class PackageManagerChannels {
     );
     ipcMain.handle(
       PackageChannel.TrustFolder,
-      (_event: IpcMainInvokeEvent, root: unknown): RepositoryTrustDecision =>
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<RepositoryTrustDecision> =>
         this.trustFolder(root),
     );
     ipcMain.handle(PackageChannel.Tokens, (): readonly PackageRegistryToken[] =>
@@ -365,13 +346,13 @@ export class PackageManagerChannels {
    * @param root The root, untrusted.
    * @returns Returns the decision in force afterwards, `unknown` when the request was refused.
    */
-  private trustFolder(root: unknown): RepositoryTrustDecision {
+  private trustFolder(root: unknown): Promise<RepositoryTrustDecision> {
     if (!this.isOpenRoot(root)) {
       logger.warn('PackageManagerChannels', 'Refused to trust a folder that is not open');
-      return 'unknown';
+      return Promise.resolve('unknown');
     }
-    this.trust.decide(root, 'trusted');
-    return this.trust.decisionFor(root);
+    // ⛔ Asked, never recorded as the renderer says (#1504): the main process puts the question.
+    return this.trust.ask(root);
   }
 
   /**

@@ -129,6 +129,7 @@ import { PackageExplorer } from '@features/workspace/angular/project/package-exp
 import { Output } from '@shared/angular/services/output/output';
 import { Repository } from '@shared/angular/services/repository/repository';
 import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
+import type { TrustChange } from '@shared/api/trust-channels';
 import type { GitBranch, GitFileChange } from '@shared/angular/services/repository/repository-data';
 import { ForgeRepository } from '@shared/angular/services/forge-repository/forge-repository';
 import {
@@ -1587,6 +1588,44 @@ export class DirectoryView implements OnInit, OnDestroy {
       }
     });
 
+    // Ask whether the user trusts the folder as it opens, whatever plugins are installed (#1504). The
+    // main process asks in a window of its own; a folder already decided about is not asked again.
+    effect((): void => {
+      const root: string | null = this.workspace.root()?.path ?? null;
+      if (root !== null) {
+        untracked((): void => {
+          void this.repositoryTrust.ensureAsked(root);
+        });
+      }
+    });
+
+    // Once the folder is trusted, start what waited on it: the project's own tools read its contents
+    // again, and its documents are opened against their language servers (#1504).
+    effect((): void => {
+      const change: TrustChange | null = this.repositoryTrust.changed();
+      const root: string | null = untracked(
+        (): string | null => this.workspace.root()?.path ?? null,
+      );
+      if (change?.decision !== 'trusted' || root === null) {
+        return;
+      }
+      if (!foldersOverlap(root, change.folder)) {
+        return;
+      }
+      untracked((): void => {
+        this.solutionModel.refreshFromDisk();
+        this.lspClient.retryTrusted(change.folder);
+        const model: ProjectModel | null = this.solutionModel.model();
+        const language: string | null =
+          model === null ? null : (PRESTART_LANGUAGES[model.kind] ?? null);
+        const serverId: string | null =
+          language === null ? null : this.lspSettings.serverForLanguage(language);
+        if (model !== null && serverId !== null && this.isActive()) {
+          this.lspClient.prestartServer(serverId, model.root);
+        }
+      });
+    });
+
     // Release a long-hidden view's language servers, and bring them back on activation. A worktree
     // container keeps every visited checkout's view alive with its own LSP client; without a reap,
     // each visited checkout would hold its own live server (Roslyn on a big solution is easily
@@ -2488,4 +2527,22 @@ export class DirectoryView implements OnInit, OnDestroy {
     this.repository.bind(info);
     return true;
   }
+}
+
+/**
+ * Determines whether two folders overlap: one is the other, or lies beneath it. A decision about
+ * either reaches the other, since a decision covers everything beneath its folder.
+ * @param first The first folder.
+ * @param second The second folder.
+ * @returns Returns true when they overlap.
+ */
+function foldersOverlap(first: string, second: string): boolean {
+  const beneath: (target: string, folder: string) => boolean = (
+    target: string,
+    folder: string,
+  ): boolean => {
+    const base: string = folder.replace(/[\\/]+$/, '');
+    return target === base || target.startsWith(`${base}/`) || target.startsWith(`${base}\\`);
+  };
+  return beneath(first, second) || beneath(second, first);
 }

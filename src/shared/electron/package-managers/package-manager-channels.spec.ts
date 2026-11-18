@@ -65,7 +65,7 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
 
 describe('PackageManagerChannels', () => {
   let host: { detect: Mock; descriptor: Mock; request: Mock };
-  let trust: { decisionFor: Mock; decide: Mock };
+  let trust: { decisionFor: Mock; ask: Mock; restrict: Mock };
   let tokens: PackageRegistryTokenStore;
 
   beforeEach(() => {
@@ -79,7 +79,11 @@ describe('PackageManagerChannels', () => {
       descriptor: vi.fn((id: string) => plugins.find((plugin) => plugin.id === id)),
       request: vi.fn().mockResolvedValue({ id: 1, ok: true, result: null }),
     };
-    trust = { decisionFor: vi.fn().mockReturnValue('trusted'), decide: vi.fn() };
+    trust = {
+      decisionFor: vi.fn().mockReturnValue('trusted'),
+      ask: vi.fn().mockResolvedValue('trusted'),
+      restrict: vi.fn().mockReturnValue('restricted'),
+    };
     let blob: string | null = null;
     tokens = new PackageRegistryTokenStore({
       load: (): string | null => blob,
@@ -177,16 +181,19 @@ describe('PackageManagerChannels', () => {
     expect(host.request).not.toHaveBeenCalled();
   });
 
-  it('trustFolder_recordsTrustForAnOpenRoot', async () => {
-    expect(await invoke(PackageChannel.TrustFolder, ROOT)).toBe('trusted');
+  it('trustFolder_asksTheUser_ratherThanRecordingTrust (#1504)', async () => {
+    trust.ask.mockResolvedValue('restricted');
 
-    expect(trust.decide).toHaveBeenCalledWith(ROOT, 'trusted');
+    // The renderer asked to trust; the user, in the main process's prompt, said no.
+    expect(await invoke(PackageChannel.TrustFolder, ROOT)).toBe('restricted');
+
+    expect(trust.ask).toHaveBeenCalledWith(ROOT);
   });
 
-  it('trustFolder_forAFolderThatIsNotOpen_decidesNothing', async () => {
+  it('trustFolder_forAFolderThatIsNotOpen_asksNothing', async () => {
     expect(await invoke(PackageChannel.TrustFolder, '/elsewhere')).toBe('unknown');
 
-    expect(trust.decide).not.toHaveBeenCalled();
+    expect(trust.ask).not.toHaveBeenCalled();
   });
 
   it('saveToken_forAContributedPlugin_savesAndListsWithoutTheToken', async () => {

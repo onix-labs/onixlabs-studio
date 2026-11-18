@@ -1,3 +1,4 @@
+import type { TrustChange } from '@shared/api/trust-channels';
 import { Signal, signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
@@ -13,10 +14,7 @@ import {
   Notifications,
 } from '@shared/angular/services/notifications/notifications';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
-import {
-  RepositoryTrust,
-  RepositoryTrustQuestion,
-} from '@shared/angular/services/repository-trust/repository-trust';
+import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import {
   TerminalLaunchOptions,
@@ -74,7 +72,7 @@ describe('PackageModel', () => {
   let status: PackageWorkspaceStatus;
   let calls: string[];
   let plugins: WritableSignal<readonly PluginSummary[]>;
-  let pending: WritableSignal<RepositoryTrustQuestion | null>;
+  let changed: WritableSignal<TrustChange | null>;
   let launched: TerminalLaunchOptions[];
   let exitCode: number;
   let command: unknown;
@@ -98,7 +96,7 @@ describe('PackageModel', () => {
     calls = [];
     status = { managers: [manager('npm', true), manager('nuget', true)], trust: 'trusted' };
     plugins = signal<readonly PluginSummary[]>([]);
-    pending = signal<RepositoryTrustQuestion | null>(null);
+    changed = signal<TrustChange | null>(null);
     launched = [];
     exitCode = 0;
     raised = [];
@@ -144,7 +142,7 @@ describe('PackageModel', () => {
           useValue: { root: signal({ path: '/work' }) as Signal<{ path: string } | null> },
         },
         { provide: Plugins, useValue: { plugins } },
-        { provide: RepositoryTrust, useValue: { pending } },
+        { provide: RepositoryTrust, useValue: { changed } },
         {
           provide: TerminalSessions,
           useValue: {
@@ -257,13 +255,11 @@ describe('PackageModel', () => {
     expect(packages.hasModels()).toBe(true);
   });
 
-  it('aTrustQuestionAnswered_readsTheFolderAgain', async () => {
+  it('aFolderTrusted_readsTheFolderAgain', async () => {
     await create();
     calls = [];
 
-    pending.set({ root: '/work', name: 'work' });
-    TestBed.tick();
-    pending.set(null);
+    changed.set({ folder: '/work', decision: 'trusted' });
     TestBed.tick();
 
     await vi.waitFor((): void => {

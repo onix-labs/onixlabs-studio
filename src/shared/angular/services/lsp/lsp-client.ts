@@ -2289,6 +2289,20 @@ export class LspClient implements OnDestroy {
     }
   }
 
+  /**
+   * Opens, against their servers, the documents that waited on a folder the user has just trusted
+   * (#1504): their servers were held while it was not, so they were never opened. Documents already
+   * open are left alone, so a second call sends nothing twice.
+   * @param folder The folder now trusted; it covers every document beneath it.
+   */
+  public retryTrusted(folder: string): void {
+    for (const tracked of this.tracked.values()) {
+      if (!tracked.opened && isWithinFolder(tracked.rootPath, folder)) {
+        this.enqueue(tracked, (): Promise<void> => this.reopen(tracked));
+      }
+    }
+  }
+
   public prestartServer(serverId: string, rootPath: string): void {
     if (this.bridge === undefined || this.lspSettings.isDisabled(serverId)) {
       return;
@@ -2678,6 +2692,14 @@ export class LspClient implements OnDestroy {
         ...(braceStyle === undefined ? {} : { braceStyle }),
       })
       .then((result: LspStartResult): boolean => {
+        if (result.untrusted === true) {
+          // Held, not failed (#1504): the folder is not trusted yet. It counts towards no cooldown or
+          // attempt cap, so trusting the folder later can start it straight away.
+          this.status.setState(sessionId, 'unavailable', result.error);
+          this.log.info('LspClient', `Server '${serverId}' held: the folder is not trusted`);
+          this.sessions.delete(sessionId);
+          return false;
+        }
         if (!result.success) {
           this.reportFailedStart(sessionId, result);
           this.log.error('LspClient', `Server '${serverId}' failed to start`, result.error);
@@ -4002,4 +4024,15 @@ export class LspClient implements OnDestroy {
     }
     return { root: parentDir(filePath), standalone: true };
   }
+}
+
+/**
+ * Determines whether a path is a folder or lies beneath it, on either separator.
+ * @param target The path.
+ * @param folder The folder.
+ * @returns Returns true when it does.
+ */
+function isWithinFolder(target: string, folder: string): boolean {
+  const base: string = folder.replace(/[\\/]+$/, '');
+  return target === base || target.startsWith(`${base}/`) || target.startsWith(`${base}\\`);
 }

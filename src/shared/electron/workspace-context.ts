@@ -39,6 +39,14 @@ export class WorkspaceContext {
   }
 
   /**
+   * Gets the open workspace roots.
+   * @returns Returns their absolute paths.
+   */
+  public openRoots(): readonly string[] {
+    return [...this.roots];
+  }
+
+  /**
    * Determines whether a path resolves to exactly one of the open workspace roots.
    * @param target The path to test.
    * @returns Returns true when the path is an open workspace root.

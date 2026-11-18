@@ -141,6 +141,9 @@ import { NewProjectManager } from '@shared/electron/new-project/new-project-mana
 import { TerminalManager } from '@shared/electron/terminal-manager';
 import { TrustedPaths } from './trusted-paths';
 import { RepositoryTrust } from './repository-trust';
+import { TrustManager } from './trust/trust-manager';
+import { TrustPrompt } from './trust/trust-prompt';
+import { TrustChannel, type TrustChange } from '@shared/api/trust-channels';
 import { WindowManager } from '@shared/electron/window-manager';
 import { WorkspaceContext } from './workspace-context';
 import { WorkspaceManager } from './workspace-manager';
@@ -386,6 +389,32 @@ class Program {
     path.join(app.getPath('userData'), 'repository-trust.json'),
   );
 
+  /**
+   * Asks "do you trust this folder?" in a window the main process opens and owns, so no renderer code
+   * can answer it (#1504).
+   */
+  private readonly trustPrompt: TrustPrompt = new TrustPrompt(
+    TrustPrompt.preloadIn(__dirname),
+    (): BrowserWindow | null => BrowserWindow.getFocusedWindow() ?? this.windows.main(),
+  );
+
+  /**
+   * Owns the trust question for every folder Studio opens, whatever plugins are installed: the
+   * renderer may ask for it, and only the user, through {@link trustPrompt}, answers it (#1504).
+   */
+  private readonly trustManager: TrustManager = new TrustManager(
+    this.repositoryTrust,
+    this.workspaceContext,
+    this.trustPrompt,
+    (change: TrustChange): void => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) {
+          window.webContents.send(TrustChannel.Changed, change);
+        }
+      }
+    },
+  );
+
   private readonly fileManager: FileManager = new FileManager(
     (): BrowserWindow | null => this.windows.main(),
     this.trustedPaths,
@@ -491,7 +520,7 @@ class Program {
   private readonly packageManagerChannels: PackageManagerChannels = new PackageManagerChannels(
     this.packageManagerHost,
     this.workspaceContext,
-    this.repositoryTrust,
+    this.trustManager,
     this.packageRegistryTokens,
   );
 
@@ -526,7 +555,7 @@ class Program {
   private readonly versionControlManager: VersionControlManager = new VersionControlManager(
     this.versionControlHost,
     this.versionControlSettings,
-    this.repositoryTrust,
+    this.trustManager,
   );
 
   /**
@@ -644,6 +673,7 @@ class Program {
     (): BrowserWindow | null => this.windows.main(),
     this.workspaceContext,
     this.trustedPaths,
+    this.repositoryTrust,
   );
 
   /**
@@ -739,6 +769,7 @@ class Program {
     (): BrowserWindow | null => this.windows.main(),
     this.workspaceContext,
     this.lspServerRegistry,
+    this.repositoryTrust,
   );
 
   /**
@@ -1238,6 +1269,8 @@ class Program {
     this.editorConfigManager.register();
     this.menuManager.register();
     this.codeRunner.register();
+    this.trustPrompt.register();
+    this.trustManager.register();
     this.versionControlManager.register();
     this.hostingManager.register();
     this.testAdapterManager.register();

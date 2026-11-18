@@ -10,6 +10,30 @@ import { logger } from './logger';
 export type RepositoryTrustChoice = Exclude<RepositoryTrustDecision, 'unknown'>;
 
 /**
+ * The part of the trust store a gate reads: what the user decided about a folder. Every main-process
+ * path that would run something from an opened folder asks this first (#1504).
+ */
+export interface FolderTrustSource {
+  /**
+   * Gets what the user decided about a folder: the nearest decision on it or an ancestor.
+   * @param target The absolute folder or file, untrusted.
+   * @returns Returns the decision.
+   */
+  decisionFor(target: unknown): RepositoryTrustDecision;
+}
+
+/**
+ * Determines whether something may run from a folder: only once the user has explicitly trusted it.
+ * `unknown` and `restricted` both refuse, so a folder nobody has been asked about runs nothing (#1504).
+ * @param trust The trust store.
+ * @param target The absolute folder or file.
+ * @returns Returns true when the folder is trusted.
+ */
+export function mayRunIn(trust: FolderTrustSource, target: string): boolean {
+  return trust.decisionFor(target) === 'trusted';
+}
+
+/**
  * The shape of the persisted file.
  */
 interface PersistedTrust {
