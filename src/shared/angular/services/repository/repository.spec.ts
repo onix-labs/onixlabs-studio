@@ -844,6 +844,19 @@ describe('Repository', () => {
     expect(repository.changeCount()).toBe(0);
   });
 
+  it('push_thatGoesThrough_isRecordedForWhatFollowsIt (#1495)', async () => {
+    provider.upstream = 'origin/main';
+    await repository.refresh();
+    expect(repository.lastPush()).toBeNull();
+
+    provider.failNextPushWith = 'rejected';
+    await repository.push();
+    expect(repository.lastPush()).toBeNull();
+
+    await repository.push();
+    expect(repository.lastPush()).toMatchObject({ root: '/repo', branch: 'main' });
+  });
+
   it('push_whenCurrentBranchHasUpstream_pushesWithoutSettingUpstream', async () => {
     provider.upstream = 'origin/main';
     await repository.refresh();

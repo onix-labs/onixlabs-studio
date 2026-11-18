@@ -63,6 +63,16 @@ export enum CoreNotificationType {
    * A background fetch found the current branch and its upstream have diverged.
    */
   GitDiverged = 'git.diverged',
+
+  /**
+   * A CI run for a branch pushed from Studio passed.
+   */
+  CiPassed = 'ci.passed',
+
+  /**
+   * A CI run for a branch pushed from Studio failed.
+   */
+  CiFailed = 'ci.failed',
 }
 
 /**
@@ -157,6 +167,20 @@ export const CORE_NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
     description:
       'A background fetch found your branch and its remote copy each have commits the other lacks.',
     area: 'Source Control',
+    default: 'popup',
+  },
+  {
+    id: CoreNotificationType.CiPassed,
+    label: 'CI Passed',
+    description: 'A CI run for a branch you pushed from Studio passed.',
+    area: 'Continuous Integration',
+    default: 'history',
+  },
+  {
+    id: CoreNotificationType.CiFailed,
+    label: 'CI Failed',
+    description: 'A CI run for a branch you pushed from Studio failed.',
+    area: 'Continuous Integration',
     default: 'popup',
   },
 ];

@@ -4,7 +4,12 @@ import { vi } from 'vitest';
 import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Forge } from '@shared/angular/services/forge/forge';
-import { Repository } from '@shared/angular/services/repository/repository';
+import { Repository, RepositoryPush } from '@shared/angular/services/repository/repository';
+import {
+  NotificationRequest,
+  Notifications,
+} from '@shared/angular/services/notifications/notifications';
+import { Shell } from '@shared/angular/services/shell/shell';
 import { GitRemote } from '@shared/angular/services/repository/repository-data';
 import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
 import {
@@ -231,6 +236,13 @@ class FakeRepository {
 
   public readonly current: WritableSignal<string> = signal<string>('main');
 
+  /**
+   * Holds the last push from Studio, as the repository reports it.
+   */
+  public readonly lastPush: WritableSignal<RepositoryPush | null> = signal<RepositoryPush | null>(
+    null,
+  );
+
   public currentBranch(): { readonly name: string } | undefined {
     return { name: this.current() };
   }
@@ -245,18 +257,118 @@ describe('ForgeRepository', () => {
   let forge: FakeForge;
   let repository: FakeRepository;
   let service: ForgeRepository;
+  let raised: NotificationRequest[];
 
   beforeEach(() => {
     forge = new FakeForge();
     repository = new FakeRepository();
+    raised = [];
     TestBed.configureTestingModule({
       providers: [
         ForgeRepository,
         { provide: Forge, useValue: forge },
         { provide: Repository, useValue: repository },
+        {
+          provide: Notifications,
+          useValue: { notify: (request: NotificationRequest): number => raised.push(request) },
+        },
+        { provide: Shell, useValue: { openExternal: (): Promise<void> => Promise.resolve() } },
       ],
     });
     service = TestBed.inject(ForgeRepository);
+  });
+
+  describe('CI for a push from Studio (#1495)', () => {
+    /**
+     * Starts the watch on a push of main, made at the given time, once the forge is known.
+     * @param at When the push began.
+     */
+    async function pushed(at: string): Promise<void> {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(at));
+      TestBed.inject(Settings).set('versionControl.hostingRefreshSeconds', 60);
+      repository.remotes.set([
+        { name: 'origin', url: 'https://github.com/onix-labs/onixlabs-studio.git', branches: [] },
+      ]);
+      await service.detect();
+      repository.lastPush.set({ root: '/repo', branch: 'main', startedAt: Date.now() });
+      TestBed.tick();
+    }
+
+    afterEach(() => {
+      service.dispose();
+      vi.useRealTimers();
+    });
+
+    it('aRunThatFails_popsUpWithOpenRunAndReRun', async () => {
+      await pushed('2026-11-18T10:00:00Z');
+      forge.runResult = {
+        ok: true,
+        value: [run({ status: 'running', startedAt: '2026-11-18T10:00:20Z' })],
+      };
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(raised).toEqual([]);
+
+      forge.runResult = {
+        ok: true,
+        value: [run({ status: 'failed', startedAt: '2026-11-18T10:00:20Z' })],
+      };
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(raised).toHaveLength(1);
+      expect(raised[0]).toMatchObject({ title: 'CI failed on main — CI', type: 'ci.failed' });
+      expect(raised[0].actions?.map((action) => action.label)).toEqual(['Open Run', 'Re-run']);
+      // Every run finished: the watch is over, and reads nothing more.
+      const reads: number = forge.options['runs'].length;
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      expect(forge.options['runs']).toHaveLength(reads);
+    });
+
+    it('aRunThatPasses_isRecorded_once', async () => {
+      await pushed('2026-11-18T10:00:00Z');
+      forge.runResult = {
+        ok: true,
+        value: [run({ status: 'succeeded', startedAt: '2026-11-18T10:00:20Z' })],
+      };
+
+      await vi.advanceTimersByTimeAsync(3 * 60_000);
+
+      expect(raised).toEqual([expect.objectContaining({ type: 'ci.passed' })]);
+    });
+
+    it('runsFromBeforeThePush_areNotItsRuns', async () => {
+      await pushed('2026-11-18T10:00:00Z');
+      forge.runResult = {
+        ok: true,
+        value: [run({ status: 'failed', startedAt: '2026-11-18T09:00:00Z' })],
+      };
+
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(raised).toEqual([]);
+    });
+
+    it('aPushThatStartsNoRun_isGivenUpOn', async () => {
+      await pushed('2026-11-18T10:00:00Z');
+      forge.runResult = { ok: true, value: [] };
+
+      await vi.advanceTimersByTimeAsync(11 * 60_000);
+      const reads: number = forge.options['runs'].length;
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+
+      expect(forge.options['runs']).toHaveLength(reads);
+    });
+
+    it('aRefreshIntervalOfOff_watchesNothing', async () => {
+      vi.useFakeTimers();
+      TestBed.inject(Settings).set('versionControl.hostingRefreshSeconds', 0);
+      repository.lastPush.set({ root: '/repo', branch: 'main', startedAt: Date.now() });
+      TestBed.tick();
+
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+      expect(forge.options['runs']).toEqual([]);
+    });
   });
 
   afterEach(() => {

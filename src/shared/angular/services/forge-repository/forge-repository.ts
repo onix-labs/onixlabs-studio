@@ -13,7 +13,13 @@ import { installedContributions, PluginContribution } from '@shared/api/plugin-c
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { Forge } from '@shared/angular/services/forge/forge';
 import { Log } from '@shared/angular/services/log/log';
-import { Repository } from '@shared/angular/services/repository/repository';
+import { Repository, RepositoryPush } from '@shared/angular/services/repository/repository';
+import { CoreNotificationType } from '@shared/angular/services/notifications/core-notification-types';
+import {
+  NotificationAction,
+  Notifications,
+} from '@shared/angular/services/notifications/notifications';
+import { Shell } from '@shared/angular/services/shell/shell';
 import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
 import { GitRemote } from '@shared/angular/services/repository/repository-data';
 import {
@@ -108,6 +114,56 @@ export type ForgeListKind = 'pullRequests' | 'issues' | 'runs';
  * Names which pull requests and issues a list shows: only open ones, or every state.
  */
 export type ForgeListState = 'open' | 'all';
+
+/**
+ * Specifies how long a push's CI runs are watched before the watch gives up (#1495).
+ */
+const CI_WATCH_MS: number = 60 * 60_000;
+
+/**
+ * Specifies how long to wait for a push's first CI run before deciding it starts none.
+ */
+const CI_FIRST_RUN_MS: number = 10 * 60_000;
+
+/**
+ * Specifies how far before the push a run may appear to start and still be the push's, allowing for
+ * the host's clock and this machine's disagreeing.
+ */
+const CI_CLOCK_SLACK_MS: number = 60_000;
+
+/**
+ * Specifies how many of the branch's runs each check reads.
+ */
+const CI_RUNS_READ: number = 20;
+
+/**
+ * Lists the statuses of a run that has finished.
+ */
+const FINISHED: ReadonlySet<ForgeWorkflowRun['status']> = new Set<ForgeWorkflowRun['status']>([
+  'succeeded',
+  'failed',
+  'cancelled',
+]);
+
+/**
+ * Describes the watch on a push's CI runs.
+ */
+interface CiWatch {
+  /**
+   * Gets the push being followed.
+   */
+  readonly push: RepositoryPush;
+
+  /**
+   * Gets the runs already told, by identifier.
+   */
+  readonly announced: Set<string>;
+
+  /**
+   * Gets the check's timer, once started.
+   */
+  timer: ReturnType<typeof setInterval> | null;
+}
 
 /**
  * Holds this workspace's forge-backed view of its repository: which repository the remote names on a
@@ -290,6 +346,13 @@ export class ForgeRepository {
         this.stopPoll();
         this.syncPoll();
       });
+    });
+    // A push from Studio: follow the CI runs it starts (#1495).
+    effect((): void => {
+      const push: RepositoryPush | null = this.repository.lastPush();
+      if (push !== null) {
+        untracked((): void => this.watchCi(push));
+      }
     });
     effect((): void => {
       this.repository.remotes();
@@ -785,12 +848,143 @@ export class ForgeRepository {
    */
   public dispose(): void {
     this.unwatchAll();
+    this.stopCiWatch();
+  }
+
+  /**
+   * Holds the CI watch for the last push from Studio, or null when none is being watched.
+   */
+  private ciWatch: CiWatch | null = null;
+
+  /**
+   * Holds the notification store, told how the watched CI runs ended.
+   */
+  private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Holds the shell, which opens a run's page in the browser.
+   */
+  private readonly shell: Shell = inject(Shell);
+
+  /**
+   * Starts following the CI runs a push from Studio starts (#1495), replacing the watch on any earlier
+   * push: checked at the Hosting Refresh Interval, until every run has finished, none has started
+   * within {@link CI_FIRST_RUN_MS}, or {@link CI_WATCH_MS} has passed. A refresh interval of Off
+   * watches nothing, as it reads nothing else from the host.
+   * @param push The push.
+   */
+  private watchCi(push: RepositoryPush): void {
+    this.stopCiWatch();
+    const seconds: number = this.settings.get('versionControl.hostingRefreshSeconds');
+    if (seconds <= 0 || !this.supports('ciRuns')) {
+      return;
+    }
+    const watch: CiWatch = { push, announced: new Set<string>(), timer: null };
+    watch.timer = setInterval((): void => void this.checkCi(watch), seconds * 1000);
+    this.ciWatch = watch;
+    this.log.info('ForgeRepository', `Watching CI for ${push.branch}`);
+  }
+
+  /**
+   * Checks the watched push's runs once, telling the user of each that has finished.
+   * @param watch The watch.
+   * @returns Returns a promise that resolves once the check is done.
+   */
+  private async checkCi(watch: CiWatch): Promise<void> {
+    const elapsed: number = Date.now() - watch.push.startedAt;
+    const reference: ForgeRepositoryRef | null = this.detected();
+    if (this.ciWatch !== watch || reference === null || elapsed > CI_WATCH_MS) {
+      this.stopCiWatch(watch);
+      return;
+    }
+    const read: ForgeResult<readonly ForgeWorkflowRun[]> = await this.forge.workflowRuns(
+      reference,
+      {
+        branch: watch.push.branch,
+        limit: CI_RUNS_READ,
+      },
+    );
+    if (this.ciWatch !== watch || !read.ok) {
+      return;
+    }
+    // Runs carry their branch and start, not their commit: those that began after the push are its.
+    const runs: readonly ForgeWorkflowRun[] = read.value.filter(
+      (run: ForgeWorkflowRun): boolean =>
+        run.branch === watch.push.branch &&
+        Date.parse(run.startedAt) >= watch.push.startedAt - CI_CLOCK_SLACK_MS,
+    );
+    if (runs.length === 0) {
+      if (elapsed > CI_FIRST_RUN_MS) {
+        this.stopCiWatch(watch);
+      }
+      return;
+    }
+    for (const run of runs) {
+      if (!watch.announced.has(run.id) && FINISHED.has(run.status)) {
+        watch.announced.add(run.id);
+        this.announceCi(watch.push.branch, run);
+      }
+    }
+    if (runs.every((run: ForgeWorkflowRun): boolean => FINISHED.has(run.status))) {
+      this.stopCiWatch(watch);
+    }
+  }
+
+  /**
+   * Tells the user how one CI run ended: failed pops up with Open Run and Re-run; passed goes to the
+   * history; cancelled says nothing, since somebody chose it.
+   * @param branch The branch pushed.
+   * @param run The run.
+   */
+  private announceCi(branch: string, run: ForgeWorkflowRun): void {
+    const open: NotificationAction = {
+      label: 'Open Run',
+      run: (): void => void this.shell.openExternal(run.url, 'studio'),
+    };
+    if (run.status === 'succeeded') {
+      this.notifications.notify({
+        severity: 'success',
+        title: `CI passed on ${branch}`,
+        detail: run.name,
+        actions: [open],
+        key: `ci:${run.id}`,
+        type: CoreNotificationType.CiPassed,
+      });
+    } else if (run.status === 'failed') {
+      this.notifications.notify({
+        severity: 'error',
+        title: `CI failed on ${branch} — ${run.name}`,
+        actions: this.supports('ciRerun')
+          ? [open, { label: 'Re-run', run: (): void => void this.rerun(run) }]
+          : [open],
+        key: `ci:${run.id}`,
+        type: CoreNotificationType.CiFailed,
+        desktop: true,
+        reveal: open.run,
+      });
+    }
+  }
+
+  /**
+   * Stops the CI watch.
+   * @param watch The watch to stop, or undefined for whichever is running.
+   */
+  private stopCiWatch(watch?: CiWatch): void {
+    const current: CiWatch | null = this.ciWatch;
+    if (current === null || (watch !== undefined && watch !== current)) {
+      return;
+    }
+    if (current.timer !== null) {
+      clearInterval(current.timer);
+    }
+    this.ciWatch = null;
   }
 
   /**
    * Clears everything read, for a view whose repository has gone away.
    */
   public reset(): void {
+    this.stopCiWatch();
     this.detected.set(null);
     this.detectedRemote.set(null);
     this.capabilitiesSignal.set(null);

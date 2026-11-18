@@ -128,6 +128,26 @@ const LANE_COLORS: readonly string[] = ['#5073b8', '#07b39b', '#ef4e7b', '#f7953
 type LaneSlots = (string | null)[];
 
 /**
+ * Describes a push from Studio that went through.
+ */
+export interface RepositoryPush {
+  /**
+   * Gets the repository's root.
+   */
+  readonly root: string;
+
+  /**
+   * Gets the branch pushed.
+   */
+  readonly branch: string;
+
+  /**
+   * Gets when the push began, as epoch milliseconds: CI runs it started begin after it.
+   */
+  readonly startedAt: number;
+}
+
+/**
  * Represents the model of a single opened repository surfaced by the source-control view: its
  * branches, remotes, tags, stashes, and commit history, together with the working-tree changes and
  * the user's current selection (commit and file) that drives the detail and diff panes.
@@ -527,6 +547,17 @@ export class Repository {
    * Gets the identifier of the selected graph node, or null when nothing is selected.
    */
   public readonly selectedNodeId: Signal<string | null> = this.selectedNodeSignal.asReadonly();
+
+  /**
+   * Holds the last push from Studio that went through, or null before one.
+   */
+  private readonly pushedSignal: WritableSignal<RepositoryPush | null> =
+    signal<RepositoryPush | null>(null);
+
+  /**
+   * Gets the last push from Studio that went through (#1495), for what watches what follows one.
+   */
+  public readonly lastPush: Signal<RepositoryPush | null> = this.pushedSignal.asReadonly();
 
   /**
    * Gets the current branch, or undefined when the head is detached or no repository is bound.
@@ -1645,6 +1676,36 @@ export class Repository {
    */
   private runPush(branch?: GitBranch): Promise<MutationResult> {
     const target: GitBranch | undefined = branch ?? this.currentBranch();
+    const root: string | undefined = this.infoSignal()?.root;
+    const startedAt: number = Date.now();
+    return this.pushing(target, root, startedAt);
+  }
+
+  /**
+   * Pushes, then records a push that went through, for what follows a push (#1495: the CI watch).
+   * @param target The branch pushed, or undefined for a detached head.
+   * @param root The repository root.
+   * @param startedAt When the push began.
+   * @returns Returns the outcome.
+   */
+  private async pushing(
+    target: GitBranch | undefined,
+    root: string | undefined,
+    startedAt: number,
+  ): Promise<MutationResult> {
+    const result: MutationResult = await this.pushNow(target);
+    if (result.success && target !== undefined && root !== undefined) {
+      this.pushedSignal.set({ root, branch: target.name, startedAt });
+    }
+    return result;
+  }
+
+  /**
+   * Pushes without reporting the outcome (see {@link runPush}).
+   * @param target The branch to push, or undefined for a detached head.
+   * @returns Returns the outcome.
+   */
+  private pushNow(target: GitBranch | undefined): Promise<MutationResult> {
     if (target === undefined) {
       // Detached, with no branch to name. The bare push is the only thing left to mean.
       this.log.info('Repository', 'Pushing HEAD', this.infoSignal()?.root);

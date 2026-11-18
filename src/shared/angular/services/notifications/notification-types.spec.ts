@@ -90,6 +90,7 @@ describe('NotificationTypes', () => {
     expect(areas).toEqual([
       'Agents',
       'Cloning',
+      'Continuous Integration',
       'Downloads',
       'Runs and Builds',
       'Source Control',
