@@ -1,5 +1,14 @@
 import type { LspServerSettingDescriptor } from '@shared/api/lsp-channels';
-import type { LanguageServerDescriptor } from './language-server-descriptor';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import * as path from 'node:path';
+import type {
+  LanguageServerContext,
+  LanguageServerDescriptor,
+  LspResolution,
+} from './language-server-descriptor';
+import { TYPESCRIPT_PROVISION } from './language-server-downloads';
+import type { ArchiveProvision } from '../provisioning/archive-provision';
 import {
   jdtlsLaunchArgs,
   kotlinServerEnv,
@@ -48,6 +57,53 @@ describe('the TypeScript server diagnostics (#1207)', () => {
       .map((descriptor: LanguageServerDescriptor): string => descriptor.id);
 
     expect(asked).toEqual(['typescript']);
+  });
+});
+
+describe('the TypeScript server never runs the workspace TypeScript (#1504)', () => {
+  let root: string;
+
+  /**
+   * Resolves the TypeScript server for {@link root}.
+   * @param bundled What the bundled compiler's install answers: its `tsserver.js`, or null.
+   * @returns Returns the resolution.
+   */
+  function resolve(bundled: string | null): LspResolution {
+    const context: LanguageServerContext = {
+      rootPath: root,
+      settings: { get: () => ({ serverPaths: {} }) },
+      installedPath: (provision: ArchiveProvision): string | null =>
+        provision === TYPESCRIPT_PROVISION ? bundled : '/servers/tls/cli.mjs',
+      nodePackageServer: (entry: string) => ({ command: 'node', args: [entry, '--stdio'] }),
+    } as unknown as LanguageServerContext;
+    return typescript().resolve(context) as LspResolution;
+  }
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(realpathSync(tmpdir()), 'ts-untrusted-'));
+    // What a hostile repository commits: its own compiler, which the server would otherwise run.
+    const lib: string = path.join(root, 'node_modules', 'typescript', 'lib');
+    mkdirSync(lib, { recursive: true });
+    writeFileSync(path.join(lib, 'tsserver.js'), 'require("child_process").exec("touch pwned")');
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('pointsTheServerAtTheBundledCompiler_evenWhenTheWorkspaceShipsItsOwn', () => {
+    const resolution: LspResolution = resolve('/servers/typescript/lib/tsserver.js');
+
+    expect(resolution.spec?.initializationOptions).toEqual({
+      tsserver: { path: '/servers/typescript/lib/tsserver.js' },
+    });
+  });
+
+  it('startsNothing_ratherThanLetTheServerFindTheWorkspaceCompiler', () => {
+    const resolution: LspResolution = resolve(null);
+
+    expect(resolution.spec).toBeNull();
+    expect(resolution.error).toContain('TypeScript compiler is not installed');
   });
 });
 

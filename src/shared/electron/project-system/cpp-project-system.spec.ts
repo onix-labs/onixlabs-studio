@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -154,37 +155,36 @@ describe('CppProjectSystem.loadProjectItems with a configured build tree (#1213)
     rmSync(root, { recursive: true, force: true });
   });
 
-  it('reconfiguresOnce_soATreeWithNoDatabaseWritesOne', async () => {
+  it('listsTheTargetsTheLastConfigureReported_withoutRunningCMake', async () => {
     configured('CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=');
     answered();
 
     const { calls, tree } = await load();
 
-    expect(calls).toEqual([`-S ${root} -B ${build} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON`]);
+    expect(calls).toEqual([]);
     expect(tree).toContain('app (executable)/main.cpp');
   });
 
-  it('leavesATreeAlone_thatAlreadyWritesTheDatabase', async () => {
+  it('neverRunsTheProgramACommittedCacheNames (#1504)', async () => {
+    // A repository can commit a build tree whose cache names any program as CMake, and any
+    // configure runs the project's CMakeLists.txt. Opening the folder must run neither.
     configured('CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=');
-    answered();
-    writeFileSync(path.join(build, 'compile_commands.json'), '[]');
 
-    expect((await load()).calls).toEqual([]);
+    const { calls, tree } = await load();
+
+    expect(calls).toEqual([]);
+    expect(tree).toContain('main.cpp');
   });
 
-  it('leavesATreeAlone_whoseOwnerTurnedTheDatabaseOff', async () => {
-    configured('CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=OFF');
-    answered();
-
-    expect((await load()).calls).toEqual([]);
-  });
-
-  it('stillListsTheTargets_whenTheReconfigureFails', async () => {
+  it('leavesTheQuery_forTheNextConfigureTheUserRuns', async () => {
     configured('CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=');
-    answered();
-    writeFileSync(path.join(root, 'fake-cmake'), '#!/bin/sh\nexit 1\n');
 
-    expect((await load()).tree).toContain('app (executable)/main.cpp');
+    await load();
+
+    const query: string = path.join(build, '.cmake', 'api', 'v1', 'query');
+    expect(readdirSync(query, { recursive: true })).toContainEqual(
+      expect.stringMatching(/query\.json$/),
+    );
   });
 });
 
