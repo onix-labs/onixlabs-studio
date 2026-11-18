@@ -28,6 +28,7 @@ import {
   NotificationAction,
   Notifications,
 } from '@shared/angular/services/notifications/notifications';
+import { CoreNotificationType } from '@shared/angular/services/notifications/core-notification-types';
 import {
   FileDiff,
   MutationResult,
@@ -683,6 +684,7 @@ export class Repository {
       return;
     }
     this.lastFetchAt = Date.now();
+    const before: GitBranch | undefined = this.currentBranch();
     let result: MutationResult;
     try {
       result = await provider.fetch();
@@ -696,9 +698,58 @@ export class Repository {
     if (result.success) {
       this.log.debug('Repository', 'Background fetch done', root);
       await this.refresh();
+      if (this.infoSignal()?.root === root) {
+        this.announceIncoming(root, before, this.currentBranch());
+      }
     } else {
       this.log.info('Repository', 'Background fetch failed; will retry', result.error);
     }
+  }
+
+  /**
+   * Tells the user what a background fetch brought (#1494): new commits on the current branch's
+   * upstream, or that the branch and its upstream have diverged. Nothing when the fetch brought nothing
+   * new for the branch. One notice per branch, updated in place by later fetches.
+   * @param root The repository root.
+   * @param before The current branch before the fetch.
+   * @param after The current branch after it.
+   */
+  private announceIncoming(
+    root: string,
+    before: GitBranch | undefined,
+    after: GitBranch | undefined,
+  ): void {
+    if (
+      before === undefined ||
+      after?.upstream === undefined ||
+      before.name !== after.name ||
+      before.upstream !== after.upstream ||
+      after.behind <= before.behind
+    ) {
+      return;
+    }
+    const pull: NotificationAction = { label: 'Pull', run: (): void => void this.pull() };
+    const key: string = `git:incoming:${root}:${after.name}`;
+    const commits: string = `${after.behind} commit${after.behind === 1 ? '' : 's'}`;
+    if (after.ahead > 0) {
+      this.notifications.notify({
+        severity: 'warning',
+        title: `${after.name} and ${after.upstream} have diverged`,
+        detail: `${after.ahead} ahead, ${after.behind} behind · ${this.repoName()}`,
+        actions: [pull],
+        key,
+        type: CoreNotificationType.GitDiverged,
+      });
+      return;
+    }
+    this.notifications.notify({
+      severity: 'info',
+      title: `${commits} to pull on ${after.upstream}`,
+      detail: this.repoName(),
+      actions: [pull],
+      key,
+      type: CoreNotificationType.GitIncoming,
+    });
   }
 
   /**

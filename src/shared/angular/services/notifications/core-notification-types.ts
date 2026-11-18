@@ -53,6 +53,16 @@ export enum CoreNotificationType {
    * A run or task terminal's command ended with a non-zero exit code while the user was elsewhere.
    */
   TerminalFailed = 'terminal.failed',
+
+  /**
+   * A background fetch found commits on the current branch's upstream that the branch lacks.
+   */
+  GitIncoming = 'git.incoming',
+
+  /**
+   * A background fetch found the current branch and its upstream have diverged.
+   */
+  GitDiverged = 'git.diverged',
 }
 
 /**
@@ -131,6 +141,22 @@ export const CORE_NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
     label: 'Terminal Command Failed',
     description: "A run or task terminal's command failed while you were elsewhere.",
     area: 'Terminals',
+    default: 'popup',
+  },
+  {
+    id: CoreNotificationType.GitIncoming,
+    label: 'New Commits on the Remote',
+    description:
+      "A background fetch found commits on your branch's remote copy that you don't have yet.",
+    area: 'Source Control',
+    default: 'history',
+  },
+  {
+    id: CoreNotificationType.GitDiverged,
+    label: 'Branch Diverged',
+    description:
+      'A background fetch found your branch and its remote copy each have commits the other lacks.',
+    area: 'Source Control',
     default: 'popup',
   },
 ];

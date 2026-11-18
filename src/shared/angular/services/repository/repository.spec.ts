@@ -120,10 +120,27 @@ class FakeProvider implements SourceControlProvider {
    */
   public remoteNames: readonly string[] = [];
 
+  /**
+   * Holds how many commits the current branch has that its upstream lacks.
+   */
+  public ahead: number = 1;
+
+  /**
+   * Holds how many commits its upstream has that the branch lacks.
+   */
+  public behind: number = 0;
+
   public getRefs(): Promise<ParsedRefs> {
     return Promise.resolve({
       branches: [
-        { name: 'main', current: true, upstream: this.upstream, ahead: 1, behind: 0, tip: 'c2' },
+        {
+          name: 'main',
+          current: true,
+          upstream: this.upstream,
+          ahead: this.ahead,
+          behind: this.behind,
+          tip: 'c2',
+        },
       ],
       remotes: this.remoteNames.map((name: string) => ({ name, url: '', branches: [] })),
       tags: [],
@@ -485,6 +502,61 @@ describe('Repository', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe('what a background fetch brought (#1494)', () => {
+    /**
+     * Runs one background fetch, as the auto-fetch clock would, after the branch was read.
+     * @param ahead The branch's commits its upstream lacks, after the fetch.
+     * @param behind The upstream's commits the branch lacks, after the fetch.
+     */
+    async function fetchBringing(ahead: number, behind: number): Promise<void> {
+      vi.useFakeTimers();
+      try {
+        TestBed.inject(Settings).set('versionControl.fetchOnLoad', false);
+        TestBed.inject(Settings).set('versionControl.autoFetchMinutes', 5);
+        await repository.close();
+        repository.bind({ root: '/repo', name: 'repo', trust: 'trusted' });
+        // Binding makes a new provider: the branch it starts with tracks origin/main, level with it.
+        provider.upstream = 'origin/main';
+        provider.ahead = 0;
+        provider.behind = 0;
+        await repository.refresh();
+        provider.ahead = ahead;
+        provider.behind = behind;
+        await vi.advanceTimersByTimeAsync(5 * 60_000);
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+
+    it('newCommitsUpstream_areRecorded_withPull', async () => {
+      await fetchBringing(0, 3);
+
+      const entry: Notification | undefined = notifications
+        .history()
+        .find((notification: Notification): boolean => notification.type === 'git.incoming');
+      expect(entry?.title).toBe('3 commits to pull on origin/main');
+      expect(entry?.actions.map((action) => action.label)).toEqual(['Pull']);
+      // History only by default: nothing pops up for it.
+      expect(notifications.toasts().some((toast) => toast.type === 'git.incoming')).toBe(false);
+    });
+
+    it('aBranchThatHasDiverged_popsUp', async () => {
+      await fetchBringing(2, 1);
+
+      expect(notifications.toasts().find((toast) => toast.type === 'git.diverged')?.title).toBe(
+        'main and origin/main have diverged',
+      );
+    });
+
+    it('aFetchThatBroughtNothingNew_saysNothing', async () => {
+      await fetchBringing(0, 0);
+
+      expect(
+        notifications.history().some((notification) => notification.type?.startsWith('git.')),
+      ).toBe(false);
+    });
   });
 
   it('bind_thenRefresh_loadsBranchesCommitsStatusAndName', () => {

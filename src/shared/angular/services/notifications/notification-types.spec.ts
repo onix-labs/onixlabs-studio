@@ -92,6 +92,7 @@ describe('NotificationTypes', () => {
       'Cloning',
       'Downloads',
       'Runs and Builds',
+      'Source Control',
       'Terminals',
       'Tests',
     ]);
