@@ -210,6 +210,21 @@ export function launchFor(token: RunToken): Launcher {
 }
 
 /**
+ * Reads the folder a token was issued for, for work sent to a plugin's process about it: a plugin runs
+ * in its own process, where Studio cannot hand it a launcher, so the work itself is what needs the
+ * token (#1504).
+ * @param token The folder's run token.
+ * @returns Returns the folder.
+ * @throws Throws when the token was not issued by {@link RunTokens}.
+ */
+export function folderOf(token: RunToken): string {
+  if (!issued.has(token)) {
+    throw new Error('Refused to send work for a folder: the run token was not issued for it.');
+  }
+  return token.folder;
+}
+
+/**
  * Opens the door for Studio's own programs, which act on no repository.
  * @param reason Why the program may start without a token.
  * @returns Returns the launcher.

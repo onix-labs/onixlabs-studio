@@ -4,6 +4,7 @@ import {
   PackageManagerParams,
   PackageManagerResponse,
 } from '@shared/api/package-manager-protocol';
+import type { RunToken } from '../process/launch';
 
 /**
  * Something the package-manager host can ask the protocol's questions.
@@ -23,14 +24,14 @@ export interface PackageManagerEndpoint {
   /**
    * Asks the endpoint to perform an operation. Always resolves — to the answer, or to a failure.
    * @param op The operation.
-   * @param root The absolute folder it acts on.
+   * @param token The folder's run token: work for a folder is sent only with it (#1504).
    * @param params The operation's parameters.
    * @param timeoutMs How long to wait before abandoning it.
    * @returns Returns the answer.
    */
   request<Op extends PackageManagerOp>(
     op: Op,
-    root: string,
+    token: RunToken,
     params: PackageManagerParams<Op>,
     timeoutMs: number,
   ): Promise<PackageManagerResponse<Op>>;

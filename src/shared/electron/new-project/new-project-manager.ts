@@ -31,6 +31,7 @@ import type { CloneManager } from '../clone/clone-manager';
 import { showOpenDialog } from '../dialog-parent';
 import type { HostingManager } from '../hosting/hosting-manager';
 import { logger } from '../logger';
+import type { RepositoryTrustChoice } from '../repository-trust';
 import type { TrustedPaths } from '../trusted-paths';
 import type { VersionControlDescriptor } from '../version-control/version-control-descriptor';
 import type { VersionControlHost } from '../version-control/version-control-host';
@@ -48,6 +49,18 @@ const BRANCH_NAME: RegExp = /^(?!-)[^\s~^:?*[\\]{1,100}$/;
 const FOLDER_NAME: RegExp = /^(?!\.{1,2}$)[\w.-]+$/;
 
 /**
+ * The part of the repository trust store a new project's trust is recorded in.
+ */
+export interface RepositoryTrustRecorder {
+  /**
+   * Records the user's decision about a folder.
+   * @param target The folder.
+   * @param choice The decision.
+   */
+  decide(target: string, choice: RepositoryTrustChoice): void;
+}
+
+/**
  * Creates new projects from the welcome screen's Create Something form (#806).
  *
  * A project is made where clones go — the parent folder the user chose in this process's own dialog —
@@ -55,7 +68,9 @@ const FOLDER_NAME: RegExp = /^(?!\.{1,2}$)[\w.-]+$/;
  * the folder is simply made. With a local one the version-control plugin makes it — in the folder, or
  * as a worktree container's first checkout, with no origin. With a hosted one the code host makes the repository first and the
  * project is a clone of it, in the layout the user picked, so a new project and a cloned one are laid
- * out alike. Either way the folder is trusted: the user asked for it, so it opens like one they opened.
+ * out alike. Either way the folder is trusted: the user asked for it, so it opens like one they opened,
+ * and what is in it is Studio's own template, so the user's trust is recorded for it too (#1504) — its
+ * first commit, and its restore, run as in any folder they trusted.
  */
 export class NewProjectManager {
   /**
@@ -64,6 +79,7 @@ export class NewProjectManager {
    * @param hosting The hosting manager, which asks the code host for the repository.
    * @param versionControl The version-control host, which makes a local repository.
    * @param trusted The trusted paths, which a new folder joins.
+   * @param trust The repository trust store, which records the user's trust in a project they made.
    * @param window Gets the window a dialog belongs to when no sender is known.
    * @param file The file the Default Projects Folder is remembered in; without one it lasts the session.
    */
@@ -72,6 +88,7 @@ export class NewProjectManager {
     private readonly hosting: HostingManager,
     private readonly versionControl: VersionControlHost,
     private readonly trusted: TrustedPaths,
+    private readonly trust: RepositoryTrustRecorder,
     private readonly window: () => Electron.BrowserWindow | null = (): null => null,
     private readonly file: string | null = null,
   ) {
@@ -197,6 +214,7 @@ export class NewProjectManager {
           : this.createFolder(destination);
     if (outcome.ok) {
       logger.info('NewProjectManager', `Created ${outcome.path}`);
+      this.trust.decide(outcome.path, 'trusted');
       this.pickedParent = null;
       if (parsed.initialFiles !== undefined && parsed.repository.kind !== 'none') {
         await this.addInitialFiles(

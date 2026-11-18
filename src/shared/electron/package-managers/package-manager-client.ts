@@ -12,6 +12,7 @@ import {
   PackageManagerResponse,
 } from '@shared/api/package-manager-protocol';
 import { logger } from '../logger';
+import { folderOf, RunToken } from '../process/launch';
 import { LineSplitter, MAX_LINE_LENGTH } from '../line-splitter';
 import { pluginEnvironment } from '../plugin-environment';
 import { pidJournal } from '../pid-journal';
@@ -206,21 +207,22 @@ export class PackageManagerClient implements PackageManagerEndpoint {
   /**
    * Asks the plugin to perform an operation.
    * @param op The operation.
-   * @param root The absolute folder it acts on.
+   * @param token The folder's run token.
    * @param params The operation's parameters.
    * @param timeoutMs How long to wait before abandoning it.
    * @returns Returns the plugin's answer, or a failure saying why there was none.
    */
   public async request<Op extends PackageManagerOp>(
     op: Op,
-    root: string,
+    token: RunToken,
     params: PackageManagerParams<Op>,
     timeoutMs: number,
   ): Promise<PackageManagerResponse<Op>> {
     if (this.description === null) {
       return { id: 0, ok: false, error: `${this.id} is not running.` };
     }
-    return await this.send(op, root, params, timeoutMs);
+    // Work for a folder is sent only with its run token (#1504).
+    return await this.send(op, folderOf(token), params, timeoutMs);
   }
 
   /**

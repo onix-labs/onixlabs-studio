@@ -23,6 +23,7 @@ import {
 import { PackageManagerEndpoint } from './package-manager-endpoint';
 import { normaliseRegistry } from './package-registry-token-store';
 
+import { RunToken, RunTokens } from '../process/launch';
 /**
  * Specifies how long an ordinary request may take.
  */
@@ -238,11 +239,17 @@ export class PackageManagerHost {
   >();
 
   /**
+   * Issues the run tokens work for a folder is sent with (#1504): one only for a trusted folder.
+   */
+  private readonly tokens: RunTokens;
+
+  /**
    * Initializes the host.
    * @param options What the host depends on.
    */
   public constructor(options: PackageManagerHostOptions) {
     this.options = options;
+    this.tokens = new RunTokens(options.trust);
   }
 
   /**
@@ -299,7 +306,7 @@ export class PackageManagerHost {
    * @returns Returns true when the folder is open and the user trusts it.
    */
   public accepts(root: unknown): boolean {
-    return this.refuseRoot(root) === null && this.refuseUntrusted(root as string) === null;
+    return this.refuseRoot(root) === null && this.tokens.issue(root as string) !== null;
   }
 
   /**
@@ -345,9 +352,9 @@ export class PackageManagerHost {
       return refused(refusal);
     }
     const resolvedRoot: string = path.resolve(root as string);
-    const distrust: string | null = this.refuseUntrusted(resolvedRoot);
-    if (distrust !== null) {
-      return { id: 0, ok: false, error: distrust, code: 'untrusted' };
+    const token: RunToken | null = this.tokens.issue(resolvedRoot);
+    if (token === null) {
+      return { id: 0, ok: false, error: this.untrusted(resolvedRoot), code: 'untrusted' };
     }
     if (PM_WRITE_OPS.includes(op) && !isInside(projectOf(params), resolvedRoot)) {
       return refused('That project is not in this folder.');
@@ -356,7 +363,7 @@ export class PackageManagerHost {
     if (descriptor === undefined) {
       return refused(`No package-manager plugin named ${pluginId} is installed.`);
     }
-    return this.dispatch(descriptor, resolvedRoot, op, params);
+    return this.dispatch(descriptor, token, op, params);
   }
 
   /**
@@ -396,14 +403,14 @@ export class PackageManagerHost {
   /**
    * Checks the capability, shares an identical read in flight, and sends the request.
    * @param descriptor The plugin to ask.
-   * @param root The folder.
+   * @param token The folder's run token, without which no work for it is sent.
    * @param op The operation.
    * @param params The operation's parameters.
    * @returns Returns the plugin's answer, or the host's refusal.
    */
   private async dispatch<Op extends PackageManagerOp>(
     descriptor: PackageManagerDescriptor,
-    root: string,
+    token: RunToken,
     op: Op,
     params: PackageManagerParams<Op>,
   ): Promise<PackageManagerResponse<Op>> {
@@ -432,16 +439,16 @@ export class PackageManagerHost {
     }
     const timeoutMs: number = op === 'load' ? LOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
     if (!PM_READ_OPS.includes(op)) {
-      return checkCommand(await plugin.client.request(op, root, asked, timeoutMs), root);
+      return checkCommand(await plugin.client.request(op, token, asked, timeoutMs), token.folder);
     }
-    const key: string = JSON.stringify([descriptor.id, root, op, asked]);
+    const key: string = JSON.stringify([descriptor.id, token.folder, op, asked]);
     const existing: Promise<PackageManagerResponse> | undefined = this.inFlightReads.get(key);
     if (existing !== undefined) {
       logger.trace('PackageManagerHost', `Shared a concurrent ${op}`);
       return existing;
     }
     const answer: Promise<PackageManagerResponse<Op>> = plugin.client
-      .request(op, root, asked, timeoutMs)
+      .request(op, token, asked, timeoutMs)
       .then((response: PackageManagerResponse<Op>): PackageManagerResponse<Op> =>
         op === 'sources' ? sourcesNamesOnly(response) : response,
       );
@@ -600,16 +607,12 @@ export class PackageManagerHost {
   }
 
   /**
-   * Checks that the user trusts the folder a request names. Asked after {@link refuseRoot}, so the path
-   * is already absolute and open.
+   * Says why work for a folder the user has not trusted is not sent.
    * @param target The folder.
-   * @returns Returns the reason it is refused, or null when the folder is trusted.
+   * @returns Returns the reason.
    */
-  private refuseUntrusted(target: string): string | null {
+  private untrusted(target: string): string {
     const decision: RepositoryTrustDecision = this.options.trust.decisionFor(target);
-    if (decision === 'trusted') {
-      return null;
-    }
     logger.debug('PackageManagerHost', `Refused a request in ${decision} folder ${target}`);
     return decision === 'restricted'
       ? 'This folder is not trusted, so package managers are not run in it.'

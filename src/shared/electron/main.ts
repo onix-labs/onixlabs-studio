@@ -729,6 +729,7 @@ class Program {
     this.hostingManager,
     this.versionControlHost,
     this.trustedPaths,
+    this.repositoryTrust,
     (): BrowserWindow | null => this.windows.main(),
     path.join(app.getPath('userData'), 'new-project.json'),
   );

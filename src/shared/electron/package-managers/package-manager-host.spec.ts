@@ -17,6 +17,7 @@ import {
   PackageManagerHost,
   PackageManagerHostOptions,
 } from './package-manager-host';
+import type { RunToken } from '../process/launch';
 
 /**
  * The open workspace root every test works inside.
@@ -74,10 +75,10 @@ function fakeClient(
       },
       request: async <Op extends PackageManagerOp>(
         op: Op,
-        root: string,
+        token: RunToken,
         params: unknown,
       ): Promise<PackageManagerResponse<Op>> => {
-        fake.requests.push({ op, root, params });
+        fake.requests.push({ op, root: token.folder, params });
         if (hold) {
           await new Promise<void>((resume: () => void): void => {
             waiting.push(resume);

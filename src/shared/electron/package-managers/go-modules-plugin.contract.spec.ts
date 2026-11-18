@@ -12,6 +12,7 @@ import type {
   PackageManagerResponse,
 } from '@shared/api/package-manager-protocol';
 import { PackageManagerClient } from './package-manager-client';
+import { trustedToken } from '../process/run-token.fixture';
 
 /**
  * The Go modules plugin's directory.
@@ -145,7 +146,7 @@ describe('Go modules plugin contract', () => {
 
       const response: PackageManagerResponse<'load'> = await client.request(
         'load',
-        workspace,
+        trustedToken(workspace),
         {},
         15_000,
       );
@@ -188,7 +189,7 @@ describe('Go modules plugin contract', () => {
 
     const response: PackageManagerResponse<'sources'> = await client.request(
       'sources',
-      workspace,
+      trustedToken(workspace),
       {},
       15_000,
     );
@@ -201,7 +202,7 @@ describe('Go modules plugin contract', () => {
 
     const response: PackageManagerResponse<'search'> = await client.request(
       'search',
-      workspace,
+      trustedToken(workspace),
       { source: proxy, query: 'golang.org/x/mod', skip: 0, take: 20, prerelease: false },
       15_000,
     );
@@ -225,7 +226,7 @@ describe('Go modules plugin contract', () => {
 
     const response: PackageManagerResponse<'update'> = await client.request(
       'update',
-      workspace,
+      trustedToken(workspace),
       {
         project: path.join(workspace, 'go.mod'),
         name: 'github.com/BurntSushi/toml',
@@ -254,7 +255,7 @@ describe('Go modules plugin contract', () => {
     await expect(
       client.request(
         'remove',
-        workspace,
+        trustedToken(workspace),
         { project: path.join(workspace, 'go.mod'), name: '-modfile=/tmp/x' },
         15_000,
       ),

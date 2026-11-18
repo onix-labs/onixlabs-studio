@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { realpath } from 'node:fs/promises';
 import * as path from 'node:path';
 import {
   VCS_GLOBAL_OPS,
@@ -14,6 +15,7 @@ import {
   VcsParams,
 } from '@shared/api/version-control-protocol';
 import type { RepositoryTrustDecision } from '@shared/api/source-control-channels';
+import { RunToken, RunTokens } from '../process/launch';
 import { logger } from '../logger';
 import { VersionControlClient } from './version-control-client';
 import { VersionControlEndpoint } from './version-control-endpoint';
@@ -227,11 +229,17 @@ export class VersionControlHost {
   private readonly repositories: Map<string, number> = new Map<string, number>();
 
   /**
+   * Issues the run tokens work in a repository is sent with (#1504): one only for a trusted folder.
+   */
+  private readonly tokens: RunTokens;
+
+  /**
    * Initializes the host.
    * @param options What the host depends on.
    */
   public constructor(options: VersionControlHostOptions) {
     this.options = options;
+    this.tokens = new RunTokens(options.trust);
   }
 
   /**
@@ -330,20 +338,45 @@ export class VersionControlHost {
       logger.trace('VersionControlHost.openRepository', `No repository contains ${start}`);
       return null;
     }
+    const root: string | null = await this.rootOf(descriptor, start, candidate);
+    if (root === null) {
+      return null;
+    }
+    const count: number = (this.repositories.get(root) ?? 0) + 1;
+    this.repositories.set(root, count);
+    logger.info('VersionControlHost', `Opened repository ${root} (open count ${count})`);
+    return { root, name: path.basename(root), pluginId: descriptor.id };
+  }
+
+  /**
+   * Finds the root of the repository containing a folder. In a trusted folder the plugin is asked,
+   * which follows linked worktrees and submodules exactly; in one not yet trusted, nothing is run
+   * (#1504): the folder holding the repository's marker is the root, resolved on disk as the tool
+   * would resolve it.
+   * @param descriptor The plugin whose marker was found.
+   * @param start The folder asked about.
+   * @param marked The nearest folder holding the plugin's marker.
+   * @returns Returns the root, or null when there is none.
+   */
+  private async rootOf(
+    descriptor: VersionControlDescriptor,
+    start: string,
+    marked: string,
+  ): Promise<string | null> {
+    if (this.tokens.issue(marked) === null) {
+      try {
+        return await realpath(marked);
+      } catch {
+        return path.resolve(marked);
+      }
+    }
     const resolved: VersionControlResponse<'resolveRoot'> = await this.dispatch(
       descriptor,
       undefined,
       'resolveRoot',
       { path: start },
     );
-    if (!resolved.ok || resolved.result.root === null) {
-      return null;
-    }
-    const root: string = path.resolve(resolved.result.root);
-    const count: number = (this.repositories.get(root) ?? 0) + 1;
-    this.repositories.set(root, count);
-    logger.info('VersionControlHost', `Opened repository ${root} (open count ${count})`);
-    return { root, name: path.basename(root), pluginId: descriptor.id };
+    return resolved.ok && resolved.result.root !== null ? path.resolve(resolved.result.root) : null;
   }
 
   /**
@@ -430,7 +463,9 @@ export class VersionControlHost {
    * @returns Returns the confirmed capabilities and description, or the reason there are none.
    */
   public async describe(root: string): Promise<PluginDescription> {
-    const refusal: string | null = this.refuseRoot(root) ?? this.refuseUntrusted(root);
+    const refusal: string | null =
+      this.refuseRoot(root) ??
+      (this.tokens.issue(root) === null ? this.untrustedReason(root) : null);
     if (refusal !== null) {
       return { ok: false, error: refusal };
     }
@@ -483,16 +518,16 @@ export class VersionControlHost {
     if (refusal !== null) {
       return refused(refusal);
     }
-    const distrust: string | null = this.refuseUntrusted(root);
-    if (distrust !== null) {
-      return untrusted(distrust);
-    }
     const resolvedRoot: string = path.resolve(root);
+    const token: RunToken | null = this.tokens.issue(resolvedRoot);
+    if (token === null) {
+      return untrusted(this.untrustedReason(resolvedRoot));
+    }
     const descriptor: VersionControlDescriptor | null = this.pluginFor(resolvedRoot);
     if (descriptor === null) {
       return refused('No installed version-control plugin recognises this folder.');
     }
-    return this.dispatch(descriptor, resolvedRoot, op, params);
+    return this.dispatch(descriptor, token, op, params);
   }
 
   /**
@@ -522,13 +557,10 @@ export class VersionControlHost {
       if (refusal !== null) {
         return refused(refusal);
       }
-      // A clone writes a checkout into a container the user has (or has not) trusted; resolving a
-      // root reads nothing the repository controls, so it is answered either way.
-      if (op === 'clone' && typeof target === 'string') {
-        const distrust: string | null = this.refuseUntrusted(target);
-        if (distrust !== null) {
-          return untrusted(distrust);
-        }
+      // A clone writes a checkout into a container the user has (or has not) trusted, and resolving a
+      // root runs the tool in the folder: neither happens in one the user has not trusted (#1504).
+      if (typeof target === 'string' && this.tokens.issue(target) === null) {
+        return untrusted(this.untrustedReason(target));
       }
     }
     const descriptor: VersionControlDescriptor | undefined = this.options
@@ -617,16 +649,24 @@ export class VersionControlHost {
     if (descriptor === undefined || !path.isAbsolute(directory)) {
       return `No version-control plugin named ${pluginId} is installed.`;
     }
-    const root: string = path.resolve(directory);
-    const staged: VersionControlResponse<'stage'> = await this.dispatch(descriptor, root, 'stage', {
-      paths,
-    });
+    const token: RunToken | null = this.tokens.issue(path.resolve(directory));
+    if (token === null) {
+      return this.untrustedReason(directory);
+    }
+    const staged: VersionControlResponse<'stage'> = await this.dispatch(
+      descriptor,
+      token,
+      'stage',
+      {
+        paths,
+      },
+    );
     if (!staged.ok) {
       return staged.error;
     }
     const committed: VersionControlResponse<'commit'> = await this.dispatch(
       descriptor,
-      root,
+      token,
       'commit',
       { message },
     );
@@ -636,7 +676,7 @@ export class VersionControlHost {
     if (!push) {
       return null;
     }
-    const pushed: VersionControlResponse<'push'> = await this.dispatch(descriptor, root, 'push', {
+    const pushed: VersionControlResponse<'push'> = await this.dispatch(descriptor, token, 'push', {
       target: null,
     });
     return pushed.ok ? null : pushed.error;
@@ -680,14 +720,14 @@ export class VersionControlHost {
   /**
    * Checks the capability, shares an identical read in flight, and sends the request.
    * @param descriptor The plugin to ask.
-   * @param root The repository root, or undefined for a global operation.
+   * @param token The repository's run token, or undefined for a global operation.
    * @param op The operation.
    * @param params The operation's parameters.
    * @returns Returns the plugin's answer, or the host's refusal.
    */
   private async dispatch<Op extends VersionControlOp>(
     descriptor: VersionControlDescriptor,
-    root: string | undefined,
+    token: RunToken | undefined,
     op: Op,
     params: VcsParams<Op>,
   ): Promise<VersionControlResponse<Op>> {
@@ -713,9 +753,9 @@ export class VersionControlHost {
       ? networkTimeoutFor(params)
       : REQUEST_TIMEOUT_MS;
     if (!VCS_READ_OPS.includes(op)) {
-      return plugin.client.request(op, root, params, timeoutMs);
+      return plugin.client.request(op, token, params, timeoutMs);
     }
-    const key: string = JSON.stringify([descriptor.id, root ?? null, op, params]);
+    const key: string = JSON.stringify([descriptor.id, token?.folder ?? null, op, params]);
     const existing: Promise<VersionControlResponse> | undefined = this.inFlightReads.get(key);
     if (existing !== undefined) {
       logger.trace('VersionControlHost', `Shared a concurrent ${op}`);
@@ -723,7 +763,7 @@ export class VersionControlHost {
     }
     const answer: Promise<VersionControlResponse<Op>> = plugin.client.request(
       op,
-      root,
+      token,
       params,
       timeoutMs,
     );
@@ -841,16 +881,12 @@ export class VersionControlHost {
   }
 
   /**
-   * Checks that the user trusts the repository a request names. Asked after {@link refuseRoot}, so
-   * the path is already absolute and open.
+   * Says why work in a repository the user has not trusted is not sent.
    * @param target The repository root, or a path within it.
-   * @returns Returns the reason it is refused, or null when the repository is trusted.
+   * @returns Returns the reason.
    */
-  private refuseUntrusted(target: string): string | null {
+  private untrustedReason(target: string): string {
     const decision: RepositoryTrustDecision = this.options.trust.decisionFor(target);
-    if (decision === 'trusted') {
-      return null;
-    }
     logger.debug('VersionControlHost', `Refused a request in ${decision} repository ${target}`);
     return decision === 'restricted'
       ? 'This repository is not trusted, so version control is not run in it.'

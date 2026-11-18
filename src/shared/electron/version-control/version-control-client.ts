@@ -12,6 +12,7 @@ import {
   VcsParams,
 } from '@shared/api/version-control-protocol';
 import { logger } from '../logger';
+import { folderOf, RunToken } from '../process/launch';
 import { LineSplitter, MAX_LINE_LENGTH } from '../line-splitter';
 import { pluginEnvironment } from '../plugin-environment';
 import { pidJournal } from '../pid-journal';
@@ -195,21 +196,22 @@ export class VersionControlClient implements VersionControlEndpoint {
   /**
    * Asks the plugin to perform an operation.
    * @param op The operation.
-   * @param root The absolute repository root it acts on, or undefined for a global operation.
+   * @param token The folder's run token, or undefined for work that names no folder.
    * @param params The operation's parameters.
    * @param timeoutMs How long to wait before abandoning it.
    * @returns Returns the plugin's answer, or a failure saying why there was none.
    */
   public request<Op extends VersionControlOp>(
     op: Op,
-    root: string | undefined,
+    token: RunToken | undefined,
     params: VcsParams<Op>,
     timeoutMs: number,
   ): Promise<VersionControlResponse<Op>> {
     if (this.description === null) {
       return Promise.resolve({ id: 0, ok: false, error: `${this.id} is not running.` });
     }
-    return this.send(op, root, params, timeoutMs);
+    // Work in a repository needs its run token; work that names none (a clone) needs none (#1504).
+    return this.send(op, token === undefined ? undefined : folderOf(token), params, timeoutMs);
   }
 
   /**
