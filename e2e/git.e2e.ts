@@ -5,6 +5,7 @@ import { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import {
   answerMessageBoxWith,
+  answerTrustPrompt,
   answerOpenDialogWith,
   explorerRow,
   messageBoxesAsked,
@@ -60,8 +61,7 @@ async function openTrusted(
   const welcome: Page = await modalWindow(app);
   await welcome.getByText('Open Directory or File').click();
   await expect(page.locator('app-directory-view')).toBeVisible();
-  const asked: Page = await modalWindow(app, [welcome]);
-  await asked.getByRole('button', { name: 'Trust', exact: true }).click();
+  await answerTrustPrompt(app, 'Trust');
 }
 
 /**

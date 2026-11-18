@@ -6,6 +6,7 @@ import { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import {
   answerOpenDialogWith,
+  answerTrustPrompt,
   explorerRow,
   modalWindow,
   openFolderFromWelcome,
@@ -195,8 +196,7 @@ test.describe('a plugin process killed under the application', () => {
     await answerOpenDialogWith(app, scratch);
     const welcome: Page = await modalWindow(app);
     await welcome.getByText('Open Directory or File').click();
-    const asked: Page = await modalWindow(app, [welcome]);
-    await asked.getByRole('button', { name: 'Trust', exact: true }).click();
+    await answerTrustPrompt(app, 'Trust');
     await (await ribbonButton(page, 'Commit')).click();
     await page.getByRole('tab', { name: 'Commit' }).click();
     const panel: Locator = page.locator('app-commit-detail');
