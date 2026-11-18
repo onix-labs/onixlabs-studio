@@ -1,5 +1,5 @@
 import { BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent, WebContents } from 'electron';
-import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { statSync } from 'node:fs';
 import { logger } from '../logger';
 import { answerConfiguration } from './lsp-server-settings';
@@ -59,7 +59,7 @@ import {
   writeGeneratedView,
 } from './lsp-generated-views';
 import { LspServerTail } from './lsp-server-tail';
-import { FolderTrustSource, mayRunIn } from '../repository-trust';
+import { launchFor, RunToken, RunTokens } from '../process/launch';
 import { ApplyEditResult, LspApplyEditForwarder } from './lsp-apply-edit';
 import { clientCapabilities } from './lsp-client-capabilities';
 
@@ -269,9 +269,9 @@ export class LspManager {
   private readonly registry: LspServerRegistry;
 
   /**
-   * Holds the trust store every server start is checked against (#1504).
+   * Issues the run tokens every server start needs (#1504): one only for a folder the user trusts.
    */
-  private readonly trust: FolderTrustSource;
+  private readonly tokens: RunTokens;
 
   /**
    * Holds the running sessions, keyed by session identifier.
@@ -319,7 +319,7 @@ export class LspManager {
    * @param windowGetter A function that returns the window server notifications are sent to.
    * @param workspaceContext The open-workspace tracker used to confine sessions to opened roots.
    * @param registry The registry that resolves server identifiers into spawn specifications.
-   * @param trust The trust store a server start is checked against: none starts in an untrusted folder.
+   * @param tokens Issues the run tokens a server start needs: none starts in an untrusted folder.
    * @param applyEdits The forwarder that hands a server's edits to the renderer.
    * @param attaches The forwarder that asks the renderer to attach the debugger (#1150).
    * @param questions The forwarder that puts a server's questions to the user (#1154).
@@ -329,7 +329,7 @@ export class LspManager {
     windowGetter: () => BrowserWindow | null,
     workspaceContext: WorkspaceContext,
     registry: LspServerRegistry,
-    trust: FolderTrustSource,
+    tokens: RunTokens,
     applyEdits: LspApplyEditForwarder = new LspApplyEditForwarder(),
     attaches: LspAttachDebuggerForwarder = new LspAttachDebuggerForwarder(),
     questions: LspShowMessageForwarder = new LspShowMessageForwarder(),
@@ -338,7 +338,7 @@ export class LspManager {
     this.windowGetter = windowGetter;
     this.workspaceContext = workspaceContext;
     this.registry = registry;
-    this.trust = trust;
+    this.tokens = tokens;
     this.applyEdits = applyEdits;
     this.attaches = attaches;
     this.questions = questions;
@@ -612,7 +612,8 @@ export class LspManager {
     // ⛔ A language server reads the folder's own configuration and, for many, runs its code: build
     // scripts, project imports, interpreters. None starts in a folder the user has not trusted, and the
     // check comes before resolving, so an untrusted folder does not even download one (#1504).
-    if (!mayRunIn(this.trust, parsed.rootPath)) {
+    const token: RunToken | null = this.tokens.issue(parsed.rootPath);
+    if (token === null) {
       logger.info('LspManager', `LSP start held for untrusted root ${parsed.rootPath}`);
       return { success: false, error: UNTRUSTED_ERROR, untrusted: true };
     }
@@ -655,7 +656,7 @@ export class LspManager {
     try {
       // Own process group, so tearing down reaches the server's children too (Roslyn's MSBuild
       // BuildHost workers, jdtls's forked JVMs) — not just the server itself.
-      child = spawn(spec.command, [...spec.args], {
+      child = launchFor(token).spawn(spec.command, [...spec.args], {
         cwd: parsed.rootPath,
         env: { ...process.env, ...spec.env },
         stdio: ['pipe', 'pipe', 'pipe'],

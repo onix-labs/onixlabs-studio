@@ -7,6 +7,8 @@ import type {
   TerminalReplay,
 } from '@shared/api/terminal-channels';
 import type { BrowserWindow } from 'electron';
+import { Launcher, launchStudioOwned } from './process/launch';
+import { UNTRUSTED_FOLDER_REASON } from './repository-trust';
 
 /**
  * Describes an IPC handler as the fake `ipcMain` captures it.
@@ -235,7 +237,8 @@ describe('TerminalManager', () => {
               },
             } as unknown as BrowserWindow)
           : null,
-      { refusal: (target: string): string | null => (untrusted(target) ? 'Not trusted.' : null) },
+      (folder: string): Launcher | null =>
+        untrusted(folder) ? null : launchStudioOwned('user-terminal'),
     );
     manager.register();
   });
@@ -270,7 +273,7 @@ describe('TerminalManager', () => {
           ...(kind === 'shell' ? {} : { command: 'npm', args: ['test'] }),
         });
 
-        expect(result).toEqual({ success: false, error: 'Not trusted.' });
+        expect(result).toEqual({ success: false, error: UNTRUSTED_FOLDER_REASON });
         expect(fakes.spawns).toEqual([]);
       },
     );

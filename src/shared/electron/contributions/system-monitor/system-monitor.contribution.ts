@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { Launcher, launchStudioOwned } from '../../process/launch';
 import { promises as dns } from 'node:dns';
 import { readdir, readFile } from 'node:fs/promises';
 import * as os from 'node:os';
@@ -97,6 +97,11 @@ import { NetworkSampler } from './network-sampler';
 import { HeavyCadence, normaliseSamplingInterval } from './sampling-cadence';
 
 /**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('system-monitor');
+
+/**
  * The costly readings, carried forward between the ticks they are taken on.
  */
 interface HeavyReadings {
@@ -188,7 +193,7 @@ const run: (
   file: string,
   args: readonly string[],
   options: { timeout: number; maxBuffer: number },
-) => Promise<{ stdout: string }> = promisify(execFile);
+) => Promise<{ stdout: string }> = promisify(launch.execFile);
 
 /**
  * The System Monitor's metrics backend contribution. It samples machine CPU, memory, network, disk and

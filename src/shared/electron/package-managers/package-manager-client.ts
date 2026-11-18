@@ -1,4 +1,5 @@
-import { ChildProcess, spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import { Launcher, launchStudioOwned } from '../process/launch';
 import {
   isCompatiblePackageManagerProtocol,
   isPackageManagerCapability,
@@ -16,6 +17,11 @@ import { pluginEnvironment } from '../plugin-environment';
 import { pidJournal } from '../pid-journal';
 import { PackageManagerSpec } from './package-manager-descriptor';
 import { PackageManagerEndpoint } from './package-manager-endpoint';
+
+/**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('plugin-process');
 
 /**
  * Specifies how long the initialize handshake may take. A plugin that cannot say what it is promptly
@@ -133,7 +139,7 @@ export class PackageManagerClient implements PackageManagerEndpoint {
       return this.description;
     }
     try {
-      this.process = spawn(this.spec.command, [...this.spec.args], {
+      this.process = launch.spawn(this.spec.command, [...this.spec.args], {
         stdio: ['pipe', 'pipe', 'pipe'],
         // Only what a program needs to run, never the user's whole shell (audit S6). A token exported
         // in a profile is exactly what a plugin is not handed.

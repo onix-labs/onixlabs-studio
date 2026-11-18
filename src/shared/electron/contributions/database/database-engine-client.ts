@@ -1,4 +1,5 @@
-import { ChildProcess, spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import { Launcher, launchStudioOwned } from '../../process/launch';
 import {
   DATABASE_ENGINE_PROTOCOL,
   DatabaseEngineDescription,
@@ -14,6 +15,11 @@ import { LineSplitter, MAX_LINE_LENGTH } from '../../line-splitter';
 import { pidJournal } from '../../pid-journal';
 import { pluginEnvironment } from '../../plugin-environment';
 import type { NodeRuntimeSpec } from '../plugins/plugin-loader';
+
+/**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('plugin-process');
 
 /**
  * How long a plugin has to answer `initialize` before it is given up on.
@@ -214,7 +220,7 @@ export class DatabaseEngineClient {
    */
   private async startProcess(): Promise<boolean> {
     try {
-      this.process = spawn(this.spec.command, [...this.spec.args], {
+      this.process = launch.spawn(this.spec.command, [...this.spec.args], {
         stdio: ['pipe', 'pipe', 'pipe'],
         // Only what a program needs to run, never the user's whole shell (audit S6).
         env: pluginEnvironment(this.spec.env),

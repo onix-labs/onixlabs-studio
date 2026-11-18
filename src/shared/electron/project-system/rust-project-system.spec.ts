@@ -23,11 +23,12 @@ import {
   parseCargoWorkspaceMembers,
   RustProjectSystem,
 } from './rust-project-system';
+import { trustedToken } from '../process/run-token.fixture';
 
 /**
  * Loads a project as a trusted folder does, letting the provider ask its tool.
  */
-const TRUSTED_LOAD: ProjectLoadOptions = { mayRun: true };
+const TRUSTED_LOAD: ProjectLoadOptions = { token: trustedToken('/') };
 
 describe('parseCargoPackageName', () => {
   it('readsThePackageTableName', () => {

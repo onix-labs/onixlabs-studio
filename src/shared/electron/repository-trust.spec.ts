@@ -2,13 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { RepositoryTrustDecision } from '@shared/api/source-control-channels';
-import {
-  RepositoryTrust,
-  RunGate,
-  UNTRUSTED_FOLDER_REASON,
-  workspaceRunGate,
-} from './repository-trust';
+import { RepositoryTrust } from './repository-trust';
 
 describe('RepositoryTrust', () => {
   let directory: string;
@@ -81,34 +75,5 @@ describe('RepositoryTrust', () => {
     expect(new RepositoryTrust(path.join(directory, 'absent.json')).decisionFor('/x')).toBe(
       'unknown',
     );
-  });
-});
-
-describe('workspaceRunGate (#1504)', () => {
-  /**
-   * Builds the gate over one open workspace whose trust is the given decision.
-   * @param decision The workspace's decision.
-   * @returns Returns the gate.
-   */
-  function gateWith(decision: RepositoryTrustDecision): RunGate {
-    return workspaceRunGate(
-      { isWithin: (target: unknown): boolean => String(target).startsWith('/work/shop') },
-      { decisionFor: (): RepositoryTrustDecision => decision },
-    );
-  }
-
-  it.each(['unknown', 'restricted'] as const)(
-    'refusesAFolderInAWorkspaceThatIs_%s',
-    (decision: RepositoryTrustDecision) => {
-      expect(gateWith(decision).refusal('/work/shop/src')).toBe(UNTRUSTED_FOLDER_REASON);
-    },
-  );
-
-  it('allowsAFolderInATrustedWorkspace', () => {
-    expect(gateWith('trusted').refusal('/work/shop')).toBeNull();
-  });
-
-  it('allowsAFolderOutsideEveryOpenWorkspace_suchAsTheHomeFolder', () => {
-    expect(gateWith('unknown').refusal('/Users/me')).toBeNull();
   });
 });

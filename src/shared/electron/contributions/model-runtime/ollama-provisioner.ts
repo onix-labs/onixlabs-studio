@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { Launcher, launchStudioOwned } from '../../process/launch';
 import { createHash } from 'node:crypto';
 import { createReadStream, Dirent, existsSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
@@ -19,13 +19,18 @@ import {
 } from './ollama-assets';
 
 /**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('model-runtime');
+
+/**
  * Runs a command and resolves with its stdout.
  */
 const execFileAsync: (
   file: string,
   args: readonly string[],
   options: { timeout: number },
-) => Promise<{ stdout: string }> = promisify(execFile);
+) => Promise<{ stdout: string }> = promisify(launch.execFile);
 
 /**
  * How long, in milliseconds, a `--version` probe is given before it is treated as unusable.

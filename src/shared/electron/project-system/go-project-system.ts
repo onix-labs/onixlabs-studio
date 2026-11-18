@@ -1,4 +1,3 @@
-import { execFile } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
@@ -17,6 +16,7 @@ import { goDebugTarget } from './go-debug-target';
 import { buildGoPackageTree, GoPackage, goListArguments, parseGoPackages } from './go-list';
 import { listProjectFiles, sourceFilter } from './project-listing';
 import { ProjectLoadOptions, ProjectSystem } from './project-system';
+import { launchFor, RunToken } from '../process/launch';
 import { logger } from '../logger';
 
 /**
@@ -89,7 +89,7 @@ const LIST_BUFFER: number = 64 * 1024 * 1024;
 /**
  * Runs a child process and resolves with its standard output.
  */
-const execFileAsync: (
+type ExecFileAsync = (
   file: string,
   args: readonly string[],
   options: {
@@ -100,7 +100,16 @@ const execFileAsync: (
     killSignal: NodeJS.Signals;
     windowsHide: boolean;
   },
-) => Promise<{ stdout: string; stderr: string }> = promisify(execFile);
+) => Promise<{ stdout: string; stderr: string }>;
+
+/**
+ * Gets the runner for a trusted folder's tool: only with its run token (#1504).
+ * @param token The folder's run token.
+ * @returns Returns the runner.
+ */
+function execFileFor(token: RunToken): ExecFileAsync {
+  return promisify(launchFor(token).execFile);
+}
 
 /**
  * The environment `go list` runs with. Reading a module must not reach out: `go.mod` can name a newer
@@ -203,7 +212,7 @@ export class GoProjectSystem implements ProjectSystem {
     const directory: string = path.dirname(projectPath);
     // `go list` only once the folder is trusted (#1504); until then, its files.
     const packages: readonly ProjectItemNode[] | null =
-      options?.mayRun === true ? await this.packageTree(projectPath, directory) : null;
+      options?.token == null ? null : await this.packageTree(projectPath, directory, options.token);
     const tree: readonly ProjectItemNode[] | null = packages ?? (await this.listing(directory));
     return tree === null ? null : { projectPath, tree };
   }
@@ -226,11 +235,13 @@ export class GoProjectSystem implements ProjectSystem {
    * Builds the module's contents from its packages.
    * @param projectPath The absolute path of the module manifest.
    * @param directory The module's directory.
+   * @param token The folder's run token, which running the toolchain needs.
    * @returns Returns the contents, or null when the toolchain has no answer or the module no packages.
    */
   private async packageTree(
     projectPath: string,
     directory: string,
+    token: RunToken,
   ): Promise<readonly ProjectItemNode[] | null> {
     let moduleDirectory: string;
     try {
@@ -240,7 +251,7 @@ export class GoProjectSystem implements ProjectSystem {
     } catch {
       return null;
     }
-    const packages: readonly GoPackage[] | null = await this.packages(moduleDirectory);
+    const packages: readonly GoPackage[] | null = await this.packages(moduleDirectory, token);
     if (packages === null || packages.every((entry: GoPackage) => entry.files.length === 0)) {
       return null;
     }
@@ -261,12 +272,16 @@ export class GoProjectSystem implements ProjectSystem {
    * Asks the toolchain for a module's packages, trying each `go` in turn. `go list` runs nothing from
    * the module: it parses the sources and stops.
    * @param moduleDirectory The module's directory.
+   * @param token The folder's run token, which running the toolchain needs.
    * @returns Returns the packages, or null when no toolchain could answer.
    */
-  private async packages(moduleDirectory: string): Promise<readonly GoPackage[] | null> {
+  private async packages(
+    moduleDirectory: string,
+    token: RunToken,
+  ): Promise<readonly GoPackage[] | null> {
     for (const go of this.goExecutables()) {
       try {
-        const { stdout }: { stdout: string } = await execFileAsync(
+        const { stdout }: { stdout: string } = await execFileFor(token)(
           go,
           goListArguments(moduleDirectory),
           {

@@ -1,4 +1,4 @@
-import type { FolderTrustSource } from '../repository-trust';
+import { RunTokens } from '../process/launch';
 import type { RepositoryTrustDecision } from '@shared/api/source-control-channels';
 import { describe, expect, it, vi } from 'vitest';
 import type { BrowserWindow, WebContents } from 'electron';
@@ -7,7 +7,7 @@ import type { ClientCapabilities } from 'vscode-languageserver-protocol';
 /**
  * A trust store that trusts every folder, for the tests that are about something other than trust.
  */
-const TRUSTED: FolderTrustSource = { decisionFor: (): RepositoryTrustDecision => 'trusted' };
+const TRUSTED: RunTokens = new RunTokens({ decisionFor: (): RepositoryTrustDecision => 'trusted' });
 
 vi.mock('electron', () => ({
   ipcMain: { handle: (): void => undefined, on: (): void => undefined },

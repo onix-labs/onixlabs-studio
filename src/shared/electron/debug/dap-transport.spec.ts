@@ -10,6 +10,12 @@ import {
   TcpClientTransport,
   TcpServerTransport,
 } from './dap-transport';
+import { launchStudioOwned, Launcher } from '../process/launch';
+
+/**
+ * Starts the test adapters: the transports under test take any launcher.
+ */
+const LAUNCH: Launcher = launchStudioOwned('process-control');
 
 /**
  * Waits for a condition.
@@ -117,7 +123,7 @@ describe.skipIf(process.platform === 'win32')('dap transports', () => {
       const cwd: string = path.join(scratch, 'cwd');
       mkdirSync(cwd);
       const stdio: Watched<StdioTransport> = watch(
-        new StdioTransport(process.execPath, [report], { STUDIO_MARK: 'set' }, cwd),
+        new StdioTransport(process.execPath, [report], { STUDIO_MARK: 'set' }, cwd, LAUNCH),
       );
 
       await stdio.transport.start();
@@ -129,7 +135,7 @@ describe.skipIf(process.platform === 'win32')('dap transports', () => {
 
     it('rejectsStart_whenTheProgramCannotBeRun', async () => {
       const stdio: Watched<StdioTransport> = watch(
-        new StdioTransport(path.join(scratch, 'no-such-adapter'), [], undefined, scratch),
+        new StdioTransport(path.join(scratch, 'no-such-adapter'), [], undefined, scratch, LAUNCH),
       );
 
       await expect(stdio.transport.start()).rejects.toThrow(/ENOENT/);
@@ -137,7 +143,13 @@ describe.skipIf(process.platform === 'win32')('dap transports', () => {
 
     it('reportsAnExit_withItsCode', async () => {
       const stdio: Watched<StdioTransport> = watch(
-        new StdioTransport(process.execPath, [script('process.exit(4);')], undefined, scratch),
+        new StdioTransport(
+          process.execPath,
+          [script('process.exit(4);')],
+          undefined,
+          scratch,
+          LAUNCH,
+        ),
       );
 
       await stdio.transport.start();
@@ -149,7 +161,13 @@ describe.skipIf(process.platform === 'win32')('dap transports', () => {
     it('survivesAWriteToAnAdapterThatHasGone', async () => {
       // An unhandled stream error here is an uncaught exception, which fails the run.
       const stdio: Watched<StdioTransport> = watch(
-        new StdioTransport(process.execPath, [script('process.exit(0);')], undefined, scratch),
+        new StdioTransport(
+          process.execPath,
+          [script('process.exit(0);')],
+          undefined,
+          scratch,
+          LAUNCH,
+        ),
       );
       await stdio.transport.start();
       await until((): boolean => stdio.closed.length > 0, 'the exit');
@@ -172,6 +190,7 @@ describe.skipIf(process.platform === 'win32')('dap transports', () => {
           ],
           undefined,
           scratch,
+          LAUNCH,
         ),
       );
       await stdio.transport.start();
@@ -185,7 +204,7 @@ describe.skipIf(process.platform === 'win32')('dap transports', () => {
 
     it('ignoresASendBeforeStart', () => {
       const stdio: Watched<StdioTransport> = watch(
-        new StdioTransport(process.execPath, [], undefined, scratch),
+        new StdioTransport(process.execPath, [], undefined, scratch, LAUNCH),
       );
 
       expect((): void => stdio.transport.send('early')).not.toThrow();
@@ -200,7 +219,7 @@ describe.skipIf(process.platform === 'win32')('dap transports', () => {
         setInterval(() => undefined, 1000);
       `);
       const stdio: Watched<StdioTransport> = watch(
-        new StdioTransport(process.execPath, [parent], undefined, scratch),
+        new StdioTransport(process.execPath, [parent], undefined, scratch, LAUNCH),
       );
       await stdio.transport.start();
       await until((): boolean => {
@@ -229,7 +248,9 @@ describe.skipIf(process.platform === 'win32')('dap transports', () => {
      * @returns Returns the watched transport.
      */
     function server(source: string): Watched<TcpServerTransport> {
-      return watch(new TcpServerTransport(process.execPath, [script(source)], undefined, scratch));
+      return watch(
+        new TcpServerTransport(process.execPath, [script(source)], undefined, scratch, LAUNCH),
+      );
     }
 
     const idle: string = 'setInterval(() => undefined, 1000);';
@@ -312,7 +333,7 @@ describe.skipIf(process.platform === 'win32')('dap transports', () => {
 
     it('rejectsStart_whenTheProgramCannotBeRun', async () => {
       const tcp: Watched<TcpServerTransport> = watch(
-        new TcpServerTransport(path.join(scratch, 'no-such-node'), [], undefined, scratch),
+        new TcpServerTransport(path.join(scratch, 'no-such-node'), [], undefined, scratch, LAUNCH),
       );
 
       await expect(tcp.transport.start()).rejects.toThrow(/ENOENT/);

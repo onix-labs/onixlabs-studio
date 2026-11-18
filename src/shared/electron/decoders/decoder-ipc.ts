@@ -11,7 +11,8 @@ import { Decoders } from './decoders';
 import { JitCaptureResult } from '@shared/api/jit-capture';
 import { JitCapture } from './jit-capture';
 
-import type { RunGate } from '../repository-trust';
+import { RunToken, RunTokens } from '../process/launch';
+import { UNTRUSTED_FOLDER_REASON } from '../repository-trust';
 /**
  * Hosts the decoder registry and answers the renderer's decode requests.
  *
@@ -41,18 +42,18 @@ export class DecoderHost {
   private readonly scope: { isWithin(target: unknown): boolean };
 
   /**
-   * Holds the gate a program to run is checked against (#1504).
+   * Issues the run tokens a program to run needs (#1504): one only for a folder the user trusts.
    */
-  private readonly gate: RunGate;
+  private readonly tokens: RunTokens;
 
   /**
    * Initializes a new instance of the {@link DecoderHost} class.
    * @param scope The open workspaces a program to run must lie within.
-   * @param gate Refuses a program in a workspace the user has not trusted.
+   * @param tokens Issues the run tokens a program to run needs.
    */
-  public constructor(scope: { isWithin(target: unknown): boolean }, gate: RunGate) {
+  public constructor(scope: { isWithin(target: unknown): boolean }, tokens: RunTokens) {
     this.scope = scope;
-    this.gate = gate;
+    this.tokens = tokens;
   }
 
   /**
@@ -129,13 +130,13 @@ export class DecoderHost {
       logger.warn('DecoderHost', 'Refused to run an assembly outside the open workspace');
       return Promise.resolve({ ok: false, error: 'That program is not in the open workspace.' });
     }
-    const refusal: string | null = this.gate.refusal(assemblyPath);
-    if (refusal !== null) {
-      return Promise.resolve({ ok: false, error: refusal });
+    const token: RunToken | null = this.tokens.issue(assemblyPath);
+    if (token === null) {
+      return Promise.resolve({ ok: false, error: UNTRUSTED_FOLDER_REASON });
     }
     const pattern: string =
       typeof methodPattern === 'string' && methodPattern.length > 0 ? methodPattern : '*';
-    return this.jit.capture(assemblyPath, pattern, tier === 'tier0' ? 'tier0' : 'full-opts');
+    return this.jit.capture(assemblyPath, pattern, tier === 'tier0' ? 'tier0' : 'full-opts', token);
   }
 
   /**

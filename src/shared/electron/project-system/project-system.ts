@@ -10,14 +10,16 @@ import { DebugResolveResult } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
 import { logger } from '../logger';
 
+import type { RunToken } from '../process/launch';
 /**
  * Says what a project system may do while loading a project's contents.
  */
 export interface ProjectLoadOptions {
   /**
-   * Gets whether a tool may run to answer: only once the user has trusted the folder (#1504).
+   * Gets the folder's run token, or null when the user has not trusted it: a tool runs to answer only
+   * with one (#1504).
    */
-  readonly mayRun: boolean;
+  readonly token: RunToken | null;
 }
 
 /**
@@ -61,10 +63,10 @@ export interface ProjectSystem {
    * Optional: a provider whose projects have no drillable contents need not implement it.
    *
    * ⛔ A provider that asks a tool for the contents (MSBuild, `go list`, `cargo metadata`) does so only
-   * when {@link ProjectLoadOptions.mayRun} says it may, and otherwise lists the files: the tool reads
-   * the project's own configuration, and an untrusted folder runs nothing (#1504).
+   * with the folder's run token ({@link ProjectLoadOptions.token}), and otherwise lists the files: the
+   * tool reads the project's own configuration, and an untrusted folder runs nothing (#1504).
    * @param projectPath The absolute path of the project file.
-   * @param options Whether a tool may run; absent means it may not.
+   * @param options The folder's run token; absent means no tool may run.
    * @returns Returns the contents, or null when they could not be loaded.
    */
   loadProjectItems?(
@@ -82,9 +84,14 @@ export interface ProjectSystem {
    * Optional: a provider whose ecosystem has no compiled artefact need not implement it.
    * @param sourcePath The absolute path of the source file.
    * @param configurationId The selected build configuration, or undefined for the provider's default.
+   * @param token The folder's run token: resolving asks the build tool (#1504).
    * @returns Returns the artefact, or null when there is none to point at.
    */
-  resolveArtifact?(sourcePath: string, configurationId?: string): Promise<CompiledArtifact | null>;
+  resolveArtifact?(
+    sourcePath: string,
+    configurationId: string | undefined,
+    token: RunToken,
+  ): Promise<CompiledArtifact | null>;
 
   /**
    * Determines whether a project file belongs to this provider (by its manifest shape), so a
@@ -118,9 +125,14 @@ export interface ProjectSystem {
    * not implement it, in which case the configuration's own program is used.
    * @param configuration The run configuration being launched under the debugger.
    * @param root The absolute workspace root.
+   * @param token The folder's run token: resolving may build the project (#1504).
    * @returns Returns the resolved target, or a reason it could not be resolved.
    */
-  resolveDebugTarget?(configuration: RunConfiguration, root: string): Promise<DebugResolveResult>;
+  resolveDebugTarget?(
+    configuration: RunConfiguration,
+    root: string,
+    token: RunToken,
+  ): Promise<DebugResolveResult>;
 
   /**
    * Formats a document's text with the tool its project uses, for a language whose server does not
@@ -129,12 +141,14 @@ export interface ProjectSystem {
    * @param filePath The document's absolute path.
    * @param text The document's text.
    * @param root The absolute workspace root holding it.
+   * @param token The folder's run token: the formatter may be one the folder ships (#1504).
    * @returns Returns the outcome, or null when the file is not one this provider formats.
    */
   formatDocument?(
     filePath: string,
     text: string,
     root: string,
+    token: RunToken,
   ): Promise<DocumentFormatResult | null>;
 }
 

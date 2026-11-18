@@ -10,7 +10,8 @@ import {
   ProjectModel,
   ProjectNode,
 } from '@shared/api/project-system';
-import { formatPython } from './python-formatter';
+import { formatPython, formatterRunnerFor } from './python-formatter';
+import type { RunToken } from '../process/launch';
 import { DebugResolveResult } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
 import { projectInterpreter } from '../provisioning/python-environment';
@@ -285,14 +286,18 @@ export class PythonProjectSystem implements ProjectSystem {
    * @param filePath The document's absolute path.
    * @param text The document's text.
    * @param root The absolute workspace root holding it.
+   * @param token The folder's run token: the formatter may be one the folder ships.
    * @returns Returns the outcome, or null for a file that is not Python.
    */
   public formatDocument(
     filePath: string,
     text: string,
     root: string,
+    token: RunToken,
   ): Promise<DocumentFormatResult | null> {
-    return /\.pyi?$/i.test(filePath) ? formatPython(filePath, text, root) : Promise.resolve(null);
+    return /\.pyi?$/i.test(filePath)
+      ? formatPython(filePath, text, root, formatterRunnerFor(token))
+      : Promise.resolve(null);
   }
 
   /**

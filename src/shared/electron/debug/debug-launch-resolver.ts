@@ -5,6 +5,8 @@ import { logger } from '../logger';
 import { ProjectSystem, ProjectSystemRegistry } from '../project-system/project-system';
 import { WorkspaceContext } from '../workspace-context';
 
+import { RunToken, RunTokens } from '../process/launch';
+import { UNTRUSTED_FOLDER_REASON } from '../repository-trust';
 /**
  * A parsed, validated resolve request.
  */
@@ -40,13 +42,24 @@ export class DebugLaunchResolver {
   private readonly workspaceContext: WorkspaceContext;
 
   /**
+   * Issues the run tokens a debug build needs (#1504).
+   */
+  private readonly tokens: RunTokens;
+
+  /**
    * Initializes a new instance of the {@link DebugLaunchResolver} class.
    * @param projectSystems The registry resolving a provider kind to its project system.
    * @param workspaceContext The open-workspace tracker used to confine resolution to opened roots.
+   * @param tokens Issues the run tokens a debug build needs.
    */
-  public constructor(projectSystems: ProjectSystemRegistry, workspaceContext: WorkspaceContext) {
+  public constructor(
+    projectSystems: ProjectSystemRegistry,
+    workspaceContext: WorkspaceContext,
+    tokens: RunTokens,
+  ) {
     this.projectSystems = projectSystems;
     this.workspaceContext = workspaceContext;
+    this.tokens = tokens;
   }
 
   /**
@@ -97,11 +110,17 @@ export class DebugLaunchResolver {
             error: `No debug launch target for ${parsed.configuration.providerKind} configurations.`,
           };
     }
+    // Resolving may build the project, which runs its own files: only with the folder's token (#1504).
+    const token: RunToken | null = this.tokens.issue(parsed.rootPath);
+    if (token === null) {
+      logger.info('DebugLaunchResolver', `Held a debug build for untrusted ${parsed.rootPath}`);
+      return { target: null, error: UNTRUSTED_FOLDER_REASON };
+    }
     logger.debug(
       'DebugLaunchResolver',
       `Delegating resolution to the ${parsed.configuration.providerKind} project system`,
     );
-    return system.resolveDebugTarget(parsed.configuration, parsed.rootPath);
+    return system.resolveDebugTarget(parsed.configuration, parsed.rootPath, token);
   }
 
   /**

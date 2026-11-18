@@ -140,7 +140,8 @@ import { CloneManager } from '@shared/electron/clone/clone-manager';
 import { NewProjectManager } from '@shared/electron/new-project/new-project-manager';
 import { TerminalManager } from '@shared/electron/terminal-manager';
 import { TrustedPaths } from './trusted-paths';
-import { RepositoryTrust, RunGate, workspaceRunGate } from './repository-trust';
+import { RepositoryTrust } from './repository-trust';
+import { Launcher, launcherForFolder, RunTokens } from './process/launch';
 import { TrustManager } from './trust/trust-manager';
 import { WindowTrustAsker } from './trust/trust-asker';
 import { TrustChannel, type TrustChange, type TrustScanRequest } from '@shared/api/trust-channels';
@@ -362,8 +363,9 @@ class Program {
    */
   private readonly terminalManager: TerminalManager = new TerminalManager(
     (): BrowserWindow | null => this.windows.main(),
-    // Read when a terminal starts, by which time the gate below exists.
-    { refusal: (target: string): string | null => this.runGate.refusal(target) },
+    // Read when a terminal starts, by which time the token issuer below exists.
+    (folder: string): Launcher | null =>
+      launcherForFolder(this.workspaceContext, this.runTokens, folder, 'user-terminal'),
   );
 
   /**
@@ -392,10 +394,10 @@ class Program {
   );
 
   /**
-   * Refuses whatever would run from a folder in a workspace the user has not trusted: terminals,
-   * debug sessions, programs to run (#1504).
+   * Issues run tokens (#1504): starting a program for a folder needs one, and there is one only for a
+   * folder the user trusts.
    */
-  private readonly runGate: RunGate = workspaceRunGate(this.workspaceContext, this.repositoryTrust);
+  private readonly runTokens: RunTokens = new RunTokens(this.repositoryTrust);
 
   /**
    * Puts the trust question to the user in the application window (#1504).
@@ -694,7 +696,7 @@ class Program {
     (): BrowserWindow | null => this.windows.main(),
     this.workspaceContext,
     this.trustedPaths,
-    this.repositoryTrust,
+    this.runTokens,
   );
 
   /**
@@ -750,7 +752,10 @@ class Program {
   /**
    * Holds the decoder host: the registry of installed decoder plugins and the processes they run in.
    */
-  private readonly decoderHost: DecoderHost = new DecoderHost(this.workspaceContext, this.runGate);
+  private readonly decoderHost: DecoderHost = new DecoderHost(
+    this.workspaceContext,
+    this.runTokens,
+  );
 
   /**
    * Assembles machine code for the binary/hex editor's agent, the write-side counterpart to the
@@ -791,7 +796,7 @@ class Program {
     (): BrowserWindow | null => this.windows.main(),
     this.workspaceContext,
     this.lspServerRegistry,
-    this.repositoryTrust,
+    this.runTokens,
   );
 
   /**
@@ -810,7 +815,7 @@ class Program {
     (): BrowserWindow | null => this.windows.main(),
     this.workspaceContext,
     this.debugAdapterRegistry,
-    this.runGate,
+    this.runTokens,
   );
 
   /**
@@ -820,6 +825,7 @@ class Program {
   private readonly debugLaunchResolver: DebugLaunchResolver = new DebugLaunchResolver(
     projectSystems,
     this.workspaceContext,
+    this.runTokens,
   );
 
   /**

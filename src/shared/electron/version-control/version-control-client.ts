@@ -1,4 +1,5 @@
-import { ChildProcess, spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import { Launcher, launchStudioOwned } from '../process/launch';
 import {
   isCompatibleVersionControlProtocol,
   isVersionControlCapability,
@@ -16,6 +17,11 @@ import { pluginEnvironment } from '../plugin-environment';
 import { pidJournal } from '../pid-journal';
 import { VersionControlSpec } from './version-control-descriptor';
 import { VersionControlEndpoint } from './version-control-endpoint';
+
+/**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('plugin-process');
 
 /**
  * Specifies how long the initialize handshake may take. A plugin that cannot say what it is promptly
@@ -123,7 +129,7 @@ export class VersionControlClient implements VersionControlEndpoint {
       return this.description;
     }
     try {
-      this.process = spawn(this.spec.command, [...this.spec.args], {
+      this.process = launch.spawn(this.spec.command, [...this.spec.args], {
         stdio: ['pipe', 'pipe', 'pipe'],
         // Only what a program needs to run, never the user's whole shell (audit S6).
         env: pluginEnvironment(this.spec.env),

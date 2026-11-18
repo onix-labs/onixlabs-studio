@@ -1,6 +1,5 @@
 import { Dirent } from 'node:fs';
 import * as fs from 'node:fs/promises';
-import { execFile } from 'node:child_process';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
 import {
@@ -22,6 +21,7 @@ import {
 import { buildItemTree, EvaluatedItem } from './item-tree';
 import { listProjectFiles } from './project-listing';
 import { ProjectLoadOptions, ProjectSystem } from './project-system';
+import { launchFor, RunToken } from '../process/launch';
 import { logger } from '../logger';
 
 /**
@@ -80,13 +80,20 @@ const COMPILE_COMMANDS: string = 'compile_commands.json';
 const CONFIGURE_TIMEOUT_MS: number = 120_000;
 
 /**
- * Runs a process, resolving with its outcome rather than throwing.
+ * Runs a trusted folder's CMake, resolving with its outcome rather than throwing; only with the
+ * folder's run token (#1504).
+ * @param token The folder's run token.
+ * @returns Returns the runner.
  */
-const execFileAsync: (
+function execFileFor(
+  token: RunToken,
+): (
   file: string,
   args: readonly string[],
   options: { timeout: number; killSignal: NodeJS.Signals },
-) => Promise<unknown> = promisify(execFile);
+) => Promise<unknown> {
+  return promisify(launchFor(token).execFile);
+}
 
 /**
  * The directories skipped when listing a project's files: build outputs, CMake's own metadata, and
@@ -283,7 +290,7 @@ export class CppProjectSystem implements ProjectSystem {
     if (path.basename(projectPath) === CMAKE_MANIFEST) {
       const targets: readonly CmakeTarget[] | null = await this.cmakeTargets(
         directory,
-        options?.mayRun === true,
+        options?.token ?? null,
       );
       if (targets?.some((target: CmakeTarget): boolean => target.sources.length > 0) === true) {
         logger.debug(
@@ -315,13 +322,14 @@ export class CppProjectSystem implements ProjectSystem {
    * Configuring runs the project's `CMakeLists.txt`, and the CMake it runs is the one the tree's cache
    * names, so in a folder not yet trusted the targets come only from a reply already there.
    * @param root The project's top-level source directory.
-   * @param mayRun Whether CMake may be run: only for a folder the user trusts.
+   * @param token The folder's run token, which running CMake needs, or null for a folder the user has
+   * not trusted.
    * @returns Returns the targets, or null when the project has no configured build tree or none could
    * be read.
    */
   private async cmakeTargets(
     root: string,
-    mayRun: boolean,
+    token: RunToken | null,
   ): Promise<readonly CmakeTarget[] | null> {
     const buildDir: string = path.join(root, BUILD_DIR);
     const cache: string | null = await this.readFile(path.join(buildDir, 'CMakeCache.txt'));
@@ -330,7 +338,7 @@ export class CppProjectSystem implements ProjectSystem {
       return null;
     }
     const existing: readonly CmakeTarget[] | null = await readTargets(buildDir);
-    if (!mayRun) {
+    if (token === null) {
       if (existing === null) {
         // A query file is data CMake reads; writing one runs nothing.
         await writeCodeModelQuery(buildDir);
@@ -349,7 +357,7 @@ export class CppProjectSystem implements ProjectSystem {
     const cmake: string = cmakeFromCache(cache) ?? 'cmake';
     logger.info('CppProjectSystem', `Configuring '${buildDir}' to read its CMake targets.`);
     try {
-      await execFileAsync(cmake, ['-S', root, '-B', buildDir, EXPORT_COMPILE_COMMANDS], {
+      await execFileFor(token)(cmake, ['-S', root, '-B', buildDir, EXPORT_COMPILE_COMMANDS], {
         timeout: CONFIGURE_TIMEOUT_MS,
         killSignal: 'SIGKILL',
       });

@@ -15,11 +15,12 @@ import * as path from 'node:path';
 import { ProjectItemNode, ProjectItems } from '@shared/api/project-system';
 import { buildGoPackageTree, GoPackage, goListArguments, parseGoPackages } from './go-list';
 import { GoProjectSystem, parseGoModulePath } from './go-project-system';
+import { trustedToken } from '../process/run-token.fixture';
 
 /**
  * Loads a project as a trusted folder does, letting the provider ask its tool.
  */
-const TRUSTED_LOAD: ProjectLoadOptions = { mayRun: true };
+const TRUSTED_LOAD: ProjectLoadOptions = { token: trustedToken('/') };
 
 /**
  * Reads a contents tree as slash-joined paths, folders marked with a trailing slash.

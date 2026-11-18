@@ -5,6 +5,7 @@ import { DapClient, DebugAdapterConnection } from './dap-client';
 import { DebugAdapterSpec } from './debug-adapter-registry';
 import { TcpClientTransport, TcpServerTransport } from './dap-transport';
 
+import type { Launcher } from '../process/launch';
 /**
  * The DAP `type` js-debug expects for a Node launch. The renderer sends the provider kind (`node`); the
  * compound session rewrites it to js-debug's own type on the parent launch.
@@ -115,11 +116,12 @@ export class JsDebugSession implements DebugAdapterConnection {
    * Initializes a new instance of the {@link JsDebugSession} class.
    * @param spec The adapter spawn specification (the Node runtime and js-debug server script).
    * @param cwd The absolute working directory to spawn the server in.
+   * @param launch Starts the server: a launcher made from the folder's run token (#1504).
    */
-  public constructor(spec: DebugAdapterSpec, cwd: string) {
+  public constructor(spec: DebugAdapterSpec, cwd: string, launch: Launcher) {
     this.spec = spec;
     this.cwd = cwd;
-    this.serverTransport = new TcpServerTransport(spec.command, spec.args, spec.env, cwd);
+    this.serverTransport = new TcpServerTransport(spec.command, spec.args, spec.env, cwd, launch);
     this.parent = new DapClient(this.serverTransport);
   }
 

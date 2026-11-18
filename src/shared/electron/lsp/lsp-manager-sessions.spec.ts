@@ -1,4 +1,4 @@
-import type { FolderTrustSource } from '../repository-trust';
+import { RunTokens } from '../process/launch';
 import type { RepositoryTrustDecision } from '@shared/api/source-control-channels';
 import { EventEmitter } from 'node:events';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -11,7 +11,7 @@ import type { LspExit, LspMessage, LspStartResult } from '@shared/api/lsp-channe
 /**
  * A trust store that trusts every folder, for the tests that are about something other than trust.
  */
-const TRUSTED: FolderTrustSource = { decisionFor: (): RepositoryTrustDecision => 'trusted' };
+const TRUSTED: RunTokens = new RunTokens({ decisionFor: (): RepositoryTrustDecision => 'trusted' });
 
 /**
  * A handler the manager registered on the IPC bus.
@@ -415,7 +415,7 @@ describe.skipIf(process.platform === 'win32')('LspManager sessions', () => {
           (): BrowserWindow | null => null,
           workspace,
           { resolve } as unknown as LspServerRegistry,
-          { decisionFor: (): RepositoryTrustDecision => decision },
+          new RunTokens({ decisionFor: (): RepositoryTrustDecision => decision }),
         );
         const internal: { start(request: unknown, sender: unknown): Promise<LspStartResult> } =
           untrusting as unknown as {

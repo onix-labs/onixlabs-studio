@@ -1,8 +1,14 @@
 import type { OllamaStopOnQuit } from '@shared/api/startup-settings';
-import { ChildProcess, spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import { Launcher, launchStudioOwned } from '../../process/launch';
 import { RuntimeInstallKind } from '@shared/api/model-runtime-types';
 import { logger } from '../../logger';
 import { pidJournal } from '../../pid-journal';
+
+/**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('model-runtime');
 
 /**
  * How long, in milliseconds, to wait for a freshly-spawned server to answer before giving up.
@@ -156,7 +162,7 @@ export class OllamaServer {
     const outlives: boolean = !stopsOnShutdown(kind, this.policy);
     let child: ChildProcess;
     try {
-      child = spawn(executable, ['serve'], {
+      child = launch.spawn(executable, ['serve'], {
         env: { ...process.env, ...options.env, OLLAMA_HOST: this.host },
         stdio: 'ignore',
         windowsHide: true,

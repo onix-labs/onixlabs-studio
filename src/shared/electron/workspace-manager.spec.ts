@@ -1,3 +1,4 @@
+import { RunTokens } from './process/launch';
 import type { RepositoryTrustDecision } from '@shared/api/source-control-channels';
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
@@ -135,9 +136,12 @@ describe('WorkspaceManager', () => {
     workspace.addRoot(workspaceRoot);
     trusted = new TrustedPaths(path.join(sandbox, 'trusted.json'));
     decision = 'trusted';
-    new WorkspaceManager((): BrowserWindow | null => null, workspace, trusted, {
-      decisionFor: (): RepositoryTrustDecision => decision,
-    }).register();
+    new WorkspaceManager(
+      (): BrowserWindow | null => null,
+      workspace,
+      trusted,
+      new RunTokens({ decisionFor: (): RepositoryTrustDecision => decision }),
+    ).register();
   });
 
   afterEach(() => {
@@ -1275,8 +1279,8 @@ describe('WorkspaceManager', () => {
 
       expect(await invoke(ProjectChannel.ArtifactResolve, file, 7)).toBe(artifact);
 
-      expect(declines).toHaveBeenCalledWith(file, undefined);
-      expect(answers).toHaveBeenCalledWith(file, undefined);
+      expect(declines).toHaveBeenCalledWith(file, undefined, expect.anything());
+      expect(answers).toHaveBeenCalledWith(file, undefined, expect.anything());
     });
 
     describe('in a folder that is not trusted (#1504)', () => {
@@ -1293,7 +1297,7 @@ describe('WorkspaceManager', () => {
 
         await invoke(ProjectChannel.ItemsLoad, project);
 
-        expect(loads).toHaveBeenCalledWith(project, { mayRun: false });
+        expect(loads).toHaveBeenCalledWith(project, { token: null });
       });
 
       it('resolveArtifact_asksNoSystem', async () => {
@@ -1326,7 +1330,9 @@ describe('WorkspaceManager', () => {
 
       await invoke(ProjectChannel.ItemsLoad, project);
 
-      expect(loads).toHaveBeenCalledWith(project, { mayRun: true });
+      expect(loads).toHaveBeenCalledWith(project, {
+        token: expect.objectContaining({ folder: project }) as unknown,
+      });
     });
 
     it('formatDocument_asksEachSystemInTurn_withTheFilesRoot', async () => {
@@ -1342,8 +1348,8 @@ describe('WorkspaceManager', () => {
 
       expect(await invoke(ProjectChannel.DocumentFormat, file, 'x=1')).toBe(formatted);
 
-      expect(declines).toHaveBeenCalledWith(file, 'x=1', workspaceRoot);
-      expect(answers).toHaveBeenCalledWith(file, 'x=1', workspaceRoot);
+      expect(declines).toHaveBeenCalledWith(file, 'x=1', workspaceRoot, expect.anything());
+      expect(answers).toHaveBeenCalledWith(file, 'x=1', workspaceRoot, expect.anything());
     });
 
     it('formatDocument_refusesAFileOutsideTheWorkspaceAndATextThatIsNotOne', async () => {

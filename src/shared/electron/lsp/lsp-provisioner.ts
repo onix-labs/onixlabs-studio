@@ -1,5 +1,5 @@
 import { app } from 'electron';
-import { execFile } from 'node:child_process';
+import { Launcher, launchStudioOwned } from '../process/launch';
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream, existsSync, readdirSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
@@ -21,6 +21,11 @@ import { LockfileProvisioner } from '../provisioning/lockfile-provisioner';
 import { bundledLockfile } from '../contributions/plugins/bundled-lockfiles';
 
 /**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('server-provisioning');
+
+/**
  * Runs a child process and resolves with its standard output and error, used for the lightweight
  * version probes the provisioner performs.
  */
@@ -28,7 +33,7 @@ const execFileAsync: (
   file: string,
   args: readonly string[],
   options?: { env?: NodeJS.ProcessEnv; maxBuffer?: number },
-) => Promise<{ stdout: string; stderr: string }> = promisify(execFile);
+) => Promise<{ stdout: string; stderr: string }> = promisify(launch.execFile);
 
 /**
  * Holds the pinned Eclipse JDT Language Server version. The distribution is pinned (rather than a

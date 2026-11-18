@@ -1,7 +1,12 @@
-import { execFile } from 'node:child_process';
+import { Launcher, launchStudioOwned } from '../process/launch';
 import { promisify } from 'node:util';
 import type { SetupProbeId, SetupProbeResult } from '@shared/api/setup-channels';
 import { logger } from '../logger';
+
+/**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('tool-probe');
 
 /**
  * Promisified `execFile`, which is used throughout rather than a shell: every command here is a fixed
@@ -12,7 +17,7 @@ const run: (
   file: string,
   args: readonly string[],
   options: { timeout: number; env: NodeJS.ProcessEnv },
-) => Promise<{ stdout: string; stderr: string }> = promisify(execFile);
+) => Promise<{ stdout: string; stderr: string }> = promisify(launch.execFile);
 
 /**
  * Holds how long a single probe may take before it is reported as unknown.
