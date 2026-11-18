@@ -220,7 +220,9 @@ test.describe('a clone through Studio (#1504)', () => {
     expect(placement.offsetX).toBeLessThanOrEqual(2);
     expect(placement.offsetY).toBeLessThanOrEqual(2);
 
-    await prompt.keyboard.press('Escape');
+    // Down, not press: the question closes on the key going down, and a press would then send its
+    // release to a window already gone.
+    await prompt.keyboard.down('Escape');
 
     expect(await cloned).toMatchObject({ ok: false, cancelled: true });
     expect(fs.existsSync(destination)).toBe(false);

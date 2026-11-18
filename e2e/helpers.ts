@@ -54,7 +54,16 @@ export async function trustPrompt(app: ElectronApplication): Promise<Page> {
     .poll(
       async (): Promise<boolean> => {
         for (const window of app.windows().filter(isModalWindow)) {
-          if ((await window.locator('.trust__title').count()) > 0) {
+          // A window can close while it is being looked at: the welcome screen steps aside as the
+          // folder it opened loads. That window is not the question, so it is passed over.
+          const asks: boolean = await window
+            .locator('.trust__title')
+            .count()
+            .then(
+              (count: number): boolean => count > 0,
+              (): boolean => false,
+            );
+          if (asks) {
             found = window;
             return true;
           }
