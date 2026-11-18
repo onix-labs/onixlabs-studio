@@ -10,9 +10,14 @@ import {
 } from '@shared/api/package-channels';
 import type { PackageCommand } from '@shared/api/package-manager-protocol';
 import {
+  DISPOSED_EXIT_CODE,
   TerminalLaunch,
   TerminalSessions,
 } from '@shared/angular/services/terminal-sessions/terminal-sessions';
+import {
+  NotificationAction,
+  Notifications,
+} from '@shared/angular/services/notifications/notifications';
 import {
   InstalledPackage,
   PackageManagerModel,
@@ -25,6 +30,19 @@ import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { Log } from '@shared/angular/services/log/log';
+import { PackageNotificationType } from './package-notification-types';
+
+/**
+ * Words each change's outcome for its notification: what it is called once done, and when it failed.
+ */
+const OUTCOME_WORDS: Readonly<
+  Record<PackageWriteOp, { readonly done: string; readonly verb: string }>
+> = {
+  install: { done: 'Installed', verb: 'install' },
+  update: { done: 'Updated', verb: 'update' },
+  remove: { done: 'Removed', verb: 'remove' },
+  restore: { done: 'Restored packages for', verb: 'restore packages for' },
+};
 
 /**
  * A flattened Packages row: either a project header or one of its packages, with its display fields
@@ -172,6 +190,11 @@ export class PackageModel {
    * Holds this tab's terminals, where a change runs where the user can see it (#912).
    */
   private readonly terminals: TerminalSessions = inject(TerminalSessions);
+
+  /**
+   * Holds the notification store a finished change is reported to (#1492).
+   */
+  private readonly notifications: Notifications = inject(Notifications);
 
   /**
    * Holds the change running in a terminal, or null when none is.
@@ -459,10 +482,73 @@ export class PackageModel {
       if (exitCode !== 0) {
         this.writeErrorSignal.set(`${command.title} ended with exit code ${exitCode}.`);
       }
+      // A terminal the user closed ended the change by their own hand: nothing to report.
+      if (exitCode !== DISPOSED_EXIT_CODE) {
+        this.notifyOutcome(op, request, exitCode, launch.session.id);
+      }
     } finally {
       this.writingSignal.set(null);
     }
     await this.refresh(this.workspace.root()?.path ?? null);
+  }
+
+  /**
+   * Reports a finished change (#1492): "Installed left-pad 1.3.0" to the history, or "Couldn't
+   * install left-pad" popping up with Show Output, which brings its terminal forward.
+   * @param op The change.
+   * @param request What it changed.
+   * @param exitCode The command's exit code.
+   * @param sessionId The terminal it ran in.
+   */
+  private notifyOutcome(
+    op: PackageWriteOp,
+    request: PackageWriteRequest,
+    exitCode: number,
+    sessionId: string,
+  ): void {
+    const words: { readonly done: string; readonly verb: string } = OUTCOME_WORDS[op];
+    const subject: string =
+      op === 'restore' ? this.projectName(request.project) : (request.name ?? '');
+    const version: string = op === 'install' || op === 'update' ? (request.version ?? '') : '';
+    const showOutput: () => void = (): void => this.terminals.activateAndReveal(sessionId);
+    if (exitCode === 0) {
+      this.notifications.notify({
+        severity: 'success',
+        title: `${words.done} ${subject}${version === '' ? '' : ` ${version}`}`,
+        key: `packages:${sessionId}`,
+        type: PackageNotificationType.Finished,
+        reveal: showOutput,
+      });
+      return;
+    }
+    const actions: readonly NotificationAction[] = [{ label: 'Show output', run: showOutput }];
+    this.notifications.notify({
+      severity: 'error',
+      title: `Couldn't ${words.verb} ${subject}`,
+      detail: `Exited with code ${exitCode}.`,
+      actions,
+      key: `packages:${sessionId}`,
+      type: PackageNotificationType.Failed,
+      reveal: showOutput,
+    });
+  }
+
+  /**
+   * Names a project for a notification: as its package manager reported it, or its folder.
+   * @param manifestPath The project's manifest path.
+   * @returns Returns the project's name.
+   */
+  private projectName(manifestPath: string): string {
+    for (const state of this.statesSignal()) {
+      const project: PackageProject | undefined = state.model?.projects.find(
+        (candidate: PackageProject): boolean => candidate.manifestPath === manifestPath,
+      );
+      if (project !== undefined) {
+        return project.name;
+      }
+    }
+    const parts: readonly string[] = manifestPath.split(/[\\/]/);
+    return parts.at(-2) ?? manifestPath;
   }
 
   /**
