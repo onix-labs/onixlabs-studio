@@ -25,6 +25,11 @@ import { DebugHandler, DebugLocation, DebugState } from '@shared/angular/service
 import { Breakpoint, Breakpoints } from '@shared/angular/services/debug/breakpoints';
 import { SolutionModel } from '@features/workspace/angular/project/solution-model';
 import { DebugAdapters } from '@shared/angular/services/debug-adapters/debug-adapters';
+import {
+  NotificationAction,
+  Notifications,
+} from '@shared/angular/services/notifications/notifications';
+import { DebugNotificationType } from './debug-notification-types';
 
 /**
  * The thread id execution-control requests fall back to before the adapter has reported a stopped
@@ -234,6 +239,16 @@ export class DebugSession implements DebugHandler, OnDestroy {
    * to run it in a terminal.
    */
   private readonly terminals: TerminalSessions = inject(TerminalSessions);
+
+  /**
+   * Holds the notification store, told when a session ends on its own or pauses unseen (#1490).
+   */
+  private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Holds the exit code the adapter reported for the program, or null before it reported one.
+   */
+  private debuggeeExitCode: number | null = null;
 
   /**
    * Holds the disposer for the relayed `runInTerminal` subscription, or null when not subscribed.
@@ -704,6 +719,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
         this.threadId = body?.threadId ?? this.threadId;
         this.stateSignal.set('stopped');
         void this.refreshCallStack();
+        this.announcePause(body?.reason);
         break;
       }
       case 'continued':
@@ -714,10 +730,13 @@ export class DebugSession implements DebugHandler, OnDestroy {
         const body: DebugProtocol.ExitedEvent['body'] | undefined = message.body as
           DebugProtocol.ExitedEvent['body'] | undefined;
         this.debugChannel.appendLine(`Debuggee exited with code ${body?.exitCode ?? 0}.`);
+        this.debuggeeExitCode = body?.exitCode ?? 0;
         break;
       }
       case 'terminated':
         this.debugChannel.appendLine('Debug session ended.');
+        // Stop resets the session first, so an ending the user asked for never arrives here.
+        this.announceEnd(this.debuggeeExitCode ?? 0, false);
         this.stop();
         break;
       default:
@@ -731,8 +750,71 @@ export class DebugSession implements DebugHandler, OnDestroy {
    */
   private onAdapterExit(exit: DebugAdapterExit): void {
     if (exit.sessionId === this.currentSession) {
+      // The adapter went before the session ended: the user did not stop it, or it would have been
+      // reset already. An adapter that failed is the debugger stopping unexpectedly.
+      const failed: boolean = exit.signal !== null || (exit.code !== null && exit.code !== 0);
+      this.announceEnd(failed ? (exit.code ?? 1) : (this.debuggeeExitCode ?? 0), failed);
       this.reset();
     }
+  }
+
+  /**
+   * Tells the user a session ended without their pressing Stop (#1490): failed, when the program
+   * ended with a non-zero code or the debugger stopped unexpectedly; otherwise ended.
+   * @param exitCode The program's exit code, or the adapter's when it is the adapter that failed.
+   * @param adapterFailed Whether the debugger itself stopped unexpectedly.
+   */
+  private announceEnd(exitCode: number, adapterFailed: boolean): void {
+    const name: string =
+      this.activeConfigurationName.length > 0 ? this.activeConfigurationName : 'Debug session';
+    const output: NotificationAction = {
+      label: 'Show Output',
+      run: (): void => this.debugChannel.reveal(),
+    };
+    if (!adapterFailed && exitCode === 0) {
+      this.notifications.notify({
+        severity: 'success',
+        title: `${name} ended`,
+        key: 'debug:session',
+        type: DebugNotificationType.Ended,
+      });
+      return;
+    }
+    this.notifications.notify({
+      severity: 'error',
+      title: adapterFailed
+        ? `The debugger stopped unexpectedly — ${name}`
+        : `${name} exited (code ${exitCode})`,
+      actions: [output],
+      key: 'debug:session',
+      type: DebugNotificationType.Failed,
+      desktop: true,
+      reveal: output.run,
+    });
+  }
+
+  /**
+   * Tells the user, on the desktop only, that the program paused at a breakpoint or an exception while
+   * no Studio window had focus (#1490). In Studio the paused frame is already in front of them.
+   * @param reason Why the program stopped, as the adapter put it.
+   */
+  private announcePause(reason: string | undefined): void {
+    if (reason === undefined || !PAUSES_WORTH_TELLING.has(reason) || document.hasFocus()) {
+      return;
+    }
+    const name: string =
+      this.activeConfigurationName.length > 0 ? this.activeConfigurationName : 'Debug session';
+    this.notifications.notify({
+      severity: 'info',
+      title:
+        reason === 'exception'
+          ? `${name} stopped on an exception`
+          : `${name} paused at a breakpoint`,
+      key: 'debug:paused',
+      type: DebugNotificationType.Stopped,
+      route: 'history-only',
+      desktop: true,
+    });
   }
 
   /**
@@ -1133,6 +1215,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
   private reset(): void {
     this.stopDebugTerminal();
     this.currentSession = null;
+    this.debuggeeExitCode = null;
     this.threadId = undefined;
     this.capabilities = {};
     this.lastSyncSignature = '';
@@ -1142,6 +1225,18 @@ export class DebugSession implements DebugHandler, OnDestroy {
     this.stateSignal.set('idle');
   }
 }
+
+/**
+ * Lists the reasons a program stops that are news to a user who is elsewhere: a step or a pause they
+ * asked for is not.
+ */
+const PAUSES_WORTH_TELLING: ReadonlySet<string> = new Set<string>([
+  'breakpoint',
+  'exception',
+  'function breakpoint',
+  'data breakpoint',
+  'instruction breakpoint',
+]);
 
 /**
  * Maps an adapter stack frame to the UI frame, resolving its source path (absent for a runtime frame).
