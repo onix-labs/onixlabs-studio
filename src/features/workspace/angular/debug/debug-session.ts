@@ -1095,6 +1095,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
     );
     this.debugTerminalId ??= `debug-term-${crypto.randomUUID()}`;
     const launch: TerminalLaunch = await this.terminals.launch({
+      reportsItsOwnOutcome: true,
       sessionId: this.debugTerminalId,
       name: `Debug: ${this.activeConfigurationName.length > 0 ? this.activeConfigurationName : command}`,
       kind: 'run',

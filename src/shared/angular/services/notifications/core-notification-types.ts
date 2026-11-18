@@ -43,12 +43,23 @@ export enum CoreNotificationType {
    * A repository could not be cloned.
    */
   CloneFailed = 'clone.failed',
+
+  /**
+   * A run or task terminal's command ended with exit code 0 while the user was elsewhere.
+   */
+  TerminalFinished = 'terminal.finished',
+
+  /**
+   * A run or task terminal's command ended with a non-zero exit code while the user was elsewhere.
+   */
+  TerminalFailed = 'terminal.failed',
 }
 
 /**
  * Lists the notification types the shared services raise. The agent, run and build ones pop up,
  * success included, because they did before types existed (#1486): an upgrade must not quieten what a
- * user relied on. A finished clone pops up too (#1493): the user is waiting on it to open.
+ * user relied on. A finished clone pops up too (#1493): the user is waiting on it to open. A run or
+ * task terminal's command that ended while the user was elsewhere pops up only when it failed (#1496).
  */
 export const CORE_NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   {
@@ -105,6 +116,21 @@ export const CORE_NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
     label: 'Clone Failed',
     description: 'A repository could not be cloned.',
     area: 'Cloning',
+    default: 'popup',
+  },
+  {
+    id: CoreNotificationType.TerminalFinished,
+    label: 'Terminal Command Finished',
+    description:
+      "A run or task terminal's command ended with exit code 0 while you were elsewhere.",
+    area: 'Terminals',
+    default: 'history',
+  },
+  {
+    id: CoreNotificationType.TerminalFailed,
+    label: 'Terminal Command Failed',
+    description: "A run or task terminal's command failed while you were elsewhere.",
+    area: 'Terminals',
     default: 'popup',
   },
 ];

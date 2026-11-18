@@ -10,7 +10,13 @@ import {
 import { RunPresentation } from '@shared/api/studio';
 import { TerminalCreateResult, TerminalKind } from '@shared/api/terminal-channels';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
+import { DocumentVisibility } from '@shared/angular/services/document-visibility/document-visibility';
 import { Log } from '@shared/angular/services/log/log';
+import { CoreNotificationType } from '@shared/angular/services/notifications/core-notification-types';
+import {
+  NotificationAction,
+  Notifications,
+} from '@shared/angular/services/notifications/notifications';
 import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
@@ -153,6 +159,13 @@ export interface TerminalLaunchOptions {
    * Gets whether a relaunch keeps the session's earlier output above the new run's.
    */
   readonly keepOutput?: boolean;
+
+  /**
+   * Gets whether whoever launches the command reports how it ended itself — the build runner, the
+   * Test Explorer, a package change, a debug session — so the session raises no notification of its
+   * own when it exits (#1496). Undefined (or false) for a command nothing else reports on.
+   */
+  readonly reportsItsOwnOutcome?: boolean;
 }
 
 /**
@@ -226,6 +239,26 @@ export class TerminalSessions implements OnDestroy {
   private readonly settings: Settings = inject(Settings);
 
   /**
+   * Holds the notification store, which a run or task told its exit while the user was elsewhere.
+   */
+  private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Holds whether Studio's window is on screen, part of whether a session is in view.
+   */
+  private readonly visibility: DocumentVisibility = inject(DocumentVisibility);
+
+  /**
+   * Holds the sessions whose launcher reports how they ended itself (#1496).
+   */
+  private readonly selfReporting: Set<string> = new Set<string>();
+
+  /**
+   * Holds the sessions the user stopped: an ending they caused is not news to them.
+   */
+  private readonly stopped: Set<string> = new Set<string>();
+
+  /**
    * Holds the sessions in tab order.
    */
   private readonly items: WritableSignal<readonly TerminalSession[]> = signal<
@@ -280,6 +313,7 @@ export class TerminalSessions implements OnDestroy {
           ),
         );
         this.resolveWaiter(id, effective);
+        this.announceExit(id, effective);
         // A shell that exited closes its terminal when When the Shell Exits says so; a run or task
         // stays, its banner saying how it ended.
         const shell: boolean =
@@ -448,6 +482,13 @@ export class TerminalSessions implements OnDestroy {
       ]);
     }
 
+    this.stopped.delete(id);
+    if (options.reportsItsOwnOutcome === true) {
+      this.selfReporting.add(id);
+    } else {
+      this.selfReporting.delete(id);
+    }
+
     // Register the completion before spawning, so an instantly-exiting command cannot slip its exit
     // event past the waiter.
     const exited: Promise<number> = new Promise<number>((resolve: (code: number) => void): void => {
@@ -524,7 +565,65 @@ export class TerminalSessions implements OnDestroy {
    */
   public terminate(id: string): void {
     this.log.info('TerminalSessions', 'Terminating session process', id);
+    this.stopped.add(id);
     void this.bridge.terminate(id, this.settings.get('workspaces.stopGracePeriod') * 1000);
+  }
+
+  /**
+   * Tells the user a run or task terminal's command ended while they were elsewhere (#1496): not a
+   * shell, whose every command would need reporting; not one whose launcher reports how it ended;
+   * not one the user stopped; and not the session they are looking at.
+   * @param id The session identifier.
+   * @param exitCode The exit code, with a signal read as 128 plus the signal.
+   */
+  private announceExit(id: string, exitCode: number): void {
+    const session: TerminalSession | undefined = this.items().find(
+      (candidate: TerminalSession): boolean => candidate.id === id,
+    );
+    const stopped: boolean = this.stopped.delete(id);
+    if (
+      session === undefined ||
+      session.kind === 'shell' ||
+      this.selfReporting.has(id) ||
+      stopped ||
+      this.inView(id)
+    ) {
+      return;
+    }
+    const show: NotificationAction = {
+      label: 'Show Terminal',
+      run: (): void => this.activateAndReveal(id),
+    };
+    this.notifications.notify(
+      exitCode === 0
+        ? {
+            severity: 'success',
+            title: `${session.name} finished`,
+            actions: [show],
+            key: `terminal:${id}`,
+            type: CoreNotificationType.TerminalFinished,
+            reveal: show.run,
+          }
+        : {
+            severity: 'error',
+            title: `${session.name} exited (code ${exitCode})`,
+            actions: [show],
+            key: `terminal:${id}`,
+            type: CoreNotificationType.TerminalFailed,
+            desktop: true,
+            reveal: show.run,
+          },
+    );
+  }
+
+  /**
+   * Determines whether a session is the one the user is looking at: the active session, in a window
+   * that is on screen and focused.
+   * @param id The session identifier.
+   * @returns Returns true when it is.
+   */
+  private inView(id: string): boolean {
+    return this.active() === id && this.visibility.visible() && document.hasFocus();
   }
 
   /**
@@ -554,6 +653,8 @@ export class TerminalSessions implements OnDestroy {
       return;
     }
     this.log.info('TerminalSessions', 'Closing session', id);
+    this.selfReporting.delete(id);
+    this.stopped.delete(id);
     this.resolveWaiter(id, DISPOSED_EXIT_CODE);
     void this.bridge.dispose(id);
     const remaining: readonly TerminalSession[] = sessions.filter(

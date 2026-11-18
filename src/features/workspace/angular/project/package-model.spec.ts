@@ -314,6 +314,7 @@ describe('PackageModel', () => {
       expect(calls[0]).toBe(`${PackageChannel.Command} npm install [object Object]`);
       expect(launched).toEqual([
         {
+          reportsItsOwnOutcome: true,
           kind: 'task',
           name: 'Install left-pad',
           command: 'npm',

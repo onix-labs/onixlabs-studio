@@ -725,6 +725,7 @@ export class TestExplorer implements OnDestroy {
     this.moveToRunning(tests);
     this.log.info('workspace.tests', `Run tests: ${plan.command.title}`, plan.command.executable);
     const launch: TerminalLaunch = await this.sessions.launch({
+      reportsItsOwnOutcome: true,
       sessionId: this.sessionId,
       name: 'Tests',
       kind: 'task',

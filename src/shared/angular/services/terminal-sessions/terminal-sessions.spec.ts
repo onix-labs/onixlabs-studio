@@ -1,10 +1,21 @@
 import { TestBed } from '@angular/core/testing';
 import { Settings } from '@shared/angular/services/settings/settings';
-import { vi } from 'vitest';
+import { MockInstance, vi } from 'vitest';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
-import { TerminalLaunch, TerminalSession, TerminalSessions } from './terminal-sessions';
+import { signal, WritableSignal } from '@angular/core';
+import { DocumentVisibility } from '@shared/angular/services/document-visibility/document-visibility';
+import {
+  NotificationRequest,
+  Notifications,
+} from '@shared/angular/services/notifications/notifications';
+import {
+  TerminalLaunch,
+  TerminalLaunchOptions,
+  TerminalSession,
+  TerminalSessions,
+} from './terminal-sessions';
 
 describe('TerminalSessions', () => {
   let sessions: TerminalSessions;
@@ -13,12 +24,16 @@ describe('TerminalSessions', () => {
   let terminate: ReturnType<typeof vi.fn>;
   let reveal: ReturnType<typeof vi.fn>;
   let fireExit: (id: string, exitCode: number, signal?: number | null) => void;
+  let raised: NotificationRequest[];
+  let onScreen: WritableSignal<boolean>;
 
   beforeEach(() => {
     dispose = vi.fn((): Promise<boolean> => Promise.resolve(true));
     create = vi.fn((): Promise<{ success: boolean }> => Promise.resolve({ success: true }));
     terminate = vi.fn((): Promise<boolean> => Promise.resolve(true));
     reveal = vi.fn();
+    raised = [];
+    onScreen = signal<boolean>(true);
     let exitListener: (id: string, exitCode: number, signal: number | null) => void = () =>
       undefined;
     fireExit = (id: string, exitCode: number, signal: number | null = null): void =>
@@ -41,9 +56,115 @@ describe('TerminalSessions', () => {
           },
         },
         { provide: DockReveal, useValue: { reveal } },
+        {
+          provide: Notifications,
+          useValue: { notify: (request: NotificationRequest): number => raised.push(request) },
+        },
+        { provide: DocumentVisibility, useValue: { visible: onScreen } },
       ],
     });
     sessions = TestBed.inject(TerminalSessions);
+  });
+
+  describe('a run or task that ends while the user is elsewhere (#1496)', () => {
+    /**
+     * Launches a run, then moves the user to another session so it is not in view.
+     * @param options What else the launch says.
+     * @returns Returns the launched session's identifier.
+     */
+    async function launchUnseen(options: Partial<TerminalLaunchOptions> = {}): Promise<string> {
+      const launch: TerminalLaunch = await sessions.launch({
+        name: 'npm test',
+        kind: 'run',
+        command: 'npm',
+        args: ['test'],
+        ...options,
+      });
+      sessions.create();
+      return launch.session.id;
+    }
+
+    it('aFailure_popsUpWithShowTerminal', async () => {
+      const id: string = await launchUnseen();
+
+      fireExit(id, 1);
+
+      expect(raised).toHaveLength(1);
+      expect(raised[0]).toMatchObject({
+        severity: 'error',
+        title: 'npm test exited (code 1)',
+        type: 'terminal.failed',
+        key: `terminal:${id}`,
+      });
+      raised[0].actions?.[0].run();
+      expect(sessions.activeId()).toBe(id);
+    });
+
+    it('aSuccess_isRecordedAsFinished', async () => {
+      const id: string = await launchUnseen();
+
+      fireExit(id, 0);
+
+      expect(raised[0]).toMatchObject({ severity: 'success', type: 'terminal.finished' });
+    });
+
+    it('theSessionInView_saysNothing', async () => {
+      const hasFocus: MockInstance<() => boolean> = vi
+        .spyOn(document, 'hasFocus')
+        .mockReturnValue(true);
+      try {
+        const launch: TerminalLaunch = await sessions.launch({
+          name: 'npm test',
+          kind: 'run',
+          command: 'npm',
+        });
+
+        fireExit(launch.session.id, 1);
+
+        expect(raised).toEqual([]);
+      } finally {
+        hasFocus.mockRestore();
+      }
+    });
+
+    it('theSessionInView_inAWindowOffScreen_isElsewhere', async () => {
+      const launch: TerminalLaunch = await sessions.launch({
+        name: 'npm test',
+        kind: 'run',
+        command: 'npm',
+      });
+      onScreen.set(false);
+
+      fireExit(launch.session.id, 1);
+
+      expect(raised).toHaveLength(1);
+    });
+
+    it('aLaunchThatReportsItsOwnOutcome_saysNothing', async () => {
+      const id: string = await launchUnseen({ reportsItsOwnOutcome: true });
+
+      fireExit(id, 1);
+
+      expect(raised).toEqual([]);
+    });
+
+    it('aSessionTheUserStopped_saysNothing', async () => {
+      const id: string = await launchUnseen();
+      sessions.terminate(id);
+
+      fireExit(id, 0, 15);
+
+      expect(raised).toEqual([]);
+    });
+
+    it('aShell_saysNothing', () => {
+      const shell: TerminalSession = sessions.create();
+      sessions.create();
+
+      fireExit(shell.id, 1);
+
+      expect(raised).toEqual([]);
+    });
   });
 
   it('startsEmpty', () => {
