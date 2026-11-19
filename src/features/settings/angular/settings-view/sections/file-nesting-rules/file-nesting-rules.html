@@ -1,0 +1,62 @@
+<div class="nesting">
+  <app-setting-row
+    label="File Nesting"
+    description="Which files gather others beneath them when an explorer nests files. * stands for any text, and ${capture} for what the parent's * matched: *.cs gathers ${capture}.*.cs, so Enumeration.From.cs goes under Enumeration.cs. Turned on in each explorer's Options."
+  >
+    <app-button
+      variant="ghost"
+      label="Restore Defaults"
+      [icon]="Icon.REFRESH"
+      [disabled]="isDefault()"
+      data-testid="nesting-restore"
+      (click)="restoreDefaults()"
+    />
+  </app-setting-row>
+
+  <div class="nesting__add">
+    <app-text-field
+      class="nesting__parent"
+      placeholder="*.cs"
+      ariaLabel="Parent pattern"
+      data-testid="nesting-parent"
+      [(value)]="parentDraft"
+      (enter)="add()"
+    />
+    <app-text-field
+      class="nesting__children"
+      placeholder="${capture}.*.cs"
+      ariaLabel="Child patterns, separated by commas"
+      data-testid="nesting-children"
+      [(value)]="childrenDraft"
+      (enter)="add()"
+    />
+    <app-button
+      variant="ghost"
+      label="Add"
+      [icon]="Icon.PLUS"
+      [disabled]="!canAdd()"
+      data-testid="nesting-add"
+      (click)="add()"
+    />
+  </div>
+
+  @if (rules().length) {
+    <ul class="nesting__list">
+      @for (rule of rules(); track rule.parent) {
+        <li class="nesting__item">
+          <code class="nesting__pattern" data-testid="nesting-rule-parent">{{ rule.parent }}</code>
+          <code class="nesting__pattern nesting__pattern--children">{{ rule.children }}</code>
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.CLOSE"
+            [ariaLabel]="'Remove the rule for ' + rule.parent"
+            (click)="remove(rule)"
+          />
+        </li>
+      }
+    </ul>
+  } @else {
+    <p class="nesting__empty">No rules, so nothing nests.</p>
+  }
+</div>

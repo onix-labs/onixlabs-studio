@@ -28,6 +28,7 @@
       [editValue]="editing()?.initial ?? ''"
       [editSelection]="editing()?.selection ?? 'all'"
       (rowClick)="onRowClick($event)"
+      (rowToggle)="onRowToggle($event)"
       (rowDoubleClick)="onRowOpen($event)"
       (rowActivate)="onRowOpen($event)"
       (rowSelect)="onRowSelect($event)"
@@ -99,17 +100,44 @@
 >
   <ng-template appModalContent>
     <h2 class="tree-panel__dialog-title">{{ deleteTitle() }}</h2>
+    @if (deleteNested().length > 0) {
+      <!-- A file with others nested beneath it: whether they go too is asked, never assumed. -->
+      <p class="tree-panel__dialog-message">
+        {{ deleteNestedNames() }} {{ deleteNested().length === 1 ? 'is' : 'are' }} nested beneath
+        it. Delete {{ deleteNested().length === 1 ? 'it' : 'them' }} too, or keep
+        {{
+          deleteNested().length === 1 ? 'it as a file of its own' : 'them as files of their own'
+        }}?
+      </p>
+    }
     <p class="tree-panel__dialog-message">
       @if (deletesPermanently()) {
         This skips the Trash and cannot be undone.
-      } @else if ((deleteTargets()?.length ?? 0) > 1) {
+      } @else if ((deleteTargets()?.length ?? 0) > 1 || deleteNested().length > 0) {
         They move to the Trash, so you can put them back from there if you need them.
       } @else {
         It moves to the Trash, so you can put it back from there if you need it.
       }
     </p>
     <app-button-row>
-      <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDelete()" />
+      @if (deleteNested().length > 0) {
+        <app-button
+          variant="solid"
+          tone="danger"
+          label="Delete All"
+          data-testid="delete-all"
+          (click)="confirmDelete(true)"
+        />
+        <app-button
+          variant="ghost"
+          tone="danger"
+          [label]="deleteOnlyLabel()"
+          data-testid="delete-parent-only"
+          (click)="confirmDelete(false)"
+        />
+      } @else {
+        <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDelete()" />
+      }
       <app-button variant="none" label="Cancel" (click)="cancelDelete()" />
     </app-button-row>
   </ng-template>

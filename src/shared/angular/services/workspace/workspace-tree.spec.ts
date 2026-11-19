@@ -9,7 +9,7 @@ import {
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Settings } from '@shared/angular/services/settings/settings';
-import { Workspace } from './workspace';
+import { Workspace, WorkspaceTreeNode, WorkspaceTreeRow } from './workspace';
 
 /**
  * A directory change, as the watch reports one.
@@ -333,6 +333,91 @@ describe('Workspace tree resilience', () => {
       await expanding;
 
       expect(shown()).toEqual([]);
+    });
+  });
+
+  describe('nesting files', () => {
+    beforeEach(async (): Promise<void> => {
+      localStorage.removeItem('workspace.files.nestFiles');
+      disk.listings.set('/ws/src', {
+        path: '/ws/src',
+        name: 'src',
+        entries: [
+          {
+            name: 'Enumeration.Comparable.cs',
+            path: '/ws/src/Enumeration.Comparable.cs',
+            type: 'file',
+          },
+          { name: 'Enumeration.cs', path: '/ws/src/Enumeration.cs', type: 'file' },
+          { name: 'Extensions.String.cs', path: '/ws/src/Extensions.String.cs', type: 'file' },
+        ],
+      });
+      await service.toggleDirectory('/ws/src');
+    });
+
+    afterEach((): void => {
+      localStorage.removeItem('workspace.files.nestFiles');
+    });
+
+    it('isOffUntilAskedFor', () => {
+      expect(service.nestsFiles()).toBe(false);
+      expect(shown()).toContain('/ws/src/Enumeration.Comparable.cs');
+    });
+
+    it('on_gathersAPartialUnderItsClass_andShowsItOnceToggled', () => {
+      service.toggleNestFiles();
+
+      expect(shown()).not.toContain('/ws/src/Enumeration.Comparable.cs');
+      expect(
+        service
+          .rows()
+          .find(
+            (candidate: WorkspaceTreeRow): boolean =>
+              candidate.node.path === '/ws/src/Enumeration.cs',
+          )
+          ?.nested?.map((child: WorkspaceTreeNode): string => child.path),
+      ).toEqual(['/ws/src/Enumeration.Comparable.cs']);
+
+      service.toggleNested('/ws/src/Enumeration.cs');
+
+      expect(shown()).toEqual([
+        '/ws/src',
+        '/ws/src/Enumeration.cs',
+        '/ws/src/Enumeration.Comparable.cs',
+        '/ws/src/Extensions.String.cs',
+        '/ws/lib',
+        '/ws/a.md',
+      ]);
+    });
+
+    it('reveal_ofANestedFile_showsItBeneathItsParent', async () => {
+      service.toggleNestFiles();
+
+      await service.revealPath('/ws/src/Enumeration.Comparable.cs');
+
+      expect(shown()).toContain('/ws/src/Enumeration.Comparable.cs');
+      expect(row('/ws/src/Enumeration.cs')?.expanded).toBe(true);
+    });
+
+    it('filter_aMatchingNestedFile_showsBeneathItsParent', () => {
+      service.toggleNestFiles();
+
+      service.setQuery('comparable');
+
+      expect(shown()).toEqual([
+        '/ws/src',
+        '/ws/src/Enumeration.cs',
+        '/ws/src/Enumeration.Comparable.cs',
+      ]);
+    });
+
+    it('collapseAll_hidesTheNestedFilesAgain', () => {
+      service.toggleNestFiles();
+      service.toggleNested('/ws/src/Enumeration.cs');
+
+      service.collapseAll();
+
+      expect(row('/ws/src/Enumeration.cs')).toBeUndefined();
     });
   });
 

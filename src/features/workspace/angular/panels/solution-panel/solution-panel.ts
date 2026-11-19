@@ -86,6 +86,7 @@ const ACTION_OPTIONS: string = 'options';
 const ACTION_FOLLOW: string = 'follow-active';
 const ACTION_GIT_STATUS: string = 'git-status';
 const ACTION_COLLAPSE_EMPTY_FOLDERS: string = 'collapse-empty-folders';
+const ACTION_NEST_FILES: string = 'nest-files';
 const ACTION_RELOAD: string = 'reload';
 const ACTION_OPEN_ROOT: string = 'open-root';
 const ACTION_RENAME_FOLDER: string = 'rename-folder';
@@ -276,22 +277,61 @@ export class SolutionPanel {
   >(null);
 
   /**
-   * Gets the delete confirmation's heading: the entry by name, or how many there are.
+   * Gets the files nested beneath the rows awaiting deletion that are not among them, which the
+   * confirmation asks about: deleted with them, or left as files of their own.
    */
-  protected readonly deleteTitle: Signal<string> = computed((): string => {
+  protected readonly deleteNested: Signal<readonly string[]> = computed((): readonly string[] => {
     const targets: readonly SolutionRow[] = this.deleteTargets() ?? [];
-    const named: string = targets.length === 1 ? targets[0].label : `${targets.length} items`;
-    return this.deletesPermanently() ? `Delete ${named} Permanently?` : `Delete ${named}?`;
+    const named: ReadonlySet<string> = new Set<string>(
+      targets.flatMap((row: SolutionRow): string[] => (row.path === null ? [] : [row.path])),
+    );
+    return [
+      ...new Set<string>(targets.flatMap((row: SolutionRow): readonly string[] => row.nestedPaths)),
+    ].filter((path: string): boolean => !named.has(path));
   });
 
   /**
+   * Gets the delete confirmation's heading: the entry by name, or how many there are — and how many
+   * files are nested beneath them.
+   */
+  protected readonly deleteTitle: Signal<string> = computed((): string => {
+    const targets: readonly SolutionRow[] = this.deleteTargets() ?? [];
+    const nested: number = this.deleteNested().length;
+    const named: string = targets.length === 1 ? targets[0].label : `${targets.length} items`;
+    const all: string =
+      nested === 0 ? named : `${named} and ${nested} Nested File${nested === 1 ? '' : 's'}`;
+    return this.deletesPermanently() ? `Delete ${all} Permanently?` : `Delete ${all}?`;
+  });
+
+  /**
+   * Gets the label of the confirmation's button that deletes what was chosen and keeps the files
+   * nested beneath it.
+   */
+  protected readonly deleteOnlyLabel: Signal<string> = computed((): string => {
+    const targets: readonly SolutionRow[] = this.deleteTargets() ?? [];
+    return targets.length === 1 ? `Only ${targets[0].label}` : 'Only the Selected';
+  });
+
+  /**
+   * Gets the names of the files nested beneath the rows awaiting deletion, for the confirmation.
+   */
+  protected readonly deleteNestedNames: Signal<string> = computed((): string =>
+    listNames(this.deleteNested().map(fileName)),
+  );
+
+  /**
    * Asks to delete rows: with the confirmation, unless Confirm Before Deleting is off and they are only
-   * going to the Trash. A permanent delete always asks.
+   * going to the Trash. A permanent delete always asks, and so does one of a file with others nested
+   * beneath it: whether they go too is a question only the user can answer.
    * @param targets The rows.
    */
   private requestDelete(targets: readonly SolutionRow[]): void {
     this.deleteTargets.set(targets);
-    if (!this.deletesPermanently() && !this.settings.get('workspaces.confirmBeforeDeleting')) {
+    if (
+      !this.deletesPermanently() &&
+      !this.settings.get('workspaces.confirmBeforeDeleting') &&
+      this.deleteNested().length === 0
+    ) {
       void this.confirmDelete();
     }
   }
@@ -347,6 +387,11 @@ export class SolutionPanel {
           id: ACTION_COLLAPSE_EMPTY_FOLDERS,
           label: 'Collapse Empty Folders',
           checked: this.solution.collapsesEmptyFolders(),
+        },
+        {
+          id: ACTION_NEST_FILES,
+          label: 'Nest Related Files',
+          checked: this.solution.nestsFiles(),
         },
         {
           id: ACTION_SHOW_HIDDEN,
@@ -478,8 +523,12 @@ export class SolutionPanel {
         return;
       }
       // On disk, as the File Explorer renames it — open documents follow — and the solution's own
-      // watch re-reads the project, keeping what is expanded.
-      const renamed: FileOperationResult = await this.entryRename.rename(path, commit.value);
+      // watch re-reads the project, keeping what is expanded. A file with others nested beneath it
+      // takes them along, and the type they share.
+      const renamed: FileOperationResult =
+        row.nestedPaths.length > 0
+          ? await this.entryRename.renameGroup(path, commit.value, row.nestedPaths)
+          : await this.entryRename.rename(path, commit.value);
       if (!renamed.success) {
         this.reportRenameFailure(renamed.error);
       }
@@ -505,43 +554,50 @@ export class SolutionPanel {
    * Deletes the rows the confirmation was opened for, to the Trash where the platform allows it, as
    * the File Explorer does — reporting what could not be deleted, and what was deleted for good for
    * want of a Trash.
+   * @param withNested Whether the files nested beneath them go too; left out, they stay as files of
+   * their own.
    * @returns Returns a promise that resolves once every deletion has been attempted.
    */
-  public async confirmDelete(): Promise<void> {
+  public async confirmDelete(withNested: boolean = false): Promise<void> {
     const targets: readonly SolutionRow[] | null = this.deleteTargets();
     if (targets === null || targets.length === 0) {
       return;
     }
+    const entries: readonly DeleteEntry[] = [
+      ...targets.flatMap((row: SolutionRow): DeleteEntry[] => {
+        const path: string | null = this.pathFor(row);
+        return path === null ? [] : [{ path, name: row.label }];
+      }),
+      ...(withNested
+        ? this.deleteNested().map((path: string): DeleteEntry => ({ path, name: fileName(path) }))
+        : []),
+    ];
     this.deleteTargets.set(null);
-    const failed: { row: SolutionRow; error: string | undefined }[] = [];
-    const permanent: SolutionRow[] = [];
-    for (const row of targets) {
-      const path: string | null = this.pathFor(row);
-      if (path === null) {
-        continue;
-      }
-      this.log.info('workspace.solution', 'Delete requested', path);
+    const failed: { entry: DeleteEntry; error: string | undefined }[] = [];
+    const permanent: DeleteEntry[] = [];
+    for (const entry of entries) {
+      this.log.info('workspace.solution', 'Delete requested', entry.path);
       const result: FileOperationResult = await this.workspace.delete(
-        path,
+        entry.path,
         this.deletesPermanently(),
       );
       if (!result.success) {
-        failed.push({ row, error: result.error });
+        failed.push({ entry, error: result.error });
       } else if (result.trashed === false && !this.deletesPermanently()) {
-        permanent.push(row);
+        permanent.push(entry);
       }
     }
     if (failed.length > 0) {
       this.notifications.notify({
         severity: 'error',
         title:
-          failed.length === 1 && targets.length === 1
+          failed.length === 1 && entries.length === 1
             ? 'Could not delete'
-            : `Could not delete ${failed.length} of ${targets.length} items`,
+            : `Could not delete ${failed.length} of ${entries.length} items`,
         detail:
           failed.length === 1
             ? failed[0].error
-            : failed.map(({ row }: { row: SolutionRow }): string => row.label).join(', '),
+            : failed.map(({ entry }: { entry: DeleteEntry }): string => entry.name).join(', '),
       });
     }
     if (permanent.length > 0) {
@@ -549,7 +605,7 @@ export class SolutionPanel {
         severity: 'warning',
         title:
           permanent.length === 1
-            ? `Deleted “${permanent[0].label}” permanently`
+            ? `Deleted “${permanent[0].name}” permanently`
             : `Deleted ${permanent.length} items permanently`,
         detail: 'This location has no Trash, so it could not be recovered from there.',
       });
@@ -683,6 +739,8 @@ export class SolutionPanel {
       depth: row.depth,
       expandable: row.expandable,
       expanded: row.expanded,
+      // A file with others nested beneath it opens as well as expands.
+      ...(row.nestedPaths.length > 0 ? { opens: true } : {}),
       // Greyed out until what it stands for has arrived. Presentation only: an unready project is
       // still expandable, and expanding one is how its contents get requested ahead of the sweep.
       disabled: row.pending,
@@ -980,7 +1038,9 @@ export class SolutionPanel {
    * @returns Returns true when it does.
    */
   private hasProblems(row: SolutionRow, severity: DiagnosticSeverity): boolean {
-    return row.scmPaths.some((path: string): boolean => this.problems.has(path, severity));
+    return [...row.scmPaths, ...row.nestedPaths].some((path: string): boolean =>
+      this.problems.has(path, severity),
+    );
   }
 
   /**
@@ -999,6 +1059,14 @@ export class SolutionPanel {
       return states.some((state: ExplorerScmState): boolean => state !== 'ignored')
         ? 'contains'
         : null;
+    }
+    // A file with others nested beneath it takes its own state, and failing that reads as a folder
+    // does: `contains`, when any file nested beneath it is changed.
+    if (
+      states.length === 0 &&
+      row.nestedPaths.some((path: string): boolean => isChangedState(this.git.stateFor(path)))
+    ) {
+      return 'contains';
     }
     return states[0] ?? null;
   }
@@ -1051,6 +1119,9 @@ export class SolutionPanel {
         return;
       case ACTION_COLLAPSE_EMPTY_FOLDERS:
         this.solution.toggleCollapseEmptyFolders();
+        return;
+      case ACTION_NEST_FILES:
+        this.solution.toggleNestFiles();
         return;
       case ACTION_SHOW_HIDDEN:
         this.exclusions.toggleShowHidden();
@@ -1392,12 +1463,25 @@ export class SolutionPanel {
     if (row.loading) {
       return;
     }
-    if (row.expandable) {
+    const opensOnClick: boolean = this.settings.get('workspaces.openFilesWith') === 'single';
+    // A file with others nested beneath it toggles as a folder does — unless a click opens files,
+    // when it opens, and its chevron is what toggles it (see onRowToggle).
+    if (row.expandable && !(row.kind === 'file' && opensOnClick)) {
       this.log.debug('workspace.solution', `Toggle ${row.kind} row`, row.key);
       this.solution.toggle(row);
-    } else if (this.settings.get('workspaces.openFilesWith') === 'single') {
+    } else if (opensOnClick) {
       this.onRowOpen(treeRow);
     }
+  }
+
+  /**
+   * Toggles a file with others nested beneath it, from its chevron.
+   * @param treeRow The tree row whose chevron was clicked.
+   */
+  public onRowToggle(treeRow: TreeRow): void {
+    const row: SolutionRow = this.rowOf(treeRow);
+    this.log.debug('workspace.solution', 'Toggle nested files', row.key);
+    this.solution.toggle(row);
   }
 
   /**
@@ -1431,13 +1515,14 @@ export class SolutionPanel {
   }
 
   /**
-   * Opens a file row — on a double click, or Enter (#1047). Rows that expand open nothing: their clicks
-   * already toggled them, and a project's file has its own Edit Project File.
+   * Opens a file row — on a double click, or Enter (#1047) — including a file with others nested
+   * beneath it. Other rows that expand open nothing: their clicks already toggled them, and a
+   * project's file has its own Edit Project File.
    * @param treeRow The row to open.
    */
   public onRowOpen(treeRow: TreeRow): void {
     const row: SolutionRow = this.rowOf(treeRow);
-    if (row.loading || row.expandable || row.path === null) {
+    if (row.loading || row.kind !== 'file' || row.path === null) {
       return;
     }
     this.log.info('workspace.solution', 'Open file from solution', row.path);
@@ -1471,6 +1556,41 @@ export class SolutionPanel {
         return Icon.FILE;
     }
   }
+}
+
+/**
+ * One entry a delete removes: its path, and the name it is reported by.
+ */
+interface DeleteEntry {
+  /**
+   * Gets the entry's absolute path.
+   */
+  readonly path: string;
+
+  /**
+   * Gets its name.
+   */
+  readonly name: string;
+}
+
+/**
+ * Reads the name at the end of a path.
+ * @param path The path.
+ * @returns Returns the name.
+ */
+function fileName(path: string): string {
+  return path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1);
+}
+
+/**
+ * Lists names as a sentence does: `a`, `a and b`, `a, b and c`.
+ * @param names The names.
+ * @returns Returns the list.
+ */
+function listNames(names: readonly string[]): string {
+  return names.length < 2
+    ? (names[0] ?? '')
+    : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
 
 /**

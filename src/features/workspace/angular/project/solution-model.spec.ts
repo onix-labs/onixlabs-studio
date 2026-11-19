@@ -345,6 +345,131 @@ describe('SolutionModel', () => {
     localStorage.removeItem('workspace.solution.collapseEmptyFolders');
   });
 
+  describe('file nesting', () => {
+    /**
+     * Opens a lone project in the workspace root whose files are a partial class, a group of
+     * extension files with no parent, and a file of its own.
+     * @returns Returns the service, opened.
+     */
+    async function openPartials(): Promise<SolutionModel> {
+      localStorage.removeItem('workspace.solution.nestFiles');
+      project.model = {
+        kind: 'dotnet',
+        root: '/root',
+        solution: null,
+        projects: [{ name: 'root', path: '/root/Core.csproj' }],
+        tree: [{ type: 'project', name: 'root', path: '/root/Core.csproj' }],
+        capabilities: sampleCapabilities(),
+      };
+      project.itemsByPath.set('/root/Core.csproj', {
+        projectPath: '/root/Core.csproj',
+        tree: [
+          {
+            type: 'file',
+            name: 'Enumeration.Comparable.cs',
+            path: '/root/Enumeration.Comparable.cs',
+          },
+          { type: 'file', name: 'Enumeration.cs', path: '/root/Enumeration.cs' },
+          { type: 'file', name: 'Enumeration.From.cs', path: '/root/Enumeration.From.cs' },
+          { type: 'file', name: 'Extensions.Array.cs', path: '/root/Extensions.Array.cs' },
+          { type: 'file', name: 'Extensions.String.cs', path: '/root/Extensions.String.cs' },
+          { type: 'file', name: 'Program.cs', path: '/root/Program.cs' },
+        ],
+      });
+      const model: SolutionModel = build();
+      await open(model);
+      return model;
+    }
+
+    afterEach((): void => {
+      localStorage.removeItem('workspace.solution.nestFiles');
+    });
+
+    it('gathersAPartialClassUnderItsOwnFile_andLeavesFilesWithNoParent', async () => {
+      const model: SolutionModel = await openPartials();
+
+      expect(labels(model)).toEqual([
+        'root',
+        'Enumeration.cs',
+        'Extensions.Array.cs',
+        'Extensions.String.cs',
+        'Program.cs',
+      ]);
+      expect(rowFor(model, 'Enumeration.cs')?.expandable).toBe(true);
+      expect(rowFor(model, 'Enumeration.cs')?.expanded).toBe(false);
+      expect(rowFor(model, 'Enumeration.cs')?.nestedPaths).toEqual([
+        '/root/Enumeration.Comparable.cs',
+        '/root/Enumeration.From.cs',
+      ]);
+      expect(rowFor(model, 'Program.cs')?.expandable).toBe(false);
+    });
+
+    it('toggle_showsTheNestedFilesOneLevelDeeper', async () => {
+      const model: SolutionModel = await openPartials();
+
+      model.toggle(rowFor(model, 'Enumeration.cs')!);
+
+      expect(labels(model)).toEqual([
+        'root',
+        'Enumeration.cs',
+        'Enumeration.Comparable.cs',
+        'Enumeration.From.cs',
+        'Extensions.Array.cs',
+        'Extensions.String.cs',
+        'Program.cs',
+      ]);
+      expect(rowFor(model, 'Enumeration.From.cs')?.depth).toBe(2);
+      expect(rowFor(model, 'Enumeration.From.cs')?.expandable).toBe(false);
+    });
+
+    it('toggleNestFiles_off_listsEveryFileInTheFolder', async () => {
+      const model: SolutionModel = await openPartials();
+
+      model.toggleNestFiles();
+
+      expect(model.nestsFiles()).toBe(false);
+      expect(labels(model)).toEqual([
+        'root',
+        'Enumeration.Comparable.cs',
+        'Enumeration.cs',
+        'Enumeration.From.cs',
+        'Extensions.Array.cs',
+        'Extensions.String.cs',
+        'Program.cs',
+      ]);
+      expect(rowFor(model, 'Enumeration.cs')?.expandable).toBe(false);
+    });
+
+    it('search_aMatchingNestedFile_showsBeneathItsParent', async () => {
+      const model: SolutionModel = await openPartials();
+
+      model.setQuery('comparable');
+      await new Promise<void>((resolve: () => void): void => {
+        setTimeout(resolve, 200);
+      });
+
+      expect(labels(model)).toEqual(['root', 'Enumeration.cs', 'Enumeration.Comparable.cs']);
+      expect(rowFor(model, 'Enumeration.cs')?.expanded).toBe(true);
+    });
+
+    it('revealPath_aNestedFile_opensItsParent', async () => {
+      const model: SolutionModel = await openPartials();
+
+      expect(model.revealPath('/root/Enumeration.From.cs')).toBe(true);
+
+      expect(rowFor(model, 'Enumeration.cs')?.expanded).toBe(true);
+      expect(model.selectedKey()).toBe('file:/root/Enumeration.From.cs');
+    });
+
+    it('expandAll_opensTheFilesWithOthersNestedBeneathThem', async () => {
+      const model: SolutionModel = await openPartials();
+
+      model.expandAll();
+
+      expect(rowFor(model, 'Enumeration.cs')?.expanded).toBe(true);
+    });
+  });
+
   it('rows_withASingleProjectInASubdirectory_keepsItsRow', async () => {
     project.model = {
       kind: 'node',

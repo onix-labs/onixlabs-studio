@@ -1,6 +1,12 @@
 import { RememberedSwitch } from '@shared/angular/services/explorer-filter/remembered-switch';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { explorerSorted } from '@shared/angular/services/workspace/explorer-sort';
+import {
+  FileNesting,
+  FileNestingRule,
+  fileNestingRules,
+  nestFiles,
+} from '@shared/angular/services/workspace/file-nesting';
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { ExplorerFilter } from '@shared/angular/services/explorer-filter/explorer-filter';
 import { Bridge } from '@shared/api/bridge';
@@ -54,6 +60,11 @@ const QUERY_DEBOUNCE_MS: number = 150;
  * Describes a project item that is a folder.
  */
 type ProjectItemFolder = Extract<ProjectItemNode, { readonly type: 'folder' }>;
+
+/**
+ * Describes a project item that is a file.
+ */
+type ProjectItemFile = Extract<ProjectItemNode, { readonly type: 'file' }>;
 
 /**
  * A flattened Solution Explorer row: one visible line of the tree, with its depth, expansion, and
@@ -122,6 +133,12 @@ export interface SolutionRow {
    * it. Empty when the row stands for nothing on disk.
    */
   readonly scmPaths: readonly string[];
+
+  /**
+   * Holds the paths of the files nested beneath a file's row by File Nesting, in the order they show;
+   * empty for every other row. A row with any is expandable, and also opens its own file.
+   */
+  readonly nestedPaths: readonly string[];
 }
 
 /**
@@ -299,6 +316,23 @@ export class SolutionModel {
   private readonly syncWithActive: RememberedSwitch = new RememberedSwitch(
     'workspace.solution.followActiveDocument',
     true,
+  );
+
+  /**
+   * Holds whether files gather the files File Nesting names beneath them. On by default here: the
+   * Solution Explorer is where a type split across several files is looked for.
+   */
+  private readonly nestingFiles: RememberedSwitch = new RememberedSwitch(
+    'workspace.solution.nestFiles',
+    true,
+  );
+
+  /**
+   * Gets the File Nesting rules, read once per change of the setting.
+   */
+  private readonly nestingRules: Signal<readonly FileNestingRule[]> = computed(
+    (): readonly FileNestingRule[] =>
+      fileNestingRules(this.settings.value('workspaces.fileNesting')()),
   );
 
   /**
@@ -523,6 +557,7 @@ export class SolutionModel {
       parentKey: string,
       ancestors: readonly string[],
     ): readonly string[] | null => {
+      const nesting: FileNesting<ProjectItemFile> = this.nesting(nodes);
       for (const node of nodes) {
         if (node.type === 'folder') {
           const key: string = `${parentKey}/${node.name}`;
@@ -535,6 +570,13 @@ export class SolutionModel {
           }
         } else if (node.path === path) {
           return ancestors;
+        } else if (
+          (nesting.children.get(node) ?? []).some(
+            (child: ProjectItemFile): boolean => child.path === path,
+          )
+        ) {
+          // A file nested beneath another is revealed by opening its parent's row.
+          return [...ancestors, `file:${node.path}`];
         }
       }
       return null;
@@ -636,6 +678,18 @@ export class SolutionModel {
    */
   public toggleCollapseEmptyFolders(): void {
     this.collapsingEmptyFolders.toggle();
+  }
+
+  /**
+   * Gets whether files gather the files File Nesting names beneath them.
+   */
+  public readonly nestsFiles: Signal<boolean> = this.nestingFiles.on;
+
+  /**
+   * Toggles whether files gather the files File Nesting names beneath them.
+   */
+  public toggleNestFiles(): void {
+    this.nestingFiles.toggle();
   }
 
   /**
@@ -1276,7 +1330,9 @@ export class SolutionModel {
     parentKey: string,
     rows: SolutionRow[],
   ): void {
-    for (const node of this.orderedItems(nodes)) {
+    const ordered: readonly ProjectItemNode[] = this.orderedItems(nodes);
+    const nesting: FileNesting<ProjectItemFile> = this.nesting(ordered);
+    for (const node of ordered) {
       if (node.type === 'folder') {
         let last: ProjectItemFolder = node;
         const names: string[] = [node.name];
@@ -1298,22 +1354,64 @@ export class SolutionModel {
         if (expanded) {
           this.appendItems(last.children, depth + 1, key, rows);
         }
-      } else {
-        rows.push(
-          this.row(
-            `file:${node.path}`,
-            depth,
-            node.name,
-            'file',
-            false,
-            false,
-            false,
-            false,
-            node.path,
-          ),
-        );
+      } else if (!nesting.nested.has(node)) {
+        const nested: readonly ProjectItemFile[] = nesting.children.get(node) ?? [];
+        const expanded: boolean = nested.length > 0 && this.expandedKeys().has(`file:${node.path}`);
+        rows.push(this.fileRow(node, depth, nested, expanded));
+        if (expanded) {
+          for (const child of nested) {
+            rows.push(this.fileRow(child, depth + 1, [], false));
+          }
+        }
       }
     }
+  }
+
+  /**
+   * Builds a file's row: a leaf, or — with files nested beneath it — a row that expands as well as
+   * opens.
+   * @param file The file.
+   * @param depth The row's depth.
+   * @param nested The files nested beneath it.
+   * @param expanded Whether it is expanded.
+   * @returns Returns the row.
+   */
+  private fileRow(
+    file: ProjectItemFile,
+    depth: number,
+    nested: readonly ProjectItemFile[],
+    expanded: boolean,
+  ): SolutionRow {
+    return {
+      ...this.row(
+        `file:${file.path}`,
+        depth,
+        file.name,
+        'file',
+        nested.length > 0,
+        expanded,
+        false,
+        false,
+        file.path,
+      ),
+      nestedPaths: nested.map((child: ProjectItemFile): string => child.path),
+    };
+  }
+
+  /**
+   * Nests a run of project items' files by File Nesting, when it is on.
+   * @param nodes The items, folders and files.
+   * @returns Returns how their files nest; nothing nests while File Nesting is off.
+   */
+  private nesting(nodes: readonly ProjectItemNode[]): FileNesting<ProjectItemFile> {
+    const files: readonly ProjectItemFile[] = this.nestsFiles()
+      ? nodes.filter((node: ProjectItemNode): node is ProjectItemFile => node.type === 'file')
+      : [];
+    return nestFiles<ProjectItemFile>(
+      files,
+      (file: ProjectItemFile): string => file.name,
+      this.nestingRules(),
+    );
   }
 
   /**
@@ -1416,7 +1514,9 @@ export class SolutionModel {
     query: string,
   ): boolean {
     let matched: boolean = false;
-    for (const node of this.orderedItems(nodes)) {
+    const ordered: readonly ProjectItemNode[] = this.orderedItems(nodes);
+    const nesting: FileNesting<ProjectItemFile> = this.nesting(ordered);
+    for (const node of ordered) {
       if (node.type === 'folder') {
         const key: string = `${parentKey}/${node.name}`;
         const childRows: SolutionRow[] = [];
@@ -1444,21 +1544,19 @@ export class SolutionModel {
           rows.push(...childRows);
           matched = true;
         }
-      } else if (this.matches(node.name, query)) {
-        rows.push(
-          this.row(
-            `file:${node.path}`,
-            depth,
-            node.name,
-            'file',
-            false,
-            false,
-            false,
-            false,
-            node.path,
-          ),
+      } else if (!nesting.nested.has(node)) {
+        // A file nested beneath another shows beneath it when it matches, opening its parent's row.
+        const nested: readonly ProjectItemFile[] = nesting.children.get(node) ?? [];
+        const matching: readonly ProjectItemFile[] = nested.filter(
+          (child: ProjectItemFile): boolean => this.matches(child.name, query),
         );
-        matched = true;
+        if (this.matches(node.name, query) || matching.length > 0) {
+          rows.push(this.fileRow(node, depth, nested, matching.length > 0));
+          for (const child of matching) {
+            rows.push(this.fileRow(child, depth + 1, [], false));
+          }
+          matched = true;
+        }
       }
     }
     return matched;
@@ -1486,6 +1584,9 @@ export class SolutionModel {
       nodes: readonly ProjectItemNode[],
       parentKey: string,
     ): void => {
+      for (const parent of this.nesting(nodes).children.keys()) {
+        keys.add(`file:${parent.path}`);
+      }
       for (const node of nodes) {
         if (node.type === 'folder') {
           const key: string = `${parentKey}/${node.name}`;
@@ -1542,7 +1643,19 @@ export class SolutionModel {
     path: string | null,
     scmPaths: readonly string[] = path !== null ? [path] : [],
   ): SolutionRow {
-    return { key, depth, label, kind, expandable, expanded, loading, pending, path, scmPaths };
+    return {
+      key,
+      depth,
+      label,
+      kind,
+      expandable,
+      expanded,
+      loading,
+      pending,
+      path,
+      scmPaths,
+      nestedPaths: [],
+    };
   }
 
   /**
