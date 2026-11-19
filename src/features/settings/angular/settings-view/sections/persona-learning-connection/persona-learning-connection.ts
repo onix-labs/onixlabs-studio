@@ -1,9 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
-import type { AiConnection } from '@shared/api/ai-types';
+import type { AiConnection, AiProviderInfo } from '@shared/api/ai-types';
 import { isLocalConnection as isLocal } from '@shared/api/is-local-connection';
 import { Dropdown, type DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
-import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
+import { modelOptions } from '@shared/angular/services/agent-engine/engine-options';
 import { Settings } from '@shared/angular/services/settings/settings';
 
 /**
@@ -13,7 +14,7 @@ import { Settings } from '@shared/angular/services/settings/settings';
  */
 @Component({
   selector: 'app-persona-learning-connection',
-  imports: [Dropdown, SettingRow, TextField],
+  imports: [Dropdown, SettingRow],
   template: `
     <app-setting-row label="Learning Connection" [description]="destination()">
       <app-dropdown
@@ -26,12 +27,13 @@ import { Settings } from '@shared/angular/services/settings/settings';
     </app-setting-row>
     <app-setting-row
       label="Learning Model"
-      description="The model used for learning, or empty for the connection's default. A small model is enough."
+      description="The model used for learning, from those the connection offers. A small model is enough."
     >
-      <app-text-field
+      <app-dropdown
+        [options]="models()"
         [value]="model()"
         ariaLabel="Learning model"
-        placeholder="Connection default"
+        data-testid="persona-learning-model"
         [disabled]="connectionId() === ''"
         (valueChange)="setModel($event)"
       />
@@ -46,6 +48,11 @@ export class PersonaLearningConnection {
   private readonly settings: Settings = inject(Settings);
 
   /**
+   * Holds the agent engine, which knows the models each connection offers, as the agent's picker does.
+   */
+  private readonly engine: AgentEngine = inject(AgentEngine);
+
+  /**
    * Gets the chosen connection's id, or empty when persona learning is off.
    */
   protected readonly connectionId: Signal<string> = this.settings.value(
@@ -56,6 +63,26 @@ export class PersonaLearningConnection {
    * Gets the chosen model.
    */
   protected readonly model: Signal<string> = this.settings.value('persona.learningModel');
+
+  /**
+   * Gets the models the chosen connection offers, as the agent's picker lists them, with its default
+   * first. A model chosen earlier that the connection no longer offers stays listed, so the row shows
+   * what is set rather than going blank.
+   */
+  protected readonly models: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] => {
+      const id: string = this.connectionId();
+      const provider: AiProviderInfo | undefined = this.engine
+        .providers()
+        .find((candidate: AiProviderInfo): boolean => candidate.id === id);
+      const options: readonly DropdownOption[] = modelOptions(provider);
+      const chosen: string = this.model();
+      return chosen.length === 0 ||
+        options.some((option: DropdownOption): boolean => option.value === chosen)
+        ? options
+        : [...options, { value: chosen, label: `${chosen} (not offered)`, disabled: true }];
+    },
+  );
 
   /**
    * Gets the choices: off, then every connection, local ones marked.
@@ -92,6 +119,8 @@ export class PersonaLearningConnection {
    */
   protected choose(id: string): void {
     this.settings.set('persona.learningConnectionId', id);
+    // A model belongs to its connection, so another connection starts on its own default.
+    this.settings.set('persona.learningModel', '');
   }
 
   /**

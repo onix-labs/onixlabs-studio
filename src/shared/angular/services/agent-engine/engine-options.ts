@@ -136,6 +136,33 @@ export function startingModel(provider: AiProviderInfo | undefined): string {
 }
 
 /**
+ * Builds the model choices for one connection, as the agent's picker lists them (#1516): first the
+ * connection's default, named, then its models in the picker's order, a retired model shown but not
+ * pickable. For a connection that offers none (not yet loaded, or no provider installed for it), the
+ * default is the only choice.
+ * @param provider The connection's provider, or undefined when it is not known.
+ * @returns Returns the options; the default's value is empty.
+ */
+export function modelOptions(provider: AiProviderInfo | undefined): readonly DropdownOption[] {
+  const fallback: string = startingModel(provider);
+  const named: string =
+    provider?.models.find((model: AiModelInfo): boolean => model.id === fallback)?.label ??
+    fallback;
+  const defaultOption: DropdownOption = {
+    value: '',
+    label: named.length > 0 ? `Connection default (${named})` : 'Connection default',
+  };
+  return [
+    defaultOption,
+    ...(provider?.models ?? []).map((model: AiModelInfo): DropdownOption =>
+      model.retired === true
+        ? { value: model.id, label: `${model.label} ${RETIRED_SUFFIX}`, disabled: true }
+        : { value: model.id, label: model.label },
+    ),
+  ];
+}
+
+/**
  * Recovers the provider/model pair an engine option value names.
  * @param value The option value.
  * @returns Returns the pair, or null when the value does not name one.

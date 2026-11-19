@@ -18,14 +18,15 @@
         [value]="connectionId()"
         ariaLabel="Connection for the rebuild"
         placeholder="Choose a connection"
-        (valueChange)="connectionId.set($event)"
+        (valueChange)="chooseConnection($event)"
       />
     </app-setting-row>
-    <app-setting-row label="Model" description="Empty for the connection's default.">
-      <app-text-field
+    <app-setting-row label="Model" description="From those the connection offers.">
+      <app-dropdown
+        [options]="models()"
         [value]="model()"
         ariaLabel="Model for the rebuild"
-        placeholder="Connection default"
+        data-testid="rebuild-model"
         (valueChange)="model.set($event)"
       />
     </app-setting-row>

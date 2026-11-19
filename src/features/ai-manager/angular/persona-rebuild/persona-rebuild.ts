@@ -13,7 +13,7 @@ import {
   untracked,
   WritableSignal,
 } from '@angular/core';
-import type { AiConnection } from '@shared/api/ai-types';
+import type { AiConnection, AiProviderInfo } from '@shared/api/ai-types';
 import { isLocalConnection } from '@shared/api/is-local-connection';
 import type {
   PersonaRebuildEstimate,
@@ -27,9 +27,10 @@ import {
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
-import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
+import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
+import { modelOptions } from '@shared/angular/services/agent-engine/engine-options';
 import { Log } from '@shared/angular/services/log/log';
 import { PersonaLearning } from '@shared/angular/services/persona/persona-learning';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -42,7 +43,7 @@ import { Settings } from '@shared/angular/services/settings/settings';
  */
 @Component({
   selector: 'app-persona-rebuild',
-  imports: [Button, ButtonGroup, ButtonRow, Dropdown, Modal, ModalContent, SettingRow, TextField],
+  imports: [Button, ButtonGroup, ButtonRow, Dropdown, Modal, ModalContent, SettingRow],
   templateUrl: './persona-rebuild.html',
   styleUrl: './persona-rebuild.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -75,6 +76,11 @@ export class PersonaRebuild {
    * Holds the settings.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the agent engine, which knows the models each connection offers.
+   */
+  private readonly engine: AgentEngine = inject(AgentEngine);
 
   /**
    * Holds the structured logger.
@@ -118,6 +124,18 @@ export class PersonaRebuild {
           ? `${connection.label} (on this machine)`
           : connection.label,
       })),
+  );
+
+  /**
+   * Gets the models the chosen connection offers, as the agent's picker lists them, default first.
+   */
+  protected readonly models: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] => {
+      const id: string = this.connectionId();
+      return modelOptions(
+        this.engine.providers().find((candidate: AiProviderInfo): boolean => candidate.id === id),
+      );
+    },
   );
 
   /**
@@ -188,6 +206,15 @@ export class PersonaRebuild {
         void this.count();
       });
     });
+  }
+
+  /**
+   * Chooses the connection; its own default model goes with it.
+   * @param id The connection.
+   */
+  protected chooseConnection(id: string): void {
+    this.connectionId.set(id);
+    this.model.set('');
   }
 
   /**
