@@ -1,0 +1,49 @@
+<app-modal
+  [open]="learning.reviewOpen()"
+  [width]="40"
+  [frameless]="true"
+  ariaLabel="Review changes to your persona"
+  (dismiss)="close()"
+>
+  <ng-template appModalContent>
+    <h2 class="review__title">Review Changes to Your Persona</h2>
+    @if (rows().length === 0) {
+      <p class="review__empty">Nothing is waiting for review.</p>
+    } @else {
+      <p class="review__intro">
+        Agents don't use these until you accept them. Anything you leave waits for the next review.
+      </p>
+      <ul class="review__list" data-testid="persona-review-list">
+        @for (row of rows(); track row.id) {
+          <li class="review__item">
+            <div class="review__head">
+              <app-chip [tone]="row.tone">{{ row.label }}</app-chip>
+              <strong class="review__name">{{ row.name }}</strong>
+            </div>
+            @if (row.before !== null && row.after !== null) {
+              <p class="review__text review__text--before">{{ row.before }}</p>
+              <p class="review__text">{{ row.after }}</p>
+            } @else {
+              <p class="review__text" [class.review__text--before]="row.after === null">
+                {{ row.after ?? row.before }}
+              </p>
+            }
+            @if (row.reason.length > 0) {
+              <p class="review__reason">{{ row.reason }}</p>
+            }
+            <app-button-row align="start">
+              <app-button variant="ghost" label="Accept" (click)="accept(row.id)" />
+              <app-button variant="ghost" tone="danger" label="Reject" (click)="reject(row.id)" />
+            </app-button-row>
+          </li>
+        }
+      </ul>
+    }
+    <app-button-row>
+      @if (rows().length > 1) {
+        <app-button variant="solid" label="Accept All" (click)="acceptAll()" />
+      }
+      <app-button variant="none" label="Close" (click)="close()" />
+    </app-button-row>
+  </ng-template>
+</app-modal>

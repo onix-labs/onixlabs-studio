@@ -68,21 +68,21 @@ describe('AiManagerSidebar', () => {
   }
 
   it('sections_startClosed_thenOneOpenAtATime_openingOneShowsIt', async () => {
-    expect(headings()).toEqual(['Local Models', 'Prompt Profiles', 'Skills']);
+    expect(headings()).toEqual(['Local Models', 'Persona', 'Skills']);
 
-    await click('Prompt Profiles');
-    expect(headings()).toEqual(['Local Models', 'Prompt Profiles (open)', 'Skills']);
+    await click('Persona');
+    expect(headings()).toEqual(['Local Models', 'Persona (open)', 'Skills']);
     await click('Skills');
 
     expect(navigation.section()).toBe('skills');
-    expect(headings()).toEqual(['Local Models', 'Prompt Profiles', 'Skills (open)']);
+    expect(headings()).toEqual(['Local Models', 'Persona', 'Skills (open)']);
   });
 
   it('sections_followTheSectionShownFromElsewhere', async () => {
-    navigation.show('profiles');
+    navigation.show('persona');
     await fixture.whenStable();
 
-    expect(headings()).toEqual(['Local Models', 'Prompt Profiles (open)', 'Skills']);
+    expect(headings()).toEqual(['Local Models', 'Persona (open)', 'Skills']);
   });
 
   it('search_hidesALibrarySectionWithNoMatches_andCountsTheMatches', async () => {

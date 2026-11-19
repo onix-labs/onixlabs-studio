@@ -1,15 +1,11 @@
 import { BrowserWindow, ipcMain, IpcMainInvokeEvent, OpenDialogReturnValue, shell } from 'electron';
 import { readPromptScope } from '@shared/api/ai-types';
-import {
-  PromptProfileChannel,
-  type PromptProfile,
-  type PromptProfileListing,
-} from '@shared/api/prompt-profile-channels';
+import { PERSONA_TEXT_LIMIT, type PersonaEntry } from '@shared/api/persona-channels';
 import { readSkillTechnologies } from '@shared/api/skill-channels';
 import {
   SkillImportChannel,
   type SkillExportResult,
-  type SkillImportAcceptedProfile,
+  type SkillImportAcceptedPersonaEntry,
   type SkillImportAcceptedSkill,
   type SkillImportCommit,
   type SkillImportDraft,
@@ -18,11 +14,8 @@ import {
 } from '@shared/api/skill-import-channels';
 import { showMessageBox, showOpenDialog } from '@shared/electron/dialog-parent';
 import { logger } from '@shared/electron/logger';
-import {
-  PROFILE_INSTRUCTIONS_LIMIT,
-  readProfile,
-  type PromptProfileLibrary,
-} from '../prompt-profiles/prompt-profile-library';
+import { announcePersonaChange } from '../persona/persona-handlers';
+import { readEntry } from '../persona/persona-library';
 import type { LibraryTransfer } from './library-transfer';
 
 /**
@@ -36,18 +29,16 @@ const BODY_LIMIT: number = 256 * 1024;
 const COMMIT_LIMIT: number = 2_000;
 
 /**
- * Registers the IPC handlers of the prompt-profile library and of import and export (#1263),
- * validating everything the renderer sends before the libraries see it.
+ * Registers the IPC handlers of import and export (#1263), validating everything the renderer sends
+ * before the libraries see it.
  */
 export class LibraryTransferHandlers {
   /**
    * Initializes a new instance of the {@link LibraryTransferHandlers} class.
-   * @param profiles The prompt-profile library.
    * @param transfer The import and export engine.
    * @param windowGetter Returns the main window, to parent the dialogs.
    */
   public constructor(
-    private readonly profiles: PromptProfileLibrary,
     private readonly transfer: LibraryTransfer,
     private readonly windowGetter: () => BrowserWindow | null,
   ) {}
@@ -56,36 +47,7 @@ export class LibraryTransferHandlers {
    * Registers the handlers.
    */
   public register(): void {
-    logger.info(
-      'LibraryTransferHandlers',
-      `Registering profile and import IPC handlers (${this.profiles.directory})`,
-    );
-    ipcMain.handle(PromptProfileChannel.List, (): Promise<PromptProfileListing> =>
-      this.profiles.list(),
-    );
-    ipcMain.handle(
-      PromptProfileChannel.Save,
-      async (event: IpcMainInvokeEvent, value: unknown): Promise<string | null> => {
-        const profile: PromptProfile | null = readProfile(value, readPromptScope);
-        if (profile === null) {
-          return 'The profile was malformed.';
-        }
-        const error: string | null = await this.profiles.save(profile);
-        if (error === null) {
-          this.announce(event);
-        }
-        return error;
-      },
-    );
-    ipcMain.handle(
-      PromptProfileChannel.Delete,
-      async (event: IpcMainInvokeEvent, id: unknown): Promise<void> => {
-        if (typeof id === 'string') {
-          await this.profiles.delete(id);
-          this.announce(event);
-        }
-      },
-    );
+    logger.info('LibraryTransferHandlers', 'Registering import and export IPC handlers');
     ipcMain.handle(
       SkillImportChannel.Choose,
       async (event: IpcMainInvokeEvent): Promise<SkillImportPlan | null> => {
@@ -108,15 +70,15 @@ export class LibraryTransferHandlers {
       },
     );
     ipcMain.handle(
-      SkillImportChannel.ChooseProfiles,
+      SkillImportChannel.ChoosePersona,
       async (event: IpcMainInvokeEvent): Promise<SkillImportPlan | null> => {
         const result: OpenDialogReturnValue = await showOpenDialog(
           event.sender,
           this.windowGetter,
           {
-            title: 'Import Prompt Profiles',
+            title: 'Import into Persona',
             message:
-              'Choose Markdown files, a folder of them, or a Studio export. Each file becomes a profile.',
+              'Choose Markdown files, a folder of them, or a Studio export. Each file becomes an entry in your persona.',
             buttonLabel: 'Import',
             properties: ['openFile', 'openDirectory', 'multiSelections'],
             filters: [{ name: 'Markdown', extensions: ['md', 'markdown'] }],
@@ -125,17 +87,9 @@ export class LibraryTransferHandlers {
         if (result.canceled || result.filePaths.length === 0) {
           return null;
         }
-        return this.transfer.scanForProfiles(result.filePaths);
+        return this.transfer.scanForPersona(result.filePaths);
       },
     );
-    ipcMain.handle(PromptProfileChannel.OpenFolder, async (): Promise<void> => {
-      const { mkdir } = await import('node:fs/promises');
-      await mkdir(this.profiles.directory, { recursive: true });
-      const failure: string = await shell.openPath(this.profiles.directory);
-      if (failure.length > 0) {
-        logger.warn('LibraryTransferHandlers', `Could not open the profile folder: ${failure}`);
-      }
-    });
     ipcMain.handle(SkillImportChannel.Discard, (_event: IpcMainInvokeEvent, id: unknown): void => {
       if (typeof id === 'string') {
         this.transfer.discard(id);
@@ -146,11 +100,12 @@ export class LibraryTransferHandlers {
       async (event: IpcMainInvokeEvent, value: unknown): Promise<SkillImportResult> => {
         const commit: SkillImportCommit | null = this.readCommit(value);
         if (commit === null) {
-          return { skills: 0, profiles: 0, linksRewritten: 0, error: 'The import was malformed.' };
+          return { skills: 0, persona: 0, linksRewritten: 0, error: 'The import was malformed.' };
         }
         const result: SkillImportResult = await this.transfer.commit(commit);
-        if (result.error === null && result.profiles > 0) {
-          this.announce(event, true);
+        // Every window is told, the sender too: the import changed the persona behind its back.
+        if (result.error === null && result.persona > 0) {
+          announcePersonaChange();
         }
         return result;
       },
@@ -163,7 +118,7 @@ export class LibraryTransferHandlers {
           this.windowGetter,
           {
             title: 'Export AI Library',
-            message: 'Choose where to save a copy of your skills and prompt profiles.',
+            message: 'Choose where to save a copy of your skills and persona.',
             buttonLabel: 'Export',
             properties: ['openDirectory', 'createDirectory'],
           },
@@ -189,20 +144,6 @@ export class LibraryTransferHandlers {
   }
 
   /**
-   * Tells every other window the profiles changed, so each re-reads them; the window that made the
-   * change already holds it.
-   * @param event The request that changed them.
-   * @param everyone Whether the sender is told too (an import changed them behind its back).
-   */
-  private announce(event: IpcMainInvokeEvent, everyone: boolean = false): void {
-    for (const window of BrowserWindow.getAllWindows()) {
-      if (!window.isDestroyed() && (everyone || window.webContents.id !== event.sender.id)) {
-        window.webContents.send(PromptProfileChannel.Changed);
-      }
-    }
-  }
-
-  /**
    * Reads a commit out of untrusted input.
    * @param value The value the renderer sent.
    * @returns Returns the commit, or null when it is not one.
@@ -215,9 +156,9 @@ export class LibraryTransferHandlers {
     if (
       typeof record['planId'] !== 'string' ||
       !Array.isArray(record['skills']) ||
-      !Array.isArray(record['profiles']) ||
+      !Array.isArray(record['persona']) ||
       record['skills'].length > COMMIT_LIMIT ||
-      record['profiles'].length > COMMIT_LIMIT
+      record['persona'].length > COMMIT_LIMIT
     ) {
       return null;
     }
@@ -229,18 +170,17 @@ export class LibraryTransferHandlers {
       }
       skills.push(accepted);
     }
-    const profiles: SkillImportAcceptedProfile[] = [];
-    for (const item of record['profiles'] as unknown[]) {
-      const entry: Record<string, unknown> | null =
+    const persona: SkillImportAcceptedPersonaEntry[] = [];
+    for (const item of record['persona'] as unknown[]) {
+      const accepted: Record<string, unknown> | null =
         item !== null && typeof item === 'object' ? (item as Record<string, unknown>) : null;
-      const profile: PromptProfile | null =
-        entry === null ? null : readProfile(entry['profile'], readPromptScope);
-      if (entry === null || profile === null) {
+      const entry: PersonaEntry | null = accepted === null ? null : readEntry(accepted['entry']);
+      if (accepted === null || entry === null) {
         return null;
       }
-      profiles.push({ profile, replace: entry['replace'] === true });
+      persona.push({ entry, replace: accepted['replace'] === true });
     }
-    return { planId: record['planId'], skills, profiles };
+    return { planId: record['planId'], skills, persona };
   }
 
   /**
@@ -263,7 +203,7 @@ export class LibraryTransferHandlers {
       typeof fields['description'] !== 'string' ||
       typeof fields['body'] !== 'string' ||
       fields['body'].length > BODY_LIMIT ||
-      fields['description'].length > PROFILE_INSTRUCTIONS_LIMIT
+      fields['description'].length > PERSONA_TEXT_LIMIT
     ) {
       return null;
     }

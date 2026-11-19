@@ -1,0 +1,129 @@
+<section class="activity" aria-label="Persona learning">
+  <h3 class="activity__heading section-label">Learning</h3>
+  <p class="activity__status" data-testid="learning-status">{{ status() }}</p>
+  @if (pending() > 0) {
+    <p class="activity__pending" data-testid="learning-pending">
+      {{ pending() }} change{{ pending() === 1 ? '' : 's' }} waiting for your review.
+      <app-button variant="solid" label="Review" (click)="learning.openReview()" />
+    </p>
+  }
+  <div class="activity__actions">
+    <app-button
+      variant="ghost"
+      [icon]="Icon.SETTINGS"
+      label="Learning Settings"
+      (click)="openSettings()"
+    />
+    @if (canRun()) {
+      <app-button
+        variant="ghost"
+        [icon]="Icon.REFRESH_DUOTONE"
+        label="Look Now"
+        (click)="runNow()"
+      />
+    }
+    @if (rebuild() === null) {
+      <app-button
+        variant="ghost"
+        [icon]="Icon.PERSONA_MEMORY"
+        label="Build From All Conversations…"
+        (click)="rebuildOpen.set(true)"
+      />
+    }
+  </div>
+
+  @if (rebuild(); as job) {
+    <p class="activity__pending" data-testid="learning-rebuild">
+      Building your persona{{ job.mode === 'fresh' ? ' afresh' : '' }}: {{ job.done.length }} of
+      {{ job.total }} conversations read.
+      <app-button variant="ghost" label="Cancel" (click)="cancelRebuild()" />
+    </p>
+  }
+
+  @if (questions().length > 0) {
+    <h4 class="activity__subheading">Questions about you</h4>
+    <p class="activity__status">
+      Answer what you like. An answer becomes something your persona knows; agents may also ask one
+      of these, now and then, when it fits.
+    </p>
+    <ul class="activity__questions" data-testid="learning-questions">
+      @for (question of questions(); track question.id) {
+        <li class="activity__question">
+          <span class="activity__text">{{ question.text }}</span>
+          <div class="activity__add">
+            <app-text-field
+              [value]="draftFor(question.id)"
+              [ariaLabel]="'Answer: ' + question.text"
+              placeholder="Your answer"
+              (valueChange)="setDraft(question.id, $event)"
+              (enter)="answer(question.id)"
+            />
+            <app-button variant="ghost" label="Answer" (click)="answer(question.id)" />
+            <app-button variant="none" label="Dismiss" (click)="dismiss(question.id)" />
+          </div>
+        </li>
+      }
+    </ul>
+  }
+
+  @if (recent().length > 0) {
+    <h4 class="activity__subheading">Recent changes</h4>
+    <ul class="activity__list" data-testid="learning-recent">
+      @for (change of recent(); track change.id) {
+        <li class="activity__row">
+          <span class="activity__text">
+            {{ change.verb }} <strong>{{ change.name }}</strong>
+            <span class="activity__muted">&nbsp;· {{ change.when }}</span>
+          </span>
+          <app-button variant="ghost" label="Undo" (click)="undo(change.id)" />
+        </li>
+      }
+    </ul>
+  }
+
+  @if (snapshots().length > 0) {
+    <h4 class="activity__subheading">Earlier copies of your persona</h4>
+    <ul class="activity__list" data-testid="learning-snapshots">
+      @for (copy of snapshots(); track copy.id) {
+        <li class="activity__row">
+          <span class="activity__text">
+            {{ copy.when }}
+            <span class="activity__muted">&nbsp;· {{ copy.entries }} entries</span>
+          </span>
+          <app-button variant="ghost" label="Restore" (click)="restore(copy.id)" />
+        </li>
+      }
+    </ul>
+  }
+
+  <h4 class="activity__subheading">Topics never learned about</h4>
+  @if (ruledOut().length > 0) {
+    <ul class="activity__topics" data-testid="learning-ruled-out">
+      @for (topic of ruledOut(); track topic) {
+        <li class="activity__topic">
+          {{ topic }}
+          <button
+            type="button"
+            class="activity__topic-remove"
+            [attr.aria-label]="'Learn about ' + topic + ' again'"
+            (click)="removeTopic(topic)"
+          >
+            ×
+          </button>
+        </li>
+      }
+    </ul>
+  }
+  <div class="activity__add">
+    <app-text-field
+      [value]="topicDraft()"
+      ariaLabel="Topic to rule out"
+      placeholder="A topic, e.g. health"
+      (valueChange)="topicDraft.set($event)"
+      (enter)="addTopic()"
+    />
+    <app-button variant="ghost" [icon]="Icon.PLUS" label="Rule Out" (click)="addTopic()" />
+  </div>
+</section>
+
+<app-persona-rebuild [open]="rebuildOpen()" (closed)="rebuildOpen.set(false)" />

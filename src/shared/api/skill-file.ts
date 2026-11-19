@@ -11,7 +11,7 @@ import {
 // and a file that uses more than this subset still round-trips: keys this module does not own are
 // kept as the lines they arrived as and written back unchanged. Platform-neutral, so the renderer can
 // read a `SKILL.md` an AI wrote (#1263) with the same rules the library reads its own with; the
-// prompt-profile files reuse the frontmatter half.
+// persona entry files reuse the frontmatter half.
 
 /**
  * The frontmatter keys this module owns and rewrites on save. Everything else is preserved verbatim.

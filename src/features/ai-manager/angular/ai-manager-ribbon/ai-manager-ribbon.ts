@@ -18,19 +18,19 @@ import {
 } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
 import { Skills } from '@shared/angular/services/skills/skills';
 import { SkillTransfer } from '@shared/angular/services/skills/skill-transfer';
-import { PromptProfiles } from '@shared/angular/services/prompt-profiles/prompt-profiles';
+import { Persona } from '@shared/angular/services/persona/persona';
 import { AiLibraryCommands, AiLibrarySection } from '../ai-library-commands/ai-library-commands';
 import { ModelManagerCommands } from '../model-manager-commands/model-manager-commands';
 import { AiManagerAgentPanelState } from '../ai-manager-agent/ai-manager-agent-panel-state';
 
 /**
  * The contextual ribbon shown while the AI Manager tab is active (#948). Its View group chooses the
- * sub-view — Local Models, Prompt Profiles or Skills — and the groups after it are that sub-view's:
+ * sub-view — Local Models, Persona or Skills — and the groups after it are that sub-view's:
  *
  * - **Local Models:** the runtime (Install, or Start/Stop, and Refresh), driving the sub-view through
  *   the {@link ModelManagerCommands} registry. Stop is disabled for a server Studio did not start —
  *   the user's own Ollama is reachable but not Studio's to kill.
- * - **Prompt Profiles / Skills:** New, through the {@link AiLibraryCommands} registry, since what a new
+ * - **Persona / Skills:** New, through the {@link AiLibraryCommands} registry, since what a new
  *   entry is and which one is then selected belong to the sub-view; Skills also imports, opens the
  *   library folder and re-reads it.
  */
@@ -74,9 +74,9 @@ export class AiManagerRibbon {
   private readonly skills: Skills = inject(Skills);
 
   /**
-   * Holds the prompt profiles, whose folder the ribbon opens.
+   * Holds the persona, whose folder the ribbon opens.
    */
-  private readonly profiles: PromptProfiles = inject(PromptProfiles);
+  private readonly persona: Persona = inject(Persona);
 
   /**
    * Holds the import and export client.
@@ -142,35 +142,41 @@ export class AiManagerRibbon {
       switch (this.section()) {
         case 'models':
           return [{ id: 'models', label: 'Models', items: this.modelItems() }];
-        case 'profiles':
+        case 'persona':
           return [
             {
-              id: 'profiles',
-              label: 'Profiles',
+              id: 'persona',
+              label: 'Persona',
               items: [
                 {
-                  id: 'profiles.new',
-                  label: 'New Profile',
-                  enabled: this.registered().has('profiles'),
-                  run: (): void => this.onAdd('profiles'),
+                  id: 'persona.new-memory',
+                  label: 'New Memory',
+                  enabled: this.registered().has('persona'),
+                  run: (): void => this.onAdd('persona'),
                 },
                 {
-                  id: 'profiles.import',
-                  label: 'Import Profiles',
-                  enabled: this.registered().has('profiles') && this.canTransfer,
-                  run: (): void => this.onImportProfiles(),
+                  id: 'persona.new-core',
+                  label: 'New Core Entry',
+                  enabled: this.registered().has('persona'),
+                  run: (): void => this.onAddCore(),
                 },
                 {
-                  id: 'profiles.export',
+                  id: 'persona.import',
+                  label: 'Import into Persona',
+                  enabled: this.registered().has('persona') && this.canTransfer,
+                  run: (): void => this.onImportPersona(),
+                },
+                {
+                  id: 'persona.export',
                   label: 'Export AI Library',
                   enabled: this.canTransfer,
                   run: (): void => this.onExportLibrary(),
                 },
                 MENU_SEPARATOR,
                 {
-                  id: 'profiles.open-folder',
-                  label: 'Open Profiles Folder',
-                  run: (): void => this.onOpenProfileFolder(),
+                  id: 'persona.open-folder',
+                  label: 'Open Persona Folder',
+                  run: (): void => this.onOpenPersonaFolder(),
                 },
               ],
             },
@@ -227,28 +233,35 @@ export class AiManagerRibbon {
   }
 
   /**
-   * Imports prompt profiles through the platform dialog (#1263).
+   * Starts a new persona core entry.
    */
-  protected onImportProfiles(): void {
-    this.library.importFrom('profiles');
+  protected onAddCore(): void {
+    this.library.addCore('persona');
   }
 
   /**
-   * Re-reads the prompt profiles, for a user editing them beside Studio.
+   * Imports Markdown files into the persona through the platform dialog (#1263, #1514).
    */
-  protected onRefreshProfiles(): void {
-    void this.profiles.reload();
+  protected onImportPersona(): void {
+    this.library.importFrom('persona');
   }
 
   /**
-   * Opens the prompt-profile folder.
+   * Re-reads the persona, for a user editing it beside Studio.
    */
-  protected onOpenProfileFolder(): void {
-    void this.profiles.openFolder();
+  protected onRefreshPersona(): void {
+    void this.persona.reload();
   }
 
   /**
-   * Exports the skills and prompt profiles to a folder the user picks (#1263).
+   * Opens the persona folder.
+   */
+  protected onOpenPersonaFolder(): void {
+    void this.persona.openFolder();
+  }
+
+  /**
+   * Exports the skills and the persona to a folder the user picks (#1263).
    */
   protected onExportLibrary(): void {
     void this.transfer.export();

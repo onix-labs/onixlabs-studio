@@ -23,7 +23,7 @@ import {
 } from '@shared/angular/services/plugins/language-names';
 
 /**
- * Edits a {@link PromptScope}: which surfaces, and which editor languages, a prompt profile or a skill
+ * Edits a {@link PromptScope}: which surfaces, and which editor languages, a persona entry or a skill
  * applies to. Shared by both editors so the two features cannot drift in how a scope is described —
  * the same pickers, the same wording about what "nothing ticked" means.
  */

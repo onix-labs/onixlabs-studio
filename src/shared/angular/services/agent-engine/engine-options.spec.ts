@@ -1,6 +1,6 @@
 import type { AiProviderInfo } from '@shared/api/ai-types';
 import type { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
-import { engineOptions, startingModel } from './engine-options';
+import { engineOptions, modelOptions, startingModel } from './engine-options';
 
 describe('startingModel', () => {
   /**
@@ -67,5 +67,31 @@ describe('engineOptions', () => {
       },
       { value: 'openai-1::terra', label: 'GPT-5.6-Terra', group: 'Codex' },
     ]);
+  });
+});
+
+describe('modelOptions (#1516)', () => {
+  it('listsTheDefaultFirst_byName_thenEveryModel_aRetiredOneDisabled', () => {
+    const provider: AiProviderInfo = {
+      id: 'local',
+      label: 'Ollama',
+      available: true,
+      detail: '',
+      defaultModelId: 'qwen3:8b',
+      models: [
+        { id: 'qwen3:8b', label: 'Qwen3 8B' },
+        { id: 'llama2', label: 'Llama 2', retired: true },
+      ],
+    };
+
+    expect(modelOptions(provider)).toEqual([
+      { value: '', label: 'Connection default (Qwen3 8B)' },
+      { value: 'qwen3:8b', label: 'Qwen3 8B' },
+      { value: 'llama2', label: 'Llama 2 (no longer offered)', disabled: true },
+    ]);
+  });
+
+  it('forAnUnknownConnection_offersOnlyTheDefault', () => {
+    expect(modelOptions(undefined)).toEqual([{ value: '', label: 'Connection default' }]);
   });
 });

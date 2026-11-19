@@ -128,7 +128,7 @@
         @case ('clash') {
           <div class="import__stage">
             <h2 class="import__title">
-              {{ prompt.subject === 'skill' ? 'A Skill' : 'A Prompt Profile' }} Named
+              {{ prompt.subject === 'skill' ? 'A Skill' : 'A Persona Entry' }} Named
               {{ prompt.name }}
               {{ prompt.withLibrary ? 'Is Already in Your Library' : 'Is Already Being Imported' }}
             </h2>
@@ -306,18 +306,18 @@
                       </span>
                     </td>
                   }
-                  @case ('profile') {
+                  @case ('persona') {
                     <td class="import__cell-check">
                       <app-checkbox
                         [checked]="entry.item.included"
-                        (checkedChange)="session.includeProfile(entry.item.profile.id, $event)"
+                        (checkedChange)="session.includePersonaEntry(entry.item.entry.id, $event)"
                       />
                     </td>
-                    <td class="import__name">{{ entry.item.profile.name }}</td>
+                    <td class="import__name">{{ entry.item.entry.name }}</td>
                     <td class="import__muted">—</td>
                     <td>
                       <span class="import__chips">
-                        <app-chip>Prompt profile</app-chip>
+                        <app-chip>Persona entry</app-chip>
                         @if (entry.item.replace) {
                           <app-chip tone="warning">Replaces existing</app-chip>
                         }
@@ -347,7 +347,7 @@
             <app-button
               variant="solid"
               [label]="importLabel()"
-              [disabled]="included() === 0 && includedProfiles() === 0"
+              [disabled]="included() === 0 && includedPersona() === 0"
               (click)="session.answer('import')"
             />
             <app-button variant="none" label="Cancel" (click)="cancel()" />

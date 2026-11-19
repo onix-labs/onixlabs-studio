@@ -1,4 +1,5 @@
 import type { OllamaStart, OllamaStopOnQuit } from '@shared/api/startup-settings';
+import type { PersonaReviewMode, LearningSchedule } from '@shared/api/persona-learning-protocol';
 import type { Severity } from '@shared/api/log-channels';
 import type { VcsPullMode, VcsSignCommits } from '@shared/api/version-control-protocol';
 import type { CloneLayout } from '@shared/api/clone-channels';
@@ -908,6 +909,12 @@ export interface SettingsValues {
   readonly 'aiManager.resultsPerSource': number;
   readonly 'aiManager.skillLibraryFolder': string;
   readonly 'aiManager.lastSection': string;
+  readonly 'persona.learningConnectionId': string;
+  readonly 'persona.learningModel': string;
+  readonly 'persona.learningPaused': boolean;
+  readonly 'persona.learningSchedule': LearningSchedule;
+  readonly 'persona.learningIdleMinutes': number;
+  readonly 'persona.review': PersonaReviewMode;
   readonly 'containers.engine': string;
   readonly 'containers.engineAddressMode': ContainerEngineAddressMode;
   readonly 'containers.engineAddress': string;
@@ -5833,6 +5840,80 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description: 'The AI Manager section left open.',
         control: { kind: 'custom', component: 'ai-manager-section' },
         default: '',
+      },
+    ],
+  },
+  {
+    // Learning the persona in the background (#1516), and how what is learned lands (#1517).
+    id: 'ai-manager-persona',
+    label: 'Persona',
+    settings: [
+      {
+        // Chosen on the Learning Connection row above the section; it has no row of its own.
+        key: 'persona.learningConnectionId',
+        title: 'Learning Connection',
+        description:
+          'The AI connection your conversations are read with. Nothing is learned until one is chosen.',
+        control: { kind: 'custom', component: 'persona-learning-connection' },
+        default: '',
+      },
+      {
+        key: 'persona.learningModel',
+        title: 'Learning Model',
+        description: "The model used for learning, or empty for the connection's default.",
+        control: { kind: 'custom', component: 'persona-learning-connection' },
+        default: '',
+      },
+      {
+        key: 'persona.learningPaused',
+        title: 'Pause Learning',
+        description: 'Stop reading conversations until you switch this off. Nothing is lost.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'persona.learningSchedule',
+        title: 'When Learning Runs',
+        description:
+          'After a conversation has been idle for a while, or once a day. Either way only what has not been read before is read.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'idle', label: 'After a conversation goes idle' },
+            { value: 'daily', label: 'Once a day' },
+          ],
+        },
+        default: 'idle',
+      },
+      {
+        key: 'persona.learningIdleMinutes',
+        title: 'Idle For',
+        description: 'How long a conversation has to be quiet before it is read.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '10', label: '10 minutes' },
+            { value: '30', label: '30 minutes' },
+            { value: '60', label: '1 hour' },
+            { value: '240', label: '4 hours' },
+          ],
+        },
+        default: 30,
+      },
+      {
+        key: 'persona.review',
+        title: 'Learned Changes',
+        description:
+          'Ask me first holds what is learned until you approve it, and agents do not use it until then. Update automatically applies it, and lists it so you can undo it.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'ask', label: 'Ask me first' },
+            { value: 'automatic', label: 'Update automatically' },
+          ],
+        },
+        default: 'ask',
       },
     ],
   },

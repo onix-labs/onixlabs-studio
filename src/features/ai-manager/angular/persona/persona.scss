@@ -1,0 +1,69 @@
+// The Persona sub-view's own pieces (#1514), on top of the library layout it shares with Skills.
+
+.persona__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-block-start: 0.5rem;
+}
+
+// How full the core is: muted while it fits, a warning once it does not.
+.persona__meter {
+  margin: 0 0 0.5rem;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.8125rem;
+}
+
+.persona__meter--over {
+  color: var(--warning-color);
+}
+
+// Memories about other people (#1519): the most sensitive part, so the overview points them out.
+.persona__people {
+  margin: 0 0 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.persona__link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent-color);
+  font: inherit;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: underline;
+  }
+}
+
+// The tags in use, each narrowing the side panel to its entries.
+.persona__tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35rem;
+  max-inline-size: 30rem;
+  margin-block-end: 0.5rem;
+}
+
+.persona__tag {
+  padding: 0.15rem 0.5rem;
+  border: var(--hairline) solid var(--form-control-border-color);
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    border-color: var(--accent-color);
+  }
+}
+
+.persona__tag-count {
+  color: var(--form-muted-foreground-color);
+}

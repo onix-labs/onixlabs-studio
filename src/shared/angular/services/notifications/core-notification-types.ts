@@ -73,6 +73,11 @@ export enum CoreNotificationType {
    * A CI run for a branch pushed from Studio failed.
    */
   CiFailed = 'ci.failed',
+
+  /**
+   * Persona learning has changes to the persona waiting for the user's review (#1517).
+   */
+  PersonaReview = 'persona.review',
 }
 
 /**
@@ -181,6 +186,13 @@ export const CORE_NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
     label: 'CI Failed',
     description: 'A CI run for a branch you pushed from Studio failed.',
     area: 'Continuous Integration',
+    default: 'popup',
+  },
+  {
+    id: CoreNotificationType.PersonaReview,
+    label: 'Persona Changes to Review',
+    description: 'Studio learned something about you and is waiting for you to approve it.',
+    area: 'Persona',
     default: 'popup',
   },
 ];

@@ -99,7 +99,7 @@ export class WelcomeTools {
     },
     {
       title: 'AI Manager',
-      description: 'Providers, local models, prompt profiles and skills, in one place.',
+      description: 'Providers, local models, your persona and skills, in one place.',
       icon: Icon.WELCOME_AI_MODELS,
       opens: 'model-manager',
     },

@@ -32,6 +32,12 @@ import { TreeEdit, TreeRow, TreeView } from '@shared/angular/components/tree-vie
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 import { Chip } from '@shared/angular/components/chip/chip';
+import { AiManagerNavigation } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
+import {
+  PersonaLearning,
+  LearningRunSummary,
+} from '@shared/angular/services/persona/persona-learning';
 
 /**
  * The identifier of the always-present All Conversations root node.
@@ -185,6 +191,30 @@ export class AgentConversationList {
    * Holds the shared category registry.
    */
   private readonly categoriesService: AgentCategories = inject(AgentCategories);
+
+  /**
+   * Holds persona learning, which learns from a conversation on request (#1516).
+   */
+  private readonly learning: PersonaLearning = inject(PersonaLearning);
+
+  /**
+   * Holds the notification store the learning outcome is reported to.
+   */
+  private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Holds the deep link to the Persona page.
+   */
+  private readonly aiManager: AiManagerNavigation = inject(AiManagerNavigation);
+
+  /**
+   * Gets whether persona learning can learn: a connection is chosen for it and it is not paused.
+   */
+  protected readonly learningOn: Signal<boolean> = computed(
+    (): boolean =>
+      this.settings.value('persona.learningConnectionId')().length > 0 &&
+      !this.settings.value('persona.learningPaused')(),
+  );
 
   /**
    * Gets the id of the conversation currently open, highlighted in the tree (or null). Its All
@@ -735,6 +765,38 @@ export class AgentConversationList {
   }
 
   /**
+   * Has persona learning read the targeted conversation now, whether or not it has gone idle, and says what came of
+   * it (#1516).
+   * @returns Resolves once persona learning has finished.
+   */
+  protected async onLearnNow(): Promise<void> {
+    const target: AgentConversationSummary | null = this.menuTarget();
+    if (target === null) {
+      return;
+    }
+    const summary: LearningRunSummary = await this.learning.learnNow(target.id);
+    this.notifications.notify({
+      severity: summary.error === null ? 'info' : 'warning',
+      title:
+        summary.error !== null
+          ? 'Could not learn from that conversation'
+          : summary.messagesRead === 0
+            ? 'That conversation has already been read'
+            : 'Learned from the conversation',
+      detail: summary.error ?? describeLearningRun(summary),
+      actions: [{ label: 'Open Persona', run: (): void => this.onOpenPersona() }],
+    });
+  }
+
+  /**
+   * Opens the Persona page.
+   */
+  protected onOpenPersona(): void {
+    this.confirmOpen.set(false);
+    this.aiManager.open('persona');
+  }
+
+  /**
    * Opens the delete-confirmation modal for the targeted conversation, checking it first so the shared
    * confirm path deletes it.
    */
@@ -976,4 +1038,19 @@ export class AgentConversationList {
       // Persistence is best-effort.
     }
   }
+}
+
+/**
+ * Says what one of learning runs did, in a sentence.
+ * @param summary The run.
+ * @returns Returns the sentence.
+ */
+function describeLearningRun(summary: LearningRunSummary): string {
+  if (summary.applied + summary.pending === 0) {
+    return 'Nothing new to learn about you.';
+  }
+  if (summary.pending > 0) {
+    return `${summary.pending} change${summary.pending === 1 ? '' : 's'} to your persona ${summary.pending === 1 ? 'is' : 'are'} waiting for your review.`;
+  }
+  return `${summary.applied} change${summary.applied === 1 ? '' : 's'} made to your persona.`;
 }

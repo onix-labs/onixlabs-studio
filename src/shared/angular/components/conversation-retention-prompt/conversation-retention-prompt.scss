@@ -14,6 +14,26 @@
   line-height: 1.5;
 }
 
+.retention__persona {
+  margin-block-start: 0.5rem;
+  color: var(--form-muted-foreground-color);
+}
+
+// A link that reads as part of the sentence.
+.retention__link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent-color);
+  font: inherit;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: underline;
+  }
+}
+
 .retention__context {
   margin: 0;
   font-size: 1rem;

@@ -17,15 +17,41 @@ import type {
   SkillImportPlan,
   SkillImportResult,
 } from '@shared/api/skill-import-channels';
-import { PromptProfileLibrary } from '../prompt-profiles/prompt-profile-library';
+import type { PersonaEntry } from '@shared/api/persona-channels';
+import { PersonaLibrary } from '../persona/persona-library';
 import { LibraryTransfer } from './library-transfer';
 import { SkillLibrary } from './skill-library';
+
+/**
+ * Builds a persona entry the user wrote, in the core.
+ * @param id The id.
+ * @param name The name.
+ * @param text The text.
+ * @returns Returns the entry.
+ */
+function entryOf(id: string, name: string, text: string): PersonaEntry {
+  return {
+    id,
+    name,
+    text,
+    why: '',
+    tags: [],
+    links: [],
+    scope: GLOBAL_SCOPE,
+    layer: 'core',
+    enabled: true,
+    confidence: 1,
+    confirmed: '',
+    author: 'user',
+    locked: true,
+  };
+}
 
 describe('LibraryTransfer', () => {
   let base: string;
   let source: string;
   let skills: SkillLibrary;
-  let profiles: PromptProfileLibrary;
+  let persona: PersonaLibrary;
   let transfer: LibraryTransfer;
 
   /**
@@ -60,8 +86,8 @@ describe('LibraryTransfer', () => {
     source = join(base, 'source');
     mkdirSync(source);
     skills = new SkillLibrary(join(base, 'skills'));
-    profiles = new PromptProfileLibrary(join(base, 'prompt-profiles'));
-    transfer = new LibraryTransfer(skills, profiles);
+    persona = new PersonaLibrary(join(base, 'persona'));
+    transfer = new LibraryTransfer(skills, persona);
   });
 
   afterEach(() => {
@@ -78,11 +104,11 @@ describe('LibraryTransfer', () => {
         { source: 'a.md', draft: draft('alpha', '# A\n\nSee [B](b.md).\n'), replace: false },
         { source: 'b.md', draft: draft('bravo'), replace: false },
       ],
-      profiles: [],
+      persona: [],
     });
-    expect(result).toEqual({ skills: 2, profiles: 0, linksRewritten: 1, error: null });
+    expect(result).toEqual({ skills: 2, persona: 0, linksRewritten: 1, error: null });
     expect((await skills.read('alpha'))?.body).toContain('[B](../bravo/SKILL.md)');
-    expect(readdirSync(base).sort()).toEqual(['prompt-profiles', 'skills', 'source']);
+    expect(readdirSync(base).sort()).toEqual(['persona', 'skills', 'source']);
   });
 
   it('commit_whenNameExistsAndNotReplacing_writesNothing', async () => {
@@ -92,7 +118,7 @@ describe('LibraryTransfer', () => {
     const result: SkillImportResult = await transfer.commit({
       planId: plan.id,
       skills: [{ source: 'a.md', draft: draft('alpha'), replace: false }],
-      profiles: [],
+      persona: [],
     });
     expect(result.error).toContain('already exists');
     expect((await skills.read('alpha'))?.body).toBe('old\n');
@@ -105,36 +131,25 @@ describe('LibraryTransfer', () => {
     await transfer.commit({
       planId: plan.id,
       skills: [{ source: 'a.md', draft: draft('alpha', 'new'), replace: true }],
-      profiles: [],
+      persona: [],
     });
     expect((await skills.read('alpha'))?.body).toBe('new\n');
   });
 
-  it('commit_whenAProfileFails_rollsBackTheSkillsToo', async () => {
+  it('commit_whenAPersonaEntryFails_rollsBackTheSkillsToo', async () => {
     await skills.save({ ...draft('alpha'), body: 'old' });
     write('a.md', '# A\n');
     const plan: SkillImportPlan = await transfer.scan(source);
-    // A folder where the profile file should go makes its write fail after the skills moved in.
-    mkdirSync(join(base, 'prompt-profiles', 'terse.md'), { recursive: true });
+    // A folder where the entry file should go makes its write fail after the skills moved in.
+    mkdirSync(join(persona.entriesDirectory, 'terse.md'), { recursive: true });
     const result: SkillImportResult = await transfer.commit({
       planId: plan.id,
       skills: [{ source: 'a.md', draft: draft('alpha', 'new'), replace: true }],
-      profiles: [
-        {
-          profile: {
-            id: 'terse',
-            name: 'Terse',
-            scope: GLOBAL_SCOPE,
-            instructions: 'x',
-            enabled: true,
-          },
-          replace: true,
-        },
-      ],
+      persona: [{ entry: entryOf('terse', 'Terse', 'x'), replace: true }],
     });
     expect(result.error).not.toBeNull();
     expect((await skills.read('alpha'))?.body).toBe('old\n');
-    expect(readdirSync(base).sort()).toEqual(['prompt-profiles', 'skills', 'source']);
+    expect(readdirSync(base).sort()).toEqual(['persona', 'skills', 'source']);
   });
 
   it('commit_whenSourceNotInPlan_refuses', async () => {
@@ -142,26 +157,24 @@ describe('LibraryTransfer', () => {
     const result: SkillImportResult = await transfer.commit({
       planId: plan.id,
       skills: [{ source: '../../etc/passwd', draft: draft('x'), replace: false }],
-      profiles: [],
+      persona: [],
     });
     expect(result.error).toContain('not part of this import');
   });
 
-  it('export_thenScan_roundTripsSkillsAndProfiles', async () => {
+  it('export_thenScan_roundTripsSkillsAndThePersona', async () => {
     await skills.save(draft('alpha'));
     writeFileSync(join(base, 'note.txt'), '');
-    await profiles.save({
-      id: 'terse',
-      name: 'Be: terse',
-      scope: GLOBAL_SCOPE,
-      instructions: 'Short.',
-      enabled: true,
+    await persona.save({
+      ...entryOf('terse', 'Be: terse', 'Short.'),
+      layer: 'memory',
+      tags: ['x'],
     });
     const exported: SkillExportResult = await transfer.export(
       base,
       new Date('2026-11-01T12:00:00Z'),
     );
-    expect(exported).toMatchObject({ skills: 1, profiles: 1, error: null });
+    expect(exported).toMatchObject({ skills: 1, persona: 1, error: null });
     expect(exported.folder?.endsWith('ONIXLabs Studio AI Library 2026-11-01')).toBe(true);
     expect(
       (
@@ -175,10 +188,12 @@ describe('LibraryTransfer', () => {
     const plan: SkillImportPlan = await transfer.scan(exported.folder!);
     expect(plan.kind).toBe('restore');
     expect(plan.entries.map((entry) => entry.draft.name)).toEqual(['alpha']);
-    expect(plan.profiles[0]).toMatchObject({
+    expect(plan.persona[0]).toMatchObject({
       id: 'terse',
       name: 'Be: terse',
-      instructions: 'Short.',
+      text: 'Short.',
+      layer: 'memory',
+      tags: ['x'],
     });
     expect(plan.existingSkills).toEqual(['alpha']);
     expect(existsSync(join(source))).toBe(true);

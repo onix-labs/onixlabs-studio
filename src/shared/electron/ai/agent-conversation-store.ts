@@ -146,7 +146,7 @@ export class AgentConversationStore {
    * all conversations regardless of the agent that created them.
    * @returns Returns all summaries.
    */
-  private listAll(): readonly AgentConversationSummary[] {
+  public listAll(): readonly AgentConversationSummary[] {
     return this.summaries()
       .slice()
       .sort(
@@ -160,7 +160,7 @@ export class AgentConversationStore {
    * @param id The conversation id.
    * @returns Returns the conversation, or null when it does not exist or is malformed.
    */
-  private async load(id: unknown): Promise<StoredAgentConversation | null> {
+  public async load(id: unknown): Promise<StoredAgentConversation | null> {
     const safeId: string | null = this.safeId(id);
     if (safeId === null) {
       return null;

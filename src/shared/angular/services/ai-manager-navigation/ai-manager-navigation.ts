@@ -6,12 +6,12 @@ import { Tabs } from '@shared/angular/services/tabs/tabs';
 /**
  * The AI Manager's sub-views, in the order its ribbon lists them.
  */
-export type AiManagerSection = 'models' | 'profiles' | 'skills';
+export type AiManagerSection = 'models' | 'persona' | 'skills';
 
 /**
  * The sub-views, for checking a remembered one still is one.
  */
-const AI_MANAGER_SECTIONS: readonly AiManagerSection[] = ['models', 'profiles', 'skills'];
+const AI_MANAGER_SECTIONS: readonly AiManagerSection[] = ['models', 'persona', 'skills'];
 
 /**
  * The deep-link seam for the AI Manager tab (#948), the counterpart of the Settings tab's own. The
@@ -87,7 +87,9 @@ export class AiManagerNavigation {
    */
   public begin(): void {
     if (!this.requested) {
-      const last: string = this.settings.get('aiManager.lastSection');
+      // Prompt Profiles became the Persona (#1514): a manager left on the one opens on the other.
+      const stored: string = this.settings.get('aiManager.lastSection');
+      const last: string = stored === 'profiles' ? 'persona' : stored;
       this.sectionState.set(
         AI_MANAGER_SECTIONS.find((section: AiManagerSection): boolean => section === last) ?? null,
       );

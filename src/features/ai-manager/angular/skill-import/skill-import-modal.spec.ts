@@ -10,7 +10,7 @@ import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windo
 import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { SkillImportModal } from './skill-import-modal';
 import {
-  ImportAcceptedProfile,
+  ImportAcceptedPersonaEntry,
   ImportAcceptedSkill,
   ImportLeftOut,
   ImportPrompt,
@@ -59,16 +59,16 @@ class FakeSession {
     root: '/r',
     kind: 'convert',
     entries: [entry(), entry(), entry()],
-    profiles: [],
+    persona: [],
     existingSkills: [],
-    existingProfiles: [],
+    existingPersona: [],
   });
   public readonly position: WritableSignal<number> = signal<number>(2);
   public readonly accepted: WritableSignal<readonly ImportAcceptedSkill[]> = signal<
     readonly ImportAcceptedSkill[]
   >([]);
-  public readonly acceptedProfiles: WritableSignal<readonly ImportAcceptedProfile[]> = signal<
-    readonly ImportAcceptedProfile[]
+  public readonly acceptedPersona: WritableSignal<readonly ImportAcceptedPersonaEntry[]> = signal<
+    readonly ImportAcceptedPersonaEntry[]
   >([]);
   public readonly leftOut: WritableSignal<readonly ImportLeftOut[]> = signal<
     readonly ImportLeftOut[]
@@ -90,7 +90,7 @@ class FakeSession {
     this.included.push([source, included]);
   }
 
-  public includeProfile(id: string, included: boolean): void {
+  public includePersonaEntry(id: string, included: boolean): void {
     this.included.push([id, included]);
   }
 }
@@ -277,15 +277,23 @@ describe('SkillImportModal (#1263)', () => {
     expect(session.answers).toEqual(['import']);
   });
 
-  it('summary_whenOnlyProfiles_saysHowManyProfilesItWillImport', () => {
-    session.acceptedProfiles.set([
+  it('summary_whenOnlyPersonaEntries_saysHowManyItWillImport', () => {
+    session.acceptedPersona.set([
       {
-        profile: {
+        entry: {
           id: 'terse',
           name: 'Terse',
+          text: 'x',
+          why: '',
+          tags: [],
+          links: [],
           scope: GLOBAL_SCOPE,
-          instructions: 'x',
+          layer: 'core',
           enabled: true,
+          confidence: 1,
+          confirmed: '',
+          author: 'user',
+          locked: true,
         },
         replace: false,
         included: true,
@@ -293,8 +301,8 @@ describe('SkillImportModal (#1263)', () => {
     ]);
     const host: HTMLElement = show({ kind: 'summary' });
 
-    expect(host.textContent).toContain('1 of 1 prompt profiles selected.');
-    expect(button(host, 'Import 1 Profile')).toBeDefined();
+    expect(host.textContent).toContain('1 of 1 persona entries selected.');
+    expect(button(host, 'Import 1 Entry')).toBeDefined();
   });
 
   it('summary_flagsLinksToFilesThatWillNotBeImported_andFollowsTheTicks', () => {
