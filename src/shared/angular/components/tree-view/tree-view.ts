@@ -593,7 +593,11 @@ export class TreeView {
    */
   private emitClick(event: MouseEvent, row: TreeRow): void {
     const target: EventTarget | null = event.target;
-    if (row.opens === true && target instanceof Element && target.closest('.tree-chevron') !== null) {
+    if (
+      row.opens === true &&
+      target instanceof Element &&
+      target.closest('.tree-chevron') !== null
+    ) {
       this.rowToggle.emit(row);
       return;
     }
