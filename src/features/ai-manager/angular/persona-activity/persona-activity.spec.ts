@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { AiChannel } from '@shared/api/ai-channels';
 import type { Bridge } from '@shared/api/bridge';
 import type { PersonaEntry } from '@shared/api/persona-channels';
 import {
@@ -64,12 +65,15 @@ describe('PersonaActivity (#1516)', () => {
     const bridge: Partial<Bridge> = {
       invoke: <T>(channel: string, arg?: unknown): Promise<T> => {
         calls.push([channel, arg]);
+        // The model picker lists the providers, so that read answers with a list like the rest.
         return Promise.resolve(
           (channel === (PersonaLearningChannel.State as string)
             ? state
             : channel === (PersonaLearningChannel.ListSnapshots as string)
               ? snapshots
-              : true) as T,
+              : channel === (AiChannel.ListProviders as string)
+                ? []
+                : true) as T,
         );
       },
       on: (): (() => void) => (): void => undefined,
