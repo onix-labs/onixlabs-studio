@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { AgentRequestToasts } from '@shared/angular/services/notifications/agent-request-toasts';
 import { NarrowedGrantNotice } from '@shared/angular/services/notifications/narrowed-grant-notice';
+import { PersonaConversionNotice } from '@shared/angular/services/persona/persona-conversion-notice';
 import { AgentTabAttention } from '@shared/angular/services/agent-requests/agent-tab-attention';
 import { ModelUpdates } from '@shared/angular/services/ai-connections/model-updates';
 import { PluginUpdates } from '@shared/angular/services/plugins/plugin-updates';
@@ -108,6 +109,11 @@ export const config: ApplicationConfig = {
     // waiting for the first agent run would leave a user believing it still applies.
     provideAppInitializer((): void => {
       inject(NarrowedGrantNotice);
+    }),
+    // Instantiate the persona's conversion notice at start-up: the first launch with personas turns
+    // prompt profiles into the persona's core (#1514), and the user is told where they went.
+    provideAppInitializer((): void => {
+      inject(PersonaConversionNotice);
     }),
     // Instantiate the agent tab-attention bridge at start-up, for the same reason: a tab's dot has to
     // light while its conversation waits regardless of which panels are mounted, and no single chat

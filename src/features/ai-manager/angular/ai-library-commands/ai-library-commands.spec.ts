@@ -16,7 +16,7 @@ describe('AiLibraryCommands', () => {
 
     commands.add('skills');
     commands.importFrom('skills');
-    commands.add('profiles');
+    commands.add('persona');
 
     expect(add).toHaveBeenCalledTimes(1);
     expect(importFrom).toHaveBeenCalledTimes(1);
@@ -27,21 +27,21 @@ describe('AiLibraryCommands', () => {
     const first: AiLibraryCommandHandler = { add: vi.fn() };
     const secondAdd: Mock<() => void> = vi.fn<() => void>();
     const second: AiLibraryCommandHandler = { add: secondAdd };
-    commands.register('profiles', first);
-    commands.register('profiles', second);
+    commands.register('persona', first);
+    commands.register('persona', second);
 
     // A section destroyed after its replacement registered must not take the replacement with it.
-    commands.unregister('profiles', first);
-    commands.add('profiles');
+    commands.unregister('persona', first);
+    commands.add('persona');
     expect(secondAdd).toHaveBeenCalledTimes(1);
 
-    commands.unregister('profiles', second);
+    commands.unregister('persona', second);
     expect(commands.registered().size).toBe(0);
   });
 
   it('importFrom_whenTheSectionCannotImport_doesNothing', () => {
-    commands.register('profiles', { add: vi.fn() });
+    commands.register('persona', { add: vi.fn() });
 
-    expect(() => commands.importFrom('profiles')).not.toThrow();
+    expect(() => commands.importFrom('persona')).not.toThrow();
   });
 });

@@ -1,0 +1,210 @@
+<div class="library__main">
+  @if (notice(); as text) {
+    <p class="library__notice library__notice--top" role="status">{{ text }}</p>
+  }
+  @if (selected(); as entry) {
+    <!-- The selected entry, edited at full width. Changes are written as they are made. -->
+    <div class="library__editor" data-testid="persona-editor">
+      <header class="library__header">
+        <h2 class="library__title section-label">{{ entry.name }}</h2>
+        <p class="library__subtitle">
+          @if (entry.layer === 'core') {
+            Part of the core: every conversation it applies to is given it from the start.
+          } @else {
+            A memory: an agent looks it up when the conversation makes it relevant.
+          }
+        </p>
+        <div class="persona__chips">
+          @if (entry.author === 'pete') {
+            <app-chip tone="info">Learned by Pete</app-chip>
+            <app-chip>{{ selectedSureness() }}</app-chip>
+          } @else {
+            <app-chip>Written by you</app-chip>
+          }
+          @if (entry.locked) {
+            <app-chip [icon]="Icon.LOCK">Locked</app-chip>
+          }
+          @if (entry.confirmed.length > 0) {
+            <app-chip>Confirmed {{ entry.confirmed }}</app-chip>
+          }
+        </div>
+        @if (selectedOverLimit()) {
+          <p class="library__alert" role="status">
+            This entry alone is longer than the core's {{ coreLimit }} lines. It is used as it is,
+            but consider making it a memory, or splitting it.
+          </p>
+        }
+      </header>
+
+      <app-setting-row label="Name" description="What the entry is called here, and its heading.">
+        <app-text-field
+          [value]="entry.name"
+          ariaLabel="Entry name"
+          (valueChange)="rename(entry.id, $event)"
+        />
+      </app-setting-row>
+
+      <app-setting-row
+        label="Kind"
+        description="The core is small and always given; memories are looked up when relevant."
+      >
+        <app-button-group
+          [options]="layers"
+          [value]="entry.layer"
+          ariaLabel="Core or memory"
+          (valueChange)="setLayer(entry.id, $event)"
+        />
+      </app-setting-row>
+
+      <app-prompt-scope-editor [scope]="entry.scope" (scopeChange)="setScope(entry.id, $event)" />
+
+      <app-setting-row
+        label="Tags"
+        description="Separated by commas. A search finds the entry by them: preferences, travel, c#."
+      >
+        <app-text-field
+          [value]="tagText()"
+          ariaLabel="Tags"
+          placeholder="None yet"
+          (valueChange)="typeTags($event)"
+          (blurred)="commitTags()"
+          (enter)="commitTags()"
+        />
+      </app-setting-row>
+
+      <app-setting-row label="Enabled" description="Switch off to keep the entry without using it.">
+        <app-toggle
+          [checked]="entry.enabled"
+          ariaLabel="Entry enabled"
+          (checkedChange)="setEnabled(entry.id, $event)"
+        />
+      </app-setting-row>
+
+      <app-setting-row label="Locked" description="Pete never changes or removes a locked entry.">
+        <app-toggle
+          [checked]="entry.locked"
+          ariaLabel="Entry locked"
+          (checkedChange)="setLocked(entry.id, $event)"
+        />
+      </app-setting-row>
+
+      @if (entry.author === 'pete') {
+        <app-setting-row
+          label="Is this right?"
+          description="Confirming it makes it certain, and stops it fading."
+        >
+          <app-button
+            variant="ghost"
+            [icon]="Icon.CHECK"
+            label="Confirm"
+            (click)="confirm(entry.id)"
+          />
+        </app-setting-row>
+      }
+
+      <div class="library__body">
+        <span class="library__body-label">Why</span>
+        <span class="library__body-description">
+          The reason, when known. A reason predicts things never discussed.
+        </span>
+        <app-textarea
+          [value]="entry.why"
+          [rows]="2"
+          ariaLabel="Why"
+          placeholder="Optional"
+          (valueChange)="setWhy(entry.id, $event)"
+        />
+      </div>
+
+      <div class="library__body library__body--grow">
+        <span class="library__body-label">What it says</span>
+        <span class="library__body-description">
+          Changes apply from each conversation's next message.
+        </span>
+        <app-markdown-field
+          [value]="entry.text"
+          [minRows]="6"
+          [fill]="true"
+          ariaLabel="Entry text"
+          (valueChange)="setText(entry.id, $event)"
+        />
+      </div>
+    </div>
+  } @else {
+    <div class="library__empty">
+      <app-icon class="library__empty-icon" [icon]="Icon.AI_PERSONA" />
+      <p class="library__empty-text">
+        {{ count() === 0 ? 'Your persona is empty' : 'Select an entry, or create one' }}
+      </p>
+      <p class="library__empty-hint">
+        Your persona is what Studio knows about you: how you like replies written, decisions you've
+        made, things you keep correcting. A short core is given to every conversation; memories are
+        looked up when they're relevant.
+      </p>
+      <p
+        class="persona__meter"
+        [class.persona__meter--over]="coreOver()"
+        data-testid="persona-core-meter"
+      >
+        Core: {{ service.coreLines() }} of {{ coreLimit }} lines
+        @if (coreOver()) {
+          — over the limit, so every conversation pays for more than it should.
+        }
+      </p>
+      @if (tags().length > 0) {
+        <div class="persona__tags" role="list" aria-label="Tags">
+          @for (item of tags(); track item.tag) {
+            <button
+              type="button"
+              role="listitem"
+              class="persona__tag"
+              [attr.aria-label]="'Show entries tagged ' + item.tag"
+              (click)="showTag(item.tag)"
+            >
+              #{{ item.tag }} <span class="persona__tag-count">{{ item.count }}</span>
+            </button>
+          }
+        </div>
+      }
+      <app-button-row align="start">
+        <app-button
+          variant="solid"
+          [icon]="Icon.PERSONA_MEMORY"
+          label="New Memory"
+          (click)="add('memory')"
+        />
+        <app-button
+          variant="ghost"
+          [icon]="Icon.PERSONA_CORE"
+          label="New Core Entry"
+          (click)="add('core')"
+        />
+        <app-button variant="ghost" [icon]="Icon.DOWNLOAD" label="Import" (click)="import()" />
+      </app-button-row>
+    </div>
+  }
+</div>
+
+<!-- Asked before anything is removed. The file is deleted, not moved to the Trash. -->
+<app-modal
+  [open]="deleteTarget() !== null"
+  [width]="26"
+  [frameless]="true"
+  ariaLabel="Delete persona entry"
+  (dismiss)="cancelDelete()"
+>
+  <ng-template appModalContent>
+    <h2 class="library__dialog-title">Delete {{ deleteTarget()?.name }}?</h2>
+    <p class="library__dialog-message">
+      Agents no longer know this about you. This can't be undone.
+    </p>
+    <app-button-row>
+      <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDelete()" />
+      <app-button variant="none" label="Cancel" (click)="cancelDelete()" />
+    </app-button-row>
+  </ng-template>
+</app-modal>
+
+<!-- The import's dialogs (#1263): an import into the persona brings no AI step, so only clashes and
+     the summary ask. -->
+<app-skill-import-modal />

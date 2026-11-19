@@ -458,9 +458,19 @@ export class Icon {
   public static readonly AI_MODELS: Icon = new Icon('ph-duotone ph-cpu');
 
   /**
-   * Gets the AI Manager's Prompt Profiles sub-view icon.
+   * Gets the AI Manager's Persona sub-view icon (#1514), which replaced Prompt Profiles.
    */
-  public static readonly AI_PROFILES: Icon = new Icon('ph-duotone ph-chat-text');
+  public static readonly AI_PERSONA: Icon = new Icon('ph-duotone ph-user-circle');
+
+  /**
+   * Gets the icon of a persona core entry: what every conversation is given.
+   */
+  public static readonly PERSONA_CORE: Icon = new Icon('ph-duotone ph-push-pin');
+
+  /**
+   * Gets the icon of a persona memory: what an agent looks up when it is relevant.
+   */
+  public static readonly PERSONA_MEMORY: Icon = new Icon('ph-duotone ph-brain');
 
   /**
    * Gets the AI Manager's Skills sub-view icon.
@@ -1738,12 +1748,6 @@ export class Icon {
    * Gets the keyboard settings-section icon (regular weight keeps the settings nav uniform).
    */
   public static readonly KEYBOARD: Icon = new Icon('ph ph-keyboard');
-
-  /**
-   * Gets the icon heading each prompt profile in the Prompt Profiles list (regular weight matches
-   * the accordion caret).
-   */
-  public static readonly PROMPT_PROFILE: Icon = new Icon('ph ph-chat-text');
 
   /**
    * Gets the icon heading each skill in the Skills list (regular weight matches the accordion caret).

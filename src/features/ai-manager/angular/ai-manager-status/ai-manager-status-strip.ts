@@ -27,7 +27,7 @@ interface StripSegments {
  *   (while any are), how many models are installed, how many are loaded in memory (while any are), and
  *   the disk the installed models use. The counts come from the runtime's server and are left out
  *   while it is not running; the disk figure is shown either way.
- * - **Prompt Profiles, Skills:** how many there are, and how many are switched on.
+ * - **Persona, Skills:** how many there are, and how many are switched on.
  *
  * Mounted by the status strip through the AI Manager view's own injector, from which it reads the
  * view itself.
@@ -60,8 +60,8 @@ export class AiManagerStatusStrip {
         const summary: ModelManagerSummary | null = this.view.modelSummary();
         return summary === null ? { leading: [], trailing: [] } : modelSegments(summary);
       }
-      case 'profiles':
-        return librarySegments('ai-profiles', 'profile', 'profiles', this.view.profileCounts());
+      case 'persona':
+        return librarySegments('ai-persona', 'entry', 'entries', this.view.personaCounts());
       case 'skills':
         return librarySegments('ai-skills', 'skill', 'skills', this.view.skillCounts());
       case null:

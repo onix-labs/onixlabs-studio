@@ -400,20 +400,20 @@ export const DOWNLOAD_MODEL: string = 'download_model';
 export const DELETE_MODEL: string = 'delete_model';
 
 /**
- * The AI Manager capability that lists the prompt profiles (#967).
+ * The AI Manager capability that lists the persona's entries (#967, #1514).
  */
-export const LIST_PROMPT_PROFILES: string = 'list_prompt_profiles';
+export const LIST_PERSONA: string = 'list_persona';
 
 /**
- * The AI Manager capability that creates or changes a prompt profile (#967). Gated: a profile is a
- * standing instruction every later agent obeys.
+ * The AI Manager capability that creates or changes a persona entry (#967, #1514). Gated: a core
+ * entry is a standing instruction every later agent obeys, and a memory is something they act on.
  */
-export const SAVE_PROMPT_PROFILE: string = 'save_prompt_profile';
+export const SAVE_PERSONA_ENTRY: string = 'save_persona_entry';
 
 /**
- * The AI Manager capability that deletes a prompt profile. Gated (#967).
+ * The AI Manager capability that deletes a persona entry. Gated (#967, #1514).
  */
-export const DELETE_PROMPT_PROFILE: string = 'delete_prompt_profile';
+export const DELETE_PERSONA_ENTRY: string = 'delete_persona_entry';
 
 /**
  * The AI Manager capability that lists the skill library (#967).

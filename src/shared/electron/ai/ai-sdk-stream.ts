@@ -20,9 +20,9 @@ import {
   READ_MACHINE_FACTS,
   DOWNLOAD_MODEL,
   DELETE_MODEL,
-  LIST_PROMPT_PROFILES,
-  SAVE_PROMPT_PROFILE,
-  DELETE_PROMPT_PROFILE,
+  LIST_PERSONA,
+  SAVE_PERSONA_ENTRY,
+  DELETE_PERSONA_ENTRY,
   LIST_SKILLS,
   READ_SKILL,
   LIST_SKILL_TAGS,
@@ -162,16 +162,16 @@ import {
 import {
   AI_MANAGER_PROMPT_APPENDIX,
   deleteModel,
-  deletePromptProfile,
+  deletePersonaEntry,
   deleteSkill,
   downloadModel,
   listLocalModels,
-  listPromptProfiles,
+  listPersona,
   listSkills,
   listSkillTags,
   readMachineFacts,
   readSkill,
-  savePromptProfile,
+  savePersonaEntry,
   saveSkill,
   searchModelCatalog,
 } from './ai-manager-tools';
@@ -1419,7 +1419,7 @@ export async function createMonitorTools(context: AgentRunContext): Promise<Tool
 const INSTRUCTION_PREVIEW_CHARS: number = 80;
 
 /**
- * Describes a prompt profile or skill being written, for the permission card and the audit record:
+ * Describes a persona entry or skill being written, for the permission card and the audit record:
  * its name, and the first line of what it will tell future agents — the part the user is being asked
  * to stand behind.
  * @param args The tool's input.
@@ -1432,8 +1432,9 @@ export function describeStandingInstruction(args: Record<string, unknown>): stri
       : typeof args['id'] === 'string'
         ? args['id']
         : 'unnamed';
-  const instructions: string =
-    typeof args['instructions'] === 'string' ? args['instructions'].trim() : '';
+  // A skill carries `instructions`, a persona entry `text`.
+  const written: unknown = args['instructions'] ?? args['text'];
+  const instructions: string = typeof written === 'string' ? written.trim() : '';
   if (instructions.length === 0) {
     return name;
   }
@@ -1446,7 +1447,7 @@ export function describeStandingInstruction(args: Record<string, unknown>): stri
 }
 
 /**
- * Builds the AI Manager's tools (#967): the local models, the prompt profiles and the skill library.
+ * Builds the AI Manager's tools (#967): the local models, the persona (#1514) and the skill library.
  * Chat mode reads only. Downloading, every delete, and writing a profile or a skill are gated. A
  * profile is a standing instruction every later agent obeys — on surfaces with file and shell tools —
  * and a skill is one an agent loads on its own judgement, so neither is written without the user
@@ -1486,11 +1487,11 @@ export async function createAiManagerTools(context: AgentRunContext): Promise<To
       inputSchema: z.object({}),
       execute: (): Promise<string> => Promise.resolve(readMachineFacts()),
     }),
-    [LIST_PROMPT_PROFILES]: tool({
+    [LIST_PERSONA]: tool({
       description:
-        "List the prompt profiles: each one's id, name, scope, whether it is on, and its instructions.",
+        "List the persona's entries: each one's id, name, layer (core or memory), text, reason, tags, scope, author, whether it is locked and whether it is on, with the core's size against its limit.",
       inputSchema: z.object({}),
-      execute: (): Promise<string> => listPromptProfiles(context),
+      execute: (): Promise<string> => listPersona(context),
     }),
     [LIST_SKILLS]: tool({
       description:
@@ -1532,13 +1533,24 @@ export async function createAiManagerTools(context: AgentRunContext): Promise<To
         deleteModel(context, args.name),
       ),
     }),
-    [SAVE_PROMPT_PROFILE]: tool({
+    [SAVE_PERSONA_ENTRY]: tool({
       description:
-        'Create a prompt profile, or change one by its id. Anything not named is left as it was.',
+        'Create a persona entry, or change one by its id. Anything not named is left as it was. A core entry is given to every agent at the start of every session, so keep the core short; anything that applies only sometimes is a memory.',
       inputSchema: z.object({
-        id: z.string().optional().describe('The profile to change; omit to create one.'),
-        name: z.string().optional().describe('Its display name.'),
-        instructions: z.string().optional().describe('The standing instructions, in Markdown.'),
+        id: z.string().optional().describe('The entry to change; omit to create one.'),
+        name: z.string().optional().describe('Its short title.'),
+        text: z.string().optional().describe('What it says about the user, in Markdown.'),
+        why: z.string().optional().describe('Why it is true, when known.'),
+        layer: z
+          .enum(['core', 'memory'])
+          .optional()
+          .describe(
+            'core: always given to agents; memory: looked up when relevant. New entries default to memory.',
+          ),
+        tags: z
+          .array(z.string())
+          .optional()
+          .describe('Tags a search finds it by, e.g. preferences, travel, c#.'),
         surfaces: z
           .array(
             z.enum([
@@ -1562,16 +1574,16 @@ export async function createAiManagerTools(context: AgentRunContext): Promise<To
       }),
       execute: gated(
         context,
-        SAVE_PROMPT_PROFILE,
-        (args: Record<string, unknown>): Promise<string> => savePromptProfile(context, args),
+        SAVE_PERSONA_ENTRY,
+        (args: Record<string, unknown>): Promise<string> => savePersonaEntry(context, args),
         describeStandingInstruction,
       ),
     }),
-    [DELETE_PROMPT_PROFILE]: tool({
-      description: 'Delete a prompt profile by its id.',
-      inputSchema: z.object({ id: z.string().min(1).describe("The profile's id.") }),
-      execute: gated(context, DELETE_PROMPT_PROFILE, (args: { id: string }): Promise<string> =>
-        deletePromptProfile(context, args.id),
+    [DELETE_PERSONA_ENTRY]: tool({
+      description: 'Delete a persona entry by its id.',
+      inputSchema: z.object({ id: z.string().min(1).describe("The entry's id.") }),
+      execute: gated(context, DELETE_PERSONA_ENTRY, (args: { id: string }): Promise<string> =>
+        deletePersonaEntry(context, args.id),
       ),
     }),
     [SAVE_SKILL]: tool({

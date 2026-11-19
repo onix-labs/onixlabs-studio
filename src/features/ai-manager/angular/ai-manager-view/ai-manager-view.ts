@@ -13,14 +13,14 @@ import {
   AiManagerNavigation,
   AiManagerSection,
 } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
-import { PromptProfiles } from '@shared/angular/services/prompt-profiles/prompt-profiles';
+import { Persona } from '@shared/angular/services/persona/persona';
 import { Skills } from '@shared/angular/services/skills/skills';
 import {
   createViewInjectorRegistrar,
   ViewInjectorRegistrar,
 } from '@shared/angular/services/view-injectors/view-injector-registration';
 import { ModelManagerSummary, ModelManagerView } from '../model-manager-view/model-manager-view';
-import { PromptProfilesSection } from '../prompt-profiles/prompt-profiles';
+import { PersonaSection } from '../persona/persona';
 import { SkillLibrarySection } from '../skill-library/skill-library';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
@@ -60,8 +60,8 @@ export interface LibraryCounts {
 }
 
 /**
- * The AI Manager tab (#948): the AI things the user gets and looks after — local models, prompt
- * profiles and skills — in one tool. The ribbon chooses the sub-view, which lives in
+ * The AI Manager tab (#948): the AI things the user gets and looks after — local models, the persona
+ * and skills — in one tool. The ribbon chooses the sub-view, which lives in
  * {@link AiManagerNavigation} so Settings and the welcome screen can open the tool at one; each
  * sub-view lays out its own side panel. Providers, which are configuration, stay in Settings.
  */
@@ -71,7 +71,7 @@ export interface LibraryCounts {
     AiManagerSidebar,
     AppIcon,
     ModelManagerView,
-    PromptProfilesSection,
+    PersonaSection,
     SkillLibrarySection,
     Panel,
     PanelLayout,
@@ -150,9 +150,9 @@ export class AiManagerView implements OnInit {
   private readonly navigation: AiManagerNavigation = inject(AiManagerNavigation);
 
   /**
-   * Holds the prompt profiles, counted for the status strip.
+   * Holds the persona, counted for the status strip.
    */
-  private readonly profiles: PromptProfiles = inject(PromptProfiles);
+  private readonly persona: Persona = inject(Persona);
 
   /**
    * Holds the skill library, counted for the status strip.
@@ -177,10 +177,10 @@ export class AiManagerView implements OnInit {
   );
 
   /**
-   * Gets how many prompt profiles there are, and how many of them are switched on.
+   * Gets how many persona entries there are, and how many of them are switched on.
    */
-  public readonly profileCounts: Signal<LibraryCounts> = computed((): LibraryCounts =>
-    countsOf(this.profiles.profiles()),
+  public readonly personaCounts: Signal<LibraryCounts> = computed((): LibraryCounts =>
+    countsOf(this.persona.entries()),
   );
 
   /**

@@ -24,11 +24,11 @@ describe('AiManagerNavigation', () => {
   it('begin_opensWhereItWasLeft', () => {
     navigation.show('skills');
     navigation.collapse();
-    navigation.show('profiles');
+    navigation.show('persona');
 
     navigation.begin();
 
-    expect(navigation.section()).toBe('profiles');
+    expect(navigation.section()).toBe('persona');
   });
 
   it('begin_leavesNothingOpen_whenItWasLeftThatWay', () => {
@@ -42,11 +42,11 @@ describe('AiManagerNavigation', () => {
 
   it('begin_keepsTheSectionItWasOpenedAt', () => {
     navigation.show('skills');
-    navigation.open('profiles');
+    navigation.open('persona');
 
     navigation.begin();
 
-    expect(navigation.section()).toBe('profiles');
+    expect(navigation.section()).toBe('persona');
   });
 
   it('collapse_leavesNothingOpen', () => {
@@ -64,7 +64,7 @@ describe('AiManagerNavigation', () => {
   });
 
   it('open_opensTheTabAtTheSection_andReusesItWhenOpenAgain', () => {
-    navigation.open('profiles');
+    navigation.open('persona');
     navigation.open('skills');
 
     expect(navigation.section()).toBe('skills');

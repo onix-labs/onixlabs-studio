@@ -1,9 +1,9 @@
 import { promises as fs, Dirent, Stats } from 'node:fs';
 import { basename, dirname, join, posix, relative, sep } from 'node:path';
 import { GLOBAL_SCOPE } from '@shared/api/ai-types';
-import { profileIdFor, slugify } from '@shared/api/prompt-profile-channels';
-import { parseProfileFile } from '@shared/api/prompt-profile-file';
-import type { PromptProfile } from '@shared/api/prompt-profile-channels';
+import { personaIdFor, type PersonaEntry } from '@shared/api/persona-channels';
+import { parseEntryFile } from '@shared/api/persona-entry-file';
+import { slugify } from '@shared/api/library-names';
 import {
   SKILL_DESCRIPTION_TARGET,
   SKILL_FILE,
@@ -88,9 +88,9 @@ export interface ScannedFolder {
   readonly entries: readonly ScannedEntry[];
 
   /**
-   * Gets the profiles found in an export.
+   * Gets the persona entries found in an export.
    */
-  readonly profiles: readonly PromptProfile[];
+  readonly persona: readonly PersonaEntry[];
 
   /**
    * Gets whether the scan stopped at {@link FILE_LIMIT}.
@@ -124,18 +124,18 @@ export async function scanForSkills(path: string): Promise<ScannedFolder> {
       return {
         kind: 'restore',
         entries: entry === null ? [] : [entry],
-        profiles: [],
+        persona: [],
         truncated: false,
       };
     }
     const entry: ScannedEntry = await readMarkdown(root, path);
-    return { kind: 'convert', entries: [entry], profiles: [], truncated: false };
+    return { kind: 'convert', entries: [entry], persona: [], truncated: false };
   }
   if (await isExport(path)) {
     return {
       kind: 'restore',
       entries: await readSkillFolders(join(path, 'skills'), 'skills/'),
-      profiles: await readProfiles(join(path, 'profiles')),
+      persona: await readExportPersona(path),
       truncated: false,
     };
   }
@@ -144,13 +144,13 @@ export async function scanForSkills(path: string): Promise<ScannedFolder> {
     return {
       kind: 'restore',
       entries: entry === null ? [] : [entry],
-      profiles: [],
+      persona: [],
       truncated: false,
     };
   }
   const folders: readonly ScannedEntry[] = await readSkillFolders(path, '');
   if (folders.length > 0) {
-    return { kind: 'restore', entries: folders, profiles: [], truncated: false };
+    return { kind: 'restore', entries: folders, persona: [], truncated: false };
   }
   const { files, truncated } = await findMarkdown(path);
   const entries: ScannedEntry[] = [];
@@ -162,7 +162,7 @@ export async function scanForSkills(path: string): Promise<ScannedFolder> {
         : await readMarkdown(path, file),
     );
   }
-  return { kind: 'convert', entries, profiles: [], truncated };
+  return { kind: 'convert', entries, persona: [], truncated };
 }
 
 /**
@@ -210,7 +210,7 @@ export async function scanSelection(paths: readonly string[]): Promise<ScannedFo
   const entries: ScannedEntry[] = [...found.values()].sort(
     (a: ScannedEntry, b: ScannedEntry): number => a.source.localeCompare(b.source),
   );
-  return { kind: 'convert', entries, profiles: [], truncated };
+  return { kind: 'convert', entries, persona: [], truncated };
 }
 
 /**
@@ -234,27 +234,30 @@ export function commonFolder(paths: readonly string[]): string {
 }
 
 /**
- * Scans what the user picked for prompt profiles (#1263): each Markdown file is one profile, named by
- * its frontmatter, else its title, else its file name; a Studio export contributes its profiles.
- * Repository files (a README, a licence) are passed over. Ids are made unique within the pick.
+ * Scans what the user picked for persona entries (#1263, #1514): each Markdown file is one entry, named
+ * by its frontmatter, else its title, else its file name; a Studio export contributes its persona (or,
+ * from an older export, its prompt profiles). A file with no persona frontmatter — a prompt profile,
+ * or plain Markdown — reads as an entry the user wrote, in the core, locked, which is what a prompt
+ * profile becomes. Repository files (a README, a licence) are passed over. Ids are made unique within
+ * the pick.
  * @param paths The absolute paths picked.
- * @returns Returns the profiles, in path order.
+ * @returns Returns the entries, in path order.
  */
-export async function scanProfiles(paths: readonly string[]): Promise<readonly PromptProfile[]> {
+export async function scanPersona(paths: readonly string[]): Promise<readonly PersonaEntry[]> {
   const files: string[] = [];
-  const exported: PromptProfile[] = [];
+  const exported: PersonaEntry[] = [];
   for (const path of paths) {
     const stat: Stats = await fs.stat(path);
     if (stat.isFile()) {
       files.push(path);
     } else if (await isExport(path)) {
-      exported.push(...(await readProfiles(join(path, 'profiles'))));
+      exported.push(...(await readExportPersona(path)));
     } else if (stat.isDirectory()) {
       files.push(...(await findMarkdown(path)).files);
     }
   }
-  const taken: string[] = exported.map((profile: PromptProfile): string => profile.id);
-  const profiles: PromptProfile[] = [...exported];
+  const taken: string[] = exported.map((entry: PersonaEntry): string => entry.id);
+  const entries: PersonaEntry[] = [...exported];
   for (const file of [...new Set(files)].sort()) {
     const stem: string = basename(file).replace(/\.(md|markdown)$/i, '');
     if (
@@ -264,17 +267,17 @@ export async function scanProfiles(paths: readonly string[]): Promise<readonly P
       continue;
     }
     const text: string = await fs.readFile(file, 'utf8');
-    const parsed: PromptProfile = parseProfileFile(stem, text);
-    const titled: string | null = parsed.name === stem ? titleOf(parsed.instructions) : null;
+    const parsed: PersonaEntry = parseEntryFile(stem, text);
+    const titled: string | null = parsed.name === stem ? titleOf(parsed.text) : null;
     const name: string = titled ?? parsed.name;
-    if (parsed.instructions.trim().length === 0) {
+    if (parsed.text.trim().length === 0) {
       continue;
     }
-    const id: string = profileIdFor(name, taken);
+    const id: string = personaIdFor(name, taken);
     taken.push(id);
-    profiles.push({ ...parsed, id, name });
+    entries.push({ ...parsed, id, name });
   }
-  return profiles;
+  return entries;
 }
 
 /**
@@ -792,19 +795,39 @@ async function bundledFiles(folder: string): Promise<readonly string[]> {
 }
 
 /**
- * Reads the profile files of an export.
- * @param folder The export's `profiles` folder.
- * @returns Returns the profiles, in id order.
+ * Reads the persona of an export: its `persona` folder, and the `profiles` folder an export made
+ * before personas carries, whose files read as entries. Where both name the same id, the persona's
+ * entry wins.
+ * @param exportFolder The export's folder.
+ * @returns Returns the entries, in id order.
  */
-async function readProfiles(folder: string): Promise<readonly PromptProfile[]> {
-  let entries: Dirent[];
+async function readExportPersona(exportFolder: string): Promise<readonly PersonaEntry[]> {
+  const byId: Map<string, PersonaEntry> = new Map<string, PersonaEntry>();
+  for (const entry of await readEntryFolder(join(exportFolder, 'profiles'))) {
+    byId.set(entry.id, entry);
+  }
+  for (const entry of await readEntryFolder(join(exportFolder, 'persona'))) {
+    byId.set(entry.id, entry);
+  }
+  return [...byId.values()].sort((a: PersonaEntry, b: PersonaEntry): number =>
+    a.id.localeCompare(b.id),
+  );
+}
+
+/**
+ * Reads the entry files directly inside a folder.
+ * @param folder The folder.
+ * @returns Returns the entries, unsorted.
+ */
+async function readEntryFolder(folder: string): Promise<readonly PersonaEntry[]> {
+  let children: Dirent[];
   try {
-    entries = await fs.readdir(folder, { withFileTypes: true });
+    children = await fs.readdir(folder, { withFileTypes: true });
   } catch {
     return [];
   }
-  const profiles: PromptProfile[] = [];
-  for (const child of entries) {
+  const entries: PersonaEntry[] = [];
+  for (const child of children) {
     if (!child.isFile() || !child.name.endsWith('.md')) {
       continue;
     }
@@ -812,9 +835,9 @@ async function readProfiles(folder: string): Promise<readonly PromptProfile[]> {
     if (id.length === 0) {
       continue;
     }
-    profiles.push(parseProfileFile(id, await fs.readFile(join(folder, child.name), 'utf8')));
+    entries.push(parseEntryFile(id, await fs.readFile(join(folder, child.name), 'utf8')));
   }
-  return profiles.sort((a: PromptProfile, b: PromptProfile): number => a.id.localeCompare(b.id));
+  return entries;
 }
 
 /**

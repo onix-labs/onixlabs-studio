@@ -26,7 +26,8 @@ import { AgentConversationStore } from './ai/agent-conversation-store';
 import { useDevelopmentUserData } from './development-user-data';
 import { AgentCategoryStore } from './ai/agent-category-store';
 import { AiManager } from './ai/ai-manager';
-import { PromptProfileLibrary } from './ai/prompt-profiles/prompt-profile-library';
+import { PersonaHandlers } from './ai/persona/persona-handlers';
+import { PersonaLibrary } from './ai/persona/persona-library';
 import { LibraryTransfer } from './ai/skills/library-transfer';
 import { LibraryTransferHandlers } from './ai/skills/library-transfer-handlers';
 import { SkillHandlers } from './ai/skills/skill-handlers';
@@ -488,18 +489,24 @@ class Program {
   );
 
   /**
-   * Owns the user's prompt profiles (#1263): a folder of Markdown files beside the skill library.
+   * Owns the user's persona (#1513): a folder of Markdown entries beside the skill library. Its first
+   * read converts the prompt profiles that came before it (#1263), whose folder is left as it was.
    */
-  private readonly promptProfileLibrary: PromptProfileLibrary = new PromptProfileLibrary(
+  private readonly personaLibrary: PersonaLibrary = new PersonaLibrary(
+    path.join(app.getPath('userData'), 'persona'),
     path.join(app.getPath('userData'), 'prompt-profiles'),
   );
 
   /**
-   * Serves the prompt-profile library, and imports into and exports out of both libraries (#1263).
+   * Serves the persona to the renderer.
+   */
+  private readonly personaHandlers: PersonaHandlers = new PersonaHandlers(this.personaLibrary);
+
+  /**
+   * Imports into and exports out of the skill library and the persona (#1263).
    */
   private readonly libraryTransferHandlers: LibraryTransferHandlers = new LibraryTransferHandlers(
-    this.promptProfileLibrary,
-    new LibraryTransfer(this.skillLibrary, this.promptProfileLibrary),
+    new LibraryTransfer(this.skillLibrary, this.personaLibrary),
     (): BrowserWindow | null => this.windows.main(),
   );
 
@@ -1318,6 +1325,7 @@ class Program {
     this.directoryWatcher.register();
     this.aiManager.register();
     this.skillHandlers.register();
+    this.personaHandlers.register();
     this.libraryTransferHandlers.register();
     this.agentConversationStore.register();
     this.agentCategoryStore.register();

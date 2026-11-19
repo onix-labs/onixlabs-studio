@@ -272,9 +272,9 @@ export interface AgentRunContext {
   readonly language: string | null;
 
   /**
-   * Gets the user's standing system-prompt text for this run, or empty when no prompt profile
-   * matches (#300). Appended after Studio's own instructions by `promptForSurface`, never in place
-   * of them.
+   * Gets the user's standing system-prompt text for this run — the persona's core (#1514), which
+   * replaced prompt profiles (#300) — or empty when no core entry matches. Appended after Studio's
+   * own instructions by `promptForSurface`, never in place of them.
    */
   readonly systemPromptExtra: string;
 

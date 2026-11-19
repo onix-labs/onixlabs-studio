@@ -121,7 +121,7 @@ describe('AiManagerRibbon (#948)', () => {
     mount('skills');
 
     expect(labels()).not.toContain('Local Models');
-    expect(labels()).not.toContain('Prompt Profiles');
+    expect(labels()).not.toContain('Persona');
     expect(labels()).not.toContain('Skills');
   });
 
@@ -158,22 +158,26 @@ describe('AiManagerRibbon (#948)', () => {
     expect(absent.calls).toEqual(['install']);
   });
 
-  it('profiles_newProfile_reachesTheShownSubView', () => {
+  it('persona_newMemoryAndNewCoreEntry_reachTheShownSubView', () => {
     const add: Mock<() => void> = vi.fn<() => void>();
-    const handler: AiLibraryCommandHandler = { add };
-    TestBed.inject(AiLibraryCommands).register('profiles', handler);
-    mount('profiles');
+    const addCore: Mock<() => void> = vi.fn<() => void>();
+    const handler: AiLibraryCommandHandler = { add, addCore };
+    TestBed.inject(AiLibraryCommands).register('persona', handler);
+    mount('persona');
 
     expect(labels()).toEqual([
-      'New Profile',
+      'New Memory',
+      'New Core Entry',
       'Refresh',
       'Import',
       'Export',
       'Open Folder',
       'Agent',
     ]);
-    press('New Profile');
+    press('New Memory');
+    press('New Core Entry');
     expect(add).toHaveBeenCalledTimes(1);
+    expect(addCore).toHaveBeenCalledTimes(1);
   });
 
   it('skills_newAndImportReachTheSubView_andTheLibraryButtonsActOnItDirectly', () => {
@@ -196,7 +200,7 @@ describe('AiManagerRibbon (#948)', () => {
 
   it('agent_isTheLastButton_andTogglesTheDockedAgent', () => {
     // #967: the Agent group goes last on every tool view's ribbon.
-    mount('profiles');
+    mount('persona');
     const state: AiManagerAgentPanelState = TestBed.inject(AiManagerAgentPanelState);
     expect(labels().at(-1)).toBe('Agent');
     expect(state.visible()).toBe(false);

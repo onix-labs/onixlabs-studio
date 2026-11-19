@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import type { PromptProfile, PromptProfileListing } from '@shared/api/prompt-profile-channels';
-import { serializeProfileFile } from '@shared/api/prompt-profile-file';
+import type { PersonaEntry, PersonaListing } from '@shared/api/persona-channels';
+import { serializeEntryFile } from '@shared/api/persona-entry-file';
 import { SKILL_FILE, SKILL_NAME_PATTERN, type Skill } from '@shared/api/skill-channels';
 import { parseSkillFile, serializeSkillFile, skillProblem } from '@shared/api/skill-file';
 import {
@@ -16,11 +16,11 @@ import {
   type SkillImportResult,
 } from '@shared/api/skill-import-channels';
 import { logger } from '@shared/electron/logger';
-import type { PromptProfileLibrary } from '../prompt-profiles/prompt-profile-library';
+import type { PersonaLibrary } from '../persona/persona-library';
 import {
   rewriteSkillLinks,
   commonFolder,
-  scanProfiles,
+  scanPersona,
   scanSelection,
   type ScannedEntry,
   type ScannedFolder,
@@ -49,7 +49,7 @@ interface HeldPlan {
 const HELD_PLAN_LIMIT: number = 4;
 
 /**
- * Moves skills and prompt profiles into and out of Studio's libraries (#1263).
+ * Moves skills and persona entries into and out of Studio's libraries (#1263, #1514).
  *
  * 🔑 A commit is all or nothing. Every accepted skill is written to a staging folder beside the
  * library first; only when all of them are there are replaced skills moved aside and the staged ones
@@ -65,11 +65,11 @@ export class LibraryTransfer {
   /**
    * Initializes a new instance of the {@link LibraryTransfer} class.
    * @param skills The skill library.
-   * @param profiles The prompt-profile library.
+   * @param persona The persona store.
    */
   public constructor(
     private readonly skills: SkillLibrary,
-    private readonly profiles: PromptProfileLibrary,
+    private readonly persona: PersonaLibrary,
   ) {}
 
   /**
@@ -85,7 +85,7 @@ export class LibraryTransfer {
     const existingSkills: readonly string[] = (await this.skills.list()).map(
       (skill: Skill): string => skill.name,
     );
-    const listing: PromptProfileListing = await this.profiles.list();
+    const listing: PersonaListing = await this.persona.list();
     const plan: SkillImportPlan = {
       id: randomUUID(),
       root: path,
@@ -99,14 +99,14 @@ export class LibraryTransfer {
         bundled: entry.bundled,
         links: entry.links,
       })),
-      profiles: found.profiles,
+      persona: found.persona,
       existingSkills,
-      existingProfiles: listing.profiles.map((profile: PromptProfile): string => profile.id),
+      existingPersona: listing.entries.map((entry: PersonaEntry): string => entry.id),
     };
     this.hold(plan, found.entries);
     logger.info(
       'LibraryTransfer.scan',
-      `Scanned ${path}: ${plan.kind}, ${plan.entries.length} skill candidate(s), ${plan.profiles.length} profile(s)${found.truncated ? ' (truncated)' : ''}`,
+      `Scanned ${path}: ${plan.kind}, ${plan.entries.length} skill candidate(s), ${plan.persona.length} persona entries${found.truncated ? ' (truncated)' : ''}`,
     );
     return plan;
   }
@@ -131,22 +131,22 @@ export class LibraryTransfer {
   }
 
   /**
-   * Scans what the user picked for prompt profiles into a plan with no skills, and holds it.
+   * Scans what the user picked for persona entries into a plan with no skills, and holds it.
    * @param paths The absolute paths picked.
    * @returns Returns the plan.
    */
-  public async scanForProfiles(paths: readonly string[]): Promise<SkillImportPlan> {
-    const profiles: readonly PromptProfile[] = await scanProfiles(paths);
-    const listing: PromptProfileListing = await this.profiles.list();
+  public async scanForPersona(paths: readonly string[]): Promise<SkillImportPlan> {
+    const persona: readonly PersonaEntry[] = await scanPersona(paths);
+    const listing: PersonaListing = await this.persona.list();
     return this.hold(
       {
         id: randomUUID(),
         root: paths.length === 1 ? paths[0] : commonFolder(paths),
         kind: 'restore',
         entries: [],
-        profiles,
+        persona,
         existingSkills: [],
-        existingProfiles: listing.profiles.map((profile: PromptProfile): string => profile.id),
+        existingPersona: listing.entries.map((entry: PersonaEntry): string => entry.id),
       },
       [],
     );
@@ -169,7 +169,7 @@ export class LibraryTransfer {
     const held: HeldPlan | undefined = this.plans.get(commit.planId);
     const failed: (error: string) => SkillImportResult = (error: string): SkillImportResult => ({
       skills: 0,
-      profiles: 0,
+      persona: 0,
       linksRewritten: 0,
       error,
     });
@@ -191,7 +191,7 @@ export class LibraryTransfer {
     const backup: string = `${root}.backup-${commit.planId}`;
     const movedIn: string[] = [];
     const movedAside: string[] = [];
-    const profileBackups: Map<string, string | null> = new Map<string, string | null>();
+    const entryBackups: Map<string, string | null> = new Map<string, string | null>();
     let linksRewritten: number = 0;
     try {
       await fs.mkdir(staging, { recursive: true });
@@ -234,17 +234,17 @@ export class LibraryTransfer {
         await fs.rename(join(staging, accepted.draft.name), target);
         movedIn.push(accepted.draft.name);
       }
-      for (const accepted of commit.profiles) {
-        const path: string = this.profiles.fileOf(accepted.profile.id)!;
-        profileBackups.set(path, await readOrNull(path));
-        const error: string | null = await this.profiles.save(accepted.profile);
+      for (const accepted of commit.persona) {
+        const path: string = this.persona.fileOf(accepted.entry.id)!;
+        entryBackups.set(path, await readOrNull(path));
+        const error: string | null = await this.persona.save(accepted.entry);
         if (error !== null) {
           throw new Error(error);
         }
       }
     } catch (error: unknown) {
       logger.warn('LibraryTransfer.commit', 'Import failed; rolling back', error);
-      await this.rollBack(root, backup, movedIn, movedAside, profileBackups);
+      await this.rollBack(root, backup, movedIn, movedAside, entryBackups);
       await fs.rm(staging, { recursive: true, force: true });
       return failed('The import could not be written, so nothing was changed.');
     }
@@ -253,18 +253,18 @@ export class LibraryTransfer {
     this.plans.delete(commit.planId);
     logger.info(
       'LibraryTransfer.commit',
-      `Imported ${commit.skills.length} skill(s), ${commit.profiles.length} profile(s), ${linksRewritten} link(s) rewritten`,
+      `Imported ${commit.skills.length} skill(s), ${commit.persona.length} persona entries, ${linksRewritten} link(s) rewritten`,
     );
     return {
       skills: commit.skills.length,
-      profiles: commit.profiles.length,
+      persona: commit.persona.length,
       linksRewritten,
       error: null,
     };
   }
 
   /**
-   * Exports both libraries into a new folder inside the one chosen.
+   * Exports the skill library and the persona into a new folder inside the one chosen.
    * @param parent The folder chosen.
    * @param now The export's time, for the folder name and manifest.
    * @returns Returns the folder written and the counts.
@@ -276,17 +276,17 @@ export class LibraryTransfer {
       folder = join(parent, `ONIXLabs Studio AI Library ${stamp} (${attempt})`);
     }
     const skills: readonly Skill[] = await this.skills.list();
-    const listing: PromptProfileListing = await this.profiles.list();
+    const listing: PersonaListing = await this.persona.list();
     try {
       await fs.mkdir(join(folder, 'skills'), { recursive: true });
-      await fs.mkdir(join(folder, 'profiles'), { recursive: true });
+      await fs.mkdir(join(folder, 'persona'), { recursive: true });
       for (const skill of skills) {
         await fs.cp(skill.directory, join(folder, 'skills', skill.name), { recursive: true });
       }
-      for (const profile of listing.profiles) {
+      for (const entry of listing.entries) {
         await fs.writeFile(
-          join(folder, 'profiles', `${profile.id}.md`),
-          serializeProfileFile(profile),
+          join(folder, 'persona', `${entry.id}.md`),
+          serializeEntryFile(entry),
           'utf8',
         );
       }
@@ -298,7 +298,7 @@ export class LibraryTransfer {
             version: LIBRARY_EXPORT_VERSION,
             exported: now.toISOString(),
             skills: skills.length,
-            profiles: listing.profiles.length,
+            persona: listing.entries.length,
           },
           null,
           2,
@@ -311,15 +311,15 @@ export class LibraryTransfer {
       return {
         folder: null,
         skills: 0,
-        profiles: 0,
+        persona: 0,
         error: 'The library could not be exported there.',
       };
     }
     logger.info(
       'LibraryTransfer.export',
-      `Exported ${skills.length} skill(s), ${listing.profiles.length} profile(s) to ${folder}`,
+      `Exported ${skills.length} skill(s), ${listing.entries.length} persona entries to ${folder}`,
     );
-    return { folder, skills: skills.length, profiles: listing.profiles.length, error: null };
+    return { folder, skills: skills.length, persona: listing.entries.length, error: null };
   }
 
   /**
@@ -348,21 +348,21 @@ export class LibraryTransfer {
       names.add(accepted.draft.name);
     }
     const ids: Set<string> = new Set<string>();
-    const existingProfiles: ReadonlySet<string> = new Set(held.plan.existingProfiles);
-    for (const accepted of commit.profiles) {
+    const existingPersona: ReadonlySet<string> = new Set(held.plan.existingPersona);
+    for (const accepted of commit.persona) {
       if (
-        this.profiles.fileOf(accepted.profile.id) === null ||
-        !SKILL_NAME_PATTERN.test(accepted.profile.id)
+        this.persona.fileOf(accepted.entry.id) === null ||
+        !SKILL_NAME_PATTERN.test(accepted.entry.id)
       ) {
-        return `The profile id "${accepted.profile.id}" is not a valid file name.`;
+        return `The persona entry id "${accepted.entry.id}" is not a valid file name.`;
       }
-      if (ids.has(accepted.profile.id)) {
-        return `Two profiles would both be filed as "${accepted.profile.id}".`;
+      if (ids.has(accepted.entry.id)) {
+        return `Two persona entries would both be filed as "${accepted.entry.id}".`;
       }
-      if (existingProfiles.has(accepted.profile.id) && !accepted.replace) {
-        return `A profile filed as "${accepted.profile.id}" already exists.`;
+      if (existingPersona.has(accepted.entry.id) && !accepted.replace) {
+        return `A persona entry filed as "${accepted.entry.id}" already exists.`;
       }
-      ids.add(accepted.profile.id);
+      ids.add(accepted.entry.id);
     }
     return null;
   }
@@ -373,14 +373,14 @@ export class LibraryTransfer {
    * @param backup Where replaced skills were moved aside to.
    * @param movedIn The skills moved into the library.
    * @param movedAside The skills moved aside.
-   * @param profileBackups The profile files written, with what they held before (null when new).
+   * @param entryBackups The persona entry files written, with what they held before (null when new).
    */
   private async rollBack(
     root: string,
     backup: string,
     movedIn: readonly string[],
     movedAside: readonly string[],
-    profileBackups: ReadonlyMap<string, string | null>,
+    entryBackups: ReadonlyMap<string, string | null>,
   ): Promise<void> {
     for (const name of movedIn) {
       await fs.rm(join(root, name), { recursive: true, force: true }).catch((): void => undefined);
@@ -391,11 +391,11 @@ export class LibraryTransfer {
       });
     }
     await fs.rm(backup, { recursive: true, force: true }).catch((): void => undefined);
-    for (const [path, previous] of profileBackups) {
+    for (const [path, previous] of entryBackups) {
       await (
         previous === null ? fs.rm(path, { force: true }) : fs.writeFile(path, previous, 'utf8')
       ).catch((error: unknown): void => {
-        logger.error('LibraryTransfer.rollBack', `Could not restore profile ${path}`, error);
+        logger.error('LibraryTransfer.rollBack', `Could not restore persona entry ${path}`, error);
       });
     }
   }
