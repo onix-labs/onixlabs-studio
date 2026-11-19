@@ -70,6 +70,10 @@ import type {
   SelectAllScope,
   WorkspaceTexture,
 } from './settings';
+import {
+  DEFAULT_FILE_NESTING_RULES,
+  type FileNestingRule,
+} from '@shared/angular/services/workspace/file-nesting';
 import { isSettingsOwned } from './settings-schema';
 import type { SectionDef, SettingDef, SettingsOwnedDef } from './settings-schema';
 
@@ -582,6 +586,7 @@ export interface SettingsValues {
   readonly 'workspaces.sortOrder': ExplorerSortOrder;
   readonly 'workspaces.collapsedFolderSeparator': CollapsedFolderSeparator;
   readonly 'workspaces.openFilesWith': ExplorerOpenFilesWith;
+  readonly 'workspaces.fileNesting': readonly FileNestingRule[];
   readonly 'workspaces.confirmBeforeDeleting': boolean;
   readonly 'workspaces.moveToTrash': boolean;
   readonly 'workspaces.projectScanDepth': number;
@@ -1570,6 +1575,16 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'double',
+      },
+      {
+        key: 'workspaces.fileNesting',
+        title: 'File Nesting',
+        description:
+          'Which files gather others beneath them, when an explorer nests files: the parts of a ' +
+          'partial class under the class, a code-behind under its page. Turned on in each ' +
+          "explorer's Options.",
+        control: { kind: 'custom', component: 'file-nesting' },
+        default: DEFAULT_FILE_NESTING_RULES,
       },
       {
         key: 'workspaces.confirmBeforeDeleting',

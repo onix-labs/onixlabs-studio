@@ -10,8 +10,10 @@ import type {
 } from '@shared/angular/services/workspace-edit/workspace-edit';
 import { WorkspaceEditApplier } from '@shared/angular/services/workspace-edit/workspace-edit-applier';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { EntryRename } from './entry-rename';
 import { RenameConfirmation } from './rename-confirmation';
+import { TypeRename } from './type-rename';
 
 /**
  * Edits to two files, as a server answers for a file imported twice.
@@ -33,6 +35,9 @@ describe('EntryRename (#1207)', () => {
   let edits: Mock<LspClient['fileRenameEdits']>;
   let confirm: Mock<RenameConfirmation['ask']>;
   let save: Mock<Documents['save']>;
+  let typeEdits: Mock<TypeRename['editsFor']>;
+  let notified: string[];
+  let renames: Map<string, FileOperationResult>;
 
   /**
    * Builds the service with its collaborators faked.
@@ -47,9 +52,9 @@ describe('EntryRename (#1207)', () => {
         {
           provide: Workspace,
           useValue: {
-            rename: (_path: string, name: string): Promise<FileOperationResult> => {
+            rename: (path: string, name: string): Promise<FileOperationResult> => {
               order.push(`rename ${name}`);
-              return Promise.resolve(result);
+              return Promise.resolve(renames.get(path) ?? result);
             },
           },
         },
@@ -72,6 +77,15 @@ describe('EntryRename (#1207)', () => {
           },
         },
         { provide: Settings, useValue: { get: (key: string): boolean => settings[key] } },
+        { provide: TypeRename, useValue: { editsFor: typeEdits } },
+        {
+          provide: Notifications,
+          useValue: {
+            notify: (request: { title: string }): void => {
+              notified.push(request.title);
+            },
+          },
+        },
       ],
     });
     return TestBed.inject(EntryRename);
@@ -86,6 +100,9 @@ describe('EntryRename (#1207)', () => {
     edits = vi.fn<LspClient['fileRenameEdits']>().mockResolvedValue({ files: [], refused: [] });
     confirm = vi.fn<RenameConfirmation['ask']>().mockResolvedValue(true);
     save = vi.fn<Documents['save']>().mockResolvedValue(true);
+    typeEdits = vi.fn<TypeRename['editsFor']>().mockResolvedValue(null);
+    notified = [];
+    renames = new Map<string, FileOperationResult>();
   });
 
   it('rename_withNothingFollowing_justRenames', async () => {
@@ -170,5 +187,86 @@ describe('EntryRename (#1207)', () => {
     await build().rename('/ws/old.ts', 'new.ts');
 
     expect(save).not.toHaveBeenCalled();
+  });
+
+  describe('renameGroup (File Nesting)', () => {
+    const NESTED: readonly string[] = ['/ws/Enumeration.Comparable.cs', '/ws/Enumeration.From.cs'];
+
+    beforeEach((): void => {
+      result = { success: true, path: '/ws/Ordinal.cs' };
+      renames.set('/ws/Enumeration.Comparable.cs', {
+        success: true,
+        path: '/ws/Ordinal.Comparable.cs',
+      });
+      renames.set('/ws/Enumeration.From.cs', { success: true, path: '/ws/Ordinal.From.cs' });
+    });
+
+    it('renamesTheNestedFilesAlongWithTheirParent', async () => {
+      await expect(
+        build().renameGroup('/ws/Enumeration.cs', 'Ordinal.cs', NESTED),
+      ).resolves.toEqual(result);
+
+      expect(order).toEqual([
+        'rename Ordinal.cs',
+        'rename Ordinal.Comparable.cs',
+        'rename Ordinal.From.cs',
+      ]);
+      expect(edits).toHaveBeenCalledWith('/ws/Enumeration.From.cs', '/ws/Ordinal.From.cs');
+    });
+
+    it('renamesTheTypeTheFilesShare_afterTheFiles_wherever_theyNowAre', async () => {
+      typeEdits.mockResolvedValue({
+        files: [
+          { path: '/ws/Enumeration.cs', edits: [] },
+          { path: '/ws/Enumeration.From.cs', edits: [] },
+          { path: '/ws/Program.cs', edits: [] },
+        ],
+        refused: [],
+      });
+
+      await build().renameGroup('/ws/Enumeration.cs', 'Ordinal.cs', NESTED);
+
+      expect(typeEdits).toHaveBeenCalledWith('/ws/Enumeration.cs', 'Enumeration', 'Ordinal');
+      expect(confirm.mock.calls[0][0]).toMatchObject({ title: 'Rename Enumeration to Ordinal?' });
+      expect(order.at(-1)).toBe('apply');
+      expect(applied[0].files.map((file: { path: string }): string => file.path)).toEqual([
+        '/ws/Ordinal.cs',
+        '/ws/Ordinal.From.cs',
+        '/ws/Program.cs',
+      ]);
+    });
+
+    it('declined_stillRenamesTheFiles_alone', async () => {
+      typeEdits.mockResolvedValue(TWO_FILES);
+      confirm.mockResolvedValue(false);
+
+      await build().renameGroup('/ws/Enumeration.cs', 'Ordinal.cs', NESTED);
+
+      expect(order).not.toContain('apply');
+      expect(order).toHaveLength(3);
+    });
+
+    it('aRefusedParent_leavesTheNestedFilesAlone', async () => {
+      result = { success: false, error: 'It exists' };
+
+      await build().renameGroup('/ws/Enumeration.cs', 'Ordinal.cs', NESTED);
+
+      expect(order).toEqual(['rename Ordinal.cs']);
+    });
+
+    it('aNestedFileThatCannotFollow_isReported', async () => {
+      renames.set('/ws/Enumeration.From.cs', { success: false, error: 'Locked' });
+
+      await build().renameGroup('/ws/Enumeration.cs', 'Ordinal.cs', NESTED);
+
+      expect(notified).toEqual(["Couldn't rename Enumeration.From.cs"]);
+    });
+
+    it('keepingTheSameBaseName_asksNothingOfTheType', async () => {
+      await build().renameGroup('/ws/Enumeration.cs', 'Enumeration.vb', NESTED);
+
+      expect(typeEdits).not.toHaveBeenCalled();
+      expect(order).toEqual(['rename Enumeration.vb']);
+    });
   });
 });

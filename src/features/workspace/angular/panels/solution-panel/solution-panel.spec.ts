@@ -53,6 +53,7 @@ class FakeSolutionModel {
   public readonly followsActiveDocument: WritableSignal<boolean> = signal<boolean>(true);
   public readonly showsGitStatus: WritableSignal<boolean> = signal<boolean>(true);
   public readonly collapsesEmptyFolders: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly nestsFiles: WritableSignal<boolean> = signal<boolean>(true);
   public readonly toggled: SolutionRow[] = [];
   public readonly queries: string[] = [];
   public expandAllCount: number = 0;
@@ -75,6 +76,10 @@ class FakeSolutionModel {
 
   public toggleCollapseEmptyFolders(): void {
     this.collapsesEmptyFolders.update((value: boolean): boolean => !value);
+  }
+
+  public toggleNestFiles(): void {
+    this.nestsFiles.update((value: boolean): boolean => !value);
   }
 
   public readonly filter: ExplorerFilter = freshFilter('test.solution');
@@ -188,6 +193,7 @@ function makeRow(overrides: Partial<SolutionRow>): SolutionRow {
     pending: false,
     path: null,
     scmPaths: overrides.path !== undefined && overrides.path !== null ? [overrides.path] : [],
+    nestedPaths: [],
     ...overrides,
   };
 }
@@ -260,7 +266,10 @@ describe('SolutionPanel', () => {
         { provide: Shell, useValue: shell },
         { provide: BuildRunner, useValue: builds },
         { provide: Notifications, useValue: notifications },
-        { provide: EntryRename, useValue: { rename: (): void => undefined } },
+        {
+          provide: EntryRename,
+          useValue: { rename: (): void => undefined, renameGroup: (): void => undefined },
+        },
         ExplorerExclusions,
       ],
     }).compileComponents();
@@ -359,6 +368,145 @@ describe('SolutionPanel', () => {
     });
 
     expect(opener.opened).toEqual([]);
+  });
+
+  describe('a file with others nested beneath it', () => {
+    afterEach((): void => {
+      localStorage.removeItem('settings');
+    });
+
+    /**
+     * Shows a file with two others nested beneath it, as the model would.
+     * @param overrides The fields to override.
+     * @returns Returns the row.
+     */
+    function showParent(overrides: Partial<SolutionRow> = {}): SolutionRow {
+      const parent: SolutionRow = makeRow({
+        key: 'file:/root/Enumeration.cs',
+        label: 'Enumeration.cs',
+        kind: 'file',
+        expandable: true,
+        path: '/root/Enumeration.cs',
+        nestedPaths: ['/root/Enumeration.Comparable.cs', '/root/Enumeration.From.cs'],
+        ...overrides,
+      });
+      solution.model.set(model);
+      solution.rows.set([parent]);
+      fixture.detectChanges();
+      return parent;
+    }
+
+    it('click_togglesIt_andADoubleClickOpensItOnceToggled', () => {
+      const parent: SolutionRow = showParent();
+
+      rowButtons()[0].dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+      rowButtons()[0].dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 2 }));
+      rowButtons()[0].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+
+      expect(solution.toggled).toEqual([parent]);
+      expect(opener.opened).toEqual(['/root/Enumeration.cs']);
+    });
+
+    it('click_withSingleClickOpening_opensIt_andItsChevronTogglesIt', () => {
+      TestBed.inject(Settings).set('workspaces.openFilesWith', 'single');
+      const parent: SolutionRow = showParent();
+
+      rowButtons()[0].querySelector<HTMLElement>('.tree-name')?.click();
+      rowButtons()[0].querySelector<HTMLElement>('.tree-chevron')?.click();
+
+      expect(opener.opened).toEqual(['/root/Enumeration.cs']);
+      expect(solution.toggled).toEqual([parent]);
+    });
+
+    it('rename_takesTheNestedFilesAlong', async () => {
+      const renameGroup: ReturnType<typeof vi.spyOn> = vi
+        .spyOn(TestBed.inject(EntryRename), 'renameGroup')
+        .mockResolvedValue({ success: true, path: '/root/Ordinal.cs' });
+      const parent: SolutionRow = showParent();
+
+      component.onContextAction({ itemId: 'rename', row: treeRow(parent) });
+      await component.commitRename({ row: treeRow(parent), value: 'Ordinal.cs' });
+
+      expect(renameGroup).toHaveBeenCalledWith('/root/Enumeration.cs', 'Ordinal.cs', [
+        '/root/Enumeration.Comparable.cs',
+        '/root/Enumeration.From.cs',
+      ]);
+    });
+
+    it('delete_asksWhetherTheNestedFilesGoToo_evenWithoutConfirmation', () => {
+      const remove: MockInstance<Workspace['delete']> = vi
+        .spyOn(TestBed.inject(Workspace), 'delete')
+        .mockResolvedValue({ success: true, trashed: true });
+      TestBed.inject(Settings).set('workspaces.confirmBeforeDeleting', false);
+      const parent: SolutionRow = showParent();
+
+      component.onContextAction({ itemId: 'delete', row: treeRow(parent) });
+
+      expect(remove).not.toHaveBeenCalled();
+      const wording: {
+        deleteTitle: () => string;
+        deleteNestedNames: () => string;
+        deleteOnlyLabel: () => string;
+      } = component as unknown as {
+        deleteTitle: () => string;
+        deleteNestedNames: () => string;
+        deleteOnlyLabel: () => string;
+      };
+      expect(component.deleteTargets()).toEqual([parent]);
+      expect(wording.deleteTitle()).toBe('Delete Enumeration.cs and 2 Nested Files?');
+      expect(wording.deleteNestedNames()).toBe('Enumeration.Comparable.cs and Enumeration.From.cs');
+      expect(wording.deleteOnlyLabel()).toBe('Only Enumeration.cs');
+    });
+
+    it('delete_all_takesTheNestedFilesToo', async () => {
+      const remove: MockInstance<Workspace['delete']> = vi
+        .spyOn(TestBed.inject(Workspace), 'delete')
+        .mockResolvedValue({ success: true, trashed: true });
+      const parent: SolutionRow = showParent();
+
+      component.onContextAction({ itemId: 'delete', row: treeRow(parent) });
+      await component.confirmDelete(true);
+
+      expect(remove.mock.calls.map((call: unknown[]): unknown => call[0])).toEqual([
+        '/root/Enumeration.cs',
+        '/root/Enumeration.Comparable.cs',
+        '/root/Enumeration.From.cs',
+      ]);
+    });
+
+    it('delete_only_keepsTheNestedFiles', async () => {
+      const remove: MockInstance<Workspace['delete']> = vi
+        .spyOn(TestBed.inject(Workspace), 'delete')
+        .mockResolvedValue({ success: true, trashed: true });
+      const parent: SolutionRow = showParent();
+
+      component.onContextAction({ itemId: 'delete', row: treeRow(parent) });
+      await component.confirmDelete(false);
+
+      expect(remove.mock.calls.map((call: unknown[]): unknown => call[0])).toEqual([
+        '/root/Enumeration.cs',
+      ]);
+    });
+
+    it('colour_readsAsContainingAChange_whenOnlyANestedFileChanged', () => {
+      const git: WorkspaceGit = TestBed.inject(WorkspaceGit);
+      vi.spyOn(git, 'stateFor').mockImplementation((path: string): ExplorerScmState | null =>
+        path === '/root/Enumeration.Comparable.cs' ? 'modified' : null,
+      );
+      showParent();
+
+      expect(rowButtons()[0].className).toContain('tree-row--tone-info');
+    });
+
+    it('colour_keepsItsOwnState_whenItChangedItself', () => {
+      const git: WorkspaceGit = TestBed.inject(WorkspaceGit);
+      vi.spyOn(git, 'stateFor').mockImplementation((path: string): ExplorerScmState | null =>
+        path === '/root/Enumeration.cs' ? 'added' : path.endsWith('From.cs') ? 'modified' : null,
+      );
+      showParent();
+
+      expect(rowButtons()[0].className).toContain('tree-row--tone-success');
+    });
   });
 
   /**
@@ -1209,6 +1357,7 @@ describe('SolutionPanel', () => {
         'follow-active',
         'git-status',
         'collapse-empty-folders',
+        'nest-files',
         'show-hidden',
       ]);
     });
@@ -1219,6 +1368,7 @@ describe('SolutionPanel', () => {
         'follow-active': true,
         'git-status': true,
         'collapse-empty-folders': false,
+        'nest-files': true,
         'show-hidden': true,
       });
 
@@ -1228,6 +1378,7 @@ describe('SolutionPanel', () => {
         'follow-active': false,
         'git-status': true,
         'collapse-empty-folders': false,
+        'nest-files': true,
         'show-hidden': true,
       });
     });

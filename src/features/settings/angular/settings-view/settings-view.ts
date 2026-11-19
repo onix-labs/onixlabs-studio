@@ -30,6 +30,7 @@ import { DefaultSeverities } from './sections/default-severities/default-severit
 import { LogFolder } from './sections/log-folder/log-folder';
 import { PersonaLearningConnection } from './sections/persona-learning-connection/persona-learning-connection';
 import { PersonalDictionary } from './sections/personal-dictionary/personal-dictionary';
+import { FileNestingRules } from './sections/file-nesting-rules/file-nesting-rules';
 import { NotificationTypesSettings } from './sections/notification-types/notification-types';
 import { ReadAloudVoice } from './sections/read-aloud-voice/read-aloud-voice';
 import { PluginsFolder } from './sections/plugins-folder/plugins-folder';
@@ -328,6 +329,7 @@ interface SettingsTreeData {
     Modal,
     ModalContent,
     PersonalDictionary,
+    FileNestingRules,
     NotificationTypesSettings,
     ReadAloudVoice,
     PluginsFolder,

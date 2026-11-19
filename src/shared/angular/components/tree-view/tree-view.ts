@@ -136,6 +136,13 @@ export interface TreeRow {
   readonly data: unknown;
 
   /**
+   * Gets whether the row stands for something that opens as well as expands — a file with others
+   * nested beneath it. Its chevron then reports {@link TreeView.rowToggle} rather than a click, so a
+   * tree that opens files on a single click can still expand the row from its chevron.
+   */
+  readonly opens?: boolean;
+
+  /**
    * Gets the text of a heading row, or undefined for an ordinary row. A heading labels the rows that
    * follow it — a group of roots, say — and is not an item of the tree: the tree draws the text
    * itself rather than projecting the row content, and the row cannot be clicked, selected, expanded
@@ -287,6 +294,12 @@ export class TreeView {
    * properly. A tree with nothing to open simply does not listen.
    */
   public readonly rowDoubleClick: OutputEmitterRef<TreeRow> = output<TreeRow>();
+
+  /**
+   * Emits the row whose chevron was clicked, for a row that {@link TreeRow.opens} — in place of
+   * {@link rowClick}, since a click on the chevron asks only to expand or collapse it.
+   */
+  public readonly rowToggle: OutputEmitterRef<TreeRow> = output<TreeRow>();
 
   /**
    * Emits the row Enter was pressed on — the keyboard's double click (#1047).
@@ -543,12 +556,19 @@ export class TreeView {
   /**
    * Handles a click on a row. A plain click is a click (and, with {@link multiSelect}, selects the row
    * alone); a ⌘- or Shift-click on a multi-select tree only changes the selection.
+   *
+   * The second click of a double click is no click of its own: the browser reports it, and then the
+   * double click, and a tree that took both would toggle a folder open and shut again, or toggle a
+   * file with others nested beneath it before opening it. The double click is what it reports.
    * @param event The click.
    * @param row The row clicked.
    */
   protected onRowClick(event: MouseEvent, row: TreeRow): void {
+    if (event.detail > 1) {
+      return;
+    }
     if (!this.multiSelect()) {
-      this.rowClick.emit(row);
+      this.emitClick(event, row);
       return;
     }
     const mode: TreeSelectMode = (MAC ? event.metaKey : event.ctrlKey)
@@ -558,11 +578,30 @@ export class TreeView {
         : 'replace';
     this.rowSelect.emit({ row, mode });
     if (mode === 'replace') {
-      this.rowClick.emit(row);
+      this.emitClick(event, row);
     } else {
       // A Shift-click would otherwise select the text between the two rows.
       event.preventDefault();
     }
+  }
+
+  /**
+   * Reports a plain click: a toggle when it landed on the chevron of a row that opens as well as
+   * expands, and a click otherwise.
+   * @param event The click.
+   * @param row The row clicked.
+   */
+  private emitClick(event: MouseEvent, row: TreeRow): void {
+    const target: EventTarget | null = event.target;
+    if (
+      row.opens === true &&
+      target instanceof Element &&
+      target.closest('.tree-chevron') !== null
+    ) {
+      this.rowToggle.emit(row);
+      return;
+    }
+    this.rowClick.emit(row);
   }
 
   /**

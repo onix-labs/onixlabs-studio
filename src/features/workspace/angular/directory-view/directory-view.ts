@@ -118,6 +118,7 @@ import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsav
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { idleStopMs, LspClient } from '@shared/angular/services/lsp/lsp-client';
 import { EntryRename } from '@shared/angular/services/rename/entry-rename';
+import { TypeRename } from '@shared/angular/services/rename/type-rename';
 import { WorkspaceSymbolRouter } from '@shared/angular/services/go-to/workspace-symbol-router';
 import { DebugAttachRouter } from '@shared/angular/services/debug-attach/debug-attach-router';
 import { WorkspaceSymbolPalette } from '../workspace-symbols/workspace-symbol-palette';
@@ -255,6 +256,7 @@ const AGENT_OPEN: OpenOptions = { background: true };
   providers: [
     Workspace,
     EntryRename,
+    TypeRename,
     Documents,
     Output,
     Diagnostics,
