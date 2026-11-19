@@ -865,6 +865,14 @@ describe('toTurnRequest', () => {
     expect(() =>
       refuseUnheededUntrustedWorkspace(untrusted, declaring('1.19.0'), 'Claude'),
     ).toThrow(/not trusted/);
+    // The way out is updating the plugin, not trusting the folder: the user may be scanning it to
+    // decide whether to trust it, and "trust it first" would send them round in a circle.
+    expect(() =>
+      refuseUnheededUntrustedWorkspace(untrusted, declaring('1.19.0'), 'Claude'),
+    ).toThrow(/Update the plugin in the Plugin Manager/);
+    expect(() =>
+      refuseUnheededUntrustedWorkspace(untrusted, declaring('1.19.0'), 'Claude'),
+    ).not.toThrow(/Trust the folder/);
     expect(() =>
       refuseUnheededUntrustedWorkspace(untrusted, declaring('1.20.0'), 'Claude'),
     ).not.toThrow();

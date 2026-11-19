@@ -334,6 +334,13 @@ export class Table {
   public readonly gridlineTone: InputSignal<TableGridlineTone> = input<TableGridlineTone>('light');
 
   /**
+   * Gets whether the table keeps its newest rows in view, as a log does: while the user is scrolled to
+   * the end, rows added below scroll into view; scrolling up stops it until they return to the end.
+   * Defaults to false.
+   */
+  public readonly followEnd: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Gets how many cells a full-width row spans: every column, and the filler a resizable table ends
    * with.
    */
@@ -518,6 +525,11 @@ export class Table {
    */
   private readonly scroller: Signal<ElementRef<HTMLElement> | undefined> =
     viewChild<ElementRef<HTMLElement>>('scroller');
+
+  /**
+   * Holds whether the user is scrolled to the end, which is when {@link followEnd} keeps them there.
+   */
+  private atEnd: boolean = true;
 
   /**
    * Holds the identity of the column set the resized widths belong to, so a new set starts afresh.
@@ -720,6 +732,29 @@ export class Table {
         element.removeEventListener('scroll', read);
         resize?.disconnect();
       });
+    });
+
+    // Following the end (a log's newest rows): note whether the user is at the end as they scroll, and
+    // after rows are added keep them there if they were.
+    effect((onCleanup: (cleanup: () => void) => void): void => {
+      const element: HTMLElement | undefined = this.scroller()?.nativeElement;
+      if (!this.followEnd() || element === undefined) {
+        return;
+      }
+      const note: () => void = (): void => {
+        this.atEnd = element.scrollHeight - element.scrollTop - element.clientHeight < 4;
+      };
+      element.addEventListener('scroll', note, { passive: true });
+      onCleanup((): void => element.removeEventListener('scroll', note));
+    });
+    afterRenderEffect({
+      write: (): void => {
+        this.rows();
+        const element: HTMLElement | undefined = this.scroller()?.nativeElement;
+        if (this.followEnd() && this.atEnd && element !== undefined) {
+          element.scrollTop = element.scrollHeight;
+        }
+      },
     });
 
     // The pinned header covers the top of the scroll area, so it is the area's top scroll padding: the

@@ -105,6 +105,27 @@ describe('RepositoryTrustModal', () => {
     expect(host?.querySelector('.trust__note')).toBeNull();
   });
 
+  it('scan_whenThePluginIsTooOld_saysToUpdateIt_ratherThanToTrustTheFolder', async (): Promise<void> => {
+    // The chicken and the egg: a plugin that cannot be kept from the folder's settings does not run
+    // in the folder at all, so scanning cannot be how the user decides to trust it.
+    let updates: number = 0;
+    fixture.componentInstance.updateRequested.subscribe((): number => (updates += 1));
+    fixture.componentRef.setInput('scanBlockedBy', 'Anthropic (Claude)');
+    const host: HTMLElement | null = await present(question);
+
+    expect(host?.querySelector('[data-testid="trust-scan"]')).toBeNull();
+    expect(host?.querySelector('[data-testid="trust-scan-blocked"]')?.textContent).toContain(
+      'Scanning needs a newer Anthropic (Claude) plugin',
+    );
+    const update: HTMLElement | null =
+      host?.querySelector('[data-testid="trust-update-plugin"]') ?? null;
+    expect(update?.textContent?.trim()).toBe('Update Plugin');
+    update?.querySelector('button')?.click();
+
+    expect(updates).toBe(1);
+    expect(scanned).toBe(0);
+  });
+
   it('trust_isTheSolidFirstButton_andEmitsAccepted', async (): Promise<void> => {
     const host: HTMLElement | null = await present(question);
 

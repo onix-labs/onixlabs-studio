@@ -1,11 +1,28 @@
 <app-panel-toolbar>
   <app-dropdown
+    class="logs__channel"
     [options]="channelOptions()"
-    [value]="activeChannelId()"
+    [value]="channelValue()"
     (valueChange)="selectChannel($event)"
     ariaLabel="Output channel"
+    data-testid="logs-channel"
   />
-  <span class="panel-toolbar__spacer"></span>
+  <app-dropdown
+    class="logs__level"
+    [options]="levelOptions"
+    [value]="levelFilter()"
+    (valueChange)="levelFilter.set($event)"
+    ariaLabel="Level"
+    data-testid="logs-level"
+  />
+  <app-text-field
+    class="logs__search"
+    kind="search"
+    [value]="query()"
+    placeholder="Filter"
+    ariaLabel="Filter log lines"
+    (valueChange)="query.set($event)"
+  />
   <app-button
     variant="none"
     [icon]="Icon.CLEAR"
@@ -14,4 +31,26 @@
     (click)="clear()"
   />
 </app-panel-toolbar>
-<div #container class="output-host"></div>
+<div class="logs__list">
+  <app-table
+    class="logs__table"
+    [columns]="columns()"
+    [rows]="rows()"
+    [virtual]="true"
+    [followEnd]="true"
+    [emptyText]="emptyText()"
+  >
+    <!-- Every string is built once per line (rows), so a pass only reads them. -->
+    <ng-template appTableRow let-row>
+      @let line = lineOf(row);
+      <td class="logs__time">{{ line.time }}</td>
+      <td>
+        <app-chip class="logs__badge" [tone]="line.tone">{{ line.level }}</app-chip>
+      </td>
+      @if (showAll()) {
+        <td class="logs__source" [title]="line.source">{{ line.source }}</td>
+      }
+      <td class="logs__message" [title]="line.message">{{ line.message }}</td>
+    </ng-template>
+  </app-table>
+</div>

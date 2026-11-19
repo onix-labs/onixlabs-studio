@@ -77,7 +77,16 @@ import type { TrustQuestion } from '@shared/api/trust-channels';
               <dd class="trust__path">{{ pending.folder }}</dd>
             </dl>
 
-            @if (pending.scannable) {
+            @if (pending.scannable && scanBlockedBy() !== null) {
+              <!-- The agent's plugin is too old to be kept from the folder's own settings, so it
+                   cannot run here at all — not even to scan. Saying "trust it first" would be the
+                   chicken and the egg; updating the plugin is the way out. -->
+              <p class="trust__body trust__note" data-testid="trust-scan-blocked">
+                Scanning needs a newer {{ scanBlockedBy() }} plugin: this one cannot be kept from
+                the folder's own settings. Update it, then choose Not Trusted in the status bar to
+                scan. The folder stays untrusted meanwhile.
+              </p>
+            } @else if (pending.scannable) {
               <p class="trust__body trust__note">
                 Scan with AI has an agent read the folder for code that would run when it opens, and
                 report what it finds. It can only read; it runs nothing. The folder stays untrusted
@@ -86,7 +95,15 @@ import type { TrustQuestion } from '@shared/api/trust-channels';
             }
 
             <div class="trust__actions">
-              @if (pending.scannable) {
+              @if (pending.scannable && scanBlockedBy() !== null) {
+                <app-button
+                  class="trust__scan"
+                  variant="ghost"
+                  label="Update Plugin"
+                  data-testid="trust-update-plugin"
+                  (click)="updateRequested.emit()"
+                />
+              } @else if (pending.scannable) {
                 <app-button
                   class="trust__scan"
                   variant="ghost"
@@ -190,6 +207,12 @@ export class RepositoryTrustModal {
     input.required<TrustQuestion | null>();
 
   /**
+   * Gets the name of the agent plugin that is too old to scan an untrusted folder (#1504), or null when
+   * the scan can run (or that is not yet known). Shown in place of Scan with AI, with Update.
+   */
+  public readonly scanBlockedBy: InputSignal<string | null> = input<string | null>(null);
+
+  /**
    * Emitted when the user trusts the folder.
    */
   public readonly accepted: OutputEmitterRef<void> = output<void>();
@@ -204,6 +227,12 @@ export class RepositoryTrustModal {
    * Emitted when the user asks for the folder to be scanned before deciding.
    */
   public readonly scanned: OutputEmitterRef<void> = output<void>();
+
+  /**
+   * Emitted when the user chooses to update the plugin that is too old to scan. The folder is left
+   * untrusted, as it was.
+   */
+  public readonly updateRequested: OutputEmitterRef<void> = output<void>();
 
   /**
    * Emitted when, asked before a clone, the user would rather decide once it is open.

@@ -889,6 +889,7 @@ export class AiManager {
         supportsImages: provider.supportsImages,
         supportedEfforts: provider.supportedEfforts,
         supportsRemoteControl: provider.supportsRemoteControl,
+        ...(provider.ignoresUntrustedSettings === false ? { ignoresUntrustedSettings: false } : {}),
         // ⚠️ A key-based connection has nothing to sign in to, whatever its plugin can do.
         supportsSignIn:
           provider.offersSignIn === true &&
