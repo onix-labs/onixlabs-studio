@@ -1,13 +1,7 @@
 import { Settings } from '@shared/angular/services/settings/settings';
 import { TestBed } from '@angular/core/testing';
 
-import {
-  DEFAULT_CHANNEL,
-  Output,
-  OutputChannel,
-  OutputChannelInfo,
-  OutputEntry,
-} from './output';
+import { DEFAULT_CHANNEL, Output, OutputChannel, OutputChannelInfo, OutputEntry } from './output';
 
 describe('Output', () => {
   let output: Output;
