@@ -99,7 +99,7 @@ import { checkRunRoot, type OpenRoots, type RunRootCheck } from './run-root-guar
 import { ExcludedCommandStore } from './excluded-command-store';
 import { sanitizeExcludedCommands } from '@shared/api/excluded-commands';
 import type { SkillOfferer } from './skills/skill-library';
-import { bindPersona } from './persona/persona-access';
+import { bindPersona, type PersonaQuestionSource } from './persona/persona-access';
 import { announcePersonaChange } from './persona/persona-handlers';
 import type { PersonaLibrary } from './persona/persona-library';
 
@@ -389,6 +389,12 @@ export class AiManager {
   private readonly persona: PersonaLibrary | null;
 
   /**
+   * Gets the open questions about the user (#1519); read when a run starts, because the service that
+   * holds them is made after this one.
+   */
+  private readonly personaQuestions: () => PersonaQuestionSource | null;
+
+  /**
    * Holds the open workspace roots, which a run's root must be or lie inside (#810).
    */
   private readonly openRoots: OpenRoots;
@@ -507,11 +513,13 @@ export class AiManager {
     trust: FolderTrustSource,
     hosting: HostingAgentAccess | null = null,
     persona: PersonaLibrary | null = null,
+    personaQuestions: () => PersonaQuestionSource | null = (): null => null,
   ) {
     this.windowGetter = windowGetter;
     this.skills = skills;
     this.hosting = hosting;
     this.persona = persona;
+    this.personaQuestions = personaQuestions;
     this.openRoots = openRoots;
     this.trust = trust;
     this.bridge = new RendererBridge(windowGetter);
@@ -1218,7 +1226,14 @@ export class AiManager {
     const persona: PersonaAccess | null =
       this.persona === null
         ? null
-        : await bindPersona(this.persona, surface, language, (): void => announcePersonaChange());
+        : await bindPersona(
+            this.persona,
+            surface,
+            language,
+            (): void => announcePersonaChange(),
+            this.personaQuestions(),
+            request.agentSessionId ?? request.requestId,
+          );
     if (skills.length > 0) {
       logger.debug(
         'AiManager.run',

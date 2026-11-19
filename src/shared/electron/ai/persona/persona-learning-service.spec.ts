@@ -9,6 +9,7 @@ import type {
 import type { PersonaEntry } from '@shared/api/persona-channels';
 import type {
   PersonaChange,
+  PersonaQuestion,
   PersonaRebuildEstimate,
   LearningBatch,
   LearningOutcome,
@@ -510,6 +511,64 @@ describe('PersonaLearningService (#1516, #1517)', () => {
       expect(pending).toHaveLength(1);
       expect(pending[0]).toMatchObject({ kind: 'add', before: null });
       expect(pending[0].after?.why).toBe('The carbon cost.');
+    });
+  });
+
+  describe('refinement (#1519)', () => {
+    /**
+     * Has learning finish a run that asks the given questions.
+     * @param questions The questions.
+     * @returns Resolves once recorded.
+     */
+    async function ask(questions: readonly string[]): Promise<void> {
+      conversations.set(
+        'c1',
+        conversation('c1', [{ id: `u${questions.length}`, kind: 'user', text: 'Hi.' }]),
+      );
+      const batch: LearningBatch | null = await service.begin({
+        idleMinutes: 0,
+        conversationId: null,
+      });
+      await service.finish({
+        batchId: batch?.batchId ?? '',
+        review: 'automatic',
+        proposal: { changes: [], questions },
+      });
+    }
+
+    it('offersEachConversationOneQuestionAtMost_andADifferentOneToTheNext', async () => {
+      await ask(['Why trains?', 'Window or aisle?']);
+
+      const first: PersonaQuestion | null = await service.offerQuestion('conversation-a');
+      expect(first?.text).toBe('Why trains?');
+      expect(await service.offerQuestion('conversation-a')).toBeNull();
+      expect((await service.offerQuestion('conversation-b'))?.text).toBe('Window or aisle?');
+      expect(await service.offerQuestion('conversation-c')).toBeNull();
+      expect(await service.questionCount()).toBe(2);
+    });
+
+    it('fadesUnconfirmedLearnedEntries_onceADay_andListsItForUndo', async () => {
+      await library.save({
+        id: 'tea',
+        name: 'Tea',
+        text: 'Drinks green tea.',
+        why: '',
+        tags: [],
+        links: [],
+        scope: { surfaces: [], languages: [] },
+        layer: 'memory',
+        enabled: true,
+        confidence: 0.6,
+        confirmed: '2026-06-01',
+        author: 'learned',
+        locked: false,
+      });
+
+      expect(await service.fade()).toBe(1);
+      expect((await library.read('tea'))?.confidence).toBeLessThan(0.6);
+      expect(await service.fade()).toBe(0);
+      const recent: readonly PersonaChange[] = (await service.state()).recent;
+      expect(recent[0].reason).toContain('not seen since 2026-06-01');
     });
   });
 });

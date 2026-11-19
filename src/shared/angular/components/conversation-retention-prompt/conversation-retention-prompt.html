@@ -18,6 +18,13 @@
             for more than {{ period() }}. Delete {{ due().length === 1 ? 'it' : 'them' }}, or review
             which go.
           </p>
+          <!-- #1519: deleting conversations never touches the persona, and the user is told so. -->
+          <p class="retention__body retention__persona" data-testid="retention-persona">
+            Your persona keeps anything learned from them.
+            <button type="button" class="retention__link" (click)="openPersona()">
+              Open Persona
+            </button>
+          </p>
           <app-button-row>
             <app-button
               variant="solid"

@@ -24,6 +24,9 @@
           @if (entry.locked) {
             <app-chip [icon]="Icon.LOCK">Locked</app-chip>
           }
+          @if (selectedAboutPeople()) {
+            <app-chip tone="warning">About someone else</app-chip>
+          }
           @if (entry.confirmed.length > 0) {
             <app-chip>Confirmed {{ entry.confirmed }}</app-chip>
           }
@@ -154,6 +157,13 @@
           — over the limit, so every conversation pays for more than it should.
         }
       </p>
+      @if (peopleCount() > 0) {
+        <p class="persona__people" data-testid="persona-people">
+          {{ peopleCount() }} {{ peopleCount() === 1 ? 'memory is' : 'memories are' }} about other
+          people.
+          <button type="button" class="persona__link" (click)="showPeople()">Show them</button>
+        </p>
+      }
       @if (tags().length > 0) {
         <div class="persona__tags" role="list" aria-label="Tags">
           @for (item of tags(); track item.tag) {

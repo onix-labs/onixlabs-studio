@@ -18,6 +18,26 @@
   color: var(--warning-color);
 }
 
+// Memories about other people (#1519): the most sensitive part, so the overview points them out.
+.persona__people {
+  margin: 0 0 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.persona__link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent-color);
+  font: inherit;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: underline;
+  }
+}
+
 // The tags in use, each narrowing the side panel to its entries.
 .persona__tags {
   display: flex;

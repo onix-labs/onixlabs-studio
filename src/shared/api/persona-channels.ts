@@ -159,6 +159,12 @@ export interface PersonaListing {
 export const PERSONA_CORE_LINE_LIMIT: number = 12;
 
 /**
+ * The tag on memories about other people (#1519): the most sensitive part of a persona, so they are
+ * tagged to be easy to find and remove.
+ */
+export const PEOPLE_TAG: string = 'people';
+
+/**
  * Matches a valid entry id: a safe path segment, so the id doubles as the file name.
  */
 export const PERSONA_ENTRY_ID_PATTERN: RegExp = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;

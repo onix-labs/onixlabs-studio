@@ -7,6 +7,7 @@ import {
   type PersonaSearchRequest,
 } from '@shared/api/persona-search';
 import { logger } from '@shared/electron/logger';
+import type { PersonaQuestion } from '@shared/api/persona-learning-protocol';
 import type { PersonaAccess } from '../agent-provider';
 import type { PersonaLibrary } from './persona-library';
 
@@ -16,6 +17,15 @@ import type { PersonaLibrary } from './persona-library';
 const TAG_LIMIT: number = 40;
 
 /**
+ * The open questions about the user, as a run reaches them (#1519).
+ */
+export interface PersonaQuestionSource {
+  questionCount(): Promise<number>;
+  offerQuestion(conversationKey: string): Promise<PersonaQuestion | null>;
+  answer(request: { readonly questionId: string; readonly answer: string }): Promise<boolean>;
+}
+
+/**
  * Binds the persona to one run (#1515): counts the memories in the run's scope and gathers their
  * tags, for the prompt, and searches and forgets on the run's behalf. A search reads the disk again,
  * so a memory added mid-conversation is found on the next search.
@@ -23,6 +33,8 @@ const TAG_LIMIT: number = 40;
  * @param surface The run's surface.
  * @param language The run's language, or null.
  * @param changed Called after the agent forgot something, to tell the windows.
+ * @param questions The open questions, or null for none.
+ * @param conversationKey The conversation the run belongs to, so it is offered one question at most.
  * @returns Returns the access, or null when the persona could not be read.
  */
 export async function bindPersona(
@@ -30,6 +42,8 @@ export async function bindPersona(
   surface: AgentSurface,
   language: string | null,
   changed: () => void,
+  questions: PersonaQuestionSource | null = null,
+  conversationKey: string = '',
 ): Promise<PersonaAccess | null> {
   let listing: PersonaListing;
   try {
@@ -39,8 +53,14 @@ export async function bindPersona(
     return null;
   }
   const memories: readonly PersonaEntry[] = memoriesInScope(listing.entries, surface, language);
+  const questionCount: number = questions === null ? 0 : await questions.questionCount();
   return {
     memories: memories.length,
+    questions: questionCount,
+    offerQuestion: (): Promise<PersonaQuestion | null> =>
+      questions === null ? Promise.resolve(null) : questions.offerQuestion(conversationKey),
+    answerQuestion: (questionId: string, answer: string): Promise<boolean> =>
+      questions === null ? Promise.resolve(false) : questions.answer({ questionId, answer }),
     tags: tagsByUse(memories).slice(0, TAG_LIMIT),
     search: async (request: PersonaSearchRequest): Promise<readonly PersonaSearchHit[]> => {
       const current: PersonaListing = await library.list();

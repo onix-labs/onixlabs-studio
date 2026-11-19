@@ -14,6 +14,7 @@ import { ButtonRow } from '@shared/angular/components/forms/button-row/button-ro
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
+import { AiManagerNavigation } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
 import { ConversationRetention } from '@shared/angular/services/conversation-retention/conversation-retention';
 import { Settings } from '@shared/angular/services/settings/settings';
 
@@ -39,6 +40,11 @@ export class ConversationRetentionPrompt {
    * Holds the settings store, for the time period the question names.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the deep link to the Persona page.
+   */
+  private readonly aiManager: AiManagerNavigation = inject(AiManagerNavigation);
 
   /**
    * Gets the conversations awaiting an answer.
@@ -143,5 +149,12 @@ export class ConversationRetentionPrompt {
     this.retention.keep();
     this.reviewing.set(false);
     this.kept.set(new Set<string>());
+  }
+
+  /**
+   * Opens the Persona page, leaving the question asked.
+   */
+  protected openPersona(): void {
+    this.aiManager.open('persona');
   }
 }

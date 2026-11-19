@@ -40,6 +40,32 @@
     </p>
   }
 
+  @if (questions().length > 0) {
+    <h4 class="activity__subheading">Questions about you</h4>
+    <p class="activity__status">
+      Answer what you like. An answer becomes something your persona knows; agents may also ask one
+      of these, now and then, when it fits.
+    </p>
+    <ul class="activity__questions" data-testid="learning-questions">
+      @for (question of questions(); track question.id) {
+        <li class="activity__question">
+          <span class="activity__text">{{ question.text }}</span>
+          <div class="activity__add">
+            <app-text-field
+              [value]="draftFor(question.id)"
+              [ariaLabel]="'Answer: ' + question.text"
+              placeholder="Your answer"
+              (valueChange)="setDraft(question.id, $event)"
+              (enter)="answer(question.id)"
+            />
+            <app-button variant="ghost" label="Answer" (click)="answer(question.id)" />
+            <app-button variant="none" label="Dismiss" (click)="dismiss(question.id)" />
+          </div>
+        </li>
+      }
+    </ul>
+  }
+
   @if (recent().length > 0) {
     <h4 class="activity__subheading">Recent changes</h4>
     <ul class="activity__list" data-testid="learning-recent">

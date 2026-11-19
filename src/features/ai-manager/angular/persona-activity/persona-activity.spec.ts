@@ -190,4 +190,48 @@ describe('PersonaActivity (#1516)', () => {
       '2026-11-19T12-00-00-000Z',
     ]);
   });
+
+  it('listsOpenQuestions_andAnswersOrDismissesThem', async () => {
+    state = {
+      ...state,
+      questions: [
+        { id: 'q1', text: 'Why do you avoid flying?', asked: 0 },
+        { id: 'q2', text: 'Window or aisle?', asked: 0 },
+      ],
+    };
+    await TestBed.inject(PersonaLearning).refresh();
+    await fixture.whenStable();
+    const items: HTMLElement[] = [
+      ...element().querySelectorAll<HTMLElement>('[data-testid="learning-questions"] li'),
+    ];
+    expect(
+      items.map(
+        (item: HTMLElement): string =>
+          item.querySelector('.activity__text')?.textContent?.trim() ?? '',
+      ),
+    ).toEqual(['Why do you avoid flying?', 'Window or aisle?']);
+
+    const field: HTMLInputElement | null = items[0].querySelector('input');
+    if (field !== null) {
+      field.value = 'The carbon cost.';
+      field.dispatchEvent(new Event('input'));
+    }
+    [...items[0].querySelectorAll<HTMLButtonElement>('button')]
+      .find((button: HTMLButtonElement): boolean => button.textContent?.trim() === 'Answer')
+      ?.click();
+    await fixture.whenStable();
+    [...items[1].querySelectorAll<HTMLButtonElement>('button')]
+      .find((button: HTMLButtonElement): boolean => button.textContent?.trim() === 'Dismiss')
+      ?.click();
+    await fixture.whenStable();
+
+    expect(calls).toContainEqual([
+      PersonaLearningChannel.AnswerQuestion,
+      { questionId: 'q1', answer: 'The carbon cost.' },
+    ]);
+    expect(calls).toContainEqual([
+      PersonaLearningChannel.AnswerQuestion,
+      { questionId: 'q2', answer: '' },
+    ]);
+  });
 });

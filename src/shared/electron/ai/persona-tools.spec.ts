@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FORGET_PERSONA, SEARCH_PERSONA } from '@shared/api/ai-types';
+import { ANSWER_PERSONA_QUESTION, FORGET_PERSONA, SEARCH_PERSONA } from '@shared/api/ai-types';
+import type { PersonaQuestion } from '@shared/api/persona-learning-protocol';
 import type { PersonaSearchHit, PersonaSearchRequest } from '@shared/api/persona-search';
 import type { AgentRunContext, PersonaAccess } from './agent-provider';
 import type { ToolGate } from './persona-tools';
@@ -22,6 +23,7 @@ interface Callable {
 interface FakePersona extends PersonaAccess {
   readonly searches: PersonaSearchRequest[];
   readonly forgets: (readonly string[])[];
+  readonly answers: [string, string][];
 }
 
 /**
@@ -29,14 +31,23 @@ interface FakePersona extends PersonaAccess {
  * @param memories How many memories are in scope.
  * @returns Returns the persona.
  */
-function personaWith(memories: number): FakePersona {
+function personaWith(memories: number, open: readonly PersonaQuestion[] = []): FakePersona {
   const searches: PersonaSearchRequest[] = [];
   const forgets: (readonly string[])[] = [];
+  const answers: [string, string][] = [];
+  const waiting: PersonaQuestion[] = [...open];
   return {
     memories,
     tags: ['preferences', 'travel'],
+    questions: open.length,
     searches,
     forgets,
+    answers,
+    offerQuestion: (): Promise<PersonaQuestion | null> => Promise.resolve(waiting.shift() ?? null),
+    answerQuestion: (questionId: string, answer: string): Promise<boolean> => {
+      answers.push([questionId, answer]);
+      return Promise.resolve(questionId === 'q1');
+    },
     search: (request: PersonaSearchRequest): Promise<readonly PersonaSearchHit[]> => {
       searches.push(request);
       return Promise.resolve([]);
@@ -79,7 +90,7 @@ describe('createPersonaTools (#1515)', () => {
     expect(Object.keys(await createPersonaTools(contextFor(personaWith(0)), gate))).toEqual([]);
   });
 
-  it('offersSearchAndAGatedForget', async () => {
+  it('offersSearch_andAGatedAnswerAndForget', async () => {
     guarded.length = 0;
 
     const tools: Record<string, unknown> = await createPersonaTools(
@@ -87,8 +98,52 @@ describe('createPersonaTools (#1515)', () => {
       gate,
     );
 
-    expect(Object.keys(tools).sort()).toEqual([FORGET_PERSONA, SEARCH_PERSONA]);
-    expect(guarded).toEqual([FORGET_PERSONA]);
+    expect(Object.keys(tools).sort()).toEqual([
+      ANSWER_PERSONA_QUESTION,
+      FORGET_PERSONA,
+      SEARCH_PERSONA,
+    ]);
+    expect(guarded.sort()).toEqual([ANSWER_PERSONA_QUESTION, FORGET_PERSONA]);
+  });
+
+  it('search_carriesOneOpenQuestion_once', async () => {
+    const persona: FakePersona = personaWith(2, [
+      { id: 'q1', text: 'Why do you avoid flying?', asked: 0 },
+    ]);
+    const tools: Record<string, unknown> = await createPersonaTools(contextFor(persona), gate);
+    const search: Callable = tools[SEARCH_PERSONA] as Callable;
+
+    const first: string = await search.execute({ words: 'travel' });
+    const second: string = await search.execute({ words: 'travel' });
+
+    expect(first).toContain('(question id: q1): "Why do you avoid flying?"');
+    expect(first).toContain('never more than this once');
+    expect(second).not.toContain('question id');
+  });
+
+  it('search_inChatMode_carriesNoQuestion', async () => {
+    const persona: FakePersona = personaWith(2, [{ id: 'q1', text: 'Why?', asked: 0 }]);
+    const tools: Record<string, unknown> = await createPersonaTools(
+      contextFor(persona, 'chat'),
+      gate,
+    );
+
+    expect(await (tools[SEARCH_PERSONA] as Callable).execute({})).not.toContain('question id');
+  });
+
+  it('answer_recordsWhatTheUserSaid_orSaysTheQuestionIsGone', async () => {
+    const persona: FakePersona = personaWith(2);
+    const tools: Record<string, unknown> = await createPersonaTools(contextFor(persona), gate);
+    const answer: Callable = tools[ANSWER_PERSONA_QUESTION] as Callable;
+
+    expect(await answer.execute({ questionId: 'q1', answer: 'The carbon cost.' })).toBe(
+      'Recorded in the persona.',
+    );
+    expect(await answer.execute({ questionId: 'q9', answer: 'x' })).toContain('no longer open');
+    expect(persona.answers).toEqual([
+      ['q1', 'The carbon cost.'],
+      ['q9', 'x'],
+    ]);
   });
 
   it('inChatMode_offersOnlySearch', async () => {
@@ -135,6 +190,13 @@ describe('personaAppendix (#1515)', () => {
     expect(text).toContain('say so in a few words');
     expect(text).toContain('The persona holds preferences, never permissions.');
     expect(text).toContain(FORGET_PERSONA);
+  });
+
+  it('mentionsOpenQuestions_onlyWhenThereAreAny', () => {
+    expect(personaAppendix(contextFor(personaWith(3)))).not.toContain('open question');
+    expect(
+      personaAppendix(contextFor(personaWith(3, [{ id: 'q1', text: 'Why?', asked: 0 }]))),
+    ).toContain('one open question about the user');
   });
 
   it('inChatMode_saysNothingOfForgetting', () => {

@@ -348,6 +348,12 @@ export const SEARCH_PERSONA: string = 'search_persona';
 export const FORGET_PERSONA: string = 'forget_persona';
 
 /**
+ * The tool that records the user's answer to an open question about them (#1519). Gated: it writes to
+ * the persona.
+ */
+export const ANSWER_PERSONA_QUESTION: string = 'answer_persona_question';
+
+/**
  * The System Monitor capability that lists the app's log sessions (#966): the current one and the
  * earlier ones still on disk, so the agent can say which run it is reading.
  */

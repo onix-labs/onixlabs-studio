@@ -98,6 +98,12 @@ export function personaAppendix(context: AgentRunContext): string {
       `If the user asks you to forget something, or not to remember it, call "${FORGET_PERSONA}" with`,
       'the ids a search returned.',
     );
+    if (persona.questions > 0) {
+      lines.push(
+        'A search may also return one open question about the user. Ask it only as a short aside when it',
+        'fits, at most once in a conversation, and never instead of doing what they asked.',
+      );
+    }
   }
   return lines.join('\n');
 }

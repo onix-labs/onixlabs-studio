@@ -15,6 +15,7 @@ import type {
   ClaudeExecutableChoice,
   CodexExecutableChoice,
 } from '@shared/api/ai-types';
+import type { PersonaQuestion } from '@shared/api/persona-learning-protocol';
 import type { PersonaSearchHit, PersonaSearchRequest } from '@shared/api/persona-search';
 import type { HarnessAuthAction, HarnessAuthState } from '@shared/api/agent-protocol';
 import type { AuditGrantSource } from './agent-audit-log';
@@ -120,6 +121,25 @@ export interface PersonaAccess {
    * @returns Returns the hits, best first.
    */
   search(request: PersonaSearchRequest): Promise<readonly PersonaSearchHit[]>;
+
+  /**
+   * Gets how many open questions there are about the user (#1519).
+   */
+  readonly questions: number;
+
+  /**
+   * Offers one open question for this conversation to ask, at most once per conversation.
+   * @returns Returns the question, or null when there is none or one was already offered.
+   */
+  offerQuestion(): Promise<PersonaQuestion | null>;
+
+  /**
+   * Records the user's answer to an open question, as a memory they wrote.
+   * @param questionId The question.
+   * @param answer What the user said.
+   * @returns Returns true when the question was there.
+   */
+  answerQuestion(questionId: string, answer: string): Promise<boolean>;
 
   /**
    * Forgets entries the user asked to have forgotten.

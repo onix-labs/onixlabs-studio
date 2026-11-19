@@ -1,5 +1,6 @@
 import type { ToolSet } from 'ai';
-import { FORGET_PERSONA, SEARCH_PERSONA } from '@shared/api/ai-types';
+import { ANSWER_PERSONA_QUESTION, FORGET_PERSONA, SEARCH_PERSONA } from '@shared/api/ai-types';
+import type { PersonaQuestion } from '@shared/api/persona-learning-protocol';
 import {
   PERSONA_SEARCH_LIMIT,
   renderPersonaHits,
@@ -26,6 +27,14 @@ interface SearchArguments {
   readonly words?: string;
   readonly tags?: readonly string[];
   readonly limit?: number;
+}
+
+/**
+ * The arguments of a forget.
+ */
+interface AnswerArguments {
+  readonly questionId: string;
+  readonly answer: string;
 }
 
 /**
@@ -84,7 +93,13 @@ export async function createPersonaTools(
           tags: args.tags ?? [],
           limit: args.limit ?? 8,
         });
-        return renderPersonaHits(hits);
+        // One open question, at most once per conversation, and never in chat mode, where the answer
+        // could not be recorded (#1519).
+        const question: PersonaQuestion | null =
+          context.mode === 'chat' ? null : await persona.offerQuestion();
+        return question === null
+          ? renderPersonaHits(hits)
+          : `${renderPersonaHits(hits)}\n\n${renderQuestion(question)}`;
       },
     }),
   };
@@ -93,6 +108,23 @@ export async function createPersonaTools(
   }
   return {
     ...tools,
+    [ANSWER_PERSONA_QUESTION]: tool({
+      description:
+        "Record the user's own answer to an open question about them, by the question id a search returned. Only with what the user actually said.",
+      inputSchema: z.object({
+        questionId: z.string().min(1).describe('The question id.'),
+        answer: z.string().min(1).describe("The user's answer, in their words where you can."),
+      }),
+      execute: gate(
+        context,
+        ANSWER_PERSONA_QUESTION,
+        async (args: AnswerArguments): Promise<string> =>
+          (await persona.answerQuestion(args.questionId, args.answer))
+            ? 'Recorded in the persona.'
+            : 'That question is no longer open; nothing was recorded.',
+        (args: AnswerArguments): string => `Remember: "${args.answer.slice(0, 80)}"`,
+      ),
+    }),
     [FORGET_PERSONA]: tool({
       description:
         'Forget entries in the persona, by the ids a search returned. Only when the user asks you to forget something, or not to remember it.',
@@ -113,4 +145,17 @@ export async function createPersonaTools(
       ),
     }),
   };
+}
+
+/**
+ * Renders an open question for the agent, with how to ask it: aside, only when it fits, once.
+ * @param question The question.
+ * @returns Returns the text.
+ */
+function renderQuestion(question: PersonaQuestion): string {
+  return [
+    `One thing Studio would like to know about the user (question id: ${question.id}): "${question.text}"`,
+    'Ask it only if it fits naturally, as a short aside at the end of a reply, never in the middle of',
+    `their task and never more than this once. If they answer, record it with "${ANSWER_PERSONA_QUESTION}".`,
+  ].join('\n');
 }

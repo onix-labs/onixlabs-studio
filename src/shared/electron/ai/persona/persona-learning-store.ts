@@ -83,6 +83,11 @@ export interface LearningRecords {
    * Gets the full rebuild under way (#1518), with its own record of the messages it has read, or null.
    */
   readonly rebuild: StoredRebuild | null;
+
+  /**
+   * Gets when fading last ran (epoch milliseconds), or 0 (#1519).
+   */
+  readonly lastFaded: number;
 }
 
 /**
@@ -105,6 +110,7 @@ export const EMPTY_LEARNING_RECORDS: LearningRecords = {
   lastRun: 0,
   failures: {},
   rebuild: null,
+  lastFaded: 0,
 };
 
 /**
@@ -308,6 +314,10 @@ export function readRecords(value: unknown): LearningRecords {
     lastRun: typeof lastRun === 'number' && Number.isFinite(lastRun) ? lastRun : 0,
     failures,
     rebuild: readRebuild(record['rebuild']),
+    lastFaded:
+      typeof record['lastFaded'] === 'number' && Number.isFinite(record['lastFaded'])
+        ? record['lastFaded']
+        : 0,
   };
 }
 

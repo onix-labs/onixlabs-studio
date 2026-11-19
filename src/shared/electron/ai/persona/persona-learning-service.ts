@@ -29,6 +29,7 @@ import {
   type LearningReviewRequest,
   type LearningState,
 } from '@shared/api/persona-learning-protocol';
+import { fadeEntries } from '@shared/api/persona-fading';
 import { redactSecrets } from '@shared/api/redaction';
 import { GLOBAL_SCOPE } from '@shared/api/ai-types';
 import { logger } from '@shared/electron/logger';
@@ -56,6 +57,11 @@ const CLAIM_MS: number = 10 * 60_000;
  * How many failed runs on a conversation's messages before they are marked read and passed over.
  */
 const FAILURE_LIMIT: number = 3;
+
+/**
+ * A day, in milliseconds: fading runs at most once in one.
+ */
+const DAY_MS: number = 24 * 60 * 60_000;
 
 /**
  * A batch handed out and not yet finished.
@@ -87,6 +93,12 @@ interface Claim {
  * copied into a persona every future session reads (#1513 §3, on what is read).
  */
 export class PersonaLearningService {
+  /**
+   * Holds which question each conversation was offered, by conversation (#1519), so a conversation is
+   * offered one at most. Kept in memory: a restart may offer a conversation one more, which is fine.
+   */
+  private readonly offered: Map<string, string> = new Map<string, string>();
+
   /**
    * Holds the batch a run is working on, or null.
    */
@@ -306,8 +318,42 @@ export class PersonaLearningService {
       'PersonaLearningService.finish',
       `Batch ${request.batchId}: ${outcome.applied} applied, ${outcome.pending} for review, ${outcome.refused} refused`,
     );
-    this.announce(outcome.applied > 0);
+    const faded: number = await this.fade();
+    this.announce(outcome.applied > 0 || faded > 0);
     return outcome;
+  }
+
+  /**
+   * Fades the learned entries that have gone unconfirmed (#1519), at most once a day. Fading is not
+   * new learning, so it is applied rather than held for review; each change is listed with the rest,
+   * and can be undone.
+   * @returns Returns how many entries faded.
+   */
+  public async fade(): Promise<number> {
+    return this.store.update(
+      async (records: LearningRecords): Promise<[LearningRecords, number]> => {
+        const now: number = this.now();
+        if (now - records.lastFaded < DAY_MS) {
+          return [records, 0];
+        }
+        const changes: readonly PersonaChange[] = fadeEntries(
+          (await this.library.list()).entries,
+          records.lastFaded,
+          now,
+          (): string => PersonaLearningStore.newId(),
+        );
+        for (const change of changes) {
+          await this.restore(change.entryId, change.after);
+        }
+        if (changes.length > 0) {
+          logger.info('PersonaLearningService.fade', `${changes.length} learned entr(ies) faded`);
+        }
+        return [
+          { ...records, lastFaded: now, recent: [...records.recent, ...changes] },
+          changes.length,
+        ];
+      },
+    );
   }
 
   /**
@@ -587,6 +633,35 @@ export class PersonaLearningService {
    */
   public cancelRebuild(): Promise<void> {
     return this.endRebuild('cancelled');
+  }
+
+  /**
+   * Offers one open question to a conversation (#1519): the oldest not already offered to another
+   * conversation, and none at all to a conversation that has had one.
+   * @param conversationKey The conversation.
+   * @returns Returns the question, or null.
+   */
+  public async offerQuestion(conversationKey: string): Promise<PersonaQuestion | null> {
+    if (this.offered.has(conversationKey)) {
+      return null;
+    }
+    const elsewhere: ReadonlySet<string> = new Set<string>(this.offered.values());
+    const question: PersonaQuestion | undefined = (await this.store.read()).questions.find(
+      (candidate: PersonaQuestion): boolean => !elsewhere.has(candidate.id),
+    );
+    if (question === undefined) {
+      return null;
+    }
+    this.offered.set(conversationKey, question.id);
+    return question;
+  }
+
+  /**
+   * Counts the open questions.
+   * @returns Returns the count.
+   */
+  public async questionCount(): Promise<number> {
+    return (await this.store.read()).questions.length;
   }
 
   /**

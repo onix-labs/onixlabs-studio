@@ -206,4 +206,23 @@ describe('PersonaSection (#1514)', () => {
     expect(service.entries()).toHaveLength(0);
     expect(element().querySelector('[data-testid="persona-editor"]')).toBeNull();
   });
+
+  it('overview_pointsOutMemoriesAboutOtherPeople_andShowsThem', () => {
+    service.create({
+      name: 'Sam',
+      layer: 'memory',
+      text: 'My partner Sam is vegetarian.',
+      tags: ['people'],
+    });
+    service.create({ name: 'Trains', layer: 'memory', tags: ['travel'] });
+    fixture.detectChanges();
+
+    const note: HTMLElement | null = element().querySelector('[data-testid="persona-people"]');
+    expect(note?.textContent?.replace(/\s+/g, ' ')).toContain('1 memory is about other people.');
+
+    note?.querySelector('button')?.click();
+    fixture.detectChanges();
+
+    expect(labels()).toEqual(['Sam']);
+  });
 });

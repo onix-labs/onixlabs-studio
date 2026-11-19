@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import type {
   PersonaChange,
+  PersonaQuestion,
   PersonaRebuildJob,
   PersonaSnapshot,
 } from '@shared/api/persona-learning-protocol';
@@ -87,6 +88,20 @@ export class PersonaActivity {
    * Holds the topic being typed.
    */
   protected readonly topicDraft: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds the answers being typed, by question.
+   */
+  private readonly drafts: WritableSignal<Readonly<Record<string, string>>> = signal<
+    Readonly<Record<string, string>>
+  >({});
+
+  /**
+   * Gets the open questions about the user (#1519).
+   */
+  protected readonly questions: Signal<readonly PersonaQuestion[]> = computed(
+    (): readonly PersonaQuestion[] => this.learning.state().questions,
+  );
 
   /**
    * Holds whether the rebuild dialog is open (#1518).
@@ -213,6 +228,53 @@ export class PersonaActivity {
       'aiManager.persona',
       undone ? 'Undid a learned change' : 'Change to undo was gone',
     );
+  }
+
+  /**
+   * Gets the answer being typed to a question.
+   * @param questionId The question.
+   * @returns Returns the text.
+   */
+  protected draftFor(questionId: string): string {
+    return this.drafts()[questionId] ?? '';
+  }
+
+  /**
+   * Holds the answer being typed to a question.
+   * @param questionId The question.
+   * @param text The text.
+   */
+  protected setDraft(questionId: string, text: string): void {
+    this.drafts.update(
+      (drafts: Readonly<Record<string, string>>): Readonly<Record<string, string>> => ({
+        ...drafts,
+        [questionId]: text,
+      }),
+    );
+  }
+
+  /**
+   * Answers a question with what was typed; an empty answer does nothing.
+   * @param questionId The question.
+   * @returns Resolves once recorded.
+   */
+  protected async answer(questionId: string): Promise<void> {
+    const text: string = this.draftFor(questionId).trim();
+    if (text.length === 0) {
+      return;
+    }
+    await this.learning.answer(questionId, text);
+    this.setDraft(questionId, '');
+    this.log.info('aiManager.persona', 'Answered a question about the user');
+  }
+
+  /**
+   * Dismisses a question without answering it.
+   * @param questionId The question.
+   * @returns Resolves once dismissed.
+   */
+  protected async dismiss(questionId: string): Promise<void> {
+    await this.learning.answer(questionId, '');
   }
 
   /**

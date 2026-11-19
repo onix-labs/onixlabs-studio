@@ -12,6 +12,7 @@ import { PromptScope } from '@shared/api/ai-types';
 import {
   isOverCoreLimit,
   normalizeTags,
+  PEOPLE_TAG,
   PERSONA_CORE_LINE_LIMIT,
   personaDay,
   personaEntryMatches,
@@ -164,6 +165,23 @@ export class PersonaSection {
   );
 
   /**
+   * Gets how many entries are about other people (#1519), for the overview's shortcut to them.
+   */
+  protected readonly peopleCount: Signal<number> = computed(
+    (): number =>
+      this.service
+        .entries()
+        .filter((entry: PersonaEntry): boolean => entry.tags.includes(PEOPLE_TAG)).length,
+  );
+
+  /**
+   * Gets whether the selected entry is about other people.
+   */
+  protected readonly selectedAboutPeople: Signal<boolean> = computed(
+    (): boolean => this.selected()?.tags.includes(PEOPLE_TAG) ?? false,
+  );
+
+  /**
    * Gets the tags in use, most used first.
    */
   protected readonly tags: Signal<readonly TagCount[]> = computed((): readonly TagCount[] => {
@@ -290,6 +308,13 @@ export class PersonaSection {
    */
   protected showTag(tag: string): void {
     this.sidebar?.query.set(`#${tag}`);
+  }
+
+  /**
+   * Narrows the side panel to the entries about other people.
+   */
+  protected showPeople(): void {
+    this.showTag(PEOPLE_TAG);
   }
 
   /**
