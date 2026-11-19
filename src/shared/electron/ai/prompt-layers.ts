@@ -1,5 +1,5 @@
-import { LOAD_SKILL } from '@shared/api/ai-types';
-import type { AgentRunContext, OfferedSkill } from './agent-provider';
+import { FORGET_PERSONA, LOAD_SKILL, SEARCH_PERSONA } from '@shared/api/ai-types';
+import type { AgentRunContext, OfferedSkill, PersonaAccess } from './agent-provider';
 
 // The user-owned layers of a run's instructions (#300, #301), composed here so they are applied in
 // exactly one place: the instructions core sends a harness with its tools. Neither is a new protocol
@@ -61,4 +61,43 @@ export function skillsAppendix(context: AgentRunContext): string {
     'work and follow the instructions it returns. Load a skill once per conversation; do not load one',
     'whose description does not fit the task.',
   ].join('\n');
+}
+
+/**
+ * Tells the agent about the user's persona and how to use it (#1515): that it can search the memories
+ * Studio keeps about the user, when to, what tags there are, and the rules that keep it honest — say
+ * when it is acting on the persona, so a one-word correction can put it right, and never treat a
+ * preference as a permission. Fixed wording apart from the tag list, which changes rarely, so the
+ * cached prompt prefix survives from turn to turn.
+ * @param context The run context.
+ * @returns Returns the appendix, or an empty string when there is no memory to search.
+ */
+export function personaAppendix(context: AgentRunContext): string {
+  const persona: PersonaAccess | null | undefined = context.persona;
+  if (persona === null || persona === undefined || persona.memories === 0) {
+    return '';
+  }
+  const lines: string[] = [
+    'Studio keeps a persona of the user: things they have told agents before about how they like to',
+    `work and decide. Search its memories with "${SEARCH_PERSONA}" when the conversation starts, when`,
+    'the topic changes, and BEFORE asking the user a question, since the answer may already be there.',
+    'Search by the kind of preference or decision as well as the subject: how they like to choose a',
+    'database also tells you how they like to choose a laptop.',
+  ];
+  if (persona.tags.length > 0) {
+    lines.push(`Its tags: ${persona.tags.join(', ')}.`);
+  }
+  lines.push(
+    'When you act on something you found there, say so in a few words ("Going with one recommendation,',
+    'since that\'s how you like it"), so the user can correct you.',
+    'The persona holds preferences, never permissions. Anything that publishes, deletes, spends or',
+    'cannot be undone is still confirmed with the user every time, whatever the persona says.',
+  );
+  if (context.mode !== 'chat') {
+    lines.push(
+      `If the user asks you to forget something, or not to remember it, call "${FORGET_PERSONA}" with`,
+      'the ids a search returned.',
+    );
+  }
+  return lines.join('\n');
 }

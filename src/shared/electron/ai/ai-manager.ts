@@ -55,6 +55,7 @@ import type {
   AgentSession,
   EditDecisionOutcome,
   OfferedSkill,
+  PersonaAccess,
   ProviderAvailability,
 } from './agent-provider';
 import { AiAuthManager } from './ai-auth-manager';
@@ -98,6 +99,9 @@ import { checkRunRoot, type OpenRoots, type RunRootCheck } from './run-root-guar
 import { ExcludedCommandStore } from './excluded-command-store';
 import { sanitizeExcludedCommands } from '@shared/api/excluded-commands';
 import type { SkillOfferer } from './skills/skill-library';
+import { bindPersona } from './persona/persona-access';
+import { announcePersonaChange } from './persona/persona-handlers';
+import type { PersonaLibrary } from './persona/persona-library';
 
 import { FolderTrustSource, mayRunIn } from '../repository-trust';
 /**
@@ -380,6 +384,11 @@ export class AiManager {
   private readonly hosting: HostingAgentAccess | null;
 
   /**
+   * Holds the user's persona (#1515), searched by a run's agent; null in a test or a build without one.
+   */
+  private readonly persona: PersonaLibrary | null;
+
+  /**
    * Holds the open workspace roots, which a run's root must be or lie inside (#810).
    */
   private readonly openRoots: OpenRoots;
@@ -497,10 +506,12 @@ export class AiManager {
     openRoots: OpenRoots,
     trust: FolderTrustSource,
     hosting: HostingAgentAccess | null = null,
+    persona: PersonaLibrary | null = null,
   ) {
     this.windowGetter = windowGetter;
     this.skills = skills;
     this.hosting = hosting;
+    this.persona = persona;
     this.openRoots = openRoots;
     this.trust = trust;
     this.bridge = new RendererBridge(windowGetter);
@@ -1202,6 +1213,12 @@ export class AiManager {
     const controller: AbortController = new AbortController();
     this.runs.set(request.requestId, controller);
     const skills: readonly OfferedSkill[] = await this.skills.offer(surface, language);
+    // The persona's memories in the run's scope (#1515). A failure costs the run its persona, never
+    // the run.
+    const persona: PersonaAccess | null =
+      this.persona === null
+        ? null
+        : await bindPersona(this.persona, surface, language, (): void => announcePersonaChange());
     if (skills.length > 0) {
       logger.debug(
         'AiManager.run',
@@ -1269,6 +1286,7 @@ export class AiManager {
       language,
       systemPromptExtra,
       skills,
+      persona,
       blockedCommands:
         request.blockHostCommandLine === true && runHosting !== null
           ? runHosting.commandLineTools

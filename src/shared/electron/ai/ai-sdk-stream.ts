@@ -147,7 +147,8 @@ import {
   writeTerminalInput,
   READ_ONLY_APPENDIX,
 } from './studio-tools';
-import { skillsAppendix, withSystemPromptExtra } from './prompt-layers';
+import { personaAppendix, skillsAppendix, withSystemPromptExtra } from './prompt-layers';
+import { createPersonaTools } from './persona-tools';
 import { createHostingTools, hostingPromptAppendix } from './hosting-tools';
 import { createSkillTools } from './skill-tools';
 import {
@@ -1878,8 +1879,10 @@ export function promptForSurface(
   if (isToolViewSurface(surface)) {
     const scoped: string =
       context.mode === 'chat' ? `${withAsk}\n\n${READ_ONLY_APPENDIX}` : withAsk;
-    const listed: string = skillsAppendix(context);
-    return withSystemPromptExtra(listed.length === 0 ? scoped : `${scoped}\n\n${listed}`, context);
+    const listed: string = [scoped, skillsAppendix(context), personaAppendix(context)]
+      .filter((part: string): boolean => part.length > 0)
+      .join('\n\n');
+    return withSystemPromptExtra(listed, context);
   }
   const studio: string = ((): string => {
     // The workbench tools are registered on every surface, so every surface is told about them —
@@ -1900,14 +1903,14 @@ export function promptForSurface(
   // both are derived from `offeredHostingTools`, so they cannot disagree (#852).
   const hosting: string = hostingPromptAppendix(context);
   const withHosting: string = hosting.length === 0 ? studio : `${studio}\n\n${hosting}`;
-  // The user's layers come last, and in this order: the skills listing describes a tool the model
-  // holds, so it belongs with Studio's tool guidance; the standing text is the user's own voice and
-  // reads as such only once everything Studio has to say is above it.
-  const skills: string = skillsAppendix(context);
-  return withSystemPromptExtra(
-    skills.length === 0 ? withHosting : `${withHosting}\n\n${skills}`,
-    context,
-  );
+  // The user's layers come last, and in this order: the skills listing and the persona's guidance
+  // describe tools the model holds, so they belong with Studio's tool guidance; the standing text (the
+  // persona's core) is the user's own voice and reads as such only once everything Studio has to say
+  // is above it.
+  const layered: string = [withHosting, skillsAppendix(context), personaAppendix(context)]
+    .filter((part: string): boolean => part.length > 0)
+    .join('\n\n');
+  return withSystemPromptExtra(layered, context);
 }
 
 /**
@@ -1964,6 +1967,7 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
     return {
       ...askUserTool,
       ...(await createSkillTools(context)),
+      ...(await createPersonaTools(context, gated)),
       ...(await createToolViewTools(context)),
     };
   }
@@ -1974,6 +1978,9 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
   const runConfigurationTools: ToolSet = await createRunConfigurationTools(context);
   // The skill tool rides on every surface and decides for itself whether it applies (#301).
   const skillTools: ToolSet = await createSkillTools(context);
+  // The persona tools ride on every surface too, and decide for themselves whether there is anything
+  // to search (#1515).
+  const personaTools: ToolSet = await createPersonaTools(context, gated);
   // The hosting tools ride wherever the run works in a hosted repository, and decide for themselves
   // which operations the repository allows (#852).
   const hostingTools: ToolSet = await createHostingTools(context);
@@ -2007,6 +2014,7 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
     ...workbenchTools,
     ...runConfigurationTools,
     ...skillTools,
+    ...personaTools,
     ...hostingTools,
     ...surfaceTools,
   };

@@ -337,6 +337,17 @@ export const REVEAL_IN_EXPLORER: string = 'reveal_in_explorer';
 export const LOAD_SKILL: string = 'load_skill';
 
 /**
+ * The tool that searches the user's persona (#1515): the memories Studio has about them, looked up when
+ * a conversation makes them relevant. Read-only, like loading a skill.
+ */
+export const SEARCH_PERSONA: string = 'search_persona';
+
+/**
+ * The tool that forgets persona entries when the user asks for it (#1515). Gated: it deletes.
+ */
+export const FORGET_PERSONA: string = 'forget_persona';
+
+/**
  * The System Monitor capability that lists the app's log sessions (#966): the current one and the
  * earlier ones still on disk, so the agent can say which run it is reading.
  */

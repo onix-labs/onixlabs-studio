@@ -657,6 +657,7 @@ class Program {
     this.workspaceContext,
     this.repositoryTrust,
     new HostingAgentAccess(this.hostingHost, this.versionControlHost),
+    this.personaLibrary,
   );
 
   /**
