@@ -205,6 +205,19 @@ export class HarnessAgentProvider implements AgentProvider {
   }
 
   /**
+   * Gets whether the harness can be told to leave an untrusted folder's own settings alone (#1504), as
+   * its declared protocol says, or null before it has been started and so declared nothing.
+   */
+  public get ignoresUntrustedSettings(): boolean | null {
+    return this.declared === null
+      ? null
+      : isProtocolCompatible(
+          PROJECT_SETTINGS_PROTOCOL_VERSION,
+          this.declared.protocolVersion ?? '',
+        );
+  }
+
+  /**
    * Gets whether the harness signs its user in, as declared (#1080). Assumed so before the first
    * handshake, because nothing short of starting it can say: a harness that turns out not to answer
    * `auth` settles a sign-in null, and the window says the plugin cannot sign in.
@@ -1039,8 +1052,9 @@ export function refuseUnheededUntrustedWorkspace(
   const declared: string = capabilities?.protocolVersion ?? '';
   if (!isProtocolCompatible(PROJECT_SETTINGS_PROTOCOL_VERSION, declared)) {
     throw new Error(
-      `This folder is not trusted, and this version of ${label} cannot be told to ignore the ` +
-        "folder's own settings. Trust the folder from the status bar, or update the plugin.",
+      `This folder is not trusted, and this version of the ${label} plugin cannot be kept from ` +
+        "the folder's own settings, so it does not run here. Update the plugin in the Plugin " +
+        'Manager to use it in folders you have not trusted, including to scan them.',
     );
   }
 }

@@ -563,6 +563,14 @@ export interface AgentProvider {
   readonly offersSignIn?: boolean;
 
   /**
+   * Gets whether the provider can be told to leave an untrusted folder's own configuration alone (its
+   * hooks, tool servers and settings), which it must before it runs there at all — including to scan
+   * the folder before the user trusts it (#1504). Null until known: a harness says so only once it has
+   * been started. Absent means it never needs telling.
+   */
+  readonly ignoresUntrustedSettings?: boolean | null;
+
+  /**
    * Gets how the provider maintains a conversation — whether it can hold a live session (#324).
    * `live-harness` providers will open an {@link AgentSession}; `stateless` providers run per-turn. This
    * is a classification only in P2 (#326); the live-session runtime lands in P3 (#327).
