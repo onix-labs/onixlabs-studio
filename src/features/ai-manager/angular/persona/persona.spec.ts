@@ -81,9 +81,9 @@ describe('PersonaSection (#1514)', () => {
     expect(element().querySelector('[data-testid="persona-core-meter"]')?.textContent).toContain(
       'Core: 0 of 12 lines',
     );
-    const buttons: string[] = [...element().querySelectorAll('.library__empty button')].map(
-      (button: Element): string => button.textContent?.trim() ?? '',
-    );
+    const buttons: string[] = [
+      ...element().querySelectorAll('.library__empty > app-button-row button'),
+    ].map((button: Element): string => button.textContent?.trim() ?? '');
     expect(buttons).toEqual(['New Memory', 'New Core Entry', 'Import']);
   });
 

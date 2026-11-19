@@ -179,6 +179,16 @@
       <app-icon [icon]="Icon.COPY" />
       <span class="app-menu-panel__item-label">Duplicate</span>
     </button>
+    <button
+      type="button"
+      class="app-menu-panel__item"
+      cdkMenuItem
+      [cdkMenuItemDisabled]="!peteOn()"
+      (cdkMenuItemTriggered)="onLearnNow()"
+    >
+      <app-icon [icon]="Icon.PERSONA_MEMORY" />
+      <span class="app-menu-panel__item-label">Learn from This Conversation Now</span>
+    </button>
     <div class="history-menu__sep"></div>
     <button
       type="button"
@@ -347,6 +357,13 @@
     <p class="history__modal-body">
       {{ checkedCount() }} conversation{{ checkedCount() === 1 ? '' : 's' }} will be permanently
       deleted. This cannot be undone.
+    </p>
+    <!-- #1519: deleting a conversation never touches the persona, and the user is told so. -->
+    <p class="history__modal-body">
+      Your persona keeps anything Pete learned from them.
+      <button type="button" class="history__modal-link" (click)="onOpenPersona()">
+        Open Persona
+      </button>
     </p>
     <app-button-row>
       <app-button variant="solid" tone="danger" label="Delete" (click)="onConfirmDelete()" />

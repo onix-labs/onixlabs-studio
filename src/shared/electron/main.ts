@@ -26,8 +26,10 @@ import { AgentConversationStore } from './ai/agent-conversation-store';
 import { useDevelopmentUserData } from './development-user-data';
 import { AgentCategoryStore } from './ai/agent-category-store';
 import { AiManager } from './ai/ai-manager';
-import { PersonaHandlers } from './ai/persona/persona-handlers';
+import { announcePersonaChange, PersonaHandlers } from './ai/persona/persona-handlers';
 import { PersonaLibrary } from './ai/persona/persona-library';
+import { PeteService } from './ai/persona/pete-service';
+import { PeteStore } from './ai/persona/pete-store';
 import { LibraryTransfer } from './ai/skills/library-transfer';
 import { LibraryTransferHandlers } from './ai/skills/library-transfer-handlers';
 import { SkillHandlers } from './ai/skills/skill-handlers';
@@ -785,6 +787,17 @@ class Program {
   private readonly agentConversationStore: AgentConversationStore = new AgentConversationStore();
 
   /**
+   * Runs Pete's side of learning the persona (#1516): hands out the user's unread messages, checks
+   * what the model proposed, and applies it or holds it for review.
+   */
+  private readonly peteService: PeteService = new PeteService(
+    this.personaLibrary,
+    new PeteStore(this.personaLibrary.directory),
+    this.agentConversationStore,
+    (): void => announcePersonaChange(),
+  );
+
+  /**
    * Owns the user's conversation categories — the organisation layer over conversation history.
    */
   private readonly agentCategoryStore: AgentCategoryStore = new AgentCategoryStore();
@@ -1329,6 +1342,7 @@ class Program {
     this.personaHandlers.register();
     this.libraryTransferHandlers.register();
     this.agentConversationStore.register();
+    this.peteService.register();
     this.agentCategoryStore.register();
     this.lspSettingsManager.register();
     this.lspManager.register();

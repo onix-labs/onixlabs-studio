@@ -1,0 +1,64 @@
+<section class="activity" aria-label="Pete">
+  <h3 class="activity__heading section-label">Pete</h3>
+  <p class="activity__status" data-testid="pete-status">{{ status() }}</p>
+  <div class="activity__actions">
+    <app-button
+      variant="ghost"
+      [icon]="Icon.SETTINGS"
+      label="Pete's Settings"
+      (click)="openSettings()"
+    />
+    @if (canRun()) {
+      <app-button
+        variant="ghost"
+        [icon]="Icon.REFRESH_DUOTONE"
+        label="Look Now"
+        (click)="runNow()"
+      />
+    }
+  </div>
+
+  @if (recent().length > 0) {
+    <h4 class="activity__subheading">Recent changes</h4>
+    <ul class="activity__list" data-testid="pete-recent">
+      @for (change of recent(); track change.id) {
+        <li class="activity__row">
+          <span class="activity__text">
+            {{ change.verb }} <strong>{{ change.name }}</strong>
+            <span class="activity__muted">&nbsp;· {{ change.when }}</span>
+          </span>
+          <app-button variant="ghost" label="Undo" (click)="undo(change.id)" />
+        </li>
+      }
+    </ul>
+  }
+
+  <h4 class="activity__subheading">Topics Pete never learns about</h4>
+  @if (ruledOut().length > 0) {
+    <ul class="activity__topics" data-testid="pete-ruled-out">
+      @for (topic of ruledOut(); track topic) {
+        <li class="activity__topic">
+          {{ topic }}
+          <button
+            type="button"
+            class="activity__topic-remove"
+            [attr.aria-label]="'Let Pete learn about ' + topic + ' again'"
+            (click)="removeTopic(topic)"
+          >
+            ×
+          </button>
+        </li>
+      }
+    </ul>
+  }
+  <div class="activity__add">
+    <app-text-field
+      [value]="topicDraft()"
+      ariaLabel="Topic to rule out"
+      placeholder="A topic, e.g. health"
+      (valueChange)="topicDraft.set($event)"
+      (enter)="addTopic()"
+    />
+    <app-button variant="ghost" [icon]="Icon.PLUS" label="Rule Out" (click)="addTopic()" />
+  </div>
+</section>

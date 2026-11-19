@@ -1,4 +1,5 @@
 import type { OllamaStart, OllamaStopOnQuit } from '@shared/api/startup-settings';
+import type { PersonaReviewMode, PeteSchedule } from '@shared/api/pete-protocol';
 import type { Severity } from '@shared/api/log-channels';
 import type { VcsPullMode, VcsSignCommits } from '@shared/api/version-control-protocol';
 import type { CloneLayout } from '@shared/api/clone-channels';
@@ -908,6 +909,12 @@ export interface SettingsValues {
   readonly 'aiManager.resultsPerSource': number;
   readonly 'aiManager.skillLibraryFolder': string;
   readonly 'aiManager.lastSection': string;
+  readonly 'persona.peteConnectionId': string;
+  readonly 'persona.peteModel': string;
+  readonly 'persona.petePaused': boolean;
+  readonly 'persona.peteSchedule': PeteSchedule;
+  readonly 'persona.peteIdleMinutes': number;
+  readonly 'persona.review': PersonaReviewMode;
   readonly 'containers.engine': string;
   readonly 'containers.engineAddressMode': ContainerEngineAddressMode;
   readonly 'containers.engineAddress': string;
@@ -5833,6 +5840,80 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description: 'The AI Manager section left open.',
         control: { kind: 'custom', component: 'ai-manager-section' },
         default: '',
+      },
+    ],
+  },
+  {
+    // Pete, who learns the persona in the background (#1516), and how his changes land (#1517).
+    id: 'ai-manager-persona',
+    label: 'Persona',
+    settings: [
+      {
+        // Chosen on the Pete Connection row above the section; it has no row of its own.
+        key: 'persona.peteConnectionId',
+        title: "Pete's Connection",
+        description:
+          'The AI connection Pete reads your conversations with. Pete does nothing until one is chosen.',
+        control: { kind: 'custom', component: 'pete-connection' },
+        default: '',
+      },
+      {
+        key: 'persona.peteModel',
+        title: "Pete's Model",
+        description: "The model Pete uses, or empty for the connection's default.",
+        control: { kind: 'custom', component: 'pete-connection' },
+        default: '',
+      },
+      {
+        key: 'persona.petePaused',
+        title: 'Pause Pete',
+        description: 'Stop Pete reading conversations until you switch this off. Nothing is lost.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'persona.peteSchedule',
+        title: 'When Pete Runs',
+        description:
+          'After a conversation has been idle for a while, or once a day. Either way he reads only what he has not read before.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'idle', label: 'After a conversation goes idle' },
+            { value: 'daily', label: 'Once a day' },
+          ],
+        },
+        default: 'idle',
+      },
+      {
+        key: 'persona.peteIdleMinutes',
+        title: 'Idle For',
+        description: 'How long a conversation has to be quiet before Pete reads it.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '10', label: '10 minutes' },
+            { value: '30', label: '30 minutes' },
+            { value: '60', label: '1 hour' },
+            { value: '240', label: '4 hours' },
+          ],
+        },
+        default: 30,
+      },
+      {
+        key: 'persona.review',
+        title: "Pete's Changes",
+        description:
+          'Ask me first holds what Pete learns until you approve it, and agents do not use it until then. Update automatically applies it, and lists it so you can undo it.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'ask', label: 'Ask me first' },
+            { value: 'automatic', label: 'Update automatically' },
+          ],
+        },
+        default: 'ask',
       },
     ],
   },

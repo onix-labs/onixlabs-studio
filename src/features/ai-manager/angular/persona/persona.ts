@@ -40,6 +40,7 @@ import {
   AiLibraryCommandHandler,
   AiLibraryCommands,
 } from '../ai-library-commands/ai-library-commands';
+import { PersonaActivity } from '../persona-activity/persona-activity';
 import { PromptScopeEditor } from '../prompt-scope-editor/prompt-scope-editor';
 import {
   AiManagerSidebarList,
@@ -82,6 +83,7 @@ interface TagCount {
     MarkdownField,
     Modal,
     ModalContent,
+    PersonaActivity,
     PromptScopeEditor,
     SettingRow,
     SkillImportModal,
