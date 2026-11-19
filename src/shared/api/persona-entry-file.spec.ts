@@ -21,7 +21,7 @@ describe('persona entry files', () => {
     enabled: true,
     confidence: 0.75,
     confirmed: '2026-11-19',
-    author: 'pete',
+    author: 'learned',
     locked: false,
   };
 
@@ -51,8 +51,8 @@ describe('persona entry files', () => {
     });
   });
 
-  it('parseEntryFile_whenPeteWroteItAndLockedIsMissing_readsItUnlocked', () => {
-    expect(parseEntryFile('x', '---\nauthor: pete\n---\nLikes trains.\n').locked).toBe(false);
+  it('parseEntryFile_whenLearnedAndAndLockedIsMissing_readsItUnlocked', () => {
+    expect(parseEntryFile('x', '---\nauthor: learned\n---\nLikes trains.\n').locked).toBe(false);
   });
 
   it('parseEntryFile_dropsLinksThatAreNotIdsOrPointAtItself', () => {

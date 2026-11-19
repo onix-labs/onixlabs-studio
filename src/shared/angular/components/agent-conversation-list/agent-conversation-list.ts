@@ -34,7 +34,10 @@ import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigg
 import { Chip } from '@shared/angular/components/chip/chip';
 import { AiManagerNavigation } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
-import { Pete, PeteRunSummary } from '@shared/angular/services/persona/pete';
+import {
+  PersonaLearning,
+  LearningRunSummary,
+} from '@shared/angular/services/persona/persona-learning';
 
 /**
  * The identifier of the always-present All Conversations root node.
@@ -190,12 +193,12 @@ export class AgentConversationList {
   private readonly categoriesService: AgentCategories = inject(AgentCategories);
 
   /**
-   * Holds Pete, who learns from a conversation on request (#1516).
+   * Holds persona learning, which learns from a conversation on request (#1516).
    */
-  private readonly pete: Pete = inject(Pete);
+  private readonly learning: PersonaLearning = inject(PersonaLearning);
 
   /**
-   * Holds the notification store Pete's outcome is reported to.
+   * Holds the notification store the learning outcome is reported to.
    */
   private readonly notifications: Notifications = inject(Notifications);
 
@@ -205,12 +208,12 @@ export class AgentConversationList {
   private readonly aiManager: AiManagerNavigation = inject(AiManagerNavigation);
 
   /**
-   * Gets whether Pete can learn: a connection is chosen for him and he is not paused.
+   * Gets whether persona learning can learn: a connection is chosen for it and it is not paused.
    */
-  protected readonly peteOn: Signal<boolean> = computed(
+  protected readonly learningOn: Signal<boolean> = computed(
     (): boolean =>
-      this.settings.value('persona.peteConnectionId')().length > 0 &&
-      !this.settings.value('persona.petePaused')(),
+      this.settings.value('persona.learningConnectionId')().length > 0 &&
+      !this.settings.value('persona.learningPaused')(),
   );
 
   /**
@@ -762,25 +765,25 @@ export class AgentConversationList {
   }
 
   /**
-   * Has Pete read the targeted conversation now, whether or not it has gone idle, and says what came of
+   * Has persona learning read the targeted conversation now, whether or not it has gone idle, and says what came of
    * it (#1516).
-   * @returns Resolves once Pete has finished.
+   * @returns Resolves once persona learning has finished.
    */
   protected async onLearnNow(): Promise<void> {
     const target: AgentConversationSummary | null = this.menuTarget();
     if (target === null) {
       return;
     }
-    const summary: PeteRunSummary = await this.pete.learnNow(target.id);
+    const summary: LearningRunSummary = await this.learning.learnNow(target.id);
     this.notifications.notify({
       severity: summary.error === null ? 'info' : 'warning',
       title:
         summary.error !== null
-          ? 'Pete could not learn from that conversation'
+          ? 'Could not learn from that conversation'
           : summary.messagesRead === 0
-            ? 'Pete has already read that conversation'
-            : 'Pete read the conversation',
-      detail: summary.error ?? describePeteRun(summary),
+            ? 'That conversation has already been read'
+            : 'Learned from the conversation',
+      detail: summary.error ?? describeLearningRun(summary),
       actions: [{ label: 'Open Persona', run: (): void => this.onOpenPersona() }],
     });
   }
@@ -1038,11 +1041,11 @@ export class AgentConversationList {
 }
 
 /**
- * Says what one of Pete's runs did, in a sentence.
+ * Says what one of learning runs did, in a sentence.
  * @param summary The run.
  * @returns Returns the sentence.
  */
-function describePeteRun(summary: PeteRunSummary): string {
+function describeLearningRun(summary: LearningRunSummary): string {
   if (summary.applied + summary.pending === 0) {
     return 'Nothing new to learn about you.';
   }

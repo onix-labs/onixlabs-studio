@@ -1,12 +1,12 @@
 <app-modal
-  [open]="pete.reviewOpen()"
+  [open]="learning.reviewOpen()"
   [width]="40"
   [frameless]="true"
-  ariaLabel="Review Pete's changes"
+  ariaLabel="Review changes to your persona"
   (dismiss)="close()"
 >
   <ng-template appModalContent>
-    <h2 class="review__title">Review Pete's Changes</h2>
+    <h2 class="review__title">Review Changes to Your Persona</h2>
     @if (rows().length === 0) {
       <p class="review__empty">Nothing is waiting for review.</p>
     } @else {

@@ -2,7 +2,10 @@ import { ApplicationRef } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { AiConnection } from '@shared/api/ai-types';
 import type { Bridge } from '@shared/api/bridge';
-import { PeteChannel, type PersonaRebuildEstimate } from '@shared/api/pete-protocol';
+import {
+  PersonaLearningChannel,
+  type PersonaRebuildEstimate,
+} from '@shared/api/persona-learning-protocol';
 import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
 import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -23,10 +26,10 @@ describe('PersonaRebuild (#1518)', () => {
     const bridge: Partial<Bridge> = {
       invoke: <T>(channel: string, arg?: unknown): Promise<T> => {
         calls.push([channel, arg]);
-        if (channel === (PeteChannel.EstimateRebuild as string)) {
+        if (channel === (PersonaLearningChannel.EstimateRebuild as string)) {
           return Promise.resolve(estimate as T);
         }
-        if (channel === (PeteChannel.State as string)) {
+        if (channel === (PersonaLearningChannel.State as string)) {
           return Promise.resolve({
             recent: [],
             pending: [],
@@ -47,7 +50,7 @@ describe('PersonaRebuild (#1518)', () => {
     const local: AiConnection = { id: 'local', kind: 'ollama', label: 'Ollama' } as AiConnection;
     const paid: AiConnection = { id: 'claude', kind: 'anthropic', label: 'Claude' } as AiConnection;
     settings.set('ai.connections', [local, paid]);
-    settings.set('persona.peteConnectionId', 'local');
+    settings.set('persona.learningConnectionId', 'local');
     fixture = TestBed.createComponent(PersonaRebuild);
     fixture.componentInstance.closed.subscribe((): number => (closed += 1));
     fixture.componentRef.setInput('open', true);
@@ -91,18 +94,20 @@ describe('PersonaRebuild (#1518)', () => {
 
   it('saysHowMuchItWouldRead_beforeAnythingIsSent', () => {
     expect(host().querySelector('[data-testid="rebuild-estimate"]')?.textContent).toContain(
-      '12 conversations, about 34k characters you typed. Pete reads them in 2 batches, sending the model about 12k tokens.',
+      '12 conversations, about 34k characters you typed. It reads them in 2 batches, sending the model about 12k tokens.',
     );
     expect(host().textContent).toContain('nothing is sent anywhere, and it costs nothing');
     expect(
-      calls.some(([channel]): boolean => channel === (PeteChannel.StartRebuild as string)),
+      calls.some(
+        ([channel]): boolean => channel === (PersonaLearningChannel.StartRebuild as string),
+      ),
     ).toBe(false);
   });
 
   it('withAPaidModel_saysOnlyWhatYouTypedIsSent', async () => {
-    // Pete's own connection is what the dialog starts on; reopen it with a paid one chosen.
+    // learning's own connection is what the dialog starts on; reopen it with a paid one chosen.
     fixture.componentRef.setInput('open', false);
-    TestBed.inject(Settings).set('persona.peteConnectionId', 'claude');
+    TestBed.inject(Settings).set('persona.learningConnectionId', 'claude');
     fixture.componentRef.setInput('open', true);
     await settle();
 
@@ -121,7 +126,7 @@ describe('PersonaRebuild (#1518)', () => {
     await settle();
 
     expect(calls).toContainEqual([
-      PeteChannel.StartRebuild,
+      PersonaLearningChannel.StartRebuild,
       { mode: 'fresh', connectionId: 'local', model: '' },
     ]);
     expect(closed).toBe(1);

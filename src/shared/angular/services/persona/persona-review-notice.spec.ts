@@ -1,11 +1,15 @@
 import { TestBed } from '@angular/core/testing';
 import type { Bridge } from '@shared/api/bridge';
-import { PeteChannel, type PersonaChange, type PeteState } from '@shared/api/pete-protocol';
+import {
+  PersonaLearningChannel,
+  type PersonaChange,
+  type LearningState,
+} from '@shared/api/persona-learning-protocol';
 import { AiManagerNavigation } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
 import { CoreNotificationType } from '@shared/angular/services/notifications/core-notification-types';
 import type { Notification } from '@shared/angular/services/notifications/notifications';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
-import { Pete, type PeteRunSummary } from './pete';
+import { PersonaLearning, type LearningRunSummary } from './persona-learning';
 import { PersonaReviewNotice } from './persona-review-notice';
 
 /**
@@ -18,16 +22,18 @@ function waiting(id: string): PersonaChange {
 }
 
 describe('PersonaReviewNotice (#1517)', () => {
-  let state: PeteState;
+  let state: LearningState;
   let opened: string[];
-  let finished: (summary: PeteRunSummary) => void;
+  let finished: (summary: LearningRunSummary) => void;
 
   beforeEach(() => {
     opened = [];
     state = { recent: [], pending: [], ruledOut: [], questions: [], lastRun: 0, rebuild: null };
     const bridge: Partial<Bridge> = {
       invoke: <T>(channel: string): Promise<T> =>
-        Promise.resolve((channel === (PeteChannel.State as string) ? state : undefined) as T),
+        Promise.resolve(
+          (channel === (PersonaLearningChannel.State as string) ? state : undefined) as T,
+        ),
       on: (): (() => void) => (): void => undefined,
     };
     (window as unknown as { bridge?: Partial<Bridge> }).bridge = bridge;
@@ -39,12 +45,16 @@ describe('PersonaReviewNotice (#1517)', () => {
         },
       ],
     });
-    const pete: Pete = TestBed.inject(Pete);
-    const listen: Pete['onFinished'] = pete.onFinished.bind(pete);
-    Reflect.set(pete, 'onFinished', (listener: (summary: PeteRunSummary) => void): (() => void) => {
-      finished = listener;
-      return listen(listener);
-    });
+    const learning: PersonaLearning = TestBed.inject(PersonaLearning);
+    const listen: PersonaLearning['onFinished'] = learning.onFinished.bind(learning);
+    Reflect.set(
+      learning,
+      'onFinished',
+      (listener: (summary: LearningRunSummary) => void): (() => void) => {
+        finished = listener;
+        return listen(listener);
+      },
+    );
     TestBed.inject(PersonaReviewNotice);
   });
 
@@ -79,7 +89,7 @@ describe('PersonaReviewNotice (#1517)', () => {
     const toasts: readonly Notification[] = TestBed.inject(Notifications).toasts();
     expect(toasts).toHaveLength(1);
     expect(toasts[0]).toMatchObject({
-      title: 'Pete has persona changes for you to review',
+      title: 'Your persona has changes for you to review',
       type: CoreNotificationType.PersonaReview,
     });
     expect(toasts[0].detail).toContain('3 changes');
@@ -92,6 +102,6 @@ describe('PersonaReviewNotice (#1517)', () => {
     TestBed.inject(Notifications).toasts()[0].actions[0].run();
 
     expect(opened).toEqual(['persona']);
-    expect(TestBed.inject(Pete).reviewOpen()).toBe(true);
+    expect(TestBed.inject(PersonaLearning).reviewOpen()).toBe(true);
   });
 });

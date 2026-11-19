@@ -1,13 +1,13 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import type { PersonaEntry } from '@shared/api/persona-channels';
-import type { PersonaChange } from '@shared/api/pete-protocol';
+import type { PersonaChange } from '@shared/api/persona-learning-protocol';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Chip, type ChipTone } from '@shared/angular/components/chip/chip';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Log } from '@shared/angular/services/log/log';
-import { Pete } from '@shared/angular/services/persona/pete';
+import { PersonaLearning } from '@shared/angular/services/persona/persona-learning';
 
 /**
  * One waiting change as the review shows it.
@@ -23,7 +23,7 @@ interface ReviewRow {
 }
 
 /**
- * The review of Pete's changes (#1517): each waiting change shown as added, changed or removed — what
+ * The review of learned changes (#1517): each waiting change shown as added, changed or removed — what
  * the entry said and what it would say — with Accept or Reject on each, and Accept All. A change the
  * user does not decide on simply waits for the next review.
  */
@@ -36,9 +36,9 @@ interface ReviewRow {
 })
 export class PersonaReview {
   /**
-   * Holds Pete.
+   * Holds persona learning.
    */
-  protected readonly pete: Pete = inject(Pete);
+  protected readonly learning: PersonaLearning = inject(PersonaLearning);
 
   /**
    * Holds the structured logger.
@@ -49,7 +49,7 @@ export class PersonaReview {
    * Gets the waiting changes, oldest first.
    */
   protected readonly rows: Signal<readonly ReviewRow[]> = computed((): readonly ReviewRow[] =>
-    this.pete.state().pending.map((change: PersonaChange): ReviewRow => ({
+    this.learning.state().pending.map((change: PersonaChange): ReviewRow => ({
       id: change.id,
       label: change.kind === 'add' ? 'Added' : change.kind === 'remove' ? 'Removed' : 'Changed',
       tone: change.kind === 'add' ? 'success' : change.kind === 'remove' ? 'danger' : 'info',
@@ -66,7 +66,7 @@ export class PersonaReview {
    * @returns Resolves once applied.
    */
   protected async accept(id: string): Promise<void> {
-    await this.pete.review([id], []);
+    await this.learning.review([id], []);
     await this.closeWhenDone();
   }
 
@@ -76,7 +76,7 @@ export class PersonaReview {
    * @returns Resolves once dropped.
    */
   protected async reject(id: string): Promise<void> {
-    await this.pete.review([], [id]);
+    await this.learning.review([], [id]);
     await this.closeWhenDone();
   }
 
@@ -86,26 +86,26 @@ export class PersonaReview {
    */
   protected async acceptAll(): Promise<void> {
     const ids: readonly string[] = this.rows().map((row: ReviewRow): string => row.id);
-    const applied: number = await this.pete.review(ids, []);
-    this.log.info('aiManager.persona', `Accepted ${applied} of Pete's change(s)`);
-    this.pete.closeReview();
+    const applied: number = await this.learning.review(ids, []);
+    this.log.info('aiManager.persona', `Accepted ${applied} learned change(s)`);
+    this.learning.closeReview();
   }
 
   /**
    * Closes the review, leaving what was not decided to wait.
    */
   protected close(): void {
-    this.pete.closeReview();
+    this.learning.closeReview();
   }
 
   /**
    * Closes the review once nothing waits.
-   * @returns Resolves once Pete's records are current.
+   * @returns Resolves once the learning records are current.
    */
   private async closeWhenDone(): Promise<void> {
-    await this.pete.refresh();
-    if (this.pete.state().pending.length === 0) {
-      this.pete.closeReview();
+    await this.learning.refresh();
+    if (this.learning.state().pending.length === 0) {
+      this.learning.closeReview();
     }
   }
 }

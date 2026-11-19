@@ -28,8 +28,8 @@ import { AgentCategoryStore } from './ai/agent-category-store';
 import { AiManager } from './ai/ai-manager';
 import { announcePersonaChange, PersonaHandlers } from './ai/persona/persona-handlers';
 import { PersonaLibrary } from './ai/persona/persona-library';
-import { PeteService } from './ai/persona/pete-service';
-import { PeteStore } from './ai/persona/pete-store';
+import { PersonaLearningService } from './ai/persona/persona-learning-service';
+import { PersonaLearningStore } from './ai/persona/persona-learning-store';
 import { LibraryTransfer } from './ai/skills/library-transfer';
 import { LibraryTransferHandlers } from './ai/skills/library-transfer-handlers';
 import { SkillHandlers } from './ai/skills/skill-handlers';
@@ -787,12 +787,12 @@ class Program {
   private readonly agentConversationStore: AgentConversationStore = new AgentConversationStore();
 
   /**
-   * Runs Pete's side of learning the persona (#1516): hands out the user's unread messages, checks
+   * Runs the main process's side of learning the persona (#1516): hands out the user's unread messages, checks
    * what the model proposed, and applies it or holds it for review.
    */
-  private readonly peteService: PeteService = new PeteService(
+  private readonly personaLearningService: PersonaLearningService = new PersonaLearningService(
     this.personaLibrary,
-    new PeteStore(this.personaLibrary.directory),
+    new PersonaLearningStore(this.personaLibrary.directory),
     this.agentConversationStore,
     (): void => announcePersonaChange(),
   );
@@ -1342,7 +1342,7 @@ class Program {
     this.personaHandlers.register();
     this.libraryTransferHandlers.register();
     this.agentConversationStore.register();
-    this.peteService.register();
+    this.personaLearningService.register();
     this.agentCategoryStore.register();
     this.lspSettingsManager.register();
     this.lspManager.register();

@@ -27,7 +27,7 @@ function memory(id: string, patch: Partial<PersonaEntry> = {}): PersonaEntry {
     enabled: true,
     confidence: 1,
     confirmed: '',
-    author: 'pete',
+    author: 'learned',
     locked: false,
     ...patch,
   };

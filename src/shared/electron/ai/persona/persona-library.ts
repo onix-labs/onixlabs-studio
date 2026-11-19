@@ -12,7 +12,7 @@ import {
   type PersonaListing,
 } from '@shared/api/persona-channels';
 import { parseEntryFile, serializeEntryFile } from '@shared/api/persona-entry-file';
-import type { PersonaSnapshot } from '@shared/api/pete-protocol';
+import type { PersonaSnapshot } from '@shared/api/persona-learning-protocol';
 import { logger } from '@shared/electron/logger';
 
 /**
@@ -150,7 +150,7 @@ export class PersonaLibrary {
 
   /**
    * Creates or replaces an entry's file. Written beside the target and renamed over it, so a reader
-   * (Pete, another window, the user's editor) never sees half a file.
+   * (learning, another window, the user's editor) never sees half a file.
    * @param entry The entry.
    * @returns Returns null on success, or why it was refused.
    */
@@ -422,7 +422,7 @@ export function readEntry(value: unknown): PersonaEntry | null {
     confidence: typeof confidence === 'number' ? clampConfidence(confidence) : 1,
     confirmed:
       typeof confirmed === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(confirmed) ? confirmed : '',
-    author: record['author'] === 'pete' ? 'pete' : 'user',
+    author: record['author'] === 'learned' ? 'learned' : 'user',
     locked: record['locked'] === true,
   };
 }

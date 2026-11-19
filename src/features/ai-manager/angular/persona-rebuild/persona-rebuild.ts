@@ -15,7 +15,10 @@ import {
 } from '@angular/core';
 import type { AiConnection } from '@shared/api/ai-types';
 import { isLocalConnection } from '@shared/api/is-local-connection';
-import type { PersonaRebuildEstimate, PersonaRebuildMode } from '@shared/api/pete-protocol';
+import type {
+  PersonaRebuildEstimate,
+  PersonaRebuildMode,
+} from '@shared/api/persona-learning-protocol';
 import { Button } from '@shared/angular/components/forms/button/button';
 import {
   ButtonGroup,
@@ -28,14 +31,14 @@ import { TextField } from '@shared/angular/components/forms/text-field/text-fiel
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Log } from '@shared/angular/services/log/log';
-import { Pete } from '@shared/angular/services/persona/pete';
+import { PersonaLearning } from '@shared/angular/services/persona/persona-learning';
 import { Settings } from '@shared/angular/services/settings/settings';
 
 /**
  * Starting a full rebuild of the persona from every conversation (#1518): the model for the job, merge
  * or start fresh, and — before anything is sent anywhere — how many conversations there are, how much
  * the user typed in them, and roughly how many tokens that is. The results go through the user's
- * review setting, like anything else Pete learns.
+ * review setting, like anything else persona learning learns.
  */
 @Component({
   selector: 'app-persona-rebuild',
@@ -64,9 +67,9 @@ export class PersonaRebuild {
   ];
 
   /**
-   * Holds Pete.
+   * Holds persona learning.
    */
-  private readonly pete: Pete = inject(Pete);
+  private readonly learning: PersonaLearning = inject(PersonaLearning);
 
   /**
    * Holds the settings.
@@ -137,11 +140,11 @@ export class PersonaRebuild {
       return 'Counting your conversations…';
     }
     if (estimate.conversations === 0) {
-      return 'There is nothing you typed in your conversations for Pete to read.';
+      return 'There is nothing you typed in your conversations to read.';
     }
     return (
       `${estimate.conversations} conversation${estimate.conversations === 1 ? '' : 's'}, ` +
-      `about ${formatCount(estimate.characters)} characters you typed. Pete reads them in ` +
+      `about ${formatCount(estimate.characters)} characters you typed. It reads them in ` +
       `${estimate.batches} batch${estimate.batches === 1 ? '' : 'es'}, sending the model about ` +
       `${formatCount(estimate.tokens)} tokens.`
     );
@@ -161,12 +164,12 @@ export class PersonaRebuild {
    */
   protected readonly reviewText: Signal<string> = computed((): string =>
     this.settings.value('persona.review')() === 'ask'
-      ? "What Pete learns waits for your review, as you've set."
-      : "What Pete learns is applied as he goes, as you've set, and can be undone.",
+      ? "What's learned waits for your review, as you've set."
+      : "What's learned is applied as it goes, as you've set, and can be undone.",
   );
 
   /**
-   * Prepares the dialog each time it opens: the connection and model Pete uses, and a fresh count.
+   * Prepares the dialog each time it opens: the connection and model persona learning uses, and a fresh count.
    */
   public constructor() {
     effect((): void => {
@@ -174,9 +177,11 @@ export class PersonaRebuild {
         return;
       }
       untracked((): void => {
-        const pete: string = this.settings.get('persona.peteConnectionId');
-        this.connectionId.set(pete.length > 0 ? pete : this.settings.aiActiveConnectionId());
-        this.model.set(this.settings.get('persona.peteModel'));
+        const learning: string = this.settings.get('persona.learningConnectionId');
+        this.connectionId.set(
+          learning.length > 0 ? learning : this.settings.aiActiveConnectionId(),
+        );
+        this.model.set(this.settings.get('persona.learningModel'));
         this.mode.set('merge');
         this.error.set(null);
         this.estimate.set(null);
@@ -198,7 +203,7 @@ export class PersonaRebuild {
    * @returns Resolves once started, or refused.
    */
   protected async start(): Promise<void> {
-    const error: string | null = await this.pete.startRebuild({
+    const error: string | null = await this.learning.startRebuild({
       mode: this.mode(),
       connectionId: this.connectionId(),
       model: this.model().trim(),
@@ -223,7 +228,7 @@ export class PersonaRebuild {
    * @returns Resolves once counted.
    */
   private async count(): Promise<void> {
-    this.estimate.set(await this.pete.estimateRebuild());
+    this.estimate.set(await this.learning.estimateRebuild());
   }
 }
 

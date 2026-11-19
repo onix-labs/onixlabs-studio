@@ -1,17 +1,17 @@
-<section class="activity" aria-label="Pete">
-  <h3 class="activity__heading section-label">Pete</h3>
-  <p class="activity__status" data-testid="pete-status">{{ status() }}</p>
+<section class="activity" aria-label="Persona learning">
+  <h3 class="activity__heading section-label">Learning</h3>
+  <p class="activity__status" data-testid="learning-status">{{ status() }}</p>
   @if (pending() > 0) {
-    <p class="activity__pending" data-testid="pete-pending">
+    <p class="activity__pending" data-testid="learning-pending">
       {{ pending() }} change{{ pending() === 1 ? '' : 's' }} waiting for your review.
-      <app-button variant="solid" label="Review" (click)="pete.openReview()" />
+      <app-button variant="solid" label="Review" (click)="learning.openReview()" />
     </p>
   }
   <div class="activity__actions">
     <app-button
       variant="ghost"
       [icon]="Icon.SETTINGS"
-      label="Pete's Settings"
+      label="Learning Settings"
       (click)="openSettings()"
     />
     @if (canRun()) {
@@ -33,7 +33,7 @@
   </div>
 
   @if (rebuild(); as job) {
-    <p class="activity__pending" data-testid="pete-rebuild">
+    <p class="activity__pending" data-testid="learning-rebuild">
       Building your persona{{ job.mode === 'fresh' ? ' afresh' : '' }}: {{ job.done.length }} of
       {{ job.total }} conversations read.
       <app-button variant="ghost" label="Cancel" (click)="cancelRebuild()" />
@@ -42,7 +42,7 @@
 
   @if (recent().length > 0) {
     <h4 class="activity__subheading">Recent changes</h4>
-    <ul class="activity__list" data-testid="pete-recent">
+    <ul class="activity__list" data-testid="learning-recent">
       @for (change of recent(); track change.id) {
         <li class="activity__row">
           <span class="activity__text">
@@ -57,7 +57,7 @@
 
   @if (snapshots().length > 0) {
     <h4 class="activity__subheading">Earlier copies of your persona</h4>
-    <ul class="activity__list" data-testid="pete-snapshots">
+    <ul class="activity__list" data-testid="learning-snapshots">
       @for (copy of snapshots(); track copy.id) {
         <li class="activity__row">
           <span class="activity__text">
@@ -70,16 +70,16 @@
     </ul>
   }
 
-  <h4 class="activity__subheading">Topics Pete never learns about</h4>
+  <h4 class="activity__subheading">Topics never learned about</h4>
   @if (ruledOut().length > 0) {
-    <ul class="activity__topics" data-testid="pete-ruled-out">
+    <ul class="activity__topics" data-testid="learning-ruled-out">
       @for (topic of ruledOut(); track topic) {
         <li class="activity__topic">
           {{ topic }}
           <button
             type="button"
             class="activity__topic-remove"
-            [attr.aria-label]="'Let Pete learn about ' + topic + ' again'"
+            [attr.aria-label]="'Learn about ' + topic + ' again'"
             (click)="removeTopic(topic)"
           >
             ×

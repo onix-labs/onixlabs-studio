@@ -4,16 +4,16 @@ import { join } from 'node:path';
 import type {
   PersonaChange,
   PersonaRebuildJob,
-  PeteQuestion,
-  PeteState,
-} from '@shared/api/pete-protocol';
+  PersonaQuestion,
+  LearningState,
+} from '@shared/api/persona-learning-protocol';
 import { logger } from '@shared/electron/logger';
 import { readEntry } from './persona-library';
 
 /**
- * The file, inside the persona folder, that holds Pete's records.
+ * The file, inside the persona folder, that holds the learning records.
  */
-const PETE_FILE: string = 'pete.json';
+const LEARNING_FILE: string = 'learning.json';
 
 /**
  * How many applied changes are kept for the user to look through and undo.
@@ -26,23 +26,23 @@ const RECENT_LIMIT: number = 200;
 const PENDING_LIMIT: number = 500;
 
 /**
- * How many messages Pete remembers having read in one conversation.
+ * How many messages persona learning remembers having read in one conversation.
  */
 const READ_LIMIT: number = 2_000;
 
 /**
- * How many open questions Pete keeps (#1519): a short list, so they stay worth answering.
+ * How many open questions persona learning keeps (#1519): a short list, so they stay worth answering.
  */
 const QUESTION_LIMIT: number = 10;
 
 /**
- * Pete's records as they are written to disk.
+ * the learning records as they are written to disk.
  *
- * 🔑 What Pete has read is kept by conversation and message id, and is the only thing anywhere that
+ * 🔑 What persona learning has read is kept by conversation and message id, and is the only thing anywhere that
  * names a conversation. It never reaches an entry: the persona stands on its own, and a conversation
  * deleted later only leaves a stale line here, pruned on the next run.
  */
-export interface PeteRecords {
+export interface LearningRecords {
   /**
    * Gets the ids of the messages read, by conversation.
    */
@@ -66,10 +66,10 @@ export interface PeteRecords {
   /**
    * Gets the open questions.
    */
-  readonly questions: readonly PeteQuestion[];
+  readonly questions: readonly PersonaQuestion[];
 
   /**
-   * Gets when Pete last finished a run (epoch milliseconds), or 0.
+   * Gets when persona learning last finished a run (epoch milliseconds), or 0.
    */
   readonly lastRun: number;
 
@@ -94,9 +94,9 @@ export interface StoredRebuild extends PersonaRebuildJob {
 }
 
 /**
- * The records of a persona Pete has never run on.
+ * The records of a persona persona learning has never run on.
  */
-export const EMPTY_PETE_RECORDS: PeteRecords = {
+export const EMPTY_LEARNING_RECORDS: LearningRecords = {
   read: {},
   ruledOut: [],
   recent: [],
@@ -108,17 +108,17 @@ export const EMPTY_PETE_RECORDS: PeteRecords = {
 };
 
 /**
- * Pete's records on disk (#1516): a JSON file beside the persona's entries. Reads and writes go one at
+ * the learning records on disk (#1516): a JSON file beside the persona's entries. Reads and writes go one at
  * a time through {@link update}, so a run finishing while the user undoes a change cannot lose either.
  */
-export class PeteStore {
+export class PersonaLearningStore {
   /**
    * Holds the tail of the queue every update waits its turn on.
    */
   private queue: Promise<unknown> = Promise.resolve();
 
   /**
-   * Initializes a new instance of the {@link PeteStore} class.
+   * Initializes a new instance of the {@link PersonaLearningStore} class.
    * @param root The persona folder.
    */
   public constructor(private readonly root: string) {}
@@ -127,7 +127,7 @@ export class PeteStore {
    * Reads the records.
    * @returns Returns them, or the empty records when there are none or they cannot be read.
    */
-  public async read(): Promise<PeteRecords> {
+  public async read(): Promise<LearningRecords> {
     await this.queue.catch((): void => undefined);
     return this.load();
   }
@@ -138,12 +138,14 @@ export class PeteStore {
    * @returns Returns the result.
    */
   public update<TResult>(
-    change: (records: PeteRecords) => Promise<[PeteRecords, TResult]> | [PeteRecords, TResult],
+    change: (
+      records: LearningRecords,
+    ) => Promise<[LearningRecords, TResult]> | [LearningRecords, TResult],
   ): Promise<TResult> {
     const run: Promise<TResult> = this.queue
       .catch((): void => undefined)
       .then(async (): Promise<TResult> => {
-        const [next, result]: [PeteRecords, TResult] = await change(await this.load());
+        const [next, result]: [LearningRecords, TResult] = await change(await this.load());
         await this.write(bound(next));
         return result;
       });
@@ -155,8 +157,8 @@ export class PeteStore {
    * Gets the records as the Persona page shows them.
    * @returns Returns the state.
    */
-  public async state(): Promise<PeteState> {
-    const records: PeteRecords = await this.read();
+  public async state(): Promise<LearningState> {
+    const records: LearningRecords = await this.read();
     return {
       recent: [...records.recent].reverse(),
       pending: records.pending,
@@ -189,12 +191,12 @@ export class PeteStore {
    * Reads the file.
    * @returns Returns the records.
    */
-  private async load(): Promise<PeteRecords> {
+  private async load(): Promise<LearningRecords> {
     let parsed: unknown;
     try {
-      parsed = JSON.parse(await fs.readFile(join(this.root, PETE_FILE), 'utf8'));
+      parsed = JSON.parse(await fs.readFile(join(this.root, LEARNING_FILE), 'utf8'));
     } catch {
-      return EMPTY_PETE_RECORDS;
+      return EMPTY_LEARNING_RECORDS;
     }
     return readRecords(parsed);
   }
@@ -204,8 +206,8 @@ export class PeteStore {
    * @param records The records.
    * @returns Resolves once written.
    */
-  private async write(records: PeteRecords): Promise<void> {
-    const path: string = join(this.root, PETE_FILE);
+  private async write(records: LearningRecords): Promise<void> {
+    const path: string = join(this.root, LEARNING_FILE);
     const staged: string = `${path}.${randomUUID()}.tmp`;
     try {
       await fs.mkdir(this.root, { recursive: true });
@@ -213,7 +215,7 @@ export class PeteStore {
       await fs.rename(staged, path);
     } catch (error: unknown) {
       await fs.rm(staged, { force: true }).catch((): void => undefined);
-      logger.warn('PeteStore.write', "Could not write Pete's records", error);
+      logger.warn('PersonaLearningStore.write', 'Could not write the learning records', error);
       throw error;
     }
   }
@@ -224,7 +226,7 @@ export class PeteStore {
  * @param records The records.
  * @returns Returns the bounded records.
  */
-function bound(records: PeteRecords): PeteRecords {
+function bound(records: LearningRecords): LearningRecords {
   const read: Record<string, readonly string[]> = {};
   for (const [conversation, ids] of Object.entries(records.read)) {
     read[conversation] = ids.slice(-READ_LIMIT);
@@ -243,9 +245,9 @@ function bound(records: PeteRecords): PeteRecords {
  * @param value The parsed file.
  * @returns Returns the records.
  */
-export function readRecords(value: unknown): PeteRecords {
+export function readRecords(value: unknown): LearningRecords {
   if (value === null || typeof value !== 'object') {
-    return EMPTY_PETE_RECORDS;
+    return EMPTY_LEARNING_RECORDS;
   }
   const record: Record<string, unknown> = value as Record<string, unknown>;
   const read: Record<string, readonly string[]> = {};
@@ -282,7 +284,7 @@ export function readRecords(value: unknown): PeteRecords {
           .filter((change: PersonaChange | null): change is PersonaChange => change !== null)
       : [];
   };
-  const questions: PeteQuestion[] = [];
+  const questions: PersonaQuestion[] = [];
   const rawQuestions: unknown = record['questions'];
   for (const item of Array.isArray(rawQuestions) ? (rawQuestions as unknown[]) : []) {
     if (item !== null && typeof item === 'object') {

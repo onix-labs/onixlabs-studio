@@ -9,7 +9,7 @@ import {
 import { AgentRequestToasts } from '@shared/angular/services/notifications/agent-request-toasts';
 import { NarrowedGrantNotice } from '@shared/angular/services/notifications/narrowed-grant-notice';
 import { PersonaConversionNotice } from '@shared/angular/services/persona/persona-conversion-notice';
-import { Pete } from '@shared/angular/services/persona/pete';
+import { PersonaLearning } from '@shared/angular/services/persona/persona-learning';
 import { PersonaReviewNotice } from '@shared/angular/services/persona/persona-review-notice';
 import { AgentTabAttention } from '@shared/angular/services/agent-requests/agent-tab-attention';
 import { ModelUpdates } from '@shared/angular/services/ai-connections/model-updates';
@@ -117,10 +117,10 @@ export const config: ApplicationConfig = {
     provideAppInitializer((): void => {
       inject(PersonaConversionNotice);
     }),
-    // Start Pete's timer at start-up (#1516): he learns the persona in the background, from whichever
-    // window is open, and does nothing until a connection is chosen for him.
+    // Start the learning timer at start-up (#1516): it learns the persona in the background, from whichever
+    // window is open, and does nothing until a connection is chosen for it.
     provideAppInitializer((): void => {
-      inject(Pete).start();
+      inject(PersonaLearning).start();
       inject(PersonaReviewNotice);
     }),
     // Instantiate the agent tab-attention bridge at start-up, for the same reason: a tab's dot has to

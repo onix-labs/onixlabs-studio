@@ -1,29 +1,29 @@
 import { TestBed } from '@angular/core/testing';
 import type { Bridge } from '@shared/api/bridge';
 import {
-  PeteChannel,
-  type PeteBatch,
-  type PeteFinishRequest,
-  type PeteOutcome,
-  type PeteState,
-} from '@shared/api/pete-protocol';
+  PersonaLearningChannel,
+  type LearningBatch,
+  type LearningFinishRequest,
+  type LearningOutcome,
+  type LearningState,
+} from '@shared/api/persona-learning-protocol';
 import {
   AiOneShot,
   type AiOneShotRequest,
   type AiOneShotResult,
 } from '@shared/angular/services/ai-runtime/ai-one-shot';
 import { Settings } from '@shared/angular/services/settings/settings';
-import { Pete, type PeteRunSummary } from './pete';
+import { PersonaLearning, type LearningRunSummary } from './persona-learning';
 
 /**
- * A stand-in for the main process's side of Pete.
+ * A stand-in for the main process's side of persona learning.
  */
 interface FakeMain {
-  batches: PeteBatch[];
+  batches: LearningBatch[];
   begins: unknown[];
-  finished: PeteFinishRequest[];
+  finished: LearningFinishRequest[];
   abandoned: string[];
-  state: PeteState;
+  state: LearningState;
 }
 
 /**
@@ -31,7 +31,7 @@ interface FakeMain {
  * @param batches The batches Begin hands out, in turn.
  * @returns Returns the fake, to inspect.
  */
-function installBridge(batches: PeteBatch[]): FakeMain {
+function installBridge(batches: LearningBatch[]): FakeMain {
   const main: FakeMain = {
     batches,
     begins: [],
@@ -42,15 +42,15 @@ function installBridge(batches: PeteBatch[]): FakeMain {
   const bridge: Partial<Bridge> = {
     invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
       switch (channel) {
-        case PeteChannel.State as string:
+        case PersonaLearningChannel.State as string:
           return Promise.resolve(main.state as T);
-        case PeteChannel.Begin as string:
+        case PersonaLearningChannel.Begin as string:
           main.begins.push(args[0]);
           return Promise.resolve((main.batches.shift() ?? null) as T);
-        case PeteChannel.Finish as string: {
-          const request: PeteFinishRequest = args[0] as PeteFinishRequest;
+        case PersonaLearningChannel.Finish as string: {
+          const request: LearningFinishRequest = args[0] as LearningFinishRequest;
           main.finished.push(request);
-          const outcome: PeteOutcome = {
+          const outcome: LearningOutcome = {
             applied: request.review === 'automatic' ? request.proposal.changes.length : 0,
             pending: request.review === 'ask' ? request.proposal.changes.length : 0,
             refused: 0,
@@ -58,7 +58,7 @@ function installBridge(batches: PeteBatch[]): FakeMain {
           };
           return Promise.resolve(outcome as T);
         }
-        case PeteChannel.Abandon as string:
+        case PersonaLearningChannel.Abandon as string:
           main.abandoned.push(args[0] as string);
           return Promise.resolve(undefined as T);
         default:
@@ -76,7 +76,7 @@ function installBridge(batches: PeteBatch[]): FakeMain {
  * @param batchId The id.
  * @returns Returns the batch.
  */
-function batch(batchId: string): PeteBatch {
+function batch(batchId: string): LearningBatch {
   return {
     batchId,
     persona: [],
@@ -88,7 +88,7 @@ function batch(batchId: string): PeteBatch {
   };
 }
 
-describe('Pete (#1516)', () => {
+describe('PersonaLearning (#1516)', () => {
   let answers: string[];
   let prompts: AiOneShotRequest[];
 
@@ -122,43 +122,43 @@ describe('Pete (#1516)', () => {
   });
 
   /**
-   * Chooses a connection for Pete.
-   * @param review How his changes land.
+   * Chooses a connection for persona learning.
+   * @param review How its changes land.
    */
   function turnOn(review: 'ask' | 'automatic' = 'ask'): void {
     const settings: Settings = TestBed.inject(Settings);
-    settings.set('persona.peteConnectionId', 'local-ollama');
-    settings.set('persona.peteModel', 'qwen3:4b');
+    settings.set('persona.learningConnectionId', 'local-ollama');
+    settings.set('persona.learningModel', 'qwen3:4b');
     settings.set('persona.review', review);
   }
 
   it('tick_doesNothingUntilAConnectionIsChosen', async () => {
     const main: FakeMain = installBridge([batch('b1')]);
-    const pete: Pete = TestBed.inject(Pete);
+    const learning: PersonaLearning = TestBed.inject(PersonaLearning);
 
-    await pete.tick();
+    await learning.tick();
 
     expect(main.begins).toEqual([]);
   });
 
   it('tick_whenPaused_doesNothing', async () => {
     const main: FakeMain = installBridge([batch('b1')]);
-    const pete: Pete = TestBed.inject(Pete);
+    const learning: PersonaLearning = TestBed.inject(PersonaLearning);
     turnOn();
-    TestBed.inject(Settings).set('persona.petePaused', true);
+    TestBed.inject(Settings).set('persona.learningPaused', true);
 
-    await pete.tick();
+    await learning.tick();
 
     expect(main.begins).toEqual([]);
   });
 
   it('tick_readsEachBatchWithTheChosenModel_andHandsBackWhatItProposed', async () => {
     const main: FakeMain = installBridge([batch('b1')]);
-    const pete: Pete = TestBed.inject(Pete);
+    const learning: PersonaLearning = TestBed.inject(PersonaLearning);
     turnOn('ask');
     answers.push('{"changes":[{"op":"add","name":"One","text":"Prefers one."}],"questions":[]}');
 
-    await pete.tick();
+    await learning.tick();
 
     // It asks again after each batch, until there are none left.
     expect(main.begins[0]).toEqual({ idleMinutes: 30, conversationId: null, rebuild: false });
@@ -180,13 +180,13 @@ describe('Pete (#1516)', () => {
 
   it('aBadAnswer_givesTheBatchBack_andReportsWhy', async () => {
     const main: FakeMain = installBridge([batch('b1')]);
-    const pete: Pete = TestBed.inject(Pete);
+    const learning: PersonaLearning = TestBed.inject(PersonaLearning);
     turnOn();
     answers.push('I could not decide.');
-    const summaries: PeteRunSummary[] = [];
-    pete.onFinished((summary: PeteRunSummary): number => summaries.push(summary));
+    const summaries: LearningRunSummary[] = [];
+    learning.onFinished((summary: LearningRunSummary): number => summaries.push(summary));
 
-    await pete.tick();
+    await learning.tick();
 
     expect(main.abandoned).toEqual(['b1']);
     expect(main.finished).toEqual([]);
@@ -195,11 +195,11 @@ describe('Pete (#1516)', () => {
 
   it('learnNow_readsTheOneConversationWhetherIdleOrNot', async () => {
     const main: FakeMain = installBridge([batch('b1')]);
-    const pete: Pete = TestBed.inject(Pete);
+    const learning: PersonaLearning = TestBed.inject(PersonaLearning);
     turnOn('automatic');
     answers.push('{"changes":[],"questions":[]}');
 
-    const summary: PeteRunSummary = await pete.learnNow('c42');
+    const summary: LearningRunSummary = await learning.learnNow('c42');
 
     expect(main.begins[0]).toEqual({ idleMinutes: 0, conversationId: 'c42', rebuild: false });
     expect(summary).toEqual({ applied: 0, pending: 0, refused: 0, messagesRead: 1, error: null });
@@ -207,12 +207,12 @@ describe('Pete (#1516)', () => {
 
   it('learnNow_whenOff_saysWhereToTurnItOn', async () => {
     installBridge([]);
-    const pete: Pete = TestBed.inject(Pete);
+    const learning: PersonaLearning = TestBed.inject(PersonaLearning);
 
-    expect((await pete.learnNow('c42')).error).toContain('Settings › AI Manager › Persona');
+    expect((await learning.learnNow('c42')).error).toContain('Settings › AI Manager › Persona');
   });
 
-  it('rebuild_readsEveryBatchWithItsOwnModel_untilNothingIsLeft_evenWithPeteOff', async () => {
+  it('rebuild_readsEveryBatchWithItsOwnModel_untilNothingIsLeft_evenWithLearningOff', async () => {
     const main: FakeMain = installBridge([
       batch('b1'),
       batch('b2'),
@@ -231,10 +231,10 @@ describe('Pete (#1516)', () => {
         done: [],
       },
     };
-    const pete: Pete = TestBed.inject(Pete);
+    const learning: PersonaLearning = TestBed.inject(PersonaLearning);
     answers.push(...Array.from({ length: 5 }, (): string => '{"changes":[],"questions":[]}'));
 
-    await pete.tick();
+    await learning.tick();
 
     expect(main.finished.map((request) => request.batchId)).toEqual(['b1', 'b2', 'b3', 'b4', 'b5']);
     expect(
@@ -254,10 +254,10 @@ describe('Pete (#1516)', () => {
       ...main.state,
       rebuild: { mode: 'merge', connectionId: 'opus', model: '', startedAt: 0, total: 1, done: [] },
     };
-    const pete: Pete = TestBed.inject(Pete);
-    TestBed.inject(Settings).set('persona.petePaused', true);
+    const learning: PersonaLearning = TestBed.inject(PersonaLearning);
+    TestBed.inject(Settings).set('persona.learningPaused', true);
 
-    await pete.tick();
+    await learning.tick();
 
     expect(main.begins).toEqual([]);
   });

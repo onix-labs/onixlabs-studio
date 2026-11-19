@@ -71,7 +71,7 @@ interface TagCount {
  * edited at full width in the main area. With nothing selected, the main area is an overview: how full
  * the core is, and the tags, each of which narrows the list to its entries.
  *
- * Edits are written as they are made. What the user writes here is locked, so Pete never changes it.
+ * Edits are written as they are made. What the user writes here is locked, so persona learning never changes it.
  */
 @Component({
   selector: 'app-persona',
@@ -227,7 +227,7 @@ export class PersonaSection {
   });
 
   /**
-   * Gets how sure Pete is of the selected entry, in words for its chip.
+   * Gets how sure persona learning is of the selected entry, in words for its chip.
    */
   protected readonly selectedSureness: Signal<string> = computed(
     (): string => `${Math.round((this.selected()?.confidence ?? 1) * 100)}% sure`,
@@ -378,7 +378,7 @@ export class PersonaSection {
   }
 
   /**
-   * Sets whether an entry is locked against Pete's changes.
+   * Sets whether an entry is locked against learned changes.
    * @param id The entry's identifier.
    * @param locked Whether it is locked.
    */
@@ -434,7 +434,7 @@ export class PersonaSection {
   }
 
   /**
-   * Confirms an entry Pete learned: it is right, so it is certain and its fading starts again (#1519).
+   * Confirms an entry persona learning learned: it is right, so it is certain and its fading starts again (#1519).
    * @param id The entry's identifier.
    */
   protected confirm(id: string): void {

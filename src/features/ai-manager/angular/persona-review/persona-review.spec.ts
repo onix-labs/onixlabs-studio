@@ -2,10 +2,14 @@ import { ApplicationRef } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { Bridge } from '@shared/api/bridge';
 import type { PersonaEntry } from '@shared/api/persona-channels';
-import { PeteChannel, type PersonaChange, type PeteState } from '@shared/api/pete-protocol';
+import {
+  PersonaLearningChannel,
+  type PersonaChange,
+  type LearningState,
+} from '@shared/api/persona-learning-protocol';
 import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
 import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
-import { Pete } from '@shared/angular/services/persona/pete';
+import { PersonaLearning } from '@shared/angular/services/persona/persona-learning';
 import { PersonaReview } from './persona-review';
 
 /**
@@ -27,7 +31,7 @@ function entry(id: string, text: string): PersonaEntry {
     enabled: true,
     confidence: 0.5,
     confirmed: '',
-    author: 'pete',
+    author: 'learned',
     locked: false,
   };
 }
@@ -35,7 +39,7 @@ function entry(id: string, text: string): PersonaEntry {
 describe('PersonaReview (#1517)', () => {
   let fixture: ComponentFixture<PersonaReview>;
   let reviews: unknown[];
-  let state: PeteState;
+  let state: LearningState;
   let windows: FakeModalWindows;
 
   beforeEach(async () => {
@@ -72,7 +76,7 @@ describe('PersonaReview (#1517)', () => {
     state = { recent: [], pending, ruledOut: [], questions: [], lastRun: 0, rebuild: null };
     const bridge: Partial<Bridge> = {
       invoke: <T>(channel: string, arg?: unknown): Promise<T> => {
-        if (channel === (PeteChannel.Review as string)) {
+        if (channel === (PersonaLearningChannel.Review as string)) {
           reviews.push(arg);
           const decided: { accept: readonly string[]; reject: readonly string[] } = arg as never;
           state = {
@@ -85,7 +89,7 @@ describe('PersonaReview (#1517)', () => {
           return Promise.resolve(decided.accept.length as T);
         }
         return Promise.resolve(
-          (channel === (PeteChannel.State as string) ? state : undefined) as T,
+          (channel === (PersonaLearningChannel.State as string) ? state : undefined) as T,
         );
       },
       on: (): (() => void) => (): void => undefined,
@@ -94,8 +98,8 @@ describe('PersonaReview (#1517)', () => {
     windows = new FakeModalWindows();
     TestBed.configureTestingModule({ providers: [{ provide: ModalWindows, useValue: windows }] });
     fixture = TestBed.createComponent(PersonaReview);
-    await TestBed.inject(Pete).refresh();
-    TestBed.inject(Pete).openReview();
+    await TestBed.inject(PersonaLearning).refresh();
+    TestBed.inject(PersonaLearning).openReview();
     await settle();
   });
 
@@ -164,7 +168,7 @@ describe('PersonaReview (#1517)', () => {
       { accept: ['a'], reject: [] },
       { accept: [], reject: ['b'] },
     ]);
-    expect(TestBed.inject(Pete).reviewOpen()).toBe(true);
+    expect(TestBed.inject(PersonaLearning).reviewOpen()).toBe(true);
   });
 
   it('acceptAll_acceptsEverything_andCloses', async () => {
@@ -172,6 +176,6 @@ describe('PersonaReview (#1517)', () => {
     await settle();
 
     expect(reviews).toEqual([{ accept: ['a', 'b', 'c'], reject: [] }]);
-    expect(TestBed.inject(Pete).reviewOpen()).toBe(false);
+    expect(TestBed.inject(PersonaLearning).reviewOpen()).toBe(false);
   });
 });

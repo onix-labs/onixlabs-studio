@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { PersonaEntry } from './persona-channels';
 import {
-  buildPetePrompt,
-  parsePeteProposal,
-  type PeteBatch,
-  type PeteProposal,
-} from './pete-protocol';
+  buildLearningPrompt,
+  parseLearningProposal,
+  type LearningBatch,
+  type LearningProposal,
+} from './persona-learning-protocol';
 
-describe('pete protocol (#1516)', () => {
+describe('learning protocol (#1516)', () => {
   const locked: PersonaEntry = {
     id: 'british',
     name: 'British English',
@@ -23,7 +23,7 @@ describe('pete protocol (#1516)', () => {
     author: 'user',
     locked: true,
   };
-  const batch: PeteBatch = {
+  const batch: LearningBatch = {
     batchId: 'b1',
     persona: [locked],
     ruledOut: ['health'],
@@ -38,7 +38,7 @@ describe('pete protocol (#1516)', () => {
   };
 
   it('prompt_carriesThePersonaRulesAndMessages_butNeverTheConversationId', () => {
-    const prompt: string = buildPetePrompt(batch);
+    const prompt: string = buildLearningPrompt(batch);
 
     expect(prompt).toContain('id=british (core, locked, confidence 1) British English');
     expect(prompt).toContain('- health');
@@ -50,7 +50,7 @@ describe('pete protocol (#1516)', () => {
   });
 
   it('parse_readsJsonInsideAFence_andDropsMalformedChanges', () => {
-    const proposal: PeteProposal | null = parsePeteProposal(
+    const proposal: LearningProposal | null = parseLearningProposal(
       'Here you go:\n```json\n{"changes":[{"op":"add","name":"A","text":"B","tags":["x",3]},{"op":"update"},{"op":"explode","id":"x"}],"questions":["Why?","Two?","Three?"]}\n```',
     );
 
@@ -61,7 +61,7 @@ describe('pete protocol (#1516)', () => {
   });
 
   it('parse_whenNoJson_isNull', () => {
-    expect(parsePeteProposal('Nothing to learn.')).toBeNull();
-    expect(parsePeteProposal('{not json}')).toBeNull();
+    expect(parseLearningProposal('Nothing to learn.')).toBeNull();
+    expect(parseLearningProposal('{not json}')).toBeNull();
   });
 });

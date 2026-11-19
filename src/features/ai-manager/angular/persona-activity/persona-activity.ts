@@ -8,12 +8,16 @@ import {
   signal,
   WritableSignal,
 } from '@angular/core';
-import type { PersonaChange, PersonaRebuildJob, PersonaSnapshot } from '@shared/api/pete-protocol';
+import type {
+  PersonaChange,
+  PersonaRebuildJob,
+  PersonaSnapshot,
+} from '@shared/api/persona-learning-protocol';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Icon } from '@shared/angular/icons/icon';
 import { Log } from '@shared/angular/services/log/log';
-import { Pete } from '@shared/angular/services/persona/pete';
+import { PersonaLearning } from '@shared/angular/services/persona/persona-learning';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { SettingsNavigation } from '@shared/angular/services/settings-navigation/settings-navigation';
 import { PersonaRebuild } from '../persona-rebuild/persona-rebuild';
@@ -43,8 +47,8 @@ interface SnapshotRow {
 }
 
 /**
- * Pete's side of the Persona page (#1516): whether he is learning and on what, what he changed lately
- * (each change undoable), and the topics he must never learn about. Shown under the persona's overview.
+ * The learning side of the Persona page (#1516): whether it is learning and on what, what it changed lately
+ * (each change undoable), and the topics it must never learn about. Shown under the persona's overview.
  */
 @Component({
   selector: 'app-persona-activity',
@@ -60,9 +64,9 @@ export class PersonaActivity {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Holds Pete.
+   * Holds persona learning.
    */
-  protected readonly pete: Pete = inject(Pete);
+  protected readonly learning: PersonaLearning = inject(PersonaLearning);
 
   /**
    * Holds the settings.
@@ -100,7 +104,7 @@ export class PersonaActivity {
    * Gets the rebuild under way, or null.
    */
   protected readonly rebuild: Signal<PersonaRebuildJob | null> = computed(
-    (): PersonaRebuildJob | null => this.pete.state().rebuild,
+    (): PersonaRebuildJob | null => this.learning.state().rebuild,
   );
 
   /**
@@ -116,50 +120,50 @@ export class PersonaActivity {
   );
 
   /**
-   * Lists the kept copies, again whenever Pete's records change (a rebuild started fresh keeps one).
+   * Lists the kept copies, again whenever the learning records change (a rebuild started fresh keeps one).
    */
   public constructor() {
     effect((): void => {
-      this.pete.state();
+      this.learning.state();
       void this.loadSnapshots();
     });
   }
 
   /**
-   * Gets what Pete is doing, in a sentence.
+   * Gets what persona learning is doing, in a sentence.
    */
   protected readonly status: Signal<string> = computed((): string => {
-    const connection: string = this.settings.value('persona.peteConnectionId')();
+    const connection: string = this.settings.value('persona.learningConnectionId')();
     if (connection.length === 0) {
-      return 'Pete is off. Choose a connection for him to start learning from your conversations.';
+      return 'Persona learning is off. Choose a connection to start learning from your conversations.';
     }
-    if (this.settings.value('persona.petePaused')()) {
-      return 'Pete is paused.';
+    if (this.settings.value('persona.learningPaused')()) {
+      return 'Persona learning is paused.';
     }
-    if (this.pete.running()) {
-      return 'Pete is reading your conversations…';
+    if (this.learning.running()) {
+      return 'Reading your conversations…';
     }
-    const last: number = this.pete.state().lastRun;
+    const last: number = this.learning.state().lastRun;
     return last === 0
-      ? 'Pete is learning. He has not finished a run yet.'
-      : `Pete is learning. Last run ${describeWhen(last)}.`;
+      ? 'Persona learning is on. It has not finished a run yet.'
+      : `Persona learning is on. Last run ${describeWhen(last)}.`;
   });
 
   /**
-   * Gets whether Pete may be asked to look now: he is on and not already reading.
+   * Gets whether persona learning may be asked to look now: it is on and not already reading.
    */
   protected readonly canRun: Signal<boolean> = computed(
     (): boolean =>
-      this.settings.value('persona.peteConnectionId')().length > 0 &&
-      !this.settings.value('persona.petePaused')() &&
-      !this.pete.running(),
+      this.settings.value('persona.learningConnectionId')().length > 0 &&
+      !this.settings.value('persona.learningPaused')() &&
+      !this.learning.running(),
   );
 
   /**
    * Gets the recent changes, newest first.
    */
   protected readonly recent: Signal<readonly ChangeRow[]> = computed((): readonly ChangeRow[] =>
-    this.pete
+    this.learning
       .state()
       .recent.slice(0, RECENT_SHOWN)
       .map((change: PersonaChange): ChangeRow => ({
@@ -174,28 +178,28 @@ export class PersonaActivity {
    * Gets how many changes wait for review.
    */
   protected readonly pending: Signal<number> = computed(
-    (): number => this.pete.state().pending.length,
+    (): number => this.learning.state().pending.length,
   );
 
   /**
    * Gets the ruled-out topics.
    */
   protected readonly ruledOut: Signal<readonly string[]> = computed(
-    (): readonly string[] => this.pete.state().ruledOut,
+    (): readonly string[] => this.learning.state().ruledOut,
   );
 
   /**
-   * Opens Pete's settings.
+   * Opens the learning settings.
    */
   protected openSettings(): void {
     this.settingsNavigation.open('ai-manager-persona');
   }
 
   /**
-   * Has Pete look for conversations to read now, rather than at his next tick.
+   * Has persona learning look for conversations to read now, rather than at its next tick.
    */
   protected runNow(): void {
-    void this.pete.tick();
+    void this.learning.tick();
   }
 
   /**
@@ -204,10 +208,10 @@ export class PersonaActivity {
    * @returns Resolves once undone.
    */
   protected async undo(changeId: string): Promise<void> {
-    const undone: boolean = await this.pete.undo(changeId);
+    const undone: boolean = await this.learning.undo(changeId);
     this.log.info(
       'aiManager.persona',
-      undone ? 'Undid a change Pete made' : 'Change to undo was gone',
+      undone ? 'Undid a learned change' : 'Change to undo was gone',
     );
   }
 
@@ -216,7 +220,7 @@ export class PersonaActivity {
    * @returns Resolves once cancelled.
    */
   protected async cancelRebuild(): Promise<void> {
-    await this.pete.cancelRebuild();
+    await this.learning.cancelRebuild();
     this.log.info('aiManager.persona', 'Persona rebuild cancelled');
   }
 
@@ -226,7 +230,7 @@ export class PersonaActivity {
    * @returns Resolves once restored.
    */
   protected async restore(id: string): Promise<void> {
-    const restored: boolean = await this.pete.restoreSnapshot(id);
+    const restored: boolean = await this.learning.restoreSnapshot(id);
     this.log.info(
       'aiManager.persona',
       restored ? `Restored the copy ${id}` : `Copy ${id} was gone`,
@@ -244,16 +248,16 @@ export class PersonaActivity {
       return;
     }
     this.topicDraft.set('');
-    await this.pete.ruleOut([...this.ruledOut(), topic]);
+    await this.learning.ruleOut([...this.ruledOut(), topic]);
   }
 
   /**
-   * Lets Pete learn about a topic again.
+   * Lets persona learning learn about a topic again.
    * @param topic The topic.
    * @returns Resolves once recorded.
    */
   protected async removeTopic(topic: string): Promise<void> {
-    await this.pete.ruleOut(
+    await this.learning.ruleOut(
       this.ruledOut().filter((candidate: string): boolean => candidate !== topic),
     );
   }
@@ -263,7 +267,7 @@ export class PersonaActivity {
    * @returns Resolves once listed.
    */
   private async loadSnapshots(): Promise<void> {
-    this.snapshotList.set(await this.pete.snapshots());
+    this.snapshotList.set(await this.learning.snapshots());
   }
 }
 

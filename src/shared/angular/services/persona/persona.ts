@@ -73,7 +73,7 @@ export interface PersonaDraft {
  * the core exactly where and how profiles were resolved, so every harness receives it unchanged.
  *
  * The list is read from disk when the service starts and whenever another window (or the main process,
- * for Pete and the agent's tools) changes it; edits made here apply to the signal at once and reach the
+ * for persona learning and the agent's tools) changes it; edits made here apply to the signal at once and reach the
  * disk a moment later.
  *
  * Resolution composes rather than picks: every enabled core entry whose scope matches contributes,
@@ -238,7 +238,7 @@ export class Persona {
 
   /**
    * Creates an entry the user wrote, applying everywhere, and returns it for the caller to open. It is
-   * locked, as everything the user writes is unless they unlock it, so Pete never rewrites it.
+   * locked, as everything the user writes is unless they unlock it, so persona learning never rewrites it.
    * @param draft What the entry starts with.
    * @returns Returns the new entry.
    */

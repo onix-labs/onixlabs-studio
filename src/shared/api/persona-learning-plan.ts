@@ -9,7 +9,11 @@ import {
   personaIdFor,
   type PersonaEntry,
 } from './persona-channels';
-import type { PersonaChange, PeteProposal, PeteProposedChange } from './pete-protocol';
+import type {
+  PersonaChange,
+  LearningProposal,
+  LearningProposedChange,
+} from './persona-learning-protocol';
 import { redactSecrets } from './redaction';
 
 // Turning what the model proposed into changes Studio will make (#1516). The model is asked to keep
@@ -21,15 +25,15 @@ import { redactSecrets } from './redaction';
 /**
  * The most changes one run may make: a run that wants more is more likely confused than insightful.
  */
-export const PETE_CHANGE_LIMIT: number = 20;
+export const LEARNING_CHANGE_LIMIT: number = 20;
 
 /**
- * The most memories a persona holds before Pete may only merge and trim, not add.
+ * The most memories a persona holds before persona learning may only merge and trim, not add.
  */
-export const PETE_MEMORY_LIMIT: number = 1_000;
+export const LEARNING_MEMORY_LIMIT: number = 1_000;
 
 /**
- * Bounds on what Pete writes into one entry.
+ * Bounds on what persona learning writes into one entry.
  */
 const NAME_LIMIT: number = 80;
 const TEXT_LIMIT: number = 800;
@@ -51,7 +55,7 @@ const PERMISSION_WORDING: RegExp =
 /**
  * The outcome of planning: the changes to make, and how many proposals were turned away.
  */
-export interface PetePlan {
+export interface LearningPlan {
   readonly changes: readonly PersonaChange[];
   readonly refused: number;
 }
@@ -73,20 +77,20 @@ export type ChangeIdSource = () => string;
  * @param nextId Makes an id for each change.
  * @returns Returns the plan.
  */
-export function planPeteChanges(
+export function planLearningChanges(
   entries: readonly PersonaEntry[],
-  proposal: PeteProposal,
+  proposal: LearningProposal,
   ruledOut: readonly string[],
   now: Date,
   nextId: ChangeIdSource,
-): PetePlan {
+): LearningPlan {
   const working: Map<string, PersonaEntry> = new Map<string, PersonaEntry>(
     entries.map((entry: PersonaEntry): [string, PersonaEntry] => [entry.id, entry]),
   );
   const changes: PersonaChange[] = [];
   let refused: number = 0;
   const day: string = personaDay(now);
-  for (const proposed of proposal.changes.slice(0, PETE_CHANGE_LIMIT)) {
+  for (const proposed of proposal.changes.slice(0, LEARNING_CHANGE_LIMIT)) {
     const planned: PersonaChange | null = planOne(proposed, working, ruledOut, day, now, nextId);
     if (planned === null) {
       refused += 1;
@@ -99,7 +103,7 @@ export function planPeteChanges(
     }
     changes.push(planned);
   }
-  refused += Math.max(0, proposal.changes.length - PETE_CHANGE_LIMIT);
+  refused += Math.max(0, proposal.changes.length - LEARNING_CHANGE_LIMIT);
   return { changes: collapse(changes), refused };
 }
 
@@ -114,7 +118,7 @@ export function planPeteChanges(
  * @returns Returns the change, or null when it is refused.
  */
 function planOne(
-  proposed: PeteProposedChange,
+  proposed: LearningProposedChange,
   working: ReadonlyMap<string, PersonaEntry>,
   ruledOut: readonly string[],
   day: string,
@@ -132,7 +136,7 @@ function planOne(
     const memories: number = [...working.values()].filter(
       (entry: PersonaEntry): boolean => entry.layer === 'memory',
     ).length;
-    if (memories >= PETE_MEMORY_LIMIT) {
+    if (memories >= LEARNING_MEMORY_LIMIT) {
       return null;
     }
     const draft: PersonaEntry = {
@@ -147,7 +151,7 @@ function planOne(
       enabled: true,
       confidence: clampConfidence(proposed.confidence ?? 0.5),
       confirmed: day,
-      author: 'pete',
+      author: 'learned',
       locked: false,
     };
     const entry: PersonaEntry = fitCore(draft, working, null);
@@ -203,7 +207,7 @@ function planOne(
       ? {}
       : { confidence: clampConfidence(proposed.confidence) }),
     confirmed: day,
-    author: 'pete',
+    author: 'learned',
   };
   const after: PersonaEntry = fitCore(draft, working, target);
   if (isForbidden(after, ruledOut)) {

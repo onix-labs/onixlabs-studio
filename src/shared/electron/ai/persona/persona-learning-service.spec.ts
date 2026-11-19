@@ -10,18 +10,18 @@ import type { PersonaEntry } from '@shared/api/persona-channels';
 import type {
   PersonaChange,
   PersonaRebuildEstimate,
-  PeteBatch,
-  PeteOutcome,
-  PeteState,
-} from '@shared/api/pete-protocol';
+  LearningBatch,
+  LearningOutcome,
+  LearningState,
+} from '@shared/api/persona-learning-protocol';
 
 vi.mock('electron', () => ({
   ipcMain: { handle: (): void => undefined },
   BrowserWindow: { getAllWindows: (): unknown[] => [] },
 }));
 
-const { PeteService, excerptOf } = await import('./pete-service');
-const { PeteStore } = await import('./pete-store');
+const { PersonaLearningService, excerptOf } = await import('./persona-learning-service');
+const { PersonaLearningStore } = await import('./persona-learning-store');
 const { PersonaLibrary } = await import('./persona-library');
 
 /**
@@ -46,23 +46,23 @@ function conversation(id: string, items: readonly unknown[]): StoredAgentConvers
 
 const NOW: number = Date.parse('2026-11-19T12:00:00Z');
 
-describe('PeteService (#1516, #1517)', () => {
+describe('PersonaLearningService (#1516, #1517)', () => {
   let base: string;
   let library: InstanceType<typeof PersonaLibrary>;
   let conversations: Map<string, StoredAgentConversation>;
   let updated: Map<string, number>;
-  let service: InstanceType<typeof PeteService>;
+  let service: InstanceType<typeof PersonaLearningService>;
   let changed: number;
 
   beforeEach(() => {
-    base = mkdtempSync(join(tmpdir(), 'pete-'));
+    base = mkdtempSync(join(tmpdir(), 'learning-'));
     library = new PersonaLibrary(join(base, 'persona'));
     conversations = new Map();
     updated = new Map();
     changed = 0;
-    service = new PeteService(
+    service = new PersonaLearningService(
       library,
-      new PeteStore(join(base, 'persona')),
+      new PersonaLearningStore(join(base, 'persona')),
       {
         listAll: (): readonly AgentConversationSummary[] =>
           [...conversations.values()].map(
@@ -106,7 +106,10 @@ describe('PeteService (#1516, #1517)', () => {
       ]),
     );
 
-    const batch: PeteBatch | null = await service.begin({ idleMinutes: 30, conversationId: null });
+    const batch: LearningBatch | null = await service.begin({
+      idleMinutes: 30,
+      conversationId: null,
+    });
 
     expect(batch?.excerpts).toEqual([
       {
@@ -140,9 +143,12 @@ describe('PeteService (#1516, #1517)', () => {
       'c1',
       conversation('c1', [{ id: 'u1', kind: 'user', text: "Just tell me which you'd pick." }]),
     );
-    const batch: PeteBatch | null = await service.begin({ idleMinutes: 0, conversationId: null });
+    const batch: LearningBatch | null = await service.begin({
+      idleMinutes: 0,
+      conversationId: null,
+    });
 
-    const outcome: PeteOutcome | null = await service.finish({
+    const outcome: LearningOutcome | null = await service.finish({
       batchId: batch?.batchId ?? '',
       review: 'automatic',
       proposal: {
@@ -159,10 +165,10 @@ describe('PeteService (#1516, #1517)', () => {
     });
 
     expect(outcome).toEqual({ applied: 1, pending: 0, refused: 0, messagesRead: 1 });
-    expect((await library.read('one-recommendation'))?.author).toBe('pete');
+    expect((await library.read('one-recommendation'))?.author).toBe('learned');
     expect(changed).toBe(1);
     expect(await service.begin({ idleMinutes: 0, conversationId: null })).toBeNull();
-    const state: PeteState = await service.state();
+    const state: LearningState = await service.state();
     expect(state.questions.map((question) => question.text)).toEqual(['Why do you prefer one?']);
 
     expect(await service.undo(state.recent[0].id)).toBe(true);
@@ -174,9 +180,12 @@ describe('PeteService (#1516, #1517)', () => {
       'c1',
       conversation('c1', [{ id: 'u1', kind: 'user', text: 'I always take the train.' }]),
     );
-    const batch: PeteBatch | null = await service.begin({ idleMinutes: 0, conversationId: null });
+    const batch: LearningBatch | null = await service.begin({
+      idleMinutes: 0,
+      conversationId: null,
+    });
 
-    const outcome: PeteOutcome | null = await service.finish({
+    const outcome: LearningOutcome | null = await service.finish({
       batchId: batch?.batchId ?? '',
       review: 'ask',
       proposal: {
@@ -187,7 +196,7 @@ describe('PeteService (#1516, #1517)', () => {
 
     expect(outcome).toMatchObject({ applied: 0, pending: 1 });
     expect(await library.read('trains')).toBeNull();
-    const pending: PeteState = await service.state();
+    const pending: LearningState = await service.state();
 
     expect(await service.review({ accept: [pending.pending[0].id], reject: [] })).toBe(1);
     expect((await library.read('trains'))?.text).toBe('Takes the train.');
@@ -207,7 +216,7 @@ describe('PeteService (#1516, #1517)', () => {
       enabled: true,
       confidence: 0.5,
       confirmed: '',
-      author: 'pete',
+      author: 'learned',
       locked: false,
     };
     await library.save(mine);
@@ -215,7 +224,10 @@ describe('PeteService (#1516, #1517)', () => {
       'c1',
       conversation('c1', [{ id: 'u1', kind: 'user', text: 'Flights are fine now.' }]),
     );
-    const batch: PeteBatch | null = await service.begin({ idleMinutes: 0, conversationId: null });
+    const batch: LearningBatch | null = await service.begin({
+      idleMinutes: 0,
+      conversationId: null,
+    });
     await service.finish({
       batchId: batch?.batchId ?? '',
       review: 'ask',
@@ -232,7 +244,10 @@ describe('PeteService (#1516, #1517)', () => {
   it('abandon_givesTheBatchBack_andPassesOverMessagesThatKeepFailing', async () => {
     conversations.set('c1', conversation('c1', [{ id: 'u1', kind: 'user', text: 'Hi' }]));
     for (let attempt: number = 0; attempt < 3; attempt += 1) {
-      const batch: PeteBatch | null = await service.begin({ idleMinutes: 0, conversationId: null });
+      const batch: LearningBatch | null = await service.begin({
+        idleMinutes: 0,
+        conversationId: null,
+      });
       expect(batch).not.toBeNull();
       await service.abandon(batch?.batchId ?? '');
     }
@@ -245,7 +260,10 @@ describe('PeteService (#1516, #1517)', () => {
       'c1',
       conversation('c1', [{ id: 'u1', kind: 'user', text: 'Trains, always.' }]),
     );
-    const batch: PeteBatch | null = await service.begin({ idleMinutes: 0, conversationId: null });
+    const batch: LearningBatch | null = await service.begin({
+      idleMinutes: 0,
+      conversationId: null,
+    });
     await service.finish({
       batchId: batch?.batchId ?? '',
       review: 'automatic',
@@ -300,7 +318,7 @@ describe('PeteService (#1516, #1517)', () => {
         enabled: true,
         confidence: 0.5,
         confirmed: '',
-        author: 'pete',
+        author: 'learned',
         locked: false,
         ...patch,
       };
@@ -326,7 +344,7 @@ describe('PeteService (#1516, #1517)', () => {
       conversations.set('c1', conversation('c1', [{ id: 'u1', kind: 'user', text: 'One.' }]));
       conversations.set('c2', conversation('c2', [{ id: 'u2', kind: 'user', text: 'Two.' }]));
       updated.set('c2', NOW);
-      const everyday: PeteBatch | null = await service.begin({
+      const everyday: LearningBatch | null = await service.begin({
         idleMinutes: 30,
         conversationId: null,
       });
@@ -339,7 +357,7 @@ describe('PeteService (#1516, #1517)', () => {
       expect(
         await service.startRebuild({ mode: 'merge', connectionId: 'local', model: '' }),
       ).toBeNull();
-      const batch: PeteBatch | null = await service.begin({
+      const batch: LearningBatch | null = await service.begin({
         idleMinutes: 30,
         conversationId: null,
         rebuild: true,
@@ -362,7 +380,7 @@ describe('PeteService (#1516, #1517)', () => {
     it('resumesWhereItLeftOff', async () => {
       conversations.set('c1', conversation('c1', [{ id: 'u1', kind: 'user', text: 'One.' }]));
       await service.startRebuild({ mode: 'merge', connectionId: 'local', model: 'm' });
-      const first: PeteBatch | null = await service.begin({
+      const first: LearningBatch | null = await service.begin({
         idleMinutes: 0,
         conversationId: null,
         rebuild: true,
@@ -374,9 +392,9 @@ describe('PeteService (#1516, #1517)', () => {
       });
       conversations.set('c2', conversation('c2', [{ id: 'u2', kind: 'user', text: 'Two.' }]));
 
-      const resumed: InstanceType<typeof PeteService> = new PeteService(
+      const resumed: InstanceType<typeof PersonaLearningService> = new PersonaLearningService(
         library,
-        new PeteStore(join(base, 'persona')),
+        new PersonaLearningStore(join(base, 'persona')),
         {
           listAll: (): readonly AgentConversationSummary[] =>
             [...conversations.values()].map(
@@ -395,7 +413,7 @@ describe('PeteService (#1516, #1517)', () => {
         (): void => undefined,
         (): number => NOW,
       );
-      const next: PeteBatch | null = await resumed.begin({
+      const next: LearningBatch | null = await resumed.begin({
         idleMinutes: 0,
         conversationId: null,
         rebuild: true,
@@ -435,7 +453,7 @@ describe('PeteService (#1516, #1517)', () => {
     it('cancel_endsTheRebuild_andKeepsWhatItLearned', async () => {
       conversations.set('c1', conversation('c1', [{ id: 'u1', kind: 'user', text: 'Trains.' }]));
       await service.startRebuild({ mode: 'merge', connectionId: 'local', model: '' });
-      const batch: PeteBatch | null = await service.begin({
+      const batch: LearningBatch | null = await service.begin({
         idleMinutes: 0,
         conversationId: null,
         rebuild: true,
@@ -457,7 +475,10 @@ describe('PeteService (#1516, #1517)', () => {
 
     it('askFirst_seesItsOwnWaitingChanges_andFoldsAChangeIntoOneWaiting', async () => {
       conversations.set('c1', conversation('c1', [{ id: 'u1', kind: 'user', text: 'Trains.' }]));
-      const first: PeteBatch | null = await service.begin({ idleMinutes: 0, conversationId: null });
+      const first: LearningBatch | null = await service.begin({
+        idleMinutes: 0,
+        conversationId: null,
+      });
       await service.finish({
         batchId: first?.batchId ?? '',
         review: 'ask',
@@ -470,7 +491,7 @@ describe('PeteService (#1516, #1517)', () => {
         'c2',
         conversation('c2', [{ id: 'u2', kind: 'user', text: 'Because of carbon.' }]),
       );
-      const second: PeteBatch | null = await service.begin({
+      const second: LearningBatch | null = await service.begin({
         idleMinutes: 0,
         conversationId: null,
       });

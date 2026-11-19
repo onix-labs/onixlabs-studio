@@ -8,11 +8,11 @@
   <ng-template appModalContent>
     <h2 class="rebuild__title">Build Your Persona From Every Conversation</h2>
     <p class="rebuild__text">
-      Pete reads everything you've typed to agents, a batch at a time, and builds your persona from
-      it. You can cancel at any point, and if Studio closes he carries on where he left off.
+      Studio reads everything you've typed to agents, a batch at a time, and builds your persona
+      from it. You can cancel at any point, and if Studio closes it carries on where it left off.
     </p>
 
-    <app-setting-row label="Connection" description="The AI connection Pete uses for this job.">
+    <app-setting-row label="Connection" description="The AI connection used for this job.">
       <app-dropdown
         [options]="connections()"
         [value]="connectionId()"
@@ -40,10 +40,10 @@
     />
     <p class="rebuild__text rebuild__text--muted" data-testid="rebuild-mode-text">
       @if (mode() === 'fresh') {
-        Clears what Pete has learned. Locked entries and anything you wrote stay, and a copy of your
+        Clears what has been learned. Locked entries and anything you wrote stay, and a copy of your
         persona as it is now is kept, so you can put it back.
       } @else {
-        Keeps your persona as it is, and adds to it, merging what Pete finds with what's there.
+        Keeps your persona as it is, and adds to it, merging what it finds with what's there.
       }
     </p>
 

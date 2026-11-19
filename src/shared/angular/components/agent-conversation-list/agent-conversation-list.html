@@ -183,7 +183,7 @@
       type="button"
       class="app-menu-panel__item"
       cdkMenuItem
-      [cdkMenuItemDisabled]="!peteOn()"
+      [cdkMenuItemDisabled]="!learningOn()"
       (cdkMenuItemTriggered)="onLearnNow()"
     >
       <app-icon [icon]="Icon.PERSONA_MEMORY" />
@@ -360,7 +360,7 @@
     </p>
     <!-- #1519: deleting a conversation never touches the persona, and the user is told so. -->
     <p class="history__modal-body">
-      Your persona keeps anything Pete learned from them.
+      Your persona keeps anything learned from them.
       <button type="button" class="history__modal-link" (click)="onOpenPersona()">
         Open Persona
       </button>

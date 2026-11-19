@@ -121,7 +121,7 @@ export function searchTerms(words: string): readonly string[] {
  * Ranks the memories against a search. A tag asked for counts most, then a term in a memory's tags,
  * then in its name, then in its text or reason. When fewer than the limit match, general preferences
  * fill the rest: a preference about how the user makes decisions bears on a question about laptops
- * that never mentions one, and the agent cannot be expected to guess every word Pete filed it under.
+ * that never mentions one, and the agent cannot be expected to guess every word persona learning filed it under.
  * @param memories The memories in scope.
  * @param request The search.
  * @returns Returns the hits, best first.
@@ -247,7 +247,7 @@ function renderHit(hit: PersonaSearchHit): string {
   if (entry.tags.length > 0) {
     lines.push(`  Tags: ${entry.tags.join(', ')}`);
   }
-  if (entry.author === 'pete' && entry.confidence < 0.6) {
+  if (entry.author === 'learned' && entry.confidence < 0.6) {
     lines.push('  (Learned, and not yet certain: treat it as a guess.)');
   }
   return lines.join('\n');

@@ -53,7 +53,7 @@ export function parseEntryFile(id: string, text: string): PersonaEntry {
     const value: string | readonly string[] | undefined = values.get(key);
     return typeof value === 'string' ? value.trim() : '';
   };
-  const author: PersonaAuthor = asText('author').toLowerCase() === 'pete' ? 'pete' : 'user';
+  const author: PersonaAuthor = asText('author').toLowerCase() === 'learned' ? 'learned' : 'user';
   const locked: string = asText('locked').toLowerCase();
   const confidence: number = Number.parseFloat(asText('confidence'));
   return {
@@ -69,11 +69,11 @@ export function parseEntryFile(id: string, text: string): PersonaEntry {
     scope: readPromptScope({ surfaces: asList('surfaces'), languages: asList('languages') }),
     layer: readLayer(asText('layer')),
     enabled: asText('enabled').toLowerCase() !== 'false',
-    // What the user wrote is certain; Pete's entries say how sure he is.
+    // What the user wrote is certain; learned entries say how sure learning is.
     confidence: Number.isNaN(confidence) ? 1 : clampConfidence(confidence),
     confirmed: /^\d{4}-\d{2}-\d{2}$/.test(asText('confirmed')) ? asText('confirmed') : '',
     author,
-    // An entry the user wrote is locked unless they unlocked it; one Pete wrote, unless they locked it.
+    // An entry the user wrote is locked unless they unlocked it; one learning wrote, unless they locked it.
     locked: locked === '' ? author === 'user' : locked === 'true',
   };
 }

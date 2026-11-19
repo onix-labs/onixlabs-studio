@@ -28,7 +28,7 @@ import { ContainerEngine } from './sections/container-engine/container-engine';
 import { PackageRegistryTokens } from './sections/package-registry-tokens/package-registry-tokens';
 import { DefaultSeverities } from './sections/default-severities/default-severities';
 import { LogFolder } from './sections/log-folder/log-folder';
-import { PeteConnection } from './sections/pete-connection/pete-connection';
+import { PersonaLearningConnection } from './sections/persona-learning-connection/persona-learning-connection';
 import { PersonalDictionary } from './sections/personal-dictionary/personal-dictionary';
 import { NotificationTypesSettings } from './sections/notification-types/notification-types';
 import { ReadAloudVoice } from './sections/read-aloud-voice/read-aloud-voice';
@@ -324,7 +324,7 @@ interface SettingsTreeData {
     PackageRegistryTokens,
     DefaultSeverities,
     LogFolder,
-    PeteConnection,
+    PersonaLearningConnection,
     Modal,
     ModalContent,
     PersonalDictionary,

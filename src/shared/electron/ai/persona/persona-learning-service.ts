@@ -4,41 +4,45 @@ import type {
   StoredAgentConversation,
 } from '@shared/api/agent-conversation-channels';
 import { normalizeTags, personaIdFor, type PersonaEntry } from '@shared/api/persona-channels';
-import { planPeteChanges, type PetePlan } from '@shared/api/pete-plan';
+import { planLearningChanges, type LearningPlan } from '@shared/api/persona-learning-plan';
 import {
   CHARACTERS_PER_TOKEN,
-  PETE_BATCH_CHARACTERS,
-  PETE_PROMPT_TOKENS,
-  PETE_MESSAGE_CHARACTERS,
-  PeteChannel,
+  LEARNING_BATCH_CHARACTERS,
+  LEARNING_PROMPT_TOKENS,
+  LEARNING_MESSAGE_CHARACTERS,
+  PersonaLearningChannel,
   readChange,
   type PersonaChange,
   type PersonaRebuildEstimate,
   type PersonaRebuildRequest,
   type PersonaReviewMode,
   type PersonaSnapshot,
-  type PeteAnswerRequest,
-  type PeteBatch,
-  type PeteBeginRequest,
-  type PeteExcerpt,
-  type PeteFinishRequest,
-  type PeteOutcome,
-  type PeteProposal,
-  type PeteProposedChange,
-  type PeteQuestion,
-  type PeteReviewRequest,
-  type PeteState,
-} from '@shared/api/pete-protocol';
+  type LearningAnswerRequest,
+  type LearningBatch,
+  type LearningBeginRequest,
+  type LearningExcerpt,
+  type LearningFinishRequest,
+  type LearningOutcome,
+  type LearningProposal,
+  type LearningProposedChange,
+  type PersonaQuestion,
+  type LearningReviewRequest,
+  type LearningState,
+} from '@shared/api/persona-learning-protocol';
 import { redactSecrets } from '@shared/api/redaction';
 import { GLOBAL_SCOPE } from '@shared/api/ai-types';
 import { logger } from '@shared/electron/logger';
 import type { PersonaLibrary } from './persona-library';
-import { PeteStore, type PeteRecords, type StoredRebuild } from './pete-store';
+import {
+  PersonaLearningStore,
+  type LearningRecords,
+  type StoredRebuild,
+} from './persona-learning-store';
 
 /**
- * The conversations, as far as Pete reads them.
+ * The conversations, as far as persona learning reads them.
  */
-export interface PeteConversationSource {
+export interface LearningConversationSource {
   listAll(): readonly AgentConversationSummary[];
   load(id: unknown): Promise<StoredAgentConversation | null>;
 }
@@ -58,7 +62,7 @@ const FAILURE_LIMIT: number = 3;
  */
 interface Claim {
   readonly batchId: string;
-  readonly excerpts: readonly PeteExcerpt[];
+  readonly excerpts: readonly LearningExcerpt[];
   readonly expires: number;
 
   /**
@@ -74,32 +78,32 @@ interface Claim {
 }
 
 /**
- * Pete's side in the main process (#1516, #1517): hands out what the user typed that he has not read,
+ * Persona learning's side in the main process (#1516, #1517): hands out what the user typed that has not been read,
  * checks what the model proposed against the rules before any of it lands, applies it or holds it for
  * review as the user chose, and keeps the history that lets each change be looked through and undone.
  *
  * ⛔ Only the user's own messages are read: the transcript's `user` items. Tool output, fetched pages,
- * file contents and the agent's replies never reach Pete, so text written to mislead a model cannot be
- * copied into a persona every future session reads (#1513 §3, "What Pete reads").
+ * file contents and the agent's replies never reach learning, so text written to mislead a model cannot be
+ * copied into a persona every future session reads (#1513 §3, on what is read).
  */
-export class PeteService {
+export class PersonaLearningService {
   /**
    * Holds the batch a run is working on, or null.
    */
   private claim: Claim | null = null;
 
   /**
-   * Initializes a new instance of the {@link PeteService} class.
+   * Initializes a new instance of the {@link PersonaLearningService} class.
    * @param library The persona.
-   * @param store Pete's records.
+   * @param store the learning records.
    * @param conversations The conversations.
    * @param personaChanged Tells the windows the persona changed.
    * @param now The clock, injected for tests.
    */
   public constructor(
     private readonly library: PersonaLibrary,
-    private readonly store: PeteStore,
-    private readonly conversations: PeteConversationSource,
+    private readonly store: PersonaLearningStore,
+    private readonly conversations: LearningConversationSource,
     private readonly personaChanged: () => void,
     private readonly now: () => number = Date.now,
   ) {}
@@ -108,56 +112,56 @@ export class PeteService {
    * Registers the IPC handlers.
    */
   public register(): void {
-    logger.info('PeteService', 'Registering Pete IPC handlers');
+    logger.info('PersonaLearningService', 'Registering persona learning IPC handlers');
     ipcMain.handle(
-      PeteChannel.Begin,
-      (_event: IpcMainInvokeEvent, value: unknown): Promise<PeteBatch | null> =>
+      PersonaLearningChannel.Begin,
+      (_event: IpcMainInvokeEvent, value: unknown): Promise<LearningBatch | null> =>
         this.begin(readBegin(value)),
     );
     ipcMain.handle(
-      PeteChannel.Finish,
-      async (_event: IpcMainInvokeEvent, value: unknown): Promise<PeteOutcome | null> => {
-        const request: PeteFinishRequest | null = readFinish(value);
+      PersonaLearningChannel.Finish,
+      async (_event: IpcMainInvokeEvent, value: unknown): Promise<LearningOutcome | null> => {
+        const request: LearningFinishRequest | null = readFinish(value);
         return request === null ? null : this.finish(request);
       },
     );
     ipcMain.handle(
-      PeteChannel.Abandon,
+      PersonaLearningChannel.Abandon,
       (_event: IpcMainInvokeEvent, value: unknown): Promise<void> =>
         typeof value === 'string' ? this.abandon(value) : Promise.resolve(),
     );
-    ipcMain.handle(PeteChannel.State, (): Promise<PeteState> => this.store.state());
+    ipcMain.handle(PersonaLearningChannel.State, (): Promise<LearningState> => this.store.state());
     ipcMain.handle(
-      PeteChannel.Undo,
+      PersonaLearningChannel.Undo,
       (_event: IpcMainInvokeEvent, value: unknown): Promise<boolean> =>
         typeof value === 'string' ? this.undo(value) : Promise.resolve(false),
     );
     ipcMain.handle(
-      PeteChannel.Review,
+      PersonaLearningChannel.Review,
       (_event: IpcMainInvokeEvent, value: unknown): Promise<number> => {
-        const request: PeteReviewRequest | null = readReview(value);
+        const request: LearningReviewRequest | null = readReview(value);
         return request === null ? Promise.resolve(0) : this.review(request);
       },
     );
     ipcMain.handle(
-      PeteChannel.RuleOut,
+      PersonaLearningChannel.RuleOut,
       (_event: IpcMainInvokeEvent, value: unknown): Promise<void> =>
         Array.isArray(value)
           ? this.ruleOut(value.filter((item: unknown): item is string => typeof item === 'string'))
           : Promise.resolve(),
     );
     ipcMain.handle(
-      PeteChannel.AnswerQuestion,
+      PersonaLearningChannel.AnswerQuestion,
       (_event: IpcMainInvokeEvent, value: unknown): Promise<boolean> => {
-        const request: PeteAnswerRequest | null = readAnswer(value);
+        const request: LearningAnswerRequest | null = readAnswer(value);
         return request === null ? Promise.resolve(false) : this.answer(request);
       },
     );
-    ipcMain.handle(PeteChannel.EstimateRebuild, (): Promise<PersonaRebuildEstimate> =>
+    ipcMain.handle(PersonaLearningChannel.EstimateRebuild, (): Promise<PersonaRebuildEstimate> =>
       this.estimateRebuild(),
     );
     ipcMain.handle(
-      PeteChannel.StartRebuild,
+      PersonaLearningChannel.StartRebuild,
       (_event: IpcMainInvokeEvent, value: unknown): Promise<string | null> => {
         const request: PersonaRebuildRequest | null = readRebuildRequest(value);
         return request === null
@@ -165,12 +169,12 @@ export class PeteService {
           : this.startRebuild(request);
       },
     );
-    ipcMain.handle(PeteChannel.CancelRebuild, (): Promise<void> => this.cancelRebuild());
-    ipcMain.handle(PeteChannel.ListSnapshots, (): Promise<readonly PersonaSnapshot[]> =>
+    ipcMain.handle(PersonaLearningChannel.CancelRebuild, (): Promise<void> => this.cancelRebuild());
+    ipcMain.handle(PersonaLearningChannel.ListSnapshots, (): Promise<readonly PersonaSnapshot[]> =>
       this.library.snapshots(),
     );
     ipcMain.handle(
-      PeteChannel.RestoreSnapshot,
+      PersonaLearningChannel.RestoreSnapshot,
       async (_event: IpcMainInvokeEvent, value: unknown): Promise<boolean> => {
         const restored: boolean = typeof value === 'string' && (await this.library.restore(value));
         if (restored) {
@@ -187,13 +191,13 @@ export class PeteService {
    * @param request What to read.
    * @returns Returns the batch, or null when there is nothing to read or a run already holds a claim.
    */
-  public async begin(request: PeteBeginRequest): Promise<PeteBatch | null> {
+  public async begin(request: LearningBeginRequest): Promise<LearningBatch | null> {
     const now: number = this.now();
     if (this.claim !== null && this.claim.expires > now) {
-      logger.debug('PeteService.begin', 'A run already holds a batch');
+      logger.debug('PersonaLearningService.begin', 'A run already holds a batch');
       return null;
     }
-    const records: PeteRecords = await this.store.read();
+    const records: LearningRecords = await this.store.read();
     const rebuild: boolean = request.rebuild === true;
     if (rebuild && records.rebuild === null) {
       return null;
@@ -217,10 +221,10 @@ export class PeteService {
         (a: AgentConversationSummary, b: AgentConversationSummary): number =>
           a.updatedAt - b.updatedAt,
       );
-    const excerpts: PeteExcerpt[] = [];
+    const excerpts: LearningExcerpt[] = [];
     const completes: string[] = [];
     const empty: string[] = [];
-    let budget: number = PETE_BATCH_CHARACTERS;
+    let budget: number = LEARNING_BATCH_CHARACTERS;
     for (const summary of candidates) {
       if (budget <= 0) {
         break;
@@ -232,7 +236,12 @@ export class PeteService {
         continue;
       }
       const read: ReadonlySet<string> = new Set<string>(readMap[summary.id] ?? []);
-      const excerpt: PeteExcerpt | null = excerptOf(summary.id, conversation.items, read, budget);
+      const excerpt: LearningExcerpt | null = excerptOf(
+        summary.id,
+        conversation.items,
+        read,
+        budget,
+      );
       if (excerpt === null) {
         empty.push(summary.id);
       } else {
@@ -255,7 +264,7 @@ export class PeteService {
       }
       return null;
     }
-    const batchId: string = PeteStore.newId();
+    const batchId: string = PersonaLearningStore.newId();
     this.claim = { batchId, excerpts, expires: now + CLAIM_MS, rebuild, completes };
     // The persona as it will be once what is waiting for review is accepted, so the model builds on its
     // own earlier batches rather than proposing them again.
@@ -264,14 +273,14 @@ export class PeteService {
       records.pending,
     );
     logger.info(
-      'PeteService.begin',
-      `Batch ${batchId}: ${excerpts.length} conversation(s), ${excerpts.reduce((total: number, excerpt: PeteExcerpt): number => total + excerpt.messages.length, 0)} message(s)`,
+      'PersonaLearningService.begin',
+      `Batch ${batchId}: ${excerpts.length} conversation(s), ${excerpts.reduce((total: number, excerpt: LearningExcerpt): number => total + excerpt.messages.length, 0)} message(s)`,
     );
     return {
       batchId,
       persona,
       ruledOut: records.ruledOut,
-      openQuestions: records.questions.map((question: PeteQuestion): string => question.text),
+      openQuestions: records.questions.map((question: PersonaQuestion): string => question.text),
       excerpts,
     };
   }
@@ -282,16 +291,19 @@ export class PeteService {
    * @param request The model's proposal for a batch.
    * @returns Returns what was done, or null when the batch is not the one claimed.
    */
-  public async finish(request: PeteFinishRequest): Promise<PeteOutcome | null> {
+  public async finish(request: LearningFinishRequest): Promise<LearningOutcome | null> {
     const claim: Claim | null = this.claim;
     if (claim?.batchId !== request.batchId) {
-      logger.warn('PeteService.finish', `Batch ${request.batchId} is not the one claimed`);
+      logger.warn(
+        'PersonaLearningService.finish',
+        `Batch ${request.batchId} is not the one claimed`,
+      );
       return null;
     }
     this.claim = null;
-    const outcome: PeteOutcome = await this.land(request.proposal, request.review, claim);
+    const outcome: LearningOutcome = await this.land(request.proposal, request.review, claim);
     logger.info(
-      'PeteService.finish',
+      'PersonaLearningService.finish',
       `Batch ${request.batchId}: ${outcome.applied} applied, ${outcome.pending} for review, ${outcome.refused} refused`,
     );
     this.announce(outcome.applied > 0);
@@ -300,7 +312,7 @@ export class PeteService {
 
   /**
    * Gives a batch back unread after the model failed. Messages that keep failing are marked read after
-   * a few tries, so one bad conversation cannot stop Pete for good.
+   * a few tries, so one bad conversation cannot stop persona learning for good.
    * @param batchId The batch.
    * @returns Resolves once recorded.
    */
@@ -310,7 +322,7 @@ export class PeteService {
       return;
     }
     this.claim = null;
-    await this.store.update((records: PeteRecords): [PeteRecords, void] => {
+    await this.store.update((records: LearningRecords): [LearningRecords, void] => {
       // A rebuild batch given back because the rebuild was cancelled did not fail.
       if (claim.rebuild && records.rebuild === null) {
         return [records, undefined];
@@ -321,7 +333,10 @@ export class PeteService {
       for (const excerpt of claim.excerpts) {
         const count: number = (failures[excerpt.conversationId] ?? 0) + 1;
         if (count >= FAILURE_LIMIT) {
-          logger.warn('PeteService.abandon', 'Passing over messages that failed repeatedly');
+          logger.warn(
+            'PersonaLearningService.abandon',
+            'Passing over messages that failed repeatedly',
+          );
           read[excerpt.conversationId] = [
             ...(read[excerpt.conversationId] ?? []),
             ...excerpt.messageIds,
@@ -349,13 +364,13 @@ export class PeteService {
   }
 
   /**
-   * Undoes a change Pete made: the entry goes back to what it was before.
+   * Undoes a change persona learning made: the entry goes back to what it was before.
    * @param changeId The change.
    * @returns Returns true when it was undone.
    */
   public async undo(changeId: string): Promise<boolean> {
     const undone: boolean = await this.store.update(
-      async (records: PeteRecords): Promise<[PeteRecords, boolean]> => {
+      async (records: LearningRecords): Promise<[LearningRecords, boolean]> => {
         const change: PersonaChange | undefined = records.recent.find(
           (candidate: PersonaChange): boolean => candidate.id === changeId,
         );
@@ -386,11 +401,11 @@ export class PeteService {
    * @param request The decision.
    * @returns Returns how many were applied.
    */
-  public async review(request: PeteReviewRequest): Promise<number> {
+  public async review(request: LearningReviewRequest): Promise<number> {
     const accept: ReadonlySet<string> = new Set<string>(request.accept);
     const reject: ReadonlySet<string> = new Set<string>(request.reject);
     const applied: number = await this.store.update(
-      async (records: PeteRecords): Promise<[PeteRecords, number]> => {
+      async (records: LearningRecords): Promise<[LearningRecords, number]> => {
         const landed: PersonaChange[] = [];
         for (const change of records.pending) {
           if (!accept.has(change.id)) {
@@ -420,7 +435,7 @@ export class PeteService {
   }
 
   /**
-   * Sets the topics Pete never learns about.
+   * Sets the topics persona learning never learns about.
    * @param topics The topics.
    * @returns Resolves once recorded.
    */
@@ -432,7 +447,7 @@ export class PeteService {
           .filter((topic: string): boolean => topic.length > 0),
       ),
     ].slice(0, 100);
-    await this.store.update((records: PeteRecords): [PeteRecords, void] => [
+    await this.store.update((records: LearningRecords): [LearningRecords, void] => [
       { ...records, ruledOut: cleaned },
       undefined,
     ]);
@@ -440,17 +455,17 @@ export class PeteService {
   }
 
   /**
-   * Answers one of Pete's questions, or dismisses it with an empty answer. An answer becomes a memory
-   * the user wrote, locked like anything else they write; Pete reads it on his next run and can work
+   * Answers one of the open questions, or dismisses it with an empty answer. An answer becomes a memory
+   * the user wrote, locked like anything else they write; persona learning reads it on its next run and can work
    * the reason into the entries it explains.
    * @param request The answer.
    * @returns Returns true when the question was there.
    */
-  public async answer(request: PeteAnswerRequest): Promise<boolean> {
-    const question: PeteQuestion | null = await this.store.update(
-      (records: PeteRecords): [PeteRecords, PeteQuestion | null] => {
-        const found: PeteQuestion | undefined = records.questions.find(
-          (candidate: PeteQuestion): boolean => candidate.id === request.questionId,
+  public async answer(request: LearningAnswerRequest): Promise<boolean> {
+    const question: PersonaQuestion | null = await this.store.update(
+      (records: LearningRecords): [LearningRecords, PersonaQuestion | null] => {
+        const found: PersonaQuestion | undefined = records.questions.find(
+          (candidate: PersonaQuestion): boolean => candidate.id === request.questionId,
         );
         return found === undefined
           ? [records, null]
@@ -458,7 +473,7 @@ export class PeteService {
               {
                 ...records,
                 questions: records.questions.filter(
-                  (candidate: PeteQuestion): boolean => candidate !== found,
+                  (candidate: PersonaQuestion): boolean => candidate !== found,
                 ),
               },
               found,
@@ -494,7 +509,7 @@ export class PeteService {
 
   /**
    * Counts what a full rebuild would read (#1518): every conversation with something the user typed,
-   * as Pete would read it, and roughly how many tokens that sends the model — the messages, plus the
+   * as persona learning would read it, and roughly how many tokens that sends the model — the messages, plus the
    * instructions and the persona once per batch.
    * @returns Returns the estimate.
    */
@@ -505,7 +520,7 @@ export class PeteService {
       const conversation: StoredAgentConversation | null = await this.conversations.load(
         summary.id,
       );
-      const excerpt: PeteExcerpt | null =
+      const excerpt: LearningExcerpt | null =
         conversation === null
           ? null
           : excerptOf(summary.id, conversation.items, new Set<string>(), Number.MAX_SAFE_INTEGER);
@@ -517,7 +532,8 @@ export class PeteService {
         );
       }
     }
-    const batches: number = characters === 0 ? 0 : Math.ceil(characters / PETE_BATCH_CHARACTERS);
+    const batches: number =
+      characters === 0 ? 0 : Math.ceil(characters / LEARNING_BATCH_CHARACTERS);
     const persona: number = (await this.library.list()).entries.reduce(
       (total: number, entry: PersonaEntry): number =>
         total + entry.name.length + entry.text.length + entry.why.length + 40,
@@ -525,14 +541,14 @@ export class PeteService {
     );
     const tokens: number = Math.ceil(
       characters / CHARACTERS_PER_TOKEN +
-        batches * (PETE_PROMPT_TOKENS + persona / CHARACTERS_PER_TOKEN),
+        batches * (LEARNING_PROMPT_TOKENS + persona / CHARACTERS_PER_TOKEN),
     );
     return { conversations, characters, tokens, batches };
   }
 
   /**
    * Starts a full rebuild (#1518). Starting fresh first keeps a copy of the whole persona, then clears
-   * what Pete wrote; anything locked, and anything the user wrote, stays. A rebuild already under way
+   * what persona learning wrote; anything locked, and anything the user wrote, stays. A rebuild already under way
    * is replaced.
    * @param request What to start.
    * @returns Returns null once started, or why it was not.
@@ -544,13 +560,13 @@ export class PeteService {
     if (request.mode === 'fresh') {
       await this.library.snapshot(new Date(this.now()));
       for (const entry of (await this.library.list()).entries) {
-        if (!entry.locked && entry.author === 'pete') {
+        if (!entry.locked && entry.author === 'learned') {
           await this.library.delete(entry.id);
         }
       }
     }
     const total: number = this.conversations.listAll().length;
-    await this.store.update((records: PeteRecords): [PeteRecords, void] => [
+    await this.store.update((records: LearningRecords): [LearningRecords, void] => [
       {
         ...records,
         rebuild: { ...request, startedAt: this.now(), total, done: [], read: {} },
@@ -558,7 +574,7 @@ export class PeteService {
       undefined,
     ]);
     logger.info(
-      'PeteService.startRebuild',
+      'PersonaLearningService.startRebuild',
       `Rebuild started (${request.mode}) over ${total} conversation(s)`,
     );
     this.announce(request.mode === 'fresh');
@@ -574,10 +590,10 @@ export class PeteService {
   }
 
   /**
-   * Gets Pete's records for the Persona page.
+   * Gets the learning records for the Persona page.
    * @returns Returns them.
    */
-  public state(): Promise<PeteState> {
+  public state(): Promise<LearningState> {
     return this.store.state();
   }
 
@@ -595,84 +611,89 @@ export class PeteService {
    * @returns Returns what was done.
    */
   private async land(
-    proposal: PeteProposal,
+    proposal: LearningProposal,
     review: PersonaReviewMode,
     claim: Claim,
-  ): Promise<PeteOutcome> {
-    const excerpts: readonly PeteExcerpt[] = claim.excerpts;
-    return this.store.update(async (records: PeteRecords): Promise<[PeteRecords, PeteOutcome]> => {
-      const stored: readonly PersonaEntry[] = (await this.library.list()).entries;
-      const persona: readonly PersonaEntry[] =
-        review === 'automatic' ? stored : withPending(stored, records.pending);
-      const plan: PetePlan = planPeteChanges(
-        persona,
-        proposal,
-        records.ruledOut,
-        new Date(this.now()),
-        (): string => PeteStore.newId(),
-      );
-      if (review === 'automatic') {
-        for (const change of plan.changes) {
-          await this.restore(change.entryId, change.after);
+  ): Promise<LearningOutcome> {
+    const excerpts: readonly LearningExcerpt[] = claim.excerpts;
+    return this.store.update(
+      async (records: LearningRecords): Promise<[LearningRecords, LearningOutcome]> => {
+        const stored: readonly PersonaEntry[] = (await this.library.list()).entries;
+        const persona: readonly PersonaEntry[] =
+          review === 'automatic' ? stored : withPending(stored, records.pending);
+        const plan: LearningPlan = planLearningChanges(
+          persona,
+          proposal,
+          records.ruledOut,
+          new Date(this.now()),
+          (): string => PersonaLearningStore.newId(),
+        );
+        if (review === 'automatic') {
+          for (const change of plan.changes) {
+            await this.restore(change.entryId, change.after);
+          }
         }
-      }
-      const read: Record<string, readonly string[]> = { ...records.read };
-      const failures: Record<string, number> = { ...records.failures };
-      for (const excerpt of excerpts) {
-        read[excerpt.conversationId] = [
-          ...(read[excerpt.conversationId] ?? []),
-          ...excerpt.messageIds,
+        const read: Record<string, readonly string[]> = { ...records.read };
+        const failures: Record<string, number> = { ...records.failures };
+        for (const excerpt of excerpts) {
+          read[excerpt.conversationId] = [
+            ...(read[excerpt.conversationId] ?? []),
+            ...excerpt.messageIds,
+          ];
+          delete failures[excerpt.conversationId];
+        }
+        const known: ReadonlySet<string> = new Set<string>(
+          this.conversations
+            .listAll()
+            .map((summary: AgentConversationSummary): string => summary.id),
+        );
+        for (const conversation of Object.keys(read)) {
+          if (!known.has(conversation)) {
+            delete read[conversation];
+          }
+        }
+        const asked: ReadonlySet<string> = new Set<string>(
+          records.questions.map((question: PersonaQuestion): string => question.text.toLowerCase()),
+        );
+        const questions: readonly PersonaQuestion[] = [
+          ...records.questions,
+          ...proposal.questions
+            .filter((text: string): boolean => !asked.has(text.toLowerCase()))
+            .map((text: string): PersonaQuestion => ({
+              id: PersonaLearningStore.newId(),
+              text: redactSecrets(text),
+              asked: this.now(),
+            })),
         ];
-        delete failures[excerpt.conversationId];
-      }
-      const known: ReadonlySet<string> = new Set<string>(
-        this.conversations.listAll().map((summary: AgentConversationSummary): string => summary.id),
-      );
-      for (const conversation of Object.keys(read)) {
-        if (!known.has(conversation)) {
-          delete read[conversation];
-        }
-      }
-      const asked: ReadonlySet<string> = new Set<string>(
-        records.questions.map((question: PeteQuestion): string => question.text.toLowerCase()),
-      );
-      const questions: readonly PeteQuestion[] = [
-        ...records.questions,
-        ...proposal.questions
-          .filter((text: string): boolean => !asked.has(text.toLowerCase()))
-          .map((text: string): PeteQuestion => ({
-            id: PeteStore.newId(),
-            text: redactSecrets(text),
-            asked: this.now(),
-          })),
-      ];
-      const next: PeteRecords = {
-        ...records,
-        read,
-        failures,
-        questions,
-        lastRun: this.now(),
-        recent: review === 'automatic' ? [...records.recent, ...plan.changes] : records.recent,
-        pending:
-          review === 'automatic' ? records.pending : foldPending(records.pending, plan.changes),
-        rebuild:
-          claim.rebuild && records.rebuild !== null
-            ? advanceRebuild(records.rebuild, excerpts, claim.completes)
-            : records.rebuild,
-      };
-      return [
-        next,
-        {
-          applied: review === 'automatic' ? plan.changes.length : 0,
-          pending: review === 'automatic' ? 0 : plan.changes.length,
-          refused: plan.refused,
-          messagesRead: excerpts.reduce(
-            (total: number, excerpt: PeteExcerpt): number => total + excerpt.messageIds.length,
-            0,
-          ),
-        },
-      ];
-    });
+        const next: LearningRecords = {
+          ...records,
+          read,
+          failures,
+          questions,
+          lastRun: this.now(),
+          recent: review === 'automatic' ? [...records.recent, ...plan.changes] : records.recent,
+          pending:
+            review === 'automatic' ? records.pending : foldPending(records.pending, plan.changes),
+          rebuild:
+            claim.rebuild && records.rebuild !== null
+              ? advanceRebuild(records.rebuild, excerpts, claim.completes)
+              : records.rebuild,
+        };
+        return [
+          next,
+          {
+            applied: review === 'automatic' ? plan.changes.length : 0,
+            pending: review === 'automatic' ? 0 : plan.changes.length,
+            refused: plan.refused,
+            messagesRead: excerpts.reduce(
+              (total: number, excerpt: LearningExcerpt): number =>
+                total + excerpt.messageIds.length,
+              0,
+            ),
+          },
+        ];
+      },
+    );
   }
 
   /**
@@ -681,7 +702,7 @@ export class PeteService {
    * @returns Resolves once recorded.
    */
   private async markRebuilt(conversationIds: readonly string[]): Promise<void> {
-    await this.store.update((records: PeteRecords): [PeteRecords, void] => [
+    await this.store.update((records: LearningRecords): [LearningRecords, void] => [
       records.rebuild === null
         ? records
         : { ...records, rebuild: advanceRebuild(records.rebuild, [], conversationIds) },
@@ -696,13 +717,13 @@ export class PeteService {
    */
   private async endRebuild(why: 'finished' | 'cancelled'): Promise<void> {
     const ended: boolean = await this.store.update(
-      (records: PeteRecords): [PeteRecords, boolean] => [
+      (records: LearningRecords): [LearningRecords, boolean] => [
         { ...records, rebuild: null },
         records.rebuild !== null,
       ],
     );
     if (ended) {
-      logger.info('PeteService.endRebuild', `Rebuild ${why}`);
+      logger.info('PersonaLearningService.endRebuild', `Rebuild ${why}`);
       this.announce(false);
     }
   }
@@ -720,12 +741,12 @@ export class PeteService {
     }
     const error: string | null = await this.library.save(entry);
     if (error !== null) {
-      logger.warn('PeteService.restore', `Could not write entry ${entryId}: ${error}`);
+      logger.warn('PersonaLearningService.restore', `Could not write entry ${entryId}: ${error}`);
     }
   }
 
   /**
-   * Tells the windows Pete's records changed, and the persona too when it did.
+   * Tells the windows the learning records changed, and the persona too when it did.
    * @param persona Whether the persona changed.
    */
   private announce(persona: boolean): void {
@@ -734,7 +755,7 @@ export class PeteService {
     }
     for (const window of BrowserWindow.getAllWindows()) {
       if (!window.isDestroyed()) {
-        window.webContents.send(PeteChannel.Changed);
+        window.webContents.send(PersonaLearningChannel.Changed);
       }
     }
   }
@@ -754,7 +775,7 @@ export function excerptOf(
   items: readonly unknown[],
   read: ReadonlySet<string>,
   budget: number,
-): PeteExcerpt | null {
+): LearningExcerpt | null {
   const messageIds: string[] = [];
   const messages: string[] = [];
   let used: number = 0;
@@ -773,7 +794,7 @@ export function excerptOf(
     ) {
       continue;
     }
-    const cleaned: string = redactSecrets(text).trim().slice(0, PETE_MESSAGE_CHARACTERS);
+    const cleaned: string = redactSecrets(text).trim().slice(0, LEARNING_MESSAGE_CHARACTERS);
     if (used + cleaned.length > budget && messages.length > 0) {
       break;
     }
@@ -791,7 +812,7 @@ export function excerptOf(
  * @param value The value.
  * @returns Returns the request, defaulting to every idle conversation.
  */
-function readBegin(value: unknown): PeteBeginRequest {
+function readBegin(value: unknown): LearningBeginRequest {
   const record: Record<string, unknown> =
     value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : {};
   const idle: unknown = record['idleMinutes'];
@@ -835,7 +856,7 @@ function readRebuildRequest(value: unknown): PersonaRebuildRequest | null {
  * @param value The value.
  * @returns Returns the request, or null when malformed.
  */
-function readFinish(value: unknown): PeteFinishRequest | null {
+function readFinish(value: unknown): LearningFinishRequest | null {
   if (value === null || typeof value !== 'object') {
     return null;
   }
@@ -845,11 +866,11 @@ function readFinish(value: unknown): PeteFinishRequest | null {
     return null;
   }
   const fields: Record<string, unknown> = proposal as Record<string, unknown>;
-  const changes: PeteProposedChange[] = [];
+  const changes: LearningProposedChange[] = [];
   for (const item of Array.isArray(fields['changes'])
     ? (fields['changes'] as unknown[]).slice(0, 100)
     : []) {
-    const change: PeteProposedChange | null = readChange(item);
+    const change: LearningProposedChange | null = readChange(item);
     if (change !== null) {
       changes.push(change);
     }
@@ -872,7 +893,7 @@ function readFinish(value: unknown): PeteFinishRequest | null {
  * @param value The value.
  * @returns Returns the decision, or null when malformed.
  */
-function readReview(value: unknown): PeteReviewRequest | null {
+function readReview(value: unknown): LearningReviewRequest | null {
   if (value === null || typeof value !== 'object') {
     return null;
   }
@@ -889,7 +910,7 @@ function readReview(value: unknown): PeteReviewRequest | null {
  * @param value The value.
  * @returns Returns the answer, or null when malformed.
  */
-function readAnswer(value: unknown): PeteAnswerRequest | null {
+function readAnswer(value: unknown): LearningAnswerRequest | null {
   if (value === null || typeof value !== 'object') {
     return null;
   }
@@ -995,7 +1016,7 @@ export function foldPending(
  */
 function advanceRebuild(
   rebuild: StoredRebuild,
-  excerpts: readonly PeteExcerpt[],
+  excerpts: readonly LearningExcerpt[],
   completes: readonly string[],
 ): StoredRebuild {
   const read: Record<string, readonly string[]> = { ...rebuild.read };

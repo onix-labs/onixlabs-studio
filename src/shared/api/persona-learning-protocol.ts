@@ -1,103 +1,103 @@
 import type { PersonaEntry, PersonaLayer } from './persona-channels';
 
-// Shared contract for Pete (#1516): the background agent that reads what the user typed in their
+// Shared contract for persona learning (#1516): the background job that reads what the user typed in their
 // conversations and turns what it learns into the persona. The main process holds the conversations,
-// the persona and Pete's own records, and is the only one that changes the persona; the renderer runs
+// the persona and the learning records, and is the only one that changes the persona; the renderer runs
 // the model, because that is where the AI runtime is. So a run is three calls: Begin hands out what
 // has not been read, the renderer asks the model, and Finish hands back what the model proposed, which
 // the main process checks against the rules before any of it lands.
 // Keep this module platform-neutral (types and pure functions only).
 
 /**
- * The IPC channels of Pete and of the persona's change history.
+ * The IPC channels of persona learning and of the persona's change history.
  */
-export enum PeteChannel {
+export enum PersonaLearningChannel {
   /**
    * Claims the next batch of unread messages for a run; null when there is nothing to read or another
    * window's run holds the claim.
    */
-  Begin = 'pete:begin',
+  Begin = 'persona-learning:begin',
 
   /**
    * Hands back what the model proposed for a batch, to be checked and applied or held for review.
    */
-  Finish = 'pete:finish',
+  Finish = 'persona-learning:finish',
 
   /**
    * Gives a batch back unread, after the model failed.
    */
-  Abandon = 'pete:abandon',
+  Abandon = 'persona-learning:abandon',
 
   /**
-   * Gets Pete's records: recent changes, changes awaiting review, ruled-out topics, open questions.
+   * Gets the learning records: recent changes, changes awaiting review, ruled-out topics, open questions.
    */
-  State = 'pete:state',
+  State = 'persona-learning:state',
 
   /**
-   * Undoes a change Pete made.
+   * Undoes a change persona learning made.
    */
-  Undo = 'pete:undo',
+  Undo = 'persona-learning:undo',
 
   /**
    * Accepts or rejects changes awaiting review.
    */
-  Review = 'pete:review',
+  Review = 'persona-learning:review',
 
   /**
-   * Sets the topics Pete never learns about.
+   * Sets the topics persona learning never learns about.
    */
-  RuleOut = 'pete:rule-out',
+  RuleOut = 'persona-learning:rule-out',
 
   /**
-   * Answers or dismisses one of Pete's open questions.
+   * Answers or dismisses one of the open questions.
    */
-  AnswerQuestion = 'pete:answer-question',
+  AnswerQuestion = 'persona-learning:answer-question',
 
   /**
    * Counts what a full rebuild would read, for the estimate shown before it starts (#1518).
    */
-  EstimateRebuild = 'pete:estimate-rebuild',
+  EstimateRebuild = 'persona-learning:estimate-rebuild',
 
   /**
    * Starts a full rebuild over every conversation, merging or starting fresh.
    */
-  StartRebuild = 'pete:start-rebuild',
+  StartRebuild = 'persona-learning:start-rebuild',
 
   /**
    * Cancels the rebuild in progress; what it already learned stays.
    */
-  CancelRebuild = 'pete:cancel-rebuild',
+  CancelRebuild = 'persona-learning:cancel-rebuild',
 
   /**
    * Lists the copies of the persona kept when a rebuild started fresh.
    */
-  ListSnapshots = 'pete:list-snapshots',
+  ListSnapshots = 'persona-learning:list-snapshots',
 
   /**
    * Puts a kept copy of the persona back.
    */
-  RestoreSnapshot = 'pete:restore-snapshot',
+  RestoreSnapshot = 'persona-learning:restore-snapshot',
 
   /**
-   * Main → renderer: Pete's records changed.
+   * Main → renderer: PersonaLearning's records changed.
    */
-  Changed = 'pete:changed',
+  Changed = 'persona-learning:changed',
 }
 
 /**
- * When Pete runs: after a conversation has been idle for a while, or once a day.
+ * When persona learning runs: after a conversation has been idle for a while, or once a day.
  */
-export type PeteSchedule = 'idle' | 'daily';
+export type LearningSchedule = 'idle' | 'daily';
 
 /**
- * Whether Pete's changes apply at once, or wait for the user's approval.
+ * Whether learned changes apply at once, or wait for the user's approval.
  */
 export type PersonaReviewMode = 'automatic' | 'ask';
 
 /**
- * What the user typed in one conversation that Pete has not read yet.
+ * What the user typed in one conversation that persona learning has not read yet.
  */
-export interface PeteExcerpt {
+export interface LearningExcerpt {
   /**
    * Gets the conversation's id, which never reaches the model or the persona: it is how the main
    * process marks the messages read.
@@ -118,7 +118,7 @@ export interface PeteExcerpt {
 /**
  * What a run is handed: the persona as it stands, the topics never to learn, and the unread messages.
  */
-export interface PeteBatch {
+export interface LearningBatch {
   /**
    * Gets the batch's id, which Finish and Abandon name.
    */
@@ -142,13 +142,13 @@ export interface PeteBatch {
   /**
    * Gets the unread messages, by conversation.
    */
-  readonly excerpts: readonly PeteExcerpt[];
+  readonly excerpts: readonly LearningExcerpt[];
 }
 
 /**
  * What a run asks Begin for.
  */
-export interface PeteBeginRequest {
+export interface LearningBeginRequest {
   /**
    * Gets how long a conversation must have been idle to be read, in minutes; 0 reads every one.
    */
@@ -168,8 +168,8 @@ export interface PeteBeginRequest {
 
 /**
  * Whether a full rebuild adds to the persona or starts it again.
- * - `merge`: Pete reads everything and merges it into the persona as it stands.
- * - `fresh`: entries Pete wrote are cleared first; locked and user-written entries stay, and the whole
+ * - `merge`: PersonaLearning reads everything and merges it into the persona as it stands.
+ * - `fresh`: entries persona learning wrote are cleared first; locked and user-written entries stay, and the whole
  *   persona is kept as a copy that can be put back.
  */
 export type PersonaRebuildMode = 'merge' | 'fresh';
@@ -184,7 +184,7 @@ export interface PersonaRebuildEstimate {
   readonly conversations: number;
 
   /**
-   * Gets how many characters the user typed across them, as Pete would read them.
+   * Gets how many characters the user typed across them, as persona learning would read them.
    */
   readonly characters: number;
 
@@ -235,7 +235,7 @@ export interface PersonaSnapshot {
  * - `confirm`: an existing entry turned up again, so it is more certain and stops fading.
  * - `remove`: an entry turned out wrong, or vague and now covered by a better one.
  */
-export interface PeteProposedChange {
+export interface LearningProposedChange {
   readonly op: 'add' | 'update' | 'confirm' | 'remove';
   readonly id?: string;
   readonly layer?: PersonaLayer;
@@ -250,11 +250,11 @@ export interface PeteProposedChange {
 /**
  * Everything the model proposed for a batch.
  */
-export interface PeteProposal {
+export interface LearningProposal {
   /**
    * Gets the changes.
    */
-  readonly changes: readonly PeteProposedChange[];
+  readonly changes: readonly LearningProposedChange[];
 
   /**
    * Gets questions the model would like the user to answer, to learn the reason behind something.
@@ -265,9 +265,9 @@ export interface PeteProposal {
 /**
  * What a run hands to Finish.
  */
-export interface PeteFinishRequest {
+export interface LearningFinishRequest {
   readonly batchId: string;
-  readonly proposal: PeteProposal;
+  readonly proposal: LearningProposal;
   readonly review: PersonaReviewMode;
 }
 
@@ -286,9 +286,9 @@ export interface PersonaChange {
 }
 
 /**
- * One question Pete would like answered.
+ * One question persona learning would like answered.
  */
-export interface PeteQuestion {
+export interface PersonaQuestion {
   readonly id: string;
   readonly text: string;
   readonly asked: number;
@@ -297,7 +297,7 @@ export interface PeteQuestion {
 /**
  * What Finish reports.
  */
-export interface PeteOutcome {
+export interface LearningOutcome {
   /**
    * Gets how many changes were applied.
    */
@@ -320,13 +320,13 @@ export interface PeteOutcome {
 }
 
 /**
- * Pete's records, for the Persona page.
+ * the learning records, for the Persona page.
  */
-export interface PeteState {
+export interface LearningState {
   readonly recent: readonly PersonaChange[];
   readonly pending: readonly PersonaChange[];
   readonly ruledOut: readonly string[];
-  readonly questions: readonly PeteQuestion[];
+  readonly questions: readonly PersonaQuestion[];
   readonly lastRun: number;
   readonly rebuild: PersonaRebuildJob | null;
 }
@@ -334,7 +334,7 @@ export interface PeteState {
 /**
  * A decision on changes awaiting review.
  */
-export interface PeteReviewRequest {
+export interface LearningReviewRequest {
   readonly accept: readonly string[];
   readonly reject: readonly string[];
 }
@@ -342,7 +342,7 @@ export interface PeteReviewRequest {
 /**
  * An answer to an open question; empty to dismiss it.
  */
-export interface PeteAnswerRequest {
+export interface LearningAnswerRequest {
   readonly questionId: string;
   readonly answer: string;
 }
@@ -351,13 +351,13 @@ export interface PeteAnswerRequest {
  * The most characters of messages one batch carries, so a run stays a reasonable size for a small
  * local model; what does not fit waits for the next run.
  */
-export const PETE_BATCH_CHARACTERS: number = 24_000;
+export const LEARNING_BATCH_CHARACTERS: number = 24_000;
 
 /**
- * The most characters of one message Pete reads. A pasted log or file is not the user talking about
+ * The most characters of one message persona learning reads. A pasted log or file is not the user talking about
  * themselves, and the start of a long message says what it is.
  */
-export const PETE_MESSAGE_CHARACTERS: number = 2_000;
+export const LEARNING_MESSAGE_CHARACTERS: number = 2_000;
 
 /**
  * About how many characters make a token, for estimates. Close enough for English prose to say what a
@@ -368,7 +368,7 @@ export const CHARACTERS_PER_TOKEN: number = 4;
 /**
  * About how many tokens the instructions take, for estimates.
  */
-export const PETE_PROMPT_TOKENS: number = 1_200;
+export const LEARNING_PROMPT_TOKENS: number = 1_200;
 
 /**
  * Builds the model's instructions for a batch.
@@ -378,7 +378,7 @@ export const PETE_PROMPT_TOKENS: number = 1_200;
  * @param batch The batch.
  * @returns Returns the prompt.
  */
-export function buildPetePrompt(batch: PeteBatch): string {
+export function buildLearningPrompt(batch: LearningBatch): string {
   const persona: string =
     batch.persona.length === 0
       ? '(empty)'
@@ -393,13 +393,13 @@ export function buildPetePrompt(batch: PeteBatch): string {
       : batch.openQuestions.map((question: string) => `- ${question}`).join('\n');
   const messages: string = batch.excerpts
     .map(
-      (excerpt: PeteExcerpt, index: number): string =>
+      (excerpt: LearningExcerpt, index: number): string =>
         `### Conversation ${index + 1}\n${excerpt.messages.map((message: string): string => `> ${message.replace(/\n/g, '\n> ')}`).join('\n\n')}`,
     )
     .join('\n\n');
   return [
-    'You are Pete. You keep a persona of one user: a model of them that coding and research agents',
-    'read so they can help the way this user likes. Below are messages the user typed to agents, and',
+    'You keep a persona of one user: a model of them that coding and research agents read so they',
+    'can help the way this user likes. Below are messages the user typed to agents, and',
     'the persona as it stands. Decide what, if anything, the messages teach about the user, and answer',
     'with the changes to make.',
     '',
@@ -477,7 +477,7 @@ function describeEntry(entry: PersonaEntry): string {
  * @param text The model's answer.
  * @returns Returns the proposal, or null when there is no JSON object to read.
  */
-export function parsePeteProposal(text: string): PeteProposal | null {
+export function parseLearningProposal(text: string): LearningProposal | null {
   const start: number = text.indexOf('{');
   const end: number = text.lastIndexOf('}');
   if (start < 0 || end <= start) {
@@ -493,9 +493,9 @@ export function parsePeteProposal(text: string): PeteProposal | null {
     return null;
   }
   const record: Record<string, unknown> = parsed as Record<string, unknown>;
-  const changes: PeteProposedChange[] = [];
+  const changes: LearningProposedChange[] = [];
   for (const item of Array.isArray(record['changes']) ? (record['changes'] as unknown[]) : []) {
-    const change: PeteProposedChange | null = readChange(item);
+    const change: LearningProposedChange | null = readChange(item);
     if (change !== null) {
       changes.push(change);
     }
@@ -515,7 +515,7 @@ export function parsePeteProposal(text: string): PeteProposal | null {
  * @param value The value.
  * @returns Returns the change, or null when it is not one.
  */
-export function readChange(value: unknown): PeteProposedChange | null {
+export function readChange(value: unknown): LearningProposedChange | null {
   if (value === null || typeof value !== 'object') {
     return null;
   }

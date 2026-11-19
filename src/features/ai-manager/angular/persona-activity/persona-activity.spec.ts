@@ -1,8 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { Bridge } from '@shared/api/bridge';
 import type { PersonaEntry } from '@shared/api/persona-channels';
-import { PeteChannel, type PersonaSnapshot, type PeteState } from '@shared/api/pete-protocol';
-import { Pete } from '@shared/angular/services/persona/pete';
+import {
+  PersonaLearningChannel,
+  type PersonaSnapshot,
+  type LearningState,
+} from '@shared/api/persona-learning-protocol';
+import { PersonaLearning } from '@shared/angular/services/persona/persona-learning';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { PersonaActivity } from './persona-activity';
 
@@ -24,7 +28,7 @@ function entry(id: string): PersonaEntry {
     enabled: true,
     confidence: 0.5,
     confirmed: '',
-    author: 'pete',
+    author: 'learned',
     locked: false,
   };
 }
@@ -32,7 +36,7 @@ function entry(id: string): PersonaEntry {
 describe('PersonaActivity (#1516)', () => {
   let fixture: ComponentFixture<PersonaActivity>;
   let calls: [string, unknown][];
-  let state: PeteState;
+  let state: LearningState;
   let snapshots: readonly PersonaSnapshot[];
 
   beforeEach(async () => {
@@ -61,9 +65,9 @@ describe('PersonaActivity (#1516)', () => {
       invoke: <T>(channel: string, arg?: unknown): Promise<T> => {
         calls.push([channel, arg]);
         return Promise.resolve(
-          (channel === (PeteChannel.State as string)
+          (channel === (PersonaLearningChannel.State as string)
             ? state
-            : channel === (PeteChannel.ListSnapshots as string)
+            : channel === (PersonaLearningChannel.ListSnapshots as string)
               ? snapshots
               : true) as T,
         );
@@ -87,22 +91,22 @@ describe('PersonaActivity (#1516)', () => {
     return fixture.nativeElement as HTMLElement;
   }
 
-  it('saysPeteIsOff_untilAConnectionIsChosen', async () => {
-    expect(element().querySelector('[data-testid="pete-status"]')?.textContent).toContain(
-      'Pete is off',
+  it('saysLearningIsOff_untilAConnectionIsChosen', async () => {
+    expect(element().querySelector('[data-testid="learning-status"]')?.textContent).toContain(
+      'Persona learning is off',
     );
 
-    TestBed.inject(Settings).set('persona.peteConnectionId', 'local');
+    TestBed.inject(Settings).set('persona.learningConnectionId', 'local');
     await fixture.whenStable();
 
-    expect(element().querySelector('[data-testid="pete-status"]')?.textContent).toContain(
-      'Pete is learning',
+    expect(element().querySelector('[data-testid="learning-status"]')?.textContent).toContain(
+      'Persona learning is on',
     );
   });
 
   it('listsRecentChanges_eachWithUndo', () => {
     const rows: HTMLElement[] = [
-      ...element().querySelectorAll<HTMLElement>('[data-testid="pete-recent"] li'),
+      ...element().querySelectorAll<HTMLElement>('[data-testid="learning-recent"] li'),
     ];
 
     expect(
@@ -117,7 +121,7 @@ describe('PersonaActivity (#1516)', () => {
 
     rows[0].querySelector('button')?.click();
 
-    expect(calls).toContainEqual([PeteChannel.Undo, 'ch1']);
+    expect(calls).toContainEqual([PersonaLearningChannel.Undo, 'ch1']);
   });
 
   it('rulesOutATopic_andLetsOneBackIn', async () => {
@@ -126,11 +130,13 @@ describe('PersonaActivity (#1516)', () => {
     component.topicDraft.set('Politics');
     await component.addTopic();
 
-    expect(calls).toContainEqual([PeteChannel.RuleOut, ['health', 'Politics']]);
+    expect(calls).toContainEqual([PersonaLearningChannel.RuleOut, ['health', 'Politics']]);
 
-    element().querySelector<HTMLButtonElement>('[data-testid="pete-ruled-out"] button')?.click();
+    element()
+      .querySelector<HTMLButtonElement>('[data-testid="learning-ruled-out"] button')
+      ?.click();
 
-    expect(calls).toContainEqual([PeteChannel.RuleOut, []]);
+    expect(calls).toContainEqual([PersonaLearningChannel.RuleOut, []]);
   });
 
   it('showsARebuildUnderWay_withCancel', async () => {
@@ -145,10 +151,12 @@ describe('PersonaActivity (#1516)', () => {
         done: ['a', 'b'],
       },
     };
-    await TestBed.inject(Pete).refresh();
+    await TestBed.inject(PersonaLearning).refresh();
     await fixture.whenStable();
 
-    const progress: HTMLElement | null = element().querySelector('[data-testid="pete-rebuild"]');
+    const progress: HTMLElement | null = element().querySelector(
+      '[data-testid="learning-rebuild"]',
+    );
     expect(progress?.textContent?.replace(/\s+/g, ' ')).toContain(
       'Building your persona afresh: 2 of 40 conversations read.',
     );
@@ -156,7 +164,7 @@ describe('PersonaActivity (#1516)', () => {
     progress?.querySelector('button')?.click();
     await fixture.whenStable();
 
-    expect(calls).toContainEqual([PeteChannel.CancelRebuild, undefined]);
+    expect(calls).toContainEqual([PersonaLearningChannel.CancelRebuild, undefined]);
   });
 
   it('listsEarlierCopies_eachWithRestore', async () => {
@@ -165,18 +173,21 @@ describe('PersonaActivity (#1516)', () => {
     ];
     // A fresh copy of the records, as each read over the bridge is.
     state = { ...state };
-    await TestBed.inject(Pete).refresh();
+    await TestBed.inject(PersonaLearning).refresh();
     await fixture.whenStable();
     await fixture.whenStable();
 
     const rows: HTMLElement[] = [
-      ...element().querySelectorAll<HTMLElement>('[data-testid="pete-snapshots"] li'),
+      ...element().querySelectorAll<HTMLElement>('[data-testid="learning-snapshots"] li'),
     ];
     expect(rows).toHaveLength(1);
     expect(rows[0].textContent).toContain('7 entries');
 
     rows[0].querySelector('button')?.click();
 
-    expect(calls).toContainEqual([PeteChannel.RestoreSnapshot, '2026-11-19T12-00-00-000Z']);
+    expect(calls).toContainEqual([
+      PersonaLearningChannel.RestoreSnapshot,
+      '2026-11-19T12-00-00-000Z',
+    ]);
   });
 });

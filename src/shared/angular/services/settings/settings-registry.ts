@@ -1,5 +1,5 @@
 import type { OllamaStart, OllamaStopOnQuit } from '@shared/api/startup-settings';
-import type { PersonaReviewMode, PeteSchedule } from '@shared/api/pete-protocol';
+import type { PersonaReviewMode, LearningSchedule } from '@shared/api/persona-learning-protocol';
 import type { Severity } from '@shared/api/log-channels';
 import type { VcsPullMode, VcsSignCommits } from '@shared/api/version-control-protocol';
 import type { CloneLayout } from '@shared/api/clone-channels';
@@ -909,11 +909,11 @@ export interface SettingsValues {
   readonly 'aiManager.resultsPerSource': number;
   readonly 'aiManager.skillLibraryFolder': string;
   readonly 'aiManager.lastSection': string;
-  readonly 'persona.peteConnectionId': string;
-  readonly 'persona.peteModel': string;
-  readonly 'persona.petePaused': boolean;
-  readonly 'persona.peteSchedule': PeteSchedule;
-  readonly 'persona.peteIdleMinutes': number;
+  readonly 'persona.learningConnectionId': string;
+  readonly 'persona.learningModel': string;
+  readonly 'persona.learningPaused': boolean;
+  readonly 'persona.learningSchedule': LearningSchedule;
+  readonly 'persona.learningIdleMinutes': number;
   readonly 'persona.review': PersonaReviewMode;
   readonly 'containers.engine': string;
   readonly 'containers.engineAddressMode': ContainerEngineAddressMode;
@@ -5844,38 +5844,38 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     ],
   },
   {
-    // Pete, who learns the persona in the background (#1516), and how his changes land (#1517).
+    // Learning the persona in the background (#1516), and how what is learned lands (#1517).
     id: 'ai-manager-persona',
     label: 'Persona',
     settings: [
       {
-        // Chosen on the Pete Connection row above the section; it has no row of its own.
-        key: 'persona.peteConnectionId',
-        title: "Pete's Connection",
+        // Chosen on the Learning Connection row above the section; it has no row of its own.
+        key: 'persona.learningConnectionId',
+        title: 'Learning Connection',
         description:
-          'The AI connection Pete reads your conversations with. Pete does nothing until one is chosen.',
-        control: { kind: 'custom', component: 'pete-connection' },
+          'The AI connection your conversations are read with. Nothing is learned until one is chosen.',
+        control: { kind: 'custom', component: 'persona-learning-connection' },
         default: '',
       },
       {
-        key: 'persona.peteModel',
-        title: "Pete's Model",
-        description: "The model Pete uses, or empty for the connection's default.",
-        control: { kind: 'custom', component: 'pete-connection' },
+        key: 'persona.learningModel',
+        title: 'Learning Model',
+        description: "The model used for learning, or empty for the connection's default.",
+        control: { kind: 'custom', component: 'persona-learning-connection' },
         default: '',
       },
       {
-        key: 'persona.petePaused',
-        title: 'Pause Pete',
-        description: 'Stop Pete reading conversations until you switch this off. Nothing is lost.',
+        key: 'persona.learningPaused',
+        title: 'Pause Learning',
+        description: 'Stop reading conversations until you switch this off. Nothing is lost.',
         control: { kind: 'toggle' },
         default: false,
       },
       {
-        key: 'persona.peteSchedule',
-        title: 'When Pete Runs',
+        key: 'persona.learningSchedule',
+        title: 'When Learning Runs',
         description:
-          'After a conversation has been idle for a while, or once a day. Either way he reads only what he has not read before.',
+          'After a conversation has been idle for a while, or once a day. Either way only what has not been read before is read.',
         control: {
           kind: 'select',
           options: [
@@ -5886,9 +5886,9 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: 'idle',
       },
       {
-        key: 'persona.peteIdleMinutes',
+        key: 'persona.learningIdleMinutes',
         title: 'Idle For',
-        description: 'How long a conversation has to be quiet before Pete reads it.',
+        description: 'How long a conversation has to be quiet before it is read.',
         control: {
           kind: 'select',
           valueType: 'number',
@@ -5903,9 +5903,9 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'persona.review',
-        title: "Pete's Changes",
+        title: 'Learned Changes',
         description:
-          'Ask me first holds what Pete learns until you approve it, and agents do not use it until then. Update automatically applies it, and lists it so you can undo it.',
+          'Ask me first holds what is learned until you approve it, and agents do not use it until then. Update automatically applies it, and lists it so you can undo it.',
         control: {
           kind: 'select',
           options: [

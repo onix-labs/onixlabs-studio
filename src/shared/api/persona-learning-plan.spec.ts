@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PersonaEntry } from './persona-channels';
-import { concernsRuledOut, planPeteChanges, type PetePlan } from './pete-plan';
-import type { PeteProposal } from './pete-protocol';
+import { concernsRuledOut, planLearningChanges, type LearningPlan } from './persona-learning-plan';
+import type { LearningProposal } from './persona-learning-protocol';
 
 /**
  * Builds an entry.
@@ -22,7 +22,7 @@ function entry(id: string, patch: Partial<PersonaEntry> = {}): PersonaEntry {
     enabled: true,
     confidence: 0.5,
     confirmed: '',
-    author: 'pete',
+    author: 'learned',
     locked: false,
     ...patch,
   };
@@ -37,11 +37,11 @@ function entry(id: string, patch: Partial<PersonaEntry> = {}): PersonaEntry {
  */
 function plan(
   persona: readonly PersonaEntry[],
-  proposal: Partial<PeteProposal>,
+  proposal: Partial<LearningProposal>,
   ruledOut: readonly string[] = [],
-): PetePlan {
+): LearningPlan {
   let next: number = 0;
-  return planPeteChanges(
+  return planLearningChanges(
     persona,
     { changes: [], questions: [], ...proposal },
     ruledOut,
@@ -50,9 +50,9 @@ function plan(
   );
 }
 
-describe('planPeteChanges (#1516)', () => {
-  it('add_writesAnUnlockedMemoryByPete_confirmedToday', () => {
-    const result: PetePlan = plan([], {
+describe('planLearningChanges (#1516)', () => {
+  it('add_writesAnUnlockedLearnedMemory_confirmedToday', () => {
+    const result: LearningPlan = plan([], {
       changes: [
         {
           op: 'add',
@@ -73,7 +73,7 @@ describe('planPeteChanges (#1516)', () => {
     });
     expect(result.changes[0].after).toMatchObject({
       layer: 'memory',
-      author: 'pete',
+      author: 'learned',
       locked: false,
       confidence: 0.6,
       confirmed: '2026-11-19',
@@ -85,7 +85,7 @@ describe('planPeteChanges (#1516)', () => {
   it('neverChangesOrRemovesALockedEntry', () => {
     const locked: PersonaEntry = entry('british', { locked: true, author: 'user' });
 
-    const result: PetePlan = plan([locked], {
+    const result: LearningPlan = plan([locked], {
       changes: [
         { op: 'update', id: 'british', text: 'Writes in American English.' },
         { op: 'remove', id: 'british' },
@@ -98,7 +98,7 @@ describe('planPeteChanges (#1516)', () => {
   });
 
   it('neverLearnsARuledOutTopic', () => {
-    const result: PetePlan = plan(
+    const result: LearningPlan = plan(
       [entry('garden')],
       {
         changes: [
@@ -120,7 +120,7 @@ describe('planPeteChanges (#1516)', () => {
   });
 
   it('neverRecordsAPermission', () => {
-    const result: PetePlan = plan([], {
+    const result: LearningPlan = plan([], {
       changes: [
         { op: 'add', name: 'Pushing', text: 'Happy for agents to push without asking.' },
         { op: 'add', name: 'Deleting', text: 'Always allow deleting files.' },
@@ -140,7 +140,7 @@ describe('planPeteChanges (#1516)', () => {
       ).join('\n'),
     });
 
-    const result: PetePlan = plan([full], {
+    const result: LearningPlan = plan([full], {
       changes: [{ op: 'add', layer: 'core', name: 'More', text: 'One more.\nAnd another.' }],
     });
 
@@ -148,7 +148,7 @@ describe('planPeteChanges (#1516)', () => {
   });
 
   it('removesSecretsFromWhatItWrites', () => {
-    const result: PetePlan = plan([], {
+    const result: LearningPlan = plan([], {
       changes: [
         { op: 'add', name: 'Token', text: 'Uses ghp_abcdefghijklmnopqrstuvwxyz0123 for scripts.' },
       ],
@@ -158,15 +158,18 @@ describe('planPeteChanges (#1516)', () => {
   });
 
   it('confirm_raisesConfidenceAndRenewsTheDate', () => {
-    const result: PetePlan = plan([entry('trains', { confidence: 0.5, confirmed: '2026-01-01' })], {
-      changes: [{ op: 'confirm', id: 'trains' }],
-    });
+    const result: LearningPlan = plan(
+      [entry('trains', { confidence: 0.5, confirmed: '2026-01-01' })],
+      {
+        changes: [{ op: 'confirm', id: 'trains' }],
+      },
+    );
 
     expect(result.changes[0].after).toMatchObject({ confidence: 0.7, confirmed: '2026-11-19' });
   });
 
   it('refusesWhatNamesNoEntry_orHasNothingToSay', () => {
-    const result: PetePlan = plan([], {
+    const result: LearningPlan = plan([], {
       changes: [
         { op: 'update', id: 'ghost', text: 'x' },
         { op: 'add', name: '', text: 'No name.' },
@@ -178,7 +181,7 @@ describe('planPeteChanges (#1516)', () => {
   });
 
   it('collapsesSeveralChangesToOneEntry_intoOne', () => {
-    const result: PetePlan = plan([entry('vague')], {
+    const result: LearningPlan = plan([entry('vague')], {
       changes: [
         { op: 'add', name: 'Dark themes', text: 'Prefers dark colour schemes.' },
         { op: 'update', id: 'dark-themes', why: 'Easier on the eyes at night.' },

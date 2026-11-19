@@ -132,7 +132,7 @@ describe('Persona on disk (#1514)', () => {
   });
 
   it('followsEntriesChangedElsewhere', async () => {
-    // Another window, or Pete in the main process, changed the persona; the next turn must carry it.
+    // Another window, or persona learning in the main process, changed the persona; the next turn must carry it.
     const folder: FakeFolder = installBridge([]);
     const persona: Persona = TestBed.inject(Persona);
     await persona.ready;

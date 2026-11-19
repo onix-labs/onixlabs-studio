@@ -2,7 +2,7 @@ import type { AiConnection } from './ai-types';
 
 /**
  * Determines whether an AI connection runs on this machine: an Ollama server, or any endpoint at a
- * loopback address. What the user types stays on the machine with one, which is why Pete suggests it.
+ * loopback address. What the user types stays on the machine with one, which is why persona learning suggests it.
  * @param connection The connection.
  * @returns Returns true for a local model server.
  */

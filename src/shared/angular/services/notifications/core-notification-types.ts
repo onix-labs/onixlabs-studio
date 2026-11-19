@@ -75,7 +75,7 @@ export enum CoreNotificationType {
   CiFailed = 'ci.failed',
 
   /**
-   * Pete has changes to the persona waiting for the user's review (#1517).
+   * Persona learning has changes to the persona waiting for the user's review (#1517).
    */
   PersonaReview = 'persona.review',
 }
@@ -191,7 +191,7 @@ export const CORE_NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   {
     id: CoreNotificationType.PersonaReview,
     label: 'Persona Changes to Review',
-    description: 'Pete learned something about you and is waiting for you to approve it.',
+    description: 'Studio learned something about you and is waiting for you to approve it.',
     area: 'Persona',
     default: 'popup',
   },

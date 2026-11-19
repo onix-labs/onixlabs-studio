@@ -1,30 +1,30 @@
 import { DestroyRef, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import {
-  buildPetePrompt,
-  parsePeteProposal,
-  PeteChannel,
+  buildLearningPrompt,
+  parseLearningProposal,
+  PersonaLearningChannel,
   type PersonaRebuildEstimate,
   type PersonaRebuildJob,
   type PersonaRebuildRequest,
   type PersonaReviewMode,
   type PersonaSnapshot,
-  type PeteBatch,
-  type PeteOutcome,
-  type PeteProposal,
-  type PeteState,
-} from '@shared/api/pete-protocol';
+  type LearningBatch,
+  type LearningOutcome,
+  type LearningProposal,
+  type LearningState,
+} from '@shared/api/persona-learning-protocol';
 import { AiOneShot, AiOneShotResult } from '@shared/angular/services/ai-runtime/ai-one-shot';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
 
 /**
- * How often Pete looks for conversations to read.
+ * How often persona learning looks for conversations to read.
  */
 const TICK_MS: number = 5 * 60_000;
 
 /**
- * How long Pete's model may take over one batch.
+ * How long the learning model may take over one batch.
  */
 const RUN_TIMEOUT_MS: number = 5 * 60_000;
 
@@ -42,7 +42,7 @@ const DAY_MS: number = 24 * 60 * 60_000;
 /**
  * The records shown before the first read.
  */
-const NO_STATE: PeteState = {
+const NO_STATE: LearningState = {
   recent: [],
   pending: [],
   ruledOut: [],
@@ -54,7 +54,7 @@ const NO_STATE: PeteState = {
 /**
  * What a run did, summed over its batches.
  */
-export interface PeteRunSummary {
+export interface LearningRunSummary {
   readonly applied: number;
   readonly pending: number;
   readonly refused: number;
@@ -63,16 +63,16 @@ export interface PeteRunSummary {
 }
 
 /**
- * Pete in the renderer (#1516): runs the model over what the user typed, in the background, on the
- * connection the user chose for him. The main process decides what he reads and what of his answer
+ * Persona learning in the renderer (#1516): runs the model over what the user typed, in the background, on the
+ * connection the user chose for it. The main process decides what it reads and what of its answer
  * lands; this only asks the model, because the AI runtime lives here.
  *
- * He runs after a conversation has been idle for a while (or once a day), and on demand for one
- * conversation. Nothing runs until a connection is chosen, or while he is paused. Every window has a
+ * It runs after a conversation has been idle for a while (or once a day), and on demand for one
+ * conversation. Nothing runs until a connection is chosen, or while it is paused. Every window has a
  * copy; the main process hands each batch to one of them.
  */
 @Service()
-export class Pete {
+export class PersonaLearning {
   /**
    * Holds the bridge, or undefined outside Electron.
    */
@@ -94,9 +94,9 @@ export class Pete {
   private readonly log: Log = inject(Log);
 
   /**
-   * Holds Pete's records.
+   * Holds the learning records.
    */
-  private readonly stateValue: WritableSignal<PeteState> = signal<PeteState>(NO_STATE);
+  private readonly stateValue: WritableSignal<LearningState> = signal<LearningState>(NO_STATE);
 
   /**
    * Holds whether a run is going.
@@ -104,7 +104,7 @@ export class Pete {
   private readonly runningState: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
-   * Holds whether the review of Pete's changes is open (#1517).
+   * Holds whether the review of learned changes is open (#1517).
    */
   private readonly reviewState: WritableSignal<boolean> = signal<boolean>(false);
 
@@ -119,9 +119,9 @@ export class Pete {
   private timer: ReturnType<typeof setInterval> | undefined;
 
   /**
-   * Gets Pete's records: recent changes, changes awaiting review, ruled-out topics, open questions.
+   * Gets the learning records: recent changes, changes awaiting review, ruled-out topics, open questions.
    */
-  public readonly state: Signal<PeteState> = this.stateValue.asReadonly();
+  public readonly state: Signal<LearningState> = this.stateValue.asReadonly();
 
   /**
    * Gets whether a run is going.
@@ -129,25 +129,28 @@ export class Pete {
   public readonly running: Signal<boolean> = this.runningState.asReadonly();
 
   /**
-   * Gets whether the review of Pete's changes is open.
+   * Gets whether the review of learned changes is open.
    */
   public readonly reviewOpen: Signal<boolean> = this.reviewState.asReadonly();
 
   /**
    * Called with what each finished run did, for the review notification (#1517).
    */
-  private readonly finishedListeners: Set<(summary: PeteRunSummary) => void> = new Set<
-    (summary: PeteRunSummary) => void
+  private readonly finishedListeners: Set<(summary: LearningRunSummary) => void> = new Set<
+    (summary: LearningRunSummary) => void
   >();
 
   /**
-   * Initializes the service: reads Pete's records and follows changes to them.
+   * Initializes the service: reads the learning records and follows changes to them.
    */
   public constructor() {
     void this.refresh();
-    const unfollow: (() => void) | undefined = this.bridge?.on(PeteChannel.Changed, (): void => {
-      void this.refresh();
-    });
+    const unfollow: (() => void) | undefined = this.bridge?.on(
+      PersonaLearningChannel.Changed,
+      (): void => {
+        void this.refresh();
+      },
+    );
     inject(DestroyRef).onDestroy((): void => {
       unfollow?.();
       this.stop();
@@ -155,20 +158,20 @@ export class Pete {
   }
 
   /**
-   * Gets whether Pete can run: a connection is chosen and he is not paused.
-   * @returns Returns true when he can.
+   * Gets whether persona learning can run: a connection is chosen and it is not paused.
+   * @returns Returns true when it can.
    */
   public isOn(): boolean {
     return (
       this.bridge !== undefined &&
       this.oneShot.isAvailable &&
-      this.settings.get('persona.peteConnectionId').length > 0 &&
-      !this.settings.get('persona.petePaused')
+      this.settings.get('persona.learningConnectionId').length > 0 &&
+      !this.settings.get('persona.learningPaused')
     );
   }
 
   /**
-   * Opens the review of Pete's changes, wherever the Persona page is shown.
+   * Opens the review of learned changes, wherever the Persona page is shown.
    */
   public openReview(): void {
     this.reviewState.set(true);
@@ -208,7 +211,7 @@ export class Pete {
    * @param listener Called with each run's summary.
    * @returns Returns a function that stops listening.
    */
-  public onFinished(listener: (summary: PeteRunSummary) => void): () => void {
+  public onFinished(listener: (summary: LearningRunSummary) => void): () => void {
     this.finishedListeners.add(listener);
     return (): void => void this.finishedListeners.delete(listener);
   }
@@ -221,7 +224,7 @@ export class Pete {
     if (
       this.runningState() ||
       this.bridge === undefined ||
-      this.settings.get('persona.petePaused')
+      this.settings.get('persona.learningPaused')
     ) {
       return;
     }
@@ -235,7 +238,7 @@ export class Pete {
       return;
     }
     if (
-      this.settings.get('persona.peteSchedule') === 'daily' &&
+      this.settings.get('persona.learningSchedule') === 'daily' &&
       Date.now() - this.stateValue().lastRun < DAY_MS
     ) {
       return;
@@ -248,20 +251,22 @@ export class Pete {
    * @param conversationId The conversation.
    * @returns Returns what was done.
    */
-  public learnNow(conversationId: string): Promise<PeteRunSummary> {
+  public learnNow(conversationId: string): Promise<LearningRunSummary> {
     if (!this.isOn()) {
       return Promise.resolve(
-        failed('Choose a connection for Pete in Settings › AI Manager › Persona first.'),
+        failed(
+          'Choose a connection for persona learning in Settings › AI Manager › Persona first.',
+        ),
       );
     }
     if (this.runningState()) {
-      return Promise.resolve(failed('Pete is already reading; try again in a moment.'));
+      return Promise.resolve(failed('Already reading; try again in a moment.'));
     }
     return this.run({ conversationId, rebuild: null });
   }
 
   /**
-   * Re-reads Pete's records.
+   * Re-reads the learning records.
    * @returns Resolves once current.
    */
   public async refresh(): Promise<void> {
@@ -269,19 +274,19 @@ export class Pete {
       return;
     }
     try {
-      this.stateValue.set(await this.bridge.invoke<PeteState>(PeteChannel.State));
+      this.stateValue.set(await this.bridge.invoke<LearningState>(PersonaLearningChannel.State));
     } catch (error: unknown) {
-      this.log.warn('Pete', "Could not read Pete's records", error);
+      this.log.warn('PersonaLearning', 'Could not read the learning records', error);
     }
   }
 
   /**
-   * Undoes a change Pete made.
+   * Undoes a change persona learning made.
    * @param changeId The change.
    * @returns Returns true when it was undone.
    */
   public async undo(changeId: string): Promise<boolean> {
-    return (await this.bridge?.invoke<boolean>(PeteChannel.Undo, changeId)) ?? false;
+    return (await this.bridge?.invoke<boolean>(PersonaLearningChannel.Undo, changeId)) ?? false;
   }
 
   /**
@@ -291,7 +296,9 @@ export class Pete {
    * @returns Returns how many were applied.
    */
   public async review(accept: readonly string[], reject: readonly string[]): Promise<number> {
-    return (await this.bridge?.invoke<number>(PeteChannel.Review, { accept, reject })) ?? 0;
+    return (
+      (await this.bridge?.invoke<number>(PersonaLearningChannel.Review, { accept, reject })) ?? 0
+    );
   }
 
   /**
@@ -299,7 +306,10 @@ export class Pete {
    * @returns Returns the estimate, or null outside the desktop app.
    */
   public async estimateRebuild(): Promise<PersonaRebuildEstimate | null> {
-    return (await this.bridge?.invoke<PersonaRebuildEstimate>(PeteChannel.EstimateRebuild)) ?? null;
+    return (
+      (await this.bridge?.invoke<PersonaRebuildEstimate>(PersonaLearningChannel.EstimateRebuild)) ??
+      null
+    );
   }
 
   /**
@@ -314,10 +324,10 @@ export class Pete {
       return 'Rebuilding runs only in the desktop app.';
     }
     if (this.runningState()) {
-      return 'Pete is reading right now; try again in a moment.';
+      return 'Already reading; try again in a moment.';
     }
     const error: string | null = await bridge.invoke<string | null>(
-      PeteChannel.StartRebuild,
+      PersonaLearningChannel.StartRebuild,
       request,
     );
     if (error !== null) {
@@ -334,7 +344,7 @@ export class Pete {
    */
   public async cancelRebuild(): Promise<void> {
     this.rebuildCancelled = true;
-    await this.bridge?.invoke<void>(PeteChannel.CancelRebuild);
+    await this.bridge?.invoke<void>(PersonaLearningChannel.CancelRebuild);
     await this.refresh();
   }
 
@@ -343,7 +353,9 @@ export class Pete {
    * @returns Returns them.
    */
   public async snapshots(): Promise<readonly PersonaSnapshot[]> {
-    const copies: unknown = await this.bridge?.invoke<unknown>(PeteChannel.ListSnapshots);
+    const copies: unknown = await this.bridge?.invoke<unknown>(
+      PersonaLearningChannel.ListSnapshots,
+    );
     return Array.isArray(copies) ? (copies as readonly PersonaSnapshot[]) : [];
   }
 
@@ -353,28 +365,32 @@ export class Pete {
    * @returns Returns true when it was put back.
    */
   public async restoreSnapshot(id: string): Promise<boolean> {
-    return (await this.bridge?.invoke<boolean>(PeteChannel.RestoreSnapshot, id)) ?? false;
+    return (
+      (await this.bridge?.invoke<boolean>(PersonaLearningChannel.RestoreSnapshot, id)) ?? false
+    );
   }
 
   /**
-   * Sets the topics Pete never learns about.
+   * Sets the topics persona learning never learns about.
    * @param topics The topics.
    * @returns Resolves once recorded.
    */
   public async ruleOut(topics: readonly string[]): Promise<void> {
-    await this.bridge?.invoke<void>(PeteChannel.RuleOut, topics);
+    await this.bridge?.invoke<void>(PersonaLearningChannel.RuleOut, topics);
   }
 
   /**
-   * Answers one of Pete's questions; an empty answer dismisses it.
+   * Answers one of the open questions; an empty answer dismisses it.
    * @param questionId The question.
    * @param answer The answer.
    * @returns Returns true when the question was there.
    */
   public async answer(questionId: string, answer: string): Promise<boolean> {
     return (
-      (await this.bridge?.invoke<boolean>(PeteChannel.AnswerQuestion, { questionId, answer })) ??
-      false
+      (await this.bridge?.invoke<boolean>(PersonaLearningChannel.AnswerQuestion, {
+        questionId,
+        answer,
+      })) ?? false
     );
   }
 
@@ -385,14 +401,14 @@ export class Pete {
    * @param plan What to read: one conversation, every idle one, or the rebuild's.
    * @returns Returns what was done.
    */
-  private async run(plan: RunPlan): Promise<PeteRunSummary> {
+  private async run(plan: RunPlan): Promise<LearningRunSummary> {
     const conversationId: string | null = plan.conversationId;
     const bridge: Bridge | undefined = this.bridge;
     if (bridge === undefined) {
-      return failed('Pete runs only in the desktop app.');
+      return failed('Persona learning runs only in the desktop app.');
     }
     this.runningState.set(true);
-    let summary: PeteRunSummary = {
+    let summary: LearningRunSummary = {
       applied: 0,
       pending: 0,
       refused: 0,
@@ -404,27 +420,31 @@ export class Pete {
       for (let index: number = 0; plan.rebuild !== null || index < BATCHES_PER_RUN; index += 1) {
         if (
           plan.rebuild !== null &&
-          (this.rebuildCancelled || this.settings.get('persona.petePaused'))
+          (this.rebuildCancelled || this.settings.get('persona.learningPaused'))
         ) {
           break;
         }
-        const batch: PeteBatch | null = await bridge.invoke<PeteBatch | null>(PeteChannel.Begin, {
-          idleMinutes: conversationId === null ? this.settings.get('persona.peteIdleMinutes') : 0,
-          conversationId,
-          rebuild: plan.rebuild !== null,
-        });
+        const batch: LearningBatch | null = await bridge.invoke<LearningBatch | null>(
+          PersonaLearningChannel.Begin,
+          {
+            idleMinutes:
+              conversationId === null ? this.settings.get('persona.learningIdleMinutes') : 0,
+            conversationId,
+            rebuild: plan.rebuild !== null,
+          },
+        );
         if (batch === null || this.rebuildCancelled) {
           if (batch !== null) {
-            await bridge.invoke<void>(PeteChannel.Abandon, batch.batchId);
+            await bridge.invoke<void>(PersonaLearningChannel.Abandon, batch.batchId);
           }
           break;
         }
-        const outcome: PeteOutcome | string = await this.read(
+        const outcome: LearningOutcome | string = await this.read(
           bridge,
           batch,
           plan.rebuild ?? {
-            connectionId: this.settings.get('persona.peteConnectionId'),
-            model: this.settings.get('persona.peteModel'),
+            connectionId: this.settings.get('persona.learningConnectionId'),
+            model: this.settings.get('persona.learningModel'),
           },
         );
         if (typeof outcome === 'string') {
@@ -440,14 +460,14 @@ export class Pete {
         };
       }
     } catch (error: unknown) {
-      this.log.warn('Pete', 'A run failed', error);
-      summary = { ...summary, error: 'Pete could not finish reading.' };
+      this.log.warn('PersonaLearning', 'A run failed', error);
+      summary = { ...summary, error: 'Could not finish reading.' };
     } finally {
       this.runningState.set(false);
     }
     if (summary.messagesRead > 0 || summary.error !== null) {
       this.log.info(
-        'Pete',
+        'PersonaLearning',
         `Read ${summary.messagesRead} message(s): ${summary.applied} applied, ${summary.pending} for review, ${summary.refused} refused${summary.error === null ? '' : `; ${summary.error}`}`,
       );
       for (const listener of this.finishedListeners) {
@@ -466,39 +486,39 @@ export class Pete {
    */
   private async read(
     bridge: Bridge,
-    batch: PeteBatch,
-    model: PeteModel,
-  ): Promise<PeteOutcome | string> {
+    batch: LearningBatch,
+    model: LearningModel,
+  ): Promise<LearningOutcome | string> {
     const result: AiOneShotResult = await this.oneShot.complete({
       providerId: model.connectionId,
       model: model.model,
-      prompt: buildPetePrompt(batch),
+      prompt: buildLearningPrompt(batch),
       surface: 'models',
       timeoutMs: RUN_TIMEOUT_MS,
     });
-    const proposal: PeteProposal | null =
-      result.text === null ? null : parsePeteProposal(result.text);
+    const proposal: LearningProposal | null =
+      result.text === null ? null : parseLearningProposal(result.text);
     if (proposal === null) {
-      await bridge.invoke<void>(PeteChannel.Abandon, batch.batchId);
-      return result.error ?? "Pete's model did not answer in the expected form.";
+      await bridge.invoke<void>(PersonaLearningChannel.Abandon, batch.batchId);
+      return result.error ?? 'The model did not answer in the expected form.';
     }
     const review: PersonaReviewMode = this.settings.get('persona.review');
-    const outcome: PeteOutcome | null = await bridge.invoke<PeteOutcome | null>(
-      PeteChannel.Finish,
+    const outcome: LearningOutcome | null = await bridge.invoke<LearningOutcome | null>(
+      PersonaLearningChannel.Finish,
       {
         batchId: batch.batchId,
         proposal,
         review,
       },
     );
-    return outcome ?? 'The batch expired before Pete finished it.';
+    return outcome ?? 'The batch expired before it was finished.';
   }
 }
 
 /**
  * The connection and model a batch is read with.
  */
-interface PeteModel {
+interface LearningModel {
   readonly connectionId: string;
   readonly model: string;
 }
@@ -523,6 +543,6 @@ interface RunPlan {
  * @param error Why.
  * @returns Returns the summary.
  */
-function failed(error: string): PeteRunSummary {
+function failed(error: string): LearningRunSummary {
   return { applied: 0, pending: 0, refused: 0, messagesRead: 0, error };
 }

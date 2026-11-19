@@ -46,9 +46,9 @@ export enum PersonaChannel {
 export type PersonaLayer = 'core' | 'memory';
 
 /**
- * Who wrote an entry: the user, or Pete, the background agent that learns the persona (#1516).
+ * Who wrote an entry: the user, or persona learning, which learns the persona in the background (#1516).
  */
-export type PersonaAuthor = 'user' | 'pete';
+export type PersonaAuthor = 'user' | 'learned';
 
 /**
  * One thing about the user: how they like replies written, a decision they have made, a question
@@ -107,7 +107,7 @@ export interface PersonaEntry {
   readonly enabled: boolean;
 
   /**
-   * Gets how sure Pete is that the entry is right, from 0 to 1. An entry the user wrote is 1.
+   * Gets how sure persona learning is that the entry is right, from 0 to 1. An entry the user wrote is 1.
    */
   readonly confidence: number;
 
@@ -123,7 +123,7 @@ export interface PersonaEntry {
   readonly author: PersonaAuthor;
 
   /**
-   * Gets whether the entry is locked: Pete never changes or removes a locked entry.
+   * Gets whether the entry is locked: PersonaLearning never changes or removes a locked entry.
    */
   readonly locked: boolean;
 }
@@ -154,7 +154,7 @@ export interface PersonaListing {
 
 /**
  * About how many lines the core may hold. It is read at the start of every session, so every line is
- * paid for on every turn; past this, the Persona page warns and Pete merges and trims (#1516).
+ * paid for on every turn; past this, the Persona page warns and persona learning merges and trims (#1516).
  */
 export const PERSONA_CORE_LINE_LIMIT: number = 12;
 

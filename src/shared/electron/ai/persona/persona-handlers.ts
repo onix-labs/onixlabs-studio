@@ -61,7 +61,7 @@ export class PersonaHandlers {
 /**
  * Tells windows the persona changed, so each re-reads it.
  * @param except The web contents that made the change and already holds it, or null to tell every
- * window (a change made in the main process, by Pete or an agent's tool).
+ * window (a change made in the main process, by learning or an agent's tool).
  */
 export function announcePersonaChange(except: number | null = null): void {
   for (const window of BrowserWindow.getAllWindows()) {

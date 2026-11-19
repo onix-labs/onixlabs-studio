@@ -15,8 +15,8 @@
           }
         </p>
         <div class="persona__chips">
-          @if (entry.author === 'pete') {
-            <app-chip tone="info">Learned by Pete</app-chip>
+          @if (entry.author === 'learned') {
+            <app-chip tone="info">Learned</app-chip>
             <app-chip>{{ selectedSureness() }}</app-chip>
           } @else {
             <app-chip>Written by you</app-chip>
@@ -80,7 +80,10 @@
         />
       </app-setting-row>
 
-      <app-setting-row label="Locked" description="Pete never changes or removes a locked entry.">
+      <app-setting-row
+        label="Locked"
+        description="Learning never changes or removes a locked entry."
+      >
         <app-toggle
           [checked]="entry.locked"
           ariaLabel="Entry locked"
@@ -88,7 +91,7 @@
         />
       </app-setting-row>
 
-      @if (entry.author === 'pete') {
+      @if (entry.author === 'learned') {
         <app-setting-row
           label="Is this right?"
           description="Confirming it makes it certain, and stops it fading."
@@ -206,7 +209,7 @@
   </ng-template>
 </app-modal>
 
-<!-- The review of Pete's changes (#1517), opened from the notification or Pete's panel. -->
+<!-- The review of learned changes (#1517), opened from the notification or the learning panel. -->
 <app-persona-review />
 
 <!-- The import's dialogs (#1263): an import into the persona brings no AI step, so only clashes and
