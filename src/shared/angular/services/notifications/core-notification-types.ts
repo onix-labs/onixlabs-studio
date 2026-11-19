@@ -43,12 +43,43 @@ export enum CoreNotificationType {
    * A repository could not be cloned.
    */
   CloneFailed = 'clone.failed',
+
+  /**
+   * A run or task terminal's command ended with exit code 0 while the user was elsewhere.
+   */
+  TerminalFinished = 'terminal.finished',
+
+  /**
+   * A run or task terminal's command ended with a non-zero exit code while the user was elsewhere.
+   */
+  TerminalFailed = 'terminal.failed',
+
+  /**
+   * A background fetch found commits on the current branch's upstream that the branch lacks.
+   */
+  GitIncoming = 'git.incoming',
+
+  /**
+   * A background fetch found the current branch and its upstream have diverged.
+   */
+  GitDiverged = 'git.diverged',
+
+  /**
+   * A CI run for a branch pushed from Studio passed.
+   */
+  CiPassed = 'ci.passed',
+
+  /**
+   * A CI run for a branch pushed from Studio failed.
+   */
+  CiFailed = 'ci.failed',
 }
 
 /**
  * Lists the notification types the shared services raise. The agent, run and build ones pop up,
  * success included, because they did before types existed (#1486): an upgrade must not quieten what a
- * user relied on. A finished clone pops up too (#1493): the user is waiting on it to open.
+ * user relied on. A finished clone pops up too (#1493): the user is waiting on it to open. A run or
+ * task terminal's command that ended while the user was elsewhere pops up only when it failed (#1496).
  */
 export const CORE_NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   {
@@ -105,6 +136,51 @@ export const CORE_NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
     label: 'Clone Failed',
     description: 'A repository could not be cloned.',
     area: 'Cloning',
+    default: 'popup',
+  },
+  {
+    id: CoreNotificationType.TerminalFinished,
+    label: 'Terminal Command Finished',
+    description:
+      "A run or task terminal's command ended with exit code 0 while you were elsewhere.",
+    area: 'Terminals',
+    default: 'history',
+  },
+  {
+    id: CoreNotificationType.TerminalFailed,
+    label: 'Terminal Command Failed',
+    description: "A run or task terminal's command failed while you were elsewhere.",
+    area: 'Terminals',
+    default: 'popup',
+  },
+  {
+    id: CoreNotificationType.GitIncoming,
+    label: 'New Commits on the Remote',
+    description:
+      "A background fetch found commits on your branch's remote copy that you don't have yet.",
+    area: 'Source Control',
+    default: 'history',
+  },
+  {
+    id: CoreNotificationType.GitDiverged,
+    label: 'Branch Diverged',
+    description:
+      'A background fetch found your branch and its remote copy each have commits the other lacks.',
+    area: 'Source Control',
+    default: 'popup',
+  },
+  {
+    id: CoreNotificationType.CiPassed,
+    label: 'CI Passed',
+    description: 'A CI run for a branch you pushed from Studio passed.',
+    area: 'Continuous Integration',
+    default: 'history',
+  },
+  {
+    id: CoreNotificationType.CiFailed,
+    label: 'CI Failed',
+    description: 'A CI run for a branch you pushed from Studio failed.',
+    area: 'Continuous Integration',
     default: 'popup',
   },
 ];

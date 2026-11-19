@@ -131,4 +131,11 @@ export interface FeatureDescriptor {
    * unset and use `provideNotificationTypes()` instead.
    */
   readonly notificationTypes?: readonly NotificationTypeDef[];
+
+  /**
+   * Gets a service the feature starts as soon as it is registered, whether or not a tab of it is ever
+   * opened: work that must run in the background for the whole session, such as listening for the
+   * events it notifies about (#1488). Undefined for a feature that only works while a tab is open.
+   */
+  readonly background?: Type<unknown>;
 }

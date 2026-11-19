@@ -28,6 +28,7 @@ import {
   NotificationAction,
   Notifications,
 } from '@shared/angular/services/notifications/notifications';
+import { CoreNotificationType } from '@shared/angular/services/notifications/core-notification-types';
 import {
   FileDiff,
   MutationResult,
@@ -125,6 +126,26 @@ const LANE_COLORS: readonly string[] = ['#5073b8', '#07b39b', '#ef4e7b', '#f7953
  * the lane is free. Indexed by lane number.
  */
 type LaneSlots = (string | null)[];
+
+/**
+ * Describes a push from Studio that went through.
+ */
+export interface RepositoryPush {
+  /**
+   * Gets the repository's root.
+   */
+  readonly root: string;
+
+  /**
+   * Gets the branch pushed.
+   */
+  readonly branch: string;
+
+  /**
+   * Gets when the push began, as epoch milliseconds: CI runs it started begin after it.
+   */
+  readonly startedAt: number;
+}
 
 /**
  * Represents the model of a single opened repository surfaced by the source-control view: its
@@ -528,6 +549,17 @@ export class Repository {
   public readonly selectedNodeId: Signal<string | null> = this.selectedNodeSignal.asReadonly();
 
   /**
+   * Holds the last push from Studio that went through, or null before one.
+   */
+  private readonly pushedSignal: WritableSignal<RepositoryPush | null> =
+    signal<RepositoryPush | null>(null);
+
+  /**
+   * Gets the last push from Studio that went through (#1495), for what watches what follows one.
+   */
+  public readonly lastPush: Signal<RepositoryPush | null> = this.pushedSignal.asReadonly();
+
+  /**
    * Gets the current branch, or undefined when the head is detached or no repository is bound.
    */
   public readonly currentBranch: Signal<GitBranch | undefined> = computed(
@@ -683,6 +715,7 @@ export class Repository {
       return;
     }
     this.lastFetchAt = Date.now();
+    const before: GitBranch | undefined = this.currentBranch();
     let result: MutationResult;
     try {
       result = await provider.fetch();
@@ -696,9 +729,58 @@ export class Repository {
     if (result.success) {
       this.log.debug('Repository', 'Background fetch done', root);
       await this.refresh();
+      if (this.infoSignal()?.root === root) {
+        this.announceIncoming(root, before, this.currentBranch());
+      }
     } else {
       this.log.info('Repository', 'Background fetch failed; will retry', result.error);
     }
+  }
+
+  /**
+   * Tells the user what a background fetch brought (#1494): new commits on the current branch's
+   * upstream, or that the branch and its upstream have diverged. Nothing when the fetch brought nothing
+   * new for the branch. One notice per branch, updated in place by later fetches.
+   * @param root The repository root.
+   * @param before The current branch before the fetch.
+   * @param after The current branch after it.
+   */
+  private announceIncoming(
+    root: string,
+    before: GitBranch | undefined,
+    after: GitBranch | undefined,
+  ): void {
+    if (
+      before === undefined ||
+      after?.upstream === undefined ||
+      before.name !== after.name ||
+      before.upstream !== after.upstream ||
+      after.behind <= before.behind
+    ) {
+      return;
+    }
+    const pull: NotificationAction = { label: 'Pull', run: (): void => void this.pull() };
+    const key: string = `git:incoming:${root}:${after.name}`;
+    const commits: string = `${after.behind} commit${after.behind === 1 ? '' : 's'}`;
+    if (after.ahead > 0) {
+      this.notifications.notify({
+        severity: 'warning',
+        title: `${after.name} and ${after.upstream} have diverged`,
+        detail: `${after.ahead} ahead, ${after.behind} behind · ${this.repoName()}`,
+        actions: [pull],
+        key,
+        type: CoreNotificationType.GitDiverged,
+      });
+      return;
+    }
+    this.notifications.notify({
+      severity: 'info',
+      title: `${commits} to pull on ${after.upstream}`,
+      detail: this.repoName(),
+      actions: [pull],
+      key,
+      type: CoreNotificationType.GitIncoming,
+    });
   }
 
   /**
@@ -1594,6 +1676,36 @@ export class Repository {
    */
   private runPush(branch?: GitBranch): Promise<MutationResult> {
     const target: GitBranch | undefined = branch ?? this.currentBranch();
+    const root: string | undefined = this.infoSignal()?.root;
+    const startedAt: number = Date.now();
+    return this.pushing(target, root, startedAt);
+  }
+
+  /**
+   * Pushes, then records a push that went through, for what follows a push (#1495: the CI watch).
+   * @param target The branch pushed, or undefined for a detached head.
+   * @param root The repository root.
+   * @param startedAt When the push began.
+   * @returns Returns the outcome.
+   */
+  private async pushing(
+    target: GitBranch | undefined,
+    root: string | undefined,
+    startedAt: number,
+  ): Promise<MutationResult> {
+    const result: MutationResult = await this.pushNow(target);
+    if (result.success && target !== undefined && root !== undefined) {
+      this.pushedSignal.set({ root, branch: target.name, startedAt });
+    }
+    return result;
+  }
+
+  /**
+   * Pushes without reporting the outcome (see {@link runPush}).
+   * @param target The branch to push, or undefined for a detached head.
+   * @returns Returns the outcome.
+   */
+  private pushNow(target: GitBranch | undefined): Promise<MutationResult> {
     if (target === undefined) {
       // Detached, with no branch to name. The bare push is the only thing left to mean.
       this.log.info('Repository', 'Pushing HEAD', this.infoSignal()?.root);

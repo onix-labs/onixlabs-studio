@@ -87,7 +87,16 @@ describe('NotificationTypes', () => {
       .areas()
       .map((group: NotificationArea): string => group.area);
 
-    expect(areas).toEqual(['Agents', 'Cloning', 'Downloads', 'Runs and Builds', 'Tests']);
+    expect(areas).toEqual([
+      'Agents',
+      'Cloning',
+      'Continuous Integration',
+      'Downloads',
+      'Runs and Builds',
+      'Source Control',
+      'Terminals',
+      'Tests',
+    ]);
     expect(
       types
         .areas()

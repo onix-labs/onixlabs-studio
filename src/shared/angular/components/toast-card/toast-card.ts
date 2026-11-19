@@ -68,6 +68,27 @@ export class ToastCard {
   public readonly acted: OutputEmitterRef<NotificationAction> = output<NotificationAction>();
 
   /**
+   * Gets whether the card offers Don't Show Again (#1487): for a kind of notification that still pops
+   * up. The surface decides, since the card does not know the user's choices.
+   */
+  public readonly silenceable: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets whether the card offers Notification Settings, to find its kind in Settings.
+   */
+  public readonly configurable: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Emits when Don't Show Again is pressed.
+   */
+  public readonly silenced: OutputEmitterRef<void> = output<void>();
+
+  /**
+   * Emits when Notification Settings is pressed.
+   */
+  public readonly configured: OutputEmitterRef<void> = output<void>();
+
+  /**
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;

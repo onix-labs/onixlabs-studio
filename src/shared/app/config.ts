@@ -4,6 +4,7 @@ import {
   provideAppInitializer,
   provideBrowserGlobalErrorListeners,
   provideZonelessChangeDetection,
+  Injector,
 } from '@angular/core';
 import { AgentRequestToasts } from '@shared/angular/services/notifications/agent-request-toasts';
 import { NarrowedGrantNotice } from '@shared/angular/services/notifications/narrowed-grant-notice';
@@ -167,9 +168,16 @@ export const config: ApplicationConfig = {
       const registry: FeatureRegistry = inject(FeatureRegistry);
       const keybindings: Keybindings = inject(Keybindings);
       const notificationTypes: NotificationTypes = inject(NotificationTypes);
+      const injector: Injector = inject(Injector);
       for (const load of featureContributions) {
         void load().then((module: { descriptor: FeatureDescriptor }): void =>
-          registerFeatureContribution(module.descriptor, registry, keybindings, notificationTypes),
+          registerFeatureContribution(
+            module.descriptor,
+            registry,
+            keybindings,
+            notificationTypes,
+            injector,
+          ),
         );
       }
     }),

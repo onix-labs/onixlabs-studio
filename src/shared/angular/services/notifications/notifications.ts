@@ -164,6 +164,12 @@ export interface Notification {
    * Gets when the notification was raised, as an epoch millisecond timestamp.
    */
   readonly timestamp: number;
+
+  /**
+   * Gets the notification's type (#1486), which a toast's Don't Show Again switches off (#1487), or
+   * undefined for feedback on something the user just did.
+   */
+  readonly type?: string;
 }
 
 /**
@@ -300,6 +306,7 @@ export class Notifications {
         request.sticky ??
         (request.severity === 'error' && this.settings.get('notifications.errorsStay')),
       timestamp: Date.now(),
+      ...(request.type === undefined ? {} : { type: request.type }),
     };
     if (route !== 'history-only' && !this.silenced(notification.severity)) {
       if (request.onDismiss !== undefined) {

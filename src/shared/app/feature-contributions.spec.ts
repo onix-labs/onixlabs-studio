@@ -1,3 +1,4 @@
+import type { Injector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FeatureDescriptor, FeatureRegistry } from '@shared/angular/services/feature-registry';
@@ -105,6 +106,28 @@ describe('registerFeatureContribution', () => {
 
     expect(contribute).not.toHaveBeenCalled();
     expect(registry.viewFor('plain')).toBe(view);
+  });
+
+  it('startsTheFeaturesBackgroundService_onceRegistered (#1488)', (): void => {
+    const started: string[] = [];
+    const injector: Injector = {
+      get: (token: unknown): unknown => {
+        started.push((token as { name: string }).name);
+        return {};
+      },
+    };
+    class Listener {}
+
+    registerFeatureContribution(
+      { type: 'watcher', view: class {}, background: Listener },
+      registry,
+      keybindings,
+      notificationTypes,
+      injector,
+    );
+
+    expect(registry.viewFor('watcher')).toBeTruthy();
+    expect(started).toEqual(['Listener']);
   });
 
   it('addsTheNotificationTypesTheDescriptorCarries', (): void => {

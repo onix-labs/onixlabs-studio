@@ -195,6 +195,47 @@ describe('parseEvent', () => {
   it('returnsNullForNonJson', () => {
     expect(parseEvent('<<not json>>')).toBeNull();
   });
+
+  it('keepsTheDetailsANotificationNamesTheContainerBy (#1488)', () => {
+    const line: string = JSON.stringify({
+      Type: 'container',
+      Action: 'die',
+      Actor: {
+        ID: 'abc123',
+        Attributes: {
+          name: '/postgres',
+          image: 'postgres:17',
+          exitCode: '1',
+          'com.docker.compose.project': 'shop',
+        },
+      },
+    });
+
+    expect(parseEvent(line)).toEqual({
+      type: 'container',
+      action: 'die',
+      id: 'abc123',
+      name: 'postgres',
+      image: 'postgres:17',
+      exitCode: 1,
+      project: 'shop',
+    });
+  });
+
+  it('leavesOutDetailsTheEngineDidNotSend', () => {
+    const line: string = JSON.stringify({
+      Type: 'container',
+      Action: 'start',
+      Actor: { ID: 'abc123', Attributes: { name: 'web', exitCode: 'not a number' } },
+    });
+
+    expect(parseEvent(line)).toEqual({
+      type: 'container',
+      action: 'start',
+      id: 'abc123',
+      name: 'web',
+    });
+  });
 });
 
 describe('DockerEngine.logs', () => {

@@ -489,6 +489,7 @@ export class PackageModel {
     this.log.info('workspace.packages', 'Running a package change', command.title);
     try {
       const launch: TerminalLaunch = await this.terminals.launch({
+        reportsItsOwnOutcome: true,
         kind: 'task',
         name: command.title,
         command: command.executable,

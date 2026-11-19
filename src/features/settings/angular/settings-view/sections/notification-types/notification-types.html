@@ -19,7 +19,11 @@
     [expanded]="true"
   >
     @for (type of group.types; track type.id) {
-      <app-setting-row [label]="type.label" [description]="type.description">
+      <app-setting-row
+        [label]="type.label"
+        [description]="type.description"
+        [attr.data-notification-type]="type.id"
+      >
         <app-dropdown
           [ariaLabel]="type.label"
           [options]="choices"

@@ -1,3 +1,4 @@
+import type { Injector } from '@angular/core';
 import { FeatureDescriptor, FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { NotificationTypes } from '@shared/angular/services/notifications/notification-types';
@@ -40,12 +41,15 @@ export const featureContributions: readonly (() => Promise<{ descriptor: Feature
  * @param registry The feature registry the shell renders from.
  * @param keybindings The keybinding service the catalogue entry is contributed to.
  * @param notificationTypes The notification type list the feature's types are added to.
+ * @param injector The application's injector, which starts the feature's background service, if it
+ * has one, once the feature is registered.
  */
 export function registerFeatureContribution(
   descriptor: FeatureDescriptor,
   registry: FeatureRegistry,
   keybindings: Keybindings,
   notificationTypes: NotificationTypes,
+  injector?: Injector,
 ): void {
   if (descriptor.keybindings !== undefined) {
     keybindings.contribute(descriptor.keybindings);
@@ -54,4 +58,7 @@ export function registerFeatureContribution(
     notificationTypes.contribute(descriptor.notificationTypes);
   }
   registry.register(descriptor);
+  if (descriptor.background !== undefined) {
+    injector?.get(descriptor.background);
+  }
 }

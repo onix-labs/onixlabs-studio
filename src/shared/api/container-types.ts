@@ -241,6 +241,27 @@ export interface ContainerEvent {
    * The id of the object the event concerns, or an empty string when the engine omitted it.
    */
   readonly id: string;
+
+  /**
+   * The container's name, without the leading slash, when the engine named it (#1488). Undefined from
+   * a plugin that does not send it.
+   */
+  readonly name?: string;
+
+  /**
+   * The image the container runs, when the engine named it.
+   */
+  readonly image?: string;
+
+  /**
+   * The exit code a `die` event carries, when the engine gave one.
+   */
+  readonly exitCode?: number;
+
+  /**
+   * The Compose project the container belongs to, when it belongs to one.
+   */
+  readonly project?: string;
 }
 
 /**
