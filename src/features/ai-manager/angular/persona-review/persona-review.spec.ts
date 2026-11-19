@@ -69,7 +69,7 @@ describe('PersonaReview (#1517)', () => {
         reason: '',
       },
     ];
-    state = { recent: [], pending, ruledOut: [], questions: [], lastRun: 0 };
+    state = { recent: [], pending, ruledOut: [], questions: [], lastRun: 0, rebuild: null };
     const bridge: Partial<Bridge> = {
       invoke: <T>(channel: string, arg?: unknown): Promise<T> => {
         if (channel === (PeteChannel.Review as string)) {

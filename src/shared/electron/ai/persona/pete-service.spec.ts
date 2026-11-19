@@ -7,7 +7,13 @@ import type {
   StoredAgentConversation,
 } from '@shared/api/agent-conversation-channels';
 import type { PersonaEntry } from '@shared/api/persona-channels';
-import type { PeteBatch, PeteOutcome, PeteState } from '@shared/api/pete-protocol';
+import type {
+  PersonaChange,
+  PersonaRebuildEstimate,
+  PeteBatch,
+  PeteOutcome,
+  PeteState,
+} from '@shared/api/pete-protocol';
 
 vi.mock('electron', () => ({
   ipcMain: { handle: (): void => undefined },
@@ -272,5 +278,217 @@ describe('PeteService (#1516, #1517)', () => {
     expect(excerptOf('c', items, new Set<string>(), 60)?.messageIds).toEqual(['u1']);
     expect(excerptOf('c', items, new Set<string>(), 10)?.messageIds).toEqual(['u1']);
     expect(excerptOf('c', items, new Set<string>(['u1', 'u2']), 60)).toBeNull();
+  });
+
+  describe('rebuild (#1518)', () => {
+    /**
+     * Builds an entry.
+     * @param id The id.
+     * @param patch The fields to change.
+     * @returns Returns the entry.
+     */
+    function entry(id: string, patch: Partial<PersonaEntry> = {}): PersonaEntry {
+      return {
+        id,
+        name: id,
+        text: `About ${id}.`,
+        why: '',
+        tags: [],
+        links: [],
+        scope: { surfaces: [], languages: [] },
+        layer: 'memory',
+        enabled: true,
+        confidence: 0.5,
+        confirmed: '',
+        author: 'pete',
+        locked: false,
+        ...patch,
+      };
+    }
+
+    it('estimate_countsOnlyWhatTheUserTyped', async () => {
+      conversations.set(
+        'c1',
+        conversation('c1', [
+          { id: 'u1', kind: 'user', text: 'x'.repeat(400) },
+          { id: 'a1', kind: 'assistant', text: 'y'.repeat(9_000) },
+        ]),
+      );
+      conversations.set('c2', conversation('c2', [{ id: 'a2', kind: 'assistant', text: 'z' }]));
+
+      const estimate: PersonaRebuildEstimate = await service.estimateRebuild();
+
+      expect(estimate).toMatchObject({ conversations: 1, characters: 400, batches: 1 });
+      expect(estimate.tokens).toBeGreaterThan(100);
+    });
+
+    it('readsEveryConversation_readBeforeOrNot_andFinishesWhenNothingIsLeft', async () => {
+      conversations.set('c1', conversation('c1', [{ id: 'u1', kind: 'user', text: 'One.' }]));
+      conversations.set('c2', conversation('c2', [{ id: 'u2', kind: 'user', text: 'Two.' }]));
+      updated.set('c2', NOW);
+      const everyday: PeteBatch | null = await service.begin({
+        idleMinutes: 30,
+        conversationId: null,
+      });
+      await service.finish({
+        batchId: everyday?.batchId ?? '',
+        review: 'automatic',
+        proposal: { changes: [], questions: [] },
+      });
+
+      expect(
+        await service.startRebuild({ mode: 'merge', connectionId: 'local', model: '' }),
+      ).toBeNull();
+      const batch: PeteBatch | null = await service.begin({
+        idleMinutes: 30,
+        conversationId: null,
+        rebuild: true,
+      });
+
+      expect(batch?.excerpts.map((excerpt) => excerpt.conversationId).sort()).toEqual(['c1', 'c2']);
+      await service.finish({
+        batchId: batch?.batchId ?? '',
+        review: 'automatic',
+        proposal: { changes: [], questions: [] },
+      });
+      expect((await service.state()).rebuild?.done.slice().sort()).toEqual(['c1', 'c2']);
+
+      expect(
+        await service.begin({ idleMinutes: 0, conversationId: null, rebuild: true }),
+      ).toBeNull();
+      expect((await service.state()).rebuild).toBeNull();
+    });
+
+    it('resumesWhereItLeftOff', async () => {
+      conversations.set('c1', conversation('c1', [{ id: 'u1', kind: 'user', text: 'One.' }]));
+      await service.startRebuild({ mode: 'merge', connectionId: 'local', model: 'm' });
+      const first: PeteBatch | null = await service.begin({
+        idleMinutes: 0,
+        conversationId: null,
+        rebuild: true,
+      });
+      await service.finish({
+        batchId: first?.batchId ?? '',
+        review: 'automatic',
+        proposal: { changes: [], questions: [] },
+      });
+      conversations.set('c2', conversation('c2', [{ id: 'u2', kind: 'user', text: 'Two.' }]));
+
+      const resumed: InstanceType<typeof PeteService> = new PeteService(
+        library,
+        new PeteStore(join(base, 'persona')),
+        {
+          listAll: (): readonly AgentConversationSummary[] =>
+            [...conversations.values()].map(
+              (item: StoredAgentConversation): AgentConversationSummary => ({
+                id: item.id,
+                contextId: 'g',
+                title: item.id,
+                messageCount: 1,
+                createdAt: 0,
+                updatedAt: 0,
+              }),
+            ),
+          load: (id: unknown): Promise<StoredAgentConversation | null> =>
+            Promise.resolve(conversations.get(String(id)) ?? null),
+        },
+        (): void => undefined,
+        (): number => NOW,
+      );
+      const next: PeteBatch | null = await resumed.begin({
+        idleMinutes: 0,
+        conversationId: null,
+        rebuild: true,
+      });
+
+      expect(next?.excerpts.map((excerpt) => excerpt.conversationId)).toEqual(['c2']);
+      expect((await resumed.state()).rebuild).toMatchObject({
+        connectionId: 'local',
+        model: 'm',
+        done: ['c1'],
+      });
+    });
+
+    it('startFresh_keepsLockedAndUserWrittenEntries_andACopyOfEverything', async () => {
+      await library.save(entry('learned'));
+      await library.save(entry('locked-by-me', { locked: true }));
+      await library.save(entry('mine', { author: 'user' }));
+
+      await service.startRebuild({ mode: 'fresh', connectionId: 'local', model: '' });
+
+      expect((await library.list()).entries.map((item: PersonaEntry): string => item.id)).toEqual([
+        'locked-by-me',
+        'mine',
+      ]);
+      const [copy] = await library.snapshots();
+      expect(copy.entries).toBe(3);
+
+      expect(await library.restore(copy.id)).toBe(true);
+      expect((await library.list()).entries.map((item: PersonaEntry): string => item.id)).toEqual([
+        'learned',
+        'locked-by-me',
+        'mine',
+      ]);
+      expect(await library.snapshots()).toHaveLength(2);
+    });
+
+    it('cancel_endsTheRebuild_andKeepsWhatItLearned', async () => {
+      conversations.set('c1', conversation('c1', [{ id: 'u1', kind: 'user', text: 'Trains.' }]));
+      await service.startRebuild({ mode: 'merge', connectionId: 'local', model: '' });
+      const batch: PeteBatch | null = await service.begin({
+        idleMinutes: 0,
+        conversationId: null,
+        rebuild: true,
+      });
+      await service.finish({
+        batchId: batch?.batchId ?? '',
+        review: 'automatic',
+        proposal: {
+          changes: [{ op: 'add', name: 'Trains', text: 'Takes trains.' }],
+          questions: [],
+        },
+      });
+
+      await service.cancelRebuild();
+
+      expect((await service.state()).rebuild).toBeNull();
+      expect(await library.read('trains')).not.toBeNull();
+    });
+
+    it('askFirst_seesItsOwnWaitingChanges_andFoldsAChangeIntoOneWaiting', async () => {
+      conversations.set('c1', conversation('c1', [{ id: 'u1', kind: 'user', text: 'Trains.' }]));
+      const first: PeteBatch | null = await service.begin({ idleMinutes: 0, conversationId: null });
+      await service.finish({
+        batchId: first?.batchId ?? '',
+        review: 'ask',
+        proposal: {
+          changes: [{ op: 'add', name: 'Trains', text: 'Takes trains.' }],
+          questions: [],
+        },
+      });
+      conversations.set(
+        'c2',
+        conversation('c2', [{ id: 'u2', kind: 'user', text: 'Because of carbon.' }]),
+      );
+      const second: PeteBatch | null = await service.begin({
+        idleMinutes: 0,
+        conversationId: null,
+      });
+
+      expect(second?.persona.map((item: PersonaEntry): string => item.id)).toEqual(['trains']);
+      await service.finish({
+        batchId: second?.batchId ?? '',
+        review: 'ask',
+        proposal: {
+          changes: [{ op: 'update', id: 'trains', why: 'The carbon cost.' }],
+          questions: [],
+        },
+      });
+
+      const pending: readonly PersonaChange[] = (await service.state()).pending;
+      expect(pending).toHaveLength(1);
+      expect(pending[0]).toMatchObject({ kind: 'add', before: null });
+      expect(pending[0].after?.why).toBe('The carbon cost.');
+    });
   });
 });

@@ -4,7 +4,11 @@ import {
   buildPetePrompt,
   parsePeteProposal,
   PeteChannel,
+  type PersonaRebuildEstimate,
+  type PersonaRebuildJob,
+  type PersonaRebuildRequest,
   type PersonaReviewMode,
+  type PersonaSnapshot,
   type PeteBatch,
   type PeteOutcome,
   type PeteProposal,
@@ -38,7 +42,14 @@ const DAY_MS: number = 24 * 60 * 60_000;
 /**
  * The records shown before the first read.
  */
-const NO_STATE: PeteState = { recent: [], pending: [], ruledOut: [], questions: [], lastRun: 0 };
+const NO_STATE: PeteState = {
+  recent: [],
+  pending: [],
+  ruledOut: [],
+  questions: [],
+  lastRun: 0,
+  rebuild: null,
+};
 
 /**
  * What a run did, summed over its batches.
@@ -96,6 +107,11 @@ export class Pete {
    * Holds whether the review of Pete's changes is open (#1517).
    */
   private readonly reviewState: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds whether the rebuild under way has been asked to stop.
+   */
+  private rebuildCancelled: boolean = false;
 
   /**
    * Holds the timer, or undefined when not started.
@@ -173,6 +189,8 @@ export class Pete {
       return;
     }
     this.timer = setInterval((): void => void this.tick(), TICK_MS);
+    // A rebuild Studio was closed part way through carries on where it left off (#1518).
+    setTimeout((): void => void this.tick(), 10_000);
   }
 
   /**
@@ -200,7 +218,20 @@ export class Pete {
    * @returns Resolves once the run has finished, or there was nothing to do.
    */
   public async tick(): Promise<void> {
-    if (!this.isOn() || this.runningState()) {
+    if (
+      this.runningState() ||
+      this.bridge === undefined ||
+      this.settings.get('persona.petePaused')
+    ) {
+      return;
+    }
+    await this.refresh();
+    const job: PersonaRebuildJob | null = this.stateValue().rebuild;
+    if (job !== null) {
+      await this.run({ conversationId: null, rebuild: job });
+      return;
+    }
+    if (!this.isOn()) {
       return;
     }
     if (
@@ -209,7 +240,7 @@ export class Pete {
     ) {
       return;
     }
-    await this.run(null);
+    await this.run({ conversationId: null, rebuild: null });
   }
 
   /**
@@ -226,7 +257,7 @@ export class Pete {
     if (this.runningState()) {
       return Promise.resolve(failed('Pete is already reading; try again in a moment.'));
     }
-    return this.run(conversationId);
+    return this.run({ conversationId, rebuild: null });
   }
 
   /**
@@ -264,6 +295,68 @@ export class Pete {
   }
 
   /**
+   * Counts what a full rebuild would read, for the estimate shown before it starts (#1518).
+   * @returns Returns the estimate, or null outside the desktop app.
+   */
+  public async estimateRebuild(): Promise<PersonaRebuildEstimate | null> {
+    return (await this.bridge?.invoke<PersonaRebuildEstimate>(PeteChannel.EstimateRebuild)) ?? null;
+  }
+
+  /**
+   * Starts a full rebuild over every conversation, and runs it. It carries on in the background, and
+   * after a restart, until it has read everything or is cancelled.
+   * @param request What to start.
+   * @returns Returns null once started, or why it was not.
+   */
+  public async startRebuild(request: PersonaRebuildRequest): Promise<string | null> {
+    const bridge: Bridge | undefined = this.bridge;
+    if (bridge === undefined) {
+      return 'Rebuilding runs only in the desktop app.';
+    }
+    if (this.runningState()) {
+      return 'Pete is reading right now; try again in a moment.';
+    }
+    const error: string | null = await bridge.invoke<string | null>(
+      PeteChannel.StartRebuild,
+      request,
+    );
+    if (error !== null) {
+      return error;
+    }
+    await this.refresh();
+    void this.tick();
+    return null;
+  }
+
+  /**
+   * Cancels the rebuild under way. What it already learned stays.
+   * @returns Resolves once cancelled.
+   */
+  public async cancelRebuild(): Promise<void> {
+    this.rebuildCancelled = true;
+    await this.bridge?.invoke<void>(PeteChannel.CancelRebuild);
+    await this.refresh();
+  }
+
+  /**
+   * Lists the copies of the persona kept when a rebuild started fresh, newest first.
+   * @returns Returns them.
+   */
+  public async snapshots(): Promise<readonly PersonaSnapshot[]> {
+    const copies: unknown = await this.bridge?.invoke<unknown>(PeteChannel.ListSnapshots);
+    return Array.isArray(copies) ? (copies as readonly PersonaSnapshot[]) : [];
+  }
+
+  /**
+   * Puts a kept copy of the persona back; what stood before is kept as a copy of its own.
+   * @param id The copy.
+   * @returns Returns true when it was put back.
+   */
+  public async restoreSnapshot(id: string): Promise<boolean> {
+    return (await this.bridge?.invoke<boolean>(PeteChannel.RestoreSnapshot, id)) ?? false;
+  }
+
+  /**
    * Sets the topics Pete never learns about.
    * @param topics The topics.
    * @returns Resolves once recorded.
@@ -287,10 +380,13 @@ export class Pete {
 
   /**
    * Works through batches until there are none, or the run has read enough for now.
-   * @param conversationId The one conversation to read, or null for every idle one.
+   * A rebuild reads until nothing is left, or it is cancelled; any other run reads a few batches and
+   * leaves the rest for the next tick.
+   * @param plan What to read: one conversation, every idle one, or the rebuild's.
    * @returns Returns what was done.
    */
-  private async run(conversationId: string | null): Promise<PeteRunSummary> {
+  private async run(plan: RunPlan): Promise<PeteRunSummary> {
+    const conversationId: string | null = plan.conversationId;
     const bridge: Bridge | undefined = this.bridge;
     if (bridge === undefined) {
       return failed('Pete runs only in the desktop app.');
@@ -304,15 +400,33 @@ export class Pete {
       error: null,
     };
     try {
-      for (let index: number = 0; index < BATCHES_PER_RUN; index += 1) {
+      this.rebuildCancelled = false;
+      for (let index: number = 0; plan.rebuild !== null || index < BATCHES_PER_RUN; index += 1) {
+        if (
+          plan.rebuild !== null &&
+          (this.rebuildCancelled || this.settings.get('persona.petePaused'))
+        ) {
+          break;
+        }
         const batch: PeteBatch | null = await bridge.invoke<PeteBatch | null>(PeteChannel.Begin, {
           idleMinutes: conversationId === null ? this.settings.get('persona.peteIdleMinutes') : 0,
           conversationId,
+          rebuild: plan.rebuild !== null,
         });
-        if (batch === null) {
+        if (batch === null || this.rebuildCancelled) {
+          if (batch !== null) {
+            await bridge.invoke<void>(PeteChannel.Abandon, batch.batchId);
+          }
           break;
         }
-        const outcome: PeteOutcome | string = await this.read(bridge, batch);
+        const outcome: PeteOutcome | string = await this.read(
+          bridge,
+          batch,
+          plan.rebuild ?? {
+            connectionId: this.settings.get('persona.peteConnectionId'),
+            model: this.settings.get('persona.peteModel'),
+          },
+        );
         if (typeof outcome === 'string') {
           summary = { ...summary, error: outcome };
           break;
@@ -347,12 +461,17 @@ export class Pete {
    * Has the model read one batch, and hands its answer back.
    * @param bridge The bridge.
    * @param batch The batch.
+   * @param model The connection and model to read it with.
    * @returns Returns what was done, or why nothing was.
    */
-  private async read(bridge: Bridge, batch: PeteBatch): Promise<PeteOutcome | string> {
+  private async read(
+    bridge: Bridge,
+    batch: PeteBatch,
+    model: PeteModel,
+  ): Promise<PeteOutcome | string> {
     const result: AiOneShotResult = await this.oneShot.complete({
-      providerId: this.settings.get('persona.peteConnectionId'),
-      model: this.settings.get('persona.peteModel'),
+      providerId: model.connectionId,
+      model: model.model,
       prompt: buildPetePrompt(batch),
       surface: 'models',
       timeoutMs: RUN_TIMEOUT_MS,
@@ -374,6 +493,29 @@ export class Pete {
     );
     return outcome ?? 'The batch expired before Pete finished it.';
   }
+}
+
+/**
+ * The connection and model a batch is read with.
+ */
+interface PeteModel {
+  readonly connectionId: string;
+  readonly model: string;
+}
+
+/**
+ * What one run reads.
+ */
+interface RunPlan {
+  /**
+   * Gets the one conversation to read, or null for every idle one.
+   */
+  readonly conversationId: string | null;
+
+  /**
+   * Gets the rebuild being run, or null for an everyday run.
+   */
+  readonly rebuild: PersonaRebuildJob | null;
 }
 
 /**

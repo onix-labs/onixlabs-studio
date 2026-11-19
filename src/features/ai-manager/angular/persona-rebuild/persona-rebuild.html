@@ -1,0 +1,67 @@
+<app-modal
+  [open]="open()"
+  [width]="36"
+  [frameless]="true"
+  ariaLabel="Build your persona from every conversation"
+  (dismiss)="cancel()"
+>
+  <ng-template appModalContent>
+    <h2 class="rebuild__title">Build Your Persona From Every Conversation</h2>
+    <p class="rebuild__text">
+      Pete reads everything you've typed to agents, a batch at a time, and builds your persona from
+      it. You can cancel at any point, and if Studio closes he carries on where he left off.
+    </p>
+
+    <app-setting-row label="Connection" description="The AI connection Pete uses for this job.">
+      <app-dropdown
+        [options]="connections()"
+        [value]="connectionId()"
+        ariaLabel="Connection for the rebuild"
+        placeholder="Choose a connection"
+        (valueChange)="connectionId.set($event)"
+      />
+    </app-setting-row>
+    <app-setting-row label="Model" description="Empty for the connection's default.">
+      <app-text-field
+        [value]="model()"
+        ariaLabel="Model for the rebuild"
+        placeholder="Connection default"
+        (valueChange)="model.set($event)"
+      />
+    </app-setting-row>
+
+    <app-button-group
+      class="rebuild__modes"
+      [options]="modes"
+      [value]="mode()"
+      [fullWidth]="true"
+      ariaLabel="Merge or start fresh"
+      (valueChange)="setMode($event)"
+    />
+    <p class="rebuild__text rebuild__text--muted" data-testid="rebuild-mode-text">
+      @if (mode() === 'fresh') {
+        Clears what Pete has learned. Locked entries and anything you wrote stay, and a copy of your
+        persona as it is now is kept, so you can put it back.
+      } @else {
+        Keeps your persona as it is, and adds to it, merging what Pete finds with what's there.
+      }
+    </p>
+
+    <p class="rebuild__estimate" data-testid="rebuild-estimate">{{ estimateText() }}</p>
+    <p class="rebuild__text rebuild__text--muted">{{ costText() }} {{ reviewText() }}</p>
+
+    @if (error(); as message) {
+      <p class="rebuild__error" role="alert">{{ message }}</p>
+    }
+
+    <app-button-row>
+      <app-button
+        variant="solid"
+        label="Start"
+        [disabled]="connectionId() === '' || estimate()?.conversations === 0"
+        (click)="start()"
+      />
+      <app-button variant="none" label="Cancel" (click)="cancel()" />
+    </app-button-row>
+  </ng-template>
+</app-modal>

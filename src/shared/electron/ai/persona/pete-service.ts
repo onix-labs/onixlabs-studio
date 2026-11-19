@@ -6,12 +6,17 @@ import type {
 import { normalizeTags, personaIdFor, type PersonaEntry } from '@shared/api/persona-channels';
 import { planPeteChanges, type PetePlan } from '@shared/api/pete-plan';
 import {
+  CHARACTERS_PER_TOKEN,
   PETE_BATCH_CHARACTERS,
+  PETE_PROMPT_TOKENS,
   PETE_MESSAGE_CHARACTERS,
   PeteChannel,
   readChange,
   type PersonaChange,
+  type PersonaRebuildEstimate,
+  type PersonaRebuildRequest,
   type PersonaReviewMode,
+  type PersonaSnapshot,
   type PeteAnswerRequest,
   type PeteBatch,
   type PeteBeginRequest,
@@ -28,7 +33,7 @@ import { redactSecrets } from '@shared/api/redaction';
 import { GLOBAL_SCOPE } from '@shared/api/ai-types';
 import { logger } from '@shared/electron/logger';
 import type { PersonaLibrary } from './persona-library';
-import { PeteStore, type PeteRecords } from './pete-store';
+import { PeteStore, type PeteRecords, type StoredRebuild } from './pete-store';
 
 /**
  * The conversations, as far as Pete reads them.
@@ -55,6 +60,17 @@ interface Claim {
   readonly batchId: string;
   readonly excerpts: readonly PeteExcerpt[];
   readonly expires: number;
+
+  /**
+   * Gets whether the batch is the full rebuild's (#1518).
+   */
+  readonly rebuild: boolean;
+
+  /**
+   * Gets the conversations whose every unread message is in the batch, so the rebuild can count them
+   * done once it lands.
+   */
+  readonly completes: readonly string[];
 }
 
 /**
@@ -137,6 +153,32 @@ export class PeteService {
         return request === null ? Promise.resolve(false) : this.answer(request);
       },
     );
+    ipcMain.handle(PeteChannel.EstimateRebuild, (): Promise<PersonaRebuildEstimate> =>
+      this.estimateRebuild(),
+    );
+    ipcMain.handle(
+      PeteChannel.StartRebuild,
+      (_event: IpcMainInvokeEvent, value: unknown): Promise<string | null> => {
+        const request: PersonaRebuildRequest | null = readRebuildRequest(value);
+        return request === null
+          ? Promise.resolve('The rebuild was malformed.')
+          : this.startRebuild(request);
+      },
+    );
+    ipcMain.handle(PeteChannel.CancelRebuild, (): Promise<void> => this.cancelRebuild());
+    ipcMain.handle(PeteChannel.ListSnapshots, (): Promise<readonly PersonaSnapshot[]> =>
+      this.library.snapshots(),
+    );
+    ipcMain.handle(
+      PeteChannel.RestoreSnapshot,
+      async (_event: IpcMainInvokeEvent, value: unknown): Promise<boolean> => {
+        const restored: boolean = typeof value === 'string' && (await this.library.restore(value));
+        if (restored) {
+          this.announce(true);
+        }
+        return restored;
+      },
+    );
   }
 
   /**
@@ -152,13 +194,23 @@ export class PeteService {
       return null;
     }
     const records: PeteRecords = await this.store.read();
+    const rebuild: boolean = request.rebuild === true;
+    if (rebuild && records.rebuild === null) {
+      return null;
+    }
     const cutoff: number = now - Math.max(0, request.idleMinutes) * 60_000;
+    const done: ReadonlySet<string> = new Set<string>(records.rebuild?.done ?? []);
+    const readMap: Readonly<Record<string, readonly string[]>> = rebuild
+      ? (records.rebuild?.read ?? {})
+      : records.read;
     const candidates: readonly AgentConversationSummary[] = this.conversations
       .listAll()
       .filter((summary: AgentConversationSummary): boolean =>
-        request.conversationId === null
-          ? summary.updatedAt <= cutoff
-          : summary.id === request.conversationId,
+        rebuild
+          ? !done.has(summary.id)
+          : request.conversationId === null
+            ? summary.updatedAt <= cutoff
+            : summary.id === request.conversationId,
       )
       .slice()
       .sort(
@@ -166,6 +218,8 @@ export class PeteService {
           a.updatedAt - b.updatedAt,
       );
     const excerpts: PeteExcerpt[] = [];
+    const completes: string[] = [];
+    const empty: string[] = [];
     let budget: number = PETE_BATCH_CHARACTERS;
     for (const summary of candidates) {
       if (budget <= 0) {
@@ -177,9 +231,14 @@ export class PeteService {
       if (conversation === null) {
         continue;
       }
-      const read: ReadonlySet<string> = new Set<string>(records.read[summary.id] ?? []);
+      const read: ReadonlySet<string> = new Set<string>(readMap[summary.id] ?? []);
       const excerpt: PeteExcerpt | null = excerptOf(summary.id, conversation.items, read, budget);
-      if (excerpt !== null) {
+      if (excerpt === null) {
+        empty.push(summary.id);
+      } else {
+        if (excerpt.messageIds.length === unreadCount(conversation.items, read)) {
+          completes.push(summary.id);
+        }
         excerpts.push(excerpt);
         budget -= excerpt.messages.reduce(
           (total: number, message: string): number => total + message.length,
@@ -187,12 +246,23 @@ export class PeteService {
         );
       }
     }
+    if (rebuild && empty.length > 0) {
+      await this.markRebuilt(empty);
+    }
     if (excerpts.length === 0) {
+      if (rebuild) {
+        await this.endRebuild('finished');
+      }
       return null;
     }
     const batchId: string = PeteStore.newId();
-    this.claim = { batchId, excerpts, expires: now + CLAIM_MS };
-    const persona: readonly PersonaEntry[] = (await this.library.list()).entries;
+    this.claim = { batchId, excerpts, expires: now + CLAIM_MS, rebuild, completes };
+    // The persona as it will be once what is waiting for review is accepted, so the model builds on its
+    // own earlier batches rather than proposing them again.
+    const persona: readonly PersonaEntry[] = withPending(
+      (await this.library.list()).entries,
+      records.pending,
+    );
     logger.info(
       'PeteService.begin',
       `Batch ${batchId}: ${excerpts.length} conversation(s), ${excerpts.reduce((total: number, excerpt: PeteExcerpt): number => total + excerpt.messages.length, 0)} message(s)`,
@@ -219,7 +289,7 @@ export class PeteService {
       return null;
     }
     this.claim = null;
-    const outcome: PeteOutcome = await this.land(request.proposal, request.review, claim.excerpts);
+    const outcome: PeteOutcome = await this.land(request.proposal, request.review, claim);
     logger.info(
       'PeteService.finish',
       `Batch ${request.batchId}: ${outcome.applied} applied, ${outcome.pending} for review, ${outcome.refused} refused`,
@@ -241,8 +311,13 @@ export class PeteService {
     }
     this.claim = null;
     await this.store.update((records: PeteRecords): [PeteRecords, void] => {
+      // A rebuild batch given back because the rebuild was cancelled did not fail.
+      if (claim.rebuild && records.rebuild === null) {
+        return [records, undefined];
+      }
       const failures: Record<string, number> = { ...records.failures };
       const read: Record<string, readonly string[]> = { ...records.read };
+      const passedOver: string[] = [];
       for (const excerpt of claim.excerpts) {
         const count: number = (failures[excerpt.conversationId] ?? 0) + 1;
         if (count >= FAILURE_LIMIT) {
@@ -251,12 +326,25 @@ export class PeteService {
             ...(read[excerpt.conversationId] ?? []),
             ...excerpt.messageIds,
           ];
+          passedOver.push(excerpt.conversationId);
           delete failures[excerpt.conversationId];
         } else {
           failures[excerpt.conversationId] = count;
         }
       }
-      return [{ ...records, failures, read }, undefined];
+      return [
+        {
+          ...records,
+          failures,
+          read,
+          // The rebuild passes them over too, or it would ask for them again for ever.
+          rebuild:
+            claim.rebuild && records.rebuild !== null && passedOver.length > 0
+              ? advanceRebuild(records.rebuild, [], passedOver)
+              : records.rebuild,
+        },
+        undefined,
+      ];
     });
   }
 
@@ -405,6 +493,87 @@ export class PeteService {
   }
 
   /**
+   * Counts what a full rebuild would read (#1518): every conversation with something the user typed,
+   * as Pete would read it, and roughly how many tokens that sends the model — the messages, plus the
+   * instructions and the persona once per batch.
+   * @returns Returns the estimate.
+   */
+  public async estimateRebuild(): Promise<PersonaRebuildEstimate> {
+    let conversations: number = 0;
+    let characters: number = 0;
+    for (const summary of this.conversations.listAll()) {
+      const conversation: StoredAgentConversation | null = await this.conversations.load(
+        summary.id,
+      );
+      const excerpt: PeteExcerpt | null =
+        conversation === null
+          ? null
+          : excerptOf(summary.id, conversation.items, new Set<string>(), Number.MAX_SAFE_INTEGER);
+      if (excerpt !== null && excerpt.messages.length > 0) {
+        conversations += 1;
+        characters += excerpt.messages.reduce(
+          (total: number, message: string): number => total + message.length,
+          0,
+        );
+      }
+    }
+    const batches: number = characters === 0 ? 0 : Math.ceil(characters / PETE_BATCH_CHARACTERS);
+    const persona: number = (await this.library.list()).entries.reduce(
+      (total: number, entry: PersonaEntry): number =>
+        total + entry.name.length + entry.text.length + entry.why.length + 40,
+      0,
+    );
+    const tokens: number = Math.ceil(
+      characters / CHARACTERS_PER_TOKEN +
+        batches * (PETE_PROMPT_TOKENS + persona / CHARACTERS_PER_TOKEN),
+    );
+    return { conversations, characters, tokens, batches };
+  }
+
+  /**
+   * Starts a full rebuild (#1518). Starting fresh first keeps a copy of the whole persona, then clears
+   * what Pete wrote; anything locked, and anything the user wrote, stays. A rebuild already under way
+   * is replaced.
+   * @param request What to start.
+   * @returns Returns null once started, or why it was not.
+   */
+  public async startRebuild(request: PersonaRebuildRequest): Promise<string | null> {
+    if (request.connectionId.length === 0) {
+      return 'Choose a connection for the rebuild.';
+    }
+    if (request.mode === 'fresh') {
+      await this.library.snapshot(new Date(this.now()));
+      for (const entry of (await this.library.list()).entries) {
+        if (!entry.locked && entry.author === 'pete') {
+          await this.library.delete(entry.id);
+        }
+      }
+    }
+    const total: number = this.conversations.listAll().length;
+    await this.store.update((records: PeteRecords): [PeteRecords, void] => [
+      {
+        ...records,
+        rebuild: { ...request, startedAt: this.now(), total, done: [], read: {} },
+      },
+      undefined,
+    ]);
+    logger.info(
+      'PeteService.startRebuild',
+      `Rebuild started (${request.mode}) over ${total} conversation(s)`,
+    );
+    this.announce(request.mode === 'fresh');
+    return null;
+  }
+
+  /**
+   * Cancels the rebuild under way; what it already learned stays.
+   * @returns Resolves once recorded.
+   */
+  public cancelRebuild(): Promise<void> {
+    return this.endRebuild('cancelled');
+  }
+
+  /**
    * Gets Pete's records for the Persona page.
    * @returns Returns them.
    */
@@ -414,19 +583,27 @@ export class PeteService {
 
   /**
    * Lands a proposal: plans it against the persona and the rules, applies it or holds it, records the
-   * questions, and marks the messages read.
+   * questions, and marks the messages read — in the rebuild's record too, when the batch is its.
+   *
+   * 🔑 Under Ask me first, the plan is made against the persona as it would be with the waiting changes
+   * accepted, and a new change to an entry that already has one waiting is folded into it. Otherwise
+   * each run would propose again what the last one is still waiting on, and a rebuild, which merges as
+   * it goes, could not build on its own earlier batches.
    * @param proposal The proposal.
    * @param review Whether changes apply at once or wait.
-   * @param excerpts What was read.
+   * @param claim The batch.
    * @returns Returns what was done.
    */
   private async land(
     proposal: PeteProposal,
     review: PersonaReviewMode,
-    excerpts: readonly PeteExcerpt[],
+    claim: Claim,
   ): Promise<PeteOutcome> {
+    const excerpts: readonly PeteExcerpt[] = claim.excerpts;
     return this.store.update(async (records: PeteRecords): Promise<[PeteRecords, PeteOutcome]> => {
-      const persona: readonly PersonaEntry[] = (await this.library.list()).entries;
+      const stored: readonly PersonaEntry[] = (await this.library.list()).entries;
+      const persona: readonly PersonaEntry[] =
+        review === 'automatic' ? stored : withPending(stored, records.pending);
       const plan: PetePlan = planPeteChanges(
         persona,
         proposal,
@@ -476,7 +653,12 @@ export class PeteService {
         questions,
         lastRun: this.now(),
         recent: review === 'automatic' ? [...records.recent, ...plan.changes] : records.recent,
-        pending: review === 'automatic' ? records.pending : [...records.pending, ...plan.changes],
+        pending:
+          review === 'automatic' ? records.pending : foldPending(records.pending, plan.changes),
+        rebuild:
+          claim.rebuild && records.rebuild !== null
+            ? advanceRebuild(records.rebuild, excerpts, claim.completes)
+            : records.rebuild,
       };
       return [
         next,
@@ -491,6 +673,38 @@ export class PeteService {
         },
       ];
     });
+  }
+
+  /**
+   * Counts the rebuild's conversations that had nothing left to read as done.
+   * @param conversationIds The conversations.
+   * @returns Resolves once recorded.
+   */
+  private async markRebuilt(conversationIds: readonly string[]): Promise<void> {
+    await this.store.update((records: PeteRecords): [PeteRecords, void] => [
+      records.rebuild === null
+        ? records
+        : { ...records, rebuild: advanceRebuild(records.rebuild, [], conversationIds) },
+      undefined,
+    ]);
+  }
+
+  /**
+   * Ends the rebuild, finished or cancelled. What it learned stays either way.
+   * @param why Why it ended, for the log.
+   * @returns Resolves once recorded.
+   */
+  private async endRebuild(why: 'finished' | 'cancelled'): Promise<void> {
+    const ended: boolean = await this.store.update(
+      (records: PeteRecords): [PeteRecords, boolean] => [
+        { ...records, rebuild: null },
+        records.rebuild !== null,
+      ],
+    );
+    if (ended) {
+      logger.info('PeteService.endRebuild', `Rebuild ${why}`);
+      this.announce(false);
+    }
   }
 
   /**
@@ -587,6 +801,32 @@ function readBegin(value: unknown): PeteBeginRequest {
       typeof idle === 'number' && Number.isFinite(idle) ? Math.min(Math.max(idle, 0), 10_080) : 30,
     conversationId:
       typeof conversation === 'string' && conversation.length > 0 ? conversation : null,
+    rebuild: record['rebuild'] === true,
+  };
+}
+
+/**
+ * Reads a rebuild request out of untrusted input.
+ * @param value The value.
+ * @returns Returns the request, or null when malformed.
+ */
+function readRebuildRequest(value: unknown): PersonaRebuildRequest | null {
+  if (value === null || typeof value !== 'object') {
+    return null;
+  }
+  const record: Record<string, unknown> = value as Record<string, unknown>;
+  const mode: unknown = record['mode'];
+  if (
+    (mode !== 'merge' && mode !== 'fresh') ||
+    typeof record['connectionId'] !== 'string' ||
+    typeof record['model'] !== 'string'
+  ) {
+    return null;
+  }
+  return {
+    mode,
+    connectionId: record['connectionId'].slice(0, 200),
+    model: record['model'].slice(0, 200),
   };
 }
 
@@ -657,4 +897,117 @@ function readAnswer(value: unknown): PeteAnswerRequest | null {
   return typeof record['questionId'] === 'string' && typeof record['answer'] === 'string'
     ? { questionId: record['questionId'], answer: record['answer'] }
     : null;
+}
+
+/**
+ * Counts the messages the user typed in a transcript that have not been read.
+ * @param items The transcript.
+ * @param read The ids already read.
+ * @returns Returns the count.
+ */
+export function unreadCount(items: readonly unknown[], read: ReadonlySet<string>): number {
+  let count: number = 0;
+  for (const item of items) {
+    if (item === null || typeof item !== 'object') {
+      continue;
+    }
+    const record: Record<string, unknown> = item as Record<string, unknown>;
+    const id: unknown = record['id'];
+    if (
+      record['kind'] === 'user' &&
+      typeof id === 'string' &&
+      typeof record['text'] === 'string' &&
+      !read.has(id)
+    ) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+/**
+ * Applies the waiting changes to the persona, as it would be were they all accepted.
+ * @param entries The persona on disk.
+ * @param pending The waiting changes.
+ * @returns Returns the persona with them applied.
+ */
+export function withPending(
+  entries: readonly PersonaEntry[],
+  pending: readonly PersonaChange[],
+): readonly PersonaEntry[] {
+  const byId: Map<string, PersonaEntry> = new Map<string, PersonaEntry>(
+    entries.map((entry: PersonaEntry): [string, PersonaEntry] => [entry.id, entry]),
+  );
+  for (const change of pending) {
+    if (change.after === null) {
+      byId.delete(change.entryId);
+    } else {
+      byId.set(change.entryId, change.after);
+    }
+  }
+  return [...byId.values()];
+}
+
+/**
+ * Folds new changes into those waiting: a change to an entry that already has one waiting replaces
+ * it, keeping the original "before", so the review shows one change per entry from what is on disk.
+ * An add that is then removed before review is dropped altogether.
+ * @param pending The waiting changes.
+ * @param changes The new changes.
+ * @returns Returns the waiting changes.
+ */
+export function foldPending(
+  pending: readonly PersonaChange[],
+  changes: readonly PersonaChange[],
+): readonly PersonaChange[] {
+  const folded: PersonaChange[] = [...pending];
+  for (const change of changes) {
+    const index: number = folded.findIndex(
+      (waiting: PersonaChange): boolean => waiting.entryId === change.entryId,
+    );
+    if (index < 0) {
+      folded.push(change);
+      continue;
+    }
+    const waiting: PersonaChange = folded[index];
+    if (waiting.before === null && change.after === null) {
+      folded.splice(index, 1);
+      continue;
+    }
+    folded[index] = {
+      ...change,
+      kind: waiting.before === null ? 'add' : change.after === null ? 'remove' : 'change',
+      before: waiting.before,
+      reason: [waiting.reason, change.reason]
+        .filter((part: string): boolean => part.length > 0)
+        .join(' '),
+    };
+  }
+  return folded;
+}
+
+/**
+ * Records a rebuild batch: the messages it read, and the conversations it finished.
+ * @param rebuild The rebuild.
+ * @param excerpts What was read.
+ * @param completes The conversations with nothing left to read.
+ * @returns Returns the rebuild.
+ */
+function advanceRebuild(
+  rebuild: StoredRebuild,
+  excerpts: readonly PeteExcerpt[],
+  completes: readonly string[],
+): StoredRebuild {
+  const read: Record<string, readonly string[]> = { ...rebuild.read };
+  for (const excerpt of excerpts) {
+    read[excerpt.conversationId] = [...(read[excerpt.conversationId] ?? []), ...excerpt.messageIds];
+  }
+  for (const conversation of completes) {
+    delete read[conversation];
+  }
+  return {
+    ...rebuild,
+    read,
+    done: [...new Set<string>([...rebuild.done, ...completes])],
+  };
 }

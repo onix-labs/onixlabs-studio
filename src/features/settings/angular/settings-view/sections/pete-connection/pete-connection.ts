@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import type { AiConnection } from '@shared/api/ai-types';
+import { isLocalConnection as isLocal } from '@shared/api/is-local-connection';
 import { Dropdown, type DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
@@ -98,17 +99,4 @@ export class PeteConnection {
   protected setModel(model: string): void {
     this.settings.set('persona.peteModel', model.trim());
   }
-}
-
-/**
- * Determines whether a connection runs on this machine.
- * @param connection The connection.
- * @returns Returns true for a local model server.
- */
-function isLocal(connection: AiConnection): boolean {
-  if (connection.kind === 'ollama') {
-    return true;
-  }
-  const url: string = connection.baseUrl ?? '';
-  return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(url);
 }

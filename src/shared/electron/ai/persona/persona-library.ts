@@ -12,6 +12,7 @@ import {
   type PersonaListing,
 } from '@shared/api/persona-channels';
 import { parseEntryFile, serializeEntryFile } from '@shared/api/persona-entry-file';
+import type { PersonaSnapshot } from '@shared/api/pete-protocol';
 import { logger } from '@shared/electron/logger';
 
 /**
@@ -23,6 +24,16 @@ const ENTRY_EXTENSION: string = '.md';
  * The folder, inside the persona folder, that holds one file per entry.
  */
 const ENTRIES_FOLDER: string = 'entries';
+
+/**
+ * The folder, inside the persona folder, that holds copies of the persona kept by a rebuild (#1518).
+ */
+const SNAPSHOTS_FOLDER: string = 'snapshots';
+
+/**
+ * Matches a snapshot's folder name: the moment it was taken, made safe for a file name.
+ */
+const SNAPSHOT_ID_PATTERN: RegExp = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}(?:-\d{3})?Z(?:-\d+)?$/;
 
 /**
  * The file, inside the persona folder, that records facts about the persona as a whole.
@@ -189,6 +200,97 @@ export class PersonaLibrary {
   }
 
   /**
+   * Keeps a copy of every entry as it stands (#1518): a folder under `snapshots`, named for the
+   * moment, that {@link restore} can put back.
+   * @param now The moment.
+   * @returns Returns the copy.
+   */
+  public async snapshot(now: Date = new Date()): Promise<PersonaSnapshot> {
+    const stamp: string = now.toISOString().replace(/:/g, '-').replace('.', '-');
+    let id: string = stamp;
+    for (
+      let suffix: number = 2;
+      await pathExists(join(this.root, SNAPSHOTS_FOLDER, id));
+      suffix += 1
+    ) {
+      id = `${stamp}-${suffix}`;
+    }
+    const folder: string = join(this.root, SNAPSHOTS_FOLDER, id);
+    await fs.mkdir(folder, { recursive: true });
+    const ids: readonly string[] = await this.ids();
+    for (const entryId of ids) {
+      await fs.copyFile(
+        join(this.entriesDirectory, `${entryId}${ENTRY_EXTENSION}`),
+        join(folder, `${entryId}${ENTRY_EXTENSION}`),
+      );
+    }
+    logger.info('PersonaLibrary.snapshot', `Kept a copy of ${ids.length} entr(ies) as ${id}`);
+    return { id, takenAt: now.getTime(), entries: ids.length };
+  }
+
+  /**
+   * Lists the kept copies, newest first.
+   * @returns Returns them.
+   */
+  public async snapshots(): Promise<readonly PersonaSnapshot[]> {
+    let folders: Dirent[];
+    try {
+      folders = await fs.readdir(join(this.root, SNAPSHOTS_FOLDER), { withFileTypes: true });
+    } catch {
+      return [];
+    }
+    const found: PersonaSnapshot[] = [];
+    for (const folder of folders) {
+      if (!folder.isDirectory() || !SNAPSHOT_ID_PATTERN.test(folder.name)) {
+        continue;
+      }
+      const files: readonly string[] = await profileFilesIn(
+        join(this.root, SNAPSHOTS_FOLDER, folder.name),
+      );
+      const taken: number = Date.parse(
+        folder.name.replace(
+          /T(\d{2})-(\d{2})-(\d{2})(?:-(\d{3}))?Z.*$/,
+          (_match: string, h: string, m: string, sec: string, ms: string | undefined): string =>
+            `T${h}:${m}:${sec}.${ms ?? '000'}Z`,
+        ),
+      );
+      found.push({
+        id: folder.name,
+        takenAt: Number.isNaN(taken) ? 0 : taken,
+        entries: files.length,
+      });
+    }
+    return found.sort((a: PersonaSnapshot, b: PersonaSnapshot): number => b.takenAt - a.takenAt);
+  }
+
+  /**
+   * Puts a kept copy back: the entries become exactly the copy's. What stood before is kept as a copy
+   * of its own first, so a restore can itself be undone.
+   * @param id The copy.
+   * @returns Returns true when it was put back.
+   */
+  public async restore(id: string): Promise<boolean> {
+    if (!SNAPSHOT_ID_PATTERN.test(id)) {
+      return false;
+    }
+    const folder: string = join(this.root, SNAPSHOTS_FOLDER, id);
+    if (!(await pathExists(folder))) {
+      return false;
+    }
+    await this.snapshot();
+    const files: readonly string[] = await profileFilesIn(folder);
+    for (const entryId of await this.ids()) {
+      await this.delete(entryId);
+    }
+    await fs.mkdir(this.entriesDirectory, { recursive: true });
+    for (const file of files) {
+      await fs.copyFile(file, join(this.entriesDirectory, basename(file)));
+    }
+    logger.info('PersonaLibrary.restore', `Put back the copy ${id} (${files.length} entr(ies))`);
+    return true;
+  }
+
+  /**
    * Determines whether the persona has been created.
    * @returns Returns true when the entries folder is there.
    */
@@ -339,5 +441,19 @@ async function profileFilesIn(folder: string): Promise<readonly string[]> {
       .sort();
   } catch {
     return [];
+  }
+}
+
+/**
+ * Determines whether a path exists.
+ * @param path The path.
+ * @returns Returns true when something is there.
+ */
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await fs.access(path);
+    return true;
+  } catch {
+    return false;
   }
 }

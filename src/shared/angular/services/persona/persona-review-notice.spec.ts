@@ -24,7 +24,7 @@ describe('PersonaReviewNotice (#1517)', () => {
 
   beforeEach(() => {
     opened = [];
-    state = { recent: [], pending: [], ruledOut: [], questions: [], lastRun: 0 };
+    state = { recent: [], pending: [], ruledOut: [], questions: [], lastRun: 0, rebuild: null };
     const bridge: Partial<Bridge> = {
       invoke: <T>(channel: string): Promise<T> =>
         Promise.resolve((channel === (PeteChannel.State as string) ? state : undefined) as T),

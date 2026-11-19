@@ -37,7 +37,7 @@ function installBridge(batches: PeteBatch[]): FakeMain {
     begins: [],
     finished: [],
     abandoned: [],
-    state: { recent: [], pending: [], ruledOut: [], questions: [], lastRun: 0 },
+    state: { recent: [], pending: [], ruledOut: [], questions: [], lastRun: 0, rebuild: null },
   };
   const bridge: Partial<Bridge> = {
     invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
@@ -161,7 +161,7 @@ describe('Pete (#1516)', () => {
     await pete.tick();
 
     // It asks again after each batch, until there are none left.
-    expect(main.begins[0]).toEqual({ idleMinutes: 30, conversationId: null });
+    expect(main.begins[0]).toEqual({ idleMinutes: 30, conversationId: null, rebuild: false });
     expect(main.begins).toHaveLength(2);
     expect(prompts[0]).toMatchObject({
       providerId: 'local-ollama',
@@ -201,7 +201,7 @@ describe('Pete (#1516)', () => {
 
     const summary: PeteRunSummary = await pete.learnNow('c42');
 
-    expect(main.begins[0]).toEqual({ idleMinutes: 0, conversationId: 'c42' });
+    expect(main.begins[0]).toEqual({ idleMinutes: 0, conversationId: 'c42', rebuild: false });
     expect(summary).toEqual({ applied: 0, pending: 0, refused: 0, messagesRead: 1, error: null });
   });
 
@@ -210,5 +210,55 @@ describe('Pete (#1516)', () => {
     const pete: Pete = TestBed.inject(Pete);
 
     expect((await pete.learnNow('c42')).error).toContain('Settings › AI Manager › Persona');
+  });
+
+  it('rebuild_readsEveryBatchWithItsOwnModel_untilNothingIsLeft_evenWithPeteOff', async () => {
+    const main: FakeMain = installBridge([
+      batch('b1'),
+      batch('b2'),
+      batch('b3'),
+      batch('b4'),
+      batch('b5'),
+    ]);
+    main.state = {
+      ...main.state,
+      rebuild: {
+        mode: 'merge',
+        connectionId: 'opus',
+        model: 'big',
+        startedAt: 0,
+        total: 5,
+        done: [],
+      },
+    };
+    const pete: Pete = TestBed.inject(Pete);
+    answers.push(...Array.from({ length: 5 }, (): string => '{"changes":[],"questions":[]}'));
+
+    await pete.tick();
+
+    expect(main.finished.map((request) => request.batchId)).toEqual(['b1', 'b2', 'b3', 'b4', 'b5']);
+    expect(
+      main.begins.every((begin: unknown): boolean => (begin as { rebuild: boolean }).rebuild),
+    ).toBe(true);
+    expect(
+      prompts.every(
+        (prompt: AiOneShotRequest): boolean =>
+          prompt.providerId === 'opus' && prompt.model === 'big',
+      ),
+    ).toBe(true);
+  });
+
+  it('rebuild_whenPaused_waits', async () => {
+    const main: FakeMain = installBridge([batch('b1')]);
+    main.state = {
+      ...main.state,
+      rebuild: { mode: 'merge', connectionId: 'opus', model: '', startedAt: 0, total: 1, done: [] },
+    };
+    const pete: Pete = TestBed.inject(Pete);
+    TestBed.inject(Settings).set('persona.petePaused', true);
+
+    await pete.tick();
+
+    expect(main.begins).toEqual([]);
   });
 });

@@ -54,6 +54,31 @@ export enum PeteChannel {
   AnswerQuestion = 'pete:answer-question',
 
   /**
+   * Counts what a full rebuild would read, for the estimate shown before it starts (#1518).
+   */
+  EstimateRebuild = 'pete:estimate-rebuild',
+
+  /**
+   * Starts a full rebuild over every conversation, merging or starting fresh.
+   */
+  StartRebuild = 'pete:start-rebuild',
+
+  /**
+   * Cancels the rebuild in progress; what it already learned stays.
+   */
+  CancelRebuild = 'pete:cancel-rebuild',
+
+  /**
+   * Lists the copies of the persona kept when a rebuild started fresh.
+   */
+  ListSnapshots = 'pete:list-snapshots',
+
+  /**
+   * Puts a kept copy of the persona back.
+   */
+  RestoreSnapshot = 'pete:restore-snapshot',
+
+  /**
    * Main → renderer: Pete's records changed.
    */
   Changed = 'pete:changed',
@@ -133,6 +158,74 @@ export interface PeteBeginRequest {
    * Gets the one conversation to read, for "Learn from this conversation now", or null for all.
    */
   readonly conversationId: string | null;
+
+  /**
+   * Gets whether this batch is for the full rebuild, which reads every conversation, idle or not and
+   * read before or not, keeping its own record of what it has covered (#1518).
+   */
+  readonly rebuild?: boolean;
+}
+
+/**
+ * Whether a full rebuild adds to the persona or starts it again.
+ * - `merge`: Pete reads everything and merges it into the persona as it stands.
+ * - `fresh`: entries Pete wrote are cleared first; locked and user-written entries stay, and the whole
+ *   persona is kept as a copy that can be put back.
+ */
+export type PersonaRebuildMode = 'merge' | 'fresh';
+
+/**
+ * What a full rebuild would read.
+ */
+export interface PersonaRebuildEstimate {
+  /**
+   * Gets how many conversations have something the user typed.
+   */
+  readonly conversations: number;
+
+  /**
+   * Gets how many characters the user typed across them, as Pete would read them.
+   */
+  readonly characters: number;
+
+  /**
+   * Gets roughly how many tokens the model would be sent: the messages, plus the instructions and
+   * the persona once per batch.
+   */
+  readonly tokens: number;
+
+  /**
+   * Gets how many batches it takes.
+   */
+  readonly batches: number;
+}
+
+/**
+ * What starting a rebuild asks for.
+ */
+export interface PersonaRebuildRequest {
+  readonly mode: PersonaRebuildMode;
+  readonly connectionId: string;
+  readonly model: string;
+}
+
+/**
+ * A rebuild under way: what it was started with, and how far it has got. Kept on disk, so it resumes
+ * where it left off when Studio is closed part way.
+ */
+export interface PersonaRebuildJob extends PersonaRebuildRequest {
+  readonly startedAt: number;
+  readonly total: number;
+  readonly done: readonly string[];
+}
+
+/**
+ * A copy of the persona kept when a rebuild started fresh.
+ */
+export interface PersonaSnapshot {
+  readonly id: string;
+  readonly takenAt: number;
+  readonly entries: number;
 }
 
 /**
@@ -235,6 +328,7 @@ export interface PeteState {
   readonly ruledOut: readonly string[];
   readonly questions: readonly PeteQuestion[];
   readonly lastRun: number;
+  readonly rebuild: PersonaRebuildJob | null;
 }
 
 /**
@@ -264,6 +358,17 @@ export const PETE_BATCH_CHARACTERS: number = 24_000;
  * themselves, and the start of a long message says what it is.
  */
 export const PETE_MESSAGE_CHARACTERS: number = 2_000;
+
+/**
+ * About how many characters make a token, for estimates. Close enough for English prose to say what a
+ * rebuild will roughly cost, which is all it is used for.
+ */
+export const CHARACTERS_PER_TOKEN: number = 4;
+
+/**
+ * About how many tokens the instructions take, for estimates.
+ */
+export const PETE_PROMPT_TOKENS: number = 1_200;
 
 /**
  * Builds the model's instructions for a batch.

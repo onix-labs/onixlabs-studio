@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import type { PersonaChange, PeteQuestion, PeteState } from '@shared/api/pete-protocol';
+import type {
+  PersonaChange,
+  PersonaRebuildJob,
+  PeteQuestion,
+  PeteState,
+} from '@shared/api/pete-protocol';
 import { logger } from '@shared/electron/logger';
 import { readEntry } from './persona-library';
 
@@ -73,6 +78,19 @@ export interface PeteRecords {
    * failing is skipped rather than retried forever.
    */
   readonly failures: Readonly<Record<string, number>>;
+
+  /**
+   * Gets the full rebuild under way (#1518), with its own record of the messages it has read, or null.
+   */
+  readonly rebuild: StoredRebuild | null;
+}
+
+/**
+ * A rebuild as it is kept on disk: the job, and the messages it has read by conversation. Its own
+ * record rather than the everyday one, because a rebuild reads everything again.
+ */
+export interface StoredRebuild extends PersonaRebuildJob {
+  readonly read: Readonly<Record<string, readonly string[]>>;
 }
 
 /**
@@ -86,6 +104,7 @@ export const EMPTY_PETE_RECORDS: PeteRecords = {
   questions: [],
   lastRun: 0,
   failures: {},
+  rebuild: null,
 };
 
 /**
@@ -144,6 +163,17 @@ export class PeteStore {
       ruledOut: records.ruledOut,
       questions: records.questions,
       lastRun: records.lastRun,
+      rebuild:
+        records.rebuild === null
+          ? null
+          : {
+              mode: records.rebuild.mode,
+              connectionId: records.rebuild.connectionId,
+              model: records.rebuild.model,
+              startedAt: records.rebuild.startedAt,
+              total: records.rebuild.total,
+              done: records.rebuild.done,
+            },
     };
   }
 
@@ -275,6 +305,48 @@ export function readRecords(value: unknown): PeteRecords {
     questions,
     lastRun: typeof lastRun === 'number' && Number.isFinite(lastRun) ? lastRun : 0,
     failures,
+    rebuild: readRebuild(record['rebuild']),
+  };
+}
+
+/**
+ * Reads the rebuild under way.
+ * @param value The value.
+ * @returns Returns the rebuild, or null when there is none or it is malformed.
+ */
+function readRebuild(value: unknown): StoredRebuild | null {
+  if (value === null || typeof value !== 'object') {
+    return null;
+  }
+  const record: Record<string, unknown> = value as Record<string, unknown>;
+  if (
+    typeof record['connectionId'] !== 'string' ||
+    typeof record['model'] !== 'string' ||
+    typeof record['startedAt'] !== 'number' ||
+    typeof record['total'] !== 'number'
+  ) {
+    return null;
+  }
+  const read: Record<string, readonly string[]> = {};
+  const rawRead: unknown = record['read'];
+  if (rawRead !== null && typeof rawRead === 'object') {
+    for (const [conversation, ids] of Object.entries(rawRead as Record<string, unknown>)) {
+      if (Array.isArray(ids)) {
+        read[conversation] = ids.filter((id: unknown): id is string => typeof id === 'string');
+      }
+    }
+  }
+  const done: unknown = record['done'];
+  return {
+    mode: record['mode'] === 'fresh' ? 'fresh' : 'merge',
+    connectionId: record['connectionId'],
+    model: record['model'],
+    startedAt: record['startedAt'],
+    total: record['total'],
+    done: Array.isArray(done)
+      ? done.filter((id: unknown): id is string => typeof id === 'string')
+      : [],
+    read,
   };
 }
 
