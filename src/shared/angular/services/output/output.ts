@@ -1,5 +1,7 @@
 import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import type { Severity } from '@shared/api/log-channels';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
 
 /**
  * The identifier of the default output channel, which the legacy channel-less API writes to and the
@@ -18,6 +20,44 @@ const MAX_CHANNEL_BUFFER_LENGTH: number = 2_000_000;
 /**
  * Describes a named output channel for display in the panel's channel selector.
  */
+/**
+ * Matches the terminal escape sequences a tool's output may carry (colours, cursor moves), which mean
+ * nothing in a table.
+ */
+// eslint-disable-next-line no-control-regex
+const ESCAPES: RegExp = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001b\\)|[@-Z\\-_])/g;
+
+/**
+ * One line of a channel's output, as the Logs panel lists it: when it was written, how severe it is,
+ * which channel it came from, and what it said.
+ */
+export interface OutputEntry {
+  /**
+   * Gets the entry's identity, increasing in the order entries were written, across every channel.
+   */
+  readonly id: number;
+
+  /**
+   * Gets when it was written (epoch milliseconds).
+   */
+  readonly time: number;
+
+  /**
+   * Gets how severe it is: what its writer said, or `info` when it said nothing.
+   */
+  readonly level: Severity;
+
+  /**
+   * Gets the channel it was written to.
+   */
+  readonly channelId: string;
+
+  /**
+   * Gets what it said, without terminal escape sequences. A line written whole may span several.
+   */
+  readonly text: string;
+}
+
 export interface OutputChannelInfo {
   /**
    * Gets the stable identifier of the channel.
@@ -54,6 +94,16 @@ interface ChannelState {
    * Holds the listeners notified when the channel is cleared.
    */
   readonly clearListeners: Set<() => void>;
+
+  /**
+   * Holds the channel's entries, oldest first.
+   */
+  entries: OutputEntry[];
+
+  /**
+   * Holds the start of a line written in pieces, until its end arrives.
+   */
+  partial: string;
 }
 
 /**
@@ -73,19 +123,22 @@ export class OutputChannel {
   ) {}
 
   /**
-   * Appends text to this channel.
+   * Appends text to this channel; each complete line becomes an entry in the Logs panel.
    * @param text The text to append (may contain ANSI escape sequences).
+   * @param level How severe its lines are; `info` when not said.
    */
-  public append(text: string): void {
-    this.owner.appendTo(this.id, text);
+  public append(text: string, level: Severity = 'info'): void {
+    this.owner.appendTo(this.id, text, level);
   }
 
   /**
-   * Appends a line of text, terminated with a carriage return and line feed for the terminal.
+   * Appends a line of text, terminated with a carriage return and line feed for the terminal, as one
+   * entry in the Logs panel however many lines it spans.
    * @param text The line to append.
+   * @param level How severe it is; `info` when not said.
    */
-  public appendLine(text: string): void {
-    this.append(`${text}\r\n`);
+  public appendLine(text: string, level: Severity = 'info'): void {
+    this.owner.appendLineTo(this.id, text, level);
   }
 
   /**
@@ -147,9 +200,25 @@ export class Output {
   private readonly showCount: WritableSignal<number> = signal<number>(0);
 
   /**
+   * Holds a count that rises whenever an entry is written or a channel cleared, so the Logs panel's
+   * computed rows re-read the entries; the entries themselves are not signals, to keep writes cheap.
+   */
+  private readonly revisionState: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Holds the id the next entry takes.
+   */
+  private nextEntryId: number = 1;
+
+  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the settings, for how many lines each channel keeps (Output Scrollback Lines).
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Gets how many times a channel has been asked to be shown — by the user choosing "Show log" on a
@@ -166,6 +235,11 @@ export class Output {
    * Gets the active channel the panel renders.
    */
   public readonly activeChannelId: Signal<string> = this.active.asReadonly();
+
+  /**
+   * Gets a count that rises whenever the entries change, to read them reactively.
+   */
+  public readonly revision: Signal<number> = this.revisionState.asReadonly();
 
   /**
    * Initializes the output surface with its default channel.
@@ -229,9 +303,53 @@ export class Output {
    * life of the workspace, so once past the cap the oldest half is dropped at a line boundary.
    * @param id The channel identifier.
    * @param text The text to append.
+   * @param level How severe its lines are; `info` when not said.
    */
-  public appendTo(id: string, text: string): void {
+  public appendTo(id: string, text: string, level: Severity = 'info'): void {
     const state: ChannelState = this.ensure(id, id);
+    this.record(state, text, level);
+    this.write(state, text);
+  }
+
+  /**
+   * Appends one whole line to a channel: one entry, however many lines its text spans (a server's
+   * message often does).
+   * @param id The channel.
+   * @param text The line.
+   * @param level How severe it is.
+   */
+  public appendLineTo(id: string, text: string, level: Severity = 'info'): void {
+    const state: ChannelState = this.ensure(id, id);
+    // A piece still waiting for its line end is finished first, so the order holds.
+    if (state.partial.length > 0) {
+      this.addEntry(state, state.partial, level);
+      state.partial = '';
+    }
+    this.addEntry(state, text.replace(/\r\n?/g, '\n'), level);
+    this.bump();
+    this.write(state, `${text}\r\n`);
+  }
+
+  /**
+   * Gets the entries of one channel, or of every channel in the order they were written.
+   * @param id The channel, or null for all of them.
+   * @returns Returns the entries, oldest first.
+   */
+  public entriesOf(id: string | null): readonly OutputEntry[] {
+    if (id !== null) {
+      return this.channelStates.get(id)?.entries ?? [];
+    }
+    return [...this.channelStates.values()]
+      .flatMap((state: ChannelState): readonly OutputEntry[] => state.entries)
+      .sort((a: OutputEntry, b: OutputEntry): number => a.id - b.id);
+  }
+
+  /**
+   * Adds a channel's text to its buffer and tells the listeners.
+   * @param state The channel.
+   * @param text The text.
+   */
+  private write(state: ChannelState, text: string): void {
     state.buffer += text;
     if (state.buffer.length > MAX_CHANNEL_BUFFER_LENGTH) {
       const keepFrom: number = state.buffer.length - Math.floor(MAX_CHANNEL_BUFFER_LENGTH / 2);
@@ -250,6 +368,9 @@ export class Output {
   public clearChannel(id: string): void {
     const state: ChannelState = this.ensure(id, id);
     state.buffer = '';
+    state.entries = [];
+    state.partial = '';
+    this.bump();
     for (const listener of state.clearListeners) {
       listener();
     }
@@ -305,7 +426,7 @@ export class Output {
    * @param text The line to append.
    */
   public appendLine(text: string): void {
-    this.append(`${text}\r\n`);
+    this.appendLineTo(DEFAULT_CHANNEL, text);
   }
 
   /**
@@ -342,6 +463,58 @@ export class Output {
   }
 
   /**
+   * Turns text written in pieces into entries: each complete line one entry, the unfinished end kept
+   * until the rest of its line arrives. Blank lines are left out of the table.
+   * @param state The channel.
+   * @param text The text.
+   * @param level How severe it is.
+   */
+  private record(state: ChannelState, text: string, level: Severity): void {
+    const lines: string[] = `${state.partial}${text}`.split(/\r?\n/);
+    state.partial = lines.pop() ?? '';
+    let added: boolean = false;
+    for (const line of lines) {
+      added = this.addEntry(state, line, level) || added;
+    }
+    if (added) {
+      this.bump();
+    }
+  }
+
+  /**
+   * Adds one entry, dropping the oldest past the number of lines the user keeps.
+   * @param state The channel.
+   * @param text The entry's text.
+   * @param level How severe it is.
+   * @returns Returns true when an entry was added (blank text adds none).
+   */
+  private addEntry(state: ChannelState, text: string, level: Severity): boolean {
+    const clean: string = text.replace(ESCAPES, '').replace(/\r/g, '').trimEnd();
+    if (clean.trim().length === 0) {
+      return false;
+    }
+    state.entries.push({
+      id: this.nextEntryId++,
+      time: Date.now(),
+      level,
+      channelId: state.info.id,
+      text: clean,
+    });
+    const keep: number = Math.max(this.settings.get('workspaces.outputScrollbackLines'), 100);
+    if (state.entries.length > keep) {
+      state.entries.splice(0, state.entries.length - keep);
+    }
+    return true;
+  }
+
+  /**
+   * Tells readers of the entries that they changed.
+   */
+  private bump(): void {
+    this.revisionState.update((revision: number): number => revision + 1);
+  }
+
+  /**
    * Gets — creating on first use — the state for a channel, publishing the channel list when a new
    * channel is created.
    * @param id The channel identifier.
@@ -356,6 +529,8 @@ export class Output {
         buffer: '',
         writeListeners: new Set<(chunk: string) => void>(),
         clearListeners: new Set<() => void>(),
+        entries: [],
+        partial: '',
       };
       this.channelStates.set(id, state);
       this.channelList.set([...this.channelStates.values()].map((each: ChannelState) => each.info));

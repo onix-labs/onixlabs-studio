@@ -10,7 +10,8 @@ import { Chip, ChipTone } from '@shared/angular/components/chip/chip';
 import { Icon } from '@shared/angular/icons/icon';
 import { LogRecord } from '@shared/api/log-channels';
 import { DashboardCard } from '../../dashboard-card/dashboard-card';
-import { describeOrigin, formatLogTimestamp, SEVERITY_TONES } from '../log-format';
+import { SEVERITY_TONES } from '@shared/angular/components/chip/severity-tones';
+import { describeOrigin, formatLogTimestamp } from '../log-format';
 
 /**
  * Describes the facts shown about the chosen record.

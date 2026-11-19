@@ -28,6 +28,7 @@ import {
   crashesExhausted,
   idleStopMs,
   LspClient,
+  lspMessageSeverity,
   testLines,
   WorkspaceSymbolMatch,
 } from './lsp-client';
@@ -4475,5 +4476,19 @@ describe('crashesExhausted', () => {
     expect(crashesExhausted(undefined, 0)).toBe(false);
     // The same crash twice stops it whatever the tries.
     expect(crashesExhausted(crash(2, true), 10)).toBe(true);
+  });
+});
+
+describe('lspMessageSeverity', () => {
+  it('readsTheServersMessageType_asALogLevel', () => {
+    expect([1, 2, 3, 4, 5, undefined, 'x'].map(lspMessageSeverity)).toEqual([
+      'error',
+      'warning',
+      'info',
+      'debug',
+      'debug',
+      'info',
+      'info',
+    ]);
   });
 });

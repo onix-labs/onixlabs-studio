@@ -1,16 +1,4 @@
-import { ChipTone } from '@shared/angular/components/chip/chip';
-import { LogRecord, Severity } from '@shared/api/log-channels';
-
-/**
- * The chip tone each severity is labelled in: trace quiet, then rising to danger for an error.
- */
-export const SEVERITY_TONES: Readonly<Record<Severity, ChipTone>> = {
-  trace: 'neutral',
-  debug: 'info',
-  info: 'accent',
-  warning: 'warning',
-  error: 'danger',
-};
+import { LogRecord } from '@shared/api/log-channels';
 
 /**
  * Pads a number with leading zeros.

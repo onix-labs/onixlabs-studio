@@ -25,6 +25,7 @@ import {
 } from '@shared/api/lsp-channels';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { Diagnostic, Diagnostics } from '../diagnostics/diagnostics';
+import type { Severity } from '@shared/api/log-channels';
 import { Output, OutputChannel } from '../output/output';
 import { Icon } from '@shared/angular/icons/icon';
 import { Editors } from '@shared/angular/services/editors/editors';
@@ -3579,7 +3580,8 @@ export class LspClient implements OnDestroy {
    * labelled by the server identifier. The channel is created on first use, so a server that never logs
    * adds no channel.
    * @param sessionId The session the message belongs to.
-   * @param params The notification parameters, whose `message` field carries the log text.
+   * @param params The notification parameters, whose `message` field carries the log text and whose
+   * `type` says how severe it is.
    */
   private appendServerLog(sessionId: string, params: unknown): void {
     const serverId: string | undefined = this.sessionInfo.get(sessionId)?.serverId;
@@ -3590,7 +3592,10 @@ export class LspClient implements OnDestroy {
     if (typeof message !== 'string' || message.length === 0) {
       return;
     }
-    this.output.channel(`lsp:${serverId}`, `LSP: ${serverId}`).appendLine(message);
+    const type: unknown = (params as { type?: unknown } | undefined)?.type;
+    this.output
+      .channel(`lsp:${serverId}`, `LSP: ${serverId}`)
+      .appendLine(message, lspMessageSeverity(type));
   }
 
   /**
@@ -4067,4 +4072,24 @@ export class LspClient implements OnDestroy {
 function isWithinFolder(target: string, folder: string): boolean {
   const base: string = folder.replace(/[\\/]+$/, '');
   return target === base || target.startsWith(`${base}/`) || target.startsWith(`${base}\\`);
+}
+
+/**
+ * Reads how severe a server's message is from its LSP `MessageType`: 1 error, 2 warning, 3 info, 4 log
+ * and (LSP 3.18) 5 debug. A server that sends none, or something else, is taken to mean info.
+ * @param type The message's `type`.
+ * @returns Returns the severity.
+ */
+export function lspMessageSeverity(type: unknown): Severity {
+  switch (type) {
+    case 1:
+      return 'error';
+    case 2:
+      return 'warning';
+    case 4:
+    case 5:
+      return 'debug';
+    default:
+      return 'info';
+  }
 }

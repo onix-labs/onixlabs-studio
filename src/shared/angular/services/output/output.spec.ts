@@ -1,6 +1,13 @@
+import { Settings } from '@shared/angular/services/settings/settings';
 import { TestBed } from '@angular/core/testing';
 
-import { DEFAULT_CHANNEL, Output, OutputChannel, OutputChannelInfo } from './output';
+import {
+  DEFAULT_CHANNEL,
+  Output,
+  OutputChannel,
+  OutputChannelInfo,
+  OutputEntry,
+} from './output';
 
 describe('Output', () => {
   let output: Output;
@@ -128,5 +135,72 @@ describe('Output', () => {
     expect(output.channels().map((c: OutputChannelInfo): string => c.id)).toEqual([
       DEFAULT_CHANNEL,
     ]);
+  });
+
+  describe('entries', () => {
+    it('appendLine_makesOneEntry_withItsLevel_howeverManyLinesItSpans', () => {
+      const lsp: OutputChannel = output.channel('lsp:ts', 'LSP: ts');
+
+      lsp.appendLine('Something failed\n  at line 3', 'error');
+
+      expect(output.entriesOf('lsp:ts')).toEqual([
+        expect.objectContaining({
+          level: 'error',
+          channelId: 'lsp:ts',
+          text: 'Something failed\n  at line 3',
+        }),
+      ]);
+    });
+
+    it('append_makesAnEntryPerCompleteLine_holdingTheUnfinishedEnd', () => {
+      const debug: OutputChannel = output.channel('debug', 'Debug');
+
+      debug.append('first\nsec', 'info');
+      expect(output.entriesOf('debug').map((entry) => entry.text)).toEqual(['first']);
+      debug.append('ond\r\n\n', 'info');
+
+      expect(output.entriesOf('debug').map((entry) => entry.text)).toEqual(['first', 'second']);
+    });
+
+    it('stripsTerminalColours', () => {
+      output.channel('build', 'Build').appendLine('\u001b[32mBuild succeeded\u001b[0m');
+
+      expect(output.entriesOf('build')[0].text).toBe('Build succeeded');
+    });
+
+    it('allChannels_comeInTheOrderTheyWereWritten', () => {
+      output.channel('a', 'A').appendLine('one');
+      output.channel('b', 'B').appendLine('two');
+      output.channel('a', 'A').appendLine('three');
+
+      expect(output.entriesOf(null).map((entry) => `${entry.channelId}:${entry.text}`)).toEqual([
+        'a:one',
+        'b:two',
+        'a:three',
+      ]);
+    });
+
+    it('clear_dropsTheEntries_andTheRevisionMoves', () => {
+      const build: OutputChannel = output.channel('build', 'Build');
+      build.appendLine('x');
+      const before: number = output.revision();
+
+      build.clear();
+
+      expect(output.entriesOf('build')).toEqual([]);
+      expect(output.revision()).toBeGreaterThan(before);
+    });
+
+    it('keepsOnlyAsManyLinesAsTheSettingSays', () => {
+      TestBed.inject(Settings).set('workspaces.outputScrollbackLines', 1000);
+      const build: OutputChannel = output.channel('build', 'Build');
+      for (let index: number = 0; index < 1005; index += 1) {
+        build.appendLine(`line ${index}`);
+      }
+
+      const entries: readonly OutputEntry[] = output.entriesOf('build');
+      expect(entries).toHaveLength(1000);
+      expect(entries[0].text).toBe('line 5');
+    });
   });
 });

@@ -512,7 +512,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
     }
     const root: string | undefined = this.workspace.root()?.path;
     if (adapter === undefined) {
-      this.debugChannel.appendLine('No debug adapter is available for this workspace.');
+      this.debugChannel.appendLine('No debug adapter is available for this workspace.', 'error');
       return;
     }
     if (root === undefined) {
@@ -615,7 +615,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
       return false;
     }
     if (!result.success) {
-      this.debugChannel.appendLine(`Debug failed: ${result.error ?? 'unknown error'}`);
+      this.debugChannel.appendLine(`Debug failed: ${result.error ?? 'unknown error'}`, 'error');
       this.reset();
       return false;
     }
@@ -627,7 +627,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
       (error: unknown): void => {
         if (this.currentSession === sessionId) {
           this.log.error('debug-session', 'Debug launch failed', error);
-          this.debugChannel.appendLine(`Debug launch failed: ${messageOf(error)}`);
+          this.debugChannel.appendLine(`Debug launch failed: ${messageOf(error)}`, 'error');
           this.stop();
         }
       },
@@ -654,7 +654,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
       return false;
     }
     if (adapter === undefined) {
-      this.debugChannel.appendLine('No debug adapter is available for this workspace.');
+      this.debugChannel.appendLine('No debug adapter is available for this workspace.', 'error');
       return false;
     }
     this.activeConfigurationName = name;
@@ -673,7 +673,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
       return false;
     }
     if (!result.success) {
-      this.debugChannel.appendLine(`Debug failed: ${result.error ?? 'unknown error'}`);
+      this.debugChannel.appendLine(`Debug failed: ${result.error ?? 'unknown error'}`, 'error');
       this.reset();
       return false;
     }
@@ -689,7 +689,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
     } catch (error: unknown) {
       if (this.currentSession === sessionId) {
         this.log.error('debug-session', 'Debug attach failed', error);
-        this.debugChannel.appendLine(`Debug attach failed: ${messageOf(error)}`);
+        this.debugChannel.appendLine(`Debug attach failed: ${messageOf(error)}`, 'error');
         this.stop();
       }
       return false;
@@ -888,8 +888,12 @@ export class DebugSession implements DebugHandler, OnDestroy {
    */
   private appendOutput(body: DebugProtocol.OutputEvent['body'] | undefined): void {
     if (body !== undefined && typeof body.output === 'string' && body.output.length > 0) {
-      // The adapter's output already carries its own newlines, so append it verbatim.
-      this.debugChannel.append(body.output);
+      // The adapter's output already carries its own newlines, so append it verbatim. What the
+      // program wrote to its error stream is listed as errors, the adapter's own notices as warnings.
+      this.debugChannel.append(
+        body.output,
+        body.category === 'stderr' ? 'error' : body.category === 'important' ? 'warning' : 'info',
+      );
     }
   }
 
