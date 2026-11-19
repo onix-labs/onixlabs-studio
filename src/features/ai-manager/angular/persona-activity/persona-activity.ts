@@ -119,6 +119,13 @@ export class PersonaActivity {
   );
 
   /**
+   * Gets how many changes wait for review.
+   */
+  protected readonly pending: Signal<number> = computed(
+    (): number => this.pete.state().pending.length,
+  );
+
+  /**
    * Gets the ruled-out topics.
    */
   protected readonly ruledOut: Signal<readonly string[]> = computed(

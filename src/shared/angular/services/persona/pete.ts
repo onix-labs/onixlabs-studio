@@ -93,6 +93,11 @@ export class Pete {
   private readonly runningState: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Holds whether the review of Pete's changes is open (#1517).
+   */
+  private readonly reviewState: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
    * Holds the timer, or undefined when not started.
    */
   private timer: ReturnType<typeof setInterval> | undefined;
@@ -106,6 +111,11 @@ export class Pete {
    * Gets whether a run is going.
    */
   public readonly running: Signal<boolean> = this.runningState.asReadonly();
+
+  /**
+   * Gets whether the review of Pete's changes is open.
+   */
+  public readonly reviewOpen: Signal<boolean> = this.reviewState.asReadonly();
 
   /**
    * Called with what each finished run did, for the review notification (#1517).
@@ -139,6 +149,20 @@ export class Pete {
       this.settings.get('persona.peteConnectionId').length > 0 &&
       !this.settings.get('persona.petePaused')
     );
+  }
+
+  /**
+   * Opens the review of Pete's changes, wherever the Persona page is shown.
+   */
+  public openReview(): void {
+    this.reviewState.set(true);
+  }
+
+  /**
+   * Closes the review. Changes not decided on wait for the next one.
+   */
+  public closeReview(): void {
+    this.reviewState.set(false);
   }
 
   /**

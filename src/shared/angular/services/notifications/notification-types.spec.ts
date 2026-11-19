@@ -92,6 +92,7 @@ describe('NotificationTypes', () => {
       'Cloning',
       'Continuous Integration',
       'Downloads',
+      'Persona',
       'Runs and Builds',
       'Source Control',
       'Terminals',

@@ -25,6 +25,15 @@
   font-size: 0.8125rem;
 }
 
+.activity__pending {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
 .activity__actions,
 .activity__add {
   display: flex;

@@ -10,6 +10,7 @@ import { AgentRequestToasts } from '@shared/angular/services/notifications/agent
 import { NarrowedGrantNotice } from '@shared/angular/services/notifications/narrowed-grant-notice';
 import { PersonaConversionNotice } from '@shared/angular/services/persona/persona-conversion-notice';
 import { Pete } from '@shared/angular/services/persona/pete';
+import { PersonaReviewNotice } from '@shared/angular/services/persona/persona-review-notice';
 import { AgentTabAttention } from '@shared/angular/services/agent-requests/agent-tab-attention';
 import { ModelUpdates } from '@shared/angular/services/ai-connections/model-updates';
 import { PluginUpdates } from '@shared/angular/services/plugins/plugin-updates';
@@ -120,6 +121,7 @@ export const config: ApplicationConfig = {
     // window is open, and does nothing until a connection is chosen for him.
     provideAppInitializer((): void => {
       inject(Pete).start();
+      inject(PersonaReviewNotice);
     }),
     // Instantiate the agent tab-attention bridge at start-up, for the same reason: a tab's dot has to
     // light while its conversation waits regardless of which panels are mounted, and no single chat
