@@ -5,7 +5,7 @@
         type="button"
         class="welcome__tool"
         [class.welcome__tool--unavailable]="tool.opens === null"
-        [appTooltip]="tool.opens === null ? 'Coming soon' : ''"
+        [appTooltip]="tool.opens === null ? comingSoon : ''"
         (click)="open(tool)"
       >
         <span class="welcome__tool-tile">
@@ -18,8 +18,12 @@
           <span class="welcome__tool-heading">
             <span class="welcome__tool-title">{{ tool.title }}</span>
             @if (tool.opens === 'plugin-manager' && updateCount() > 0) {
-              <app-chip class="welcome__tool-chip" tone="accent">
-                {{ updateCount() === 1 ? '1 update' : updateCount() + ' updates' }}
+              <app-chip
+                class="welcome__tool-chip"
+                tone="accent"
+                i18n="How many plugin updates are waiting"
+              >
+                {updateCount(), plural, =1 {1 update} other {{{ updateCount() }} updates}}
               </app-chip>
             }
           </span>

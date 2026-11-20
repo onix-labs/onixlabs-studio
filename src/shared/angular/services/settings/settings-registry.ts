@@ -18,6 +18,7 @@ import type { LogLevelSetting } from '@shared/api/log-channels';
 import type {
   ConfirmExternalLinks,
   CornerStyle,
+  InterfaceLanguage,
   QuitWhenLastWindowCloses,
   WindowSizeOnLaunch,
 } from '@shared/api/startup-settings';
@@ -75,7 +76,7 @@ import {
   type FileNestingRule,
 } from '@shared/angular/services/workspace/file-nesting';
 import { isSettingsOwned } from './settings-schema';
-import type { SectionDef, SettingDef, SettingsOwnedDef } from './settings-schema';
+import type { ChoiceOption, SectionDef, SettingDef, SettingsOwnedDef } from './settings-schema';
 
 /**
  * Maps a connection id to the model the user last selected for it, so switching connections restores
@@ -540,6 +541,7 @@ export interface SettingsValues {
   readonly 'application.menuAppearance': ApplicationMenuAppearance;
   readonly 'application.showWindowLock': boolean;
   readonly 'application.cornerStyle': CornerStyle;
+  readonly 'application.language': InterfaceLanguage;
   readonly 'application.windowSizeOnLaunch': WindowSizeOnLaunch;
   readonly 'application.restoreFullScreen': boolean;
   readonly 'application.quitWhenLastWindowCloses': QuitWhenLastWindowCloses;
@@ -984,32 +986,58 @@ const MOD_LABEL: string =
 const MODIFIER_CLICK: string =
   typeof window !== 'undefined' && window.host?.platform === 'darwin' ? '⌘-click' : 'Ctrl-click';
 
+/**
+ * Holds the Language setting's choices. Each language is named in itself, as language pickers do, so
+ * someone who cannot read the current language can still find their own. The test language is only
+ * offered in a development build.
+ */
+const LANGUAGE_OPTIONS: readonly ChoiceOption[] = [
+  {
+    value: 'system',
+    label: $localize`:Language setting choice that follows the operating system:Match the System`,
+  },
+  { value: 'en', label: 'English' },
+  { value: 'fr', label: 'Français' },
+  { value: 'es', label: 'Español' },
+  { value: 'de', label: 'Deutsch' },
+  ...(typeof window !== 'undefined' && window.host?.packaged === true
+    ? []
+    : [{ value: 'pseudo', label: 'Pseudo (testing)' }]),
+];
+
 export const SETTINGS_REGISTRY: readonly SectionDef[] = [
   {
     id: 'application',
-    label: 'Application',
+    label: $localize`:Settings section title:Application`,
     settings: [
+      {
+        key: 'application.language',
+        since: '2026.1.0-beta.12',
+        title: $localize`:Setting title:Language`,
+        description: $localize`:Setting description:The language Studio's interface is shown in. Match the System uses the first of your system's preferred languages that Studio speaks, and English when it speaks none of them. Changing it restarts Studio.`,
+        control: { kind: 'select', options: LANGUAGE_OPTIONS },
+        default: 'system',
+        requiresRestart: true,
+      },
       {
         key: 'display.graphicsAcceleration',
         owner: 'display',
         // Collapsed out of three separate switches in this release, so an upgrading user has never
         // seen it and the wizard puts the appearance step in front of them once.
         since: '2026.1.0-beta.4',
-        title: 'Graphics Acceleration',
-        description:
-          'How much of the GPU the interface uses. Full shows every effect; Limited drops the ' +
-          'heavier ones for hardware that struggles; Off can fix rendering glitches but makes the ' +
-          'interface lag. Turning acceleration on or off restarts Studio.',
-        shortDescription:
-          'How much of the GPU the interface uses. Leave this automatic unless the interface ' +
-          'renders oddly or lags; changing it restarts Studio.',
+        title: $localize`:Setting title:Graphics Acceleration`,
+        description: $localize`:Setting description:How much of the GPU the interface uses. Full shows every effect; Limited drops the heavier ones for hardware that struggles; Off can fix rendering glitches but makes the interface lag. Turning acceleration on or off restarts Studio.`,
+        shortDescription: $localize`:Setting description, shortened for the setup wizard:How much of the GPU the interface uses. Leave this automatic unless the interface renders oddly or lags; changing it restarts Studio.`,
         control: {
           kind: 'select',
           options: [
-            { value: 'auto', label: 'Automatic' },
-            { value: 'off', label: 'Off' },
-            { value: 'limited', label: 'Limited' },
-            { value: 'full', label: 'Full' },
+            { value: 'auto', label: $localize`:Setting choice:Automatic` },
+            {
+              value: 'off',
+              label: $localize`:Setting choice, graphics acceleration turned off:Off`,
+            },
+            { value: 'limited', label: $localize`:Setting choice, graphics acceleration:Limited` },
+            { value: 'full', label: $localize`:Setting choice, graphics acceleration:Full` },
           ],
         },
         requiresRestart: true,
@@ -1017,38 +1045,41 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       {
         key: 'appearance.themeMode',
         owner: 'theme',
-        title: 'Theme',
-        description: 'Light, dark, or follow the operating system.',
+        title: $localize`:Setting title, the colour scheme:Theme`,
+        description: $localize`:Setting description:Light, dark, or follow the operating system.`,
         control: {
           kind: 'select',
           options: [
-            { value: 'light', label: 'Light' },
-            { value: 'dark', label: 'Dark' },
-            { value: 'system', label: 'System' },
+            { value: 'light', label: $localize`:Setting choice, light theme:Light` },
+            { value: 'dark', label: $localize`:Setting choice, dark theme:Dark` },
+            {
+              value: 'system',
+              label: $localize`:Setting choice, theme follows the operating system:System`,
+            },
           ],
         },
       },
       {
         key: 'appearance.accent',
         owner: 'theme',
-        title: 'Accent',
-        description:
-          'The colour used for highlights and focus. Pick a preset, or choose Custom for any hue.',
+        title: $localize`:Setting title, the highlight colour:Accent`,
+        description: $localize`:Setting description:The colour used for highlights and focus. Pick a preset, or choose Custom for any hue.`,
         control: { kind: 'accent' },
       },
       {
         key: 'application.cornerStyle',
-        title: 'Corner Style',
-        description:
-          'The shape of corners across the interface. Automatic draws squircles when Graphics ' +
-          'Acceleration is at Full, and rounded corners below it; Squircle is only offered at Full.',
+        title: $localize`:Setting title:Corner Style`,
+        description: $localize`:Setting description:The shape of corners across the interface. Automatic draws squircles when Graphics Acceleration is at Full, and rounded corners below it; Squircle is only offered at Full.`,
         control: {
           kind: 'select',
           options: [
-            { value: 'automatic', label: 'Automatic' },
-            { value: 'squircle', label: 'Squircle' },
-            { value: 'rounded', label: 'Rounded' },
-            { value: 'square', label: 'Square' },
+            { value: 'automatic', label: $localize`:Setting choice:Automatic` },
+            {
+              value: 'squircle',
+              label: $localize`:Setting choice, a corner shape between a square and a circle:Squircle`,
+            },
+            { value: 'rounded', label: $localize`:Setting choice, corner shape:Rounded` },
+            { value: 'square', label: $localize`:Setting choice, corner shape:Square` },
           ],
         },
         default: 'automatic',

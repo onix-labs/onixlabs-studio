@@ -32,6 +32,12 @@ describe('relativeDate', () => {
     expect(relativeDate(ago(3000 * day), NOW)).toBe('8 years ago');
   });
 
+  it('phrasesItInTheGivenLocale', () => {
+    const day: number = 24 * 60 * 60;
+    expect(relativeDate(ago(2 * day), NOW, 'fr')).toBe('il y a 2 jours');
+    expect(relativeDate(ago(2 * day), NOW, 'de')).toBe('vor 2 Tagen');
+  });
+
   it('handlesTheFutureAndUnreadableDates', () => {
     expect(relativeDate(new Date(NOW + 60_000).toISOString(), NOW)).toBe('in the future');
     expect(relativeDate('not a date', NOW)).toBe('');

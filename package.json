@@ -75,6 +75,7 @@
     "@angular/compiler": "^22.2.6",
     "@angular/compiler-cli": "^22.2.6",
     "@angular/core": "^22.2.6",
+    "@angular/localize": "^22.2.6",
     "@angular/platform-browser": "^22.2.6",
     "@anthropic-ai/claude-agent-sdk": "0.3.310",
     "@electron/rebuild": "^4.2.1",

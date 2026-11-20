@@ -23,22 +23,34 @@ const CORE_TRAILING_PRIORITY: number = 1000;
  * The tab types offered under File → New, in the order the welcome screen presents them.
  */
 const NEW_TAB_TYPES: readonly { readonly type: TabType; readonly label: string }[] = [
-  { type: 'code', label: 'Code File' },
-  { type: 'markdown', label: 'Markdown Document' },
-  { type: 'terminal', label: 'Terminal' },
-  { type: 'agent', label: 'Agent' },
-  { type: 'api-explorer', label: 'API Request' },
-  { type: 'database-explorer', label: 'Database Explorer' },
+  { type: 'code', label: $localize`:app-menu|Menu item under File › New:Code File` },
+  { type: 'markdown', label: $localize`:app-menu|Menu item under File › New:Markdown Document` },
+  { type: 'terminal', label: $localize`:app-menu|Menu item under File › New:Terminal` },
+  {
+    type: 'agent',
+    label: $localize`:app-menu|Menu item under File › New, for an AI agent conversation:Agent`,
+  },
+  { type: 'api-explorer', label: $localize`:app-menu|Menu item under File › New:API Request` },
+  {
+    type: 'database-explorer',
+    label: $localize`:app-menu|Menu item under File › New:Database Explorer`,
+  },
 ];
 
 /**
  * The tools offered under View → Tools, each a singleton workbench surface.
  */
 const TOOL_TAB_TYPES: readonly { readonly type: TabType; readonly label: string }[] = [
-  { type: 'mission-control', label: 'Mission Control' },
-  { type: 'containers', label: 'Containers' },
-  { type: 'model-manager', label: 'AI Manager' },
-  { type: 'system-monitor', label: 'System Monitor' },
+  {
+    type: 'mission-control',
+    label: $localize`:app-menu|Menu item under View › Tools:Mission Control`,
+  },
+  { type: 'containers', label: $localize`:app-menu|Menu item under View › Tools:Containers` },
+  { type: 'model-manager', label: $localize`:app-menu|Menu item under View › Tools:AI Manager` },
+  {
+    type: 'system-monitor',
+    label: $localize`:app-menu|Menu item under View › Tools:System Monitor`,
+  },
 ];
 
 /**
@@ -108,11 +120,11 @@ export class CoreMenu {
     (): readonly MenuContribution[] => [
       {
         id: 'file',
-        label: 'File',
+        label: $localize`:app-menu|An entry in the application menu:File`,
         items: [
           {
             id: 'core.file.new',
-            label: 'New',
+            label: $localize`:app-menu|An entry in the application menu:New`,
             items: NEW_TAB_TYPES.map((entry: { type: TabType; label: string }): MenuEntry => ({
               id: `core.file.new.${entry.type}`,
               label: entry.label,
@@ -121,7 +133,7 @@ export class CoreMenu {
           },
           {
             id: 'core.file.open',
-            label: 'Open File',
+            label: $localize`:app-menu|An entry in the application menu:Open File`,
             binding: 'app.openFile',
             run: (): void => void this.documents.openFile(),
           },
@@ -130,24 +142,49 @@ export class CoreMenu {
       },
       {
         id: 'edit',
-        label: 'Edit',
+        label: $localize`:app-menu|An entry in the application menu:Edit`,
         items: [
-          { id: 'core.edit.undo', label: 'Undo', accelerator: 'CmdOrCtrl+Z', role: 'undo' },
-          { id: 'core.edit.redo', label: 'Redo', accelerator: 'CmdOrCtrl+Shift+Z', role: 'redo' },
+          {
+            id: 'core.edit.undo',
+            label: $localize`:app-menu|An entry in the application menu:Undo`,
+            accelerator: 'CmdOrCtrl+Z',
+            role: 'undo',
+          },
+          {
+            id: 'core.edit.redo',
+            label: $localize`:app-menu|An entry in the application menu:Redo`,
+            accelerator: 'CmdOrCtrl+Shift+Z',
+            role: 'redo',
+          },
           MENU_SEPARATOR,
-          { id: 'core.edit.cut', label: 'Cut', accelerator: 'CmdOrCtrl+X', role: 'cut' },
-          { id: 'core.edit.copy', label: 'Copy', accelerator: 'CmdOrCtrl+C', role: 'copy' },
-          { id: 'core.edit.paste', label: 'Paste', accelerator: 'CmdOrCtrl+V', role: 'paste' },
+          {
+            id: 'core.edit.cut',
+            label: $localize`:app-menu|An entry in the application menu:Cut`,
+            accelerator: 'CmdOrCtrl+X',
+            role: 'cut',
+          },
+          {
+            id: 'core.edit.copy',
+            label: $localize`:app-menu|An entry in the application menu:Copy`,
+            accelerator: 'CmdOrCtrl+C',
+            role: 'copy',
+          },
+          {
+            id: 'core.edit.paste',
+            label: $localize`:app-menu|An entry in the application menu:Paste`,
+            accelerator: 'CmdOrCtrl+V',
+            role: 'paste',
+          },
           MENU_SEPARATOR,
         ],
       },
       {
         id: 'view',
-        label: 'View',
+        label: $localize`:app-menu|An entry in the application menu:View`,
         items: [
           {
             id: 'core.view.tools',
-            label: 'Tools',
+            label: $localize`:app-menu|An entry in the application menu:Tools`,
             items: TOOL_TAB_TYPES.map((entry: { type: TabType; label: string }): MenuEntry => ({
               id: `core.view.tools.${entry.type}`,
               label: entry.label,
@@ -170,12 +207,12 @@ export class CoreMenu {
       return [
         {
           id: 'file',
-          label: 'File',
+          label: $localize`:app-menu|An entry in the application menu:File`,
           items: [
             MENU_SEPARATOR,
             {
               id: 'core.file.settings',
-              label: 'Settings',
+              label: $localize`:app-menu|An entry in the application menu:Settings`,
               binding: 'app.settings',
               applicationMenu: 'settings',
               run: (): void => void this.tabs.open('settings'),
@@ -183,7 +220,7 @@ export class CoreMenu {
             MENU_SEPARATOR,
             {
               id: 'core.file.closeTab',
-              label: 'Close Tab',
+              label: $localize`:app-menu|An entry in the application menu:Close Tab`,
               binding: 'app.closeTab',
               enabled: active !== undefined,
               run: (): void => {
@@ -197,10 +234,14 @@ export class CoreMenu {
         },
         {
           id: 'view',
-          label: 'View',
+          label: $localize`:app-menu|An entry in the application menu:View`,
           items: [
             MENU_SEPARATOR,
-            { id: 'core.view.fullscreen', label: 'Toggle Full Screen', role: 'togglefullscreen' },
+            {
+              id: 'core.view.fullscreen',
+              label: $localize`:app-menu|An entry in the application menu:Toggle Full Screen`,
+              role: 'togglefullscreen',
+            },
             // Development aids, left out of a packaged build: a reload there throws away the session's
             // state for nothing, and the developer tools are no use to someone using Studio.
             ...(window.host?.packaged === true
@@ -208,52 +249,68 @@ export class CoreMenu {
               : [
                   {
                     id: 'core.view.devtools',
-                    label: 'Toggle Developer Tools',
+                    label: $localize`:app-menu|An entry in the application menu:Toggle Developer Tools`,
                     role: 'toggleDevTools' as const,
                   },
-                  { id: 'core.view.reload', label: 'Reload', role: 'forceReload' as const },
+                  {
+                    id: 'core.view.reload',
+                    label: $localize`:app-menu|An entry in the application menu:Reload`,
+                    role: 'forceReload' as const,
+                  },
                 ]),
           ],
         },
         {
           id: 'window',
-          label: 'Window',
+          label: $localize`:app-menu|An entry in the application menu:Window`,
           items: [
-            { id: 'core.window.minimize', label: 'Minimise', role: 'minimize' },
-            { id: 'core.window.zoom', label: 'Zoom', role: 'zoom' },
+            {
+              id: 'core.window.minimize',
+              label: $localize`:app-menu|An entry in the application menu:Minimise`,
+              role: 'minimize',
+            },
+            {
+              id: 'core.window.zoom',
+              label: $localize`:app-menu|An entry in the application menu:Zoom`,
+              role: 'zoom',
+            },
             MENU_SEPARATOR,
-            { id: 'core.window.close', label: 'Close Window', role: 'close' },
+            {
+              id: 'core.window.close',
+              label: $localize`:app-menu|An entry in the application menu:Close Window`,
+              role: 'close',
+            },
           ],
         },
         {
           id: 'help',
-          label: 'Help',
+          label: $localize`:app-menu|An entry in the application menu:Help`,
           items: [
             {
               id: 'core.help.documentation',
-              label: 'Documentation',
+              label: $localize`:app-menu|An entry in the application menu:Documentation`,
               run: (): void => this.help.openDocumentation(),
             },
             {
               id: 'core.help.shortcuts',
-              label: 'Keyboard Shortcuts',
+              label: $localize`:app-menu|An entry in the application menu:Keyboard Shortcuts`,
               run: (): void => this.settingsNavigation.open('keyboard'),
             },
             MENU_SEPARATOR,
             {
               id: 'core.help.issue',
-              label: 'Report an Issue',
+              label: $localize`:app-menu|An entry in the application menu:Report an Issue`,
               run: (): void => this.help.openIssueReport(),
             },
             {
               id: 'core.help.releases',
-              label: 'Release Notes',
+              label: $localize`:app-menu|An entry in the application menu:Release Notes`,
               run: (): void => this.help.openReleaseNotes(),
             },
             MENU_SEPARATOR,
             {
               id: 'core.help.about',
-              label: 'About ONIXLabs Studio',
+              label: $localize`:app-menu|An entry in the application menu:About ONIXLabs Studio`,
               applicationMenu: 'about',
               run: (): void => void this.help.showAbout(),
             },

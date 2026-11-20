@@ -1,3 +1,4 @@
+import { interfaceLocale } from '@shared/angular/services/locale/interface-locale';
 import { relativeDate } from '@shared/angular/services/source-control/relative-date';
 
 /**
@@ -21,9 +22,15 @@ export function formatDuration(ms: number | undefined): string {
   if (ms < 1000) {
     return `${Math.round(ms)} ms`;
   }
-  return ms < 60_000
-    ? `${(ms / 1000).toFixed(1)} s`
-    : `${Math.floor(ms / 60_000)} min ${Math.round((ms % 60_000) / 1000)} s`;
+  if (ms >= 60_000) {
+    return `${Math.floor(ms / 60_000)} min ${Math.round((ms % 60_000) / 1000)} s`;
+  }
+  // The unit symbols are the same in every language Studio speaks; the decimal separator is not.
+  const seconds: string = new Intl.NumberFormat(interfaceLocale(), {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(ms / 1000);
+  return `${seconds} s`;
 }
 
 /**
@@ -73,7 +80,7 @@ export function clockMinutes(epochMs: number): string {
  */
 export function fullTime(epochMs: number, now: number = Date.now()): string {
   const date: Date = new Date(epochMs);
-  const when: string = date.toLocaleString(undefined, {
+  const when: string = date.toLocaleString(interfaceLocale(), {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -96,7 +103,9 @@ export function fullTime(epochMs: number, now: number = Date.now()): string {
  */
 export function taskTiming(startedAt: number | undefined, reportedMs: number, now: number): string {
   if (startedAt !== undefined) {
-    return `Started ${clockMinutes(startedAt)} · ${formatElapsed(now - startedAt)}`;
+    const time: string = clockMinutes(startedAt);
+    const elapsed: string = formatElapsed(now - startedAt);
+    return $localize`:When a background task started and how long it has run, such as "Started 14.32 · 3m 12s", with the clock time in the local format:Started ${time}:time: · ${elapsed}:elapsed:`;
   }
   return reportedMs > 0 ? formatElapsed(reportedMs) : '';
 }

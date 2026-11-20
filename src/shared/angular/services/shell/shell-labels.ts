@@ -14,4 +14,4 @@
  * and each spelling out its own wording is another chance for one of them to drift — the Terminal
  * ribbon said "Finder" on Windows.
  */
-export const OPEN_IN_FILE_SYSTEM_LABEL: string = 'Open in File System';
+export const OPEN_IN_FILE_SYSTEM_LABEL: string = $localize`:A command that shows a file or folder in the operating system's file manager:Open in File System`;

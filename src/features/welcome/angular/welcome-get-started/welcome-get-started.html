@@ -1,14 +1,18 @@
 <div class="start">
   <!-- No visible headings: the tab already names the section, and the two columns explain
        themselves. Each column keeps an accessible name. -->
-  <section class="start__column" aria-label="Get started">
+  <section
+    class="start__column"
+    aria-label="Get started"
+    i18n-aria-label="Accessible name of the Welcome screen's actions column"
+  >
     <div class="start__actions">
       @for (action of actions; track action.label) {
         <button
           type="button"
           class="welcome__action"
           [class.welcome__action--unavailable]="isUnavailable(action)"
-          [appTooltip]="isUnavailable(action) ? 'Coming soon' : ''"
+          [appTooltip]="isUnavailable(action) ? comingSoon : ''"
           (click)="run(action)"
         >
           <app-icon class="welcome__action-icon" [icon]="action.icon" />
@@ -19,13 +23,20 @@
     </div>
   </section>
 
-  <section class="start__column start__column--recent" aria-label="Recent items">
+  <section
+    class="start__column start__column--recent"
+    aria-label="Recent items"
+    i18n-aria-label="Accessible name of the Welcome screen's recent items column"
+  >
     <div class="welcome__recent">
       <!-- One row: what kind of item to show, the search, and Clear. -->
       <div class="welcome__recent-head">
         <app-dropdown
           class="welcome__recent-filter"
           ariaLabel="Show"
+          i18n-ariaLabel="
+            Accessible name of the recent items filter, which picks what kind of item to show
+          "
           [fullWidth]="true"
           [options]="filterOptions"
           [value]="activeFilter()"
@@ -36,7 +47,9 @@
           <input
             type="text"
             placeholder="Search recent items…"
+            i18n-placeholder
             aria-label="Search recent items"
+            i18n-aria-label
             [value]="query()"
             (input)="onSearchInput($event)"
             (keydown.escape)="query.set('')"
@@ -45,7 +58,7 @@
         @if (hasRecent()) {
           <button type="button" class="welcome__clear" (click)="requestClearRecent()">
             <app-icon [icon]="Icon.TRASH" />
-            <span>Clear</span>
+            <span i18n="Button that clears the recent items list">Clear</span>
           </button>
         }
       </div>
@@ -65,7 +78,7 @@
                 <span class="welcome__recent-time">{{ relativeTime(item.openedAt) }}</span>
                 <app-button
                   [pressed]="item.pinned"
-                  [ariaLabel]="item.pinned ? 'Unstar item' : 'Star item'"
+                  [ariaLabel]="item.pinned ? unstarLabel : starLabel"
                   [icon]="item.pinned ? Icon.WELCOME_STAR_FILLED : Icon.WELCOME_STAR"
                   variant="none"
                   size="small"
@@ -83,7 +96,9 @@
                 />
                 <app-button
                   ariaLabel="Remove item"
+                  i18n-ariaLabel
                   tooltip="Remove from recent items"
+                  i18n-tooltip
                   [icon]="Icon.TRASH"
                   variant="none"
                   size="small"
@@ -97,11 +112,11 @@
         <div class="welcome__recent-empty">
           <app-icon [icon]="Icon.RECENT_EMPTY" [size]="4" />
           @if (hasRecent()) {
-            <p class="welcome__recent-empty-title">No matching items</p>
-            <p class="welcome__recent-empty-hint">Try a different filter or search.</p>
+            <p class="welcome__recent-empty-title" i18n>No matching items</p>
+            <p class="welcome__recent-empty-hint" i18n>Try a different filter or search.</p>
           } @else {
-            <p class="welcome__recent-empty-title">No recent items</p>
-            <p class="welcome__recent-empty-hint">
+            <p class="welcome__recent-empty-title" i18n>No recent items</p>
+            <p class="welcome__recent-empty-hint" i18n>
               Open something or create a new project to get started.
             </p>
           }
@@ -121,16 +136,23 @@
   [width]="24"
   [frameless]="true"
   ariaLabel="Clear recent items"
+  i18n-ariaLabel
   (dismiss)="cancelClearRecent()"
 >
   <ng-template appModalContent>
-    <h2 class="welcome__confirm-title">Clear Recent Items</h2>
-    <p class="welcome__confirm-message welcome__confirm-message--body">
+    <h2 class="welcome__confirm-title" i18n>Clear Recent Items</h2>
+    <p class="welcome__confirm-message welcome__confirm-message--body" i18n>
       Are you sure you want to clear all recent items? This cannot be undone.
     </p>
     <app-button-row>
-      <app-button variant="solid" tone="danger" label="Clear" (click)="clearRecent()" />
-      <app-button variant="none" label="Cancel" (click)="cancelClearRecent()" />
+      <app-button
+        variant="solid"
+        tone="danger"
+        label="Clear"
+        i18n-label="Confirms clearing the recent items list"
+        (click)="clearRecent()"
+      />
+      <app-button variant="none" label="Cancel" i18n-label (click)="cancelClearRecent()" />
     </app-button-row>
   </ng-template>
 </app-modal>
@@ -144,19 +166,33 @@
   [width]="30"
   [frameless]="true"
   ariaLabel="Item not found"
+  i18n-ariaLabel
   (dismiss)="dismissMissing()"
 >
   <ng-template appModalContent>
     @if (missingItem(); as missing) {
-      <h2 class="welcome__confirm-title">Can’t Find This Item</h2>
-      <p class="welcome__confirm-message welcome__confirm-message--body">
+      <h2 class="welcome__confirm-title" i18n>Can’t Find This Item</h2>
+      <p
+        class="welcome__confirm-message welcome__confirm-message--body"
+        i18n="Shown when a recent item has gone from disk; the bold text is its name"
+      >
         <strong>{{ missing.name }}</strong> could not be opened. It may have been moved, renamed, or
         deleted.
       </p>
       <app-button-row>
-        <app-button variant="solid" label="Locate" (click)="locateMissing()" />
-        <app-button variant="ghost" label="Remove" (click)="removeMissing()" />
-        <app-button variant="none" label="Cancel" (click)="dismissMissing()" />
+        <app-button
+          variant="solid"
+          label="Locate"
+          i18n-label="Finds a missing recent item's new location"
+          (click)="locateMissing()"
+        />
+        <app-button
+          variant="ghost"
+          label="Remove"
+          i18n-label="Removes a missing item from the recent items list"
+          (click)="removeMissing()"
+        />
+        <app-button variant="none" label="Cancel" i18n-label (click)="dismissMissing()" />
       </app-button-row>
     }
   </ng-template>

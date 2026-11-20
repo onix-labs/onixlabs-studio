@@ -91,17 +91,32 @@ export class WelcomeScreen {
    * Gets the section tabs, in order.
    */
   protected readonly sections: readonly SectionTab[] = [
-    { id: 'get-started', label: 'Get Started', icon: Icon.WELCOME_TAB_GET_STARTED, shown: true },
+    {
+      id: 'get-started',
+      label: $localize`:Welcome screen tab:Get Started`,
+      icon: Icon.WELCOME_TAB_GET_STARTED,
+      shown: true,
+    },
     // ⚠️ Shown as a layout preview (#806): its starters say what they would do rather than doing it.
-    { id: 'create', label: 'Create Something', icon: Icon.WELCOME_TAB_CREATE, shown: true },
+    {
+      id: 'create',
+      label: $localize`:Welcome screen tab:Create Something`,
+      icon: Icon.WELCOME_TAB_CREATE,
+      shown: true,
+    },
     // Real since #805: repositories from the hosting plugins, clones by the version-control plugin.
     {
       id: 'source-control',
-      label: 'Version Control',
+      label: $localize`:Welcome screen tab:Version Control`,
       icon: Icon.WELCOME_TAB_SOURCE_CONTROL,
       shown: true,
     },
-    { id: 'tools', label: 'Tools & Settings', icon: Icon.WELCOME_TAB_TOOLS, shown: true },
+    {
+      id: 'tools',
+      label: $localize`:Welcome screen tab:Tools & Settings`,
+      icon: Icon.WELCOME_TAB_TOOLS,
+      shown: true,
+    },
   ];
 
   /**
