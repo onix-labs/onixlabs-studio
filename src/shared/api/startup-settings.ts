@@ -17,6 +17,13 @@ export type WindowSizeOnLaunch = 'remember' | 'default' | 'maximised';
 export type CornerStyle = 'automatic' | 'squircle' | 'rounded' | 'square';
 
 /**
+ * The language the interface is shown in. System follows the operating system's preferred languages,
+ * falling back to English when none of them is one Studio speaks; Pseudo is a test language that
+ * accents and stretches every translated string, so untranslated text and clipped layouts stand out.
+ */
+export type InterfaceLanguage = 'system' | 'en' | 'fr' | 'es' | 'de' | 'pseudo';
+
+/**
  * When opening a link in the browser asks first: never, only for links from content Studio did not
  * write (agent output, Markdown, web and server content), or always.
  */
@@ -62,6 +69,12 @@ export interface StartupSettings {
    * change shape as the renderer starts.
    */
   readonly cornerStyle: CornerStyle;
+
+  /**
+   * Gets the language the interface is shown in, needed before the renderer's code loads: its text is
+   * translated as each module is first read, so the translations have to be in place before then.
+   */
+  readonly language: InterfaceLanguage;
 
   /**
    * Gets when opening a link in the browser asks first. The main process opens every link, including
@@ -158,6 +171,7 @@ export const DEFAULT_STARTUP_SETTINGS: StartupSettings = {
   windowSizeOnLaunch: 'remember',
   restoreFullScreen: true,
   cornerStyle: 'automatic',
+  language: 'system',
   confirmExternalLinks: 'never',
   addStudioUserFileToGitignore: true,
   projectScanDepth: 2,
@@ -230,6 +244,11 @@ export function parseStartupSettings(raw: unknown): StartupSettings {
       record['cornerStyle'],
       ['automatic', 'squircle', 'rounded', 'square'],
       defaults.cornerStyle,
+    ),
+    language: oneOf<InterfaceLanguage>(
+      record['language'],
+      ['system', 'en', 'fr', 'es', 'de', 'pseudo'],
+      defaults.language,
     ),
     confirmExternalLinks: oneOf<ConfirmExternalLinks>(
       record['confirmExternalLinks'],

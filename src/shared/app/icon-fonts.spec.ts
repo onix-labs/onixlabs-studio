@@ -75,7 +75,8 @@ describe('icon fonts', () => {
     // into a cold start — looks nothing like a missing function call.
     const main: string = readFileSync('src/shared/app/main.ts', 'utf8');
     const call: number = main.indexOf('warmIconFonts()');
-    const bootstrap: number = main.indexOf('bootstrapApplication(');
+    // `main.ts` bootstraps by importing `start-studio.ts`, once the interface's language has loaded.
+    const bootstrap: number = main.indexOf("import('./start-studio')");
 
     expect(main).toContain("from './icon-fonts'");
     expect(call).toBeGreaterThan(-1);

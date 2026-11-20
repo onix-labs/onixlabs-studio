@@ -17,11 +17,15 @@
       "root": "",
       "sourceRoot": "src",
       "prefix": "app",
+      "i18n": {
+        "sourceLocale": "en-GB"
+      },
       "architect": {
         "build": {
           "builder": "@angular/build:application",
           "options": {
             "browser": "src/shared/app/main.ts",
+            "polyfills": ["@angular/localize/init"],
             "index": "src/shared/app/index.html",
             "baseHref": "./",
             "tsConfig": "tsconfig.app.json",
@@ -135,6 +139,12 @@
               "functions": 83.4,
               "lines": 86
             }
+          }
+        },
+        "extract-i18n": {
+          "builder": "@angular/build:extract-i18n",
+          "options": {
+            "buildTarget": "onixlabs-studio:build:development"
           }
         }
       }
