@@ -99,6 +99,7 @@ const EXTENSION_TO_LANGUAGE: Readonly<Record<string, string>> = {
   '.graphql': 'graphql',
   '.vue': 'vue',
   '.svelte': 'svelte',
+  '.toml': 'toml',
 };
 
 /**
@@ -138,6 +139,7 @@ const LANGUAGE_NAMES: Readonly<Record<string, string>> = {
   graphql: 'GraphQL',
   vue: 'Vue',
   svelte: 'Svelte',
+  toml: 'TOML',
 };
 
 /**
