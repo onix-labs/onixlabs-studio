@@ -13,21 +13,14 @@
 #   toolchains.sh system   as root: everything installed machine-wide
 #   toolchains.sh user     as the user: rustup into ~/.cargo
 #
-# A toolchain release cannot break the gate silently: a version moves only when this file changes.
+# The versions are pinned in toolchains.env, which the macOS and Windows runners read as well.
 
 set -euo pipefail
 
-# The pins. NODE_VERSION comes from the repository's .nvmrc, passed in as a build argument.
-DOTNET_SDK_VERSION=10.0.404
-GO_VERSION=1.27.4
-GO_SHA256=7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840
-RUST_VERSION=1.100.0
-TEMURIN_RELEASE=jdk-25.0.5.1+2
-TEMURIN_ASSET=OpenJDK25U-jdk_x64_linux_hotspot_25.0.5.1_2.tar.gz
-TEMURIN_SHA256=760f91b22c3efc9bd1b64ff950598231be82928cc807e30691a0e7a2995a62c0
-MAVEN_VERSION=3.9.16
-GRADLE_VERSION=9.9.2
-CMAKE_VERSION=4.5.1
+# The pins, from the file beside this one that the macOS and Windows runners read too. NODE_VERSION
+# comes from the repository's .nvmrc, passed in as a build argument.
+# shellcheck source=toolchains.env
+. "$(dirname "${BASH_SOURCE[0]}")/toolchains.env"
 
 # Downloads a URL to a file, retrying a flaky connection rather than failing the image on it.
 fetch() {

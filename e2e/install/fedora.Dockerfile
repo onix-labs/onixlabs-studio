@@ -1,6 +1,6 @@
 # The install gate's Fedora machine (#1546): the same as debian.Dockerfile on the other family of
 # Linux distribution, so a library or path that only Debian happens to provide cannot hide a failure.
-# The toolchains are the same pinned ones, from toolchains.sh.
+# The toolchains are the same pinned ones, from toolchains.env.
 
 FROM fedora:45
 
@@ -22,7 +22,7 @@ RUN dnf install -y --setopt=install_weak_deps=False \
     libdrm cups-libs libXcomposite libXdamage libXrandr pango libsecret \
   && dnf clean all
 
-COPY toolchains.sh /usr/local/lib/studio-gate/toolchains.sh
+COPY toolchains.sh toolchains.env /usr/local/lib/studio-gate/
 RUN NODE_VERSION="${NODE_VERSION}" bash /usr/local/lib/studio-gate/toolchains.sh system
 
 # A user, as Studio is installed and run by one: never root.

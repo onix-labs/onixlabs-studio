@@ -9,11 +9,7 @@ import type { StudioPlatform } from './studio-platform';
 /**
  * Runs a program to completion.
  */
-const run: (
-  file: string,
-  args: readonly string[],
-  options: { cwd: string },
-) => Promise<{ stdout: string; stderr: string }> = promisify(execFile);
+const run: typeof execFile.__promisify__ = promisify(execFile);
 
 /**
  * Linux, from the AppImage release.yml ships.

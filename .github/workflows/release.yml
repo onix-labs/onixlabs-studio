@@ -221,6 +221,41 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # The install gate (#1546): every installer just built is installed on a clean machine of its own
+  # platform, and a full first-run setup is completed through the real plugin index, then restarted.
+  # See install-gate.yml. Only on the dry run, because that is where a release can still be stopped:
+  # the `release` branch's ruleset requires the "Install gate" check below, so a `main → release` PR
+  # whose installers cannot be installed and set up cannot merge, and the push that tags and drafts
+  # never happens.
+  #
+  # Not repeated on the push to `release`. The push builds from the commit the PR proved, so the
+  # installers it releases are the ones the gate installed; running it again would spend most of an
+  # hour proving the same thing. Should that ever stop being true — a step that changes what the push
+  # builds — give `release` a `needs:` on a gate run here too.
+  install-gate-legs:
+    name: Install gate legs
+    needs: build
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/install-gate.yml
+    with:
+      reuse-installers: true
+
+  # The check the `release` ruleset requires, under a name of its own: a job inside a called workflow
+  # is reported as "<caller> / <job>", which is no name to pin a ruleset to.
+  install-gate:
+    name: Install gate
+    needs: install-gate-legs
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every leg passed
+        env:
+          RESULT: ${{ needs.install-gate-legs.result }}
+        run: |
+          echo "install gate: $RESULT"
+          [ "$RESULT" = success ]
+
   release:
     name: Tag and draft the release
     needs: [build, plugin-index]

@@ -1,17 +1,22 @@
 import { LinuxPlatform } from './linux-platform';
+import { MacosPlatform } from './macos-platform';
 import type { StudioPlatform } from './studio-platform';
+import { WindowsPlatform } from './windows-platform';
 
 /**
  * Resolves the platform the gate is running on.
  * @returns Returns the platform.
- * @throws Error when the platform has no implementation yet.
+ * @throws Error when the platform has no installer step.
  */
 export function currentPlatform(): StudioPlatform {
-  if (process.platform === 'linux') {
-    return new LinuxPlatform();
+  switch (process.platform) {
+    case 'linux':
+      return new LinuxPlatform();
+    case 'darwin':
+      return new MacosPlatform();
+    case 'win32':
+      return new WindowsPlatform();
+    default:
+      throw new Error(`The install gate has no installer step for ${process.platform}.`);
   }
-  // macOS and Windows install from the DMG and the NSIS installer respectively; both arrive with the
-  // release.yml job (#1546). Failing here says so, rather than launching something that is not the
-  // installed app.
-  throw new Error(`The install gate has no installer step for ${process.platform} yet (#1546).`);
 }

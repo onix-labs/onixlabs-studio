@@ -535,10 +535,11 @@ function checkInstalledPayloads(userData: string, report: GateReport): void {
  * @returns Returns the report.
  */
 function toolchainReport(): string {
+  // The images carry the script; a runner reads it from the checkout.
+  const script: string =
+    process.env['STUDIO_GATE_TOOLCHAINS'] ?? '/usr/local/lib/studio-gate/toolchains.sh';
   try {
-    return execFileSync('bash', ['-l', '/usr/local/lib/studio-gate/toolchains.sh', 'report'], {
-      encoding: 'utf8',
-    });
+    return execFileSync('bash', ['-l', script, 'report'], { encoding: 'utf8' });
   } catch (error: unknown) {
     return `The toolchain report failed: ${String(error)}`;
   }

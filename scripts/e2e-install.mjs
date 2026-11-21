@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The install gate, run locally (#1546): builds this branch's Linux installer, installs it on a clean
+// The install gate's Linux runs (#1546): builds this branch's Linux installer, installs it on a clean
 // Linux machine that has every toolchain the plugins drive, completes a full first-run setup against
 // the real plugin index, restarts, and reports what happened to each plugin.
 //
@@ -11,15 +11,27 @@
 //   npm run e2e:install -- --distro fedora     another distribution (debian, fedora)
 //   npm run e2e:install -- --distro all        every distribution, one after the other
 //   npm run e2e:install -- --reuse-installer   skip the build, using the AppImage already in release/
+//   npm run e2e:install -- --installer <file>  skip the build, using that AppImage — what CI does, with
+//                                              the one its build job made
 //
 // Evidence — Studio's logs, a listing of the plugin install folder, screenshots, the summary — lands
-// in e2e/install/output/<distro>/, which the container writes to.
+// in e2e/install/output/<distro>/, which the container writes to. The macOS and Windows legs run the
+// same test on GitHub's runners; see .github/workflows/install-gate.yml.
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
 import { argv, exit } from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { report } from './e2e-install-report.mjs';
 
 // Anchored to this file, so it runs the same from any working directory.
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -34,12 +46,14 @@ const CACHE = 'onixlabs-studio-e2e-install-cache';
 
 /**
  * Reads the command-line options.
- * @returns {{ distros: string[], reuseInstaller: boolean, playwright: string[] }} Returns the options.
+ * @returns {{ distros: string[], reuseInstaller: boolean, installer: string | undefined, playwright: string[] }}
+ * Returns the options.
  */
 function options() {
   const args = argv.slice(2);
   let distros = ['debian'];
   let reuseInstaller = false;
+  let installer;
   const playwright = [];
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -48,6 +62,8 @@ function options() {
       distros = value === 'all' ? DISTROS : [value];
     } else if (arg === '--reuse-installer') {
       reuseInstaller = true;
+    } else if (arg === '--installer') {
+      installer = resolve(args[(index += 1)]);
     } else {
       playwright.push(arg);
     }
@@ -58,7 +74,7 @@ function options() {
       exit(2);
     }
   }
-  return { distros, reuseInstaller, playwright };
+  return { distros, reuseInstaller, installer, playwright };
 }
 
 /**
@@ -89,19 +105,20 @@ function step(what, command, args) {
 
 /**
  * Finds the AppImage the last build wrote.
- * @returns {string | undefined} Returns its file name in release/, or undefined when there is none.
+ * @returns {string | undefined} Returns its path, or undefined when there is none.
  */
 function builtInstaller() {
   const release = join(REPO, 'release');
   if (!existsSync(release)) {
     return undefined;
   }
-  return readdirSync(release)
-    .filter((name) => name.endsWith('-linux-x86_64.AppImage') || name.endsWith('.AppImage'))
+  const newest = readdirSync(release)
+    .filter((name) => name.endsWith('.AppImage'))
     .sort(
       (left, right) =>
         statSync(join(release, right)).mtimeMs - statSync(join(release, left)).mtimeMs,
     )[0];
+  return newest === undefined ? undefined : join(release, newest);
 }
 
 /**
@@ -164,7 +181,7 @@ function buildImage(distro) {
 /**
  * Runs the gate in a fresh container of a distribution's image.
  * @param {string} distro The distribution.
- * @param {string} installer The AppImage's file name in release/.
+ * @param {string} installer The AppImage.
  * @param {readonly string[]} playwright Extra arguments for Playwright.
  * @returns {number} Returns Playwright's exit status.
  */
@@ -172,8 +189,16 @@ function runGate(distro, installer, playwright) {
   const output = join(REPO, 'e2e', 'install', 'output', distro);
   rmSync(output, { recursive: true, force: true });
   mkdirSync(output, { recursive: true });
+  // The container's user is not necessarily the host's (a CI runner's is uid 1001, the image's
+  // 1000), and it has to be able to write the evidence.
+  chmodSync(output, 0o777);
+  // On a Linux host the checkout's own node_modules is already Linux's, and the harness needs only
+  // Playwright from it; anywhere else the builder's volume stands in.
+  const modules =
+    process.platform === 'linux' && existsSync(join(REPO, 'node_modules', '@playwright', 'test'))
+      ? []
+      : ['--volume', `${MODULES}:/work/node_modules:ro`];
   console.log(`\n▶ Install and set up Studio on ${distro}`);
-  const container = `onixlabs-studio-install-${distro}-${Date.now()}`;
   return run('docker', [
     'run',
     '--rm',
@@ -181,21 +206,20 @@ function runGate(distro, installer, playwright) {
     '--platform',
     'linux/amd64',
     '--name',
-    container,
+    `onixlabs-studio-install-${distro}-${Date.now()}`,
     // Chromium uses shared memory for its renderers; Docker's 64 MB default crashes them.
     '--shm-size=2g',
-    // The harness — Playwright and the test — comes from the repository, read-only, with the
-    // builder's Linux node_modules. Studio itself is only ever the installed copy.
+    // The harness — Playwright and the test — comes from the repository, read-only. Studio itself is
+    // only ever the installed copy.
     '--volume',
     `${REPO}:/work:ro`,
+    ...modules,
     '--volume',
-    `${MODULES}:/work/node_modules:ro`,
-    '--volume',
-    `${join(REPO, 'release')}:/installers:ro`,
+    `${dirname(installer)}:/installers:ro`,
     '--volume',
     `${output}:/output`,
     '--env',
-    `STUDIO_GATE_INSTALLER=/installers/${installer}`,
+    `STUDIO_GATE_INSTALLER=/installers/${basename(installer)}`,
     '--env',
     'STUDIO_GATE_OUTPUT=/output',
     '--env',
@@ -218,46 +242,6 @@ function runGate(distro, installer, playwright) {
   ]);
 }
 
-/**
- * Prints the per-plugin summary the test wrote.
- * @param {string} distro The distribution.
- * @param {number} status Playwright's exit status.
- */
-function report(distro, status) {
-  const file = join(REPO, 'e2e', 'install', 'output', distro, 'summary.json');
-  console.log(`\n━━ ${distro}: ${status === 0 ? 'PASS' : 'FAIL'} ━━`);
-  if (!existsSync(file)) {
-    console.log(
-      '  No summary was written: the run stopped before setup. See the Playwright output above.',
-    );
-    return;
-  }
-  const summary = JSON.parse(readFileSync(file, 'utf8'));
-  const width = Math.max(...summary.plugins.map((plugin) => plugin.id.length), 10);
-  for (const plugin of summary.plugins) {
-    const mark = plugin.outcome === 'pass' ? '✔' : plugin.outcome === 'skipped' ? '–' : '✖';
-    const why = plugin.reason ? `  ${plugin.reason}` : '';
-    console.log(`  ${mark} ${plugin.id.padEnd(width)}  ${plugin.outcome.padEnd(7)}${why}`);
-  }
-  for (const finding of summary.findings ?? []) {
-    console.log(`  ! ${finding}`);
-  }
-  const counts = summary.plugins.reduce((tally, plugin) => {
-    tally[plugin.outcome] = (tally[plugin.outcome] ?? 0) + 1;
-    return tally;
-  }, {});
-  console.log(
-    `  ${Object.entries(counts)
-      .map(([outcome, count]) => `${count} ${outcome}`)
-      .join(
-        ', ',
-      )}; setup took ${Math.round((summary.setupSeconds ?? 0) / 60)} min, the run ${Math.round(
-      (summary.totalSeconds ?? 0) / 60,
-    )} min.`,
-  );
-  console.log(`  Evidence: e2e/install/output/${distro}/`);
-}
-
 try {
   execFileSync('docker', ['version', '--format', '{{.Server.Version}}'], { stdio: 'ignore' });
 } catch {
@@ -267,17 +251,17 @@ try {
   exit(1);
 }
 
-const { distros, reuseInstaller, playwright } = options();
+const { distros, reuseInstaller, installer: given, playwright } = options();
 const started = Date.now();
-if (!reuseInstaller || builtInstaller() === undefined) {
+if (given === undefined && (!reuseInstaller || builtInstaller() === undefined)) {
   buildInstaller();
 }
-const installer = builtInstaller();
-if (installer === undefined) {
-  console.error('The build wrote no AppImage to release/.');
+const installer = given ?? builtInstaller();
+if (installer === undefined || !existsSync(installer)) {
+  console.error(`No AppImage to install: ${installer ?? 'the build wrote none to release/'}.`);
   exit(1);
 }
-console.log(`\nInstaller: release/${installer}`);
+console.log(`\nInstaller: ${installer}`);
 
 const results = [];
 for (const distro of distros) {
@@ -285,7 +269,8 @@ for (const distro of distros) {
   results.push([distro, runGate(distro, installer, playwright)]);
 }
 for (const [distro, status] of results) {
-  report(distro, status);
+  report(distro, join(REPO, 'e2e', 'install', 'output', distro, 'summary.json'), status);
+  console.log(`  Evidence: e2e/install/output/${distro}/`);
 }
 console.log(`\nTotal ${Math.round((Date.now() - started) / 60000)} min.`);
 exit(results.some(([, status]) => status !== 0) ? 1 : 0);

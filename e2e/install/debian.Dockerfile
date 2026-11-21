@@ -3,7 +3,7 @@
 # AppImage this branch built into it and runs a full first-run setup against the real plugin index.
 #
 # The base is pinned to a dated snapshot, so the distribution's own packages only move when this line
-# does; the toolchains are pinned in toolchains.sh.
+# does; the toolchains are pinned in toolchains.env.
 
 FROM debian:trixie-20261104
 
@@ -27,7 +27,7 @@ RUN apt-get update \
     libsecret-1-0 \
   && rm -rf /var/lib/apt/lists/*
 
-COPY toolchains.sh /usr/local/lib/studio-gate/toolchains.sh
+COPY toolchains.sh toolchains.env /usr/local/lib/studio-gate/
 RUN NODE_VERSION="${NODE_VERSION}" bash /usr/local/lib/studio-gate/toolchains.sh system
 
 # A user, as Studio is installed and run by one: never root.
