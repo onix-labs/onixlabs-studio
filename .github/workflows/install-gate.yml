@@ -34,6 +34,7 @@ on:
       - 'e2e/install/**'
       - 'scripts/e2e-install.mjs'
       - 'scripts/e2e-install-report.mjs'
+      - 'scripts/package-linux.mjs'
 
 # A newer push to the PR supersedes the run in progress. Keyed apart from release.yml's own group, so
 # a dry run calling this cannot wait on itself.
@@ -74,16 +75,25 @@ jobs:
           cache: npm
 
       - name: Install dependencies
+        if: runner.os != 'Linux'
         run: npm ci
 
       - name: Build renderer (Angular)
+        if: runner.os != 'Linux'
         run: npm run build
 
       - name: Build Electron main + preload
+        if: runner.os != 'Linux'
         run: npm run build:electron
 
       - name: Package (unsigned)
+        if: runner.os != 'Linux'
         run: npx electron-builder ${{ matrix.args }} --publish never
+
+      # In Debian 12, for its glibc, as release.yml does (see scripts/package-linux.mjs).
+      - name: Package (Linux, unsigned, built in Debian 12)
+        if: runner.os == 'Linux'
+        run: node scripts/package-linux.mjs
 
       - name: Upload the installer
         uses: actions/upload-artifact@v7

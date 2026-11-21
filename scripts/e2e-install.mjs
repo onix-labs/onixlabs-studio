@@ -122,40 +122,17 @@ function builtInstaller() {
 }
 
 /**
- * Builds the Linux installer the way release.yml's Linux target does — `npm ci`, the renderer, the
- * main process, then `electron-builder --linux --x64 --publish never`, unsigned — in a Linux container.
+ * Builds the Linux installer exactly as release.yml's Linux target does: scripts/package-linux.mjs,
+ * unsigned, in Debian 12. The container's node_modules and caches are kept in volumes of their own.
  */
 function buildInstaller() {
   rmSync(join(REPO, 'release'), { recursive: true, force: true });
-  const steps = [
-    'set -e',
-    'stamp=node_modules/.e2e-install-lock',
-    'if ! cmp -s package-lock.json "$stamp"; then npm ci && cp package-lock.json "$stamp"; fi',
-    'npm run build',
-    'npm run build:electron',
-    'npx electron-builder --linux --x64 --publish never',
-  ].join('\n');
-  step('Build the Linux installer (in a container, as release.yml does)', 'docker', [
-    'run',
-    '--rm',
-    '--init',
-    '--platform',
-    'linux/amd64',
-    '--volume',
-    `${REPO}:/work`,
-    '--volume',
-    `${MODULES}:/work/node_modules`,
-    '--volume',
-    `${CACHE}:/root/.cache`,
-    '--workdir',
-    '/work',
-    // As release.yml: electron-builder downloads its own Electron for the target.
-    '--env',
-    'ELECTRON_SKIP_BINARY_DOWNLOAD=1',
-    `node:${NODE_VERSION}-bookworm`,
-    'bash',
-    '-c',
-    steps,
+  step('Build the Linux installer (as release.yml does)', 'node', [
+    join(REPO, 'scripts', 'package-linux.mjs'),
+    '--modules',
+    MODULES,
+    '--cache',
+    CACHE,
   ]);
 }
 

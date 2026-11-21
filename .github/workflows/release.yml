@@ -139,13 +139,24 @@ jobs:
           exit $missing
 
       - name: Build renderer (Angular)
+        if: matrix.platform != 'linux'
         run: npm run build
 
       - name: Build Electron main + preload (typecheck + bundle)
+        if: matrix.platform != 'linux'
         run: npm run build:electron
 
       - name: Package
+        if: matrix.platform != 'linux'
         run: npx electron-builder ${{ matrix.args }} --publish never
+
+      # Linux is built inside Debian 12, not on the runner. The AppImage's native module (node-pty) is
+      # compiled against the builder's glibc and will not load on a system with an older one: built on
+      # `ubuntu-latest` it needed glibc 2.42, and Studio could not start on Debian 13 or Ubuntu 24.04
+      # (the install gate found it, #1546). Debian 12's 2.36 is one every supported distribution has.
+      - name: Package (Linux, built in Debian 12)
+        if: matrix.platform == 'linux'
+        run: node scripts/package-linux.mjs
 
       # A job must emit its own target and nothing else. An `arch:` list in electron-builder.yml
       # silently overrides the CLI arch flag, and when both macOS jobs built both architectures they
