@@ -520,7 +520,7 @@ function codeFirstServers(profile, root, settings) {
     },
     go: {
       displayName: 'gopls',
-      languages: ['go'],
+      languages: ['go', 'go.mod', 'go.work'],
       resolve: () => {
         const go = detectGo();
         if (go === null) return { error: 'No Go toolchain found.' };
@@ -715,6 +715,8 @@ const EXTENSIONS = {
   java: ['.java'],
   kotlin: ['.kt', '.kts'],
   go: ['.go'],
+  'go.mod': ['go.mod'],
+  'go.work': ['go.work'],
   rust: ['.rs'],
   python: ['.py', '.pyi'],
   c: ['.c', '.h'],

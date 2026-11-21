@@ -818,6 +818,8 @@ export const FEATURE_LANGUAGES: readonly string[] = [
   'css',
   'dockerfile',
   'go',
+  'go.mod',
+  'go.work',
   'html',
   'java',
   'javascript',
