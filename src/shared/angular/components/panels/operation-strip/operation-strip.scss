@@ -1,0 +1,72 @@
+// The Commit panel's tool strip, tinted: the same fixed height, padding, gap and text size as
+// `app-panel-toolbar`, so the two strips stack as a pair and its buttons are the strip's own height.
+// The tint runs edge to edge with a hairline either side instead of the alert's rounded box: a strip is
+// part of the panel's frame, and a box inset from the edges read as content, sitting apart from the
+// tool strip it belongs to (#1321).
+//
+// The text takes the warning tone drawn towards the theme's text colour, as `app-alert` does: the tone
+// alone falls to 2:1 on its own tint.
+:host {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  block-size: calc(var(--control-height) + 1rem);
+  padding: 0.5rem;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--warning-color) 55%, var(--body-foreground-color));
+  background: rgba(var(--warning-color-rgb), 0.15);
+  border-block: 1px solid rgba(var(--warning-color-rgb), 0.5);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.operation-strip__icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  color: var(--warning-color);
+  font-size: 1rem;
+}
+
+// What gives way when the panel is narrow: cut off at its end, never wrapped, while the buttons keep
+// their place and their full labels.
+.operation-strip__text {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.125rem;
+  }
+}
+
+.operation-strip__title {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+// The count stays whole while the title gives way first: it is the line the user watches change.
+.operation-strip__progress {
+  flex: none;
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+.operation-strip__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.375rem;
+}

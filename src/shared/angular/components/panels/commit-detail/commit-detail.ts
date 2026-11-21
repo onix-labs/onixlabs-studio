@@ -32,7 +32,6 @@ import {
   TreeRow,
   TreeView,
 } from '@shared/angular/components/tree-view/tree-view';
-import { Alert } from '@shared/angular/components/alert/alert';
 import { MenuItem } from '@shared/angular/components/menu/menu';
 import {
   describeOperation,
@@ -43,6 +42,7 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
 import { VersionControlMissing } from '../version-control-missing/version-control-missing';
+import { OperationStrip } from '../operation-strip/operation-strip';
 import { RepositoryRestricted } from '../repository-restricted/repository-restricted';
 import { VersionControlPrompt } from '@shared/angular/services/plugins/version-control-prompt';
 import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
@@ -109,7 +109,6 @@ type WorkingRowData =
 @Component({
   selector: 'app-commit-detail',
   imports: [
-    Alert,
     Chip,
     Textarea,
     Button,
@@ -118,6 +117,7 @@ type WorkingRowData =
     Checkbox,
     PanelToolbar,
     TreeView,
+    OperationStrip,
     VersionControlMissing,
     RepositoryRestricted,
   ],
@@ -267,6 +267,20 @@ export class CommitDetail {
     const progress: { readonly resolved: number; readonly total: number } =
       this.repository.conflictProgress();
     return resolvedProgress(progress.resolved, progress.total);
+  });
+
+  /**
+   * Gets what the operation strip counts: how many files are resolved while any is conflicted, and
+   * once none is, that the operation is ready to finish — by Continue, or for a squash merge, by
+   * committing below (#1321).
+   */
+  protected readonly operationProgress: Signal<string | null> = computed((): string | null => {
+    if (this.conflictedFiles().length > 0) {
+      return this.resolvedProgress();
+    }
+    return this.repository.operation().kind === 'squash-merge'
+      ? $localize`:The merge strip's count once a squash merge has nothing conflicted:Ready to commit`
+      : $localize`:The merge or rebase strip's count once nothing is conflicted:Ready to continue`;
   });
 
   /**

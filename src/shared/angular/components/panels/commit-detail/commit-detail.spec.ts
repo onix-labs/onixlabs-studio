@@ -367,21 +367,25 @@ describe('CommitDetail', () => {
         'both.ts',
       ]);
 
-      const banner: HTMLElement = host.querySelector('.detail__operation')!;
+      const strip: HTMLElement = host.querySelector('app-operation-strip')!;
       // #1321: what is replayed onto what, by name, and which commit of how many.
-      expect(banner.textContent).toContain('Rebasing topic onto main — commit 2 of 5');
-      expect(banner.textContent).toContain('1 file could not be merged automatically');
-      // The shared warning alert, not a hand-built box.
-      expect(banner.querySelector('app-alert.alert--warning')).not.toBeNull();
+      expect(strip.textContent).toContain('Rebasing topic onto main — commit 2 of 5');
+      // What to do next is the strip's description, so the strip itself keeps to one line.
+      expect(strip.getAttribute('aria-description')).toContain(
+        '1 file could not be merged automatically',
+      );
+      // A strip directly under the tool strip, not the boxed alert it replaced.
+      expect(host.querySelector('app-alert')).toBeNull();
+      expect(host.querySelector('app-panel-toolbar')?.nextElementSibling).toBe(strip);
     });
 
     it('banner_namesWhatIsMergedIntoWhat_andCountsTheFilesResolved', () => {
       repository.conflictProgress.set({ resolved: 2, total: 5 });
       midOperation({ kind: 'merge', target: 'topic' }, ['both.ts']);
 
-      const banner: HTMLElement = host.querySelector('.detail__operation')!;
-      expect(banner.textContent).toContain('Merging topic into main');
-      expect(banner.textContent).toContain('2 of 5 files resolved');
+      const strip: HTMLElement = host.querySelector('app-operation-strip')!;
+      expect(strip.textContent).toContain('Merging topic into main');
+      expect(strip.textContent).toContain('2 of 5 files resolved');
     });
 
     it('aRefusedRow_saysHowManyConflictsAreLeft', () => {
@@ -454,7 +458,7 @@ describe('CommitDetail', () => {
       repository.selectedCommit.set(makeCommit('c1', []));
       fixture.detectChanges();
 
-      expect(host.querySelector('.detail__operation')).not.toBeNull();
+      expect(host.querySelector('app-operation-strip')).not.toBeNull();
     });
 
     it('continue_isInertWhileAnythingIsStillConflicted', () => {
@@ -466,9 +470,9 @@ describe('CommitDetail', () => {
       fixture.detectChanges();
 
       expect(namedButton(host, 'Continue').disabled).toBe(false);
-      expect(host.querySelector('.detail__operation-message')?.textContent).toContain(
-        'Continue to finish',
-      );
+      const strip: HTMLElement = host.querySelector('app-operation-strip')!;
+      expect(strip.textContent).toContain('Ready to continue');
+      expect(strip.getAttribute('aria-description')).toContain('Continue to finish');
     });
 
     it('skip_isOfferedOnlyByAnOperationThatReplaysASequence', () => {
@@ -484,9 +488,9 @@ describe('CommitDetail', () => {
       // Git recorded no merge to resume, so what is staged is committed like any other change.
       midOperation({ kind: 'squash-merge', target: 'topic' }, []);
 
-      expect(host.querySelector('.detail__operation-message')?.textContent).toContain(
-        'commit it below to finish',
-      );
+      const strip: HTMLElement = host.querySelector('app-operation-strip')!;
+      expect(strip.textContent).toContain('Ready to commit');
+      expect(strip.getAttribute('aria-description')).toContain('commit it below to finish');
     });
 
     it('theThreeCommands_reachTheRepository', () => {

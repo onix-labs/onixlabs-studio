@@ -72,46 +72,20 @@
     </div>
   }
 
-  <!-- What the working tree is in the middle of, and the three ways out of it. Shown whatever the graph
-       has selected: a repository mid-merge is mid-merge whichever commit is being looked at. -->
+  <!-- What the working tree is in the middle of, and the three ways out of it, as a strip flush under
+       the tool strip (#1321). Shown whatever the graph has selected: a repository mid-merge is
+       mid-merge whichever commit is being looked at. -->
   @if (repository.operationInFlight()) {
-    <div class="detail__operation">
-      <app-alert tone="warning">
-        <span class="detail__operation-title">{{ operationTitle() }}</span>
-        @if (resolvedProgress(); as progress) {
-          <span class="detail__operation-progress">{{ progress }}</span>
-        }
-        <span class="detail__operation-message">{{ operationMessage() }}</span>
-      </app-alert>
-      <app-button-row size="small">
-        <app-button
-          size="small"
-          variant="solid"
-          label="Continue"
-          [disabled]="!repository.canContinueOperation()"
-          tooltip="Carry on, now that the conflicts are resolved"
-          (click)="continueOperation()"
-        />
-        @if (canSkip()) {
-          <app-button
-            size="small"
-            variant="ghost"
-            tone="warning"
-            label="Skip"
-            tooltip="Drop the commit this is stuck on and move to the next"
-            (click)="skipOperation()"
-          />
-        }
-        <app-button
-          size="small"
-          variant="ghost"
-          tone="danger"
-          label="Abort"
-          tooltip="Abandon this and put the working tree back where it started"
-          (click)="abortOperation()"
-        />
-      </app-button-row>
-    </div>
+    <app-operation-strip
+      [title]="operationTitle()"
+      [progress]="operationProgress()"
+      [message]="operationMessage()"
+      [canContinue]="repository.canContinueOperation()"
+      [canSkip]="canSkip()"
+      (continueClick)="continueOperation()"
+      (skipClick)="skipOperation()"
+      (abortClick)="abortOperation()"
+    />
   }
 
   @if (repository.selectedCommit(); as commit) {
