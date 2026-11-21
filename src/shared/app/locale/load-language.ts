@@ -4,6 +4,7 @@ import type { InterfaceLanguage } from '@shared/api/startup-settings';
 import { formattingLocale } from '@shared/angular/services/locale/formatting-locale';
 import { resolveLanguage } from '@shared/angular/services/locale/resolve-language';
 import type { SpokenLanguage } from '@shared/angular/services/locale/spoken-language';
+import { embedRightToLeft } from './embed-right-to-left';
 import { isTranslationFile } from './is-translation-file';
 import type { JsonModule } from './json-module';
 
@@ -102,6 +103,10 @@ export async function loadLanguage(
     import('./messages.json'),
     translationsFor(language),
   ]);
-  loadTranslations({ ...messagesOf(source), ...messagesOf(target) });
+  // Arabic's messages are embedded right to left, so a label keeps its words in order in Studio's
+  // left-to-right layout (see `embedRightToLeft`). Untranslated English is left as it is.
+  const translated: Readonly<Record<string, string>> =
+    language === 'ar' ? embedRightToLeft(messagesOf(target)) : messagesOf(target);
+  loadTranslations({ ...messagesOf(source), ...translated });
   return language;
 }
