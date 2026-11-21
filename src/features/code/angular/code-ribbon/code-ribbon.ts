@@ -3,6 +3,7 @@ import { Log } from '@shared/angular/services/log/log';
 import { CodeAgents } from '@features/code/angular/code-agents/code-agents';
 import { CodeGeneratedPanels } from '@features/code/angular/generated-code/code-generated-panels';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
+import { DocumentSorting } from '@shared/angular/services/document-sorting/document-sorting';
 import { CodeRunner } from '@features/code/angular/code-runner/code-runner';
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import {
@@ -37,6 +38,11 @@ import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-s
  * document's language is unknown or its entry has not been created yet.
  */
 const PLAIN_TEXT_LANGUAGE_ID: string = 'plaintext';
+
+/**
+ * Identifies the JSON language, whose documents the Edit menu offers Sort Document for (#1214).
+ */
+const JSON_LANGUAGE_ID: string = 'json';
 
 /**
  * Identifies the Save-As item in the Save menu button's dropdown.
@@ -132,6 +138,11 @@ export class CodeRibbon {
   private readonly settings: Settings = inject(Settings);
 
   /**
+   * Holds Sort Document, whose name the Edit menu shows (#1214).
+   */
+  private readonly sorting: DocumentSorting = inject(DocumentSorting);
+
+  /**
    * Holds the language list, in display order.
    */
   private readonly languages: readonly LanguageInfo[] = this.monaco.getSupportedLanguages();
@@ -182,6 +193,14 @@ export class CodeRibbon {
   protected readonly hasSymbols: Signal<boolean> = computed(
     (): boolean =>
       (this.activeDocument()?.language() ?? PLAIN_TEXT_LANGUAGE_ID) !== PLAIN_TEXT_LANGUAGE_ID,
+  );
+
+  /**
+   * Gets a value indicating whether the active document is JSON, the one language whose server sorts a
+   * document (#1214): only then does the Edit menu offer Sort Document.
+   */
+  protected readonly isJson: Signal<boolean> = computed(
+    (): boolean => this.activeDocument()?.language() === JSON_LANGUAGE_ID,
   );
 
   /**
@@ -288,6 +307,16 @@ export class CodeRibbon {
           accelerator: 'Alt+Shift+F',
           run: (): void => this.onFormat(),
         },
+        // Only for a JSON file (#1214). No accelerator: VS Code gives Sort Document none.
+        ...(this.isJson()
+          ? [
+              {
+                id: 'code.sortDocument',
+                label: this.sorting.label,
+                run: (): void => this.onSortDocument(),
+              },
+            ]
+          : []),
       ],
     },
     {
@@ -414,6 +443,14 @@ export class CodeRibbon {
   protected onFormat(): void {
     this.log.info('code.ribbon', 'Format document requested');
     this.commands.formatDocument();
+  }
+
+  /**
+   * Sorts the active document's keys, through its language server (#1214).
+   */
+  protected onSortDocument(): void {
+    this.log.info('code.ribbon', 'Sort document requested');
+    void this.commands.sortDocument();
   }
 
   /**

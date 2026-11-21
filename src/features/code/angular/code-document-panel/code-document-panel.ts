@@ -35,6 +35,7 @@ import {
   EditorCommands,
 } from '@shared/angular/services/editor-commands/editor-commands';
 import { Editors, RevealRequest } from '@shared/angular/services/editors/editors';
+import { DocumentSorting } from '@shared/angular/services/document-sorting/document-sorting';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
@@ -172,6 +173,11 @@ export class CodeDocumentPanel {
    * language-server diagnostics resolve back to a model and paint as editor markers (squiggles).
    */
   private readonly editors: Editors = inject(Editors);
+
+  /**
+   * Holds Sort Document, which the Edit menu runs on this view's editor where its server sorts (#1214).
+   */
+  private readonly sorting: DocumentSorting = inject(DocumentSorting);
 
   /**
    * Holds the URI of this panel's Monaco model, or null before the editor is created and after
@@ -651,6 +657,12 @@ export class CodeDocumentPanel {
         // would otherwise lay out, so formatting has to see the tidied text.
         await pane.organizeImports();
         await pane.runAction('editor.action.formatDocument');
+      },
+      sortDocument: async (): Promise<void> => {
+        const editor: MonacoApi.editor.IStandaloneCodeEditor | null = pane.getEditor();
+        if (editor !== null) {
+          await this.sorting.sortDocument(editor);
+        }
       },
       save: (): void => {
         this.log.info('code.document', 'Save well document', this.documentId());

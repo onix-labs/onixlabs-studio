@@ -2,6 +2,7 @@ import { inject, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import type { MenuItem } from '@shared/angular/components/menu/menu';
 import { pasteIntoEditor } from '@shared/angular/components/text-editor/editor-paste';
+import { DocumentSorting } from '@shared/angular/services/document-sorting/document-sorting';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 import { Log } from '@shared/angular/services/log/log';
@@ -45,6 +46,7 @@ export type EditorContextMenuCommand =
   | 'find'
   | 'formatDocument'
   | 'formatSelection'
+  | 'sortDocument'
   | 'comment'
   | 'cut'
   | 'copy'
@@ -127,6 +129,8 @@ const SHORTCUTS: Readonly<Record<EditorContextMenuCommand, ShortcutHints>> = {
   // Monaco's own chords: Linux gives Format Document a chord of its own.
   formatDocument: { mac: '⌥⇧F', windows: 'Shift+Alt+F', linux: 'Ctrl+Shift+I' },
   formatSelection: { mac: '⌘K ⌘F', windows: 'Ctrl+K Ctrl+F' },
+  // No chord: VS Code gives its Sort Document none either (#1214).
+  sortDocument: { mac: '', windows: '' },
   comment: { mac: '⌘/', windows: 'Ctrl+/' },
   cut: { mac: '⌘X', windows: 'Ctrl+X' },
   copy: { mac: '⌘C', windows: 'Ctrl+C' },
@@ -213,6 +217,11 @@ export class EditorContextMenu {
    * Holds the quick fixes, which the menu's Quick Fix row opens (#1016).
    */
   private readonly quickFixes: QuickFixes = inject(QuickFixes);
+
+  /**
+   * Holds Sort Document, which the menu's row runs where the language server sorts (#1214).
+   */
+  private readonly sorting: DocumentSorting = inject(DocumentSorting);
 
   /**
    * Holds the opener each attached editor's menus open through.
@@ -397,6 +406,10 @@ export class EditorContextMenu {
     if (writable && supports(editor, 'formatSelection')) {
       editing.push(this.item('formatSelection', 'Format Selection', !selected));
     }
+    // Only where the document's server sorts it: a JSON file's (#1214).
+    if (writable && this.sorting.offersSortDocument(editor)) {
+      editing.push(this.item('sortDocument', this.sorting.label));
+    }
     if (writable && monaco !== undefined && hasComments(monaco, language)) {
       editing.push(this.item('comment', 'Toggle Comment'));
     }
@@ -482,6 +495,10 @@ export class EditorContextMenu {
         return;
       case 'quickFix':
         void this.quickFixes.open(editor);
+        return;
+      case 'sortDocument':
+        editor.focus();
+        void this.sorting.sortDocument(editor);
         return;
       case 'paste':
         pasteIntoEditor(editor, COMMAND_SOURCE);

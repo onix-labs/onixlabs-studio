@@ -789,6 +789,14 @@ const MAX_START_ATTEMPTS: number = 3;
 const FROZEN_TOKEN_SERVERS: ReadonlySet<string> = new Set<string>(['csharp']);
 
 /**
+ * The servers that sort a document's keys on request, for Sort Document (#1214): the JSON server's
+ * `json/sort`. Known by the server, since none advertises it.
+ */
+const DOCUMENT_SORTING_SERVERS: ReadonlySet<string> = new Set<string>([
+  'vscode-json-language-server',
+]);
+
+/**
  * The servers whose pushed diagnostics reach the Error List for files that are not open as well
  * (#1210): `cargo check` reports whole crates, so an error a change causes in another file would
  * otherwise show nowhere. So does typescript-language-server once the main process has tsserver check
@@ -1777,6 +1785,7 @@ export class LspClient implements OnDestroy {
       codeLens: this.codeLensSupport.get(sessionId),
       runTests: (lens: unknown): void => void this.runTests(sessionId, tracked, lens),
       navigation: this.navigationSupport.get(sessionId),
+      sortsDocument: DOCUMENT_SORTING_SERVERS.has(tracked.serverId),
       completion: this.assistSupport.get(sessionId)?.completion ?? null,
       signatureHelp: this.assistSupport.get(sessionId)?.signatureHelp ?? null,
       diagnostics: this.serverDiagnostics.get(tracked.documentId) ?? [],

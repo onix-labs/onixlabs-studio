@@ -259,6 +259,77 @@ describe('Monaco', () => {
       expect(css['lessDefaults'].options['validate']).toBe(false);
     });
 
+    it('suppressBuiltInDiagnostics_whenJson_turnsOffOnlyTheJsonWorkersValidation (#1214)', () => {
+      const json: { diagnosticsOptions: Record<string, unknown> } & {
+        setDiagnosticsOptions: (options: Record<string, unknown>) => void;
+      } = {
+        diagnosticsOptions: { validate: true, allowComments: true, trailingCommas: 'error' },
+        setDiagnosticsOptions: (options: Record<string, unknown>): void => {
+          json.diagnosticsOptions = options;
+        },
+      };
+      window.monaco = {
+        languages: { css, json: { jsonDefaults: json } },
+      } as unknown as Window['monaco'];
+
+      monaco.suppressBuiltInDiagnostics('json');
+
+      expect(json.diagnosticsOptions).toEqual({
+        validate: false,
+        allowComments: true,
+        trailingCommas: 'error',
+      });
+      expect(css['cssDefaults'].options['validate']).toBe(true);
+    });
+
+    it('useBuiltInFormatter_turnsMonacosOwnFormatterOffAndOn_forItsWebLanguages (#1214)', () => {
+      /**
+       * Stand-in defaults that record the mode configuration they are given.
+       */
+      interface ModeDefaults {
+        modeConfiguration: Record<string, unknown>;
+        setModeConfiguration: (configuration: Record<string, unknown>) => void;
+      }
+      const modeDefaults: () => ModeDefaults = (): ModeDefaults => {
+        const defaults: ModeDefaults = {
+          modeConfiguration: {
+            hovers: true,
+            documentFormattingEdits: true,
+            documentRangeFormattingEdits: true,
+          },
+          setModeConfiguration: (configuration: Record<string, unknown>): void => {
+            defaults.modeConfiguration = configuration;
+          },
+        };
+        return defaults;
+      };
+      const json: ModeDefaults = modeDefaults();
+      const html: ModeDefaults = modeDefaults();
+      const less: ModeDefaults = modeDefaults();
+      window.monaco = {
+        languages: {
+          json: { jsonDefaults: json },
+          html: { htmlDefaults: html },
+          css: { ...css, lessDefaults: less },
+        },
+      } as unknown as Window['monaco'];
+
+      monaco.useBuiltInFormatter('json', false);
+      monaco.useBuiltInFormatter('less', false);
+      monaco.useBuiltInFormatter('python', false);
+
+      expect(json.modeConfiguration).toEqual({
+        hovers: true,
+        documentFormattingEdits: false,
+        documentRangeFormattingEdits: false,
+      });
+      expect(less.modeConfiguration['documentFormattingEdits']).toBe(false);
+      expect(html.modeConfiguration['documentFormattingEdits']).toBe(true);
+
+      monaco.useBuiltInFormatter('json', true);
+      expect(json.modeConfiguration['documentRangeFormattingEdits']).toBe(true);
+    });
+
     it('suppressBuiltInDiagnostics_whenNoBuiltInWorker_changesNothing', () => {
       expect(() => monaco.suppressBuiltInDiagnostics('python')).not.toThrow();
       expect(css['cssDefaults'].options['validate']).toBe(true);

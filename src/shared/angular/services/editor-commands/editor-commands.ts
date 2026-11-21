@@ -61,6 +61,13 @@ export interface EditorCommandHandler {
   codeCleanup?(): Promise<void>;
 
   /**
+   * Sorts the document's keys (#1214), where its language server sorts it. Optional, since only a
+   * code editor offers it.
+   * @returns Returns a promise that completes when the document is sorted, or found not to be.
+   */
+  sortDocument?(): Promise<void>;
+
+  /**
    * Saves the document, prompting for a path when it has never been saved.
    */
   save(): void;
@@ -415,6 +422,16 @@ export class EditorCommands {
   public async codeCleanup(): Promise<void> {
     this.log.trace('EditorCommands', 'Code cleanup requested');
     await this.activeHandler()?.codeCleanup?.();
+  }
+
+  /**
+   * Sorts the active editor's document's keys (#1214). Resolves without doing anything when no editor
+   * is active or the active one cannot sort.
+   * @returns Returns a promise that completes when the sort has run.
+   */
+  public async sortDocument(): Promise<void> {
+    this.log.trace('EditorCommands', 'Sort document requested');
+    await this.activeHandler()?.sortDocument?.();
   }
 
   /**

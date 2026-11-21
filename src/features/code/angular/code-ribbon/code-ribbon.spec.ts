@@ -70,6 +70,10 @@ describe('CodeRibbon', () => {
       goToSymbol: (): void => void calls.push('goToSymbol'),
       goToLine: (): void => void calls.push('goToLine'),
       formatDocument: (): void => void calls.push('format'),
+      sortDocument: (): Promise<void> => {
+        calls.push('sort');
+        return Promise.resolve();
+      },
     };
     const printingStub: Partial<Printing> = {
       print: (): Promise<PrintResult> => {
@@ -198,6 +202,29 @@ describe('CodeRibbon', () => {
     );
     expect(labels).toContain('Go to Line');
     expect(labels).not.toContain('Go to Symbol');
+  });
+
+  it('sortDocument_isOnTheEditMenu_forAJsonFileAlone_andRunsTheEditorCommand (#1214)', () => {
+    const tab: Tab = tabs.open('code');
+    documents.ensure(tab.id);
+    documents.setLanguage(tab.id, 'typescript');
+    TestBed.tick();
+    const ids: () => (string | undefined)[] = (): (string | undefined)[] =>
+      menuItems('edit').map((entry: MenuEntry): string | undefined => entry.id);
+
+    expect(ids()).not.toContain('code.sortDocument');
+
+    documents.setLanguage(tab.id, 'json');
+    TestBed.tick();
+    const sort: MenuEntry | undefined = menuItems('edit').find(
+      (entry: MenuEntry): boolean => entry.id === 'code.sortDocument',
+    );
+    expect(sort?.label).toBe('Sort Document');
+    expect(sort?.accelerator).toBeUndefined();
+    expect(ids().indexOf('code.sortDocument')).toBe(ids().indexOf('code.format') + 1);
+
+    menu.dispatch('code.sortDocument');
+    expect(calls).toEqual(['sort']);
   });
 
   it('menu_whenPrintOrExportIsChosen_reachesPrinting', () => {

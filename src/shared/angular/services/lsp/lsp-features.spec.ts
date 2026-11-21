@@ -301,6 +301,8 @@ function fakeModel(uri: string, languageId: string = 'typescript', value: string
     getLanguageId: (): string => languageId,
     getVersionId: (): number => 1,
     getValue: (): string => value,
+    getLineCount: (): number => value.split('\n').length,
+    getLineLength: (line: number): number => value.split('\n')[line - 1].length,
   };
 }
 
@@ -341,6 +343,9 @@ describe('LspFeatures', () => {
   let syncHook: ((text: string) => Promise<void>) | undefined;
   let formattingSupport: LspFormattingSupport | undefined;
   let navigationSupport: LspNavigationSupport | undefined;
+  let sortsDocument: boolean | undefined;
+  /** Each time Monaco's own formatter of a language was turned on or off. */
+  let builtInFormatters: string[];
   let inlayHintSupport: LspInlayHintSupport | undefined;
   /** What the main process answers a project formatting request with, and what it was asked. */
   let projectFormatAnswer: unknown;
@@ -376,6 +381,8 @@ describe('LspFeatures', () => {
     syncHook = undefined;
     formattingSupport = undefined;
     navigationSupport = undefined;
+    sortsDocument = undefined;
+    builtInFormatters = [];
     inlayHintSupport = undefined;
     structureSupport = undefined;
     autoInsertTriggers = undefined;
@@ -447,6 +454,8 @@ describe('LspFeatures', () => {
       useAutoInsert: (handler: (editor: unknown, ch: string) => void): void => {
         autoInsertHandler = handler;
       },
+      useBuiltInFormatter: (language: string, enabled: boolean): void =>
+        void builtInFormatters.push(`${language}:${enabled ? 'on' : 'off'}`),
     };
     TestBed.configureTestingModule({ providers: [{ provide: Monaco, useValue: monaco }] });
     const editors: Editors = TestBed.inject(Editors);
@@ -467,6 +476,7 @@ describe('LspFeatures', () => {
             ...(syncHook === undefined ? {} : { sync: syncHook }),
             ...(formattingSupport === undefined ? {} : { formatting: formattingSupport }),
             ...(navigationSupport === undefined ? {} : { navigation: navigationSupport }),
+            ...(sortsDocument === undefined ? {} : { sortsDocument }),
             ...(inlayHintSupport === undefined ? {} : { inlayHints: inlayHintSupport }),
             ...(structureSupport === undefined ? {} : { structure: structureSupport }),
             ...(autoInsertTriggers === undefined ? {} : { autoInsertTriggers }),
@@ -576,6 +586,13 @@ describe('LspFeatures', () => {
       onTypeTriggers: ['}', ';', '\n'],
     };
     const OPTIONS: unknown = { tabSize: 4, insertSpaces: true };
+    /** What the server is told: the indentation, and what to do with the document's last line. */
+    const SENT: unknown = {
+      tabSize: 4,
+      insertSpaces: true,
+      insertFinalNewline: false,
+      trimFinalNewlines: false,
+    };
 
     it('registersEachFormatterOncePerLanguage_withTheServersTriggerCharacters', async () => {
       const features: LspFeatures = await build();
@@ -644,7 +661,7 @@ describe('LspFeatures', () => {
         {
           sessionId: '/root::typescript',
           method: 'textDocument/formatting',
-          params: { textDocument: { uri: 'file:///root/app.ts' }, options: OPTIONS },
+          params: { textDocument: { uri: 'file:///root/app.ts' }, options: SENT },
         },
       ]);
       expect(edits).toEqual([
@@ -653,6 +670,52 @@ describe('LspFeatures', () => {
           text: '    ',
         },
       ]);
+    });
+
+    it('formatDocument_keepsAFinalNewline_theDocumentHas (#1214)', async () => {
+      formattingSupport = ROSLYN;
+      responses['textDocument/formatting'] = [];
+      const features: LspFeatures = await build();
+      features.enableFormatting('csharp', ROSLYN);
+
+      await captured.formatting
+        ?.get('csharp:document')
+        ?.provideDocumentFormattingEdits?.(fakeModel(MODEL_URI, 'csharp', '{}\n'), OPTIONS);
+
+      expect(requests.at(-1)?.params).toMatchObject({
+        options: { insertFinalNewline: true, trimFinalNewlines: false },
+      });
+    });
+
+    it('formatDocument_asksForAFinalNewline_whenInsertFinalNewlineIsOn (#1214)', async () => {
+      formattingSupport = ROSLYN;
+      responses['textDocument/formatting'] = [];
+      const features: LspFeatures = await build();
+      const settings: Settings = TestBed.inject(Settings);
+      settings.setLanguageOverride('csharp', 'insertFinalNewline', true);
+      settings.setLanguageOverride('csharp', 'trimFinalNewlines', true);
+      features.enableFormatting('csharp', ROSLYN);
+
+      await captured.formatting
+        ?.get('csharp:document')
+        ?.provideDocumentFormattingEdits?.(fakeModel(MODEL_URI, 'csharp', '{}'), OPTIONS);
+
+      expect(requests.at(-1)?.params).toMatchObject({
+        options: { insertFinalNewline: true, trimFinalNewlines: true },
+      });
+    });
+
+    it('monacosOwnFormatter_isTurnedOff_whereTheServerFormatsOneOfMonacosLanguages (#1214)', async () => {
+      const features: LspFeatures = await build();
+      const settings: Settings = TestBed.inject(Settings);
+
+      features.enableFormatting('json', ROSLYN);
+      expect(builtInFormatters).toEqual(['json:off']);
+
+      settings.setLanguageOverride('json', 'defaultFormatter', 'built-in');
+      TestBed.tick();
+      expect(builtInFormatters).toEqual(['json:off', 'json:on']);
+      expect(captured.formatting?.has('json:document')).toBe(false);
     });
 
     it('formatOnType_bringsTheServerUpToDate_thenSendsThePositionAndCharacter', async () => {
@@ -679,7 +742,7 @@ describe('LspFeatures', () => {
       expect(order).toEqual(['sync', 'textDocument/onTypeFormatting']);
       expect(requests[0]?.params).toEqual({
         textDocument: { uri: 'file:///root/app.ts' },
-        options: OPTIONS,
+        options: SENT,
         position: { line: 4, character: 1 },
         ch: '}',
       });
@@ -769,7 +832,7 @@ describe('LspFeatures', () => {
         ]);
         expect(requests[1]?.params).toEqual({
           textDocument: { uri: 'file:///root/app.ts' },
-          options: OPTIONS,
+          options: SENT,
           range: { start: { line: 2, character: 0 }, end: { line: 4, character: 5 } },
         });
         expect(edits).toEqual([
@@ -2712,6 +2775,218 @@ describe('LspFeatures', () => {
 
       expect(features.servesNavigation(model, 'implementation')).toBe(false);
       expect(features.servesNavigation(model, 'typeDefinition')).toBe(false);
+    });
+  });
+
+  describe('Sort Document and the JSON and CSS client commands (#1214)', () => {
+    /**
+     * A model's record of the undo steps and edits made to it.
+     */
+    interface SortedModel {
+      readonly model: Parameters<LspFeatures['sortDocument']>[0];
+      readonly steps: string[];
+      readonly edits: { range: unknown; text: string | null }[];
+      version: number;
+    }
+
+    /**
+     * Builds a stand-in model of a JSON document.
+     * @param lines The document's lines; an empty last line is a final newline.
+     * @returns Returns the model and its records.
+     */
+    function jsonModel(lines: readonly string[]): SortedModel {
+      const record: SortedModel = {
+        model: undefined as unknown as SortedModel['model'],
+        steps: [],
+        edits: [],
+        version: 3,
+      };
+      const model: unknown = {
+        uri: { toString: (): string => MODEL_URI },
+        getLanguageId: (): string => 'json',
+        getValue: (): string => lines.join('\n'),
+        getVersionId: (): number => record.version,
+        getOptions: (): unknown => ({ tabSize: 2, insertSpaces: true }),
+        getLineCount: (): number => lines.length,
+        getLineLength: (line: number): number => lines[line - 1].length,
+        isDisposed: (): boolean => false,
+        pushStackElement: (): void => void record.steps.push('stop'),
+        pushEditOperations: (
+          _selections: unknown,
+          operations: readonly { range: unknown; text: string | null }[],
+        ): null => {
+          record.steps.push('edit');
+          record.edits.push(...operations);
+          return null;
+        },
+      };
+      return { ...record, model: model as SortedModel['model'] };
+    }
+
+    const SORTED: unknown = [
+      {
+        range: { start: { line: 0, character: 0 }, end: { line: 1, character: 0 } },
+        newText: '{ "a": 1, "b": 2 }\n',
+      },
+    ];
+
+    it('isServed_whereTheDocumentsServerSorts', async () => {
+      sortsDocument = true;
+      const features: LspFeatures = await build();
+
+      expect(features.servesDocumentSorting(jsonModel(['{}']).model)).toBe(true);
+    });
+
+    it('isNotServed_whereTheDocumentsServerDoesNotSort', async () => {
+      const features: LspFeatures = await build();
+
+      expect(features.servesDocumentSorting(jsonModel(['{}']).model)).toBe(false);
+    });
+
+    it('asksJsonSort_withTheUriAndIndentation_andAppliesTheEdits_asOneStepOfUndo', async () => {
+      sortsDocument = true;
+      responses['json/sort'] = SORTED;
+      const features: LspFeatures = await build();
+      const sorted: SortedModel = jsonModel(['{ "b": 2, "a": 1 }', '']);
+
+      expect(await features.sortDocument(sorted.model)).toEqual({ ran: true });
+
+      expect(requests.at(-1)).toEqual({
+        sessionId: '/root::typescript',
+        method: 'json/sort',
+        params: {
+          uri: 'file:///root/app.ts',
+          options: {
+            tabSize: 2,
+            insertSpaces: true,
+            insertFinalNewline: true,
+            trimFinalNewlines: false,
+          },
+        },
+      });
+      expect(sorted.steps).toEqual(['stop', 'edit', 'stop']);
+      expect(sorted.edits).toEqual([
+        {
+          range: { startLineNumber: 1, startColumn: 1, endLineNumber: 2, endColumn: 1 },
+          text: '{ "a": 1, "b": 2 }\n',
+        },
+      ]);
+    });
+
+    it('asksForNoFinalNewline_whenTheDocumentHasNone', async () => {
+      sortsDocument = true;
+      responses['json/sort'] = [];
+      const features: LspFeatures = await build();
+      const sorted: SortedModel = jsonModel(['{ "a": 1 }']);
+
+      expect(await features.sortDocument(sorted.model)).toEqual({ ran: true });
+
+      expect(requests.at(-1)?.params).toMatchObject({ options: { insertFinalNewline: false } });
+      // Nothing to change is no step of undo.
+      expect(sorted.steps).toEqual([]);
+    });
+
+    it('isRefused_withoutAsking_byAServerThatDoesNotSort', async () => {
+      const features: LspFeatures = await build();
+      const sorted: SortedModel = jsonModel(['{}']);
+
+      expect(await features.sortDocument(sorted.model)).toEqual({
+        ran: false,
+        reason: 'No language server sorts this document.',
+      });
+      expect(requests.filter((request) => request.method === 'json/sort')).toEqual([]);
+    });
+
+    it('saysWhy_whenTheServerFails_orAnswersWhatCannotBeRead', async () => {
+      sortsDocument = true;
+      responses['json/sort'] = new Error(
+        "Error invoking remote method 'lsp:request': Error: Bad JSON.",
+      );
+      const features: LspFeatures = await build();
+      const sorted: SortedModel = jsonModel(['{']);
+
+      expect(await features.sortDocument(sorted.model)).toEqual({
+        ran: false,
+        reason: 'Bad JSON.',
+      });
+
+      responses['json/sort'] = [{ newText: 'no range' }];
+      expect(await features.sortDocument(sorted.model)).toEqual({
+        ran: false,
+        reason: "The language server's answer couldn't be read.",
+      });
+      expect(sorted.steps).toEqual([]);
+    });
+
+    it('appliesNothing_whenTheDocumentChangedWhileTheServerAnswered', async () => {
+      sortsDocument = true;
+      responses['json/sort'] = SORTED;
+      const features: LspFeatures = await build();
+      const sorted: SortedModel = jsonModel(['{ "b": 2, "a": 1 }', '']);
+      // The user types while the request is out: the version moves on before the answer is applied.
+      const asked: Promise<unknown> = features.sortDocument(sorted.model);
+      (sorted.model as unknown as { getVersionId: () => number }).getVersionId = (): number => 4;
+
+      expect(await asked).toEqual({
+        ran: false,
+        reason: 'The document changed while it was being sorted. Try again.',
+      });
+      expect(sorted.steps).toEqual([]);
+    });
+
+    it('aCssQuickFix_appliesTheEditsItCarries_asOneStepOfUndo', async () => {
+      codeActionSupport = 'actions';
+      const features: LspFeatures = await build();
+      const fixed: SortedModel = jsonModel(['.box {', '  colr: red;', '}']);
+      const edit: unknown = {
+        range: { start: { line: 1, character: 2 }, end: { line: 1, character: 6 } },
+        newText: 'color',
+      };
+
+      expect(
+        await features.executeCommand(fixed.model, {
+          title: "Rename to 'color'",
+          command: '_css.applyCodeAction',
+          arguments: ['file:///root/app.ts', 4, [edit]],
+        }),
+      ).toEqual({ ran: true });
+      expect(fixed.edits).toEqual([
+        {
+          range: { startLineNumber: 2, startColumn: 3, endLineNumber: 2, endColumn: 7 },
+          text: 'color',
+        },
+      ]);
+      expect(fixed.steps).toEqual(['stop', 'edit', 'stop']);
+      expect(requests.map((request) => request.method)).not.toContain('workspace/executeCommand');
+    });
+
+    it('aCssQuickFix_forAnotherDocument_isNotApplied', async () => {
+      codeActionSupport = 'actions';
+      const features: LspFeatures = await build();
+      const fixed: SortedModel = jsonModel(['.box {}']);
+
+      expect(
+        await features.executeCommand(fixed.model, {
+          title: "Rename to 'color'",
+          command: '_css.applyCodeAction',
+          arguments: ['file:///root/other.css', 4, []],
+        }),
+      ).toEqual({ ran: false, reason: "The language server's fix couldn't be read." });
+      expect(fixed.steps).toEqual([]);
+    });
+
+    it('theSortJsonSourceAction_runsSortDocument_ratherThanTheServer', async () => {
+      sortsDocument = true;
+      codeActionSupport = 'actions';
+      responses['json/sort'] = SORTED;
+      const features: LspFeatures = await build();
+      const sorted: SortedModel = jsonModel(['{ "b": 2, "a": 1 }', '']);
+
+      expect(
+        await features.executeCommand(sorted.model, { title: 'Sort JSON', command: 'json.sort' }),
+      ).toEqual({ ran: true });
+      expect(requests.map((request) => request.method)).not.toContain('workspace/executeCommand');
+      expect(sorted.steps).toEqual(['stop', 'edit', 'stop']);
     });
   });
 
