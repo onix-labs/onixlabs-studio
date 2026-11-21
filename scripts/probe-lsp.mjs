@@ -540,6 +540,8 @@ function codeFirstServers(profile, root, settings) {
           env: path.isAbsolute(go)
             ? { PATH: `${env.PATH ?? ''}${path.delimiter}${path.dirname(go)}` }
             : undefined,
+          // GOPLS_INITIALIZATION_OPTIONS in gopls-settings.ts.
+          initializationOptions: { renameMovesSubpackages: true },
           version,
         };
       },

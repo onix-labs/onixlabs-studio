@@ -2,6 +2,7 @@ import {
   FILE_OPERATION_REFUSED,
   FileTextEdits,
   fromLspWorkspaceEdit,
+  MOVE_REFUSED,
   movedEdits,
   SkippedEdit,
   WorkspaceTextEdits,
@@ -112,7 +113,7 @@ describe('fromLspWorkspaceEdit (#1015)', () => {
             textDocument: { uri: 'file:///ws/b.ts', version: null },
             edits: [{ ...(lspEdit(2, 1, 5, 'id') as object), annotationId: 'rename' }],
           },
-          { kind: 'rename', oldUri: 'file:///ws/old.ts', newUri: 'file:///ws/new.ts' },
+          { kind: 'delete', uri: 'file:///ws/old.ts' },
           { kind: 'delete', uri: 'file:///ws/made.ts' },
         ],
       },
@@ -230,20 +231,75 @@ describe('fromLspWorkspaceEdit: creating a file (#1210)', () => {
     },
   );
 
-  it('stillRefusesRenamingAndDeleting', () => {
+  it('stillRefusesDeleting', () => {
+    const edits: WorkspaceTextEdits = fromLspWorkspaceEdit(
+      { documentChanges: [{ kind: 'delete', uri: 'file:///w/c.rs' }] },
+      toPath,
+    );
+
+    expect(edits.refused.map((skipped: SkippedEdit): string => skipped.path)).toEqual(['/w/c.rs']);
+  });
+
+  it('readsAPackageRename_itsEditsThenItsFolderRenamedInPlace (#1211)', () => {
+    // What gopls sends for renaming package greet to salute: every import edited, then the folder.
     const edits: WorkspaceTextEdits = fromLspWorkspaceEdit(
       {
         documentChanges: [
-          { kind: 'rename', oldUri: 'file:///w/a.rs', newUri: 'file:///w/b.rs' },
-          { kind: 'delete', uri: 'file:///w/c.rs' },
+          {
+            textDocument: { uri: 'file:///w/greet/greet.go', version: 1 },
+            edits: [lspEdit(1, 8, 13, 'salute')],
+          },
+          {
+            textDocument: { uri: 'file:///w/cmd/app/main.go', version: 0 },
+            edits: [lspEdit(5, 22, 27, 'salute')],
+          },
+          { kind: 'rename', oldUri: 'file:///w/greet', newUri: 'file:///w/salute' },
         ],
       },
       toPath,
     );
 
-    expect(edits.refused.map((skipped: SkippedEdit): string => skipped.path)).toEqual([
-      '/w/a.rs',
-      '/w/c.rs',
+    expect(edits.files.map((file: { path: string }): string => file.path)).toEqual([
+      '/w/greet/greet.go',
+      '/w/cmd/app/main.go',
+    ]);
+    expect(edits.moves).toEqual([{ from: '/w/greet', to: '/w/salute' }]);
+    expect(edits.refused).toEqual([]);
+  });
+
+  it.each([
+    [
+      'to another folder',
+      { kind: 'rename', oldUri: 'file:///w/a/x.go', newUri: 'file:///w/b/x.go' },
+    ],
+    [
+      'over another entry',
+      {
+        kind: 'rename',
+        oldUri: 'file:///w/a.go',
+        newUri: 'file:///w/b.go',
+        options: { overwrite: true },
+      },
+    ],
+  ])('refusesTheWholeEdit_whenItMovesAnEntry_%s (#1211)', (_case: string, move: unknown) => {
+    // Its edits without the move would leave the imports naming a package that is not there.
+    const edits: WorkspaceTextEdits = fromLspWorkspaceEdit(
+      {
+        documentChanges: [
+          { textDocument: { uri: 'file:///w/main.go' }, edits: [lspEdit(0, 0, 1, 'x')] },
+          move,
+        ],
+      },
+      toPath,
+    );
+
+    expect(edits.files).toEqual([]);
+    expect(edits.moves).toBeUndefined();
+    expect(edits.refused).toEqual([
+      {
+        path: (move as { oldUri: string }).oldUri.replace('file://', ''),
+        reason: MOVE_REFUSED,
+      },
     ]);
   });
 });

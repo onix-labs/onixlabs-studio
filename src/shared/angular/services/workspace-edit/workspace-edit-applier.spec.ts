@@ -1,9 +1,11 @@
 import { TestBed } from '@angular/core/testing';
 import type * as MonacoApi from 'monaco-editor';
 import type { TextEditsRequest, TextEditsResponse } from '@shared/api/search-channels';
+import type { FileOperationResult } from '@shared/api/workspace-channels';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Search } from '@shared/angular/services/search/search';
+import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { TextEditEntry, WorkspaceEditOutcome } from './workspace-edit';
 import { WorkspaceEditApplier } from './workspace-edit-applier';
 
@@ -259,6 +261,75 @@ describe('WorkspaceEditApplier (#1015)', () => {
       });
 
       expect(outcome.applied).toEqual([{ path: '/w/missing.rs', edits: 0, where: 'disk' }]);
+    });
+  });
+
+  describe('renaming a folder in place (#1211)', () => {
+    let renames: string[];
+    let renamed: (path: string, name: string) => FileOperationResult;
+
+    beforeEach(() => {
+      renames = [];
+      renamed = (path: string, name: string): FileOperationResult => ({
+        success: true,
+        path: `${path.slice(0, path.lastIndexOf('/') + 1)}${name}`,
+      });
+      TestBed.overrideProvider(Workspace, {
+        useValue: {
+          rename: (path: string, name: string): Promise<FileOperationResult> => {
+            renames.push(`${path} -> ${name}`);
+            return Promise.resolve(renamed(path, name));
+          },
+        },
+      });
+    });
+
+    it('renamesTheFolderAfterItsEdits_andNamesTheEditedFilesByTheirNewPaths', async () => {
+      const open: FakeModel = fakeModel('inmemory://model/1');
+      models.push(open.model);
+      TestBed.inject(Editors).register('inmemory://model/1', {
+        documentId: 'doc-1',
+        path: '/w/greet/greet.go',
+        name: 'greet.go',
+      });
+
+      const outcome: WorkspaceEditOutcome = await TestBed.inject(WorkspaceEditApplier).apply({
+        files: [
+          { path: '/w/greet/greet.go', edits: [edit(2, 9, 14, 'salute')] },
+          { path: '/w/cmd/app/main.go', edits: [edit(6, 23, 28, 'salute')] },
+        ],
+        refused: [],
+        moves: [{ from: '/w/greet', to: '/w/salute' }],
+      });
+
+      expect(open.calls).toHaveLength(3);
+      expect(requests.map((request: TextEditsRequest): unknown => request.files[0]?.path)).toEqual([
+        '/w/cmd/app/main.go',
+      ]);
+      expect(renames).toEqual(['/w/greet -> salute']);
+      expect(outcome).toEqual({
+        applied: [
+          { path: '/w/salute/greet.go', edits: 1, where: 'editor' },
+          { path: '/w/cmd/app/main.go', edits: 1, where: 'disk' },
+          { path: '/w/salute', edits: 0, where: 'disk' },
+        ],
+        skipped: [],
+      });
+    });
+
+    it('namesAFolderThatCouldNotBeRenamed', async () => {
+      renamed = (): FileOperationResult => ({ success: false, error: 'salute already exists.' });
+
+      const outcome: WorkspaceEditOutcome = await TestBed.inject(WorkspaceEditApplier).apply({
+        files: [],
+        refused: [],
+        moves: [{ from: '/w/greet', to: '/w/salute' }],
+      });
+
+      expect(outcome).toEqual({
+        applied: [],
+        skipped: [{ path: '/w/greet', reason: 'salute already exists.' }],
+      });
     });
   });
 });

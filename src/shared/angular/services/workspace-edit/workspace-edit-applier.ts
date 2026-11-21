@@ -1,4 +1,4 @@
-import { inject, Service } from '@angular/core';
+import { inject, Injector, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import type {
   DiskFileEdits,
@@ -6,12 +6,15 @@ import type {
   TextEditsResponse,
   WrittenFile,
 } from '@shared/api/search-channels';
+import type { FileOperationResult } from '@shared/api/workspace-channels';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Log } from '@shared/angular/services/log/log';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Search } from '@shared/angular/services/search/search';
+import { Workspace } from '@shared/angular/services/workspace/workspace';
 import {
   AppliedFile,
+  EntryMove,
   FileTextEdits,
   SkippedEdit,
   TextEditEntry,
@@ -51,6 +54,12 @@ export class WorkspaceEditApplier {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the injector the workspace is resolved from when an edit renames a file or folder: few edits
+   * do, and the workspace is not needed by the rest.
+   */
+  private readonly injector: Injector = inject(Injector);
 
   /**
    * Applies edits across the workspace.
@@ -109,12 +118,41 @@ export class WorkspaceEditApplier {
       }
       skipped.push(...response.failed.map(toSkipped));
     }
+    // Last, as the server ordered them: its edits are to the paths as they stood before.
+    for (const move of edit.moves ?? []) {
+      const moved: string | null = await this.move(move, skipped);
+      if (moved !== null) {
+        for (const [index, file] of applied.entries()) {
+          applied[index] = { ...file, path: followMove(file.path, move.from, moved) };
+        }
+        applied.push({ path: moved, edits: 0, where: 'disk' });
+      }
+    }
     this.log.info(
       'workspaceEdit',
       `Applied edits to ${applied.length} document(s)`,
       skipped.length > 0 ? `${skipped.length} skipped` : '',
     );
     return { applied, skipped };
+  }
+
+  /**
+   * Renames a file or folder within its own folder as the Explorer does, so the open documents in it
+   * follow to their new paths (#1211).
+   * @param move The entry and where it goes.
+   * @param skipped The parts not applied, which a failed rename joins.
+   * @returns Returns the entry's new path, or null when it could not be renamed.
+   */
+  private async move(move: EntryMove, skipped: SkippedEdit[]): Promise<string | null> {
+    const separator: number = Math.max(move.to.lastIndexOf('/'), move.to.lastIndexOf('\\'));
+    const result: FileOperationResult = await this.injector
+      .get(Workspace)
+      .rename(move.from, move.to.slice(separator + 1));
+    if (result.success) {
+      return result.path ?? move.to;
+    }
+    skipped.push({ path: move.from, reason: result.error ?? "It couldn't be renamed." });
+    return null;
   }
 
   /**
@@ -165,6 +203,18 @@ export class WorkspaceEditApplier {
     }
     return models;
   }
+}
+
+/**
+ * Gives a path the one it has after an entry it is in, or is, was renamed.
+ * @param path The path.
+ * @param from The entry's path before the rename.
+ * @param to Its path after it.
+ * @returns Returns the path as it is now.
+ */
+function followMove(path: string, from: string, to: string): string {
+  const inside: boolean = path.startsWith(`${from}/`) || path.startsWith(`${from}\\`);
+  return path === from || inside ? `${to}${path.slice(from.length)}` : path;
 }
 
 /**

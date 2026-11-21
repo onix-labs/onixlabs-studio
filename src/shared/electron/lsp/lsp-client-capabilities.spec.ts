@@ -35,6 +35,13 @@ describe('clientCapabilities', () => {
     expect(clientCapabilities().workspace?.workspaceEdit?.resourceOperations).toEqual([]);
   });
 
+  it('workspaceEdit_tellsGoplsAFolderMayBeRenamed_soItRenamesAPackage (#1211)', () => {
+    // Without it gopls refuses a package rename outright; it is never told a file may be deleted.
+    expect(clientCapabilities('go').workspace?.workspaceEdit?.resourceOperations).toEqual([
+      'rename',
+    ]);
+  });
+
   it('experimental_namesTheCommandsALensMayCarry_debugAmongThem (#1210)', () => {
     expect(clientCapabilities().experimental).toMatchObject({
       commands: {

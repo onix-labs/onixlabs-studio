@@ -13,7 +13,7 @@ import {
   unavailable,
 } from './language-server-descriptor';
 import { CUSTOM_AFTER_COMMON_TARGETS, writeCsharpBraceConfig } from './csharp-editor-config';
-import { GOPLS_SETTINGS } from './gopls-settings';
+import { GOPLS_INITIALIZATION_OPTIONS, GOPLS_SETTINGS } from './gopls-settings';
 import { JdtlsInstall } from './lsp-provisioner';
 import { TYPESCRIPT_PROVISION, TYPESCRIPT_SERVER_PROVISION } from './language-server-downloads';
 
@@ -580,7 +580,12 @@ const GO: LanguageServerDescriptor = {
     const env: Record<string, string> | undefined = path.isAbsolute(go)
       ? { PATH: `${process.env['PATH'] ?? ''}${path.delimiter}${path.dirname(go)}` }
       : undefined;
-    return resolved({ command: gopls, args: [], env });
+    return resolved({
+      command: gopls,
+      args: [],
+      env,
+      initializationOptions: GOPLS_INITIALIZATION_OPTIONS,
+    });
   },
 };
 
