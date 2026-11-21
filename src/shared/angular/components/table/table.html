@@ -129,7 +129,7 @@
           >
             <ng-container
               [ngTemplateOutlet]="rowTemplate()?.template ?? null"
-              [ngTemplateOutletContext]="{ $implicit: row }"
+              [ngTemplateOutletContext]="{ $implicit: row, tree: treeStates().get(row.id) }"
             />
             @if (resizable()) {
               <td class="table-filler" aria-hidden="true"></td>
