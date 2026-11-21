@@ -205,4 +205,9 @@
   padding: 0.75rem;
   font-size: 0.75rem;
   color: var(--form-muted-foreground-color);
+
+  // Why a plan could not be made: the engine's own words, in the error tone.
+  &--error {
+    color: var(--error-color);
+  }
 }

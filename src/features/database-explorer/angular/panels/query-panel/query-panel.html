@@ -29,6 +29,17 @@
       [disabled]="!canRun()"
       (click)="execute()"
     />
+    @if (canExplain()) {
+      <app-button
+        variant="none"
+        data-testid="query-explain"
+        [icon]="Icon.DATABASE_EXPLAIN"
+        [ariaLabel]="explainLabel"
+        [tooltip]="explainTooltip"
+        [disabled]="!explainEnabled()"
+        (click)="explain()"
+      />
+    }
     <app-button
       variant="none"
       [icon]="Icon.DOTS_THREE_BOLD"
@@ -75,6 +86,32 @@
             [value]="tab()"
             (valueChange)="tab.set($any($event))"
           >
+            @if (tab() === 'plan' && hasPlans()) {
+              <div class="results__views" role="group" [attr.aria-label]="planText.views">
+                <button
+                  type="button"
+                  class="results__view"
+                  data-testid="plan-view-tree"
+                  [class.results__view--active]="planView() === 'tree'"
+                  [attr.aria-pressed]="planView() === 'tree'"
+                  [title]="planText.treeTitle"
+                  (click)="planView.set('tree')"
+                >
+                  <app-icon [icon]="Icon.DATABASE_EXPLAIN" /> {{ planText.tree }}
+                </button>
+                <button
+                  type="button"
+                  class="results__view"
+                  data-testid="plan-view-raw"
+                  [class.results__view--active]="planView() === 'raw'"
+                  [attr.aria-pressed]="planView() === 'raw'"
+                  [title]="planText.rawTitle"
+                  (click)="planView.set('raw')"
+                >
+                  <app-icon [icon]="Icon.DATABASE_RAW" /> {{ planText.raw }}
+                </button>
+              </div>
+            }
             @if (tab() === 'results' && resultSet()) {
               <div class="results__views" role="group" aria-label="Show the result as">
                 @if (graphCapable()) {
@@ -139,7 +176,37 @@
           </app-tab-list>
 
           <div class="results__body">
-            @if (running()) {
+            @if (tab() === 'plan') {
+              @if (explaining()) {
+                <p class="results__hint" data-testid="plan-explaining">
+                  <app-icon [icon]="Icon.SPINNER" /> {{ planText.explaining }}
+                </p>
+              } @else if (plan(); as plan) {
+                @if (plan.failed) {
+                  <p class="results__hint results__hint--error" data-testid="plan-failed">
+                    <app-icon [icon]="Icon.ERROR" /> {{ planText.failed }} {{ plan.message ?? '' }}
+                  </p>
+                }
+                @if (planHasNoActuals()) {
+                  <p class="results__hint" data-testid="plan-no-actuals">
+                    <app-icon [icon]="Icon.INFO" /> {{ planText.noActuals }}
+                  </p>
+                }
+                @if (plan.plans.length > 0) {
+                  <app-plan-view
+                    class="results__fill"
+                    [plans]="plan.plans"
+                    [view]="planView()"
+                    [firstLine]="plan.firstLine"
+                    (picked)="onPlanPick($event)"
+                  />
+                } @else if (!plan.failed) {
+                  <p class="results__hint">{{ planText.noPlan }}</p>
+                }
+              } @else {
+                <p class="results__hint" data-testid="plan-empty">{{ planText.empty }}</p>
+              }
+            } @else if (running()) {
               <p class="results__hint"><app-icon [icon]="Icon.SPINNER" /> Running…</p>
             } @else if (tab() === 'messages') {
               <ol class="results__messages">

@@ -1,0 +1,86 @@
+// A query's plan: the statement chips, the statement's text, then the tree table (or the raw plan)
+// taking the rest of the pane.
+
+:host {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+}
+
+.plan__statements {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.35rem 0.5rem;
+}
+
+// The chips the results pane picks a result set with, so the two read as one control.
+.plan__statement {
+  padding: 0.15rem 0.5rem;
+  font: inherit;
+  font-size: 0.6875rem;
+  color: var(--form-muted-foreground-color);
+  background: transparent;
+  border: 0.0625rem solid var(--dock-border-color);
+  border-radius: calc(0.35rem * var(--border-radius-multiplier));
+  cursor: pointer;
+
+  &--active {
+    color: var(--accent-color);
+    border-color: var(--accent-surface-border-color);
+  }
+}
+
+// The statement planned, one line, so a long one does not push the tree down.
+.plan__caption {
+  margin: 0;
+  padding: 0.3rem 0.75rem;
+  overflow: hidden;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.6875rem;
+  color: var(--form-muted-foreground-color);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan__fill {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+.plan__raw {
+  display: block;
+}
+
+.plan__tree {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  --table-header-rule-color: transparent;
+  --table-splitter-color: var(--database-results-splitter-color);
+}
+
+.plan__step {
+  overflow: hidden;
+}
+
+.plan__operator {
+  font-weight: 600;
+}
+
+// What the step acts on, quieter than the operator it follows.
+.plan__detail {
+  margin-inline-start: 0.5rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.plan__figure {
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  // An estimate an order of magnitude out: the row count the planner got wrong, in the warning tone.
+  &--misestimated {
+    color: var(--warning-color);
+    font-weight: 600;
+  }
+}

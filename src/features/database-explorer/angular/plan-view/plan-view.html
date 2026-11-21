@@ -1,0 +1,79 @@
+@if (statements().length > 0) {
+  <div
+    class="plan__statements"
+    role="group"
+    aria-label="Statements"
+    i18n-aria-label="The row of chips choosing which statement's plan shows"
+  >
+    @for (statement of statements(); track statement.index) {
+      <button
+        type="button"
+        class="plan__statement"
+        data-testid="plan-statement"
+        [class.plan__statement--active]="statement.index === index()"
+        [attr.aria-pressed]="statement.index === index()"
+        (click)="choose(statement.index)"
+      >
+        {{ statement.label }}
+      </button>
+    }
+  </div>
+}
+
+@if (plan(); as plan) {
+  @if (view() === 'raw') {
+    <!-- A viewer, not a form field: the bare editor, with no frame of its own. -->
+    <app-text-editor
+      class="plan__fill plan__raw"
+      data-testid="plan-raw"
+      [content]="plan.raw"
+      [language]="rawLanguage()"
+      [readOnly]="true"
+    />
+  } @else {
+    <p class="plan__caption" [title]="plan.statement">{{ plan.statement }}</p>
+    <app-table
+      class="plan__fill plan__tree"
+      data-testid="plan-tree"
+      [style.font-family]="gridFont()"
+      [columns]="columns()"
+      [rows]="rows()"
+      [collapsible]="true"
+      [resizable]="true"
+      [gridlines]="gridlines()"
+      [gridlineTone]="gridlineTone()"
+      [selectedIds]="selected()"
+      (rowClick)="onRowClick($event)"
+    >
+      <ng-template appTableRow let-row let-tree="tree">
+        <td class="plan__step" [title]="row.data.label">
+          <app-table-tree-cell [tree]="tree">
+            <span class="plan__operator">{{ row.data.operator }}</span>
+            @if (row.data.detail) {
+              <span class="plan__detail">{{ row.data.detail }}</span>
+            }
+          </app-table-tree-cell>
+        </td>
+        @if (figures().cost) {
+          <td class="plan__figure">{{ row.data.cost ?? '' }}</td>
+        }
+        @if (figures().estimatedRows) {
+          <td class="plan__figure">{{ row.data.estimatedRows ?? '' }}</td>
+        }
+        @if (figures().actualRows) {
+          <td
+            class="plan__figure"
+            [class.plan__figure--misestimated]="row.data.misestimate"
+            [attr.data-testid]="row.data.misestimate ? 'plan-misestimate' : null"
+            [title]="row.data.misestimate ?? ''"
+          >
+            {{ row.data.actualRows ?? '' }}
+          </td>
+        }
+        @if (figures().time) {
+          <td class="plan__figure">{{ row.data.time ?? '' }}</td>
+        }
+      </ng-template>
+    </app-table>
+  }
+}

@@ -25,6 +25,9 @@ import {
   ExecuteOutcome,
   ExecuteRequest,
   ExpandOutcome,
+  ExplainOutcome,
+  ExplainRequest,
+  QueryPlan,
   DatabaseValue,
   FetchRequest,
   QueryMessage,
@@ -73,6 +76,37 @@ const SQLITE: DatabaseEngineInfo = {
 };
 
 /**
+ * An engine that can explain a query (protocol 1.5).
+ */
+const EXPLAINER: DatabaseEngineInfo = {
+  id: 'explainer',
+  displayName: 'Explainer',
+  language: 'sql',
+  queryExtension: 'sql',
+  capabilities: ['explain'],
+  connectionFields: [{ id: 'host', label: 'Host', kind: 'text' }],
+};
+
+/**
+ * A plan as an engine that estimates and measures describes it: a join over two scans.
+ */
+const PLAN: QueryPlan = {
+  statement: 'select * from a join b using (id)',
+  line: 1,
+  root: {
+    operator: 'Hash Join',
+    detail: 'Inner',
+    cost: 12.5,
+    estimatedRows: 10,
+    children: [
+      { operator: 'Seq Scan', detail: 'on a', cost: 4, estimatedRows: 100, children: [] },
+      { operator: 'Seq Scan', detail: 'on b', cost: 4, estimatedRows: 5, children: [] },
+    ],
+  },
+  raw: '[{"Plan":{}}]',
+};
+
+/**
  * A stand-in engine client.
  */
 class FakeClient {
@@ -118,7 +152,7 @@ class FakeClient {
    * @returns Returns the engines.
    */
   public engines(): Promise<readonly DatabaseEngineInfo[]> {
-    return Promise.resolve([POSTGRES, SQLITE]);
+    return Promise.resolve([POSTGRES, SQLITE, EXPLAINER]);
   }
 
   /**
@@ -178,6 +212,26 @@ class FakeClient {
    */
   public cancel(id: string): void {
     this.cancels.push(id);
+  }
+
+  /**
+   * Holds every explain.
+   */
+  public readonly explains: ExplainRequest[] = [];
+
+  /**
+   * Holds what every explain resolves with.
+   */
+  public plan: ExplainOutcome = { plans: [PLAN], failed: false };
+
+  /**
+   * Records an explain.
+   * @param request The request.
+   * @returns Returns the configured plan.
+   */
+  public explain(request: ExplainRequest): Promise<ExplainOutcome> {
+    this.explains.push(request);
+    return Promise.resolve(this.plan);
   }
 
   /**
@@ -374,6 +428,7 @@ describe('QueryPanel', () => {
   let workspace: DatabaseWorkspace;
   let client: FakeClient;
   let attached: string[];
+  let explainers: Map<string, (analyze: boolean) => void>;
   let completions: FakeCompletions;
   let monacoApi: FakeMonacoApi;
   let files: FakeFileSystem;
@@ -449,6 +504,7 @@ describe('QueryPanel', () => {
   beforeEach(async () => {
     client = new FakeClient();
     attached = [];
+    explainers = new Map<string, (analyze: boolean) => void>();
     completions = new FakeCompletions();
     monacoApi = new FakeMonacoApi();
     files = new FakeFileSystem();
@@ -472,6 +528,10 @@ describe('QueryPanel', () => {
             attach: (id: string): (() => void) => {
               attached.push(id);
               return (): void => undefined;
+            },
+            attachExplain: (id: string, explain: (analyze: boolean) => void): (() => void) => {
+              explainers.set(id, explain);
+              return (): void => void explainers.delete(id);
             },
           },
         },
@@ -1636,6 +1696,215 @@ describe('QueryPanel', () => {
       build(workspace.addQuery(postgres().id, undefined, 'select 1'));
 
       expect(panel().resultsDefaultSize()).toBeNull();
+    });
+  });
+
+  describe('its plan', () => {
+    /**
+     * Reads the panel's Plan members.
+     */
+    interface PlanInternals {
+      readonly tab: () => string;
+      readonly resultTabs: () => readonly { value: string; badge?: number; badgeTone?: string }[];
+      readonly resultsVisible: () => boolean;
+      readonly canExplain: () => boolean;
+      readonly explainEnabled: () => boolean;
+      readonly explaining: () => boolean;
+      readonly plan: () => {
+        readonly plans: readonly QueryPlan[];
+        readonly failed: boolean;
+        readonly analyzed: boolean;
+        readonly firstLine: number;
+      } | null;
+      readonly planHasNoActuals: () => boolean;
+      readonly moreItems: () => readonly MenuItem[];
+      onMoreAction(id: string): void;
+      onPlanPick(pick: {
+        title: string;
+        properties: readonly { name: string; value: string }[];
+      }): void;
+    }
+
+    /**
+     * Gets the panel's Plan members.
+     * @returns Returns them.
+     */
+    function plan(): PlanInternals {
+      return component as unknown as PlanInternals;
+    }
+
+    /**
+     * Adds a connection to an engine that can explain.
+     * @returns Returns it.
+     */
+    function explainer(): DatabaseConnection {
+      return workspace.addConnection('Planner', 'explainer', { host: 'h' });
+    }
+
+    /**
+     * Reads the values of the results pane's tabs.
+     * @returns Returns them in order.
+     */
+    function tabValues(): readonly string[] {
+      return plan()
+        .resultTabs()
+        .map((tab: { value: string }): string => tab.value);
+    }
+
+    it('tabs_offerPlan_onlyWhereTheEngineCanExplain', () => {
+      build(workspace.addQuery(postgres().id, undefined, 'select 1'));
+      expect(tabValues()).toEqual(['results', 'messages']);
+      expect(plan().canExplain()).toBe(false);
+      expect(
+        plan()
+          .moreItems()
+          .map((item: MenuItem): string => item.id),
+      ).not.toContain('explain');
+
+      build(workspace.addQuery(explainer().id, undefined, 'select 1'));
+
+      expect(tabValues()).toEqual(['results', 'messages', 'plan']);
+      expect(
+        plan()
+          .moreItems()
+          .slice(0, 2)
+          .map((item: MenuItem): string => item.id),
+      ).toEqual(['explain', 'explain-analyze']);
+    });
+
+    it('explain_asksTheEngineForTheWholeQuery_andOpensThePlanTab', async () => {
+      build(workspace.addQuery(explainer().id, 'shop', 'select * from a join b using (id)'));
+      expect(plan().resultsVisible()).toBe(false);
+
+      component.explain();
+      expect(plan().explaining()).toBe(true);
+      expect(plan().explainEnabled()).toBe(false);
+      await settle();
+
+      expect(client.explains).toEqual([
+        { session: 's1', text: 'select * from a join b using (id)', database: 'shop' },
+      ]);
+      expect(plan().tab()).toBe('plan');
+      expect(plan().resultsVisible()).toBe(true);
+      expect(plan().plan()).toMatchObject({ plans: [PLAN], failed: false, analyzed: false });
+      expect(plan().explaining()).toBe(false);
+    });
+
+    it('explain_withASelection_explainsOnlyThat_placedAtItsLine', async () => {
+      build(workspace.addQuery(explainer().id, undefined, 'select 1\nselect 2'));
+      const model: object = { getValueInRange: (): string => 'select 2' };
+      (component as unknown as { editor: () => object }).editor = (): object => ({
+        getEditor: (): object => ({
+          getModel: (): object => model,
+          getSelection: (): object => ({ isEmpty: (): boolean => false, startLineNumber: 2 }),
+        }),
+      });
+
+      component.explain();
+      await settle();
+
+      expect(client.explains[0]?.text).toBe('select 2');
+      expect(plan().plan()?.firstLine).toBe(2);
+    });
+
+    it('explainAnalyze_asksFirstAboutADestructiveStatement_andExplainsNothingWhenRefused', async () => {
+      build(workspace.addQuery(explainer().id, undefined, 'delete from a'));
+      const prompts: DatabasePrompts = TestBed.inject(DatabasePrompts);
+
+      plan().onMoreAction('explain-analyze');
+      await settle();
+      prompts.settleDestructive(false);
+      await settle();
+
+      expect(client.explains).toEqual([]);
+    });
+
+    it('explainAnalyze_onceConfirmed_asksForActualFigures', async () => {
+      build(workspace.addQuery(explainer().id, undefined, 'delete from a'));
+      const prompts: DatabasePrompts = TestBed.inject(DatabasePrompts);
+
+      plan().onMoreAction('explain-analyze');
+      await settle();
+      prompts.settleDestructive(true);
+      await settle();
+
+      expect(client.explains[0]).toMatchObject({ text: 'delete from a', analyze: true });
+      expect(plan().plan()?.analyzed).toBe(true);
+    });
+
+    it('explain_plainly_asksNothing_evenOfADestructiveStatement', async () => {
+      build(workspace.addQuery(explainer().id, undefined, 'drop table a'));
+
+      plan().onMoreAction('explain');
+      await settle();
+
+      expect(client.explains).toHaveLength(1);
+    });
+
+    it('anAnalyzedPlanWithNoActualFigures_saysItHoldsOnlyEstimates', async () => {
+      TestBed.inject(Settings).set('databaseExplorer.confirmDestructive', false);
+      build(workspace.addQuery(explainer().id, undefined, 'select 1'));
+
+      plan().onMoreAction('explain-analyze');
+      await settle();
+      expect(plan().planHasNoActuals()).toBe(true);
+
+      client.plan = {
+        plans: [{ ...PLAN, root: { ...PLAN.root, actualRows: 9, time: 0.4 } }],
+        failed: false,
+      };
+      plan().onMoreAction('explain-analyze');
+      await settle();
+      expect(plan().planHasNoActuals()).toBe(false);
+    });
+
+    it('aPlanThatFailed_marksThePlanTab', async () => {
+      client.plan = { plans: [], failed: true, message: 'syntax error at "selec"' };
+      build(workspace.addQuery(explainer().id, undefined, 'selec 1'));
+
+      component.explain();
+      await settle();
+
+      expect(plan().resultTabs()[2]).toMatchObject({
+        value: 'plan',
+        badge: 1,
+        badgeTone: 'error',
+      });
+      expect(plan().plan()?.failed).toBe(true);
+    });
+
+    it('explain_onAnEngineThatCannot_doesNothing', async () => {
+      build(workspace.addQuery(postgres().id, undefined, 'select 1'));
+
+      component.explain();
+      await settle();
+
+      expect(client.explains).toEqual([]);
+    });
+
+    it('theRibbon_explainsThisQuery_asItsOwnButtonDoes', async () => {
+      const query: DatabaseQuery = workspace.addQuery(explainer().id, undefined, 'select 1');
+      build(query);
+
+      explainers.get(query.id)?.(false);
+      await settle();
+
+      expect(client.explains).toHaveLength(1);
+    });
+
+    it('onPlanPick_showsTheStepInProperties', () => {
+      build(workspace.addQuery(explainer().id, undefined, 'select 1'));
+
+      plan().onPlanPick({
+        title: 'Seq Scan',
+        properties: [{ name: 'Operator', value: 'Seq Scan' }],
+      });
+
+      expect(workspace.selection()).toEqual({
+        kind: 'graph',
+        title: 'Seq Scan',
+        properties: [{ name: 'Operator', value: 'Seq Scan' }],
+      });
     });
   });
 });
