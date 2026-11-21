@@ -687,9 +687,16 @@ export class VersionControlProvider implements SourceControlProvider {
       return { success: false, error: 'Version control is unavailable' };
     }
     const response: VersionControlResponse<Op> = await this.api.request(this.root, op, params);
-    return response.ok
-      ? { success: true }
-      : { success: false, error: response.error, code: response.code };
+    if (response.ok) {
+      return { success: true };
+    }
+    return {
+      success: false,
+      error: response.error,
+      code: response.code,
+      ...(response.sshHost === undefined ? {} : { sshHost: response.sshHost }),
+      ...(typeof response.output === 'string' ? { output: response.output } : {}),
+    };
   }
 
   /**

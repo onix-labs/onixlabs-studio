@@ -108,6 +108,69 @@ describe('ToastCard', () => {
     );
   });
 
+  describe('commands and details (#1255)', () => {
+    /**
+     * The notification an unknown SSH host raises.
+     */
+    const unknownHost: Notification = {
+      ...notification('error'),
+      title: 'Fetch failed — studio',
+      detail: "SSH doesn't know the host key of github.com yet.",
+      commands: ['ssh -T git@github.com', 'ssh-keyscan github.com >> ~/.ssh/known_hosts'],
+      output: 'Host key verification failed.\nfatal: Could not read from remote repository.',
+    };
+
+    it('showsEachCommandAsCode_andCopiesIt', async () => {
+      const copied: string[] = [];
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: (text: string): Promise<void> => Promise.resolve(void copied.push(text)),
+        },
+      });
+      render(unknownHost);
+
+      const commands: string[] = [
+        ...host.querySelectorAll<HTMLElement>('[data-testid="toast-command"] code'),
+      ].map((code: HTMLElement): string => code.textContent ?? '');
+      host
+        .querySelectorAll<HTMLButtonElement>('[data-testid="toast-copy-command"] button')[1]
+        ?.click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(commands).toEqual(unknownHost.commands);
+      expect(copied).toEqual(['ssh-keyscan github.com >> ~/.ssh/known_hosts']);
+      expect(
+        host
+          .querySelectorAll('[data-testid="toast-copy-command"] button')[1]
+          ?.getAttribute('aria-label'),
+      ).toBe('Copied');
+    });
+
+    it('keepsTheToolsOutputUnderShowDetails', () => {
+      render(unknownHost);
+
+      expect(host.querySelector('[data-testid="toast-output"]')).toBeNull();
+      host.querySelector<HTMLButtonElement>('[data-testid="toast-details"] button')?.click();
+      fixture.detectChanges();
+
+      expect(host.querySelector('[data-testid="toast-output"]')?.textContent).toBe(
+        unknownHost.output,
+      );
+      expect(host.querySelector('[data-testid="toast-details"] button')?.textContent?.trim()).toBe(
+        'Hide Details',
+      );
+    });
+
+    it('offersNeitherWithoutThem', () => {
+      render(notification('error'));
+
+      expect(host.querySelector('[data-testid="toast-command"]')).toBeNull();
+      expect(host.querySelector('[data-testid="toast-details"]')).toBeNull();
+    });
+  });
+
   describe("Don't Show Again (#1487)", () => {
     it('isOfferedOnlyWhenTheSurfaceSaysSo', () => {
       render(notification('error'));

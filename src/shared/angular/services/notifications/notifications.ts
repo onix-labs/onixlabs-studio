@@ -70,6 +70,18 @@ export interface NotificationRequest {
   readonly detail?: string;
 
   /**
+   * Gets commands the detail suggests running, each shown as code with its own Copy button (#1255),
+   * or undefined when it suggests none.
+   */
+  readonly commands?: readonly string[];
+
+  /**
+   * Gets a tool's own output behind the detail, shown under Show Details, or undefined when the
+   * detail is the whole story. Kept for a detail that rewords what the tool said.
+   */
+  readonly output?: string;
+
+  /**
    * Gets the actions offered on the toast, or undefined when it offers none.
    */
   readonly actions?: readonly NotificationAction[];
@@ -144,6 +156,17 @@ export interface Notification {
    * Gets the supporting detail shown under the title, or undefined when the title stands alone.
    */
   readonly detail?: string;
+
+  /**
+   * Gets the commands the detail suggests running, each copyable, or undefined when it suggests none.
+   */
+  readonly commands?: readonly string[];
+
+  /**
+   * Gets the tool's own output behind the detail, shown under Show Details, or undefined when there
+   * is none.
+   */
+  readonly output?: string;
 
   /**
    * Gets the actions offered on the toast.
@@ -300,6 +323,12 @@ export class Notifications {
       severity: request.severity,
       title: request.title,
       detail: request.detail,
+      ...(request.commands === undefined || request.commands.length === 0
+        ? {}
+        : { commands: request.commands }),
+      ...(request.output === undefined || request.output.trim() === ''
+        ? {}
+        : { output: request.output }),
       actions: request.actions ?? [],
       key: request.key,
       sticky:

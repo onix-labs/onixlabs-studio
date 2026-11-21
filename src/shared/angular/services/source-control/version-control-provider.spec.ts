@@ -282,6 +282,29 @@ describe('VersionControlProvider', () => {
     expect(failed).toEqual({ original: '', modified: '' });
   });
 
+  it('aFailedMutation_carriesAnSshFailuresServerAndOutput (#1255)', async () => {
+    const provider: VersionControlProvider = new VersionControlProvider('/repo', {
+      ...client({}),
+      request: <Op extends VersionControlOp>(): Promise<VersionControlResponse<Op>> =>
+        Promise.resolve({
+          id: 0,
+          ok: false,
+          error: 'English',
+          code: 'ssh-host-unknown' as const,
+          sshHost: { host: 'github.com' },
+          output: 'Host key verification failed.',
+        }),
+    });
+
+    expect(await provider.fetch()).toEqual({
+      success: false,
+      error: 'English',
+      code: 'ssh-host-unknown',
+      sshHost: { host: 'github.com' },
+      output: 'Host key verification failed.',
+    });
+  });
+
   it('getFileDiff_readsEachSideFromTheRightVersion', async () => {
     const provider: VersionControlProvider = new VersionControlProvider(
       '/repo',

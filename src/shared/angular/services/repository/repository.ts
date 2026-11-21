@@ -38,6 +38,7 @@ import {
   SourceControlProvider,
 } from '../source-control/source-control-provider';
 import { SourceControl } from '../source-control/source-control';
+import { SshFailureNotice, sshFailureNotice } from '../source-control/ssh-failure-notice';
 import { SourceControlProviders } from '../source-control/source-control-providers';
 import {
   GitBranch,
@@ -2350,7 +2351,7 @@ export class Repository {
     if (result.success) {
       this.notifyNetworkSuccess(operation, subject);
     } else {
-      this.notifyNetworkFailure(operation, result.error);
+      this.notifyNetworkFailure(operation, result);
     }
   }
 
@@ -2386,16 +2387,24 @@ export class Repository {
   /**
    * Raises the sticky error toast reporting a failed network operation, so an auth or conflict
    * failure never vanishes silently — whichever surface the operation was started from.
+   * An SSH failure the plugin coded (#1255) is worded here, in the user's language, with the commands
+   * that fix it and git's own output under Show Details.
    * @param operation The failed operation.
-   * @param error The failure detail, when the provider supplied one.
+   * @param result The failed outcome.
    */
-  private notifyNetworkFailure(operation: NetworkOperation, error: string | undefined): void {
+  private notifyNetworkFailure(operation: NetworkOperation, result: MutationResult): void {
     const label: string = NETWORK_OPERATION_LABELS[operation];
     const repo: string = this.repoName();
+    const ssh: SshFailureNotice | null = sshFailureNotice(
+      result.code,
+      result.sshHost,
+      window.host?.platform,
+    );
     this.notifications.notify({
       severity: 'error',
       title: repo === '' ? `${label} failed` : `${label} failed — ${repo}`,
-      detail: error,
+      detail: ssh?.detail ?? result.error,
+      ...(ssh === null ? {} : { commands: ssh.commands, output: result.output ?? result.error }),
       key: this.notificationKey(operation),
     });
   }

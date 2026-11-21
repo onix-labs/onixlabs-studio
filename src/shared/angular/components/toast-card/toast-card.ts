@@ -1,10 +1,15 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
+  inject,
   input,
   InputSignal,
   output,
   OutputEmitterRef,
+  Signal,
+  signal,
+  WritableSignal,
 } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button, ButtonTone } from '@shared/angular/components/forms/button/button';
@@ -15,6 +20,11 @@ import type {
   NotificationAction,
   NotificationSeverity,
 } from '@shared/angular/services/notifications/notifications';
+
+/**
+ * How long, in milliseconds, a command's copy button shows its tick after a successful copy.
+ */
+const COPIED_FEEDBACK_MS: number = 1500;
 
 /**
  * One notification drawn as a card: its severity icon, title, close button, detail and actions, in
@@ -92,6 +102,91 @@ export class ToastCard {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Gets the Copy button's label for a suggested command.
+   */
+  protected readonly copyLabel: string = $localize`:Button that copies a suggested command from a notification:Copy Command`;
+
+  /**
+   * Gets the Copy button's label once the command is on the clipboard.
+   */
+  protected readonly copiedLabel: string = $localize`:Shown on a notification's copy button once the command has been copied:Copied`;
+
+  /**
+   * Gets the label of the button that reveals a tool's own output.
+   */
+  protected readonly showDetailsLabel: string = $localize`:Button on a notification that reveals the tool's own output:Show Details`;
+
+  /**
+   * Gets the label of the button that hides it again.
+   */
+  protected readonly hideDetailsLabel: string = $localize`:Button on a notification that hides the tool's own output again:Hide Details`;
+
+  /**
+   * Holds the command last copied, which shows a tick for a moment, or null.
+   */
+  private readonly copied: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Gets the command last copied, or null.
+   */
+  protected readonly copiedCommand: Signal<string | null> = this.copied.asReadonly();
+
+  /**
+   * Holds whether the tool's own output is shown.
+   */
+  private readonly shown: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets whether the tool's own output is shown.
+   */
+  protected readonly detailsShown: Signal<boolean> = this.shown.asReadonly();
+
+  /**
+   * Holds the timer that clears the copied tick, so a second copy restarts it.
+   */
+  private copiedTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Initialises a new instance, clearing the copied tick's timer when the card goes.
+   */
+  public constructor() {
+    inject(DestroyRef).onDestroy((): void => {
+      if (this.copiedTimer !== null) {
+        clearTimeout(this.copiedTimer);
+      }
+    });
+  }
+
+  /**
+   * Copies a suggested command to the clipboard, ticking its button when it worked.
+   * @param command The command.
+   * @returns Returns a promise that resolves once the copy has been tried.
+   */
+  protected async copy(command: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(command);
+    } catch {
+      // Nothing copied, so nothing ticks; the command is still there to select by hand.
+      return;
+    }
+    this.copied.set(command);
+    if (this.copiedTimer !== null) {
+      clearTimeout(this.copiedTimer);
+    }
+    this.copiedTimer = setTimeout((): void => {
+      this.copied.set(null);
+      this.copiedTimer = null;
+    }, COPIED_FEEDBACK_MS);
+  }
+
+  /**
+   * Shows or hides the tool's own output.
+   */
+  protected toggleDetails(): void {
+    this.shown.update((shown: boolean): boolean => !shown);
+  }
 
   /**
    * Gets the icon for a severity.
