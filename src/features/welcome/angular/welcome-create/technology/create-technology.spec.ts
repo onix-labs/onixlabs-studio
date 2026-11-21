@@ -142,4 +142,20 @@ describe('CreateTechnology', () => {
       host.querySelector<HTMLInputElement>('input[aria-label="Add a technology"]')!.value,
     ).toBe('');
   });
+
+  it('addsOnPlainEnter_butNotWithAModifier_orWhileAnInputMethodComposes', async () => {
+    await type('Add a technology', 'Marten');
+    const field: HTMLInputElement = host.querySelector<HTMLInputElement>(
+      'input[aria-label="Add a technology"]',
+    )!;
+
+    for (const modifier of ['shiftKey', 'ctrlKey', 'metaKey', 'altKey']) {
+      field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', [modifier]: true }));
+    }
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true }));
+    expect(added).toEqual([]);
+
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(added).toEqual(['Marten']);
+  });
 });

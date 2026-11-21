@@ -198,12 +198,13 @@ export class CreateTechnology {
   }
 
   /**
-   * Adds the typed technology on Enter, unless Enter is picking an input method's candidate (typing a
-   * name in Chinese).
+   * Adds the typed technology on plain Enter, as `(keydown.enter)` did: not with a modifier held, and
+   * not while Enter is picking an input method's candidate (typing a name in Chinese).
    * @param event The key event raised by the field.
    */
   protected onAdditionKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Enter' && !isComposing(event)) {
+    const modified: boolean = event.shiftKey || event.ctrlKey || event.metaKey || event.altKey;
+    if (event.key === 'Enter' && !modified && !isComposing(event)) {
       this.add();
     }
   }
