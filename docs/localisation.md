@@ -4,6 +4,19 @@ Studio's interface can be shown in English, French, Spanish and German. This pag
 translation machinery works, how to mark text for translation, and what is still to do. It started as
 a spike, so most of the interface is not marked yet and reads in English in every language.
 
+## English until the whole interface is translated
+
+A released (packaged) build shows the interface in English, whatever the Language setting was saved as
+and whatever the system prefers, and Settings doesn't show the Language setting. A half-translated
+interface, part French and part English, reads worse than one in English throughout.
+
+A development build is unaffected: the setting is there, and every language, including the pseudo
+language, can be chosen. That's how the translations are seen while the interface is being marked.
+
+`INTERFACE_TRANSLATED` in `src/shared/angular/services/locale/language-choice.ts` is the switch. Set it
+to `true` once every language Studio offers covers the whole interface, and the setting comes back for
+everyone, with whatever they had chosen before.
+
 ## How it works
 
 Studio uses Angular's own translation support (`@angular/localize`), with the translations loaded

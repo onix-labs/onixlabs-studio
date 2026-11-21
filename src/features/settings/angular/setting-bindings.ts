@@ -3,6 +3,7 @@ import type { GraphicsAcceleration } from '@shared/api/host';
 import type { ImageSourcePolicy } from '@shared/api/security-channels';
 import { Display } from '@shared/angular/services/display/display';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import { languageInForce, launchLanguage } from '@shared/angular/services/locale/language-choice';
 import { resolveLanguage } from '@shared/angular/services/locale/resolve-language';
 import type { SpokenLanguage } from '@shared/angular/services/locale/spoken-language';
 import { Security } from '@shared/angular/services/security/security';
@@ -154,13 +155,19 @@ export class SettingBindings {
    * @returns Returns the signal.
    */
   private languageRestartPending(): Signal<boolean> {
+    // Both sides go through the build's language gate, so a packaged build that holds English asks
+    // for no restart whatever an imported settings file sets the hidden setting to.
+    const packaged: boolean = window.host?.packaged ?? false;
     const launched: SpokenLanguage = resolveLanguage(
-      window.host?.startupSettings.language ?? 'system',
+      launchLanguage(window.host),
       navigator.languages,
     );
     const chosen: Signal<SettingsValues['application.language']> =
       this.settings.value('application.language');
-    return computed((): boolean => resolveLanguage(chosen(), navigator.languages) !== launched);
+    return computed(
+      (): boolean =>
+        resolveLanguage(languageInForce(chosen(), packaged), navigator.languages) !== launched,
+    );
   }
 
   /**
