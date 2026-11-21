@@ -333,6 +333,24 @@ describe('ConflictLens', () => {
     expect(counts).toEqual([2]);
   });
 
+  it('offersCompare_onlyWhenTheHostCanOpenTheMergeTool_andSaysWhichConflict', () => {
+    const editor: FakeEditor = new FakeEditor(FILE);
+    const compared: number[] = [];
+    const { host } = hostOf(MERGE);
+
+    lens = new ConflictLens(editor.asEditor(), {
+      ...host,
+      compare: (index: number): void => void compared.push(index),
+    });
+
+    expect(editor.rows()).toEqual([
+      'Keep main (Yours)·Keep feature (Theirs)·Keep Both·Compare',
+      'Keep main (Yours)·Keep feature (Theirs)·Keep Both·Compare',
+    ]);
+    editor.press(7, 'Compare');
+    expect(compared).toEqual([1]);
+  });
+
   it('highlightsTheSectionsByWhoseTheyAre_andFlipsThemInARebase', () => {
     const merge: FakeEditor = new FakeEditor(FILE);
     const rebase: FakeEditor = new FakeEditor(FILE);

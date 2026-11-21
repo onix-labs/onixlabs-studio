@@ -44,7 +44,10 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { BreakpointGutter } from '@features/code/angular/breakpoints/breakpoint-gutter';
 import { BreakpointGutterController } from '@features/code/angular/breakpoints/breakpoint-gutter-controller';
-import { ConflictLens, ConflictLensLabels } from '@features/code/angular/conflicts/conflict-lens';
+import {
+  ConflictLens,
+  ConflictLensLabels,
+} from '@shared/angular/components/conflict-lens/conflict-lens';
 import {
   CONFLICT_CONTEXT,
   ConflictContext,
