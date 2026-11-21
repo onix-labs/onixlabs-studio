@@ -21,6 +21,21 @@
     "yaml-language-server": "1.24.0.with-settings.json"
   },
   "verified": {
+    "bash-language-server": [
+      "definition",
+      "hover",
+      "completion",
+      "rename",
+      "documentHighlight",
+      "documentSymbol"
+    ],
+    "dockerfile-language-server": [
+      "hover",
+      "completion",
+      "formatting",
+      "documentSymbol",
+      "publishDiagnostics"
+    ],
     "go": [
       "definition",
       "implementation",
@@ -45,6 +60,63 @@
       "typeHierarchy",
       "publishDiagnostics",
       "textDocument/diagnostic"
+    ],
+    "lua-language-server": [
+      "definition",
+      "hover",
+      "completion",
+      "formatting",
+      "rename",
+      "codeLens",
+      "documentSymbol",
+      "publishDiagnostics"
+    ],
+    "perlnavigator": ["definition", "hover", "completion", "documentSymbol", "publishDiagnostics"],
+    "svelte-language-server": [
+      "definition",
+      "hover",
+      "completion",
+      "formatting",
+      "codeLens",
+      "documentHighlight",
+      "documentSymbol",
+      "textDocument/diagnostic"
+    ],
+    "vscode-css-language-server": [
+      "hover",
+      "completion",
+      "formatting",
+      "rename",
+      "codeAction",
+      "documentHighlight",
+      "documentSymbol",
+      "textDocument/diagnostic"
+    ],
+    "vscode-html-language-server": [
+      "hover",
+      "completion",
+      "formatting",
+      "documentHighlight",
+      "linkedEditingRange",
+      "documentSymbol",
+      "textDocument/diagnostic"
+    ],
+    "vscode-json-language-server": [
+      "hover",
+      "completion",
+      "formatting",
+      "rangeFormatting",
+      "codeAction",
+      "documentSymbol",
+      "textDocument/diagnostic"
+    ],
+    "yaml-language-server": [
+      "hover",
+      "completion",
+      "formatting",
+      "codeLens",
+      "documentSymbol",
+      "publishDiagnostics"
     ]
   },
   "notApplicable": {
@@ -61,11 +133,15 @@
   "servers": {
     "ty": {
       "source": "Workspace diagnostics: registered with diagnosticMode workspace; the probe's 60 s pull without a partial-result token timed out (#1212)",
-      "cells": { "workspace/diagnostic": "offered" }
+      "cells": {
+        "workspace/diagnostic": "offered"
+      }
     },
     "pyright": {
       "source": "Workspace diagnostics: registered with python.analysis.diagnosticMode workspace; the probe's 60 s pull timed out (#1212)",
-      "cells": { "workspace/diagnostic": "offered" }
+      "cells": {
+        "workspace/diagnostic": "offered"
+      }
     },
     "csharp": {
       "language": "csharp",
