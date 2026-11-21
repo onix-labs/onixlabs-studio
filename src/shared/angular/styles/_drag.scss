@@ -64,9 +64,9 @@
       transparent var(--title-strip-tab-foot-radius),
       #000 var(--title-strip-tab-foot-radius)
     );
-    border-start-start-radius: var(--title-strip-tab-foot-radius);
+    border-top-left-radius: var(--title-strip-tab-foot-radius);
     border-block-start: var(--hairline) solid var(--title-strip-border-color);
-    border-inline-start: var(--hairline) solid var(--title-strip-border-color);
+    border-left: var(--hairline) solid var(--title-strip-border-color);
   }
 
   &::after {
@@ -76,9 +76,9 @@
       transparent var(--title-strip-tab-foot-radius),
       #000 var(--title-strip-tab-foot-radius)
     );
-    border-start-end-radius: var(--title-strip-tab-foot-radius);
+    border-top-right-radius: var(--title-strip-tab-foot-radius);
     border-block-start: var(--hairline) solid var(--title-strip-border-color);
-    border-inline-end: var(--hairline) solid var(--title-strip-border-color);
+    border-right: var(--hairline) solid var(--title-strip-border-color);
   }
 
   // The leading icon holds its size; the title takes the slack and collapses, mirroring a live tab.

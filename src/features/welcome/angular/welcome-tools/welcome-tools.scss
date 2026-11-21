@@ -57,7 +57,7 @@
     }
 
     .welcome__tool-chevron {
-      transform: translateX(0.125rem);
+      transform: translateX(calc(0.125rem * var(--inline-sign)));
     }
   }
 }

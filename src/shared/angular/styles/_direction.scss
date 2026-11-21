@@ -1,0 +1,75 @@
+// Right-to-left layout, and the fonts for each script.
+//
+// The interface's direction is the document's: the language loader sets `dir="rtl"` on the root for a
+// right-to-left language (Arabic), and child windows copy it (see `load-language.ts`). Flex rows, grids
+// and logical properties (`margin-inline-start`, `inset-inline-end`, `text-align: start`) then mirror
+// by themselves, which is why styles use them rather than left and right. What is left is here: the
+// places that have to stay left to right, the icons that point somewhere, and transforms, which have no
+// logical form.
+
+:root {
+  // Multiplies a horizontal transform so it runs toward the inline end in either direction:
+  // `translateX(calc(14px * var(--inline-sign)))` slides right in English and left in Arabic.
+  --inline-sign: 1;
+  // The interface's direction, for a box inside a left-to-right structure to return to. The docking
+  // layouts keep their panels where the user put them, left or right, in either direction (their drop
+  // guides, grips and resizing all work in screen sides); each panel's own content then mirrors with
+  // `direction: var(--interface-direction)`.
+  --interface-direction: ltr;
+}
+
+:root[dir='rtl'] {
+  --inline-sign: -1;
+  --interface-direction: rtl;
+}
+
+// Code, terminals and the binary views are left to right in every language: code is written that way,
+// and the editors measure columns, carets and selections assuming it. Inline code and keys in a
+// right-to-left sentence are isolated, so their punctuation stays with them rather than moving to the
+// sentence's ends.
+:root[dir='rtl']
+  :is(.monaco-editor, .monaco-diff-editor, .xterm, app-binary-editor, pre, code, kbd, samp) {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+// Icons that point along the line (carets, arrows, send, undo and redo) point the other way in a
+// right-to-left interface: forward is to the left. `:where` keeps the rule's weight at zero, so an icon
+// a component turns itself (a caret rotated to point down when its row opens) keeps that turn, and the
+// rotation an icon's own `rotation` input applies inline replaces this mirror rather than compounding it.
+:where(:root[dir='rtl'])
+  :where(
+    .ph-caret-left,
+    .ph-caret-right,
+    .ph-caret-double-left,
+    .ph-caret-double-right,
+    .ph-arrow-left,
+    .ph-arrow-right,
+    .ph-arrow-u-up-left,
+    .ph-arrow-u-down-right,
+    .ph-paper-plane-right
+  ) {
+  transform: scaleX(-1);
+}
+
+// Each script's own fonts, after the system interface font (which draws the Latin letters, digits and
+// product names) and before the generic fallbacks. Browsers fall back per character anyway, but naming
+// the fonts keeps every platform on its best one: without them Windows can reach for SimSun's bitmap
+// strokes, and Linux for whichever CJK font fontconfig ranks first. `lang` also picks Simplified rather
+// than Japanese forms of the characters the two share.
+:root:lang(zh) {
+  --font-sans:
+    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans SC',
+    'Source Han Sans SC', 'WenQuanYi Micro Hei', Roboto, Ubuntu, Cantarell, 'Noto Sans',
+    'Helvetica Neue', Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
+    'Noto Color Emoji';
+}
+
+:root:lang(ar) {
+  --font-sans:
+    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'SF Arabic', 'Geeza Pro',
+    'Noto Sans Arabic', 'Noto Naskh Arabic', 'DejaVu Sans', Tahoma, Roboto, Ubuntu, Cantarell,
+    'Noto Sans', 'Helvetica Neue', Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    'Segoe UI Symbol', 'Noto Color Emoji';
+}

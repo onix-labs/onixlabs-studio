@@ -7,6 +7,10 @@
   // hover and the accent while dragged. Panels resolve the hover colour from here.
   --panel-grip-hover-color: var(--gray-300);
 
+  // Panels stay on the screen side they were docked to, whatever the interface's direction: the
+  // grips, resizing and drop guides all work in screen sides. Each panel's content returns to the
+  // interface's direction (see `panel.scss`), as does the centre.
+  direction: ltr;
   display: grid;
   width: 100%;
   height: 100%;
@@ -26,6 +30,7 @@
 }
 
 .panel-layout__main {
+  direction: var(--interface-direction, ltr);
   grid-area: center;
   min-width: 0;
   min-height: 0;

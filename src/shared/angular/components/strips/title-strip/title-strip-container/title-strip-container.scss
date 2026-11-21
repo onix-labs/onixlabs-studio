@@ -2,19 +2,31 @@
   display: flex;
   align-items: center;
   padding-block-start: 0.4rem;
-  padding-inline-start: 0.5rem;
-  // Windows draws its caption buttons over the strip's trailing end; this is the width they take.
+  // The window's own controls are drawn by the system in the same place whatever the interface's
+  // direction, so the room kept for them is on a physical side, never a logical one.
+  padding-left: 0.5rem;
+  // Windows draws its caption buttons over the strip's right end; this is the width they take.
   // Without a controls overlay (macOS, Linux) the titlebar area spans the whole viewport, so it is 0.
-  padding-inline-end: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
   background: var(--title-strip-background-color);
   border-block-end: var(--hairline) solid var(--title-strip-border-color);
   -webkit-app-region: drag;
 }
 
-// macOS insets its traffic lights over the strip's leading end, so the strip's content starts clear
-// of them — except in full screen, where macOS draws them in the menu bar it slides down instead.
+// A right-to-left strip ends on the left, so it keeps its usual end gap there; Windows' caption
+// buttons still take the right.
+:host-context(:root[dir='rtl']) {
+  padding-left: 0.5rem;
+  padding-right: max(
+    0.5rem,
+    calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw))
+  );
+}
+
+// macOS insets its traffic lights over the strip's left end, so the strip's content starts clear of
+// them — except in full screen, where macOS draws them in the menu bar it slides down instead.
 :host-context(:root[data-platform='darwin']:not([data-full-screen='true'])) {
-  padding-inline-start: 5.5rem;
+  padding-left: 5.5rem;
 }
 
 // Linux windows have no frame, so Studio draws the window controls itself at the strip's trailing
@@ -105,5 +117,5 @@
 }
 
 .window-lock__input:checked ~ .window-lock__knob {
-  transform: translateX(1.1rem);
+  transform: translateX(calc(1.1rem * var(--inline-sign)));
 }

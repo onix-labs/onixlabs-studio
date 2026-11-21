@@ -3,6 +3,10 @@
   // A stacking context of its own, so the texture layer below can sit at a negative depth: above
   // this element's own background, beneath everything docked inside it.
   isolation: isolate;
+  // Docked panes stay on the screen side they were docked to, whatever the interface's direction: the
+  // splitters, drop guides and floating windows all work in screen sides. Each tab group's tabs and
+  // content return to the interface's direction (see `dock-tab-group.scss`).
+  direction: ltr;
   display: block;
   block-size: 100%;
   inline-size: 100%;

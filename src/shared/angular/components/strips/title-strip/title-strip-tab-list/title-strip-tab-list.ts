@@ -144,12 +144,16 @@ export class TitleStripTabList {
     if (strip.scrollWidth <= strip.clientWidth) {
       return;
     }
-    const delta: number =
-      Math.abs(event.deltaY) > Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+    const vertical: boolean = Math.abs(event.deltaY) > Math.abs(event.deltaX);
+    const delta: number = vertical ? event.deltaY : event.deltaX;
     if (delta === 0) {
       return;
     }
-    strip.scrollLeft += delta;
+    // A wheel turned down scrolls toward the strip's end, which is its left in a right-to-left
+    // interface (where `scrollLeft` counts down from 0). A trackpad's sideways swipe is already a
+    // screen direction.
+    const rtl: boolean = getComputedStyle(strip).direction === 'rtl';
+    strip.scrollLeft += vertical && rtl ? -delta : delta;
     event.preventDefault();
   }
 

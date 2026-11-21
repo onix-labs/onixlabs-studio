@@ -20,7 +20,7 @@
       [class.tree-row--squiggle]="row.squiggle === true"
       [attr.title]="row.hint ?? null"
       [attr.aria-description]="row.hint ?? null"
-      [style.padding-left.px]="indentFor(row.depth)"
+      [style.padding-inline-start.px]="indentFor(row.depth)"
       [attr.aria-expanded]="row.expandable ? row.expanded : null"
       [attr.aria-selected]="selection().size > 0 ? selection().has(row.id) : null"
       [cdkContextMenuTriggerFor]="hasContextMenu() ? (contextMenu.panel() ?? null) : null"

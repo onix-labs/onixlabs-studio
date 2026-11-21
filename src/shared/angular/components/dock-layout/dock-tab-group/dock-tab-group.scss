@@ -1,6 +1,7 @@
 :host {
   // Fill the pane the node renderer sizes for this group. Without this the group collapses to its
   // content size, leaving gaps in wider/taller cells.
+  direction: var(--interface-direction, ltr);
   display: flex;
   flex: 1 1 0;
   flex-direction: column;
@@ -333,8 +334,12 @@
 }
 
 // The first tab meets the panel's straight start edge, so it has no outward start-side foot.
-:host(.dock-tab-group--documents) .dock-tab--active:first-child::before,
-:host(.dock-tab-group--tool) .dock-tab--active:first-child::before {
+// The feet are drawn for screen sides, so in a right-to-left strip, where the first tab is the
+// rightmost, the foot it drops is its right one.
+:host(.dock-tab-group--documents) .dock-tab--active:first-child:dir(ltr)::before,
+:host(.dock-tab-group--tool) .dock-tab--active:first-child:dir(ltr)::before,
+:host(.dock-tab-group--documents) .dock-tab--active:first-child:dir(rtl)::after,
+:host(.dock-tab-group--tool) .dock-tab--active:first-child:dir(rtl)::after {
   display: none;
 }
 
@@ -386,9 +391,9 @@
       transparent var(--dock-panel-foot-radius),
       #000 var(--dock-panel-foot-radius)
     );
-    border-start-start-radius: var(--dock-panel-foot-radius);
+    border-top-left-radius: var(--dock-panel-foot-radius);
     border-block-start: var(--hairline) solid var(--dock-seam-color);
-    border-inline-start: var(--hairline) solid var(--dock-seam-color);
+    border-left: var(--hairline) solid var(--dock-seam-color);
   }
 
   &::after {
@@ -398,9 +403,9 @@
       transparent var(--dock-panel-foot-radius),
       #000 var(--dock-panel-foot-radius)
     );
-    border-start-end-radius: var(--dock-panel-foot-radius);
+    border-top-right-radius: var(--dock-panel-foot-radius);
     border-block-start: var(--hairline) solid var(--dock-seam-color);
-    border-inline-end: var(--hairline) solid var(--dock-seam-color);
+    border-right: var(--hairline) solid var(--dock-seam-color);
   }
 }
 
@@ -469,7 +474,9 @@
   border-end-end-radius: 0;
 }
 
-:host(.dock-tab-group--tool.dock-tab-group--tabs-fill) .dock-tab--active:last-child::after {
+:host(.dock-tab-group--tool.dock-tab-group--tabs-fill) .dock-tab--active:last-child:dir(ltr)::after,
+:host(.dock-tab-group--tool.dock-tab-group--tabs-fill)
+  .dock-tab--active:last-child:dir(rtl)::before {
   display: none;
 }
 
@@ -494,9 +501,9 @@
       transparent var(--dock-panel-foot-radius),
       #000 var(--dock-panel-foot-radius)
     );
-    border-end-start-radius: var(--dock-panel-foot-radius);
+    border-bottom-left-radius: var(--dock-panel-foot-radius);
     border-block-end: var(--hairline) solid var(--dock-seam-color);
-    border-inline-start: var(--hairline) solid var(--dock-seam-color);
+    border-left: var(--hairline) solid var(--dock-seam-color);
   }
 
   &::after {
@@ -506,8 +513,8 @@
       transparent var(--dock-panel-foot-radius),
       #000 var(--dock-panel-foot-radius)
     );
-    border-end-end-radius: var(--dock-panel-foot-radius);
+    border-bottom-right-radius: var(--dock-panel-foot-radius);
     border-block-end: var(--hairline) solid var(--dock-seam-color);
-    border-inline-end: var(--hairline) solid var(--dock-seam-color);
+    border-right: var(--hairline) solid var(--dock-seam-color);
   }
 }
