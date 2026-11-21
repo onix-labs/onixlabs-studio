@@ -100,8 +100,8 @@ needs only `other`, Arabic has `zero`, `one`, `two`, `few`, `many` and `other`.
 3. Add `messages.<code>.json`, and a case for it in both switches in `load-language.ts` (its
    translations, and Angular's locale data from `@angular/common/locales`).
 4. Add it to `LANGUAGES` in `scripts/i18n.mjs` and to `translations.spec.ts`.
-5. If it is written right to left, add it to `directionOf` (`direction-of.ts`). If its script needs
-   fonts of its own, add a `:root:lang(…)` font stack in `styles/_direction.scss`.
+5. If its script needs fonts of its own, add a `:root:lang(…)` font stack in
+   `styles/_direction.scss`. A right-to-left language needs nothing more (see below).
 
 ## The test language
 
@@ -112,26 +112,22 @@ where a translation won't fit.
 
 ## Right-to-left languages
 
-`load-language.ts` sets `dir="rtl"` on the document for Arabic, and child windows (Welcome, other
-modals, pop-outs) copy `dir` and `lang` from their opener. Flex rows, grids and logical properties
-then mirror by themselves, so new styles should use `margin-inline-start`, `inset-inline-end`,
-`text-align: start` and so on, never left and right. `styles/_direction.scss` holds the rest:
+**Studio's interface is not mirrored.** The layout stays left to right in Arabic, as it does in VS
+Code and most IDEs: the document never takes `dir="rtl"`. Mirroring a whole interface that was built
+left to right means flipping every panel, splitter, tab strip, icon and drag calculation, and each
+one is a place a left-to-right language could break. Full mirroring could come later, as work of its
+own.
 
-- **What stays left to right:** code editors, terminals, the binary editor, and `pre`, `code`, `kbd`
-  and `samp`, which are also isolated inside a right-to-left sentence.
-- **Icons that point:** carets, arrows, send, undo and redo are mirrored. An icon that means a screen
-  side (a "dock left" button) needs a class of its own.
-- **Transforms** have no logical form: multiply by `var(--inline-sign)`, which is -1 in a
-  right-to-left interface (`translateX(calc(14px * var(--inline-sign)))`).
-- **Screen sides that stay screen sides:** the room for the macOS traffic lights (left) and Windows
-  caption buttons (right); the docking layouts, which keep each panel on the side it was docked to
-  (their grips, splitters and drop guides work in screen sides) while each panel's content returns
-  to `var(--interface-direction)`; and the active tab's feet, which are drawn per side.
-- **The user's text** takes its own direction: each paragraph of a Markdown document or an agent's
-  reply follows its first letter (`unicode-bidi: plaintext`), so an Arabic note reads right to left
-  in an English interface and an English one left to right in Arabic.
-- **Script that measures the pointer** must allow for direction: a column's resize handle is on its
-  left in a right-to-left table, and a wheel turned down scrolls a tab strip toward its left.
+Right-to-left text takes its own direction instead, paragraph by paragraph (`unicode-bidi:
+plaintext`, CSS's `dir="auto"`), so an Arabic sentence reads, punctuates and aligns right to left:
+
+- **The interface's prose** (`styles/_direction.scss`): `p` elements and the BEM elements Studio
+  names `__description`, `__message`, `__hint`, `__note`, `__caption` and `__subtitle`, but not
+  titles. Short labels (buttons, menu items, tabs, setting names) are left as they are. The rule only
+  applies outside English, so English renders exactly as before. New prose needs no markup of its
+  own: name it as above.
+- **The user's text:** each paragraph of a Markdown document or an agent's reply follows its first
+  letter, in any interface language, so an Arabic note reads right to left in English too.
 
 Text typed with an input method (Chinese, Japanese, Korean) uses Enter to pick a candidate: check
 `isComposing(event)` before treating Enter, Escape or a shortcut as the user's.
@@ -163,9 +159,8 @@ Chinese and Arabic were drafted by an AI and need review by native speakers.
   and to ship their own translations, with text from third-party plugins left in English.
 - **Agents.** The instructions and tool descriptions Studio gives agents should stay in English, with
   the user's language passed along so agents reply in it.
-- **Right-to-left gaps.** Untranslated English in an Arabic interface shows its full stop on the
-  wrong side (the cure is translating it). The default panel arrangement isn't mirrored for Arabic.
-  Horizontal scrolling elsewhere than the title strip, overlay scroll bars (on the right), menus and
-  pop-overs that open toward a screen side, and charts are unchecked. Hebrew would reuse all of this.
+- **Right-to-left text.** Prose that doesn't follow the naming above reads left to right even when
+  it's Arabic, and lists in an Arabic Markdown document still indent from the left. Hebrew needs
+  only its translations and fonts. Mirroring the layout is a separate decision (see above).
 - **Search and sorting.** Lists should sort with `Intl.Collator` in the interface's locale, and
   filtering must match without word boundaries for Chinese.

@@ -21,6 +21,12 @@ app-agent-chat .agent__markdown {
   // and a code block keeps its own lines and scrolls.
   overflow-wrap: anywhere;
 
+  // Each paragraph takes its direction from its first letter, so an Arabic reply reads and aligns
+  // right to left in any interface language.
+  :is(p, h1, h2, h3, h4, h5, h6, li, th, td, blockquote) {
+    unicode-bidi: plaintext;
+  }
+
   // A reply holding a table takes the whole width an entry may have, rather than shrinking to its
   // longest line, so the table has the room to spread out.
   &:has(table) {

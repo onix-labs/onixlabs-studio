@@ -275,6 +275,13 @@
 .welcome__confirm-message--body {
   font-size: 1rem;
   color: var(--body-foreground-color);
+
+  // The item's name is the user's, in any script: it takes its own direction from its first letter and
+  // is isolated from the sentence around it, so a Latin name's punctuation stays with it inside an
+  // Arabic sentence.
+  strong {
+    unicode-bidi: plaintext;
+  }
 }
 
 // At a narrow window the columns stack, the actions first.
