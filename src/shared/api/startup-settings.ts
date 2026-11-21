@@ -1,3 +1,9 @@
+import {
+  DEFAULT_INTERFACE_ZOOM,
+  parseInterfaceZoom,
+  type InterfaceZoom,
+} from '@shared/api/interface-zoom';
+
 /**
  * What happens on macOS when the last window closes: Studio keeps running in the dock (the platform's
  * convention), or quits.
@@ -77,6 +83,12 @@ export interface StartupSettings {
    * translated as each module is first read, so the translations have to be in place before then.
    */
   readonly language: InterfaceLanguage;
+
+  /**
+   * Gets how large the interface is drawn. The main process sets the zoom of every window's web
+   * contents, so it needs the level as each window is created, before the renderer has read its store.
+   */
+  readonly interfaceZoom: InterfaceZoom;
 
   /**
    * Gets when opening a link in the browser asks first. The main process opens every link, including
@@ -174,6 +186,7 @@ export const DEFAULT_STARTUP_SETTINGS: StartupSettings = {
   restoreFullScreen: true,
   cornerStyle: 'automatic',
   language: 'system',
+  interfaceZoom: DEFAULT_INTERFACE_ZOOM,
   confirmExternalLinks: 'never',
   addStudioUserFileToGitignore: true,
   projectScanDepth: 2,
@@ -252,6 +265,7 @@ export function parseStartupSettings(raw: unknown): StartupSettings {
       ['system', 'en', 'fr', 'es', 'de', 'zh-Hans', 'ar', 'pseudo'],
       defaults.language,
     ),
+    interfaceZoom: parseInterfaceZoom(record['interfaceZoom']),
     confirmExternalLinks: oneOf<ConfirmExternalLinks>(
       record['confirmExternalLinks'],
       ['never', 'untrusted', 'always'],

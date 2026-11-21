@@ -40,8 +40,8 @@ class FakeContents extends FakeEmitter {
   public zoom: number | undefined;
   public readonly sent: unknown[][] = [];
 
-  public setZoomLevel(level: number): void {
-    this.zoom = level;
+  public setZoomFactor(factor: number): void {
+    this.zoom = factor;
   }
 
   public send(...message: unknown[]): void {
@@ -62,6 +62,14 @@ class FakeWindow extends FakeEmitter {
   public maximized: boolean = false;
   public fullScreen: boolean = false;
   public minimumSize: [number, number] = [800, 600];
+  public maximumSize: [number, number] = [0, 0];
+  public bounds: { x: number; y: number; width: number; height: number } = {
+    x: 0,
+    y: 0,
+    width: 1000,
+    height: 800,
+  };
+  public buttonPosition: unknown = null;
   public size: [number, number] = [1000, 800];
   public contentSize: [number, number] = [1000, 760];
   public parent: unknown = null;
@@ -94,7 +102,25 @@ class FakeWindow extends FakeEmitter {
   }
 
   public getBounds(): object {
-    return { x: 0, y: 0, width: 1000, height: 800 };
+    return this.bounds;
+  }
+
+  public setBounds(bounds: { x: number; y: number; width: number; height: number }): void {
+    this.bounds = bounds;
+    this.size = [bounds.width, bounds.height];
+    this.contentSize = [bounds.width, bounds.height - 40];
+  }
+
+  public getMaximumSize(): [number, number] {
+    return this.maximumSize;
+  }
+
+  public setMaximumSize(width: number, height: number): void {
+    this.maximumSize = [width, height];
+  }
+
+  public setWindowButtonPosition(position: unknown): void {
+    this.buttonPosition = position;
   }
 
   public getNormalBounds(): object {
@@ -190,7 +216,10 @@ vi.mock('electron', () => ({
   },
   screen: {
     getAllDisplays: (): object[] => [{ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }],
-    getDisplayMatching: (): object => ({ workAreaSize: { width: 1920, height: 1080 } }),
+    getDisplayMatching: (): object => ({
+      workArea: { x: 0, y: 0, width: 1920, height: 1080 },
+      workAreaSize: { width: 1920, height: 1080 },
+    }),
   },
   // A getter, because the class is declared after this factory is hoisted.
   get BrowserWindow(): object {
@@ -228,6 +257,7 @@ describe('WindowManager', () => {
   let secured: unknown[];
   let windowSizeOnLaunch: string;
   let restoreFullScreen: boolean;
+  let interfaceZoom: number;
 
   /**
    * Builds a manager.
@@ -248,7 +278,8 @@ describe('WindowManager', () => {
       onMainDidStartLoad: (): void => {
         loads += 1;
       },
-      startupSettings: (): never => ({ windowSizeOnLaunch, restoreFullScreen }) as never,
+      startupSettings: (): never =>
+        ({ windowSizeOnLaunch, restoreFullScreen, interfaceZoom }) as never,
       ...overrides,
     });
   }
@@ -280,6 +311,7 @@ describe('WindowManager', () => {
     secured = [];
     windowSizeOnLaunch = 'remember';
     restoreFullScreen = true;
+    interfaceZoom = 100;
     onPlatform('darwin');
     manager = build();
   });
@@ -300,6 +332,7 @@ describe('WindowManager', () => {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        zoomFactor: 1,
       });
       expect(secured).toEqual([window.webContents]);
     });
@@ -482,13 +515,24 @@ describe('WindowManager', () => {
       expect(WindowStateStore.read('main')).toBeNull();
     });
 
-    it('load_resetsZoom_andReportsFullScreen', () => {
+    it('create_drawsTheFirstPaintAtTheInterfaceZoom', () => {
+      interfaceZoom = 125;
+
+      const window: FakeWindow = createMain();
+
+      expect(window.options['webPreferences']).toMatchObject({ zoomFactor: 1.25 });
+      expect(window.options['trafficLightPosition']).toEqual({ x: 14, y: 19 });
+    });
+
+    it('load_appliesTheInterfaceZoom_andReportsFullScreen', () => {
+      interfaceZoom = 150;
       const window: FakeWindow = createMain();
       window.fullScreen = true;
 
       window.webContents.emit('did-finish-load');
 
-      expect(window.webContents.zoom).toBe(0);
+      expect(window.webContents.zoom).toBe(1.5);
+      expect(window.buttonPosition).toEqual({ x: 14, y: 24 });
       expect(window.webContents.sent).toEqual([[WindowChannel.FullScreenChanged, true]]);
     });
 
@@ -833,6 +877,117 @@ describe('WindowManager', () => {
       manager.setLayoutMinimumSize(real(window), 1500, 900);
 
       expect(window.calls).toEqual([]);
+    });
+  });
+
+  describe('interface zoom', () => {
+    it('apply_drawsEveryOpenWindowAtTheNewZoom', () => {
+      const main: FakeWindow = createMain();
+      const popout: FakeWindow = new FakeWindow();
+      manager.adoptAuxiliaryWindow(real(popout), CHILD_NAME);
+
+      interfaceZoom = 200;
+      manager.applyInterfaceZoom();
+
+      expect(main.webContents.zoom).toBe(2);
+      expect(popout.webContents.zoom).toBe(2);
+      expect(main.buttonPosition).toEqual({ x: 14, y: 34 });
+    });
+
+    it('adopt_drawsAChildWindowAtTheZoomStraightAway', () => {
+      interfaceZoom = 75;
+      const modal: FakeWindow = new FakeWindow();
+
+      manager.adoptModalWindow(real(modal), CHILD_NAME);
+
+      expect(modal.webContents.zoom).toBe(0.75);
+    });
+
+    it('apply_onWindows_resizesTheCaptionButtonsToTheStrip', () => {
+      onPlatform('win32');
+      const window: FakeWindow = createMain();
+
+      interfaceZoom = 150;
+      manager.applyInterfaceZoom();
+
+      expect(window.overlay).toMatchObject({ height: 60 });
+      expect(window.buttonPosition).toBeNull();
+    });
+
+    it('apply_onWindows_toleratesAWindowWithNoOverlay', () => {
+      onPlatform('win32');
+      const window: FakeWindow = createMain();
+      window.setTitleBarOverlay = (): void => {
+        throw new Error('Titlebar overlay is not enabled');
+      };
+
+      interfaceZoom = 150;
+
+      expect(() => manager.applyInterfaceZoom()).not.toThrow();
+      expect(window.webContents.zoom).toBe(1.5);
+    });
+
+    it('layoutMinimum_isScaledByTheZoom_andWorkedOutAgainWhenItChanges', () => {
+      const window: FakeWindow = createMain();
+      manager.setLayoutMinimumSize(real(window), 900, 700);
+      expect(window.minimumSize).toEqual([900, 740]);
+
+      interfaceZoom = 125;
+      manager.applyInterfaceZoom();
+
+      expect(window.minimumSize).toEqual([1125, 915]);
+    });
+
+    it('modal_isRescaledAboutItsCentre_withItsLimits', () => {
+      const modal: FakeWindow = new FakeWindow();
+      modal.bounds = { x: 500, y: 200, width: 400, height: 340 };
+      modal.size = [400, 340];
+      modal.contentSize = [400, 300];
+      modal.minimumSize = [300, 200];
+      modal.maximumSize = [600, 0];
+      manager.adoptModalWindow(real(modal), CHILD_NAME);
+
+      interfaceZoom = 150;
+      manager.applyInterfaceZoom();
+
+      expect(modal.minimumSize).toEqual([450, 300]);
+      expect(modal.maximumSize).toEqual([900, 0]);
+      expect(modal.bounds).toEqual({ x: 400, y: 150, width: 600, height: 490 });
+      expect(modal.webContents.zoom).toBe(1.5);
+    });
+
+    it('modal_isNeverRescaledPastTheDisplay', () => {
+      const modal: FakeWindow = new FakeWindow();
+      modal.bounds = { x: 0, y: 0, width: 1500, height: 900 };
+      modal.size = [1500, 900];
+      modal.contentSize = [1500, 900];
+      modal.minimumSize = [1400, 800];
+      manager.adoptModalWindow(real(modal), CHILD_NAME);
+
+      interfaceZoom = 200;
+      manager.applyInterfaceZoom();
+
+      expect(modal.bounds).toEqual({ x: 0, y: 0, width: 1920, height: 1080 });
+      expect(modal.minimumSize).toEqual([1920, 1080]);
+    });
+
+    it('modal_isLeftAsItIs_whenTheZoomItWasSizedForHasNotChanged', () => {
+      const modal: FakeWindow = new FakeWindow();
+      manager.adoptModalWindow(real(modal), CHILD_NAME);
+
+      modal.webContents.emit('did-finish-load');
+
+      expect(modal.calls).not.toContain('setMinimumSize 800x600');
+      expect(modal.bounds).toEqual({ x: 0, y: 0, width: 1000, height: 800 });
+    });
+
+    it('modalOptions_holdAStatedMinimumToTheDisplay', () => {
+      const options: Electron.BrowserWindowConstructorOptions = manager.modalWindowOptions(
+        'width=2048,height=1440,minwidth=1920,minheight=1200,resizable=1',
+        null,
+      );
+
+      expect(options).toMatchObject({ minWidth: 1920, minHeight: 1080, height: 1080 });
     });
   });
 

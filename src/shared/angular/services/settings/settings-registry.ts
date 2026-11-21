@@ -77,6 +77,11 @@ import {
 } from '@shared/angular/services/workspace/file-nesting';
 import { isSettingsOwned } from './settings-schema';
 import type { ChoiceOption, SectionDef, SettingDef, SettingsOwnedDef } from './settings-schema';
+import {
+  DEFAULT_INTERFACE_ZOOM,
+  INTERFACE_ZOOM_LEVELS,
+  type InterfaceZoom,
+} from '@shared/api/interface-zoom';
 import { isLanguageChoiceOffered } from '@shared/angular/services/locale/language-choice';
 
 /**
@@ -110,6 +115,12 @@ export type RunSetupAfterUpdates = 'when-new' | 'never';
  * says.
  */
 export type ReduceMotion = 'system' | 'on' | 'off';
+
+/**
+ * How keyboard focus is drawn: the standard thin accent outline, or a thicker outline in the theme's
+ * strongest colour on every control, including those that otherwise only recolour their border.
+ */
+export type FocusRing = 'standard' | 'high-visibility';
 
 /**
  * Names how dates read in the commit history.
@@ -552,6 +563,8 @@ export interface SettingsValues {
   readonly 'application.spellCheckingLanguages': readonly string[];
   readonly 'spelling.personalDictionary': readonly string[];
 
+  readonly 'accessibility.interfaceZoom': InterfaceZoom;
+  readonly 'accessibility.focusRing': FocusRing;
   readonly 'accessibility.showTooltips': boolean;
   readonly 'accessibility.tooltipDelay': number;
   readonly 'accessibility.reduceMotion': ReduceMotion;
@@ -1251,6 +1264,41 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     id: 'accessibility',
     label: 'Accessibility',
     settings: [
+      {
+        key: 'accessibility.interfaceZoom',
+        since: '2026.1.0-beta.12',
+        title: $localize`:Setting title, how large the whole interface is drawn:Interface Zoom`,
+        description: $localize`:Setting description:Draw the whole interface larger or smaller, in every window. Code editors and terminals keep their own zoom on top of this.`,
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: INTERFACE_ZOOM_LEVELS.map((level: InterfaceZoom): ChoiceOption => ({
+            value: String(level),
+            label: $localize`:Setting choice, an interface zoom level as a percentage:${level}:level:%`,
+          })),
+        },
+        default: DEFAULT_INTERFACE_ZOOM,
+      },
+      {
+        key: 'accessibility.focusRing',
+        since: '2026.1.0-beta.12',
+        title: $localize`:Setting title, how keyboard focus is outlined:Focus Ring`,
+        description: $localize`:Setting description:How the control that keyboard focus is on is outlined. High Visibility draws a thicker outline in a stronger colour, on every control.`,
+        control: {
+          kind: 'select',
+          options: [
+            {
+              value: 'standard',
+              label: $localize`:Setting choice, the usual focus outline:Standard`,
+            },
+            {
+              value: 'high-visibility',
+              label: $localize`:Setting choice, a thicker and stronger focus outline:High Visibility`,
+            },
+          ],
+        },
+        default: 'standard',
+      },
       {
         key: 'accessibility.showTooltips',
         title: 'Tooltips on Icon-Only Controls',

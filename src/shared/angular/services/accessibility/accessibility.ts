@@ -10,12 +10,19 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Settings } from '@shared/angular/services/settings/settings';
-import type { ScrollBars } from '@shared/angular/services/settings/settings-registry';
+import type { FocusRing, ScrollBars } from '@shared/angular/services/settings/settings-registry';
+import { zoomFactorOf } from '@shared/api/interface-zoom';
 
 /**
  * Applies the Application › Accessibility settings that reach across the whole interface: Reduce
- * Motion and Scroll Bars. Each is set as an attribute on the document root (`data-reduced-motion`,
- * `data-scrollbars`), which the global styles switch on and child windows mirror.
+ * Motion, Scroll Bars, Colour-Blind Safe Colours and Focus Ring are each set as an attribute on the
+ * document root (`data-reduced-motion`, `data-scrollbars`, `data-colour-blind-safe`,
+ * `data-focus-ring`), which the global styles switch on and child windows mirror.
+ *
+ * Interface Zoom is applied by the main process, which zooms every window's web contents. What is
+ * set here is the zoom factor as `--interface-zoom` on the root, for the few things that must stay
+ * the same size on screen whatever the zoom: the room left for the macOS traffic lights, which the
+ * operating system draws at its own size.
  *
  * Reduce Motion is also read by the code editors, which animate their own scrolling and caret.
  */
@@ -53,9 +60,22 @@ export class Accessibility {
   );
 
   /**
+   * Gets the zoom factor the interface is drawn at (1 for 100%), from Interface Zoom: how many screen
+   * pixels each CSS pixel takes.
+   */
+  public readonly zoomFactor: Signal<number> = computed((): number =>
+    zoomFactorOf(this.settings.value('accessibility.interfaceZoom')()),
+  );
+
+  /**
    * Gets how scroll bars are shown.
    */
   private readonly scrollBars: Signal<ScrollBars> = this.settings.value('accessibility.scrollBars');
+
+  /**
+   * Gets how keyboard focus is drawn.
+   */
+  private readonly focusRing: Signal<FocusRing> = this.settings.value('accessibility.focusRing');
 
   /**
    * Initializes the service, following the system's motion preference and applying the settings to
@@ -83,6 +103,8 @@ export class Accessibility {
       } else {
         root.removeAttribute('data-colour-blind-safe');
       }
+      root.setAttribute('data-focus-ring', this.focusRing());
+      root.style.setProperty('--interface-zoom', String(this.zoomFactor()));
     });
   }
 

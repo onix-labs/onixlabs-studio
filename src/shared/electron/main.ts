@@ -1259,7 +1259,12 @@ class Program {
         if (JSON.stringify(parsed) === JSON.stringify(this.startupSettings)) {
           return;
         }
+        const zoomChanged: boolean = parsed.interfaceZoom !== this.startupSettings.interfaceZoom;
         this.startupSettings = parsed;
+        // Applied at once, to every window: Interface Zoom needs no restart.
+        if (zoomChanged) {
+          this.windows.applyInterfaceZoom();
+        }
         setProjectScanDepth(parsed.projectScanDepth);
         this.applyLogLimits(parsed);
         systemMonitorContribution.setGpuHistory(parsed.gpuMonitoring);

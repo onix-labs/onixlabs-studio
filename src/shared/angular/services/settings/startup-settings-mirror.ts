@@ -30,6 +30,7 @@ export class StartupSettingsMirror {
     restoreFullScreen: this.settings.value('application.restoreFullScreen')(),
     cornerStyle: this.settings.value('application.cornerStyle')(),
     language: this.settings.value('application.language')(),
+    interfaceZoom: this.settings.value('accessibility.interfaceZoom')(),
     confirmExternalLinks: this.settings.value('privacy.confirmExternalLinks')(),
     addStudioUserFileToGitignore: this.settings.value('workspaces.addStudioUserFileToGitignore')(),
     projectScanDepth: this.settings.value('workspaces.projectScanDepth')(),

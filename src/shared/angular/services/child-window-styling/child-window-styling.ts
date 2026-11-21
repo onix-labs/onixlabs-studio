@@ -16,6 +16,8 @@ const MIRRORED_ROOT_ATTRIBUTES: readonly string[] = [
   'data-reduced-gpu',
   'data-reduced-motion',
   'data-scrollbars',
+  'data-colour-blind-safe',
+  'data-focus-ring',
   'style',
 ];
 
