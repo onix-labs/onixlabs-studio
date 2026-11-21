@@ -189,14 +189,9 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
 
-      - name: Set up Gradle
-        if: runner.os != 'Linux'
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          gradle-version: ${{ env.GRADLE_VERSION }}
-
-      # Maven and CMake have no official setup action; both come straight from their projects.
-      - name: Set up Maven and CMake
+      # Maven, Gradle and CMake come straight from their projects: they have no setup action under
+      # actions/*, and this repository allows no other publisher's actions.
+      - name: Set up Maven, Gradle and CMake
         if: runner.os != 'Linux'
         run: |
           set -euo pipefail
@@ -206,6 +201,10 @@ jobs:
             "https://archive.apache.org/dist/maven/maven-3/$MAVEN_VERSION/binaries/apache-maven-$MAVEN_VERSION-bin.zip"
           unzip -q "$tools/maven.zip" -d "$tools"
           echo "$tools/apache-maven-$MAVEN_VERSION/bin" >> "$GITHUB_PATH"
+          curl -fsSL --retry 5 -o "$tools/gradle.zip" \
+            "https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip"
+          unzip -q "$tools/gradle.zip" -d "$tools"
+          echo "$tools/gradle-$GRADLE_VERSION/bin" >> "$GITHUB_PATH"
           base="https://github.com/Kitware/CMake/releases/download/v$CMAKE_VERSION"
           if [ "$RUNNER_OS" = macOS ]; then
             curl -fsSL --retry 5 -o "$tools/cmake.tar.gz" "$base/cmake-$CMAKE_VERSION-macos-universal.tar.gz"
