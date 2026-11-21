@@ -1316,6 +1316,15 @@ describe('parsePluginManifest', () => {
       expect(result.manifest).toBeNull();
       expect(paths(result)).toEqual(['apiVersion']);
     });
+
+    it('judgesTheApiAgainstAnOlderBuild_whenAskedTo', () => {
+      // How the curated index asks what an older build would accept (#1467).
+      const written: Record<string, unknown> = manifest({ apiVersion: '1.20.0' });
+
+      expect(parsePluginManifest(written, '1.20.0').manifest?.apiVersion).toBe('1.20.0');
+      expect(paths(parsePluginManifest(written, '1.19.0'))).toEqual(['apiVersion']);
+      expect(parsePluginManifest(written, '1.19.0').errors[0].message).toContain('1.19.0');
+    });
   });
 
   describe('runtime prerequisites', () => {

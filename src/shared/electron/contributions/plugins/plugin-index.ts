@@ -1,7 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 import {
-  isApiCompatible,
   ManifestError,
   ManifestResult,
   parsePluginManifest,
@@ -155,9 +154,8 @@ export interface PluginReleaseSelection {
 const RELEASE_OWN_FIELDS: readonly string[] = ['version', 'apiVersion', 'provision'];
 
 /**
- * The field a release declares its plugin API in, and the path the manifest validator reports a
- * release this build cannot honour under — recognised so that this expected refusal is told apart
- * from a malformed release.
+ * The path the manifest validator reports a release this build cannot honour under, alone and before
+ * anything else — recognised so that this expected refusal is told apart from a malformed release.
  */
 const INCOMPATIBLE_PATH: string = 'apiVersion';
 
@@ -189,8 +187,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * The entry itself is always the first: its top-level fields are the single release every build reads,
  * including the builds that predate `releases` and ignore the field. Each element of `releases` is laid
  * over the entry, so a release states only what differs from it — its `version`, `apiVersion` and
- * `provision`, always, and its `contributes`, `requires` or description when those differ too. It can
- * never name a different plugin.
+ * `provision`, always, and its `contributes`, `requires` or description when those differ too (a
+ * first-party release, in practice, carries its whole `plugin.json` but for the id, and a spec holds
+ * it to that file at its tag). It can never name a different plugin.
  * @param entry The untrusted entry.
  * @param index The entry's position in the document, for failures.
  * @param errors Collects the reasons a listed release is malformed.
@@ -261,7 +260,8 @@ export function pluginReleaseCandidates(
  * Anything else wrong with a release is a publishing mistake, and is.
  * @param entry The untrusted entry.
  * @param index The entry's position in the document, for failures.
- * @param supported The plugin API this build implements.
+ * @param supported The plugin API this build implements; see {@link parsePluginManifest} for why a
+ * value above {@link PLUGIN_API_VERSION} is meaningless.
  * @returns Returns the release chosen and the reasons worth reporting.
  */
 export function selectPluginRelease(
@@ -279,20 +279,7 @@ export function selectPluginRelease(
   const malformed: ManifestError[] = [];
   let chosen: PluginManifest | null = null;
   for (const candidate of candidates) {
-    const apiVersion: unknown = isRecord(candidate.value)
-      ? candidate.value[INCOMPATIBLE_PATH]
-      : undefined;
-    const result: ManifestResult = isApiCompatible(apiVersion, supported)
-      ? parsePluginManifest(candidate.value)
-      : {
-          manifest: null,
-          errors: [
-            {
-              path: INCOMPATIBLE_PATH,
-              message: `must be a semver this build can honour; it implements ${supported}`,
-            },
-          ],
-        };
+    const result: ManifestResult = parsePluginManifest(candidate.value, supported);
     const located: ManifestError[] = result.errors.map((error: ManifestError): ManifestError => ({
       path: `${candidate.path}.${error.path}`,
       message: error.message,
