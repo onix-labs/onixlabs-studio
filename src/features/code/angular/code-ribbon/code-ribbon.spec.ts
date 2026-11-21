@@ -11,7 +11,12 @@ import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { CodeAgents } from '@features/code/angular/code-agents/code-agents';
 import { CodeRunner } from '@features/code/angular/code-runner/code-runner';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
+import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { CodeRibbon } from './code-ribbon';
+import { RememberLanguageChoice } from './remember-language-modal/remember-language-choice';
+import type { RememberLanguageOffer } from './remember-language-modal/remember-language-offer';
 
 /**
  * Exposes the protected members the language field is wired to, so the picker behaviour can be
@@ -20,6 +25,8 @@ import { CodeRibbon } from './code-ribbon';
 interface CodeRibbonInternals {
   onLanguageChange(name: string): void;
   languageName(): string;
+  rememberOffer(): RememberLanguageOffer | undefined;
+  onRememberChosen(choice: RememberLanguageChoice): void;
 }
 
 describe('CodeRibbon', () => {
@@ -103,6 +110,7 @@ describe('CodeRibbon', () => {
         { provide: CodeRunner, useValue: runnerStub },
         { provide: EditorTerminals, useValue: terminalsStub },
         { provide: CodeAgents, useValue: agentsStub },
+        { provide: ModalWindows, useValue: new FakeModalWindows() },
       ],
     }).compileComponents();
 
@@ -129,6 +137,104 @@ describe('CodeRibbon', () => {
     internals.onLanguageChange('TypeScript');
 
     expect(documents.get(tab.id)?.language()).toBe('typescript');
+  });
+
+  describe('remembering a language chosen by hand (#1068)', () => {
+    /**
+     * Opens a file from disk in a code tab, and makes it the active one.
+     * @param path The file's path.
+     * @returns Returns the tab.
+     */
+    function openFile(path: string): Tab {
+      const name: string = path.split('/').pop() ?? path;
+      const dot: number = name.lastIndexOf('.');
+      return documents.openFileInfo(
+        { path, name, extension: dot > 0 ? name.slice(dot) : '', content: '{}' },
+        'code',
+      );
+    }
+
+    beforeEach((): void => {
+      TestBed.inject(Settings).set('textEditor.fileAssociations', []);
+    });
+
+    it('offersToRemember_aLanguageTheRulesWouldNotGive', () => {
+      const tab: Tab = openFile('/ws/data.foo');
+
+      internals.onLanguageChange('JSON');
+
+      expect(internals.rememberOffer()).toEqual({
+        documentId: tab.id,
+        path: '/ws/data.foo',
+        fileName: 'data.foo',
+        language: 'json',
+        languageName: 'JSON',
+        extensionPattern: '*.foo',
+      });
+    });
+
+    it('offersNothing_forAnUntitledDocument_orALanguageTheRulesAlreadyGive', () => {
+      const untitled: Tab = tabs.open('code');
+      documents.ensure(untitled.id);
+      internals.onLanguageChange('JSON');
+      expect(internals.rememberOffer()).toBeUndefined();
+
+      openFile('/ws/app.ts');
+      internals.onLanguageChange('TypeScript');
+      expect(internals.rememberOffer()).toBeUndefined();
+    });
+
+    it('thisFile_remembersThePath', () => {
+      openFile('/ws/data.foo');
+      internals.onLanguageChange('JSON');
+
+      internals.onRememberChosen(RememberLanguageChoice.ThisFile);
+
+      expect(TestBed.inject(Settings).get('textEditor.fileAssociations')).toEqual([
+        { pattern: '/ws/data.foo', language: 'json' },
+      ]);
+      expect(internals.rememberOffer()).toBeUndefined();
+    });
+
+    it('extension_remembersTheEnding_inPlaceOfAnEntryForThisFile', () => {
+      const settings: Settings = TestBed.inject(Settings);
+      settings.set('textEditor.fileAssociations', [
+        { pattern: '/ws/data.foo', language: 'yaml' },
+        { pattern: 'Jenkinsfile', language: 'groovy' },
+      ]);
+      openFile('/ws/data.foo');
+      internals.onLanguageChange('JSON');
+
+      internals.onRememberChosen(RememberLanguageChoice.Extension);
+
+      expect(settings.get('textEditor.fileAssociations')).toEqual([
+        { pattern: 'Jenkinsfile', language: 'groovy' },
+        { pattern: '*.foo', language: 'json' },
+      ]);
+    });
+
+    it('none_remembersNothing_andKeepsTheTabsLanguage', () => {
+      const tab: Tab = openFile('/ws/data.foo');
+      internals.onLanguageChange('JSON');
+
+      internals.onRememberChosen(RememberLanguageChoice.None);
+
+      expect(TestBed.inject(Settings).get('textEditor.fileAssociations')).toEqual([]);
+      expect(documents.get(tab.id)?.language()).toBe('json');
+      expect(internals.rememberOffer()).toBeUndefined();
+    });
+
+    it('extension_carriesTheLanguageToOtherOpenFilesWithTheEnding', async () => {
+      const other: Tab = openFile('/ws/other.foo');
+      openFile('/ws/data.foo');
+      internals.onLanguageChange('JSON');
+
+      internals.onRememberChosen(RememberLanguageChoice.Extension);
+      await fixture.whenStable();
+      TestBed.tick();
+
+      expect(documents.get(other.id)?.language()).toBe('json');
+    });
   });
 
   it('languageName_whenDocumentCreatedAfterFirstRead_reflectsItsLanguage', () => {

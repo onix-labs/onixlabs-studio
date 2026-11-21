@@ -81,3 +81,7 @@
     <app-ribbon-strip-button [icon]="Icon.CODE" label="Generated" (action)="onGeneratedCode()" />
   </app-ribbon-strip-group>
 </app-ribbon-overflow>
+
+@if (rememberOffer(); as offer) {
+  <app-remember-language-modal [offer]="offer" (chosen)="onRememberChosen($event)" />
+}

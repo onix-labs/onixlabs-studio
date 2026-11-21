@@ -27,6 +27,7 @@ import {
   languageForFileName,
   supportedLanguages,
 } from './monaco-languages';
+import { fileAssociations } from './file-associations';
 import {
   buildHeuristicSemanticTokens,
   HEURISTIC_SEMANTIC_TOKEN_LANGUAGES,
@@ -531,15 +532,45 @@ export class Monaco {
   }
 
   /**
-   * Resolves the Monaco language identifier for a file through the one shared resolver (#1068):
-   * whole file names that are their type (`Dockerfile`, `nuget.config`), then the ending, then — for
-   * an ending such as `.config` that says nothing certain — the content, when it is given.
-   * @param fileName The file name, with or without a path.
+   * Resolves the Monaco language identifier for a file through the one shared resolver (#1068): the
+   * user's own associations, then whole file names that are their type (`Dockerfile`, `nuget.config`),
+   * then the ending, then — for an ending such as `.config` that says nothing certain — the content,
+   * when it is given.
+   * @param fileName The file's path, or its name when it has none; a path lets path associations match.
    * @param content The file's text, when the caller has it.
    * @returns Returns the Monaco language identifier, or `plaintext` when nothing matches.
    */
   public getLanguageForFileName(fileName: string, content?: string): string {
-    return languageForFileName(fileName, content);
+    return languageForFileName(
+      fileName,
+      content,
+      fileAssociations(this.settings.get('textEditor.fileAssociations')),
+    );
+  }
+
+  /**
+   * Gets every language a file can be associated with, by display name: Studio's own, and — once
+   * Monaco has loaded — every language Monaco knows, named by its first alias. Reactive to the load, so
+   * a list read before Monaco is ready fills in when it is.
+   * @returns Returns the languages, sorted by display name.
+   */
+  public associableLanguages(): readonly LanguageInfo[] {
+    const known: readonly LanguageInfo[] = supportedLanguages();
+    if (!this.loadedSignal()) {
+      return known;
+    }
+    const byId: Map<string, LanguageInfo> = new Map<string, LanguageInfo>(
+      known.map((language: LanguageInfo): [string, LanguageInfo] => [language.id, language]),
+    );
+    for (const language of window.monaco?.languages.getLanguages() ?? []) {
+      const alias: string | undefined = language.aliases?.[0];
+      if (!byId.has(language.id) && alias !== undefined && alias.trim() !== '') {
+        byId.set(language.id, { id: language.id, name: alias });
+      }
+    }
+    return [...byId.values()].sort((a: LanguageInfo, b: LanguageInfo): number =>
+      a.name.localeCompare(b.name),
+    );
   }
 
   /**
