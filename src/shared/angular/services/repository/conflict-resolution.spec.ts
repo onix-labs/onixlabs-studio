@@ -291,6 +291,30 @@ describe('parseConflicts at the edges', () => {
     expect(parseConflicts(text)).toEqual([]);
   });
 
+  it('readsLongerMarkers_setByConflictMarkerSize', () => {
+    // `.gitattributes`: `*.md conflict-marker-size=10`.
+    const text: string = [
+      'Title',
+      '=======',
+      '<<<<<<<<<< HEAD',
+      'ours',
+      '|||||||||| base',
+      'base',
+      '==========',
+      'theirs',
+      '>>>>>>>>>> feature',
+    ].join('\n');
+
+    expect(parseConflicts(text)).toEqual([{ start: 3, base: 5, divider: 7, end: 9 }]);
+    expect(countConflicts(text)).toBe(1);
+  });
+
+  it('needsEveryMarkerOfABlock_toBeTheSameLength', () => {
+    const text: string = ['<<<<<<<<<< HEAD', 'ours', '=======', 'theirs', '>>>>>>> f'].join('\n');
+
+    expect(parseConflicts(text)).toEqual([]);
+  });
+
   it('acceptsEmptySections_onEitherSide', () => {
     const text: string = ['<<<<<<< HEAD', '=======', '>>>>>>> feature'].join('\n');
 

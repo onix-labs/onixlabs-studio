@@ -173,9 +173,13 @@ export class MergeToolPanel implements OnDestroy {
     new Map<SidePane, MonacoApi.editor.IEditorDecorationsCollection>();
 
   /**
-   * Holds the subscriptions to the panes' scrolling.
+   * Holds each pane's subscription to its scrolling: one per pane, replaced when the pane's editor is
+   * (the common ancestor's, each time it is shown again).
    */
-  private readonly subscriptions: MonacoApi.IDisposable[] = [];
+  private readonly subscriptions: Map<ConflictPane, MonacoApi.IDisposable> = new Map<
+    ConflictPane,
+    MonacoApi.IDisposable
+  >();
 
   /**
    * Holds whether the panes are being scrolled to follow one another, so a pane moved to follow does
@@ -446,7 +450,9 @@ export class MergeToolPanel implements OnDestroy {
         countChanged: (): void => undefined,
       });
     }
-    this.subscriptions.push(
+    this.subscriptions.get(pane)?.dispose();
+    this.subscriptions.set(
+      pane,
       editor.onDidScrollChange((event: MonacoApi.IScrollEvent): void => {
         if (event.scrollTopChanged) {
           this.follow(pane);
@@ -598,9 +604,10 @@ export class MergeToolPanel implements OnDestroy {
   private dispose(): void {
     this.lens?.dispose();
     this.lens = null;
-    for (const subscription of this.subscriptions.splice(0)) {
+    for (const subscription of this.subscriptions.values()) {
       subscription.dispose();
     }
+    this.subscriptions.clear();
     for (const collection of this.highlights.values()) {
       collection.clear();
     }

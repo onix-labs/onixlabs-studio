@@ -96,9 +96,19 @@ class FakeMonaco {
     return { dispose: (): void => undefined };
   }
 
+  /**
+   * Holds how many scroll listeners are subscribed and not yet disposed.
+   */
+  public scrollListeners: number = 0;
+
   public onDidScrollChange(listener: (event: { scrollTopChanged: boolean }) => void): unknown {
     this.scrolled = listener;
-    return { dispose: (): void => undefined };
+    this.scrollListeners += 1;
+    return {
+      dispose: (): void => {
+        this.scrollListeners -= 1;
+      },
+    };
   }
 
   public changeViewZones(callback: (accessor: unknown) => void): void {
@@ -442,6 +452,29 @@ describe('MergeToolPanel', () => {
 
     expect(pane('merge-tool-yours').editor.scrolledTo).toBe(3);
     expect(pane('merge-tool-theirs').editor.scrolledTo).toBe(4);
+  });
+
+  it('keepsOneScrollSubscriptionPerPane_howeverOftenItIsReady', async () => {
+    await render(DIFF3);
+    const result: FakeMonaco = pane('merge-tool-result').editor;
+    const firstBase: FakeMonaco = pane('merge-tool-base-pane').editor;
+
+    pane('merge-tool-result').ready.emit();
+    pane('merge-tool-result').ready.emit();
+    // The common ancestor hidden and shown again is a new editor; the old one's subscription goes.
+    pane('merge-tool-base-pane').ready.emit();
+    control('merge-tool-base')?.click();
+    fixture.detectChanges();
+    control('merge-tool-base')?.click();
+    fixture.detectChanges();
+    pane('merge-tool-base-pane').ready.emit();
+
+    expect(result.scrollListeners).toBe(1);
+    expect(firstBase.scrollListeners).toBe(0);
+    expect(pane('merge-tool-base-pane').editor.scrollListeners).toBe(1);
+
+    fixture.destroy();
+    expect(result.scrollListeners).toBe(0);
   });
 
   it('saysSo_whenTheFilesTabHasBeenClosed', async () => {

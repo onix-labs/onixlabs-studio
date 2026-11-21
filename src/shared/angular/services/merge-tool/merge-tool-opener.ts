@@ -6,7 +6,7 @@ import { DockNode, StackNode } from '@shared/angular/services/dock-layout/dock-n
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { findStackOfPanel, firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
-import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
+import { Documents } from '@shared/angular/services/documents/documents';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Log } from '@shared/angular/services/log/log';
 import { MergeTools } from './merge-tools';
@@ -65,17 +65,16 @@ export class MergeToolOpener {
    * text or the workspace has no document well.
    */
   public async open(path: string, conflict?: number): Promise<boolean> {
-    if (!(await this.injector.get(FileOpener).openPath(path, { background: true }))) {
-      this.log.warn('MergeToolOpener', `Could not open '${path}' for the merge tool`);
+    // Only a text file is opened: a binary, an image or an API document has no conflicts to show side
+    // by side, and opening it anyway would leave a tab of its own behind the diff the caller falls
+    // back to.
+    if (!(await this.injector.get(FileOpener).openTextInWell(path, { background: true }))) {
+      this.log.info('MergeToolOpener', `'${path}' is not text in the well; no merge tool`);
       return false;
     }
     const documentId: string | undefined = this.documents.findIdByPath(path);
-    const document: CodeDocument | undefined =
-      documentId === undefined ? undefined : this.documents.get(documentId);
-    if (documentId === undefined || document === undefined) {
-      // A file that opened as something other than text — an image, a binary — has no conflicts to
-      // show side by side.
-      this.log.warn('MergeToolOpener', `'${path}' did not open as text; no merge tool`);
+    if (documentId === undefined) {
+      this.log.warn('MergeToolOpener', `'${path}' opened but has no document; no merge tool`);
       return false;
     }
     const id: string = this.mergeTools.idForPath(path);
@@ -90,7 +89,12 @@ export class MergeToolOpener {
         component: MergeToolPanel,
         // No dirty marker or close guard: the file's own tab holds the document and asks about unsaved
         // changes when it closes, so closing the merge tool loses nothing.
-        save: (): Promise<boolean> => this.documents.save(documentId),
+        // The file's document is found when saving, not when the merge tool was first opened: the
+        // file's tab may since have closed and opened again under a new document.
+        save: async (): Promise<boolean> => {
+          const current: string | undefined = this.documents.findIdByPath(path);
+          return current !== undefined && (await this.documents.save(current));
+        },
       });
     }
     const layout: DockNode = this.dockState.layout();

@@ -58,7 +58,9 @@ export type ConflictChoice = 'top' | 'bottom' | 'both';
  * a `>>>>>>>`, every marker at the start of its line. A whole block is required, so prose that merely
  * contains one of the markers — a `=======` under a heading, a document about git — is none. A diff3
  * file's `|||||||` base section sits between the opener and the divider. An opener met inside an
- * unfinished block starts over, as git never nests them.
+ * unfinished block starts over, as git never nests them. Markers are seven characters long unless a
+ * `conflict-marker-size` attribute makes them longer, so any length from seven up is read, the same
+ * length throughout one block.
  * @param text The file's content.
  * @returns Returns the conflicts, in the file's order.
  */
@@ -67,19 +69,29 @@ export function parseConflicts(text: string): readonly ConflictBlock[] {
   let start: number | null = null;
   let base: number | null = null;
   let divider: number | null = null;
+  // How long the open block's markers are. Seven unless `.gitattributes` sets a longer
+  // `conflict-marker-size`; every marker of one block is the same length.
+  let size: number = 0;
   const lines: readonly string[] = text.split(/\r?\n/);
   for (let index: number = 0; index < lines.length; index += 1) {
     const line: string = lines[index];
     const number: number = index + 1;
-    if (/^<{7}( |$)/.test(line)) {
+    const opener: number = markerLength(line, '<', true);
+    if (opener > 0) {
       start = number;
       base = null;
       divider = null;
-    } else if (start !== null && divider === null && base === null && /^\|{7}( |$)/.test(line)) {
+      size = opener;
+    } else if (
+      start !== null &&
+      divider === null &&
+      base === null &&
+      markerLength(line, '|', true) === size
+    ) {
       base = number;
-    } else if (start !== null && divider === null && /^={7}$/.test(line)) {
+    } else if (start !== null && divider === null && markerLength(line, '=', false) === size) {
       divider = number;
-    } else if (start !== null && divider !== null && /^>{7}( |$)/.test(line)) {
+    } else if (start !== null && divider !== null && markerLength(line, '>', true) === size) {
       blocks.push({ start, base, divider, end: number });
       start = null;
       base = null;
@@ -87,6 +99,26 @@ export function parseConflicts(text: string): readonly ConflictBlock[] {
     }
   }
   return blocks;
+}
+
+/**
+ * Measures a conflict marker at the start of a line: a run of at least seven of one character — git's
+ * default length, which `conflict-marker-size` can only raise — that is the whole line, or for a marker
+ * that names its side (`<<<<<<< HEAD`), is followed by a space.
+ * @param line The line.
+ * @param character The marker's character.
+ * @param named Whether the marker may be followed by a space and a name.
+ * @returns Returns the marker's length, or 0 when the line is not one.
+ */
+function markerLength(line: string, character: string, named: boolean): number {
+  let length: number = 0;
+  while (line[length] === character) {
+    length += 1;
+  }
+  if (length < 7) {
+    return 0;
+  }
+  return length === line.length || (named && line[length] === ' ') ? length : 0;
 }
 
 /**

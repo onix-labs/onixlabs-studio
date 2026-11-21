@@ -12,8 +12,8 @@ import { MergeToolOpener } from './merge-tool-opener';
 import { MergeTools } from './merge-tools';
 
 /**
- * Stands in for the workspace's file opener: a text file opens as a document, anything named `.png`
- * opens as something else, and a path containing `missing` does not open at all.
+ * Stands in for the workspace's file opener: a text file opens in the well as a document, while a file
+ * named `.png` is not text and a path containing `missing` cannot be read, so neither opens at all.
  */
 class FakeFileOpener {
   /**
@@ -28,17 +28,17 @@ class FakeFileOpener {
   public constructor(private readonly documents: Documents) {}
 
   /**
-   * Opens a file, as the workspace's opener does.
+   * Opens a text file in the well, as the workspace's opener does.
    * @param path The file's absolute path.
    * @param options How it is opened.
    * @returns Returns whether it opened.
    */
-  public openPath(path: string, options?: OpenOptions): Promise<boolean> {
+  public openTextInWell(path: string, options?: OpenOptions): Promise<boolean> {
     this.opened.push({ path, ...(options === undefined ? {} : { options }) });
-    if (path.includes('missing')) {
+    if (path.includes('missing') || path.endsWith('.png')) {
       return Promise.resolve(false);
     }
-    if (!path.endsWith('.png') && this.documents.findIdByPath(path) === undefined) {
+    if (this.documents.findIdByPath(path) === undefined) {
       this.documents.createWellDocument({
         path,
         name: path.slice(path.lastIndexOf('/') + 1),
@@ -131,6 +131,35 @@ describe('MergeToolOpener', () => {
 
     expect(await registry.get(tools.idForPath('/repo/a.ts'))?.save?.()).toBe(true);
     expect(saved).toBe(documents.findIdByPath('/repo/a.ts'));
+  });
+
+  it('savesTheFilesCurrentDocument_afterItsTabClosedAndOpenedAgain', async () => {
+    const documents: Documents = TestBed.inject(Documents);
+    const savedIds: string[] = [];
+    documents.save = (id: string): Promise<boolean> => {
+      savedIds.push(id);
+      return Promise.resolve(true);
+    };
+    await opener.open('/repo/a.ts');
+    const first: string | undefined = documents.findIdByPath('/repo/a.ts');
+
+    // The file's tab closes, and the merge tool is opened again: the file has a new document.
+    documents.remove(first ?? '');
+    await opener.open('/repo/a.ts');
+    const second: string | undefined = documents.findIdByPath('/repo/a.ts');
+
+    expect(await registry.get(tools.idForPath('/repo/a.ts'))?.save?.()).toBe(true);
+    expect(second).not.toBe(first);
+    expect(savedIds).toEqual([second]);
+  });
+
+  it('savesNothing_andSaysSo_whenTheFileIsNoLongerOpen', async () => {
+    const documents: Documents = TestBed.inject(Documents);
+    await opener.open('/repo/a.ts');
+
+    documents.remove(documents.findIdByPath('/repo/a.ts') ?? '');
+
+    expect(await registry.get(tools.idForPath('/repo/a.ts'))?.save?.()).toBe(false);
   });
 
   it('opensNothing_forAFileThatDidNotOpen_orDidNotOpenAsText', async () => {
