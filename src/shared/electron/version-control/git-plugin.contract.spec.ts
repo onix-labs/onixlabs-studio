@@ -5,6 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parsePluginManifest, PluginManifest } from '@shared/api/plugin-manifest';
+import { pluginReleaseCandidates } from '../contributions/plugins/plugin-index';
 import { type LockfilePackage, parseLockfileDocument } from '../provisioning/lockfile-provision';
 import {
   isCompatibleVersionControlProtocol,
@@ -223,8 +224,12 @@ describe('the Git plugin is installable', () => {
       ),
     ) as { plugins: readonly { id: string }[] };
 
+    // The entry's own release, without the older ones the index alone lists under `releases`.
     expect(
-      index.plugins.find((plugin: { id: string }): boolean => plugin.id === manifest.id),
+      pluginReleaseCandidates(
+        index.plugins.find((plugin: { id: string }): boolean => plugin.id === manifest.id),
+        0,
+      )[0].value,
     ).toEqual(JSON.parse(manifestText));
   });
 });
