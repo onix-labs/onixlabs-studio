@@ -188,6 +188,9 @@ if (extract.status !== 0) {
   exit(extract.status ?? 1);
 }
 if (check) {
+  // The extractor writes in its own order; sort it as the committed file is before comparing.
+  const extracted = read(SOURCE);
+  write(SOURCE, extracted.locale, extracted.translations);
   if (readFileSync(SOURCE, 'utf8') !== before) {
     stdout.write(`${SOURCE} is out of date: run node scripts/i18n.mjs and commit the result.\n`);
     exit(1);
