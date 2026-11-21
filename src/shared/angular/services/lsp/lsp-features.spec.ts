@@ -121,6 +121,7 @@ interface FakeStructureProvider {
   provideFoldingRanges?(model: unknown): Promise<unknown>;
   provideDocumentHighlights?(model: unknown, position: unknown): Promise<unknown>;
   provideSelectionRanges?(model: unknown, positions: unknown[]): Promise<unknown>;
+  provideLinks?(model: unknown): Promise<unknown>;
   provideDocumentRangeSemanticTokens?(
     model: unknown,
     range: unknown,
@@ -247,6 +248,9 @@ function fakeMonacoNamespace(
       },
       registerColorProvider: (language: string, provider: unknown): void => {
         (captured.structure ??= new Map()).set(`${language}:colors`, provider);
+      },
+      registerLinkProvider: (language: string, provider: unknown): void => {
+        (captured.structure ??= new Map()).set(`${language}:links`, provider);
       },
       registerDocumentFormattingEditProvider: (language: string, provider: unknown): unknown =>
         captureFormatter(captured, `${language}:document`, provider),
@@ -2150,6 +2154,50 @@ describe('LspFeatures', () => {
       ).resolves.toBeUndefined();
     });
 
+    it('links_areTheServersWebPagesAndFiles_inTheEditorsRange (#1211)', async () => {
+      structureSupport = { ...ALL, links: true };
+      const at: (line: number, from: number, to: number) => unknown = (
+        line: number,
+        from: number,
+        to: number,
+      ): unknown => ({ start: { line, character: from }, end: { line, character: to } });
+      responses['textDocument/documentLink'] = [
+        { range: at(4, 2, 7), target: 'https://pkg.go.dev/fmt', tooltip: 'fmt on pkg.go.dev' },
+        { range: at(8, 2, 9), target: 'file:///root/go.mod' },
+        { range: at(9, 2, 9) },
+        { range: at(10, 2, 9), target: 'command:run' },
+      ];
+      const features: LspFeatures = await build();
+      features.enableStructure('go', { ...ALL, links: true });
+
+      const links: unknown = await captured.structure?.get('go:links')?.provideLinks?.(owned);
+
+      expect(requests.at(-1)).toMatchObject({
+        method: 'textDocument/documentLink',
+        params: { textDocument: { uri: 'file:///root/app.ts' } },
+      });
+      expect(links).toEqual({
+        links: [
+          {
+            range: { startLineNumber: 5, startColumn: 3, endLineNumber: 5, endColumn: 8 },
+            url: 'https://pkg.go.dev/fmt',
+            tooltip: 'fmt on pkg.go.dev',
+          },
+          {
+            range: { startLineNumber: 9, startColumn: 3, endLineNumber: 9, endColumn: 10 },
+            url: 'file:///root/go.mod',
+          },
+        ],
+      });
+    });
+
+    it('links_areNotAskedFor_whenTheServerGivesNone (#1211)', async () => {
+      const features: LspFeatures = await build();
+      features.enableStructure('go', ALL);
+
+      expect(captured.structure?.has('go:links')).toBe(false);
+    });
+
     it('selectionRanges_climbFromTheIdentifierOutward_oneChainPerCaret (#1155)', async () => {
       structureSupport = ALL;
       const span: (line: number, from: number, to: number) => unknown = (
@@ -3218,7 +3266,8 @@ describe('LspFeatures', () => {
               },
             ],
           },
-          { kind: 'rename', oldUri: 'file:///root/greet.ts', newUri: 'file:///root/salute.ts' },
+          // A rename in place is carried out since #1211; deleting a file still is not.
+          { kind: 'delete', uri: 'file:///root/greet.ts' },
         ],
       };
       const features: LspFeatures = await build();

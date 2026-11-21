@@ -1800,6 +1800,7 @@ describe('LspClient', () => {
         rangeTokens: false,
         selectionRanges: false,
         colors: false,
+        links: false,
       };
       expect(features.structureEnabled).toEqual([['typescript', expected]]);
       expect(features.resolver?.('/root/src/a.ts')?.structure).toEqual(expected);

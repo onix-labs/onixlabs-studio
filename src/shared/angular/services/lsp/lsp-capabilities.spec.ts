@@ -166,6 +166,7 @@ describe('structureSupportOf (#1147)', () => {
       rangeTokens: true,
       selectionRanges: true,
       colors: false,
+      links: false,
     });
     expect(structureSupportOf({ semanticTokensProvider: { range: true } })).toEqual({
       folding: false,
@@ -174,6 +175,7 @@ describe('structureSupportOf (#1147)', () => {
       rangeTokens: false,
       selectionRanges: false,
       colors: false,
+      links: false,
     });
     expect(structureSupportOf(undefined)).toEqual({
       folding: false,
@@ -182,7 +184,14 @@ describe('structureSupportOf (#1147)', () => {
       rangeTokens: false,
       selectionRanges: false,
       colors: false,
+      links: false,
     });
+  });
+
+  it('readsDocumentLinks_asGoplsAdvertisesThem (#1211)', () => {
+    // gopls v0.24.0 advertises `documentLinkProvider: {}`.
+    expect(structureSupportOf({ documentLinkProvider: {} }).links).toBe(true);
+    expect(structureSupportOf({ documentLinkProvider: false }).links).toBe(false);
   });
 
   it('readsColours_asTheHtmlServerAdvertisesThem (#1214)', () => {
