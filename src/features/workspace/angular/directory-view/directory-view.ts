@@ -175,6 +175,8 @@ import { WorktreeRepository } from '@features/workspace/angular/worktree/worktre
 import { WorktreeDialogs } from '@features/workspace/angular/worktree/worktree-dialogs/worktree-dialogs';
 import { REPOSITORY_WORKTREES } from '@shared/angular/services/repository-worktrees/repository-worktrees';
 import { CONFLICT_CONTEXT } from '@shared/angular/services/repository/conflict-context';
+import { MergeTools } from '@shared/angular/services/merge-tool/merge-tools';
+import { MergeToolOpener } from '@shared/angular/services/merge-tool/merge-tool-opener';
 import { OpenOptions } from '@shared/angular/services/tabs/tab';
 import { TERMINAL_PATH_LINKS } from '@shared/angular/services/terminal-path-links/terminal-path-links';
 import { WorkspaceTerminalPathLinks } from '@shared/angular/services/terminal-path-links/workspace-terminal-path-links';
@@ -299,6 +301,10 @@ const AGENT_OPEN: OpenOptions = { background: true };
     ForgeRepository,
     Diffs,
     DiffOpener,
+    // The merge tool (#1321), beside the diff pair and for the same reason: its opener tabs it into
+    // this tab's well, and the panel edits this tab's documents.
+    MergeTools,
+    MergeToolOpener,
     // The find requests on their way to this tab's Search panel (#1007), per view as the panel is.
     SearchPanelRequests,
     // The list this tab's References panel shows (#1014), per view so it outlives the panel.

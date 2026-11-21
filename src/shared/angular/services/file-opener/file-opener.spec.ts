@@ -298,6 +298,49 @@ describe('FileOpener', () => {
     expect(tabs.tabs()).toHaveLength(0);
   });
 
+  it('openTextInWell_whenFileIsText_addsADocumentToTheWell', async () => {
+    nextSelection = {
+      kind: 'file',
+      file: { path: '/ws/main.ts', name: 'main.ts', extension: '.ts', content: 'export {};' },
+    };
+
+    expect(await opener.openTextInWell('/ws/main.ts', { background: true })).toBe(true);
+
+    expect(wellPanels()).toHaveLength(1);
+    expect(tabs.tabs()).toHaveLength(0);
+  });
+
+  it.each([
+    ['a binary', { kind: 'binary', path: '/ws/data.bin' }],
+    ['an image', { kind: 'image', path: '/ws/logo.png' }],
+    [
+      'an API document',
+      {
+        kind: 'file',
+        file: {
+          path: '/ws/orders.api.json',
+          name: 'orders.api.json',
+          extension: '.json',
+          content: API_DOCUMENT_TEXT,
+        },
+      },
+    ],
+  ] as const)(
+    'openTextInWell_whenFileIs %s_opensNothing_andRecordsNothing',
+    async (_label: string, selection: OpenSelection) => {
+      // #1321: the merge tool falls back to the file's diff, so nothing else may open alongside it.
+      nextSelection = selection;
+      const recentBefore: readonly RecentItem[] = TestBed.inject(RecentItems).items();
+
+      expect(await opener.openTextInWell('/ws/file')).toBe(false);
+
+      expect(wellPanels()).toHaveLength(0);
+      expect(tabs.tabs()).toHaveLength(0);
+      expect(TestBed.inject(RecentItems).items()).toEqual(recentBefore);
+      expect(imageCalls.tabs).toEqual([]);
+    },
+  );
+
   it('openPath_inTheBackground_addsTheDocumentBehindTheOneBeingRead', async () => {
     // An agent's open: the user keeps reading main.ts, and the well is not focused.
     nextSelection = {

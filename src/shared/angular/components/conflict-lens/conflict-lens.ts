@@ -20,6 +20,16 @@ const REFRESH_DELAY_MS: number = 120;
 const RULER_COLOUR: string = 'rgba(253, 126, 20, 0.8)';
 
 /**
+ * Labels the command keeping both sides of a conflict.
+ */
+const KEEP_BOTH_LABEL: string = $localize`:A conflict's command keeping both sides, in the order the file has them:Keep Both`;
+
+/**
+ * Labels the command opening a conflict in the merge tool, the sides next to each other.
+ */
+const COMPARE_LABEL: string = $localize`:A conflict's command opening it side by side in the merge tool:Compare`;
+
+/**
  * What the lens shows on each conflict's row and how it maps the user's words onto git's sections.
  */
 export interface ConflictLensLabels {
@@ -66,6 +76,14 @@ export interface ConflictLensHost {
    * @param count The number of conflicts.
    */
   countChanged(count: number): void;
+
+  /**
+   * Opens the conflict side by side in the merge tool. Optional: an editor with nowhere to open one
+   * (a standalone code tab, or the merge tool's own result pane) leaves it out, and the rows offer no
+   * Compare.
+   * @param index The conflict's position in the file, counting from 0.
+   */
+  compare?(index: number): void;
 }
 
 /**
@@ -402,23 +420,28 @@ export class ConflictLens {
         );
         return;
       }
+      const compare: ((index: number) => void) | undefined = this.host.compare?.bind(this.host);
       this.blocks.forEach((block: ConflictBlock, index: number): void => {
+        const actions: { readonly label: string; readonly run: () => void }[] = [
+          {
+            label: labels.yours,
+            run: (): void => this.keep(index, choiceForSide('yours', labels.swapped)),
+          },
+          {
+            label: labels.theirs,
+            run: (): void => this.keep(index, choiceForSide('theirs', labels.swapped)),
+          },
+          { label: KEEP_BOTH_LABEL, run: (): void => this.keep(index, 'both') },
+        ];
+        if (compare !== undefined) {
+          actions.push({ label: COMPARE_LABEL, run: (): void => compare(index) });
+        }
         this.zoneIds.push(
           accessor.addZone({
             afterLineNumber: block.start - 1,
             heightInLines: 1,
             suppressMouseDown: true,
-            domNode: this.row(null, [
-              {
-                label: labels.yours,
-                run: (): void => this.keep(index, choiceForSide('yours', labels.swapped)),
-              },
-              {
-                label: labels.theirs,
-                run: (): void => this.keep(index, choiceForSide('theirs', labels.swapped)),
-              },
-              { label: 'Keep Both', run: (): void => this.keep(index, 'both') },
-            ]),
+            domNode: this.row(null, actions),
           }),
         );
       });
@@ -437,6 +460,11 @@ export class ConflictLens {
   ): HTMLElement {
     const row: HTMLElement = document.createElement('div');
     row.className = 'conflict-lens';
+    // Monaco captures the pointer on a press anywhere in the editor, so the release — and with it the
+    // click — would land on its text layer, not the button pressed. A press on a row is the row's own.
+    for (const type of ['pointerdown', 'mousedown'] as const) {
+      row.addEventListener(type, (event: Event): void => event.stopPropagation());
+    }
     if (text !== null) {
       const sentence: HTMLElement = document.createElement('span');
       sentence.className = 'conflict-lens__text';

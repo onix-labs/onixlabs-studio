@@ -12,7 +12,8 @@ import {
   GitFileChange,
 } from '@shared/angular/services/repository/repository-data';
 import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
-import { GitOperationState } from '@shared/api/source-control-channels';
+import { GitOperationState, RepositoryInfo } from '@shared/api/source-control-channels';
+import { MergeToolOpener } from '@shared/angular/services/merge-tool/merge-tool-opener';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { CommitDetail } from './commit-detail';
 
@@ -94,6 +95,15 @@ class StubRepository {
   }
 
   public readonly selectedCommit: WritableSignal<GitCommit | null> = signal<GitCommit | null>(null);
+
+  /**
+   * Mirrors the bound repository's details: where its root is, which the merge tool's paths start at.
+   */
+  public readonly info: WritableSignal<RepositoryInfo | null> = signal<RepositoryInfo | null>({
+    root: '/repo',
+    name: 'repo',
+    trust: 'trusted',
+  });
 
   /**
    * Mirrors the real repository's surfaced-error signal; null when no operation has failed.
@@ -282,6 +292,8 @@ describe('CommitDetail', () => {
   let repository: StubRepository;
   let generator: StubGenerator;
   let opened: GitFileChange[];
+  let mergeToolOpened: string[];
+  let mergeToolOpens: boolean;
   let confirmAnswer: boolean;
   let host: HTMLElement;
 
@@ -289,6 +301,8 @@ describe('CommitDetail', () => {
     repository = new StubRepository();
     generator = new StubGenerator();
     opened = [];
+    mergeToolOpened = [];
+    mergeToolOpens = true;
     confirmAnswer = false;
     await TestBed.configureTestingModule({
       imports: [CommitDetail],
@@ -306,6 +320,15 @@ describe('CommitDetail', () => {
           useValue: {
             open: (file: GitFileChange): void => {
               opened.push(file);
+            },
+          },
+        },
+        {
+          provide: MergeToolOpener,
+          useValue: {
+            open: (path: string): Promise<boolean> => {
+              mergeToolOpened.push(path);
+              return Promise.resolve(mergeToolOpens);
             },
           },
         },
@@ -367,21 +390,25 @@ describe('CommitDetail', () => {
         'both.ts',
       ]);
 
-      const banner: HTMLElement = host.querySelector('.detail__operation')!;
+      const strip: HTMLElement = host.querySelector('app-operation-strip')!;
       // #1321: what is replayed onto what, by name, and which commit of how many.
-      expect(banner.textContent).toContain('Rebasing topic onto main — commit 2 of 5');
-      expect(banner.textContent).toContain('1 file could not be merged automatically');
-      // The shared warning alert, not a hand-built box.
-      expect(banner.querySelector('app-alert.alert--warning')).not.toBeNull();
+      expect(strip.textContent).toContain('Rebasing topic onto main — commit 2 of 5');
+      // What to do next is the strip's description, so the strip itself keeps to one line.
+      expect(strip.getAttribute('aria-description')).toContain(
+        '1 file could not be merged automatically',
+      );
+      // A strip directly under the tool strip, not the boxed alert it replaced.
+      expect(host.querySelector('app-alert')).toBeNull();
+      expect(host.querySelector('app-panel-toolbar')?.nextElementSibling).toBe(strip);
     });
 
     it('banner_namesWhatIsMergedIntoWhat_andCountsTheFilesResolved', () => {
       repository.conflictProgress.set({ resolved: 2, total: 5 });
       midOperation({ kind: 'merge', target: 'topic' }, ['both.ts']);
 
-      const banner: HTMLElement = host.querySelector('.detail__operation')!;
-      expect(banner.textContent).toContain('Merging topic into main');
-      expect(banner.textContent).toContain('2 of 5 files resolved');
+      const strip: HTMLElement = host.querySelector('app-operation-strip')!;
+      expect(strip.textContent).toContain('Merging topic into main');
+      expect(strip.textContent).toContain('2 of 5 files resolved');
     });
 
     it('aRefusedRow_saysHowManyConflictsAreLeft', () => {
@@ -408,6 +435,8 @@ describe('CommitDetail', () => {
           .map((item: { label: string }): string => item.label);
 
       expect(menuOf('both.ts')).toEqual([
+        'Open in Merge Tool',
+        'Show Differences',
         'Mark Resolved',
         'Keep main (Yours)',
         'Keep topic (Theirs)',
@@ -417,7 +446,12 @@ describe('CommitDetail', () => {
       expect(menuOf('both.ts')).toContain('Mark Resolved Anyway');
 
       repository.withheld.add('resolveConflicts');
-      expect(menuOf('both.ts')).toEqual(['Mark Resolved', 'Mark Resolved Anyway']);
+      expect(menuOf('both.ts')).toEqual([
+        'Open in Merge Tool',
+        'Show Differences',
+        'Mark Resolved',
+        'Mark Resolved Anyway',
+      ]);
     });
 
     it('aConflictedRowsMenu_runsWhatWasChosen', () => {
@@ -447,6 +481,73 @@ describe('CommitDetail', () => {
       );
     });
 
+    it('aConflictedRow_opensInTheMergeTool_byItsPathUnderTheRoot', async () => {
+      midOperation({ kind: 'merge', target: 'topic' }, ['src/both.ts']);
+
+      Array.from(host.querySelectorAll<HTMLElement>('.tree-row'))
+        .find((row: HTMLElement): boolean => row.textContent.includes('both.ts'))
+        ?.click();
+      await fixture.whenStable();
+
+      expect(mergeToolOpened).toEqual(['/repo/src/both.ts']);
+      expect(opened).toEqual([]);
+      expect(repository.calls).toContain('selectFile:src/both.ts');
+    });
+
+    it('aConflictedRow_fallsBackToItsDiff_whenTheMergeToolCannotOpenIt', async () => {
+      mergeToolOpens = false;
+      midOperation({ kind: 'merge', target: 'topic' }, ['image.png']);
+
+      Array.from(host.querySelectorAll<HTMLElement>('.tree-row'))
+        .find((row: HTMLElement): boolean => row.textContent.includes('image.png'))
+        ?.click();
+      await fixture.whenStable();
+
+      expect(opened.map((file: GitFileChange): string => file.path)).toEqual(['image.png']);
+    });
+
+    it('aFileOneSideDeleted_opensItsDiff_andHasNoMergeToolInItsMenu', () => {
+      midOperation({ kind: 'merge', target: 'topic' }, []);
+      const deleted: GitFileChange = { ...makeFile('gone.ts', 'conflicted'), conflict: 'deleted' };
+      repository.conflicted.set([deleted]);
+      fixture.detectChanges();
+
+      Array.from(host.querySelectorAll<HTMLElement>('.tree-row'))
+        .find((row: HTMLElement): boolean => row.textContent.includes('gone.ts'))
+        ?.click();
+
+      expect(mergeToolOpened).toEqual([]);
+      expect(opened.map((file: GitFileChange): string => file.path)).toContain('gone.ts');
+      const labels: readonly string[] = (
+        fixture.componentInstance as unknown as {
+          conflictMenu: (row: unknown) => readonly { label: string }[];
+        }
+      )
+        .conflictMenu({ id: 'gone.ts', data: { kind: 'file', file: deleted } })
+        .map((item: { label: string }): string => item.label);
+      expect(labels).not.toContain('Open in Merge Tool');
+    });
+
+    it('aConflictedRowsMenu_opensTheMergeToolOrTheDiff', async () => {
+      midOperation({ kind: 'merge', target: 'topic' }, ['both.ts']);
+      const choose: (itemId: string) => void = (itemId: string): void =>
+        (
+          fixture.componentInstance as unknown as {
+            onConflictMenu: (selection: unknown) => void;
+          }
+        ).onConflictMenu({
+          itemId,
+          row: { id: 'both.ts', data: { kind: 'file', file: makeFile('both.ts', 'conflicted') } },
+        });
+
+      choose('conflict.openMergeTool');
+      choose('conflict.showDiff');
+      await fixture.whenStable();
+
+      expect(mergeToolOpened).toEqual(['/repo/both.ts']);
+      expect(opened.map((file: GitFileChange): string => file.path)).toEqual(['both.ts']);
+    });
+
     it('banner_isShownEvenWhenACommitIsSelected', () => {
       // A repository mid-merge is mid-merge whichever commit the graph happens to be showing.
       midOperation({ kind: 'merge', target: 'topic' }, ['both.ts']);
@@ -454,7 +555,7 @@ describe('CommitDetail', () => {
       repository.selectedCommit.set(makeCommit('c1', []));
       fixture.detectChanges();
 
-      expect(host.querySelector('.detail__operation')).not.toBeNull();
+      expect(host.querySelector('app-operation-strip')).not.toBeNull();
     });
 
     it('continue_isInertWhileAnythingIsStillConflicted', () => {
@@ -466,9 +567,9 @@ describe('CommitDetail', () => {
       fixture.detectChanges();
 
       expect(namedButton(host, 'Continue').disabled).toBe(false);
-      expect(host.querySelector('.detail__operation-message')?.textContent).toContain(
-        'Continue to finish',
-      );
+      const strip: HTMLElement = host.querySelector('app-operation-strip')!;
+      expect(strip.textContent).toContain('Ready to continue');
+      expect(strip.getAttribute('aria-description')).toContain('Continue to finish');
     });
 
     it('skip_isOfferedOnlyByAnOperationThatReplaysASequence', () => {
@@ -484,9 +585,9 @@ describe('CommitDetail', () => {
       // Git recorded no merge to resume, so what is staged is committed like any other change.
       midOperation({ kind: 'squash-merge', target: 'topic' }, []);
 
-      expect(host.querySelector('.detail__operation-message')?.textContent).toContain(
-        'commit it below to finish',
-      );
+      const strip: HTMLElement = host.querySelector('app-operation-strip')!;
+      expect(strip.textContent).toContain('Ready to commit');
+      expect(strip.getAttribute('aria-description')).toContain('commit it below to finish');
     });
 
     it('theThreeCommands_reachTheRepository', () => {

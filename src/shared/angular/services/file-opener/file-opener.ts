@@ -225,6 +225,34 @@ export class FileOpener {
   }
 
   /**
+   * Opens a file into the workspace's document well only when it is text the well edits — not a binary,
+   * an image or a document with a surface of its own (an API or database document) — and opens nothing
+   * otherwise. For a caller that wants the file's text document, such as the merge tool (#1321), and
+   * has somewhere else to send any other file: {@link openPath} would open those in a tab of their own.
+   * Like any file opened into a well, it is not recorded as a recent item.
+   * @param path The absolute path of the file to open; must be inside the workspace.
+   * @param options How to open it; in the background, nothing is brought forward.
+   * @returns Returns true when the file is open in the well as text; false when it is not text, cannot
+   * be read, or this dock has no document home.
+   */
+  public async openTextInWell(path: string, options?: OpenOptions): Promise<boolean> {
+    const existing: string | undefined = this.documents.findIdByPath(path);
+    if (existing !== undefined && this.activateInWell(existing, options)) {
+      return true;
+    }
+    const selection: OpenSelection | null = await this.workspace.readFile(path);
+    if (
+      selection?.kind !== 'file' ||
+      isDatabaseDocumentName(selection.file.name) ||
+      isApiDocumentName(selection.file.name)
+    ) {
+      this.log.debug('FileOpener', 'Not opening as text in the well', path);
+      return false;
+    }
+    return this.openInWell(selection.file, options);
+  }
+
+  /**
    * Re-opens a previously-opened file by absolute path as a standalone editor tab, choosing the editor
    * by file type. Unlike {@link openPath}, which opens into a workspace's document well, this opens a
    * top-level tab and so works from the welcome screen at a cold start. The main process honours only

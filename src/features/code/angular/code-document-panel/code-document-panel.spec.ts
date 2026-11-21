@@ -25,6 +25,11 @@ import { LspFeatures } from '@shared/angular/services/lsp/lsp-features';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { CodeSymbol, SymbolKind } from '@shared/angular/services/lsp/lsp-symbols';
 
+import {
+  CONFLICT_CONTEXT,
+  ConflictContext,
+} from '@shared/angular/services/repository/conflict-context';
+import { MergeToolOpener } from '@shared/angular/services/merge-tool/merge-tool-opener';
 import { CodeDocumentPanel } from './code-document-panel';
 
 /**
@@ -289,6 +294,17 @@ describe('CodeDocumentPanel', () => {
     expect(StandInEditor.moves.actions).toEqual(['conflict:next', 'conflict:previous']);
   });
 
+  it('theStrip_offersNoMergeTool_outsideARepository', async () => {
+    const fixture: ComponentFixture<CodeDocumentPanel> = await built();
+
+    StandInEditor.conflicts.set(2);
+    fixture.detectChanges();
+
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="code-open-merge-tool"]'),
+    ).toBeNull();
+  });
+
   it('theMenusGoToItems_openStudiosGoTo_throughTheRouter_neverMonacosActions', async () => {
     // #1009: Go to Symbol and Go to Line no longer run Monaco's quick outline and go to line.
     const fixture: ComponentFixture<CodeDocumentPanel> = await built();
@@ -461,5 +477,70 @@ describe('CodeDocumentPanel', () => {
     // `greet` is declared on line 3 (zero-based), its name from character 6: one-based, 4 and 7.
     expect(StandInEditor.moves.position).toEqual({ lineNumber: 4, column: 7 });
     expect(StandInEditor.moves.focused).toBe(true);
+  });
+});
+
+describe('CodeDocumentPanel in a repository', () => {
+  let opened: string[];
+
+  beforeEach(async () => {
+    opened = [];
+    StandInEditor.conflicts.set(0);
+    const context: ConflictContext = {
+      conflictSides: signal({ yours: 'main', theirs: 'topic' }),
+      conflictMarkersSwapped: signal(false),
+      isConflicted: (): boolean => true,
+      markResolved: (): Promise<{ success: boolean }> => Promise.resolve({ success: true }),
+    };
+    await TestBed.configureTestingModule({
+      imports: [CodeDocumentPanel],
+      providers: [
+        {
+          provide: LspFeatures,
+          useValue: {
+            documentSymbols: (): Promise<unknown> => Promise.resolve(null),
+            servesDocument: (): boolean => false,
+          },
+        },
+        { provide: CONFLICT_CONTEXT, useValue: context },
+        {
+          provide: MergeToolOpener,
+          useValue: {
+            open: (path: string): Promise<boolean> => {
+              opened.push(path);
+              return Promise.resolve(true);
+            },
+          },
+        },
+      ],
+    })
+      .overrideComponent(CodeDocumentPanel, {
+        remove: { imports: [CodeDocumentEditor] },
+        add: { imports: [StandInEditor] },
+      })
+      .compileComponents();
+  });
+
+  it('theStrip_opensAConflictedFileInTheMergeTool', () => {
+    const id: string = TestBed.inject(Documents).createWellDocument({
+      path: '/repo/greeter.ts',
+      name: 'greeter.ts',
+      content: '',
+    } as Parameters<Documents['createWellDocument']>[0]);
+    const fixture: ComponentFixture<CodeDocumentPanel> = TestBed.createComponent(CodeDocumentPanel);
+    fixture.componentRef.setInput('documentId', id);
+    fixture.detectChanges();
+    const button: () => HTMLButtonElement | null = (): HTMLButtonElement | null =>
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+        '[data-testid="code-open-merge-tool"] button',
+      );
+
+    expect(button()).toBeNull();
+
+    StandInEditor.conflicts.set(1);
+    fixture.detectChanges();
+    button()?.click();
+
+    expect(opened).toEqual(['/repo/greeter.ts']);
   });
 });

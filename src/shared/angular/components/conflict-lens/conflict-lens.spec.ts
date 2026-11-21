@@ -333,6 +333,44 @@ describe('ConflictLens', () => {
     expect(counts).toEqual([2]);
   });
 
+  it('offersCompare_onlyWhenTheHostCanOpenTheMergeTool_andSaysWhichConflict', () => {
+    const editor: FakeEditor = new FakeEditor(FILE);
+    const compared: number[] = [];
+    const { host } = hostOf(MERGE);
+
+    lens = new ConflictLens(editor.asEditor(), {
+      ...host,
+      compare: (index: number): void => void compared.push(index),
+    });
+
+    expect(editor.rows()).toEqual([
+      'Keep main (Yours)·Keep feature (Theirs)·Keep Both·Compare',
+      'Keep main (Yours)·Keep feature (Theirs)·Keep Both·Compare',
+    ]);
+    editor.press(7, 'Compare');
+    expect(compared).toEqual([1]);
+  });
+
+  it('keepsAPressOnARow_fromTheEditor_soTheClickLandsOnTheButton', () => {
+    // Monaco captures the pointer on any press it hears, which sends the release, and the click, to
+    // its text layer instead of the button.
+    const editor: FakeEditor = new FakeEditor(FILE);
+    lens = new ConflictLens(editor.asEditor(), hostOf(MERGE).host);
+    const row: HTMLElement = [...editor.zones.values()][0].domNode;
+    const outside: HTMLElement = document.createElement('div');
+    outside.append(row);
+    const heard: string[] = [];
+    for (const type of ['pointerdown', 'mousedown']) {
+      outside.addEventListener(type, (): void => void heard.push(type));
+    }
+
+    for (const type of ['pointerdown', 'mousedown']) {
+      row.querySelector('button')?.dispatchEvent(new Event(type, { bubbles: true }));
+    }
+
+    expect(heard).toEqual([]);
+  });
+
   it('highlightsTheSectionsByWhoseTheyAre_andFlipsThemInARebase', () => {
     const merge: FakeEditor = new FakeEditor(FILE);
     const rebase: FakeEditor = new FakeEditor(FILE);

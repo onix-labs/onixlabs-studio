@@ -1,0 +1,46 @@
+<app-icon class="operation-strip__icon" [icon]="Icon.WARNING_FILL" aria-hidden="true" />
+<!-- Focusable so the tooltip, which carries what to do next, is reachable from the keyboard too. -->
+<span
+  class="operation-strip__text"
+  tabindex="0"
+  data-testid="operation-strip-text"
+  [appTooltip]="detail()"
+>
+  <span class="operation-strip__title" data-testid="operation-strip-title">{{ title() }}</span>
+  @if (progress(); as progress) {
+    <span class="operation-strip__progress" data-testid="operation-strip-progress">{{
+      progress
+    }}</span>
+  }
+</span>
+<span class="operation-strip__actions">
+  <app-button
+    variant="solid"
+    label="Continue"
+    i18n-label="Continues a merge or rebase stopped on conflicts"
+    data-testid="operation-continue"
+    [disabled]="!canContinue()"
+    [tooltip]="continueTooltip"
+    (click)="continueClick.emit()"
+  />
+  @if (canSkip()) {
+    <app-button
+      variant="ghost"
+      tone="warning"
+      label="Skip"
+      i18n-label="Skips the commit a rebase or cherry-pick is stuck on"
+      data-testid="operation-skip"
+      [tooltip]="skipTooltip"
+      (click)="skipClick.emit()"
+    />
+  }
+  <app-button
+    variant="ghost"
+    tone="danger"
+    label="Abort"
+    i18n-label="Abandons a merge or rebase"
+    data-testid="operation-abort"
+    [tooltip]="abortTooltip"
+    (click)="abortClick.emit()"
+  />
+</span>

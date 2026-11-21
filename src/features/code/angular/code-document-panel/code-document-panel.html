@@ -106,6 +106,17 @@
         [tooltip]="'Next Conflict (' + conflictCount() + ' left)'"
         (click)="goToConflict('next')"
       />
+      @if (canOpenMergeTool()) {
+        <app-button
+          variant="none"
+          [icon]="Icon.GIT_MERGE"
+          ariaLabel="Open in Merge Tool"
+          i18n-ariaLabel="The code tab's button opening the file in the merge tool"
+          data-testid="code-open-merge-tool"
+          [tooltip]="mergeToolTooltip"
+          (click)="openMergeTool()"
+        />
+      }
     }
     <!-- The file's diff, beside it or in its place (the Workspaces setting decides). Greyed, with the
          reason, while the file has no changes. -->
