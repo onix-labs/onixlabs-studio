@@ -16,6 +16,7 @@ import {
   ManifestHosting,
   ManifestPackageManager,
   ManifestTestAdapter,
+  ManifestLiveServer,
   parsePluginManifest,
   PluginManifest,
 } from '@shared/api/plugin-manifest';
@@ -65,6 +66,10 @@ import {
   TestAdapterDescriptor,
   TestAdapterResolution,
 } from '../../test-adapters/test-adapter-descriptor';
+import {
+  LiveServerDescriptor,
+  LiveServerResolution,
+} from '../../live-server/live-server-descriptor';
 
 /**
  * The file a sideloaded plugin is described by, inside its own directory.
@@ -550,6 +555,14 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
       priority: adapter.priority,
     }),
   );
+  const liveServers: readonly PluginContribution[] = (manifest.contributes.liveServers ?? []).map(
+    (server: ManifestLiveServer): PluginContribution => ({
+      slot: 'live-server',
+      id: server.id,
+      displayName: server.displayName,
+      priority: server.priority,
+    }),
+  );
   return [
     ...servers,
     ...adapters,
@@ -561,6 +574,7 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
     ...databaseEngines,
     ...packageManagers,
     ...testAdapters,
+    ...liveServers,
   ];
 }
 
@@ -1047,6 +1061,55 @@ export function toTestAdapterDescriptors(
           adapter.command,
           entryPoint,
           adapter.displayName,
+          nodeRuntime,
+        );
+        return typeof spec === 'string'
+          ? { available: false, reason: spec }
+          : { available: true, spec };
+      },
+    }),
+  );
+}
+
+/**
+ * Turns a manifest's live servers into descriptors the live-server host can start (#1062).
+ *
+ * Like a test adapter, a live server that is not installed stays registered and resolves to
+ * unavailable, so the explorers can say why and point at the install.
+ * @param manifest The validated manifest.
+ * @param provisioner Gets the provisioner the plugin's install went through.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @param localRoot The sideloaded plugin's directory, or undefined when it was not sideloaded.
+ * @param installedVersion Resolves the installed version of a plugin.
+ * @returns Returns the descriptors.
+ */
+export function toLiveServerDescriptors(
+  manifest: PluginManifest,
+  provisioner: () => LspProvisioner,
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+  localRoot?: string,
+  installedVersion?: InstalledVersion,
+): readonly LiveServerDescriptor[] {
+  const ops: PayloadOps = payloadOps(manifest, localRoot, installedVersion);
+  return (manifest.contributes.liveServers ?? []).map(
+    (server: ManifestLiveServer): LiveServerDescriptor => ({
+      id: server.id,
+      displayName: server.displayName,
+      priority: server.priority,
+      resolve: (): LiveServerResolution => {
+        const entryPoint: string | null = ops.isInstalled(provisioner())
+          ? ops.target(provisioner(), server.entryPoint)
+          : null;
+        if (entryPoint === null) {
+          return {
+            available: false,
+            reason: `${server.displayName} is not installed — install it in Plugins.`,
+          };
+        }
+        const spec: NodeRuntimeSpec | string = toCommandSpec(
+          server.command,
+          entryPoint,
+          server.displayName,
           nodeRuntime,
         );
         return typeof spec === 'string'

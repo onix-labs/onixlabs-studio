@@ -74,6 +74,7 @@ const SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
   'database-engine': 'Database engine',
   'package-manager': 'Package manager',
   'test-adapter': 'Test framework',
+  'live-server': 'Live server',
 };
 
 /**
