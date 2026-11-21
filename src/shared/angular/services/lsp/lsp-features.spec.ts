@@ -2376,6 +2376,104 @@ describe('LspFeatures', () => {
       expect([...(tokens?.data ?? [])]).toEqual([10, 4, 6, 2, 0]);
     });
 
+    it('aRangesTokens_bringTheServerUpToDateFirst_soAKeystrokeIsColouredAsTyped', async () => {
+      structureSupport = ALL;
+      semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+      const synced: string[] = [];
+      syncHook = (text: string): Promise<void> => {
+        // Nothing may have been asked of the server yet when it is brought up to date.
+        synced.push(`${text} after ${requests.length} request(s)`);
+        return Promise.resolve();
+      };
+      responses['textDocument/semanticTokens/range'] = { data: [0, 0, 6, 0, 0] };
+      const features: LspFeatures = await build();
+      features.enableStructure('csharp', ALL);
+
+      await captured.structure
+        ?.get('csharp:rangeTokens')
+        ?.provideDocumentRangeSemanticTokens?.(fakeModel(MODEL_URI, 'csharp', 'Widget x'), {
+          startLineNumber: 1,
+          startColumn: 1,
+          endLineNumber: 1,
+          endColumn: 9,
+        });
+
+      expect(synced).toEqual(['Widget x after 0 request(s)']);
+      expect(requests.map((request: { method: string }): string => request.method)).toEqual([
+        'textDocument/semanticTokens/range',
+      ]);
+    });
+
+    it('aRangesTokens_whenSemanticHighlightingIsOff_areNotAskedFor', async () => {
+      structureSupport = ALL;
+      semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+      responses['textDocument/semanticTokens/range'] = { data: [0, 0, 6, 0, 0] };
+      semanticHighlightingOn = false;
+      const features: LspFeatures = await build();
+      features.enableStructure('csharp', ALL);
+
+      const tokens: unknown = await captured.structure
+        ?.get('csharp:rangeTokens')
+        ?.provideDocumentRangeSemanticTokens?.(owned, {
+          startLineNumber: 1,
+          startColumn: 1,
+          endLineNumber: 2,
+          endColumn: 1,
+        });
+      semanticHighlightingOn = true;
+
+      expect(tokens).toBeNull();
+      expect(requests).toEqual([]);
+    });
+
+    it('aWholeDocumentRefused_byAServerThatColoursRanges_endsAsCancelled_soTheRangesKeepColouringIt', async () => {
+      // gopls refuses a file over 100,000 bytes whole but colours any screen of it (#1211). Heuristic
+      // tokens handed back would be taken as the whole document's and end Monaco's range requests.
+      structureSupport = ALL;
+      semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+      responses['textDocument/semanticTokens/full'] = new Error(
+        "Error invoking remote method 'lsp:request': Error: semantic tokens: range big.go too large (542563 > 100000)",
+      );
+      await build();
+
+      const outcome: Promise<unknown> | undefined =
+        captured.semantic?.provideDocumentSemanticTokens(
+          fakeModel(MODEL_URI, 'csharp', 'Widget Run()'),
+        );
+
+      // Monaco reads exactly this name and message as a cancellation, not a failure to report.
+      await expect(outcome).rejects.toMatchObject({ name: 'Canceled', message: 'Canceled' });
+    });
+
+    it('aWholeDocumentRefused_byAServerThatColoursNoRanges_stillFallsBackToTheHeuristic', async () => {
+      structureSupport = { ...ALL, rangeTokens: false };
+      semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+      responses['textDocument/semanticTokens/full'] = new Error('too large');
+      await build();
+
+      const tokens: { data: Uint32Array } | undefined =
+        await captured.semantic?.provideDocumentSemanticTokens(
+          fakeModel(MODEL_URI, 'csharp', 'Widget Run()'),
+        );
+
+      expect([...(tokens?.data ?? [])]).toEqual([0, 0, 6, 1, 0, 0, 7, 3, 12, 0]);
+    });
+
+    it('anEmptyWholeDocument_fromAServerThatColoursRanges_stillFallsBackToTheHeuristic', async () => {
+      // Roslyn serves an empty set while it loads; that is not a refusal, so the heuristic stays.
+      structureSupport = ALL;
+      semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+      responses['textDocument/semanticTokens/full'] = { data: [] };
+      await build();
+
+      const tokens: { data: Uint32Array } | undefined =
+        await captured.semantic?.provideDocumentSemanticTokens(
+          fakeModel(MODEL_URI, 'csharp', 'Widget Run()'),
+        );
+
+      expect([...(tokens?.data ?? [])]).toEqual([0, 0, 6, 1, 0, 0, 7, 3, 12, 0]);
+    });
+
     it('aDocumentWhoseServerGivesNone_isLeftToTheHeuristics', async () => {
       const features: LspFeatures = await build();
       features.enableStructure('csharp', ALL);

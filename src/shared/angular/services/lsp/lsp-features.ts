@@ -999,6 +999,13 @@ const FIXED_FUNCTION_INDEX: number = SEMANTIC_TOKEN_TYPES.indexOf('function');
 const HEURISTIC_CACHE_LIMIT: number = 64;
 
 /**
+ * Holds the name and message Monaco reads as a cancelled request rather than a failure. A whole
+ * document's token request that ends this way leaves the tokens already painted where they are and is
+ * not reported as an error.
+ */
+const MONACO_CANCELLED: string = 'Canceled';
+
+/**
  * Registers Monaco language features (completion, hover, go-to-definition, references) backed by the
  * application's language servers. Monaco's providers are global per language, so this root service
  * owns them and routes each request to the workspace whose client owns the model — clients register a
@@ -2420,7 +2427,9 @@ export class LspFeatures {
   /**
    * Asks the server serving a model for the semantic tokens of a range — what is on screen — remapped
    * onto the fixed legend. Only real tokens are given: while the server cannot serve them, the whole
-   * document's tokens (with their heuristic stand-in) colour it.
+   * document's tokens (with their heuristic stand-in) colour it. Monaco asks until the whole
+   * document's tokens arrive, so for a file the server will not colour whole (gopls past 100,000
+   * bytes, #1211) these are the only colours it gets, asked again on every scroll and edit.
    * @param model The model.
    * @param range The range shown.
    * @returns Returns the tokens, or null to leave the range to the whole document's.
@@ -2437,10 +2446,14 @@ export class LspFeatures {
       legend === undefined ||
       legend === null ||
       ref.structure?.rangeTokens !== true ||
-      ref.suppressServerTokens === true
+      ref.suppressServerTokens === true ||
+      !this.monaco.semanticHighlightingEnabled(model)
     ) {
       return null;
     }
+    // The tokens are positions in the text, so the server must have the text on screen: a range asked
+    // for just after a keystroke would otherwise be coloured as the text before it.
+    await ref.sync?.(model.getValue());
     let result: unknown;
     try {
       result = await this.bridge.invoke(
@@ -2913,6 +2926,8 @@ export class LspFeatures {
    * @param model The model the tokens are requested for.
    * @returns Returns the semantic tokens, or undefined when no server owns the model and no heuristic
    * applies.
+   * @throws {Error} Throws an error Monaco reads as cancelled when the request fails for a server that
+   * colours ranges, so the range tokens colour the document instead.
    */
   private async fetchSemanticTokens(
     model: MonacoApi.editor.ITextModel,
@@ -2941,6 +2956,16 @@ export class LspFeatures {
         },
       );
     } catch {
+      // A server that also colours a range can refuse the whole document yet still colour the screen:
+      // gopls refuses a file over 100,000 bytes (#1211). Whatever is returned here Monaco takes as the
+      // whole document's tokens, painted over the screen's and ending its range requests, so the
+      // heuristic would replace the server's colours on a large file. Ending as cancelled leaves the
+      // range tokens painted and the range requests going, on every scroll and edit.
+      if (ref.structure?.rangeTokens === true) {
+        const cancelled: Error = new Error(MONACO_CANCELLED);
+        cancelled.name = MONACO_CANCELLED;
+        throw cancelled;
+      }
       return this.heuristicFallback(model);
     }
     const data: unknown = (result as { data?: unknown } | null)?.data;
