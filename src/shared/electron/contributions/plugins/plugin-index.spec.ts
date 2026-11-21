@@ -1,5 +1,6 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import {
@@ -774,6 +775,147 @@ describe('the bundled index', () => {
       }
 
       expect(errors).toEqual([]);
+    });
+  });
+});
+
+describe('first-party releases listed under an entry', () => {
+  // A listed release inherits whatever it does not restate, and the top level is the *newest*
+  // release. An older first-party release that restated only its version, API and provision would
+  // claim the newest release's contributions (GitHub 0.6.0 would offer `editIssue`, which only 0.7.0
+  // implements). So each one, once laid over its entry, must be exactly that release's plugin.json at
+  // its tag — which in practice means carrying all of it but the id.
+
+  /**
+   * Maps each first-party plugin's id to its directory under `plugins/`.
+   */
+  const firstParty: ReadonlyMap<string, string> = new Map<string, string>(
+    readdirSync('plugins')
+      .filter((directory: string): boolean =>
+        existsSync(path.join('plugins', directory, 'plugin.json')),
+      )
+      .map((directory: string): [string, string] => [
+        (
+          JSON.parse(readFileSync(path.join('plugins', directory, 'plugin.json'), 'utf8')) as {
+            id: string;
+          }
+        ).id,
+        directory,
+      ]),
+  );
+
+  /**
+   * Reads a first-party plugin's plugin.json as it is at one of its release tags.
+   * @param directory The plugin's directory under `plugins/`.
+   * @param version The release.
+   * @returns Returns the parsed document, or undefined when this checkout lacks the tag.
+   */
+  function pluginJsonAt(directory: string, version: string): unknown {
+    try {
+      const text: string = execFileSync(
+        'git',
+        ['show', `plugin-${directory}-v${version}:plugins/${directory}/plugin.json`],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+      );
+      return JSON.parse(text) as unknown;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Holds every first-party release an entry lists to its plugin.json at its tag.
+   *
+   * A missing tag is skipped locally (a shallow clone has none) but fails on CI, whose unit-test job
+   * fetches every tag precisely so that this runs.
+   * @param value The index entry.
+   * @param index Its position in the document.
+   * @returns Returns how many releases were checked, and the labels of those skipped.
+   */
+  function holdReleasesToTheirTags(
+    value: unknown,
+    index: number,
+  ): { checked: number; skipped: string[] } {
+    const result: { checked: number; skipped: string[] } = { checked: 0, skipped: [] };
+    const directory: string | undefined = firstParty.get(
+      (value as { id?: string } | undefined)?.id ?? '',
+    );
+    if (directory === undefined) {
+      return result;
+    }
+    for (const candidate of pluginReleaseCandidates(value, index).slice(1)) {
+      const version: string = String((candidate.value as { version?: unknown }).version);
+      const atTag: unknown = pluginJsonAt(directory, version);
+      if (atTag === undefined) {
+        expect(
+          process.env['CI'],
+          `plugin-${directory}-v${version} is not in this checkout; CI must fetch every tag`,
+        ).toBeFalsy();
+        result.skipped.push(`${directory} ${version}`);
+        continue;
+      }
+
+      expect(candidate.value, `${candidate.path} against plugin-${directory}-v${version}`).toEqual(
+        atTag,
+      );
+      result.checked += 1;
+    }
+    return result;
+  }
+
+  it('holdsEveryListedReleaseToItsPluginJsonAtItsTag', (context: { skip: () => void }) => {
+    let checked: number = 0;
+    let skipped: number = 0;
+    CURATED_PLUGINS.plugins.forEach((value: unknown, index: number): void => {
+      const result: { checked: number; skipped: string[] } = holdReleasesToTheirTags(value, index);
+      checked += result.checked;
+      skipped += result.skipped.length;
+    });
+
+    if (checked === 0 && skipped > 0) {
+      context.skip();
+    }
+  });
+
+  describe('against GitHub 0.6.0', () => {
+    const latest: Record<string, unknown> = JSON.parse(
+      readFileSync('plugins/github/plugin.json', 'utf8'),
+    ) as Record<string, unknown>;
+    const atTag: unknown = pluginJsonAt('github', '0.6.0');
+
+    /**
+     * Builds the GitHub entry listing 0.6.0 as an older release.
+     * @param listed The release as the entry lists it.
+     * @returns Returns the entry.
+     */
+    function listing(listed: Record<string, unknown>): Record<string, unknown> {
+      return { ...latest, releases: [listed] };
+    }
+
+    it('acceptsTheReleaseCarriedWhole', (context: { skip: () => void }) => {
+      if (atTag === undefined) {
+        context.skip();
+        return;
+      }
+      const { id, ...whole }: Record<string, unknown> = atTag as Record<string, unknown>;
+      void id;
+
+      expect(holdReleasesToTheirTags(listing(whole), 0)).toEqual({ checked: 1, skipped: [] });
+    });
+
+    it('refusesTheReleaseThatInheritsTheNewestContributions', (context: { skip: () => void }) => {
+      if (atTag === undefined) {
+        context.skip();
+        return;
+      }
+      const old: Record<string, unknown> = atTag as Record<string, unknown>;
+      const thin: Record<string, unknown> = {
+        version: old['version'],
+        apiVersion: old['apiVersion'],
+        provision: old['provision'],
+      };
+
+      expect(() => holdReleasesToTheirTags(listing(thin), 0)).toThrow(/plugin-github-v0\.6\.0/);
     });
   });
 });
