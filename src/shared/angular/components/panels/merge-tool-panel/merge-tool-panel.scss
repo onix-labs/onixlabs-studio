@@ -1,0 +1,84 @@
+// The merge tool fills its well tab: the tool strip, the sides next to each other, and the file
+// below them, each half of what is left. On the panel surface, as the diff tab is, so the strip matches
+// every other strip in the application.
+:host {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+  background: var(--dock-tab-background-color--active);
+}
+
+.merge-tool__count {
+  flex: 0 0 auto;
+  padding-inline: 0.25rem;
+  color: var(--form-muted-foreground-color);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.merge-tool__sides {
+  display: grid;
+  flex: 1 1 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-block-size: 0;
+  border-block-start: 0.0625rem solid var(--dock-border-color);
+}
+
+.merge-tool__sides--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.merge-tool__pane,
+.merge-tool__result {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+.merge-tool__pane + .merge-tool__pane {
+  border-inline-start: 0.0625rem solid var(--dock-border-color);
+}
+
+.merge-tool__result {
+  flex: 1 1 0;
+  border-block-start: 0.0625rem solid var(--dock-border-color);
+}
+
+// Each pane's name, edged in the tint its sections carry in the panes and in the code editor, so which
+// side is which reads the same everywhere.
+.merge-tool__heading {
+  flex: 0 0 auto;
+  padding: 0.25rem 0.5rem;
+  overflow: hidden;
+  color: var(--form-muted-foreground-color);
+  border-inline-start: 0.1875rem solid transparent;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merge-tool__heading--yours {
+  border-inline-start-color: rgba(var(--accent-color-rgb), 0.7);
+}
+
+.merge-tool__heading--theirs {
+  border-inline-start-color: rgba(var(--neutral-color-rgb), 0.6);
+}
+
+.merge-tool__heading--base {
+  border-inline-start-color: rgba(var(--neutral-color-rgb), 0.3);
+}
+
+.merge-tool__editor {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+.merge-tool__empty {
+  margin: 1rem;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.85rem;
+}

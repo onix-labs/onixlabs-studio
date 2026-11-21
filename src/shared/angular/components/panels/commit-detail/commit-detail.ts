@@ -17,6 +17,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
+import { MergeToolOpener } from '@shared/angular/services/merge-tool/merge-tool-opener';
 import { CommitMessageGenerator } from '@shared/angular/services/repository/commit-message-generator';
 import { Repository } from '@shared/angular/services/repository/repository';
 import {
@@ -77,6 +78,8 @@ const ROW_KEEP_YOURS: string = 'conflict.keepYours';
 const ROW_KEEP_THEIRS: string = 'conflict.keepTheirs';
 const ROW_KEEP_FILE: string = 'conflict.keepFile';
 const ROW_DELETE_FILE: string = 'conflict.deleteFile';
+const ROW_OPEN_MERGE_TOOL: string = 'conflict.openMergeTool';
+const ROW_SHOW_DIFF: string = 'conflict.showDiff';
 
 /**
  * The payload a working-tree row carries: a group header, or one changed file.
@@ -184,6 +187,13 @@ export class CommitDetail {
    * Holds the diff opener that surfaces a selected file's diff in the document well.
    */
   private readonly diffOpener: DiffOpener = inject(DiffOpener);
+
+  /**
+   * Holds the merge tool opener a conflicted file's row opens it in (#1321), or null outside a
+   * workspace, which has no well to open one in.
+   */
+  private readonly mergeToolOpener: MergeToolOpener | null =
+    this.workspaceGit === null ? null : inject(MergeToolOpener);
 
   /**
    * Holds the file-system service showing the destructive-discard confirmation dialog.
@@ -298,7 +308,27 @@ export class CommitDetail {
     if (entry.kind !== 'file' || entry.file.status !== 'conflicted') {
       return [];
     }
-    const items: MenuItem[] = [{ id: ROW_MARK_RESOLVED, label: 'Mark Resolved', icon: Icon.CHECK }];
+    const items: MenuItem[] = [];
+    if (this.opensInMergeTool(entry.file)) {
+      items.push(
+        {
+          id: ROW_OPEN_MERGE_TOOL,
+          label: $localize`:A conflicted file's row command opening it in the merge tool:Open in Merge Tool`,
+          icon: Icon.GIT_MERGE,
+        },
+        {
+          id: ROW_SHOW_DIFF,
+          label: $localize`:A conflicted file's row command showing its diff:Show Differences`,
+          icon: Icon.GIT_DIFF,
+        },
+      );
+    }
+    items.push({
+      id: ROW_MARK_RESOLVED,
+      label: 'Mark Resolved',
+      icon: Icon.CHECK,
+      separator: items.length > 0,
+    });
     if (this.repository.conflictsLeft().has(entry.file.path)) {
       items.push({ id: ROW_MARK_RESOLVED_ANYWAY, label: 'Mark Resolved Anyway' });
     }
@@ -673,6 +703,13 @@ export class CommitDetail {
       case ROW_DELETE_FILE:
         void this.repository.resolveConflict(file, 'deleteFile');
         break;
+      case ROW_OPEN_MERGE_TOOL:
+        void this.openMergeTool(file);
+        break;
+      case ROW_SHOW_DIFF:
+        this.repository.selectFile(file.path);
+        this.diffOpener.open(file);
+        break;
       default:
         break;
     }
@@ -722,7 +759,44 @@ export class CommitDetail {
    */
   protected selectFile(file: GitFileChange): void {
     this.repository.selectFile(file.path);
+    if (this.opensInMergeTool(file)) {
+      // A conflicted file's diff against our side shows little; the sides next to each other are what
+      // resolving it needs. The diff is still in the row's menu.
+      void this.openMergeTool(file);
+      return;
+    }
     this.diffOpener.open(file);
+  }
+
+  /**
+   * Gets whether a file opens in the merge tool: one left with conflicting content, in a workspace
+   * that has a merge tool. A file one side deleted has no sides to put next to each other.
+   * @param file The file.
+   * @returns Returns true when the file opens in the merge tool.
+   */
+  private opensInMergeTool(file: GitFileChange): boolean {
+    return (
+      this.mergeToolOpener !== null &&
+      file.status === 'conflicted' &&
+      file.conflict !== 'deleted' &&
+      this.repository.info() !== null
+    );
+  }
+
+  /**
+   * Opens a conflicted file in the merge tool, falling back to its diff when it cannot be (it did not
+   * open as text).
+   * @param file The conflicted file.
+   */
+  private async openMergeTool(file: GitFileChange): Promise<void> {
+    const root: string | undefined = this.repository.info()?.root;
+    if (root === undefined || this.mergeToolOpener === null) {
+      return;
+    }
+    const path: string = `${root.replace(/[\\/]+$/, '')}/${file.path}`;
+    if (!(await this.mergeToolOpener.open(path))) {
+      this.diffOpener.open(file);
+    }
   }
 
   /**
