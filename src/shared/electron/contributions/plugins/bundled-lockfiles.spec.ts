@@ -113,11 +113,56 @@ describe('curated lockfile URLs', () => {
   )('pins %s to a lockfile named for its version', (_id: string, entry: NpmEntry) => {
     // A third-party server has no release tag here, so its lockfile is served from `main`. Naming the
     // file for the version makes the URL immutable all the same: a new version is a new file, and the
-    // bytes under a URL an index already pins never change (#1467).
-    expect(entry.provision.lockfileUrl).toBe(
+    // bytes under a URL an index already pins never change (#1467). A lockfile regenerated for the
+    // same version is a new file as well, with a counter (`-1`, `-2`).
+    const prefix: string =
       'https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/' +
-        `src/shared/electron/contributions/plugins/lockfiles/${entry.id}-${entry.version}.lock.json`,
-    );
+      'src/shared/electron/contributions/plugins/lockfiles/';
+    const stem: string = `${entry.id}-${entry.version}`;
+    const name: string = entry.provision.lockfileUrl.slice(prefix.length);
+
+    expect(entry.provision.lockfileUrl.startsWith(prefix)).toBe(true);
+    expect(name.startsWith(stem)).toBe(true);
+    expect(name.slice(stem.length)).toMatch(/^(-\d+)?\.lock\.json$/);
+  });
+});
+
+describe('version-named lockfiles', () => {
+  /**
+   * Every version-named lockfile that has landed, with its hash. Frozen: an index that already pins
+   * one keeps fetching it from `main`, so its bytes may never change. Adding a file means adding its
+   * line here; changing a line here is the mistake this exists to catch, so a lockfile regenerated
+   * for the same version is a new file with a counter (`<id>-<version>-1.lock.json`).
+   */
+  const FROZEN: Readonly<Record<string, string>> = {
+    'bash-language-server-5.6.0.lock.json':
+      '8c13cf54220250fd33cf79fb872fda5cca79fc204463b4e1645ece205ad8969f',
+    'dockerfile-language-server-0.15.0.lock.json':
+      'ce51bba16fd25abc8db7532a7b16acf0c0e683270ac8e94b2561276a4613d67f',
+    'svelte-language-server-0.18.4.lock.json':
+      '02dcbd8c721d2404e3a8b0e3d4c18ab8ee9fdcecfe0cf6dcd800d4ab22c7c40f',
+    'vscode-langservers-extracted-4.10.0.lock.json':
+      '2e9cfac6ede4f8b4e5facd11f34f42cc875f0b5feb2984636709b4fb824a9739',
+    'yaml-language-server-1.24.0.lock.json':
+      'c4c3136a019386738fc0ccc1ba91c69025fae4485a3d32936b01001c5d8431eb',
+  };
+
+  /**
+   * The version-named lockfiles in the directory: a name ending in a version, and optionally a
+   * regeneration counter, before `.lock.json`.
+   */
+  const named: readonly string[] = readdirSync(LOCKFILES).filter((name: string): boolean =>
+    /-\d+\.\d+[^/]*\.lock\.json$/.test(name),
+  );
+
+  it('recordsEveryVersionNamedLockfile', () => {
+    expect([...named].sort()).toEqual(Object.keys(FROZEN).sort());
+  });
+
+  it.each(Object.entries(FROZEN))('keeps %s exactly as it landed', (name: string, pin: string) => {
+    const bytes: Buffer = readFileSync(path.join(LOCKFILES, name));
+
+    expect(createHash('sha256').update(bytes).digest('hex')).toBe(pin);
   });
 });
 
