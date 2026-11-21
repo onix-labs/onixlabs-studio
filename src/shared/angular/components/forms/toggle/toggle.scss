@@ -39,7 +39,7 @@
 
     &::before {
       // Across the 32px inside, less the knob and its 2px clearance at each end.
-      transform: translateX(calc(14px * var(--inline-sign)));
+      transform: translateX(14px);
     }
   }
 

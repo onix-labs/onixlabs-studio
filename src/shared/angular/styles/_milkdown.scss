@@ -161,14 +161,6 @@ app-markdown-editor.markdown-editor--inset {
 app-markdown-editor .milkdown .ProseMirror {
   outline: none;
   min-height: 100%;
-  // A document's direction is its own, not the interface's: an English README reads left to right in
-  // an Arabic interface. Each paragraph takes its direction from its first letter, as GitHub's
-  // `dir="auto"` does, so an Arabic paragraph reads and aligns right to left in any interface.
-  direction: ltr;
-
-  :is(p, h1, h2, h3, h4, h5, h6, li, th, td, dt, dd) {
-    unicode-bidi: plaintext;
-  }
 
   p {
     font-size: var(--markdown-font-size, 16px) !important;
@@ -245,7 +237,7 @@ app-markdown-editor .milkdown .ProseMirror {
     margin: 1rem 0 !important;
     padding: 1rem !important;
     border: 1px solid var(--crepe-color-outline) !important;
-    border-inline-start-width: 0.25rem !important;
+    border-left-width: 0.25rem !important;
     border-radius: calc(1rem * var(--border-radius-multiplier)) !important;
     corner-shape: var(--app-corner-shape, squircle);
     background: var(--crepe-color-surface) !important;
@@ -272,7 +264,7 @@ app-markdown-editor .milkdown .ProseMirror {
   ul,
   ol {
     margin: 0.75em 0;
-    padding-inline-start: 1.5em;
+    padding-left: 1.5em;
   }
 
   a {
@@ -298,12 +290,12 @@ app-markdown-editor .milkdown .ProseMirror {
   th,
   td {
     border-bottom: 1px solid var(--crepe-color-outline);
-    border-inline-end: 1px solid var(--crepe-color-outline);
+    border-right: 1px solid var(--crepe-color-outline);
     padding: 0.5em 1em;
-    text-align: start;
+    text-align: left;
 
     &:last-child {
-      border-inline-end: none;
+      border-right: none;
     }
   }
 
@@ -843,7 +835,7 @@ app-markdown-editor .milkdown .ProseMirror {
     border-radius: calc(1rem * var(--border-radius-multiplier));
     corner-shape: var(--app-corner-shape, squircle);
     border-width: 1px;
-    border-inline-start-width: 0.25rem;
+    border-left-width: 0.25rem;
     border-style: solid;
 
     .alert-icon {
@@ -973,7 +965,7 @@ app-markdown-editor .milkdown .ProseMirror {
     display: inline-block;
     width: 0.9em;
     height: 0.9em;
-    margin-inline-end: 0.35em;
+    margin-right: 0.35em;
     border-radius: calc(0.2em * var(--border-radius-multiplier));
     corner-shape: var(--app-corner-shape, squircle);
     vertical-align: middle;
@@ -1103,7 +1095,7 @@ app-markdown-editor .milkdown .ProseMirror {
     .footnotes-content {
       dl[data-type='footnote_definition'] {
         margin: 0.75rem 0;
-        padding-inline-start: 1rem;
+        padding-left: 1rem;
 
         dt {
           color: var(--crepe-color-on-surface-variant);
@@ -1113,9 +1105,9 @@ app-markdown-editor .milkdown .ProseMirror {
         }
 
         dd {
-          margin-inline-start: 0;
-          padding-inline-start: 1rem;
-          border-inline-start: 2px solid var(--crepe-color-outline);
+          margin-left: 0;
+          padding-left: 1rem;
+          border-left: 2px solid var(--crepe-color-outline);
 
           > *:first-child {
             margin-top: 0;
@@ -1131,7 +1123,7 @@ app-markdown-editor .milkdown .ProseMirror {
 
   > dl[data-type='footnote_definition'] {
     margin: 0.75rem 0;
-    padding-inline-start: 1rem;
+    padding-left: 1rem;
 
     dt {
       color: var(--crepe-color-on-surface-variant);
@@ -1141,9 +1133,9 @@ app-markdown-editor .milkdown .ProseMirror {
     }
 
     dd {
-      margin-inline-start: 0;
-      padding-inline-start: 1rem;
-      border-inline-start: 2px solid var(--crepe-color-outline);
+      margin-left: 0;
+      padding-left: 1rem;
+      border-left: 2px solid var(--crepe-color-outline);
 
       > *:first-child {
         margin-top: 0;

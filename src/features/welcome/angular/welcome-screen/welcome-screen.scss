@@ -211,9 +211,9 @@
       transparent var(--dock-panel-foot-radius),
       #000 var(--dock-panel-foot-radius)
     );
-    border-top-left-radius: var(--dock-panel-foot-radius);
+    border-start-start-radius: var(--dock-panel-foot-radius);
     border-block-start: var(--hairline) solid var(--accent-color);
-    border-left: var(--hairline) solid var(--accent-color);
+    border-inline-start: var(--hairline) solid var(--accent-color);
   }
 
   &::after {
@@ -223,16 +223,13 @@
       transparent var(--dock-panel-foot-radius),
       #000 var(--dock-panel-foot-radius)
     );
-    border-top-right-radius: var(--dock-panel-foot-radius);
+    border-start-end-radius: var(--dock-panel-foot-radius);
     border-block-start: var(--hairline) solid var(--accent-color);
-    border-right: var(--hairline) solid var(--accent-color);
+    border-inline-end: var(--hairline) solid var(--accent-color);
   }
 
-  // The first tab meets the panel's straight start edge, so it has no outward start-side foot. The
-  // feet are drawn for screen sides, so in a right-to-left strip (where the first tab is the rightmost)
-  // the foot it drops is its right one.
-  &:first-child:dir(ltr)::before,
-  &:first-child:dir(rtl)::after {
+  // The first tab meets the panel's straight start edge, so it has no outward start-side foot.
+  &:first-child::before {
     display: none;
   }
 }

@@ -45,7 +45,7 @@
       color-mix(in srgb, var(--progress-bar-color) 45%, transparent) 80%,
       transparent 100%
     );
-    transform: translateX(calc(-100% * var(--inline-sign)));
+    transform: translateX(-100%);
     animation: progress-bar-sweep 1.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
   }
 
@@ -82,15 +82,14 @@
   text-overflow: ellipsis;
 }
 
-// One sweep: from wholly off the left edge to wholly off the right (the other way round in a
-// right-to-left interface). A transform's percentages are the
+// One sweep: from wholly off the left edge to wholly off the right. A transform's percentages are the
 // band's own width, so the track's width is the band's divided by its share.
 @keyframes progress-bar-sweep {
   from {
-    transform: translateX(calc(-100% * var(--inline-sign)));
+    transform: translateX(-100%);
   }
   to {
-    transform: translateX(calc(100% / var(--progress-bar-sheen-share) * var(--inline-sign)));
+    transform: translateX(calc(100% / var(--progress-bar-sheen-share)));
   }
 }
 

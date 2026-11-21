@@ -134,8 +134,8 @@ describe('TreeView', () => {
   it('indentFor_deeperRowsGetMoreLeftPadding', () => {
     const rows: readonly HTMLElement[] = rowElements();
 
-    expect(rows[0].style.paddingInlineStart).toBe('8px');
-    expect(rows[1].style.paddingInlineStart).toBe('22px');
+    expect(rows[0].style.paddingLeft).toBe('8px');
+    expect(rows[1].style.paddingLeft).toBe('22px');
   });
 
   it('render_expandableRowsShowAChevronAndReportExpansionWhileLeavesShowASpacer', () => {

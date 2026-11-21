@@ -432,7 +432,6 @@ export class Table {
     readonly id: string;
     readonly startX: number;
     readonly startWidth: number;
-    readonly direction: number;
   } | null = null;
 
   /**
@@ -564,9 +563,6 @@ export class Table {
       id: column.id,
       startX: event.clientX,
       startWidth: measured.get(column.id) ?? 120,
-      // A column's resize handle is on its trailing edge, which is its left in a right-to-left table,
-      // so dragging left widens it there.
-      direction: getComputedStyle(handle).direction === 'rtl' ? -1 : 1,
     };
   }
 
@@ -579,14 +575,13 @@ export class Table {
       readonly id: string;
       readonly startX: number;
       readonly startWidth: number;
-      readonly direction: number;
     } | null = this.columnDrag;
     if (drag === null) {
       return;
     }
     const width: number = Math.max(
       MIN_COLUMN_PX,
-      Math.round(drag.startWidth + (event.clientX - drag.startX) * drag.direction),
+      Math.round(drag.startWidth + event.clientX - drag.startX),
     );
     this.resizedWidths.update(
       (widths: ReadonlyMap<string, number>): ReadonlyMap<string, number> =>

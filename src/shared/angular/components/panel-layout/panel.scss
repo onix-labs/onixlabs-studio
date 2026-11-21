@@ -14,10 +14,7 @@
   background: var(--panel-surface-color);
 }
 
-// The layout around the panel stays left to right (see the layout's host); the panel's own content
-// reads in the interface's direction.
 .panel__content {
-  direction: var(--interface-direction, ltr);
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
