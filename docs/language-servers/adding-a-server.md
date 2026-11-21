@@ -19,7 +19,7 @@ what we installed":
 
 - `provision`:
   - `kind: 'archive'`: a release download per platform, each with a `url`, a `sha256`, an `archive` type and an `executablePath`.
-  - `kind: 'npm'`: a pinned lockfile under `contributions/plugins/lockfiles/`, its `sha256`, and the package's `executablePath`. Use this for any npm package that has dependencies.
+  - `kind: 'npm'`: a pinned lockfile under `contributions/plugins/lockfiles/`, its `sha256`, and the package's `executablePath`. Use this for any npm package that has dependencies. A third-party server's lockfile is named for its version (`<id>-<version>.lock.json`) and served from `main`; a new version is a new file, never an edit to an old one, so the bytes under a URL an index already pins never change. Regenerating the lockfile for a version that already has one (a dependency fix, say) is a new file too, with a counter: `<id>-<version>-1.lock.json`, then `-2`. Each version-named file is frozen once it lands: `bundled-lockfiles.spec.ts` records its hash, and adding a file means adding its hash there, never changing one.
 - `contributes.languageServers[]`:
   - `id`: names the **implementation, never the language** (`pyright`, not `python`). A second server for the same language is a slot the user picks from.
   - `languages`: Monaco language ids. A file extension Monaco doesn't map yet goes in `src/shared/angular/services/monaco/monaco-languages.ts` (#1338).
@@ -49,6 +49,42 @@ Things to know before touching the index:
 - **Keep `apiVersion` as low as the entry allows.** A Studio older than the version refuses the entry
   and loses the server. Fields it doesn't know are ignored. #1220, #1381 and #1398 all added settings
   without raising it.
+- **When a new release has to raise `apiVersion`, list the previous one under `releases`.** An entry's
+  top-level fields are always its newest release: the only shape builds before #1467 read. Beside them,
+  an optional `releases` array offers older releases, and a build installs the highest `version` whose
+  `apiVersion` it can honour (falling back to its own bundled entry only when it can run none). Each
+  release must state its own `version`, `apiVersion` and `provision` (for a first-party plugin, the
+  lockfile URL at _that_ release's tag and its hash), and inherits everything else from the top level,
+  which is the _newest_ release. So restate everything that differs, `contributes` and `requires`
+  above all, or an older release claims contributions it doesn't implement. For a first-party plugin
+  that means, in practice, its whole `plugin.json` at its tag minus `id`; a spec holds each listed
+  release to `git show plugin-<x>-v<version>:plugins/<x>/plugin.json`. The shape (contributions
+  abbreviated):
+
+  ```json
+  {
+    "id": "onixlabs.github",
+    "version": "0.7.0",
+    "apiVersion": "1.29.0",
+    "provision": { "kind": "npm", "lockfileUrl": "…/plugin-github-v0.7.0/…", "sha256": "…" },
+    "contributes": { "…": "…" },
+    "releases": [
+      {
+        "name": "GitHub",
+        "description": "…",
+        "version": "0.6.5",
+        "apiVersion": "1.28.0",
+        "provision": { "kind": "npm", "lockfileUrl": "…/plugin-github-v0.6.5/…", "sha256": "…" },
+        "contributes": { "…": "0.6.5's own" },
+        "requires": []
+      }
+    ]
+  }
+  ```
+
+  Prune a release from the list once no supported build needs it, that is, once every supported build
+  can run a newer one. `verify-plugin-index.mjs` checks the pins of every listed release.
+
 - **Keep the file's layout.** Rewriting it through `JSON.stringify` re-lays every other entry. Change
   the entries you mean to change, and leave the rest byte for byte.
 - A plugin that also has a folder under `plugins/` has its index entry as an exact copy of its

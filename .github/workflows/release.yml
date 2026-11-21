@@ -43,8 +43,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      # Every tag: an older release listed under an entry's `releases` pins its lockfile at its tag.
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Node (version from .nvmrc)
         uses: actions/setup-node@v7

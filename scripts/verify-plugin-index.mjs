@@ -15,17 +15,25 @@
 //   node scripts/verify-plugin-index.mjs                  # this platform's downloads
 //   node scripts/verify-plugin-index.mjs --all            # every platform's
 //   node scripts/verify-plugin-index.mjs --plugin clangd  # one plugin
+//   node scripts/verify-plugin-index.mjs --index <path>   # another copy of the index
+//
+// Every release an entry offers is checked: the entry's own top-level release, and each older one it
+// lists under `releases` (#1467). A build that cannot run the newest installs one of those instead, so
+// a rotten pin there breaks that build just as surely.
 
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { argv, exit, stdout } from 'node:process';
 
-const INDEX = 'src/shared/electron/contributions/plugins/curated-plugins.json';
+const INDEX = argv.includes('--index')
+  ? argv[argv.indexOf('--index') + 1]
+  : 'src/shared/electron/contributions/plugins/curated-plugins.json';
 
 // A first-party lockfile is published straight out of this repository, so its pinned URL is this prefix,
-// a ref (the plugin's release tag, or `main` for the third-party servers' lockfiles), and a path in the
-// working tree.
-const OWN = /^https:\/\/raw\.githubusercontent\.com\/onix-labs\/onixlabs-studio\/[^/]+\/(.+)$/;
+// a ref (the plugin's release tag, or `main` for the third-party servers' version-named lockfiles), and
+// a path in the working tree.
+const OWN = /^https:\/\/raw\.githubusercontent\.com\/onix-labs\/onixlabs-studio\/([^/]+)\/(.+)$/;
 
 /**
  * Gets the platform key for the machine running this, matching the main process's own.
@@ -36,39 +44,89 @@ function platformKey() {
 }
 
 /**
- * Resolves a pinned URL that this repository itself publishes to the file in the working tree.
+ * Reads a file as it is at a ref, when that ref is known to this checkout.
+ * @param {string} ref The tag or branch.
+ * @param {string} path The path.
+ * @returns {Buffer|null} Returns the bytes, or null when the ref or the file is not there.
+ */
+function showAt(ref, path) {
+  try {
+    return execFileSync('git', ['show', `${ref}:${path}`], {
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolves a pinned URL that this repository itself publishes to the bytes it serves, without fetching.
  *
  * A lockfile pinned at `raw.githubusercontent.com/…/<ref>/…` is not a third-party artifact — it is a
- * file in this checkout, served verbatim once merged. Hashing the checkout rather than fetching `main`
- * is both more useful and more correct on a branch: it proves the pin matches the document being
- * proposed, where fetching would either check the *previous* revision or, for a lockfile added by the
- * same change, 404 until after the merge that the check is supposed to gate.
+ * file in this repository, served verbatim. When the ref is a tag this checkout has, the file as it is
+ * at that tag is exactly what is served, and that is what an older release listed under `releases`
+ * pins. Otherwise — `main`, or the tag of a release this very change introduces, which cannot exist
+ * until it merges — the working tree is the document being proposed, and hashing it is both more useful
+ * and more correct on a branch than fetching, which would check the *previous* revision or 404.
  *
  * Nothing is lost by not fetching. That the URL still resolves to somewhere is asserted by the plugin's
  * own contract spec, which pins the exact string and reads the file it names, so a moved or renamed
  * lockfile fails the unit suite rather than silently passing here.
+ *
+ * A tag this checkout lacks (a shallow clone without tags) is read from the working tree too, but only
+ * provisionally: if those bytes do not match, the tag is fetched, since an older release's tag is
+ * already published and the working tree has moved on from it.
  * @param {string} url The pinned URL.
- * @returns {string|null} Returns the local path, or null when the URL is somebody else's.
+ * @returns {{ bytes: Buffer, provisional: boolean }|null} Returns the bytes and whether they merely
+ * stand in for a tag this checkout lacks, or null when the URL is somebody else's or the file is
+ * nowhere in this checkout.
  */
-function localPath(url) {
+function localBytes(url) {
   const match = OWN.exec(url);
   if (match === null) {
     return null;
   }
-  const path = match[1];
-  return existsSync(path) ? path : null;
+  const [, ref, path] = match;
+  if (ref !== 'main') {
+    const tagged = showAt(ref, path);
+    if (tagged !== null) {
+      return { bytes: tagged, provisional: false };
+    }
+  }
+  return existsSync(path) ? { bytes: readFileSync(path), provisional: ref !== 'main' } : null;
+}
+
+/**
+ * Lists the releases an index entry offers: the entry itself, then each one listed under `releases`
+ * laid over it, the same way Studio reads them (`pluginReleaseCandidates` in `plugin-index.ts`).
+ * @param {object} plugin The index entry.
+ * @returns {Array<object>} Returns the releases, each a whole manifest.
+ */
+function releasesOf(plugin) {
+  const { releases, ...latest } = plugin;
+  const listed = Array.isArray(releases) ? releases : [];
+  return [
+    latest,
+    ...listed
+      .filter((release) => typeof release === 'object' && release !== null)
+      .map((release) => ({ ...latest, ...release, id: latest.id })),
+  ];
 }
 
 /**
  * Downloads a URL and returns its SHA-256, without holding the whole body in memory.
  * @param {string} url The URL to fetch.
+ * @param {string} pinned The hash the index pins for it.
  * @returns {Promise<{ sha256: string, bytes: number }>} Returns the digest and size.
  */
-async function digestOf(url) {
-  const path = localPath(url);
-  if (path !== null) {
-    const bytes = readFileSync(path);
-    return { sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length };
+async function digestOf(url, pinned) {
+  const local = localBytes(url);
+  if (local !== null) {
+    const sha256 = createHash('sha256').update(local.bytes).digest('hex');
+    if (sha256 === pinned || !local.provisional) {
+      return { sha256, bytes: local.bytes.length };
+    }
   }
   const response = await fetch(url, { redirect: 'follow' });
   if (!response.ok) {
@@ -93,24 +151,25 @@ function downloadsToCheck(index) {
   const only = argv.includes('--plugin') ? argv[argv.indexOf('--plugin') + 1] : null;
   const key = platformKey();
   const checks = [];
-  for (const plugin of index.plugins) {
+  for (const plugin of index.plugins.flatMap(releasesOf)) {
     if (only !== null && plugin.id !== only) {
       continue;
     }
+    const label = `${plugin.id} ${plugin.version}`;
     // An npm provision pins a lockfile rather than a per-platform archive; the lockfile itself is the
     // artifact whose hash is claimed, so it is checked the same way.
-    if (plugin.provision.kind === 'npm') {
+    if (plugin.provision?.kind === 'npm') {
       checks.push({
-        plugin: plugin.id,
+        plugin: label,
         platform: 'lockfile',
         url: plugin.provision.lockfileUrl,
         sha256: plugin.provision.sha256,
       });
       continue;
     }
-    for (const [platform, download] of Object.entries(plugin.provision.downloads)) {
+    for (const [platform, download] of Object.entries(plugin.provision?.downloads ?? {})) {
       if (all || platform === key) {
-        checks.push({ plugin: plugin.id, platform, url: download.url, sha256: download.sha256 });
+        checks.push({ plugin: label, platform, url: download.url, sha256: download.sha256 });
       }
     }
   }
@@ -136,7 +195,7 @@ let failures = 0;
 for (const check of checks) {
   const label = `${check.plugin} (${check.platform})`;
   try {
-    const { sha256, bytes } = await digestOf(check.url);
+    const { sha256, bytes } = await digestOf(check.url, check.sha256);
     if (sha256 === check.sha256) {
       stdout.write(`  ok       ${label} — ${(bytes / 1e6).toFixed(1)}MB\n`);
     } else {

@@ -15,6 +15,7 @@ import {
 } from '@shared/api/database-engine-protocol';
 import { parsePluginManifest, PluginManifest } from '@shared/api/plugin-manifest';
 import { type LockfilePackage, parseLockfileDocument } from '../../provisioning/lockfile-provision';
+import { pluginReleaseCandidates } from '../plugins/plugin-index';
 import { DatabaseEngineClient, DatabaseEngineOutcome } from './database-engine-client';
 
 /**
@@ -238,8 +239,12 @@ describe('the SQLite engine plugin is installable', () => {
       ),
     ) as { plugins: readonly { id: string }[] };
 
+    // The entry's own release, without the older ones the index alone lists under `releases`.
     expect(
-      index.plugins.find((plugin: { id: string }): boolean => plugin.id === manifest.id),
+      pluginReleaseCandidates(
+        index.plugins.find((plugin: { id: string }): boolean => plugin.id === manifest.id),
+        0,
+      )[0].value,
     ).toEqual(JSON.parse(manifestText));
   });
 });

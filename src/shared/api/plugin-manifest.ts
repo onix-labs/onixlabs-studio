@@ -3031,20 +3031,24 @@ function readRequirements(value: unknown, errors: Errors): readonly ManifestRequ
  * field that is not exactly what it should be is a reason to stop, not to guess — and every reason is
  * reported at once so an author can fix them in one pass.
  * @param value The parsed JSON to validate.
+ * @param supported The plugin API to judge `apiVersion` against, defaulting to the one this build
+ * implements. Lower it to ask what an older build would accept (the curated index chooses between
+ * releases this way in its specs). Raising it above {@link PLUGIN_API_VERSION} is meaningless: the
+ * contributions themselves are still validated against what this build knows.
  * @returns Returns the manifest, or the reasons it was refused.
  */
-export function parsePluginManifest(value: unknown): ManifestResult {
+export function parsePluginManifest(
+  value: unknown,
+  supported: string = PLUGIN_API_VERSION,
+): ManifestResult {
   const errors: Errors = new Errors();
   const source: Record<string, unknown> | null = readObject(value, 'manifest', errors);
   if (source === null) {
     return { manifest: null, errors: errors.items };
   }
   const apiVersion: unknown = source['apiVersion'];
-  if (!isApiCompatible(apiVersion)) {
-    errors.add(
-      'apiVersion',
-      `must be a semver this build can honour; it implements ${PLUGIN_API_VERSION}`,
-    );
+  if (!isApiCompatible(apiVersion, supported)) {
+    errors.add('apiVersion', `must be a semver this build can honour; it implements ${supported}`);
     return { manifest: null, errors: errors.items };
   }
   const id: string = readId(source, 'id', '', errors);
