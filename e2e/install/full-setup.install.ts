@@ -371,6 +371,39 @@ async function readSummary(wizard: Page): Promise<readonly SummaryRow[]> {
 }
 
 /**
+ * Records what a launch that never opened a window was doing: whether the main process reached
+ * `ready`, which windows it made, and — where there is `ps` — every process on the machine, so a
+ * child the start-up is waiting on (a login shell that will not exit, say) can be seen.
+ * @param app The application.
+ */
+async function recordStall(app: ElectronApplication): Promise<void> {
+  const lines: string[] = [];
+  try {
+    const state: string = await app.evaluate(({ app: electronApp, BrowserWindow }): string =>
+      JSON.stringify({
+        ready: electronApp.isReady(),
+        windows: BrowserWindow.getAllWindows().map((window: Electron.BrowserWindow): string =>
+          window.webContents.getURL(),
+        ),
+        path: process.env['PATH'],
+        shellEnvironmentCaptured: process.env['STUDIO_SHELL_ENV_CAPTURED'],
+      }),
+    );
+    lines.push(`main process: ${state}`);
+  } catch (error: unknown) {
+    lines.push(`main process did not answer: ${String(error)}`);
+  }
+  if (process.platform !== 'win32') {
+    try {
+      lines.push(execFileSync('ps', ['-eo', 'pid,ppid,etime,stat,args'], { encoding: 'utf8' }));
+    } catch (error: unknown) {
+      lines.push(`ps failed: ${String(error)}`);
+    }
+  }
+  fs.writeFileSync(path.join(OUTPUT, 'stall.txt'), `${lines.join('\n')}\n`);
+}
+
+/**
  * Walks the wizard from its first step to Finish, doing on each step what a user setting up
  * everything would: installing every plugin a catalogue offers, giving version control an identity,
  * and reading the summary.
@@ -385,12 +418,17 @@ async function walkWizard(
   // A first launch does more before its first window than any later one — the login shell's
   // environment is captured with nothing remembered, the profile is created — and a shared runner is
   // slower than a desk, so the wizard is given longer to appear than Playwright's 30 seconds.
-  await expect
-    .poll((): boolean => app.windows().some(isModalWindow), {
-      message: 'the setup wizard to open',
-      timeout: 180_000,
-    })
-    .toBe(true);
+  try {
+    await expect
+      .poll((): boolean => app.windows().some(isModalWindow), {
+        message: 'the setup wizard to open',
+        timeout: 180_000,
+      })
+      .toBe(true);
+  } catch (error: unknown) {
+    await recordStall(app);
+    throw error;
+  }
   const wizard: Page = await modalWindow(app);
   await expect(wizard.locator('.setup')).toBeVisible({ timeout: 120_000 });
   const main: Page = await mainWindow(app);
