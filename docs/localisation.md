@@ -128,6 +128,9 @@ plaintext`, CSS's `dir="auto"`), so an Arabic sentence reads, punctuates and ali
   own: name it as above.
 - **The user's text:** each paragraph of a Markdown document or an agent's reply follows its first
   letter, in any interface language, so an Arabic note reads right to left in English too.
+- **Labels keep their words in order.** In a left-to-right line, an Arabic label with a Latin word in
+  it (`ملف Markdown جديد`) would be laid out from the left and read backwards. The loader embeds each
+  Arabic message right to left (`embedRightToLeft`), which fixes the order without moving the label.
 
 Text typed with an input method (Chinese, Japanese, Korean) uses Enter to pick a candidate: check
 `isComposing(event)` before treating Enter, Escape or a shortcut as the user's.
