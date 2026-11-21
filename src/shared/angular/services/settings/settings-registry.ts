@@ -77,6 +77,7 @@ import {
 } from '@shared/angular/services/workspace/file-nesting';
 import { isSettingsOwned } from './settings-schema';
 import type { ChoiceOption, SectionDef, SettingDef, SettingsOwnedDef } from './settings-schema';
+import { isLanguageChoiceOffered } from '@shared/angular/services/locale/language-choice';
 
 /**
  * Maps a connection id to the model the user last selected for it, so switching connections restores
@@ -1005,6 +1006,14 @@ const LANGUAGE_OPTIONS: readonly ChoiceOption[] = [
     : [{ value: 'pseudo', label: 'Pseudo (testing)' }]),
 ];
 
+/**
+ * Holds whether the Language setting is offered in this build. A packaged build holds the interface
+ * in English until the whole of it is translated (see `language-choice.ts`).
+ */
+const LANGUAGE_CHOICE_OFFERED: boolean = isLanguageChoiceOffered(
+  typeof window !== 'undefined' && window.host?.packaged === true,
+);
+
 export const SETTINGS_REGISTRY: readonly SectionDef[] = [
   {
     id: 'application',
@@ -1018,6 +1027,9 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         control: { kind: 'select', options: LANGUAGE_OPTIONS },
         default: 'system',
         requiresRestart: true,
+        // Where the choice isn't offered, the setting applies on no platform, so neither Settings nor
+        // its search shows it, while its key and default stay registered for the startup mirror.
+        ...(LANGUAGE_CHOICE_OFFERED ? {} : { platforms: [] }),
       },
       {
         key: 'display.graphicsAcceleration',
