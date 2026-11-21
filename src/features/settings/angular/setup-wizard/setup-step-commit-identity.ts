@@ -115,13 +115,23 @@ export class SetupStepCommitIdentity {
   }
 
   /**
-   * Reads the current identity.
+   * Reads the current identity into the fields the user has not started on.
+   *
+   * ⚠️ The read asks git, through the main process, and can land after the user has begun typing — on
+   * a first run it answers with an empty identity, and filling the fields with it unconditionally wiped
+   * out what had been typed and left Save disabled (#1546's install gate found it). A field the user
+   * has written in is theirs.
    * @returns Returns a promise that resolves once it has been read.
    */
   private async load(): Promise<void> {
     const identity: GitIdentity | null = await this.probes.gitIdentity();
-    if (identity !== null) {
+    if (identity === null) {
+      return;
+    }
+    if (this.name().length === 0) {
       this.name.set(identity.name);
+    }
+    if (this.email().length === 0) {
       this.email.set(identity.email);
     }
   }
