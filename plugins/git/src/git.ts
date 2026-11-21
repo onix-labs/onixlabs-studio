@@ -18,7 +18,15 @@ import {
   VersionControlOp,
   VersionControlResponse,
   VcsParams,
+  VcsSshHost,
 } from './protocol';
+import {
+  classifySshFailure,
+  parseSshConfig,
+  SshFailure,
+  sshFailureMessage,
+  sshHostOfUrl,
+} from './ssh-failure';
 import { debug, note } from './log';
 import { DefaultBranch, defaultBranchOf } from './default-branch';
 import { classifyOperation, firstFile, probeOperation } from './git-operation-state';
@@ -160,7 +168,19 @@ interface GitRun {
  */
 type Outcome =
   | { readonly ok: true; readonly result: unknown }
-  | { readonly ok: false; readonly error: string; readonly code?: VcsErrorCode };
+  | {
+      readonly ok: false;
+      readonly error: string;
+      readonly code?: VcsErrorCode;
+      readonly sshHost?: VcsSshHost;
+      readonly output?: string;
+    };
+
+/**
+ * Holds how long, in milliseconds, `ssh -G` may take to say where an alias really points. It only
+ * reads config, so anything longer means something is wrong and the alias is named as it is.
+ */
+const SSH_CONFIG_TIMEOUT_MS: number = 5_000;
 
 /**
  * The result of an operation that only succeeds or fails.
@@ -328,9 +348,25 @@ function trimEnd(value: string, character: string): string {
 }
 
 /**
- * Rewrites a failed network operation's message into an actionable one when it is an authentication
- * failure. Network git runs are non-interactive, so missing credentials fail fast — but the raw error
- * explains neither why nor what to do about it.
+ * One remote as `git remote -v` lists it, with the SSH server its URL names.
+ */
+interface ListedRemote {
+  /**
+   * Gets the remote's name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the SSH server its URL names, or null when it is not an SSH URL.
+   */
+  readonly host: VcsSshHost | null;
+}
+
+/**
+ * Rewrites a failed network operation's message into an actionable one when it is an HTTPS
+ * authentication failure. Network git runs are non-interactive, so missing credentials fail fast — but
+ * the raw error explains neither why nor what to do about it. The SSH failures are recognised apart,
+ * with a code of their own (see {@link classifySshFailure}).
  * @param run The network operation's outcome.
  * @returns Returns the message to show.
  */
@@ -348,14 +384,33 @@ export function networkFailureMessage(run: GitRun): string {
       'in a terminal, then retry.'
     );
   }
-  if (/permission denied \(publickey\)|host key verification failed/i.test(text)) {
-    return (
-      'SSH authentication failed. Studio runs git non-interactively, so SSH remotes need a key ' +
-      'loaded in ssh-agent (and the host already in known_hosts). Load your key with ssh-add, ' +
-      'verify with a git fetch in a terminal, then retry.'
-    );
-  }
   return run.error ?? 'git failed';
+}
+
+/**
+ * Lists the SSH servers a repository's remotes point at, for an SSH failure whose output named none:
+ * the remotes the command named, or every remote when it named none (a fetch of all of them, or a
+ * pull from the upstream).
+ * @param remotes The output of `git remote -v`.
+ * @param args The failed command's arguments.
+ * @returns Returns each distinct server once.
+ */
+export function remoteSshHosts(remotes: string, args: readonly string[]): readonly VcsSshHost[] {
+  const listed: ListedRemote[] = remotes
+    .split('\n')
+    .map((line: string): string[] => line.trim().split(/\s+/))
+    .filter((parts: string[]): boolean => parts.length >= 2)
+    .map((parts: string[]): ListedRemote => ({ name: parts[0], host: sshHostOfUrl(parts[1]) }));
+  const named: ListedRemote[] = listed.filter((remote: ListedRemote): boolean =>
+    args.includes(remote.name),
+  );
+  const hosts: Map<string, VcsSshHost> = new Map<string, VcsSshHost>();
+  for (const remote of named.length > 0 ? named : listed) {
+    if (remote.host !== null) {
+      hosts.set(`${remote.host.host}:${remote.host.port ?? 22}`, remote.host);
+    }
+  }
+  return [...hosts.values()];
 }
 
 /**
@@ -1511,7 +1566,10 @@ export class GitVersionControl {
       GIT_NETWORK_ENV,
     );
     if (!cloned.success) {
-      return fail(networkFailureMessage(cloned));
+      const host: VcsSshHost | null = sshHostOfUrl(url);
+      return this.networkFailure(cloned, (): Promise<readonly VcsSshHost[]> =>
+        Promise.resolve(host === null ? [] : [host]),
+      );
     }
     if (branch === undefined) {
       return ok(DONE);
@@ -1611,10 +1669,72 @@ export class GitVersionControl {
       timeoutMs,
       GIT_NETWORK_ENV,
     );
-    if (!run.success) {
-      debug('GitVersionControl', `Network git ${args[0]} failed`);
+    if (run.success) {
+      return ok(DONE);
     }
-    return run.success ? ok(DONE) : fail(networkFailureMessage(run));
+    debug('GitVersionControl', `Network git ${args[0]} failed`);
+    return this.networkFailure(run, async (): Promise<readonly VcsSshHost[]> => {
+      const remotes: GitRun = await this.git(root, ['remote', '-v']);
+      return remotes.success ? remoteSshHosts(remotes.stdout, args) : [];
+    });
+  }
+
+  /**
+   * Explains a failed network command: one of the two SSH failures a run with no terminal cannot get
+   * past, coded so Studio can say what to do in the user's language and naming the server so the
+   * remedy can too (#1255); otherwise the HTTPS explanation or git's own message.
+   * @param run The failed command.
+   * @param candidates Lists the servers the command could have been talking to, asked only when ssh
+   * named none itself.
+   * @returns Returns the failed outcome.
+   */
+  private async networkFailure(
+    run: GitRun,
+    candidates: () => Promise<readonly VcsSshHost[]>,
+  ): Promise<Outcome> {
+    const failure: SshFailure | null = classifySshFailure(`${run.stderr}\n${run.error ?? ''}`);
+    if (failure === null) {
+      return fail(networkFailureMessage(run));
+    }
+    let host: VcsSshHost | null = failure.host;
+    if (host === null) {
+      // Several servers would make the remedy a guess, and a wrong command is worse than none.
+      const possible: readonly VcsSshHost[] = await candidates();
+      host = possible.length === 1 ? await this.resolveSshAlias(possible[0]) : null;
+    }
+    const output: string = run.stderr.trim();
+    return {
+      ok: false,
+      error: sshFailureMessage(failure.kind, host),
+      code: failure.kind,
+      ...(host === null ? {} : { sshHost: host }),
+      output: output.length > 0 ? output : (run.error ?? ''),
+    };
+  }
+
+  /**
+   * Resolves a server read from a remote URL through the user's ssh config, which may make it an alias
+   * (`github-work`) for another host and port. Read-only: `ssh -G` prints the configuration it would
+   * use and connects to nothing.
+   * @param host The server as the URL names it.
+   * @returns Returns the server ssh would really connect to, or the one given when ssh cannot say.
+   */
+  private resolveSshAlias(host: VcsSshHost): Promise<VcsSshHost> {
+    const args: string[] = [
+      '-G',
+      ...(host.port === undefined ? [] : ['-p', String(host.port)]),
+      host.host,
+    ];
+    return new Promise<VcsSshHost>((resolve: (resolved: VcsSshHost) => void): void => {
+      execFile(
+        'ssh',
+        args,
+        { timeout: SSH_CONFIG_TIMEOUT_MS, windowsHide: true },
+        (error: Error | null, stdout: string): void => {
+          resolve((error === null ? parseSshConfig(stdout) : null) ?? host);
+        },
+      );
+    });
   }
 
   /**

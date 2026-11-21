@@ -18,6 +18,8 @@ interface Answer {
   readonly result?: unknown;
   readonly error?: string;
   readonly code?: string;
+  readonly sshHost?: { readonly host: string; readonly port?: number };
+  readonly output?: string;
 }
 
 /**
@@ -578,6 +580,93 @@ describe('GitVersionControl operations', () => {
 
         expect(args).not.toContain('core.sshCommand');
         expect(ssh).toBe('SSH ssh -i ~/.ssh/my_key');
+      });
+    });
+
+    describe('SSH failures (#1255)', () => {
+      /**
+       * Points git at an ssh that prints what a real one printed when it gave up, and fails as ssh
+       * does, so git's own handling of the failure is the real thing.
+       * @param stderr What the ssh prints.
+       */
+      async function failingSsh(stderr: string): Promise<void> {
+        const script: string = path.join(base, 'fake-ssh');
+        await fs.writeFile(script, `#!/bin/sh\nprintf '%s\\n' '${stderr}' >&2\nexit 255\n`);
+        await fs.chmod(script, 0o755);
+        process.env['GIT_SSH_COMMAND'] = script;
+        // Git only passes a port to an ssh it recognises by name; this one it would not.
+        process.env['GIT_SSH_VARIANT'] = 'ssh';
+      }
+
+      it('anUnknownHost_isCodedAndNamesTheRemotesServer', SLOW, async () => {
+        await git(repo, 'remote', 'add', 'origin', 'ssh://git@git.example.test:2299/x.git');
+        // OpenSSH 10.5 under BatchMode names no host, so the server comes from the remote's URL.
+        await failingSsh('Host key verification failed.');
+
+        const answer: Answer = await ask('fetch');
+
+        expect(answer).toMatchObject({
+          ok: false,
+          code: 'ssh-host-unknown',
+          sshHost: { host: 'git.example.test', port: 2299 },
+        });
+        expect(answer.error).toContain('ssh-keyscan -p 2299 git.example.test');
+        expect(answer.output).toContain('Host key verification failed.');
+        expect(answer.output).toContain('Could not read from remote repository');
+      });
+
+      it('aRejectedKey_isCodedAndNamesTheServerSshNamed', SLOW, async () => {
+        await git(repo, 'remote', 'add', 'origin', 'git@github.com:org/repo.git');
+        await failingSsh('git@github.com: Permission denied (publickey).');
+
+        const answer: Answer = await ask('push', {
+          target: { remote: 'origin', branch: 'main', setUpstream: false },
+        });
+
+        expect(answer).toMatchObject({
+          ok: false,
+          code: 'ssh-key-rejected',
+          sshHost: { host: 'github.com' },
+        });
+        expect(answer.error).toContain('ssh-agent');
+      });
+
+      it('remotesOnSeveralServers_nameNone_ratherThanGuess', SLOW, async () => {
+        await git(repo, 'remote', 'add', 'origin', 'git@github.com:org/repo.git');
+        await git(repo, 'remote', 'add', 'mirror', 'git@gitlab.com:org/repo.git');
+        await failingSsh('Host key verification failed.');
+
+        const answer: Answer = await ask('fetch');
+
+        expect(answer).toMatchObject({ ok: false, code: 'ssh-host-unknown' });
+        expect(answer.sshHost).toBeUndefined();
+      });
+
+      it('aCloneOfAnUnknownHost_namesTheServerFromItsUrl', SLOW, async () => {
+        await failingSsh('Host key verification failed.');
+
+        const answer: Answer = await ask(
+          'clone',
+          { url: 'git@clone.example.test:org/repo.git', directory: path.join(base, 'cloned') },
+          null,
+        );
+
+        expect(answer).toMatchObject({
+          ok: false,
+          code: 'ssh-host-unknown',
+          sshHost: { host: 'clone.example.test' },
+        });
+      });
+
+      it('aConnectionRefused_isLeftAsGitSaidIt', SLOW, async () => {
+        await git(repo, 'remote', 'add', 'origin', 'ssh://git@127.0.0.1:1/x.git');
+        await failingSsh('ssh: connect to host 127.0.0.1 port 1: Connection refused');
+
+        const answer: Answer = await ask('fetch');
+
+        expect(answer.ok).toBe(false);
+        expect(answer.code).toBeUndefined();
+        expect(answer.error).toContain('Connection refused');
       });
     });
 
