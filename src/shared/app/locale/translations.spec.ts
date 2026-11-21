@@ -131,9 +131,8 @@ describe.each([
   ['Arabic', arabic],
 ])('%s plurals', (_name: string, content: unknown) => {
   const translations: TranslationFile = file(content);
-  const categories: readonly string[] = new Intl.PluralRules(
-    translations.locale,
-  ).resolvedOptions().pluralCategories;
+  const categories: readonly string[] = new Intl.PluralRules(translations.locale).resolvedOptions()
+    .pluralCategories;
 
   it('stay plurals where the source has one', () => {
     for (const [id, text] of Object.entries(SOURCE.translations)) {

@@ -23,15 +23,7 @@ export type CornerStyle = 'automatic' | 'squircle' | 'rounded' | 'square';
  * Chinese is Simplified Chinese (`zh-Hans`), named by its script rather than a region, since it is
  * read in mainland China, Singapore and Malaysia alike; Traditional Chinese would be `zh-Hant`.
  */
-export type InterfaceLanguage =
-  | 'system'
-  | 'en'
-  | 'fr'
-  | 'es'
-  | 'de'
-  | 'zh-Hans'
-  | 'ar'
-  | 'pseudo';
+export type InterfaceLanguage = 'system' | 'en' | 'fr' | 'es' | 'de' | 'zh-Hans' | 'ar' | 'pseudo';
 
 /**
  * When opening a link in the browser asks first: never, only for links from content Studio did not

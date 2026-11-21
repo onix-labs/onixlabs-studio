@@ -18,9 +18,9 @@ import { spokenLanguageOf } from './spoken-language-of';
 export function formattingLocale(language: SpokenLanguage, preferred: readonly string[]): string {
   // The test language formats as English does, so only its text looks odd.
   const spoken: SpokenLanguage = language === 'pseudo' ? 'en' : language;
-  const regional: string = preferred.find(
-    (tag: string): boolean => spokenLanguageOf(tag) === spoken,
-  ) ?? (spoken === 'en' ? 'en-GB' : spoken);
+  const regional: string =
+    preferred.find((tag: string): boolean => spokenLanguageOf(tag) === spoken) ??
+    (spoken === 'en' ? 'en-GB' : spoken);
   if (spoken !== 'ar') {
     return regional;
   }
