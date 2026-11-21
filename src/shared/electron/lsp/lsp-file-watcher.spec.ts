@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { WatchModes } from '../watching/watch-modes';
 import { FileChangeType, FileEvent, LspFileWatcher, MAX_PENDING_PATHS } from './lsp-file-watcher';
 
 /**
@@ -284,6 +285,31 @@ describe('LspFileWatcher', () => {
     ).toBe(false);
     // Gone from disk and renamed: resolved at flush, so it did not stay a mere change.
     expect(events()[0]).toMatchObject({ type: FileChangeType.Deleted });
+  });
+
+  it('aRootInAPolledFolder_isPolled_andAFileCreatedOutsideStudioIsReported', async () => {
+    const modes: WatchModes = new WatchModes(undefined, false);
+    await modes.update([root], 1);
+    watcher = new LspFileWatcher(
+      root,
+      (delivered: readonly FileEvent[]): void => {
+        batches.push(delivered);
+      },
+      undefined,
+      modes,
+    );
+    await settle();
+
+    writeFileSync(path.join(root, 'polled.ts'), 'x');
+    await vi.waitFor(
+      (): void => {
+        expect(events()).toContainEqual({
+          uri: pathToFileURL(path.join(root, 'polled.ts')).href,
+          type: FileChangeType.Created,
+        });
+      },
+      { timeout: 4000, interval: 50 },
+    );
   });
 
   it('close_stopsDelivering', async () => {

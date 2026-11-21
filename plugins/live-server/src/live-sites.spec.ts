@@ -49,6 +49,26 @@ describe('LiveSites (#1062)', () => {
     await expect(sites.answer('serve', { root: given, port: 0 })).rejects.toThrow();
   });
 
+  it.each<[string, unknown, number | undefined]>([
+    ['none asked for', undefined, undefined],
+    ['the interval asked for', 2000, 2000],
+    ['a clamped interval', 5, 250],
+    ['none, for nonsense', 'often', undefined],
+  ])('creates_eachSite_polledAt %s', async (_name: string, asked: unknown, given: unknown) => {
+    const intervals: (number | undefined)[] = [];
+    const sites: LiveSites = new LiveSites(
+      (root: string, pollIntervalMs: number | undefined): LiveSite => {
+        intervals.push(pollIntervalMs);
+        return new LiveSite(root, () => null);
+      },
+    );
+
+    await sites.answer('serve', { root: scratch, port: 0, pollIntervalMs: asked });
+    await sites.closeAll();
+
+    expect(intervals).toEqual([given]);
+  });
+
   it('refuses_anUnknownOperation', async () => {
     await expect(new LiveSites().answer('listDirectory', {})).rejects.toThrow('Unknown operation');
   });

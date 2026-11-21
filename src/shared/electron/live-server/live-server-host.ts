@@ -100,6 +100,13 @@ export interface LiveServerHostOptions {
    * Creates the client for a plugin's process. Defaults to a real process.
    */
   readonly createClient?: LiveServerClientFactory;
+
+  /**
+   * Says how often a folder is polled for changes, in milliseconds, or undefined for the platform's
+   * own watching (#1254). Defaults to never polling. Asked when a server starts: a server already
+   * running keeps watching as it started until it is stopped.
+   */
+  readonly pollInterval?: (root: string) => Promise<number | undefined>;
 }
 
 /**
@@ -387,9 +394,14 @@ export class LiveServerHost {
     if (typeof plugin === 'string') {
       return plugin;
     }
+    const pollIntervalMs: number | undefined = await this.options.pollInterval?.(page.realRoot);
     const response: LiveServerResponse<'serve'> = await plugin.client.request(
       'serve',
-      { root: page.realRoot, port: LIVE_SERVER_FIRST_PORT },
+      {
+        root: page.realRoot,
+        port: LIVE_SERVER_FIRST_PORT,
+        ...(pollIntervalMs === undefined ? {} : { pollIntervalMs }),
+      },
       REQUEST_TIMEOUT_MS,
     );
     if (!response.ok) {

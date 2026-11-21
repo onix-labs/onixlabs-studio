@@ -66,6 +66,7 @@ import { DirectoryWatcher } from '@shared/electron/directory-watcher';
 import { EditorConfigManager } from '@shared/electron/editor-config/editor-config-manager';
 import { FileManager } from '@shared/electron/file-manager';
 import { FileWatcher } from '@shared/electron/file-watcher';
+import { WatchModes } from '@shared/electron/watching/watch-modes';
 import { Logger, logger as appLogger } from '@shared/electron/logger';
 import {
   consoleLevelToSeverity,
@@ -468,10 +469,20 @@ class Program {
   private readonly codeRunner: CodeRunner = new CodeRunner();
 
   /**
+   * Decides, for every watcher below, whether a folder is watched natively or polled (#1254): the
+   * polled folders from Settings › Workspaces › File Watching, mirrored with the startup settings.
+   */
+  private readonly watchModes: WatchModes = new WatchModes(
+    // Read lazily, per poll: the host is declared after this field.
+    (): MetadataPolicies => this.versionControlHost.metadataPolicies(),
+  );
+
+  /**
    * Watches open documents on disk and notifies the renderer when they change.
    */
-  private readonly fileWatcher: FileWatcher = new FileWatcher((): BrowserWindow | null =>
-    this.windows.main(),
+  private readonly fileWatcher: FileWatcher = new FileWatcher(
+    (): BrowserWindow | null => this.windows.main(),
+    this.watchModes,
   );
 
   /**
@@ -483,6 +494,7 @@ class Program {
     // Read lazily, per event: the host is declared after this field, and the policies follow whatever
     // version-control plugins are installed.
     (): MetadataPolicies => this.versionControlHost.metadataPolicies(),
+    this.watchModes,
   );
 
   /**
@@ -584,6 +596,8 @@ class Program {
   private readonly liveServerHost: LiveServerHost = new LiveServerHost({
     descriptors: () => contributedLiveServers(versionControlNodeRuntime),
     roots: this.workspaceContext,
+    pollInterval: (root: string): Promise<number | undefined> =>
+      this.watchModes.resolvePollInterval(root),
     onChanged: (servers: readonly LiveServerInfo[]): void => {
       for (const window of BrowserWindow.getAllWindows()) {
         if (!window.isDestroyed()) {
@@ -848,6 +862,11 @@ class Program {
     this.workspaceContext,
     this.lspServerRegistry,
     this.runTokens,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    this.watchModes,
   );
 
   /**
@@ -946,6 +965,10 @@ class Program {
     this.graphicsAcceleration = startupPreferences.graphicsAcceleration;
     this.startupSettings = startupPreferences.settings;
     setProjectScanDepth(this.startupSettings.projectScanDepth);
+    void this.watchModes.update(
+      this.startupSettings.pollingFolders,
+      this.startupSettings.pollingInterval,
+    );
     // The log floor is applied as early as the preferences can be read: everything logged from here
     // on is filtered by it. A packaged build defaults to info, which drops the trace and debug
     // records that are nineteen in twenty of what would otherwise be written.
@@ -1266,6 +1289,7 @@ class Program {
           this.windows.applyInterfaceZoom();
         }
         setProjectScanDepth(parsed.projectScanDepth);
+        void this.watchModes.update(parsed.pollingFolders, parsed.pollingInterval);
         this.applyLogLimits(parsed);
         systemMonitorContribution.setGpuHistory(parsed.gpuMonitoring);
         StartupPreferencesStore.write({ settings: parsed });
