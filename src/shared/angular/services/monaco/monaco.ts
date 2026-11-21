@@ -41,6 +41,7 @@ import { registerCsharpLanguage } from './monaco-csharp-language';
 import { registerScssLanguage } from './monaco-scss-language';
 import { registerCypherLanguage } from './monaco-cypher-language';
 import { registerGoModuleLanguages } from './monaco-go-module-language';
+import { installFileLinkOpener } from './monaco-link-opener';
 import { registerDocCommentRules } from './monaco-doc-comment-rules';
 import { registerBraceFolding } from './monaco-folding';
 import { installFindCommands } from './monaco-find-commands';
@@ -807,6 +808,13 @@ export class Monaco {
     ];
     if (window.monaco !== undefined) {
       installAutoInsert(window.monaco, this.typed);
+      // A `file:` link opens in the workspace, as Go to Definition opens a file (#1211).
+      installFileLinkOpener(window.monaco, (path: string, line: number): void => {
+        void this.injector.get(EditorNavigation).goTo(null, {
+          path,
+          range: { startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1 },
+        });
+      });
     }
     bindings.push(
       ...this.installQuickFixCommands(window.monaco),
