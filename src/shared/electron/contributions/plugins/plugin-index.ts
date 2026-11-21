@@ -1,6 +1,14 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
-import { ManifestError, parsePluginManifest, PluginManifest } from '@shared/api/plugin-manifest';
+import {
+  isApiCompatible,
+  ManifestError,
+  ManifestResult,
+  parsePluginManifest,
+  PLUGIN_API_VERSION,
+  PluginManifest,
+} from '@shared/api/plugin-manifest';
+import { compareStudioVersions } from '@shared/api/studio-version';
 import { logger } from '../../logger';
 import SEED_INDEX from './curated-plugins.json';
 
@@ -15,6 +23,13 @@ import SEED_INDEX from './curated-plugins.json';
 // executed, so what is on the list is a decision somebody made, not a decision anybody can make by
 // publishing. That is the whole distinction between this and a registry, and it is why the fetched
 // document is only ever read through the same validator a sideloaded `plugin.json` goes through.
+//
+// An entry may offer several releases of its plugin, so that a build implementing an older plugin API
+// still installs the newest release it can run rather than whichever one it shipped with. The entry's
+// own top-level fields are its newest release, in exactly the single-release shape every build has
+// always read; older releases go in an optional `releases` list beside them, which builds that predate
+// it ignore as an unknown field. So the format only ever grows: an old build reads a new index as it
+// always did, and a new build reads an old index as an entry with one release.
 
 /**
  * Where the published index lives: the seed file itself, served from the default branch.
@@ -103,6 +118,50 @@ export interface PluginIndexDocument {
 }
 
 /**
+ * One release of a plugin an index entry offers, before it is validated.
+ */
+export interface PluginReleaseCandidate {
+  /**
+   * Gets the dotted path the release sits at in the document, for failures.
+   */
+  readonly path: string;
+
+  /**
+   * Gets the release as a whole manifest: the entry's own fields with the release's laid over them.
+   */
+  readonly value: unknown;
+}
+
+/**
+ * The outcome of choosing which of an entry's releases this build installs.
+ */
+export interface PluginReleaseSelection {
+  /**
+   * Gets the release chosen, or null when this build can run none of them.
+   */
+  readonly manifest: PluginManifest | null;
+
+  /**
+   * Gets the reasons releases were refused that are worth saying out loud.
+   */
+  readonly errors: readonly ManifestError[];
+}
+
+/**
+ * The fields every listed release must state for itself rather than inherit from its entry. They are
+ * what tells one release from another: inheriting the entry's provision would install the newest
+ * payload under an older release's version, and inheriting its API version would defeat the point.
+ */
+const RELEASE_OWN_FIELDS: readonly string[] = ['version', 'apiVersion', 'provision'];
+
+/**
+ * The field a release declares its plugin API in, and the path the manifest validator reports a
+ * release this build cannot honour under — recognised so that this expected refusal is told apart
+ * from a malformed release.
+ */
+const INCOMPATIBLE_PATH: string = 'apiVersion';
+
+/**
  * Gets the id an entry claims, before it is trusted with anything else.
  * @param entry The entry.
  * @returns Returns the id, or null when it names none.
@@ -116,16 +175,163 @@ function claimedId(entry: unknown): string | null {
 }
 
 /**
+ * Determines whether a value is a plain JSON object.
+ * @param value The candidate.
+ * @returns Returns true when it is an object that is neither null nor an array.
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Lists the releases an index entry offers, newest-first as far as the publisher wrote them.
+ *
+ * The entry itself is always the first: its top-level fields are the single release every build reads,
+ * including the builds that predate `releases` and ignore the field. Each element of `releases` is laid
+ * over the entry, so a release states only what differs from it — its `version`, `apiVersion` and
+ * `provision`, always, and its `contributes`, `requires` or description when those differ too. It can
+ * never name a different plugin.
+ * @param entry The untrusted entry.
+ * @param index The entry's position in the document, for failures.
+ * @param errors Collects the reasons a listed release is malformed.
+ * @returns Returns the releases to choose between.
+ */
+export function pluginReleaseCandidates(
+  entry: unknown,
+  index: number,
+  errors: ManifestError[] = [],
+): PluginReleaseCandidate[] {
+  const path: string = `plugins[${index}]`;
+  if (!isRecord(entry)) {
+    return [{ path, value: entry }];
+  }
+  const { releases, ...latest }: Record<string, unknown> = entry;
+  const candidates: PluginReleaseCandidate[] = [{ path, value: latest }];
+  if (releases === undefined) {
+    return candidates;
+  }
+  if (!Array.isArray(releases)) {
+    errors.push({ path: `${path}.releases`, message: 'must be an array of releases' });
+    return candidates;
+  }
+  releases.forEach((release: unknown, position: number): void => {
+    const releasePath: string = `${path}.releases[${position}]`;
+    if (!isRecord(release)) {
+      errors.push({ path: releasePath, message: 'must be an object' });
+      return;
+    }
+    if ('id' in release && release['id'] !== latest['id']) {
+      errors.push({ path: `${releasePath}.id`, message: 'must not name a different plugin' });
+      return;
+    }
+    const missing: readonly string[] = RELEASE_OWN_FIELDS.filter(
+      (field: string): boolean => !(field in release),
+    );
+    if (missing.length > 0) {
+      for (const field of missing) {
+        errors.push({
+          path: `${releasePath}.${field}`,
+          message: 'must be stated by the release itself',
+        });
+      }
+      return;
+    }
+    // A release cannot carry releases of its own: the list is one level deep, owned by the entry.
+    const own: Record<string, unknown> = Object.fromEntries(
+      Object.entries(release).filter(([key]: [string, unknown]): boolean => key !== 'releases'),
+    );
+    candidates.push({ path: releasePath, value: { ...latest, ...own, id: latest['id'] } });
+  });
+  return candidates;
+}
+
+/**
+ * Chooses which of an entry's releases this build installs: the highest version whose plugin API it
+ * can honour.
+ *
+ * Highest by version precedence rather than by position, so the order a publisher happens to list
+ * releases in cannot make a build install an older one than it could run; a prerelease ranks below the
+ * release it leads up to, as everywhere else. Two releases claiming the same version resolve to the
+ * one listed first, the entry's own fields before `releases`. The ordering is Studio's own version
+ * precedence: semver with prereleases, and forgiving of versions that are not semver (rust-analyzer's
+ * are dates), which a plugin's own version is free to be.
+ *
+ * A release refused only because it needs a newer API than this build implements is the expected case
+ * — it is why the list exists — so when another release stands in for it, that refusal is not reported.
+ * Anything else wrong with a release is a publishing mistake, and is.
+ * @param entry The untrusted entry.
+ * @param index The entry's position in the document, for failures.
+ * @param supported The plugin API this build implements.
+ * @returns Returns the release chosen and the reasons worth reporting.
+ */
+export function selectPluginRelease(
+  entry: unknown,
+  index: number,
+  supported: string = PLUGIN_API_VERSION,
+): PluginReleaseSelection {
+  const structural: ManifestError[] = [];
+  const candidates: readonly PluginReleaseCandidate[] = pluginReleaseCandidates(
+    entry,
+    index,
+    structural,
+  );
+  const incompatible: ManifestError[] = [];
+  const malformed: ManifestError[] = [];
+  let chosen: PluginManifest | null = null;
+  for (const candidate of candidates) {
+    const apiVersion: unknown = isRecord(candidate.value)
+      ? candidate.value[INCOMPATIBLE_PATH]
+      : undefined;
+    const result: ManifestResult = isApiCompatible(apiVersion, supported)
+      ? parsePluginManifest(candidate.value)
+      : {
+          manifest: null,
+          errors: [
+            {
+              path: INCOMPATIBLE_PATH,
+              message: `must be a semver this build can honour; it implements ${supported}`,
+            },
+          ],
+        };
+    const located: ManifestError[] = result.errors.map((error: ManifestError): ManifestError => ({
+      path: `${candidate.path}.${error.path}`,
+      message: error.message,
+    }));
+    if (result.manifest === null) {
+      const onlyIncompatible: boolean =
+        result.errors.length === 1 && result.errors[0].path === INCOMPATIBLE_PATH;
+      (onlyIncompatible ? incompatible : malformed).push(...located);
+      continue;
+    }
+    if (chosen === null || compareStudioVersions(result.manifest.version, chosen.version) > 0) {
+      chosen = result.manifest;
+    }
+  }
+  if (chosen === null) {
+    return { manifest: null, errors: [...incompatible, ...malformed, ...structural] };
+  }
+  return { manifest: chosen, errors: [...malformed, ...structural] };
+}
+
+/**
  * Validates an untrusted value as an index document.
  *
  * One bad entry does not spoil the document — it is reported and skipped, exactly as a broken plugin in
  * the sideload directory costs the user that plugin and nothing else. A bad *envelope* is a different
  * matter and is refused outright: if the thing is not shaped like an index, nothing in it can be
  * trusted to be shaped like a plugin either.
+ *
+ * Each entry may offer several releases (see {@link pluginReleaseCandidates}); the one in force is the
+ * newest this build can run (see {@link selectPluginRelease}). An entry is refused only when it offers
+ * none this build can run.
  * @param value The parsed JSON to validate.
+ * @param supported The plugin API this build implements.
  * @returns Returns the document, or null when the envelope is not one.
  */
-export function parsePluginIndex(value: unknown): PluginIndexDocument | null {
+export function parsePluginIndex(
+  value: unknown,
+  supported: string = PLUGIN_API_VERSION,
+): PluginIndexDocument | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return null;
   }
@@ -141,11 +347,9 @@ export function parsePluginIndex(value: unknown): PluginIndexDocument | null {
   const refused: string[] = [];
   const seen: Set<string> = new Set<string>();
   source.plugins.forEach((entry: unknown, index: number): void => {
-    const result: ReturnType<typeof parsePluginManifest> = parsePluginManifest(entry);
+    const result: PluginReleaseSelection = selectPluginRelease(entry, index, supported);
+    errors.push(...result.errors);
     if (result.manifest === null) {
-      for (const error of result.errors) {
-        errors.push({ path: `plugins[${index}].${error.path}`, message: error.message });
-      }
       const id: string | null = claimedId(entry);
       if (id !== null) {
         refused.push(id);
@@ -169,10 +373,14 @@ export function parsePluginIndex(value: unknown): PluginIndexDocument | null {
  * Lays a newer index over the one this build shipped with.
  *
  * The newer copy wins, entry by entry, except where it names a plugin this build cannot honour. That is
- * most often a plugin released against a newer plugin API than this build implements, and the newer
- * index carries only the newest release. Dropping the entry would take the plugin away from a build that
- * was installing it yesterday (beta.10 lost GitHub this way), so the seed's own entry stands instead: an
- * older release, but one this build can run.
+ * most often a plugin released against a newer plugin API than this build implements, where the newer
+ * entry lists no older release this build could run instead. Dropping the entry would take the plugin
+ * away from a build that was installing it yesterday (beta.10 lost GitHub this way), so the seed's own
+ * entry stands instead: an older release, but one this build can run.
+ *
+ * Where the newer entry does list a release this build can run, that release is used, even when it is
+ * older than the seed's: the published copy is the curated one, and withdrawing a bad release from it
+ * has to reach the builds that shipped with it.
  * @param newer The newer copy.
  * @param seed The copy this build shipped with.
  * @returns Returns the document in force.

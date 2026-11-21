@@ -2,7 +2,13 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { PLUGIN_API_VERSION } from '@shared/api/plugin-manifest';
+import {
+  ManifestError,
+  ManifestResult,
+  parsePluginManifest,
+  PLUGIN_API_VERSION,
+  PluginManifest,
+} from '@shared/api/plugin-manifest';
 import CURATED_PLUGINS from './curated-plugins.json';
 import {
   IndexFetch,
@@ -12,6 +18,9 @@ import {
   PluginIndex,
   PluginIndexDocument,
   pluginIndexUrl,
+  pluginReleaseCandidates,
+  PluginReleaseSelection,
+  selectPluginRelease,
 } from './plugin-index';
 
 /**
@@ -114,6 +123,39 @@ describe('parsePluginIndex', () => {
     expect(result?.errors).toEqual([{ path: 'plugins[1].id', message: "duplicates 'zls'" }]);
   });
 
+  it('offersTheNewestReleaseOfEachEntryTheBuildCanRun', () => {
+    const result: PluginIndexDocument | null = parsePluginIndex(
+      document(5, [
+        entry({ version: '0.15.0', apiVersion: '1.29.0', releases: [release('0.14.5', '1.28.0')] }),
+        entry({ id: 'other', version: '1.0.0', apiVersion: '1.20.0' }),
+      ]),
+      '1.28.0',
+    );
+
+    expect(result?.manifests.map((m: PluginManifest): string => `${m.id} ${m.version}`)).toEqual([
+      'zls 0.14.5',
+      'other 1.0.0',
+    ]);
+    expect(result?.errors).toEqual([]);
+    expect(result?.refused).toEqual([]);
+  });
+
+  it('refusesAnEntryOnlyWhenItOffersNoReleaseTheBuildCanRun', () => {
+    const result: PluginIndexDocument | null = parsePluginIndex(
+      document(5, [
+        entry({ version: '0.15.0', apiVersion: '1.29.0', releases: [release('0.14.5', '1.28.0')] }),
+      ]),
+      '1.27.0',
+    );
+
+    expect(result?.manifests).toEqual([]);
+    expect(result?.refused).toEqual(['zls']);
+    expect(result?.errors.map((error: ManifestError): string => error.path)).toEqual([
+      'plugins[0].apiVersion',
+      'plugins[0].releases[0].apiVersion',
+    ]);
+  });
+
   it('refusesAnEnvelopeThatIsNotAnIndex', () => {
     expect(parsePluginIndex('nope')).toBeNull();
     expect(parsePluginIndex(null)).toBeNull();
@@ -122,6 +164,310 @@ describe('parsePluginIndex', () => {
     expect(parsePluginIndex({ revision: '1', plugins: [] })).toBeNull();
     expect(parsePluginIndex({ revision: 1.5, plugins: [] })).toBeNull();
     expect(parsePluginIndex({ revision: 1 })).toBeNull();
+  });
+});
+
+/**
+ * Builds a release of the test plugin as a `releases` element would carry it.
+ * @param version The plugin version.
+ * @param apiVersion The plugin API it was written against.
+ * @param overrides Further fields the release restates.
+ * @returns Returns the release.
+ */
+function release(
+  version: string,
+  apiVersion: string,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    version,
+    apiVersion,
+    provision: {
+      kind: 'npm',
+      lockfileUrl: `https://example.com/zls-${version}.lock.json`,
+      sha256: 'c'.repeat(64),
+      executablePath: 'node_modules/zls/bin/zls',
+    },
+    ...overrides,
+  };
+}
+
+describe('selectPluginRelease', () => {
+  /**
+   * Selects a release and reads back its version.
+   * @param value The entry.
+   * @param supported The plugin API the build implements.
+   * @returns Returns the chosen version, or null when none was.
+   */
+  function chosen(value: unknown, supported: string = PLUGIN_API_VERSION): string | null {
+    return selectPluginRelease(value, 0, supported).manifest?.version ?? null;
+  }
+
+  it('readsAnEntryWithoutReleasesAsItsOneRelease', () => {
+    // Every index already published has this shape, and has to keep meaning what it meant.
+    const result: PluginReleaseSelection = selectPluginRelease(entry(), 0);
+
+    expect(result.manifest?.version).toBe('0.14.0');
+    expect(result.errors).toEqual([]);
+  });
+
+  it('choosesTheNewestReleaseThisBuildCanRun', () => {
+    const value: Record<string, unknown> = entry({
+      version: '0.3.0',
+      apiVersion: '1.29.0',
+      releases: [release('0.2.0', '1.20.0'), release('0.2.5', '1.28.0'), release('0.1.0', '1.1.0')],
+    });
+
+    expect(chosen(value, '1.28.0')).toBe('0.2.5');
+  });
+
+  it('choosesTheEntryItself_whenThisBuildCanRunIt', () => {
+    const value: Record<string, unknown> = entry({
+      version: '0.3.0',
+      apiVersion: '1.29.0',
+      releases: [release('0.2.5', '1.28.0')],
+    });
+
+    expect(chosen(value, '1.30.0')).toBe('0.3.0');
+  });
+
+  it('choosesByVersionRatherThanByTheOrderReleasesAreListedIn', () => {
+    // A publisher listing oldest-first must not make a build install an older release than it can run.
+    const value: Record<string, unknown> = entry({
+      version: '0.3.0',
+      apiVersion: '1.99.0',
+      releases: [release('0.1.0', '1.1.0'), release('0.2.10', '1.1.0'), release('0.2.9', '1.1.0')],
+    });
+
+    expect(chosen(value)).toBe('0.2.10');
+  });
+
+  it('ranksAPrereleaseBelowTheReleaseItLeadsUpTo', () => {
+    const value: Record<string, unknown> = entry({
+      version: '1.0.0-rc.1',
+      releases: [release('1.0.0', '1.1.0'), release('1.0.0-beta.2', '1.1.0')],
+    });
+
+    expect(chosen(value)).toBe('1.0.0');
+  });
+
+  it('ordersPrereleasesAmongThemselvesNumerically', () => {
+    const value: Record<string, unknown> = entry({
+      version: '1.0.0-beta.9',
+      releases: [release('1.0.0-beta.10', '1.1.0'), release('0.9.0', '1.1.0')],
+    });
+
+    expect(chosen(value)).toBe('1.0.0-beta.10');
+  });
+
+  it('choosesAPrerelease_whenItIsTheNewestThisBuildCanRun', () => {
+    const value: Record<string, unknown> = entry({
+      version: '2.0.0',
+      apiVersion: '1.99.0',
+      releases: [release('2.0.0-rc.1', '1.1.0'), release('1.9.0', '1.1.0')],
+    });
+
+    expect(chosen(value)).toBe('2.0.0-rc.1');
+  });
+
+  it('ordersVersionsThatAreNotSemver', () => {
+    // rust-analyzer's versions are dates.
+    const value: Record<string, unknown> = entry({
+      version: '2026-07-13',
+      apiVersion: '1.99.0',
+      releases: [release('2026-05-04', '1.1.0'), release('2026-06-29', '1.1.0')],
+    });
+
+    expect(chosen(value)).toBe('2026-06-29');
+  });
+
+  it('keepsTheFirstListed_whenTwoReleasesClaimTheSameVersion', () => {
+    const value: Record<string, unknown> = entry({
+      releases: [release('0.14.0', '1.1.0', { name: 'Impostor' })],
+    });
+
+    expect(selectPluginRelease(value, 0).manifest?.name).toBe('Zig Language Server');
+  });
+
+  it('choosesNothing_whenThisBuildCanRunNoRelease', () => {
+    const value: Record<string, unknown> = entry({
+      apiVersion: '1.99.0',
+      releases: [release('0.13.0', '1.98.0')],
+    });
+
+    const result: PluginReleaseSelection = selectPluginRelease(value, 4);
+
+    expect(result.manifest).toBeNull();
+    // Nothing stands in, so every refusal is worth saying.
+    expect(result.errors.map((error: ManifestError): string => error.path)).toEqual([
+      'plugins[4].apiVersion',
+      'plugins[4].releases[0].apiVersion',
+    ]);
+  });
+
+  it('saysNothingOfAReleaseThatOnlyNeedsANewerApi_whenAnotherStandsIn', () => {
+    // The expected case — the reason the list exists — and not a mistake to warn about every launch.
+    const value: Record<string, unknown> = entry({
+      apiVersion: '1.99.0',
+      releases: [release('0.13.0', '1.1.0')],
+    });
+
+    expect(selectPluginRelease(value, 0).errors).toEqual([]);
+  });
+
+  it('inheritsWhatAReleaseDoesNotRestate', () => {
+    const value: Record<string, unknown> = entry({
+      apiVersion: '1.99.0',
+      releases: [release('0.13.0', '1.1.0')],
+    });
+
+    const manifest: PluginManifest | null = selectPluginRelease(value, 0).manifest;
+
+    expect(manifest?.name).toBe('Zig Language Server');
+    expect(manifest?.contributes.languageServers?.[0].id).toBe('zls');
+    expect(manifest?.provision.kind).toBe('npm');
+  });
+
+  it('takesWhatAReleaseRestates', () => {
+    const value: Record<string, unknown> = entry({
+      apiVersion: '1.99.0',
+      releases: [release('0.13.0', '1.1.0', { description: 'Older Zig support.' })],
+    });
+
+    expect(selectPluginRelease(value, 0).manifest?.description).toBe('Older Zig support.');
+  });
+
+  it('neverLetsAReleaseNameADifferentPlugin', () => {
+    const value: Record<string, unknown> = entry({
+      apiVersion: '1.99.0',
+      releases: [release('0.13.0', '1.1.0', { id: 'someone-else' })],
+    });
+
+    const result: PluginReleaseSelection = selectPluginRelease(value, 0);
+
+    expect(result.manifest).toBeNull();
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({ path: 'plugins[0].releases[0].id' }),
+    );
+  });
+
+  it('acceptsAReleaseThatRestatesItsOwnId', () => {
+    const value: Record<string, unknown> = entry({
+      apiVersion: '1.99.0',
+      releases: [release('0.13.0', '1.1.0', { id: 'zls' })],
+    });
+
+    expect(chosen(value)).toBe('0.13.0');
+  });
+
+  it('refusesAReleaseThatInheritsItsProvision', () => {
+    // Inheriting the entry's provision would install the newest payload under an older version.
+    const incomplete: Record<string, unknown> = { version: '0.13.0', apiVersion: '1.1.0' };
+    const value: Record<string, unknown> = entry({ apiVersion: '1.99.0', releases: [incomplete] });
+
+    const result: PluginReleaseSelection = selectPluginRelease(value, 0);
+
+    expect(result.manifest).toBeNull();
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({ path: 'plugins[0].releases[0].provision' }),
+    );
+  });
+
+  it('refusesAReleaseThatInheritsItsVersionOrApi', () => {
+    const value: Record<string, unknown> = entry({
+      releases: [{ provision: release('0.13.0', '1.1.0')['provision'] }],
+    });
+
+    const result: PluginReleaseSelection = selectPluginRelease(value, 0);
+
+    expect(result.manifest?.version).toBe('0.14.0');
+    expect(result.errors.map((error: ManifestError): string => error.path)).toEqual([
+      'plugins[0].releases[0].version',
+      'plugins[0].releases[0].apiVersion',
+    ]);
+  });
+
+  it('reportsAMalformedRelease_andStillChoosesAmongTheRest', () => {
+    const value: Record<string, unknown> = entry({
+      apiVersion: '1.99.0',
+      releases: [
+        'not a release',
+        release('0.13.5', '1.1.0', { provision: { kind: 'npm', lockfileUrl: 'http://x' } }),
+        release('0.13.0', '1.1.0'),
+      ],
+    });
+
+    const result: PluginReleaseSelection = selectPluginRelease(value, 0);
+
+    expect(result.manifest?.version).toBe('0.13.0');
+    expect(
+      result.errors.some(
+        (error: ManifestError): boolean => error.path === 'plugins[0].releases[0]',
+      ),
+    ).toBe(true);
+    expect(
+      result.errors.some((error: ManifestError): boolean =>
+        error.path.startsWith('plugins[0].releases[1].provision'),
+      ),
+    ).toBe(true);
+    // The entry's own refusal is only the expected one, so it stays quiet.
+    expect(
+      result.errors.some((error: ManifestError): boolean => error.path === 'plugins[0].apiVersion'),
+    ).toBe(false);
+  });
+
+  it('reportsReleasesThatAreNotAList_andReadsTheEntryAsItsOneRelease', () => {
+    const result: PluginReleaseSelection = selectPluginRelease(entry({ releases: {} }), 0);
+
+    expect(result.manifest?.version).toBe('0.14.0');
+    expect(result.errors).toEqual([
+      { path: 'plugins[0].releases', message: 'must be an array of releases' },
+    ]);
+  });
+
+  it('ignoresReleasesNestedInARelease', () => {
+    const value: Record<string, unknown> = entry({
+      apiVersion: '1.99.0',
+      releases: [release('0.13.0', '1.1.0', { releases: [release('0.99.0', '1.1.0')] })],
+    });
+
+    expect(chosen(value)).toBe('0.13.0');
+  });
+
+  it('refusesAnEntryThatIsNotAnObject', () => {
+    expect(selectPluginRelease('zls', 0).manifest).toBeNull();
+  });
+
+  describe('the example from #1467', () => {
+    // beta.10 implements plugin API 1.28. GitHub 0.7.0 needs 1.29; had 0.6.5 shipped against 1.28,
+    // beta.10 should be offered it rather than staying on the 0.6.0 it shipped with.
+    const github: Record<string, unknown> = entry({
+      id: 'onixlabs.github',
+      name: 'GitHub',
+      version: '0.7.0',
+      apiVersion: '1.29.0',
+      releases: [release('0.6.5', '1.28.0'), release('0.6.0', '1.25.0')],
+    });
+
+    it('offersBeta10TheNewestReleaseItCanRun', () => {
+      expect(chosen(github, '1.28.0')).toBe('0.6.5');
+    });
+
+    it('offersABuildOnTheNewerApiTheNewestRelease', () => {
+      expect(chosen(github, '1.29.0')).toBe('0.7.0');
+    });
+
+    it('offersAnOlderBuildWhatItCanStillRun', () => {
+      expect(chosen(github, '1.25.0')).toBe('0.6.0');
+    });
+
+    it('offersNothingToABuildOlderThanEveryRelease', () => {
+      expect(chosen(github, '1.24.0')).toBeNull();
+    });
+
+    it('offersNothingToABuildOnADifferentMajor', () => {
+      expect(chosen(github, '2.0.0')).toBeNull();
+    });
   });
 });
 
@@ -166,6 +512,62 @@ describe('overlayPluginIndex', () => {
     expect(
       overlayPluginIndex(newer, seed).manifests.map((m: { version: string }) => m.version),
     ).toEqual(['0.14.0']);
+  });
+
+  it('prefersAnOlderReleaseTheNewerEntryLists_overTheBundledEntry', () => {
+    // The point of #1467: a newer release than the one this build shipped with, which it can run.
+    const seed: PluginIndexDocument = parsed(1, [entry({ id: 'zls', version: '0.13.0' })]);
+    const newer: PluginIndexDocument = parsed(2, [
+      entry({
+        id: 'zls',
+        version: '0.15.0',
+        apiVersion: '1.999.0',
+        releases: [release('0.14.5', '1.1.0')],
+      }),
+    ]);
+
+    const result: PluginIndexDocument = overlayPluginIndex(newer, seed);
+
+    expect(result.manifests.map((manifest: PluginManifest): string => manifest.version)).toEqual([
+      '0.14.5',
+    ]);
+    expect(newer.refused).toEqual([]);
+  });
+
+  it('keepsTheBundledEntry_whenNoReleaseTheNewerEntryListsCanRun', () => {
+    const seed: PluginIndexDocument = parsed(1, [entry({ id: 'zls', version: '0.13.0' })]);
+    const newer: PluginIndexDocument = parsed(2, [
+      entry({
+        id: 'zls',
+        version: '0.15.0',
+        apiVersion: '1.999.0',
+        releases: [release('0.14.5', '1.998.0')],
+      }),
+    ]);
+
+    const result: PluginIndexDocument = overlayPluginIndex(newer, seed);
+
+    expect(result.manifests.map((manifest: PluginManifest): string => manifest.version)).toEqual([
+      '0.13.0',
+    ]);
+  });
+
+  it('honoursTheNewerIndex_evenWhereItsRunnableReleaseIsOlderThanTheBundledOne', () => {
+    // The published copy is the curated one: withdrawing a bad release has to reach the builds that
+    // shipped with it.
+    const seed: PluginIndexDocument = parsed(1, [entry({ id: 'zls', version: '0.14.0' })]);
+    const newer: PluginIndexDocument = parsed(2, [
+      entry({
+        id: 'zls',
+        version: '0.15.0',
+        apiVersion: '1.999.0',
+        releases: [release('0.13.0', '1.1.0')],
+      }),
+    ]);
+
+    expect(
+      overlayPluginIndex(newer, seed).manifests.map((m: PluginManifest): string => m.version),
+    ).toEqual(['0.13.0']);
   });
 
   it('doesNotRestoreAPluginTheNewerIndexLeftOut', () => {
@@ -318,6 +720,61 @@ describe('PluginIndex', () => {
     const body: string = JSON.stringify(document(9999, [{ id: 'broken' }, { id: 'alsoBroken' }]));
 
     expect(await new PluginIndex(root, URL, answering(body)).refresh()).toBe(false);
+  });
+});
+
+describe('an index carrying releases, read by a build that predates them', () => {
+  // Builds before #1467 read each entry with the manifest validator alone, which ignores fields it
+  // does not know. This is that reader, so these hold the format to staying readable by them.
+  const value: Record<string, unknown> = entry({
+    version: '0.15.0',
+    releases: [release('0.14.5', '1.1.0'), release('0.14.0', '1.1.0')],
+  });
+
+  it('readsTheEntryAsTheSingleReleaseItAlwaysWas', () => {
+    const result: ManifestResult = parsePluginManifest(value);
+
+    expect(result.errors).toEqual([]);
+    expect(result.manifest?.version).toBe('0.15.0');
+    expect(result.manifest?.provision.kind).toBe('archive');
+  });
+
+  it('readsTheSameManifestANewerBuildChoosesWhenBothCanRunTheEntry', () => {
+    expect(selectPluginRelease(value, 0).manifest).toEqual(parsePluginManifest(value).manifest);
+  });
+
+  it('doesNotCarryTheReleasesIntoTheManifest', () => {
+    expect(Object.keys(selectPluginRelease(value, 0).manifest ?? {})).not.toContain('releases');
+  });
+});
+
+describe('the bundled index', () => {
+  /**
+   * The entries of the index Studio compiles in, as untrusted JSON.
+   */
+  const entries: readonly unknown[] = CURATED_PLUGINS.plugins;
+
+  it('offersEveryEntry_eachAtTheReleaseItsTopLevelNames', () => {
+    // The top level is what every older build reads, so it must stay the newest release: a build that
+    // can run everything chooses exactly what an older build would have.
+    entries.forEach((value: unknown, index: number): void => {
+      expect(selectPluginRelease(value, index).manifest).toEqual(
+        parsePluginManifest(value).manifest,
+      );
+    });
+  });
+
+  it('listsOnlyWellFormedReleases', () => {
+    entries.forEach((value: unknown, index: number): void => {
+      const errors: ManifestError[] = [];
+      for (const candidate of pluginReleaseCandidates(value, index, errors)) {
+        const result: ManifestResult = parsePluginManifest(candidate.value);
+
+        expect(result.errors, candidate.path).toEqual([]);
+      }
+
+      expect(errors).toEqual([]);
+    });
   });
 });
 

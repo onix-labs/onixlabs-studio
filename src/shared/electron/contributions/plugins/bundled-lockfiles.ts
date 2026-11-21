@@ -107,6 +107,10 @@ function fileNameOf(url: string): string {
 
 /**
  * The hash the seed index pins for each lockfile, keyed by file name.
+ *
+ * Only each entry's top-level release, never the older ones it lists under `releases`: those pin the
+ * same file name at an older tag, with bytes this build does not carry, so they download and check
+ * their lockfile from that tag like any pin newer than the seed.
  */
 const SEED_PINS: ReadonlyMap<string, string> = new Map<string, string>(
   (SEED_INDEX.plugins as readonly SeedEntry[]).flatMap((entry: SeedEntry): [string, string][] =>
