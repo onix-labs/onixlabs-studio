@@ -11,6 +11,7 @@ import type { AiAuthStatus, AiConnection, ProviderPage } from '@shared/api/ai-ty
 import { providerDisplayLabel } from '@shared/api/ai-types';
 import { ForgeHostAccount } from '@shared/api/forge-types';
 import {
+  isLanguageContribution,
   PLUGIN_SLOT_LABELS,
   type PluginContribution,
   type PluginSlot,
@@ -109,6 +110,17 @@ const PROBE_LABELS: Readonly<Record<SetupProbeId, string>> = {
  * the version-control plugin and how it is configured, not about a language.
  */
 const VERSION_CONTROL_PROBES: readonly SetupProbeId[] = ['git', 'git-identity'];
+
+/**
+ * Holds the probes that look for a language server rather than a toolchain, with the languages it
+ * serves. Studio installs such a server as a plugin, into its own folder and not onto PATH, so the
+ * probe — which asks the login shell — cannot see it: on a machine that set C and C++ up through the
+ * clangd plugin it still said clangd was missing (#1546's install gate found it). An installed plugin
+ * serving one of these languages is what the probe was asking after.
+ */
+const PLUGIN_SERVED_PROBES: Readonly<Partial<Record<SetupProbeId, readonly string[]>>> = {
+  clangd: ['c', 'cpp'],
+};
 
 /**
  * Holds the plugin categories reported under Plugins. AI providers and version control have groups
@@ -372,12 +384,16 @@ export class SetupStepSummary {
     rows: this.probes
       .results()
       .filter((result: SetupProbeResult): boolean => !VERSION_CONTROL_PROBES.includes(result.id))
-      .map((result: SetupProbeResult): SummaryRow => ({
-        id: result.id,
-        name: PROBE_LABELS[result.id],
-        detail: result.detail,
-        status: result.status,
-      })),
+      .map((result: SetupProbeResult): SummaryRow => {
+        const server: string | undefined =
+          result.status === 'ok' ? undefined : this.languageServerFor(result.id);
+        return {
+          id: result.id,
+          name: PROBE_LABELS[result.id],
+          detail: server === undefined ? result.detail : `Installed as the ${server} plugin`,
+          status: server === undefined ? result.status : 'ok',
+        };
+      }),
   }));
 
   /**
@@ -439,6 +455,33 @@ export class SetupStepSummary {
    */
   private async readHosts(): Promise<void> {
     this.hostAccounts.set(await this.forge.hosts());
+  }
+
+  /**
+   * Names the installed plugin that serves a probe's languages, for a probe a plugin can stand in for.
+   * @param probe The probe.
+   * @returns Returns the plugin's name, or undefined when none is installed or no plugin replaces
+   * what the probe looks for.
+   */
+  private languageServerFor(probe: SetupProbeId): string | undefined {
+    const languages: readonly string[] | undefined = PLUGIN_SERVED_PROBES[probe];
+    if (languages === undefined) {
+      return undefined;
+    }
+    return this.plugins
+      .plugins()
+      .find(
+        (plugin: PluginSummary): boolean =>
+          plugin.state === 'installed' &&
+          plugin.contributions.some(
+            (contribution: PluginContribution): boolean =>
+              contribution.slot === 'language-server' &&
+              isLanguageContribution(contribution) &&
+              contribution.languages.some((language: string): boolean =>
+                languages.includes(language),
+              ),
+          ),
+      )?.name;
   }
 
   /**
