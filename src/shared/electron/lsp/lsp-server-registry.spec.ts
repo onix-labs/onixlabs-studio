@@ -252,6 +252,47 @@ describe('LspServerRegistry: clangd (#1213)', () => {
   });
 });
 
+describe('LspServerRegistry: taplo (#1206)', () => {
+  /**
+   * Builds a registry holding the curated taplo, answering from a stand-in executable.
+   * @returns Returns the registry.
+   */
+  function taplo(): InstanceType<typeof LspServerRegistry> {
+    const entry: unknown = (CURATED.plugins as readonly { id: string }[]).find(
+      (plugin: { id: string }): boolean => plugin.id === 'taplo',
+    );
+    const manifest: ReturnType<typeof parsePluginManifest>['manifest'] =
+      parsePluginManifest(entry).manifest;
+    // Any file that exists: the path override stands in for an install.
+    const manager: LspSettingsManager = {
+      ...userSettings({}).manager,
+      get: (): LspSettings => ({
+        ...userSettings({}).manager.get(),
+        serverPaths: { taplo: process.execPath },
+      }),
+    } as LspSettingsManager;
+    const registry: InstanceType<typeof LspServerRegistry> = new LspServerRegistry(
+      '/electron',
+      manager,
+    );
+    for (const descriptor of toLanguageServerDescriptors(manifest!)) {
+      registry.register(descriptor);
+    }
+    return registry;
+  }
+
+  it('startsTheNativeBinaryAsALanguageServer_withNoStdioFlagItWouldRefuse', async () => {
+    // taplo's argument parser rejects an unknown leading flag, so it must not run as a `node` command,
+    // which puts `--stdio` before the manifest's arguments; the npm build has no language server anyway.
+    const spec: Awaited<ReturnType<InstanceType<typeof LspServerRegistry>['resolve']>>['spec'] = (
+      await taplo().resolve('taplo', '/w')
+    ).spec;
+
+    expect(spec?.command).toBe(process.execPath);
+    expect(spec?.args).toEqual(['lsp', 'stdio']);
+  });
+});
+
 describe('LspServerRegistry: the web servers (#1218, #1219)', () => {
   /**
    * Builds a registry holding the curated HTML, CSS and JSON servers, as an install of
