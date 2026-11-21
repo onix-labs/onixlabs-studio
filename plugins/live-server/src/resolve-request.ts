@@ -143,6 +143,21 @@ async function realInside(root: string, candidate: string): Promise<Lookup> {
 }
 
 /**
+ * Determines whether a real path inside the folder lies in, or is, a dot-named entry. Checked on where a
+ * request lands as well as on what it asked for: a link such as `public -> .git` or `env.txt -> ../.env`
+ * would otherwise serve what a direct `/.git/config` is refused.
+ * @param root The folder's real path.
+ * @param real The real path, already known to be inside it.
+ * @returns Returns true when any segment below the folder starts with `.`.
+ */
+export function isHidden(root: string, real: string): boolean {
+  return path
+    .relative(root, real)
+    .split(path.sep)
+    .some((segment: string): boolean => segment.startsWith('.'));
+}
+
+/**
  * Resolves a request's path to what is served for it.
  * @param root The served folder's real path.
  * @param target The request target, as the request line carried it.
@@ -161,7 +176,7 @@ export async function resolveRequest(root: string, target: string): Promise<Reso
   if (found === 'outside') {
     return { kind: 'forbidden' };
   }
-  if (found === null) {
+  if (found === null || isHidden(root, found.real)) {
     return { kind: 'not-found' };
   }
   if (found.stats.isFile()) {
@@ -182,7 +197,7 @@ export async function resolveRequest(root: string, target: string): Promise<Reso
   if (index === 'outside') {
     return { kind: 'forbidden' };
   }
-  return index?.stats.isFile() === true
+  return index?.stats.isFile() === true && !isHidden(root, index.real)
     ? { kind: 'file', file: index.real }
     : { kind: 'not-found' };
 }

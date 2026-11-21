@@ -25,6 +25,17 @@ describe('resolveRequest (#1062)', () => {
     fs.symlinkSync(path.join(scratch, 'secret'), path.join(root, 'out'));
     fs.symlinkSync(path.join(scratch, 'secret', 'passwd'), path.join(root, 'linked.txt'));
     fs.symlinkSync(path.join(root, 'index.html'), path.join(root, 'alias.html'));
+    // Links that stay inside the folder but land on what a dot name hides.
+    fs.symlinkSync(path.join(root, '.git'), path.join(root, 'public'));
+    fs.mkdirSync(path.join(root, 'sub'));
+    fs.symlinkSync(path.join(root, '.env'), path.join(root, 'sub', 'env.txt'));
+    fs.mkdirSync(path.join(root, '.drafts'));
+    fs.writeFileSync(path.join(root, '.drafts', 'index.html'), '<p>draft</p>');
+    fs.mkdirSync(path.join(root, 'preview'));
+    fs.symlinkSync(
+      path.join(root, '.drafts', 'index.html'),
+      path.join(root, 'preview', 'index.html'),
+    );
   });
 
   afterAll(() => {
@@ -104,6 +115,13 @@ describe('resolveRequest (#1062)', () => {
     expect(resolved.kind === 'forbidden' || resolved.kind === 'not-found').toBe(true);
     expect(resolved.kind).not.toBe('file');
   });
+
+  it.each<string>(['/public/config', '/public/', '/sub/env.txt', '/preview/'])(
+    'serves_nothing_throughALinkToADotName %s',
+    async (target: string) => {
+      expect(await resolveRequest(root, target)).toEqual({ kind: 'not-found' });
+    },
+  );
 
   it('refuses_aTraversal_asForbidden', async () => {
     expect(await resolveRequest(root, '/../secret/passwd')).toEqual({ kind: 'forbidden' });
