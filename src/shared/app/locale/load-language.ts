@@ -4,7 +4,6 @@ import type { InterfaceLanguage } from '@shared/api/startup-settings';
 import { formattingLocale } from '@shared/angular/services/locale/formatting-locale';
 import { resolveLanguage } from '@shared/angular/services/locale/resolve-language';
 import type { SpokenLanguage } from '@shared/angular/services/locale/spoken-language';
-import { directionOf } from '@shared/angular/services/locale/direction-of';
 import { isTranslationFile } from './is-translation-file';
 import type { JsonModule } from './json-module';
 
@@ -78,10 +77,11 @@ async function localeDataFor(language: SpokenLanguage): Promise<unknown> {
  * untranslated text reads in English, rather than the localize runtime warning about it each time it
  * is shown.
  *
- * The document's `lang` and `dir` are set here too, before the first paint: `lang` picks the right
- * fonts for the script (Simplified rather than Japanese forms of shared Han characters), and `dir`
- * mirrors the interface for a right-to-left language. Child windows copy both from their opener (see
- * `ChildWindowStyling`).
+ * The document's `lang` is set here too, before the first paint: it picks the fonts for the script
+ * (Simplified rather than Japanese forms of shared Han characters), and child windows copy it from
+ * their opener (see `ChildWindowStyling`). The layout stays left to right in every language, as most
+ * IDEs' do; right-to-left text takes its direction paragraph by paragraph instead (see
+ * `styles/_direction.scss`).
  * @param setting The Language setting, as the main process mirrored it.
  * @param preferred The operating system's preferred languages, most preferred first.
  * @returns Returns the language the interface is shown in.
@@ -95,7 +95,6 @@ export async function loadLanguage(
   registerLocaleData(await localeDataFor(language));
   $localize.locale = locale;
   document.documentElement.lang = language === 'pseudo' ? 'en' : locale;
-  document.documentElement.dir = directionOf(language);
   if (language === 'en') {
     return language;
   }
