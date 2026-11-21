@@ -21,4 +21,21 @@ describe('formattingLocale', () => {
   it('formats the test language as English', () => {
     expect(formattingLocale('pseudo', ['fr-FR'])).toBe('en-GB');
   });
+
+  it('keeps the region the system prefers for Simplified Chinese', () => {
+    expect(formattingLocale('zh-Hans', ['en-GB', 'zh-SG'])).toBe('zh-SG');
+  });
+
+  it('formats Simplified Chinese by its script when the system prefers no variant of it', () => {
+    expect(formattingLocale('zh-Hans', ['zh-TW', 'en-GB'])).toBe('zh-Hans');
+  });
+
+  it('writes Arabic with Western digits', () => {
+    expect(formattingLocale('ar', ['ar-SA'])).toBe('ar-SA-u-nu-latn');
+    expect(new Intl.NumberFormat(formattingLocale('ar', [])).format(1234)).toBe('1,234');
+  });
+
+  it('keeps a numbering system the system names for Arabic', () => {
+    expect(formattingLocale('ar', ['ar-EG-u-nu-arab'])).toBe('ar-EG-u-nu-arab');
+  });
 });
