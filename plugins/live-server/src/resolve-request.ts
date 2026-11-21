@@ -171,7 +171,12 @@ export async function resolveRequest(root: string, target: string): Promise<Reso
     return { kind: 'not-found' };
   }
   if (!encoded.endsWith('/')) {
-    return { kind: 'redirect', location: `${encoded}/` };
+    // Built from the checked segments, never from the request: `//example.com` would otherwise come
+    // back as a Location the browser reads as another site.
+    const location: string = segments
+      .map((segment: string): string => `/${encodeURIComponent(segment)}`)
+      .join('');
+    return { kind: 'redirect', location: `${location}/` };
   }
   const index: Lookup = await realInside(root, path.join(found.real, 'index.html'));
   if (index === 'outside') {

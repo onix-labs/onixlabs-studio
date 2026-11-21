@@ -53,6 +53,19 @@ describe('resolveRequest (#1062)', () => {
     expect(await resolveRequest(root, '/docs')).toEqual({ kind: 'redirect', location: '/docs/' });
   });
 
+  it('redirects_onlyWithinTheSite_whateverTheSlashesAskedFor', async () => {
+    // A folder named like a host, asked for as `//example.com`, must not redirect off-site.
+    fs.mkdirSync(path.join(root, 'example.com', 'a b'), { recursive: true });
+    expect(await resolveRequest(root, '//example.com')).toEqual({
+      kind: 'redirect',
+      location: '/example.com/',
+    });
+    expect(await resolveRequest(root, '//example.com//a%20b')).toEqual({
+      kind: 'redirect',
+      location: '/example.com/a%20b/',
+    });
+  });
+
   it('lists_noFolder_withoutAnIndexPage', async () => {
     expect(await resolveRequest(root, '/empty/')).toEqual({ kind: 'not-found' });
   });
