@@ -7,7 +7,7 @@ import {
   startupGraphicsAcceleration,
 } from '@shared/angular/services/display/display-policy';
 import { trackDevicePixel } from '@shared/angular/services/display/device-pixel';
-import { languageInForce } from '@shared/angular/services/locale/language-choice';
+import { launchLanguage } from '@shared/angular/services/locale/language-choice';
 import { warmIconFonts } from './icon-fonts';
 import { loadLanguage } from './locale/load-language';
 
@@ -73,13 +73,7 @@ warmIconFonts();
  */
 async function start(): Promise<void> {
   try {
-    await loadLanguage(
-      languageInForce(
-        window.host?.startupSettings.language ?? 'system',
-        window.host?.packaged ?? false,
-      ),
-      navigator.languages,
-    );
+    await loadLanguage(launchLanguage(window.host), navigator.languages);
   } catch (error: unknown) {
     // A missing or broken translation is no reason not to start: the interface reads in English.
     window.bridge?.send(LogChannel.Append, {

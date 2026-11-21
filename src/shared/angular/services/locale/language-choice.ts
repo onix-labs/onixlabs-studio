@@ -1,3 +1,4 @@
+import type { HostEnv } from '@shared/api/host';
 import type { InterfaceLanguage } from '@shared/api/startup-settings';
 
 /**
@@ -28,4 +29,14 @@ export function isLanguageChoiceOffered(packaged: boolean): boolean {
  */
 export function languageInForce(setting: InterfaceLanguage, packaged: boolean): InterfaceLanguage {
   return isLanguageChoiceOffered(packaged) ? setting : 'en';
+}
+
+/**
+ * Gets the Language setting this launch started in: the setting the main process mirrored, as it
+ * applies to this build. Start-up loads it, and Settings compares a new choice against it.
+ * @param host The host environment, absent outside Electron.
+ * @returns Returns the setting in force at launch.
+ */
+export function launchLanguage(host: HostEnv | undefined): InterfaceLanguage {
+  return languageInForce(host?.startupSettings.language ?? 'system', host?.packaged ?? false);
 }
