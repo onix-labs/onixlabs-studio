@@ -138,7 +138,8 @@ node scripts/probe-lsp.mjs --server <id> --workspace .cache/<fixture> [--file <p
   last.
 - `--server <id>` resolves the server from the descriptor, so write the descriptor (step 1) first. The
   `--server "<command line>"` form runs a command as it stands, from the workspace folder, so give it
-  absolute paths.
+  absolute paths. `--file` is read from the current folder, not the workspace, so give it an absolute
+  path too.
 - **Mark the fixture.** Put `@probe type=… member=… call=… interface=… value=… completion=…` in comments
   so each check lands on a real symbol. A marker's value must be a plain identifier (`[\w$]+`), so
   point it at `service_name`, not at `serde-json`.
@@ -162,8 +163,10 @@ Read the report (`.cache/lsp-probe/<id>/<version>.json`) for:
 - every client command it sends (lens, code action, completion, hint);
 - every request it sends the client.
 
-Then add the server's row to the capability matrix: name the report in
-`docs/language-servers/capability-wiring.json` and run `node scripts/probe-lsp.mjs --matrix --docs`.
+The server's row in the capability matrix comes later, once the live check (§5) has turned cells ✅:
+name the report in `docs/language-servers/capability-wiring.json`, list the checked features under
+`verified`, and run `node scripts/probe-lsp.mjs --matrix --docs`. It rewrites `capability-matrix.md`
+whole from the JSON, so restore any note someone wrote into the Markdown by hand.
 
 ## 3. Settings: pulled, pushed, at start-up, or on the command line
 
@@ -223,6 +226,14 @@ What needs wiring per server:
 ## 6. Gotchas, each found the hard way
 
 - **Never send `didOpen` twice.** Roslyn aborts; the manager tracks open documents per window (#1190).
+- **A full-sync server needs the whole text.** taplo advertises `textDocumentSync: 1` and reads a
+  change's text as the whole document whatever range comes with it. Studio sent a ranged edit, so after
+  the first keystroke taplo held only the edited span, and hover, completion and the schema's errors
+  went dark. Studio now sends such a server the whole text (#1206). Edit in the live check, then check
+  again.
+- **A server can read a push flat.** taplo applies `didChangeConfiguration`'s `settings` as its section's
+  contents, where Studio pushes them nested under the section, and it never asks again after starting.
+  Its settings are all `startupOnly`.
 - **A null answer can mean "unchanged".** Roslyn keeps its previous value, so Studio answers declared defaults (#1145).
 - **A null answer can crash the server.** The CSS server threw on `null.validProperties` and gave no diagnostics at all (#1218). Svelte and the JSON server throw on `{ settings: null }` (#1219).
 - **A feature can sit behind a setting or an init option:**
