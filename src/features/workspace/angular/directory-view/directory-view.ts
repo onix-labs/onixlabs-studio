@@ -159,6 +159,7 @@ import {
 } from '@shared/angular/services/workspace/active-workspace';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
+import { LiveServerSession } from '@features/workspace/angular/live-server/live-server-session';
 import { WorkspaceAgentStart, Workspaces } from '@shared/angular/services/workspaces/workspaces';
 import { CommitDetail } from '@shared/angular/components/panels/commit-detail/commit-detail';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
@@ -313,6 +314,9 @@ const AGENT_OPEN: OpenOptions = { background: true };
     HierarchyPanelState,
     // This tab's tests and test runs (#1352), per view so a run carries on while the panel is hidden.
     TestExplorer,
+    // This tab's live server (#1062), per view so it stops when the tab closes, and so the explorers
+    // and the status strip reach the same one.
+    LiveServerSession,
     // Where this tab's problems are, for its explorers' error squiggles and filters (#1182 follow-up).
     WorkspaceProblems,
     // Beside the openers it switches between, so a switch acts on this tab's dock and documents.

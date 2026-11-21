@@ -2518,6 +2518,16 @@ export class Icon {
   public static readonly SETUP_TEST_ADAPTERS: Icon = new Icon('ph ph-flask');
 
   /**
+   * Gets the icon of Live Server (#1062): Open with Live Server, and the status chip of a running one.
+   */
+  public static readonly LIVE_SERVER: Icon = new Icon('ph ph-broadcast');
+
+  /**
+   * Gets the setup step for live-server plugins.
+   */
+  public static readonly SETUP_LIVE_SERVERS: Icon = new Icon('ph ph-broadcast');
+
+  /**
    * Gets the Tests panel's mark for a test that passed (#1352).
    */
   public static readonly TEST_PASSED: Icon = new Icon('ph-fill ph-check-circle');

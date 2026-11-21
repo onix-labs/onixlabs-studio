@@ -43,4 +43,17 @@ describe('WorkspaceContext', () => {
   it('holdsRealPath_withNoRootOpen_isFalse', () => {
     expect(context.holdsRealPath(folder)).toBe(false);
   });
+
+  it('removeRoot_tellsItsListeners_onceForAnOpenRoot', () => {
+    const removed: string[] = [];
+    context.onRootRemoved((root: string): void => {
+      removed.push(root);
+    });
+    context.addRoot(folder);
+
+    context.removeRoot(folder);
+    context.removeRoot(folder);
+
+    expect(removed).toEqual([path.resolve(folder)]);
+  });
 });

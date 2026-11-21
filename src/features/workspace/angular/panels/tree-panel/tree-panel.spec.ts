@@ -28,7 +28,24 @@ import {
   WorkspaceGit,
 } from '@features/workspace/angular/workspace-git/workspace-git';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
+import { LiveServerSession } from '@features/workspace/angular/live-server/live-server-session';
 import { TreePanel } from './tree-panel';
+
+/**
+ * Stands in for this tab's live server: offered on HTML pages, recording what it was asked to open.
+ */
+class FakeLiveServer {
+  public readonly opened: string[] = [];
+
+  public opens(path: string): boolean {
+    return path.endsWith('.html');
+  }
+
+  public open(path: string): Promise<void> {
+    this.opened.push(path);
+    return Promise.resolve();
+  }
+}
 
 /**
  * Builds a filter that remembers nothing between specs: its storage is cleared first.
@@ -268,6 +285,7 @@ describe('TreePanel row context menu', () => {
   let shell: FakeShell;
   let opener: FakeFileOpener;
   let notifications: FakeNotifications;
+  let liveServer: FakeLiveServer;
 
   const panel: DockPanel = {
     id: 'files',
@@ -283,11 +301,13 @@ describe('TreePanel row context menu', () => {
     shell = new FakeShell();
     opener = new FakeFileOpener();
     notifications = new FakeNotifications();
+    liveServer = new FakeLiveServer();
 
     await TestBed.configureTestingModule({
       imports: [TreePanel],
       providers: [
         { provide: Workspace, useValue: workspace },
+        { provide: LiveServerSession, useValue: liveServer },
         {
           provide: EntryRename,
           useValue: {
@@ -778,6 +798,15 @@ describe('TreePanel row context menu', () => {
       'rename',
       'delete',
     ]);
+  });
+
+  it('contextMenuFor_anHtmlPage_offersOpenWithLiveServer_andRunsIt (#1062)', () => {
+    const page: WorkspaceTreeNode = node('index.html', '/ws/index.html', 'file');
+
+    expect(itemIds(page).slice(0, 2)).toEqual(['open', 'open-with-live-server']);
+    component.onContextAction({ itemId: 'open-with-live-server', row: treeRow(page) });
+
+    expect(liveServer.opened).toEqual(['/ws/index.html']);
   });
 
   it('contextMenuFor_aDirectory_offersTheNewCommandsInPlaceOfOpen', () => {

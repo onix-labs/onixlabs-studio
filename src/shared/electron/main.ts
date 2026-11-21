@@ -112,6 +112,9 @@ import { PackageRegistryTokenStore } from '@shared/electron/package-managers/pac
 import { createPackageRegistryTokens } from '@shared/electron/package-managers/package-registry-tokens';
 import { TestAdapterHost } from '@shared/electron/test-adapters/test-adapter-host';
 import { TestAdapterManager } from '@shared/electron/test-adapters/test-adapter-manager';
+import { LiveServerHost } from '@shared/electron/live-server/live-server-host';
+import { LiveServerManager } from '@shared/electron/live-server/live-server-manager';
+import { LiveServerChannel, LiveServerInfo } from '@shared/api/live-server-channels';
 import { VersionControlManager } from '@shared/electron/version-control/version-control-manager';
 import { VersionControlSetup } from '@shared/electron/version-control/version-control-setup';
 import { VersionControlSettings } from '@shared/electron/version-control/version-control-settings';
@@ -119,6 +122,7 @@ import type { VersionControlExecutableChoice } from '@shared/api/version-control
 import type { MetadataPolicies } from '@shared/electron/directory-watch-filter';
 import {
   contributedHosting,
+  contributedLiveServers,
   contributedPackageManagers,
   contributedTestAdapters,
   contributedVersionControl,
@@ -571,6 +575,29 @@ class Program {
    */
   private readonly testAdapterManager: TestAdapterManager = new TestAdapterManager(
     this.testAdapterHost,
+  );
+
+  /**
+   * Hosts the live-server plugin (#1062): one server per workspace, serving only that workspace's
+   * files on 127.0.0.1, stopped when the workspace closes. Core runs no web server — it is a plugin.
+   */
+  private readonly liveServerHost: LiveServerHost = new LiveServerHost({
+    descriptors: () => contributedLiveServers(versionControlNodeRuntime),
+    roots: this.workspaceContext,
+    onChanged: (servers: readonly LiveServerInfo[]): void => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) {
+          window.webContents.send(LiveServerChannel.Changed, servers);
+        }
+      }
+    },
+  });
+
+  /**
+   * Serves the explorers' and the status chip's requests to the live-server host.
+   */
+  private readonly liveServerManager: LiveServerManager = new LiveServerManager(
+    this.liveServerHost,
   );
 
   /**
@@ -1327,6 +1354,10 @@ class Program {
     this.versionControlManager.register();
     this.hostingManager.register();
     this.testAdapterManager.register();
+    this.liveServerManager.register();
+    this.workspaceContext.onRootRemoved((root: string): void =>
+      this.liveServerHost.stopWithin(root),
+    );
     this.workspaceManager.register();
     this.packageManagerChannels.register();
     this.searchManager.register();
@@ -1383,6 +1414,8 @@ class Program {
         this.packageManagerHost.restartPlugin(contribution.id);
       } else if (contribution.slot === 'test-adapter') {
         this.testAdapterHost.restartPlugin(contribution.id);
+      } else if (contribution.slot === 'live-server') {
+        this.liveServerHost.restartPlugin(contribution.id);
       } else if (contribution.slot === 'agent-harness') {
         this.aiManager.retireHarnessSessions(contribution.id);
       } else if (contribution.slot === 'database-engine') {
@@ -1754,6 +1787,7 @@ class Program {
     this.versionControlManager.dispose();
     this.packageManagerHost.dispose();
     this.testAdapterManager.dispose();
+    this.liveServerManager.dispose();
     this.hostingManager.dispose();
     this.fileWatcher.disposeAll();
     this.directoryWatcher.disposeAll();

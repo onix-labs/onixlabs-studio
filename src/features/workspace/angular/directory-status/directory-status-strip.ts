@@ -19,6 +19,15 @@ import { GitBranch } from '@shared/angular/services/repository/repository-data';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-session';
+import { LiveServerSession } from '@features/workspace/angular/live-server/live-server-session';
+import type { LiveServerInfo } from '@shared/api/live-server-channels';
+
+/**
+ * Identifies the Live Server chip's menu rows (#1062).
+ */
+const LIVE_SERVER_OPEN: string = 'live-server.open';
+const LIVE_SERVER_COPY: string = 'live-server.copy';
+const LIVE_SERVER_STOP: string = 'live-server.stop';
 
 /**
  * Shows the active workspace view's status at the start of the strip: the open folder, whether it
@@ -62,6 +71,11 @@ export class DirectoryStatusStrip {
   private readonly trust: RepositoryTrust = inject(RepositoryTrust);
 
   /**
+   * Holds the view's live server, whose chip shows while it runs (#1062).
+   */
+  private readonly liveServer: LiveServerSession = inject(LiveServerSession);
+
+  /**
    * Holds what the user decided about the open folder, read again whenever a decision changes.
    */
   private readonly decision: WritableSignal<RepositoryTrustDecision | null> =
@@ -90,10 +104,81 @@ export class DirectoryStatusStrip {
   }
 
   /**
-   * Gets the start-aligned segments: the workspace folder, then the git segments when the folder is
-   * a repository.
+   * Gets the start-aligned segments: the workspace's own, then the Live Server chip while one serves
+   * this workspace.
    */
   protected readonly leading: Signal<readonly StatusSegment[]> = computed(
+    (): readonly StatusSegment[] => [...this.workspaceSegments(), ...this.liveServerSegments()],
+  );
+
+  /**
+   * Gets the Live Server chip (#1062): the address it serves at, with a menu that opens it again,
+   * copies it, or stops the server.
+   */
+  private readonly liveServerSegments: Signal<readonly StatusSegment[]> = computed(
+    (): readonly StatusSegment[] => {
+      const server: LiveServerInfo | null = this.liveServer.server();
+      if (server === null) {
+        return [];
+      }
+      const address: string = server.url.replace(/^http:\/\//, '').replace(/\/$/, '');
+      return [
+        {
+          id: 'ws-live-server',
+          text: $localize`:The status-strip chip of a running Live Server, followed by its address such as 127.0.0.1.5500:Live Server ${address}:address:`,
+          icon: Icon.LIVE_SERVER,
+          title: $localize`:Hover text of the Live Server status-strip chip:Live Server is serving this workspace at ${server.url}:url:`,
+          menu: {
+            items: [
+              {
+                id: LIVE_SERVER_OPEN,
+                label: $localize`:Opens the Live Server's address in the browser:Open in Browser`,
+                icon: Icon.LIVE_SERVER,
+              },
+              {
+                id: LIVE_SERVER_COPY,
+                label: $localize`:Copies the Live Server's address:Copy Address`,
+                icon: Icon.COPY,
+              },
+              { id: 'live-server.sep', label: '', separator: true },
+              {
+                id: LIVE_SERVER_STOP,
+                label: $localize`:Stops the Live Server, freeing its port:Stop Live Server`,
+                icon: Icon.STOP,
+              },
+            ],
+            choose: (id: string): void => this.chooseLiveServer(id),
+          },
+        },
+      ];
+    },
+  );
+
+  /**
+   * Runs a row chosen from the Live Server chip's menu.
+   * @param id The chosen row.
+   */
+  private chooseLiveServer(id: string): void {
+    switch (id) {
+      case LIVE_SERVER_OPEN:
+        void this.liveServer.openAddress();
+        return;
+      case LIVE_SERVER_COPY:
+        void this.liveServer.copyAddress();
+        return;
+      case LIVE_SERVER_STOP:
+        void this.liveServer.stop();
+        return;
+      default:
+        return;
+    }
+  }
+
+  /**
+   * Gets the workspace's own segments: the workspace folder, then the version-control segments when
+   * the folder is a repository.
+   */
+  private readonly workspaceSegments: Signal<readonly StatusSegment[]> = computed(
     (): readonly StatusSegment[] => {
       const root: DirectoryListing | null = this.workspace.root();
       if (root === null) {

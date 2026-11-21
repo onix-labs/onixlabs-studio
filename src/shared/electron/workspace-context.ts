@@ -16,6 +16,20 @@ export class WorkspaceContext {
   private readonly roots: Set<string> = new Set<string>();
 
   /**
+   * Holds what is told when a root closes, so what a workspace started — its live server (#1062) —
+   * closes with it.
+   */
+  private readonly removalListeners: ((root: string) => void)[] = [];
+
+  /**
+   * Calls a listener whenever a workspace root is removed.
+   * @param listener Called with the removed root's absolute path.
+   */
+  public onRootRemoved(listener: (root: string) => void): void {
+    this.removalListeners.push(listener);
+  }
+
+  /**
    * Adds a workspace root.
    * @param root The absolute root path.
    */
@@ -31,11 +45,16 @@ export class WorkspaceContext {
    */
   public removeRoot(root: string): void {
     const resolved: string = path.resolve(root);
-    this.roots.delete(resolved);
+    if (!this.roots.delete(resolved)) {
+      return;
+    }
     logger.debug(
       'WorkspaceContext.removeRoot',
       `Root removed ${resolved} (${this.roots.size} open)`,
     );
+    for (const listener of this.removalListeners) {
+      listener(resolved);
+    }
   }
 
   /**

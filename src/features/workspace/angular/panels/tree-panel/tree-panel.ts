@@ -35,6 +35,8 @@ import { WorkspaceProblems } from '@features/workspace/angular/workspace-problem
 import { EntryRename } from '@shared/angular/services/rename/entry-rename';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Shell } from '@shared/angular/services/shell/shell';
+import { LiveServerSession } from '@features/workspace/angular/live-server/live-server-session';
+import { OPEN_WITH_LIVE_SERVER } from '@features/workspace/angular/live-server/live-server-labels';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { Icon } from '@shared/angular/icons/icon';
 import { fileIconFor } from '@shared/angular/icons/file-icon';
@@ -72,6 +74,7 @@ import {
  */
 const ACTION_OPEN: string = 'open';
 const ACTION_OPEN_AS_CODE: string = 'open-as-code';
+const ACTION_LIVE_SERVER: string = 'open-with-live-server';
 const ACTION_NEW_FILE: string = 'new-file';
 const ACTION_NEW_FOLDER: string = 'new-folder';
 const ACTION_COPY_PATH: string = 'copy-path';
@@ -236,6 +239,11 @@ export class TreePanel {
    * Holds the shell service used to reveal a path in the operating system's file manager.
    */
   private readonly shell: Shell = inject(Shell);
+
+  /**
+   * Holds this tab's live server, which serves a page the user opens with it (#1062).
+   */
+  private readonly liveServer: LiveServerSession = inject(LiveServerSession);
 
   /**
    * Holds the notification service used to report a write that did not go as its confirmation said.
@@ -792,6 +800,13 @@ export class TreePanel {
       if (node.path.toLowerCase().endsWith('.svg')) {
         items.push({ id: ACTION_OPEN_AS_CODE, label: 'Open as Code', icon: Icon.CODE });
       }
+      if (this.liveServer.opens(node.path)) {
+        items.push({
+          id: ACTION_LIVE_SERVER,
+          label: OPEN_WITH_LIVE_SERVER,
+          icon: Icon.LIVE_SERVER,
+        });
+      }
     }
     items.push(
       { id: ACTION_NEW_FILE, label: 'New File', icon: Icon.FILE },
@@ -899,6 +914,9 @@ export class TreePanel {
       case ACTION_OPEN_AS_CODE:
         this.workspace.select(node.path);
         void this.fileOpener.openAsText(node.path);
+        return;
+      case ACTION_LIVE_SERVER:
+        void this.liveServer.open(node.path);
         return;
       case ACTION_NEW_FILE:
         void this.beginCreate('new-file', this.directoryFor(node));

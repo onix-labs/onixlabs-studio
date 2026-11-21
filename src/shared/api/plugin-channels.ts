@@ -72,12 +72,16 @@ export type PluginSlot =
   | 'agent-harness'
   | 'database-engine'
   | 'package-manager'
-  | 'test-adapter';
+  | 'test-adapter'
+  | 'live-server';
 
 /**
  * The slots in the order the application presents them — the Plugin Manager's categories and the
  * setup wizard's plugin steps both walk this list, so the two surfaces agree on what comes first.
  * `test-adapter` joined once the curated index carried test adapters (#1351, released in #1408).
+ *
+ * `live-server` is not listed yet: the curated index offers no live server until the first one is
+ * released (#1062), and listing it would put an empty step in the wizard.
  */
 export const PLUGIN_SLOTS: readonly PluginSlot[] = [
   'language-server',
@@ -113,6 +117,7 @@ export const PLUGIN_SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
   'database-engine': 'Database Engines',
   'package-manager': 'Package Managers',
   'test-adapter': 'Test Frameworks',
+  'live-server': 'Live Servers',
 };
 
 /**
@@ -167,7 +172,8 @@ export interface UnkeyedPluginContribution extends SlotEntry {
     | 'agent-harness'
     | 'database-engine'
     | 'package-manager'
-    | 'test-adapter';
+    | 'test-adapter'
+    | 'live-server';
 
   /**
    * Gets the AI providers an agent harness offers, or undefined when it offers none.
@@ -465,7 +471,8 @@ export function installedContributions(
     | 'agent-harness'
     | 'database-engine'
     | 'package-manager'
-    | 'test-adapter',
+    | 'test-adapter'
+    | 'live-server',
 ): readonly UnkeyedPluginContribution[];
 export function installedContributions(
   plugins: readonly PluginSummary[],

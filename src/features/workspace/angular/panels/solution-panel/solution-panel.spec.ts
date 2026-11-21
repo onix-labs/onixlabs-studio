@@ -31,6 +31,24 @@ import {
 import { ExplorerVcsMenu } from '@features/workspace/angular/workspace-git/explorer-vcs-menu';
 import { SolutionPanel } from './solution-panel';
 
+import { LiveServerSession } from '@features/workspace/angular/live-server/live-server-session';
+
+/**
+ * Stands in for this tab's live server: offered on HTML pages, recording what it was asked to open.
+ */
+class FakeLiveServer {
+  public readonly opened: string[] = [];
+
+  public opens(path: string): boolean {
+    return path.endsWith('.html');
+  }
+
+  public open(path: string): Promise<void> {
+    this.opened.push(path);
+    return Promise.resolve();
+  }
+}
+
 /**
  * Builds a filter that remembers nothing between specs: its storage is cleared first.
  * @param key The storage key's stem.
@@ -207,6 +225,7 @@ describe('SolutionPanel', () => {
   let builds: FakeBuildRunner;
   let notifications: FakeNotifications;
   let copied: string[];
+  let liveServer: FakeLiveServer;
 
   const panel: DockPanel = {
     id: 'solution',
@@ -249,6 +268,7 @@ describe('SolutionPanel', () => {
     builds = new FakeBuildRunner();
     notifications = new FakeNotifications();
     copied = [];
+    liveServer = new FakeLiveServer();
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: {
@@ -264,6 +284,7 @@ describe('SolutionPanel', () => {
         { provide: SolutionModel, useValue: solution },
         { provide: FileOpener, useValue: opener },
         { provide: Shell, useValue: shell },
+        { provide: LiveServerSession, useValue: liveServer },
         { provide: BuildRunner, useValue: builds },
         { provide: Notifications, useValue: notifications },
         {
@@ -534,6 +555,21 @@ describe('SolutionPanel', () => {
   }
 
   describe('context menu', () => {
+    it('anHtmlFile_offersOpenWithLiveServer_andRunsIt (#1062)', () => {
+      const page: SolutionRow = makeRow({
+        key: 'page',
+        kind: 'file',
+        path: '/root/web/index.html',
+      });
+      const code: SolutionRow = makeRow({ key: 'code', kind: 'file', path: '/root/A/a.cs' });
+
+      expect(menuIds(page)).toContain('open-with-live-server');
+      expect(menuIds(code)).not.toContain('open-with-live-server');
+      component.onContextAction({ itemId: 'open-with-live-server', row: treeRow(page) });
+
+      expect(liveServer.opened).toEqual(['/root/web/index.html']);
+    });
+
     it('showChangedFilesOnly_keepsTheRootAndTheChanges_andOpensWhatLeadsToThem', async () => {
       // #1053: project A holds the change and is opened for it; project B is hidden.
       const git: WorkspaceGit = TestBed.inject(WorkspaceGit);

@@ -56,6 +56,8 @@ import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Shell } from '@shared/angular/services/shell/shell';
+import { LiveServerSession } from '@features/workspace/angular/live-server/live-server-session';
+import { OPEN_WITH_LIVE_SERVER } from '@features/workspace/angular/live-server/live-server-labels';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
 import {
@@ -78,6 +80,7 @@ import {
  */
 const ACTION_OPEN: string = 'open';
 const ACTION_OPEN_AS_CODE: string = 'open-as-code';
+const ACTION_LIVE_SERVER: string = 'open-with-live-server';
 const ACTION_EDIT_PROJECT: string = 'edit-project';
 const ACTION_COPY_PATH: string = 'copy-path';
 const ACTION_COPY_RELATIVE: string = 'copy-relative-path';
@@ -244,6 +247,11 @@ export class SolutionPanel {
    * Holds the shell service used to reveal a path in the operating system's file manager.
    */
   private readonly shell: Shell = inject(Shell);
+
+  /**
+   * Holds this tab's live server, which serves a page the user opens with it (#1062).
+   */
+  private readonly liveServer: LiveServerSession = inject(LiveServerSession);
 
   /**
    * Holds this workspace's build runner, which the row's capability actions dispatch into.
@@ -427,6 +435,13 @@ export class SolutionPanel {
       items.push({ id: ACTION_OPEN, label: 'Open', icon: Icon.FILE });
       if (path?.toLowerCase().endsWith('.svg') === true) {
         items.push({ id: ACTION_OPEN_AS_CODE, label: 'Open as Code', icon: Icon.CODE });
+      }
+      if (path !== null && this.liveServer.opens(path)) {
+        items.push({
+          id: ACTION_LIVE_SERVER,
+          label: OPEN_WITH_LIVE_SERVER,
+          icon: Icon.LIVE_SERVER,
+        });
       }
     }
     if (row.kind === 'project') {
@@ -1185,6 +1200,9 @@ export class SolutionPanel {
       case ACTION_OPEN_AS_CODE:
         this.solution.select(row.key);
         void this.fileOpener.openAsText(path);
+        return;
+      case ACTION_LIVE_SERVER:
+        void this.liveServer.open(path);
         return;
       case ACTION_COPY_PATH:
         void navigator.clipboard.writeText(path).catch((): void => undefined);
