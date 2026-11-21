@@ -56,6 +56,7 @@ on:
         'plugin-go-tests-v*',
         'plugin-jvm-tests-v*',
         'plugin-ctest-v*',
+        'plugin-live-server-v*',
       ]
   # A dry run: builds and checks the tarball without publishing anything, so a change can be proved
   # before it is tagged. There is no tag to read the plugin from, so it is named.
