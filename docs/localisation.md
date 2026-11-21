@@ -1,8 +1,9 @@
 # Localisation
 
-Studio's interface can be shown in English, French, Spanish and German. This page says how the
-translation machinery works, how to mark text for translation, and what is still to do. It started as
-a spike, so most of the interface is not marked yet and reads in English in every language.
+Studio's interface can be shown in English, French, Spanish, German, Simplified Chinese and Arabic.
+This page says how the translation machinery works, how to mark text for translation, and what is
+still to do. It started as a spike, so most of the interface is not marked yet and reads in English in
+every language.
 
 ## English until the whole interface is translated
 
@@ -25,7 +26,10 @@ when Studio starts rather than baked into a separate build per language.
 - **The language setting.** Settings › Application › Language. Match the System (the default) takes
   the first of the system's preferred languages that Studio speaks, and English when it speaks none.
   The setting is mirrored to the main process with the other startup settings, so the next window
-  knows it before any of Studio's code has loaded.
+  knows it before any of Studio's code has loaded. Chinese is matched by script, not region
+  (`spokenLanguageOf`): `zh-CN`, `zh-SG` and a bare `zh` are Simplified Chinese, while `zh-TW`,
+  `zh-HK` and `zh-MO` are Traditional, which Studio doesn't have yet, so the next preference is
+  tried.
 - **Loading.** `src/shared/app/main.ts` loads the language (`locale/load-language.ts`) and only then
   imports the rest of Studio (`start-studio.ts`). The order matters: text in plain TypeScript, such as
   the settings registry and the menus, is translated as its module is first read.
@@ -36,7 +40,9 @@ when Studio starts rather than baked into a separate build per language.
   translated it.
 - **Dates and numbers** follow the language, in the system's region where it prefers a variant of
   that language (French in Canada formats as Canadians do). `interfaceLocale()` gives the locale
-  to pass to `Intl`. `formatTimeAgo()` phrases "5 min ago" in any language.
+  to pass to `Intl`. `formatTimeAgo()` phrases "5 min ago" in any language. Arabic is written with
+  Western digits (`ar-u-nu-latn`) unless the system's preference names a numbering system, because
+  most of Studio's numbers sit beside code: line numbers, versions, ports.
 
 ## Marking text
 
@@ -81,9 +87,22 @@ The script reads every marked message out of the code into `src/shared/app/local
 test language, and reports how much of each language is translated. It runs a build, so on a Mac it
 has to run outside the agent sandbox.
 
-Translators edit `messages.fr.json`, `messages.es.json` and `messages.de.json`, adding an entry for
+Translators edit `messages.<language>.json` (`fr`, `es`, `de`, `zh-Hans`, `ar`), adding an entry for
 each message id in `messages.json`. `translations.spec.ts` fails if a translation loses a
-placeholder or refers to a message that no longer exists.
+placeholder, misses or refers to a message that no longer exists, leaves a brace open, or uses a
+plural category its language doesn't have. Plurals follow each language's own categories: Chinese
+needs only `other`, Arabic has `zero`, `one`, `two`, `few`, `many` and `other`.
+
+## Adding a language
+
+1. Add its code to `InterfaceLanguage` (`src/shared/api/startup-settings.ts`, and the list in
+   `parseStartupSettings`), `SpokenLanguage`, and `TRANSLATED` in `spoken-language-of.ts`.
+2. Add it to the Language setting's choices in `settings-registry.ts`, named in itself.
+3. Add `messages.<code>.json`, and a case for it in both switches in `load-language.ts` (its
+   translations, and Angular's locale data from `@angular/common/locales`).
+4. Add it to `LANGUAGES` in `scripts/i18n.mjs` and to `translations.spec.ts`.
+5. If its script needs fonts of its own, add a `:root:lang(…)` font stack in
+   `styles/_direction.scss`. A right-to-left language needs nothing more (see below).
 
 ## The test language
 
@@ -92,12 +111,37 @@ accented, bracketed and a third longer, as German often is: `⟦Ñéŵ Ţéŕɱ�
 still reads as plain English hasn't been marked, and a bracket cut off by an ellipsis shows a place
 where a translation won't fit.
 
+## Right-to-left languages
+
+**Studio's interface is not mirrored.** The layout stays left to right in Arabic, as it does in VS
+Code and most IDEs: the document never takes `dir="rtl"`. Mirroring a whole interface that was built
+left to right means flipping every panel, splitter, tab strip, icon and drag calculation, and each
+one is a place a left-to-right language could break. Full mirroring could come later, as work of its
+own.
+
+Right-to-left text takes its own direction instead, paragraph by paragraph (`unicode-bidi:
+plaintext`, CSS's `dir="auto"`), so an Arabic sentence reads, punctuates and aligns right to left:
+
+- **The interface's prose** (`styles/_direction.scss`): `p` elements and the BEM elements Studio
+  names `__description`, `__message`, `__hint`, `__note`, `__caption` and `__subtitle`, but not
+  titles. Short labels (buttons, menu items, tabs, setting names) are left as they are. The rule only
+  applies outside English, so English renders exactly as before. New prose needs no markup of its
+  own: name it as above.
+- **The user's text:** each paragraph of a Markdown document or an agent's reply follows its first
+  letter, in any interface language, so an Arabic note reads right to left in English too.
+- **Labels keep their words in order.** In a left-to-right line, an Arabic label with a Latin word in
+  it (`ملف Markdown جديد`) would be laid out from the left and read backwards. The loader embeds each
+  Arabic message right to left (`embedRightToLeft`), which fixes the order without moving the label.
+
+Text typed with an input method (Chinese, Japanese, Korean) uses Enter to pick a candidate: check
+`isComposing(event)` before treating Enter, Escape or a shortcut as the user's.
+
 ## What the spike covers
 
 Marked and translated: the application menu (and so the macOS menu bar), the Welcome screen's frame
 and its Get Started and Tools tabs, the first five settings in Settings › Application, and the time
-helpers (commit ages, durations, task timings). That's 122 messages. The French, Spanish and German
-were drafted by an AI and need review by native speakers.
+helpers (commit ages, durations, task timings). That's 122 messages. The French, Spanish, German,
+Chinese and Arabic were drafted by an AI and need review by native speakers.
 
 ## What is still to do
 
@@ -119,5 +163,8 @@ were drafted by an AI and need review by native speakers.
   and to ship their own translations, with text from third-party plugins left in English.
 - **Agents.** The instructions and tool descriptions Studio gives agents should stay in English, with
   the user's language passed along so agents reply in it.
-- **Right-to-left languages.** Arabic and Hebrew need mirrored layouts. Most of the styles already use
-  direction-neutral properties; about 51 places still say left or right.
+- **Right-to-left text.** Prose that doesn't follow the naming above reads left to right even when
+  it's Arabic, and lists in an Arabic Markdown document still indent from the left. Hebrew needs
+  only its translations and fonts. Mirroring the layout is a separate decision (see above).
+- **Search and sorting.** Lists should sort with `Intl.Collator` in the interface's locale, and
+  filtering must match without word boundaries for Chinese.

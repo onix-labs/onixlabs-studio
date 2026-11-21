@@ -20,8 +20,10 @@ export type CornerStyle = 'automatic' | 'squircle' | 'rounded' | 'square';
  * The language the interface is shown in. System follows the operating system's preferred languages,
  * falling back to English when none of them is one Studio speaks; Pseudo is a test language that
  * accents and stretches every translated string, so untranslated text and clipped layouts stand out.
+ * Chinese is Simplified Chinese (`zh-Hans`), named by its script rather than a region, since it is
+ * read in mainland China, Singapore and Malaysia alike; Traditional Chinese would be `zh-Hant`.
  */
-export type InterfaceLanguage = 'system' | 'en' | 'fr' | 'es' | 'de' | 'pseudo';
+export type InterfaceLanguage = 'system' | 'en' | 'fr' | 'es' | 'de' | 'zh-Hans' | 'ar' | 'pseudo';
 
 /**
  * When opening a link in the browser asks first: never, only for links from content Studio did not
@@ -247,7 +249,7 @@ export function parseStartupSettings(raw: unknown): StartupSettings {
     ),
     language: oneOf<InterfaceLanguage>(
       record['language'],
-      ['system', 'en', 'fr', 'es', 'de', 'pseudo'],
+      ['system', 'en', 'fr', 'es', 'de', 'zh-Hans', 'ar', 'pseudo'],
       defaults.language,
     ),
     confirmExternalLinks: oneOf<ConfirmExternalLinks>(

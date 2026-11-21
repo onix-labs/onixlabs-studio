@@ -18,8 +18,20 @@ describe('resolveLanguage', () => {
     expect(resolveLanguage('system', ['ES-mx'])).toBe('es');
   });
 
+  it('takes Simplified Chinese from a region that writes it', () => {
+    expect(resolveLanguage('system', ['zh-CN', 'en-GB'])).toBe('zh-Hans');
+  });
+
+  it('passes over Traditional Chinese, which Studio does not speak yet', () => {
+    expect(resolveLanguage('system', ['zh-TW', 'zh-HK', 'fr-FR'])).toBe('fr');
+  });
+
+  it('takes Arabic whatever its region', () => {
+    expect(resolveLanguage('system', ['ar-EG'])).toBe('ar');
+  });
+
   it('falls back to English when the system prefers none Studio speaks', () => {
-    expect(resolveLanguage('system', ['ja-JP', 'zh-Hans-CN'])).toBe('en');
+    expect(resolveLanguage('system', ['ja-JP', 'zh-Hant-TW'])).toBe('en');
   });
 
   it('falls back to English when the system states no preference', () => {

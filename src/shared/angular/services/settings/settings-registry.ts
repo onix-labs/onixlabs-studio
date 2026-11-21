@@ -1001,6 +1001,8 @@ const LANGUAGE_OPTIONS: readonly ChoiceOption[] = [
   { value: 'fr', label: 'Français' },
   { value: 'es', label: 'Español' },
   { value: 'de', label: 'Deutsch' },
+  { value: 'zh-Hans', label: '简体中文' },
+  { value: 'ar', label: 'العربية' },
   ...(typeof window !== 'undefined' && window.host?.packaged === true
     ? []
     : [{ value: 'pseudo', label: 'Pseudo (testing)' }]),
