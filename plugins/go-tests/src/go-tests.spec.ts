@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ManifestResult, parsePluginManifest } from '@shared/api/plugin-manifest';
 import type { TestNode, TestResult, TestRunResults } from '../../protocol/testing/protocol';
-import { goTestCommand } from './command';
+import { goDebugLaunch, goTestCommand } from './command';
 import { discoverGo, GoDiscovery, readModulePath, readTestFunctions } from './discover';
 import { readGoTranscript } from './transcript';
 
@@ -179,6 +179,41 @@ describe('go test adapter (#1357)', () => {
         /None of those/,
       );
     });
+  });
+
+  describe('debugging under Delve (#1211)', () => {
+    it('goDebugLaunch_forATest_runsItsPackageInTestMode_namingItExactly', () => {
+      expect(goDebugLaunch(discovery, 'example.com/shop/cart#TestTotal')).toEqual({
+        adapter: 'delve',
+        title: 'Debug TestTotal',
+        program: path.join(module, 'cart'),
+        args: ['-test.run', '^TestTotal$'],
+        cwd: path.join(module, 'cart'),
+        configuration: { mode: 'test' },
+      });
+    });
+
+    it('goDebugLaunch_forASubtest_namesEachLevel_escaped', () => {
+      expect(goDebugLaunch(discovery, 'example.com/shop/cart#TestTable/wrong(1)').args).toEqual([
+        '-test.run',
+        '^TestTable$/^wrong\\(1\\)$',
+      ]);
+    });
+
+    it('goDebugLaunch_forAPackage_runsAllOfIt', () => {
+      expect(goDebugLaunch(discovery, 'example.com/shop/pricing')).toMatchObject({
+        title: 'Debug example.com/shop/pricing',
+        program: path.join(module, 'pricing'),
+        args: [],
+      });
+    });
+
+    it.each(['module:example.com/shop', 'example.com/elsewhere#TestX'])(
+      'goDebugLaunch_for %s_refuses',
+      (id: string) => {
+        expect(() => goDebugLaunch(discovery, id)).toThrow(/one test or package/);
+      },
+    );
   });
 
   describe('results from a real run', () => {
