@@ -47,6 +47,25 @@ describe('TextField', () => {
     expect(abandoned).toBe(1);
   });
 
+  it('enter_andEscape_whileAnInputMethodComposes_belongToTheInputMethod', () => {
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const control: HTMLInputElement = host.querySelector('input')!;
+    let committed: number = 0;
+    let bubbled: number = 0;
+    component.enter.subscribe((): void => void (committed += 1));
+    host.addEventListener('keydown', (): void => void (bubbled += 1));
+
+    control.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true }),
+    );
+    control.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', isComposing: true, bubbles: true }),
+    );
+
+    expect(committed).toBe(0);
+    expect(bubbled).toBe(0);
+  });
+
   it('variant_none_dropsTheFieldsOwnBoxSoItFillsWhatFramesIt', () => {
     fixture.componentRef.setInput('variant', 'none');
     fixture.detectChanges();

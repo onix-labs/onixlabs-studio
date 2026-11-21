@@ -14,6 +14,7 @@ import {
 } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { isComposing } from '@shared/angular/services/keybindings/is-composing';
 
 /**
  * Names how a text field presents itself. `search` adds the leading glyph a filter box wants; `text`
@@ -172,5 +173,23 @@ export class TextField {
    */
   protected onInput(event: Event): void {
     this.value.set((event.target as HTMLInputElement).value);
+  }
+
+  /**
+   * Raises Enter and Escape, unless the press belongs to an input method's composition (Enter picking
+   * a Chinese candidate, Escape abandoning one). Those presses are also kept from bubbling, so the
+   * `(keydown.enter)` a page binds on the field does not submit mid-word either.
+   * @param event The key event raised by the input.
+   */
+  protected onKeydown(event: KeyboardEvent): void {
+    if (isComposing(event)) {
+      event.stopPropagation();
+      return;
+    }
+    if (event.key === 'Enter') {
+      this.enter.emit();
+    } else if (event.key === 'Escape') {
+      this.escape.emit();
+    }
   }
 }

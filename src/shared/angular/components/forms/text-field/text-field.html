@@ -13,8 +13,7 @@
   [disabled]="disabled()"
   [attr.aria-label]="ariaLabel()"
   (input)="onInput($event)"
-  (keydown.enter)="enter.emit()"
-  (keydown.escape)="escape.emit()"
+  (keydown)="onKeydown($event)"
   (blur)="blurred.emit()"
 />
 @if (variant() === 'floating') {

@@ -73,7 +73,7 @@
         spellcheck="false"
         [value]="addition()"
         (input)="onAdditionInput($event)"
-        (keydown.enter)="add()"
+        (keydown)="onAdditionKeydown($event)"
       />
     </span>
     <button
