@@ -8,6 +8,8 @@ import { GitBranch } from '@shared/angular/services/repository/repository-data';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-session';
+import { LiveServerSession } from '@features/workspace/angular/live-server/live-server-session';
+import type { LiveServerInfo } from '@shared/api/live-server-channels';
 
 import { DirectoryStatusStrip } from './directory-status-strip';
 
@@ -42,8 +44,10 @@ describe('DirectoryStatusStrip', () => {
   let decision: RepositoryTrustDecision;
   let changed: WritableSignal<TrustChange | null>;
   let asked: string[];
+  let liveServer: WritableSignal<LiveServerInfo | null>;
 
   beforeEach(() => {
+    liveServer = signal<LiveServerInfo | null>(null);
     root = signal<DirectoryListing | null>({
       name: 'studio',
       path: '/work/studio',
@@ -78,6 +82,7 @@ describe('DirectoryStatusStrip', () => {
             },
           },
         },
+        { provide: LiveServerSession, useValue: { server: liveServer } },
         {
           provide: WorktreeSession,
           useValue: {
@@ -176,5 +181,27 @@ describe('DirectoryStatusStrip', () => {
     fixture.detectChanges();
 
     expect(segmentsOf(fixture)).toEqual(['studio']);
+  });
+
+  it('showsTheLiveServerChip_withItsAddress_whileOneServesTheWorkspace (#1062)', () => {
+    fixture.detectChanges();
+    expect(segmentsOf(fixture)).not.toContain('Live Server 127.0.0.1:5500');
+
+    liveServer.set({
+      root: '/work/studio',
+      url: 'http://127.0.0.1:5500/',
+      port: 5500,
+      displayName: 'Live Server',
+    });
+    fixture.detectChanges();
+
+    expect(segmentsOf(fixture)).toEqual([
+      'studio',
+      'main',
+      '7',
+      '2',
+      '1',
+      'Live Server 127.0.0.1:5500',
+    ]);
   });
 });
