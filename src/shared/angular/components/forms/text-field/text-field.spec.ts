@@ -47,6 +47,38 @@ describe('TextField', () => {
     expect(abandoned).toBe(1);
   });
 
+  it.each(['shiftKey', 'ctrlKey', 'metaKey', 'altKey'])(
+    'enter_andEscape_withModifier_%s_areNotRaised_asKeydownEnterNeverWas',
+    (modifier: string) => {
+      const control: HTMLInputElement = (fixture.nativeElement as HTMLElement).querySelector(
+        'input',
+      )!;
+      let committed: number = 0;
+      let abandoned: number = 0;
+      component.enter.subscribe((): void => void (committed += 1));
+      component.escape.subscribe((): void => void (abandoned += 1));
+
+      control.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', [modifier]: true }));
+      control.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', [modifier]: true }));
+
+      expect(committed).toBe(0);
+      expect(abandoned).toBe(0);
+    },
+  );
+
+  it('enter_withModifier_stillBubbles_toThePagesOwnChordBindings', () => {
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const control: HTMLInputElement = host.querySelector('input')!;
+    let bubbled: number = 0;
+    host.addEventListener('keydown', (): void => void (bubbled += 1));
+
+    control.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }),
+    );
+
+    expect(bubbled).toBe(1);
+  });
+
   it('enter_andEscape_whileAnInputMethodComposes_belongToTheInputMethod', () => {
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
     const control: HTMLInputElement = host.querySelector('input')!;

@@ -178,12 +178,17 @@ export class TextField {
   /**
    * Raises Enter and Escape, unless the press belongs to an input method's composition (Enter picking
    * a Chinese candidate, Escape abandoning one). Those presses are also kept from bubbling, so the
-   * `(keydown.enter)` a page binds on the field does not submit mid-word either.
+   * `(keydown.enter)` a page binds on the field does not submit mid-word either. A press with a
+   * modifier held (Shift+Enter, ⌘Enter) is not plain Enter or Escape, as Angular's `(keydown.enter)`
+   * never counted it: it is left to bubble to the page's own chord bindings.
    * @param event The key event raised by the input.
    */
   protected onKeydown(event: KeyboardEvent): void {
     if (isComposing(event)) {
       event.stopPropagation();
+      return;
+    }
+    if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) {
       return;
     }
     if (event.key === 'Enter') {
