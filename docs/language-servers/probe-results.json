@@ -119,9 +119,9 @@
   "go": {
     "displayName": "gopls",
     "language": "go",
-    "version": "v0.23.0",
-    "probedAt": "2026-11-08",
-    "report": "go/v0.23.0.studio-defaults.json",
+    "version": "v0.24.0",
+    "probedAt": "2026-11-21",
+    "report": "go/v0.24.0.settings.shapes.go.json",
     "features": {
       "definition": "offered",
       "declaration": "notOffered",

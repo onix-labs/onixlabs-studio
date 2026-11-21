@@ -1,10 +1,10 @@
-// Builds the `go test` command a run asks for (#1357).
+// Builds the `go test` command a run asks for (#1357), and the Delve launch a debug asks for (#1211).
 //
 // One command per run, from the module's folder: `go test -v -count=1`, the packages, and a `-run`
 // naming the selected tests exactly. `-count=1` because a cached result would report a run that did not
 // happen; `-v` because the verbose lines are what the results are read from.
 import * as path from 'node:path';
-import type { TestCommand } from '../../protocol/testing/protocol';
+import type { TestCommand, TestDebugLaunch } from '../../protocol/testing/protocol';
 import { GoDiscovery, GoModule, GoPackage, GoTest } from './discover';
 
 /**
@@ -99,4 +99,51 @@ export function goTestCommand(discovery: GoDiscovery, ids: readonly string[]): T
     );
   }
   return { executable: 'go', args, cwd: module.directory, title: `Test ${module.path}` };
+}
+
+/**
+ * Escapes a test or subtest name for one level of a `-test.run` pattern, so it matches that name alone.
+ * @param name The name.
+ * @returns Returns the escaped name.
+ */
+function exactly(name: string): string {
+  return `^${name.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}$`;
+}
+
+/**
+ * Builds a Delve launch for one test, subtest or package (#1211): Delve's `test` mode builds the
+ * package's test binary in its folder and runs it under the debugger, its `args` going to the binary
+ * itself, so a test is named with the binary's own `-test.run`, level by level for a subtest.
+ * @param discovery What discovery found.
+ * @param id The node: a package, a test or a subtest.
+ * @returns Returns the launch.
+ * @throws When the node is a module, or was not found: one launch debugs one package.
+ */
+export function goDebugLaunch(discovery: GoDiscovery, id: string): TestDebugLaunch {
+  const pkg: GoPackage | undefined = discovery.packages.get(id);
+  if (pkg !== undefined) {
+    return {
+      adapter: 'delve',
+      title: `Debug ${pkg.importPath}`,
+      program: pkg.directory,
+      args: [],
+      cwd: pkg.directory,
+      configuration: { mode: 'test' },
+    };
+  }
+  const hash: number = id.indexOf('#');
+  const levels: readonly string[] = hash < 0 ? [] : id.slice(hash + 1).split('/');
+  const test: GoTest | undefined =
+    hash < 0 ? undefined : discovery.tests.get(`${id.slice(0, hash)}#${levels[0]}`);
+  if (test === undefined) {
+    throw new Error('Pick one test or package to debug.');
+  }
+  return {
+    adapter: 'delve',
+    title: `Debug ${levels.join('/')}`,
+    program: test.pkg.directory,
+    args: ['-test.run', levels.map(exactly).join('/')],
+    cwd: test.pkg.directory,
+    configuration: { mode: 'test' },
+  };
 }

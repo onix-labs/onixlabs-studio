@@ -16,6 +16,9 @@ import {
   Notifications,
 } from '@shared/angular/services/notifications/notifications';
 import { DebugSession } from './debug-session';
+import { Documents } from '@shared/angular/services/documents/documents';
+import { Editors } from '@shared/angular/services/editors/editors';
+import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 
 /**
  * A recorded request/notification made through the fake transport.
@@ -170,6 +173,7 @@ describe('DebugSession', () => {
   let root: WritableSignal<DirectoryListing | null>;
   let caps: WritableSignal<ProjectCapabilities | null>;
   let raised: NotificationRequest[];
+  let revealed: string[];
 
   /**
    * Builds the service under test with the fakes wired in.
@@ -195,6 +199,23 @@ describe('DebugSession', () => {
           provide: Notifications,
           useValue: { notify: (request: NotificationRequest): number => raised.push(request) },
         },
+        {
+          provide: FileOpener,
+          useValue: {
+            openPath: (path: string): Promise<boolean> => {
+              revealed.push(`open ${path}`);
+              return Promise.resolve(true);
+            },
+          },
+        },
+        { provide: Documents, useValue: { findIdByPath: (path: string): string => `doc:${path}` } },
+        {
+          provide: Editors,
+          useValue: {
+            requestReveal: (documentId: string, line: number, column: number): number =>
+              revealed.push(`reveal ${documentId} ${line}:${column}`),
+          },
+        },
       ],
     });
     return TestBed.inject(DebugSession);
@@ -206,6 +227,7 @@ describe('DebugSession', () => {
     root = signal<DirectoryListing | null>({ path: '/ws', name: 'ws', entries: [] });
     caps = signal<ProjectCapabilities | null>(capabilities('netcoredbg'));
     raised = [];
+    revealed = [];
     (window as unknown as { bridge: Bridge }).bridge = bridge;
   });
 
@@ -755,6 +777,28 @@ describe('DebugSession', () => {
       .requests()
       .find((r) => r.command === 'stackTrace');
     expect(stack?.args).toMatchObject({ threadId: 1 });
+  });
+
+  it('stopped_bringsTheStoppedLineIntoView_openingItsFileWhenNeeded (#1211)', async () => {
+    bridge.responses.set('stackTrace', {
+      stackFrames: [
+        { id: 1000, name: 'Greet', source: { path: '/ws/greet/greet.go' }, line: 25, column: 0 },
+      ],
+    });
+    bridge.responses.set('scopes', { scopes: [] });
+    const session: DebugSession = build();
+    session.launch(config());
+    await flush();
+
+    bridge.emit(DebugChannel.Event, {
+      sessionId: currentSessionId(bridge),
+      event: 'stopped',
+      body: { reason: 'breakpoint', threadId: 1 },
+    } satisfies DebugEventMessage);
+    await flush();
+
+    // Delve gives no column; the line is revealed from its start.
+    expect(revealed).toEqual(['open /ws/greet/greet.go', 'reveal doc:/ws/greet/greet.go 25:1']);
   });
 
   it('selectFrame_loadsScopesForThatFrameAndMovesLocation', async () => {

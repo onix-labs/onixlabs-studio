@@ -1,5 +1,14 @@
 import { StudioConfig } from '@shared/angular/services/studio/studio-config';
-import { effect, inject, OnDestroy, Service, signal, Signal, WritableSignal } from '@angular/core';
+import {
+  effect,
+  inject,
+  Injector,
+  OnDestroy,
+  Service,
+  signal,
+  Signal,
+  WritableSignal,
+} from '@angular/core';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import { Bridge } from '@shared/api/bridge';
 import { Log } from '@shared/angular/services/log/log';
@@ -21,6 +30,9 @@ import {
   TerminalSessions,
 } from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
+import { Documents } from '@shared/angular/services/documents/documents';
+import { Editors } from '@shared/angular/services/editors/editors';
+import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { DebugHandler, DebugLocation, DebugState } from '@shared/angular/services/debug/debugger';
 import { Breakpoint, Breakpoints } from '@shared/angular/services/debug/breakpoints';
 import { SolutionModel } from '@features/workspace/angular/project/solution-model';
@@ -244,6 +256,12 @@ export class DebugSession implements DebugHandler, OnDestroy {
    * Holds the notification store, told when a session ends on its own or pauses unseen (#1490).
    */
   private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Holds the injector this workspace's file opener, documents and editors are resolved from when the
+   * debuggee stops: they are needed only then.
+   */
+  private readonly injector: Injector = inject(Injector);
 
   /**
    * Holds the exit code the adapter reported for the program, or null before it reported one.
@@ -910,6 +928,27 @@ export class DebugSession implements DebugHandler, OnDestroy {
   }
 
   /**
+   * Brings the line the debuggee stopped at into view (#1211): its file opened in this workspace when
+   * it is not open already — a step into another file, the standard library's read-only — and the line
+   * revealed, as clicking the frame in the call stack does. Without it the line was marked in its editor
+   * but left wherever the editor happened to be scrolled.
+   * @param frame The frame stopped in.
+   * @returns Returns a promise that resolves once the line is shown, or found not to be showable.
+   */
+  private async revealStop(frame: DebugFrame): Promise<void> {
+    if (frame.path === null) {
+      return;
+    }
+    if (!(await this.injector.get(FileOpener).openPath(frame.path))) {
+      return;
+    }
+    const documentId: string | undefined = this.injector.get(Documents).findIdByPath(frame.path);
+    if (documentId !== undefined) {
+      this.injector.get(Editors).requestReveal(documentId, frame.line, Math.max(1, frame.column));
+    }
+  }
+
+  /**
    * Fetches the stopped thread's call stack, selects the top frame, and loads its scopes. Called when the
    * adapter reports the debuggee stopped.
    */
@@ -926,6 +965,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
       this.currentFrameSignal.set(top?.id ?? null);
       this.locationSignal.set(locationOf(top));
       if (top !== undefined) {
+        void this.revealStop(top);
         await this.loadScopes(top.id);
       } else {
         this.scopesSignal.set([]);

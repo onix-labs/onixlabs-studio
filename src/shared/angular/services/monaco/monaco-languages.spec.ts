@@ -127,6 +127,14 @@ describe('monaco-languages', () => {
       expect(languageForFileName('data.json', '<oops>')).toBe('json');
     });
 
+    it('opensGoModuleAndWorkspaceFiles_underGoplsOwnIds', () => {
+      // gopls parses a file by the id it is opened with: go.mod opened as `go` fails to parse.
+      expect(languageForFileName('/repo/go.mod')).toBe('go.mod');
+      expect(languageForFileName('/repo/go.work')).toBe('go.work');
+      expect(languageForFileName('/repo/main.go')).toBe('go');
+      expect(languageForFileName('/repo/other.mod')).toBe('plaintext');
+    });
+
     it('keepsTheEarlierRules', () => {
       expect(languageForFileName('Dockerfile')).toBe('dockerfile');
       expect(languageForFileName('main.ts')).toBe('typescript');

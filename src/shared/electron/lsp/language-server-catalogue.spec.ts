@@ -60,6 +60,40 @@ describe('the TypeScript server diagnostics (#1207)', () => {
   });
 });
 
+describe('gopls (#1211)', () => {
+  /**
+   * Finds gopls's descriptor in the catalogue.
+   * @returns Returns the descriptor.
+   */
+  function gopls(): LanguageServerDescriptor {
+    const found: LanguageServerDescriptor | undefined = languageServerCatalogue().find(
+      (descriptor: LanguageServerDescriptor): boolean => descriptor.id === 'go',
+    );
+    if (found === undefined) {
+      throw new Error('The catalogue has no gopls');
+    }
+    return found;
+  }
+
+  it('servesGoModuleAndWorkspaceFiles_underItsOwnIdsForThem', () => {
+    expect(gopls().languages).toEqual(['go', 'go.mod', 'go.work']);
+  });
+
+  it('startsWithAPackageRenameRenamingItsFolder_theOneMoveStudioMakes', async () => {
+    const context: LanguageServerContext = {
+      provisioner: {
+        detectGo: (): Promise<string | null> => Promise.resolve('/usr/local/go/bin/go'),
+        ensureGopls: (): Promise<string | null> => Promise.resolve('/servers/gopls/gopls'),
+      },
+    } as unknown as LanguageServerContext;
+
+    const resolution: LspResolution = await gopls().resolve(context);
+
+    expect(resolution.spec?.command).toBe('/servers/gopls/gopls');
+    expect(resolution.spec?.initializationOptions).toEqual({ renameMovesSubpackages: true });
+  });
+});
+
 describe('the TypeScript server runs the workspace TypeScript only once it is trusted (#1504)', () => {
   let root: string;
 

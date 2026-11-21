@@ -73,6 +73,7 @@ const CATALOGUE: readonly LspServerSummary[] = [
   { id: 'java', displayName: 'Eclipse JDT', languages: ['java'], priority: 100 },
   { id: 'pyright', displayName: 'Pyright', languages: ['python'], priority: 100 },
   { id: 'rust', displayName: 'rust-analyzer', languages: ['rust'], priority: 100 },
+  { id: 'go', displayName: 'gopls', languages: ['go', 'go.mod', 'go.work'], priority: 100 },
 ];
 
 /**
@@ -1799,6 +1800,7 @@ describe('LspClient', () => {
         rangeTokens: false,
         selectionRanges: false,
         colors: false,
+        links: false,
       };
       expect(features.structureEnabled).toEqual([['typescript', expected]]);
       expect(features.resolver?.('/root/src/a.ts')?.structure).toEqual(expected);
@@ -2495,6 +2497,23 @@ describe('LspClient', () => {
 
       expect(diagnostics.emitted).toEqual([
         expect.objectContaining({ path: '/root/b.ts', scope: 'workspace' }),
+      ]);
+    });
+
+    it('goplsPushForAFileNotOpen_reachesTheErrorList_asItTypeChecksEveryPackage (#1211)', async () => {
+      const client: LspClient = build();
+      client.syncDocument({
+        documentId: 'doc-2',
+        path: '/root/greet/greet.go',
+        languageId: 'go',
+        content: 'package greet',
+      });
+      await flush();
+
+      lsp.publishDiagnostics('/root::go', 'file:///root/shapes/shapes.go', [CHECK]);
+
+      expect(diagnostics.emitted).toEqual([
+        expect.objectContaining({ path: '/root/shapes/shapes.go', scope: 'workspace' }),
       ]);
     });
 

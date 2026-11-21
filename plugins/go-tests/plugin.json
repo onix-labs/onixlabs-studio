@@ -19,7 +19,7 @@
         "frameworks": ["go test"],
         "priority": 100,
         "markers": ["go.mod"],
-        "capabilities": ["run", "runSelected"],
+        "capabilities": ["run", "runSelected", "debug"],
         "command": {
           "kind": "node"
         },

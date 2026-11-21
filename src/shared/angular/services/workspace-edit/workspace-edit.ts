@@ -48,6 +48,22 @@ export interface SkippedEdit {
 }
 
 /**
+ * A file or folder an edit renames within its own folder (#1211): gopls renaming a package renames
+ * the package's folder.
+ */
+export interface EntryMove {
+  /**
+   * Gets the entry's absolute path.
+   */
+  readonly from: string;
+
+  /**
+   * Gets the absolute path it is given, beside it.
+   */
+  readonly to: string;
+}
+
+/**
  * Edits across a workspace, by document (#1015): a rename's answer, or a language server's own edit.
  */
 export interface WorkspaceTextEdits {
@@ -67,6 +83,12 @@ export interface WorkspaceTextEdits {
    * undefined for none.
    */
   readonly creates?: readonly string[];
+
+  /**
+   * Gets the files and folders to rename, each within its own folder, once every edit is applied
+   * (#1211) — the edits are to the paths as they stand before — or undefined for none.
+   */
+  readonly moves?: readonly EntryMove[];
 }
 
 /**
@@ -117,6 +139,14 @@ export interface WorkspaceEditOutcome {
 export const FILE_OPERATION_REFUSED: string = "Renaming or deleting files isn't supported yet.";
 
 /**
+ * Holds the reason an edit that moves a file or folder out of its own folder, or over another, is
+ * refused whole: its text edits alone would leave the code naming paths that do not exist, so nothing
+ * of it is applied.
+ */
+export const MOVE_REFUSED: string =
+  "Moving a file or folder to another folder, or over another, isn't supported yet, so nothing was changed.";
+
+/**
  * A zero-based Language Server Protocol position.
  */
 interface LspPosition {
@@ -157,8 +187,9 @@ export function movedEdits(
 
 /**
  * Reads an LSP `WorkspaceEdit` into edits by document (#1015): its versioned `documentChanges` when it
- * has them — each a `TextDocumentEdit`, a file to create (#1210), or another file operation, which is
- * refused and named, as is a create that asks to overwrite — and its per-file `changes` otherwise, as
+ * has them — each a `TextDocumentEdit`, a file to create (#1210), a file or folder renamed within its
+ * own folder (#1211), or another file operation, which is refused and named, as is a create that asks
+ * to overwrite; a move anywhere else refuses the whole edit — and its per-file `changes` otherwise, as
  * the protocol has a client prefer. Versions are not checked: a closed file has none, and an open one
  * is edited as it stands. Malformed entries are dropped.
  * @param edit The edit, untrusted.
@@ -172,6 +203,8 @@ export function fromLspWorkspaceEdit(
   const files: Map<string, TextEditEntry[]> = new Map<string, TextEditEntry[]>();
   const refused: SkippedEdit[] = [];
   const creates: string[] = [];
+  const moves: EntryMove[] = [];
+  const unmovable: SkippedEdit[] = [];
   const add: (uri: string, edits: unknown) => void = (uri: string, edits: unknown): void => {
     if (!Array.isArray(edits)) {
       return;
@@ -197,6 +230,7 @@ export function fromLspWorkspaceEdit(
         kind?: unknown;
         uri?: unknown;
         oldUri?: unknown;
+        newUri?: unknown;
         textDocument?: unknown;
         edits?: unknown;
         options?: { overwrite?: unknown; ignoreIfExists?: unknown };
@@ -208,6 +242,19 @@ export function fromLspWorkspaceEdit(
         entry.options?.ignoreIfExists !== true
       ) {
         creates.push(toPath(entry.uri));
+        continue;
+      }
+      if (
+        entry.kind === 'rename' &&
+        typeof entry.oldUri === 'string' &&
+        typeof entry.newUri === 'string'
+      ) {
+        const move: EntryMove = { from: toPath(entry.oldUri), to: toPath(entry.newUri) };
+        if (entry.options?.overwrite !== true && isRenameInPlace(move)) {
+          moves.push(move);
+        } else {
+          unmovable.push({ path: move.from, reason: MOVE_REFUSED });
+        }
         continue;
       }
       if (typeof entry.kind === 'string') {
@@ -228,13 +275,39 @@ export function fromLspWorkspaceEdit(
       add(uri, edits);
     }
   }
+  if (unmovable.length > 0) {
+    // Refused whole: gopls renaming a package edits every import of it, and those edits without the
+    // move would leave the imports naming a package that is not there.
+    return { files: [], refused: [...refused, ...unmovable] };
+  }
   return {
     files: [...files]
       .filter(([, edits]: [string, TextEditEntry[]]): boolean => edits.length > 0)
       .map(([path, edits]: [string, TextEditEntry[]]): FileTextEdits => ({ path, edits })),
     refused,
     ...(creates.length > 0 ? { creates } : {}),
+    ...(moves.length > 0 ? { moves } : {}),
   };
+}
+
+/**
+ * Determines whether a move renames an entry within its own folder, which is the one move Studio
+ * makes: the Explorer's rename, which open documents follow.
+ * @param move The move.
+ * @returns Returns true when the entry keeps its folder and takes a new, single-segment name.
+ */
+function isRenameInPlace(move: EntryMove): boolean {
+  const separator: (path: string) => number = (path: string): number =>
+    Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+  const from: number = separator(move.from);
+  const to: number = separator(move.to);
+  const name: string = move.to.slice(to + 1);
+  return (
+    from > 0 &&
+    move.from.slice(0, from) === move.to.slice(0, to) &&
+    name !== '' &&
+    name !== move.from.slice(from + 1)
+  );
 }
 
 /**

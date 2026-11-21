@@ -478,6 +478,13 @@ export interface LspStructureSupport {
    * before colours were read.
    */
   readonly colors?: boolean;
+
+  /**
+   * Gets whether it links parts of a document to pages or files (`textDocument/documentLink`) — a Go
+   * import path to its documentation, a stylesheet's `url(…)` (#1211). Absent from a support built
+   * before links were read.
+   */
+  readonly links?: boolean;
 }
 
 /**
@@ -818,6 +825,8 @@ export const FEATURE_LANGUAGES: readonly string[] = [
   'css',
   'dockerfile',
   'go',
+  'go.mod',
+  'go.work',
   'html',
   'java',
   'javascript',
@@ -2033,6 +2042,67 @@ export class LspFeatures {
           this.provideSelectionRanges(model, positions),
       });
     }
+    if (support.links === true && !registered.has(`${language}:links`)) {
+      registered.add(`${language}:links`);
+      monaco.languages.registerLinkProvider(language, {
+        provideLinks: (
+          model: MonacoApi.editor.ITextModel,
+        ): Promise<MonacoApi.languages.ILinksList | undefined> => this.provideLinks(model),
+      });
+    }
+  }
+
+  /**
+   * Asks the server serving a model for the parts of it that link elsewhere (#1211): a Go import path
+   * to its documentation on pkg.go.dev. A link is followed as any other in the editor, a web page
+   * through the external-link policy. Links the server leaves to be resolved later are left out, as are
+   * targets that are not web pages or files.
+   * @param model The model.
+   * @returns Returns the links, or undefined when no server serving the model gives them.
+   */
+  private async provideLinks(
+    model: MonacoApi.editor.ITextModel,
+  ): Promise<MonacoApi.languages.ILinksList | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || this.bridge === undefined || ref.structure?.links !== true) {
+      return undefined;
+    }
+    await ref.sync?.(model.getValue());
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/documentLink',
+        {
+          textDocument: { uri: ref.uri },
+        },
+      );
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(result)) {
+      return undefined;
+    }
+    const links: MonacoApi.languages.ILink[] = [];
+    for (const item of result as readonly unknown[]) {
+      const link: { range?: unknown; target?: unknown; tooltip?: unknown } | null =
+        typeof item === 'object' && item !== null ? item : null;
+      if (
+        link === null ||
+        !isLspRange(link.range) ||
+        typeof link.target !== 'string' ||
+        !/^(https?|file):/i.test(link.target)
+      ) {
+        continue;
+      }
+      links.push({
+        range: this.toRange(link.range),
+        url: link.target,
+        ...(typeof link.tooltip === 'string' ? { tooltip: link.tooltip } : {}),
+      });
+    }
+    return { links };
   }
 
   /**
@@ -4565,4 +4635,23 @@ export function hoverContents(
     }
   }
   return blocks;
+}
+
+/**
+ * Determines whether a server's value is a range: a start and an end, each a line and a character.
+ * @param value The value, untrusted.
+ * @returns Returns true when it is.
+ */
+function isLspRange(value: unknown): value is LspRange {
+  const isPosition: (candidate: unknown) => boolean = (candidate: unknown): boolean =>
+    typeof candidate === 'object' &&
+    candidate !== null &&
+    typeof (candidate as { line?: unknown }).line === 'number' &&
+    typeof (candidate as { character?: unknown }).character === 'number';
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    isPosition((value as { start?: unknown }).start) &&
+    isPosition((value as { end?: unknown }).end)
+  );
 }

@@ -14,6 +14,8 @@ const LANGUAGE_NAMES: Readonly<Record<string, string>> = {
   kotlin: 'Kotlin',
   rust: 'Rust',
   go: 'Go',
+  'go.mod': 'Go Module',
+  'go.work': 'Go Workspace',
   lua: 'Lua',
   sql: 'SQL',
   perl: 'Perl',

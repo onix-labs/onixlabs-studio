@@ -13,7 +13,7 @@ import {
   unavailable,
 } from './language-server-descriptor';
 import { CUSTOM_AFTER_COMMON_TARGETS, writeCsharpBraceConfig } from './csharp-editor-config';
-import { GOPLS_SETTINGS } from './gopls-settings';
+import { GOPLS_INITIALIZATION_OPTIONS, GOPLS_SETTINGS } from './gopls-settings';
 import { JdtlsInstall } from './lsp-provisioner';
 import { TYPESCRIPT_PROVISION, TYPESCRIPT_SERVER_PROVISION } from './language-server-downloads';
 
@@ -558,7 +558,9 @@ export function kotlinServerEnv(
 const GO: LanguageServerDescriptor = {
   id: 'go',
   displayName: 'gopls',
-  languages: ['go'],
+  // go.mod and go.work under gopls's own ids for them (#1211): its module lenses, hover and
+  // diagnostics live there, and it parses a file by the id it is opened with.
+  languages: ['go', 'go.mod', 'go.work'],
   priority: DEFAULT_PRIORITY,
   // gopls asks for its whole `gopls` section, at start-up and after every change (#1211), so its
   // settings are pulled and answered nested; it also answers `textDocument/diagnostic` unadvertised,
@@ -578,7 +580,12 @@ const GO: LanguageServerDescriptor = {
     const env: Record<string, string> | undefined = path.isAbsolute(go)
       ? { PATH: `${process.env['PATH'] ?? ''}${path.delimiter}${path.dirname(go)}` }
       : undefined;
-    return resolved({ command: gopls, args: [], env });
+    return resolved({
+      command: gopls,
+      args: [],
+      env,
+      initializationOptions: GOPLS_INITIALIZATION_OPTIONS,
+    });
   },
 };
 

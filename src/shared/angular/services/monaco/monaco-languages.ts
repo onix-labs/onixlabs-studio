@@ -123,6 +123,8 @@ const LANGUAGE_NAMES: Readonly<Record<string, string>> = {
   cpp: 'C++',
   csharp: 'C#',
   go: 'Go',
+  'go.mod': 'Go Module',
+  'go.work': 'Go Workspace',
   rust: 'Rust',
   php: 'PHP',
   sql: 'SQL',
@@ -159,6 +161,10 @@ const FILENAME_TO_LANGUAGE: Readonly<Record<string, string>> = {
   'directory.build.props': 'xml',
   'directory.build.targets': 'xml',
   'directory.packages.props': 'xml',
+  // Go's module and workspace files (#1211), by the ids gopls reads them under: as plain text they never
+  // reached gopls, so its go.mod lenses, hover and diagnostics could not appear.
+  'go.mod': 'go.mod',
+  'go.work': 'go.work',
 };
 
 /**
