@@ -18,6 +18,7 @@ import {
   AppliedFile,
   EntryMove,
   FileTextEdits,
+  movedEdits,
   SkippedEdit,
   TextEditEntry,
   WorkspaceEditOutcome,
@@ -71,9 +72,18 @@ export class WorkspaceEditApplier {
    * @returns Returns the documents changed, and the parts not applied with their reasons.
    */
   public async apply(
-    edit: WorkspaceTextEdits,
+    requested: WorkspaceTextEdits,
     monaco?: typeof MonacoApi,
   ): Promise<WorkspaceEditOutcome> {
+    // First, and on its own: renaming a package's folder (#1211). Its edits rewrite every import of
+    // the package, so they are applied only once the folder has its new name, to the paths as they are
+    // then; a rename refused or failed leaves everything as it was, rather than imports naming a
+    // folder that is not there.
+    const moved: WorkspaceTextEdits | WorkspaceEditOutcome = await this.moveFirst(requested);
+    if (!('files' in moved)) {
+      return moved;
+    }
+    const edit: WorkspaceTextEdits = moved;
     const models: ReadonlyMap<string, MonacoApi.editor.ITextModel> = this.modelsOf(monaco);
     const applied: AppliedFile[] = [];
     const skipped: SkippedEdit[] = [...edit.refused];
@@ -120,16 +130,6 @@ export class WorkspaceEditApplier {
       }
       skipped.push(...response.failed.map(toSkipped));
     }
-    // Last, as the server ordered them: its edits are to the paths as they stood before. The documents
-    // changed keep being named, by their new paths; the folder itself is not a document.
-    for (const move of edit.moves ?? []) {
-      const moved: string | null = await this.move(move, skipped);
-      if (moved !== null) {
-        for (const [index, file] of applied.entries()) {
-          applied[index] = { ...file, path: followMove(file.path, move.from, moved) };
-        }
-      }
-    }
     this.log.info(
       'workspaceEdit',
       `Applied edits to ${applied.length} document(s)`,
@@ -139,28 +139,67 @@ export class WorkspaceEditApplier {
   }
 
   /**
-   * Renames a file or folder within its own folder as the Explorer does (#1211), through the workspace
-   * in front: its documents are the ones open in it, which follow to their new paths, and a save then
-   * writes there rather than to the old path. An entry outside that workspace is left where it is, as
-   * nothing would move its open documents with it.
-   * @param move The entry and where it goes.
-   * @param skipped The parts not applied, which a refused or failed rename joins.
-   * @returns Returns the entry's new path, or null when it was not renamed.
+   * Renames the files and folders an edit renames (#1211), before any of its text is changed, as the
+   * Explorer's rename does (`EntryRename`): each through the workspace it belongs to — not the one in
+   * front, which follows the user's focus — so that workspace's open documents follow to their new
+   * paths and a save writes there. Every entry is checked to lie in an open workspace before any is
+   * renamed.
+   * @param edit The edit.
+   * @returns Returns the edit keyed by the paths as they are after the renames, or — when an entry is in
+   * no open workspace, or could not be renamed — the outcome, with nothing of the edit's text applied.
    */
-  private async move(move: EntryMove, skipped: SkippedEdit[]): Promise<string | null> {
-    const well: WorkspaceWell | null = this.injector.get(ActiveWorkspace).activeWell();
-    if (well?.root == null || !isWithin(move.from, well.root)) {
-      skipped.push({ path: move.from, reason: MOVE_OUTSIDE_WORKSPACE });
-      return null;
+  private async moveFirst(
+    edit: WorkspaceTextEdits,
+  ): Promise<WorkspaceTextEdits | WorkspaceEditOutcome> {
+    const moves: readonly EntryMove[] = edit.moves ?? [];
+    if (moves.length === 0) {
+      return edit;
     }
-    const separator: number = Math.max(move.to.lastIndexOf('/'), move.to.lastIndexOf('\\'));
-    const result: { readonly path: string | null; readonly error: string | null } =
-      await well.rename(move.from, move.to.slice(separator + 1));
-    if (result.error === null) {
-      return result.path ?? move.to;
+    const active: ActiveWorkspace = this.injector.get(ActiveWorkspace);
+    const wells: readonly (WorkspaceWell | null)[] = moves.map(
+      (move: EntryMove): WorkspaceWell | null => active.wellContaining(move.from),
+    );
+    const outside: readonly EntryMove[] = moves.filter(
+      (_move: EntryMove, index: number): boolean => wells[index] === null,
+    );
+    if (outside.length > 0) {
+      return {
+        applied: [],
+        skipped: [
+          ...edit.refused,
+          ...outside.map((move: EntryMove): SkippedEdit => ({
+            path: move.from,
+            reason: MOVE_OUTSIDE_WORKSPACE,
+          })),
+        ],
+      };
     }
-    skipped.push({ path: move.from, reason: result.error });
-    return null;
+    let moved: WorkspaceTextEdits = { ...edit, moves: [] };
+    for (const [index, move] of moves.entries()) {
+      const separator: number = Math.max(move.to.lastIndexOf('/'), move.to.lastIndexOf('\\'));
+      const well: WorkspaceWell | null = wells[index];
+      const result: { readonly path: string | null; readonly error: string | null } =
+        well === null
+          ? { path: null, error: MOVE_OUTSIDE_WORKSPACE }
+          : await well.rename(move.from, move.to.slice(separator + 1));
+      if (result.error !== null) {
+        this.log.warn(
+          'workspaceEdit',
+          'A rename an edit asked for failed',
+          move.from,
+          result.error,
+        );
+        return {
+          applied: [],
+          skipped: [
+            ...edit.refused,
+            { path: move.from, reason: `${result.error} ${NOTHING_CHANGED}` },
+          ],
+        };
+      }
+      moved = movedEdits(moved, move.from, result.path ?? move.to);
+    }
+    return moved;
   }
 
   /**
@@ -214,33 +253,16 @@ export class WorkspaceEditApplier {
 }
 
 /**
- * Holds the reason a rename an edit asks for is not made: the entry is not in the workspace in front.
+ * Holds the reason an edit that renames an entry is not applied: the entry is in no open workspace, so
+ * nothing would move its open documents with it.
  */
 const MOVE_OUTSIDE_WORKSPACE: string =
-  "It isn't in the workspace in front, so it was left where it is.";
+  "It isn't in an open workspace, so it wasn't renamed and nothing was changed.";
 
 /**
- * Determines whether a path is a folder or lies within it.
- * @param path The path.
- * @param folder The folder.
- * @returns Returns true when it does.
+ * Holds what is said after the reason a rename failed: none of the edit was applied.
  */
-function isWithin(path: string, folder: string): boolean {
-  const root: string = folder.replace(/[\\/]+$/, '');
-  return path === root || path.startsWith(`${root}/`) || path.startsWith(`${root}\\`);
-}
-
-/**
- * Gives a path the one it has after an entry it is in, or is, was renamed.
- * @param path The path.
- * @param from The entry's path before the rename.
- * @param to Its path after it.
- * @returns Returns the path as it is now.
- */
-function followMove(path: string, from: string, to: string): string {
-  const inside: boolean = path.startsWith(`${from}/`) || path.startsWith(`${from}\\`);
-  return path === from || inside ? `${to}${path.slice(from.length)}` : path;
-}
+const NOTHING_CHANGED: string = 'Nothing was changed.';
 
 /**
  * Names a part of an edit the main process did not write.

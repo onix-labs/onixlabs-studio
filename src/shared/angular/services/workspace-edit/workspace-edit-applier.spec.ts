@@ -5,7 +5,7 @@ import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Search } from '@shared/angular/services/search/search';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
-import { TextEditEntry, WorkspaceEditOutcome } from './workspace-edit';
+import { TextEditEntry, WorkspaceEditOutcome, WorkspaceTextEdits } from './workspace-edit';
 import { WorkspaceEditApplier } from './workspace-edit-applier';
 
 /**
@@ -274,7 +274,15 @@ describe('WorkspaceEditApplier (#1015)', () => {
   describe('renaming a folder in place (#1211)', () => {
     let renames: string[];
     let renamed: (path: string, name: string) => RenameAnswer;
-    let root: string | null;
+    let root: string;
+    const PACKAGE_RENAME: WorkspaceTextEdits = {
+      files: [
+        { path: '/w/greet/greet.go', edits: [edit(2, 9, 14, 'salute')] },
+        { path: '/w/cmd/app/main.go', edits: [edit(6, 23, 28, 'salute')] },
+      ],
+      refused: [],
+      moves: [{ from: '/w/greet', to: '/w/salute' }],
+    };
 
     beforeEach(() => {
       renames = [];
@@ -285,40 +293,42 @@ describe('WorkspaceEditApplier (#1015)', () => {
       });
       TestBed.overrideProvider(ActiveWorkspace, {
         useValue: {
-          activeWell: (): unknown => ({
-            root,
-            rename: (path: string, name: string): Promise<RenameAnswer> => {
-              renames.push(`${path} -> ${name}`);
-              return Promise.resolve(renamed(path, name));
-            },
-          }),
+          // The workspace a path is in, whatever is in front.
+          wellContaining: (path: string): unknown =>
+            path.startsWith(`${root}/`)
+              ? {
+                  root,
+                  rename: (from: string, name: string): Promise<RenameAnswer> => {
+                    renames.push(`${from} -> ${name}`);
+                    return Promise.resolve(renamed(from, name));
+                  },
+                }
+              : null,
+          activeWell: (): unknown => {
+            throw new Error('The workspace in front is not the one a path is in');
+          },
         },
       });
     });
 
-    it('renamesTheFolderAfterItsEdits_inTheWorkspaceInFront_namingTheEditedFilesByTheirNewPaths', async () => {
+    it('renamesTheFolderFirst_thenAppliesTheEditsToTheNewPaths', async () => {
+      // An open document follows its folder: the registry knows it by its new path once renamed.
       const open: FakeModel = fakeModel('inmemory://model/1');
       models.push(open.model);
       TestBed.inject(Editors).register('inmemory://model/1', {
         documentId: 'doc-1',
-        path: '/w/greet/greet.go',
+        path: '/w/salute/greet.go',
         name: 'greet.go',
       });
 
-      const outcome: WorkspaceEditOutcome = await TestBed.inject(WorkspaceEditApplier).apply({
-        files: [
-          { path: '/w/greet/greet.go', edits: [edit(2, 9, 14, 'salute')] },
-          { path: '/w/cmd/app/main.go', edits: [edit(6, 23, 28, 'salute')] },
-        ],
-        refused: [],
-        moves: [{ from: '/w/greet', to: '/w/salute' }],
-      });
+      const outcome: WorkspaceEditOutcome =
+        await TestBed.inject(WorkspaceEditApplier).apply(PACKAGE_RENAME);
 
+      expect(renames).toEqual(['/w/greet -> salute']);
       expect(open.calls).toHaveLength(3);
       expect(requests.map((request: TextEditsRequest): unknown => request.files[0]?.path)).toEqual([
         '/w/cmd/app/main.go',
       ]);
-      expect(renames).toEqual(['/w/greet -> salute']);
       expect(outcome).toEqual({
         applied: [
           { path: '/w/salute/greet.go', edits: 1, where: 'editor' },
@@ -328,37 +338,44 @@ describe('WorkspaceEditApplier (#1015)', () => {
       });
     });
 
-    it('namesAFolderThatCouldNotBeRenamed', async () => {
+    it('appliesNoneOfTheEdits_whenTheFolderCouldNotBeRenamed', async () => {
+      const open: FakeModel = fakeModel('inmemory://model/1');
+      models.push(open.model);
+      TestBed.inject(Editors).register('inmemory://model/1', {
+        documentId: 'doc-1',
+        path: '/w/greet/greet.go',
+        name: 'greet.go',
+      });
       renamed = (): RenameAnswer => ({ path: null, error: 'salute already exists.' });
 
-      const outcome: WorkspaceEditOutcome = await TestBed.inject(WorkspaceEditApplier).apply({
-        files: [],
-        refused: [],
-        moves: [{ from: '/w/greet', to: '/w/salute' }],
-      });
+      const outcome: WorkspaceEditOutcome =
+        await TestBed.inject(WorkspaceEditApplier).apply(PACKAGE_RENAME);
 
+      expect(open.calls).toEqual([]);
+      expect(requests).toEqual([]);
       expect(outcome).toEqual({
         applied: [],
-        skipped: [{ path: '/w/greet', reason: 'salute already exists.' }],
+        skipped: [{ path: '/w/greet', reason: 'salute already exists. Nothing was changed.' }],
       });
     });
 
-    it('leavesAFolderOutsideTheWorkspaceInFront_whereItIs', async () => {
+    it('appliesNoneOfTheEdits_whenTheFolderIsInNoOpenWorkspace', async () => {
       root = '/elsewhere';
 
-      const outcome: WorkspaceEditOutcome = await TestBed.inject(WorkspaceEditApplier).apply({
-        files: [],
-        refused: [],
-        moves: [{ from: '/w/greet', to: '/w/salute' }],
-      });
+      const outcome: WorkspaceEditOutcome =
+        await TestBed.inject(WorkspaceEditApplier).apply(PACKAGE_RENAME);
 
       expect(renames).toEqual([]);
-      expect(outcome.skipped).toEqual([
-        {
-          path: '/w/greet',
-          reason: "It isn't in the workspace in front, so it was left where it is.",
-        },
-      ]);
+      expect(requests).toEqual([]);
+      expect(outcome).toEqual({
+        applied: [],
+        skipped: [
+          {
+            path: '/w/greet',
+            reason: "It isn't in an open workspace, so it wasn't renamed and nothing was changed.",
+          },
+        ],
+      });
     });
   });
 });
