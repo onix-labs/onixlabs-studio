@@ -74,6 +74,11 @@ export interface ParsedRefs {
    * Gets the tags.
    */
   readonly tags: readonly GitTag[];
+
+  /**
+   * Gets the default branch merges are measured against, when the plugin said (#887).
+   */
+  readonly defaultBranch?: string;
 }
 
 /**
@@ -447,6 +452,15 @@ export interface SourceControlProvider {
    * @returns Returns the outcome.
    */
   deleteRemoteTag(remote: string, name: string): Promise<MutationResult>;
+
+  /**
+   * Deletes a branch on a remote, and its remote-tracking branch (#887). Destructive for everyone who
+   * works from that remote; the caller confirms first.
+   * @param remote The remote to delete on.
+   * @param name The branch's name on the remote, without the remote.
+   * @returns Returns the outcome.
+   */
+  deleteRemoteBranch(remote: string, name: string): Promise<MutationResult>;
 
   /**
    * Pushes one tag to a remote.

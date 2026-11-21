@@ -22,6 +22,7 @@ import {
 import { SourceControlProviders } from '../source-control/source-control-providers';
 import { Repository, WORKING_NODE_ID } from './repository';
 import { GitBranch, GitCommit, GitFileChange, GitStash, GraphNode } from './repository-data';
+import type { MergedBranchesDeletion } from './merged-branches-deletion';
 
 /**
  * Builds a file change with a working-tree target.
@@ -144,8 +145,14 @@ class FakeProvider implements SourceControlProvider {
       ],
       remotes: this.remoteNames.map((name: string) => ({ name, url: '', branches: [] })),
       tags: [],
+      ...(this.defaultBranch === undefined ? {} : { defaultBranch: this.defaultBranch }),
     });
   }
+
+  /**
+   * Holds the default branch returned by {@link getRefs}; undefined is a plugin that does not say.
+   */
+  public defaultBranch: string | undefined = undefined;
 
   public getStashes(): Promise<GitStash[]> {
     return Promise.resolve([]);
@@ -311,6 +318,17 @@ class FakeProvider implements SourceControlProvider {
       return Promise.resolve({ success: false, error });
     }
     return Promise.resolve({ success: true });
+  }
+
+  /**
+   * Holds the remote branches whose delete fails, by name, with the failure's message.
+   */
+  public failingRemoteBranches: ReadonlyMap<string, string> = new Map<string, string>();
+
+  public deleteRemoteBranch(remote: string, name: string): Promise<MutationResult> {
+    this.calls.push(`deleteRemoteBranch:${remote}:${name}`);
+    const error: string | undefined = this.failingRemoteBranches.get(name);
+    return Promise.resolve(error === undefined ? { success: true } : { success: false, error });
   }
 
   public pushTag(remote: string, name: string): Promise<MutationResult> {
@@ -1439,6 +1457,88 @@ describe('Repository', () => {
       await repository.deleteTagEverywhere('v0.9.0');
 
       expect(provider.calls).toContain('deleteRemoteTag:origin:v0.9.0');
+    });
+
+    it('defaultBranch_isWhatThePluginNamed (#887)', async () => {
+      provider.defaultBranch = 'trunk';
+
+      await repository.refresh();
+
+      expect(repository.defaultBranch()).toBe('trunk');
+    });
+
+    it('deleteMergedBranches_forcesEachLocalDelete_andLeavesTheRemoteAloneUnlessAsked (#887)', async () => {
+      const deletion: MergedBranchesDeletion = await repository.deleteMergedBranches(
+        [
+          {
+            name: 'squashed',
+            merge: { kind: 'pull-request', number: 7 },
+            remoteBranch: { remote: 'origin', name: 'squashed' },
+          },
+          { name: 'done', merge: { kind: 'local', into: 'main' } },
+        ],
+        false,
+      );
+
+      // Git cannot see a squash merge, so an unforced delete would refuse the branch Studio knows is merged.
+      expect(provider.calls.filter((call: string): boolean => call.includes('Branch'))).toEqual([
+        'deleteBranch:squashed:true',
+        'deleteBranch:done:true',
+      ]);
+      expect(deletion).toEqual({ deleted: ['squashed', 'done'], deletedOnRemote: [], failed: [] });
+      expect(notifications.toasts()[0]).toMatchObject({
+        severity: 'success',
+        title: 'Deleted merged branches',
+        detail: 'squashed, done',
+      });
+    });
+
+    it('deleteMergedBranches_withRemotes_deletesEachOnTheRemoteFirst (#887)', async () => {
+      const deletion: MergedBranchesDeletion = await repository.deleteMergedBranches(
+        [
+          {
+            name: 'feature',
+            merge: { kind: 'local', into: 'main' },
+            remoteBranch: { remote: 'origin', name: 'feature' },
+          },
+          { name: 'local-only', merge: { kind: 'local', into: 'main' } },
+        ],
+        true,
+      );
+
+      expect(provider.calls.filter((call: string): boolean => call.includes('Branch'))).toEqual([
+        'deleteRemoteBranch:origin:feature',
+        'deleteBranch:feature:true',
+        'deleteBranch:local-only:true',
+      ]);
+      expect(deletion.deletedOnRemote).toEqual(['origin/feature']);
+      expect(notifications.toasts()[0].title).toBe(
+        'Deleted merged branches here and on the remote',
+      );
+    });
+
+    it('deleteMergedBranches_whenTheRemoteRefuses_keepsThatLocalBranch_andSaysWhy (#887)', async () => {
+      provider.failingRemoteBranches = new Map<string, string>([['locked', 'protected branch']]);
+
+      const deletion: MergedBranchesDeletion = await repository.deleteMergedBranches(
+        [
+          {
+            name: 'locked',
+            merge: { kind: 'local', into: 'main' },
+            remoteBranch: { remote: 'origin', name: 'locked' },
+          },
+          { name: 'done', merge: { kind: 'local', into: 'main' } },
+        ],
+        true,
+      );
+
+      expect(provider.calls).not.toContain('deleteBranch:locked:true');
+      expect(deletion.deleted).toEqual(['done']);
+      expect(deletion.failed).toEqual([{ name: 'locked', error: 'protected branch' }]);
+      expect(notifications.toasts()[0]).toMatchObject({
+        severity: 'error',
+        detail: 'locked: protected branch',
+      });
     });
 
     it('pushTag_whenNoRemoteIsNamed_usesTheDefaultRemote', async () => {

@@ -609,6 +609,8 @@ export class GitVersionControl {
           : Promise.resolve(fail('Invalid tag name'));
       case 'deleteRemoteTag':
         return this.deleteRemoteTag(root, params['remote'], params['name']);
+      case 'deleteRemoteBranch':
+        return this.deleteRemoteBranch(root, params['remote'], params['name']);
       case 'pushTag':
         // `git push <remote> tag <name>` names the tag without building a refspec from caller input,
         // so a name carrying a colon cannot become a source-and-destination pair.
@@ -700,13 +702,19 @@ export class GitVersionControl {
       return fail(refs.error ?? 'git for-each-ref failed');
     }
     const parsed: VcsRefs = parseRefs(refs.stdout);
+    const target: { ref: string; name: string; tip: string } | null = await this.defaultBranch(
+      root,
+      parsed,
+    );
     return ok({
       ...parsed,
-      branches: await this.markMerged(root, parsed),
+      branches: await this.markMerged(root, parsed, target),
       remotes: mergeRemoteUrls(
         parsed.remotes,
         parseRemoteUrls(remotes.success ? remotes.stdout : ''),
       ),
+      // Named so Delete Merged Branches never offers the branch everything is merged into (#887).
+      ...(target === null ? {} : { defaultBranch: target.name }),
     });
   }
 
@@ -723,13 +731,14 @@ export class GitVersionControl {
    * marked rather than the listing failing.
    * @param root The repository root.
    * @param refs The parsed refs.
+   * @param target The default branch (see {@link defaultBranch}), or null when there is none.
    * @returns Returns the local branches, with `mergedInto` set on the merged ones.
    */
-  private async markMerged(root: string, refs: VcsRefs): Promise<VcsRefs['branches']> {
-    const target: { ref: string; name: string; tip: string } | null = await this.defaultBranch(
-      root,
-      refs,
-    );
+  private async markMerged(
+    root: string,
+    refs: VcsRefs,
+    target: { ref: string; name: string; tip: string } | null,
+  ): Promise<VcsRefs['branches']> {
     if (target === null) {
       return refs.branches;
     }
@@ -1363,6 +1372,44 @@ export class GitVersionControl {
       return Promise.resolve(fail('Invalid remote or tag name'));
     }
     return this.network(root, ['push', remote, '--delete', `refs/tags/${name}`]);
+  }
+
+  /**
+   * Deletes a branch on a remote (#887), spelled out as `refs/heads/<name>` so a tag of the same name
+   * cannot be deleted instead. Pushing the deletion removes the remote-tracking branch too.
+   *
+   * A branch the remote no longer has is the outcome asked for, not a failure: the host may have
+   * deleted it when its pull request merged, after the last fetch. Its stale remote-tracking branch is
+   * dropped so the panel stops offering it.
+   * @param root The repository root.
+   * @param remote The remote.
+   * @param name The branch name on the remote, without the remote.
+   * @returns Returns the outcome.
+   */
+  private async deleteRemoteBranch(root: string, remote: unknown, name: unknown): Promise<Outcome> {
+    if (
+      !isSafeOperand(remote) ||
+      !isSafeOperand(name) ||
+      remote.includes(':') ||
+      name.includes(':')
+    ) {
+      return fail('Invalid remote or branch name');
+    }
+    const run: GitRun = await this.git(
+      root,
+      await this.withSshCommand(root, ['push', remote, '--delete', `refs/heads/${name}`]),
+      GIT_NETWORK_TIMEOUT_MS,
+      GIT_NETWORK_ENV,
+    );
+    if (run.success) {
+      return ok(DONE);
+    }
+    if (/remote ref does not exist/i.test(run.stderr)) {
+      await this.git(root, ['update-ref', '-d', `refs/remotes/${remote}/${name}`]);
+      return ok(DONE);
+    }
+    debug('GitVersionControl', 'Network git push --delete failed');
+    return fail(networkFailureMessage(run));
   }
 
   /**

@@ -385,6 +385,8 @@ describe('GitVersionControl operations', () => {
       ['createTag', 'message', { name: 'x', commit: 'HEAD', message: '' }],
       ['deleteTag', 'name', { name: '-l' }],
       ['deleteRemoteTag', 'name', { remote: 'origin', name: 'x:y' }],
+      ['deleteRemoteBranch', 'name', { remote: 'origin', name: 'x:y' }],
+      ['deleteRemoteBranch', 'remote', { remote: '--mirror', name: 'x' }],
       ['pushTag', 'remote', { remote: '--mirror', name: 'x' }],
       ['pushAllTags', 'remote', { remote: '--mirror' }],
       ['fetchRemote', 'remote', { remote: '--all' }],
@@ -618,6 +620,39 @@ describe('GitVersionControl operations', () => {
       expect((await ask('deleteRemoteTag', { remote: 'origin', name: 'v1' })).ok).toBe(true);
       expect((await ask('deleteTag', { name: 'v1' })).ok).toBe(true);
       expect((await ask('deleteTag', { name: 'v1' })).ok).toBe(false);
+    });
+  });
+
+  describe('remote branches (#887)', () => {
+    it('deleteRemoteBranch_deletesTheBranchOnTheRemoteAndItsTrackingBranch', SLOW, async () => {
+      const bare: string = await remote();
+      await git(repo, 'push', 'origin', 'main:done');
+      await git(repo, 'fetch', 'origin');
+
+      expect((await ask('deleteRemoteBranch', { remote: 'origin', name: 'done' })).ok).toBe(true);
+      expect((await git(bare, 'branch', '--list', 'done')).trim()).toBe('');
+      expect((await git(repo, 'branch', '-r', '--list', 'origin/done')).trim()).toBe('');
+    });
+
+    it('deleteRemoteBranch_leavesATagOfTheSameNameAlone', SLOW, async () => {
+      const bare: string = await remote();
+      await git(repo, 'tag', 'done');
+      await git(repo, 'push', 'origin', 'tag', 'done');
+      await git(repo, 'push', 'origin', 'main:done');
+
+      expect((await ask('deleteRemoteBranch', { remote: 'origin', name: 'done' })).ok).toBe(true);
+      expect((await git(bare, 'tag', '--list', 'done')).trim()).toBe('done');
+    });
+
+    it('deleteRemoteBranch_countsABranchTheRemoteNoLongerHasAsDeleted', SLOW, async () => {
+      const bare: string = await remote();
+      await git(repo, 'push', 'origin', 'main:gone');
+      await git(repo, 'fetch', 'origin');
+      // Deleted on the host, as when a pull request merges, and not fetched since.
+      await git(bare, 'branch', '-D', 'gone');
+
+      expect((await ask('deleteRemoteBranch', { remote: 'origin', name: 'gone' })).ok).toBe(true);
+      expect((await git(repo, 'branch', '-r', '--list', 'origin/gone')).trim()).toBe('');
     });
   });
 
