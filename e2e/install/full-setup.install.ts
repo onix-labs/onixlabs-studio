@@ -310,7 +310,9 @@ async function installCatalogue(
         name,
         step,
         outcome: 'skipped',
-        reason: `Not offered for this platform: ${plugin.detail ?? 'no build for it'}`,
+        // `detail` is the plugin's own note (what it needs once installed), not why it is
+        // unavailable; unavailable means only that the index pins no build for this platform.
+        reason: `Not offered on ${process.platform}-${process.arch}: the plugin index pins no build for it.`,
         seconds: 0,
       });
       continue;
@@ -380,6 +382,15 @@ async function walkWizard(
   app: ElectronApplication,
   report: GateReport,
 ): Promise<{ wizard: Page; summary: readonly SummaryRow[] }> {
+  // A first launch does more before its first window than any later one — the login shell's
+  // environment is captured with nothing remembered, the profile is created — and a shared runner is
+  // slower than a desk, so the wizard is given longer to appear than Playwright's 30 seconds.
+  await expect
+    .poll((): boolean => app.windows().some(isModalWindow), {
+      message: 'the setup wizard to open',
+      timeout: 180_000,
+    })
+    .toBe(true);
   const wizard: Page = await modalWindow(app);
   await expect(wizard.locator('.setup')).toBeVisible({ timeout: 120_000 });
   const main: Page = await mainWindow(app);
