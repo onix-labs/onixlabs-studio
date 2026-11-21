@@ -53,6 +53,7 @@ import { AgentPerf } from '@shared/angular/services/agent-perf/agent-perf';
 import { Settings } from '@shared/angular/services/settings/settings';
 import type { SendMessageWith } from '@shared/angular/services/settings/settings-registry';
 import { formatElapsed } from '@shared/angular/services/time/time-format';
+import { isComposing } from '@shared/angular/services/keybindings/is-composing';
 
 /**
  * Holds the bytes in a megabyte, for the Size per Image setting.
@@ -1495,6 +1496,11 @@ export class AgentComposer {
    * @param event The keyboard event.
    */
   public onKeydown(event: KeyboardEvent): void {
+    // While an input method composes (typing Chinese), Enter picks a candidate and Escape abandons
+    // it: neither sends, accepts a suggestion or cancels an edit.
+    if (isComposing(event)) {
+      return;
+    }
     // The suggestion popup owns the navigation keys while it is open.
     const options: readonly ComposerSuggestion[] = this.suggestions();
     if (options.length > 0) {

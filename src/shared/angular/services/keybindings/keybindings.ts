@@ -7,6 +7,7 @@ import {
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Studio } from '@shared/angular/services/studio/studio';
 import { Log } from '@shared/angular/services/log/log';
+import { isComposing } from './is-composing';
 
 /**
  * Defines a single keyboard accelerator registration: the catalogued command identifier and the
@@ -751,9 +752,14 @@ export class Keybindings {
    * chord on its own. Public so the Keyboard settings section's chord-capture input reads exactly the
    * chord dispatch would match.
    * @param event The keyboard event to read.
-   * @returns Returns the normalized chord, or null when the event is a lone modifier key.
+   * @returns Returns the normalized chord, or null when the event is a lone modifier key or part of an
+   * input method's composition.
    */
   public chordFromEvent(event: KeyboardEvent): string | null {
+    // A press an input method is composing with (typing Chinese) is the input method's, not a chord.
+    if (isComposing(event)) {
+      return null;
+    }
     const key: string = event.key;
     if (key === 'Control' || key === 'Meta' || key === 'Shift' || key === 'Alt') {
       return null;
