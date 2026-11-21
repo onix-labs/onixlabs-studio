@@ -23,7 +23,7 @@ import { argv, exit, stdout } from 'node:process';
 
 const FOLDER = 'src/shared/app/locale';
 const SOURCE = `${FOLDER}/messages.json`;
-const LANGUAGES = ['fr', 'es', 'de'];
+const LANGUAGES = ['fr', 'es', 'de', 'zh-Hans', 'ar'];
 
 /**
  * Reads a translation file.

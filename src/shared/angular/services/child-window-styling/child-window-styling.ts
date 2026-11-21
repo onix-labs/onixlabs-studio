@@ -5,9 +5,12 @@ import { OverlayScrollbars } from '@shared/angular/services/overlay-scrollbars/o
 
 /**
  * Holds the document-root attributes mirrored into child windows, so their stylesheets resolve the
- * same theme and rendering policy as the opener's.
+ * same theme and rendering policy as the opener's, and their text the same language and direction (a
+ * child opens on `about:blank`, which has neither).
  */
 const MIRRORED_ROOT_ATTRIBUTES: readonly string[] = [
+  'lang',
+  'dir',
   'data-theme-mode',
   'data-platform',
   'data-corners',
