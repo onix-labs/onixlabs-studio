@@ -243,7 +243,7 @@ export class LiveServerClient implements LiveServerEndpoint {
       const timer: NodeJS.Timeout = setTimeout((): void => {
         this.pending.delete(id);
         logger.warn('LiveServerClient', `'${this.id}' did not answer ${op} (${id}) in time`);
-        resolve({ id, ok: false, error: `${this.id} did not answer in time.` });
+        resolve({ id, ok: false, error: `${this.id} did not answer in time.`, timedOut: true });
       }, timeoutMs);
       timer.unref?.();
       this.pending.set(id, {

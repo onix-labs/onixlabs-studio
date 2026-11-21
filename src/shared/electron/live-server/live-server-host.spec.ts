@@ -37,6 +37,8 @@ class FakeEndpoint implements LiveServerEndpoint {
   public disposed: boolean = false;
   public serveAnswer: unknown = { serverId: 's1', port: 5501 };
   public startsOk: boolean = true;
+  public serveGate: Promise<void> | null = null;
+  public serveTimesOut: boolean = false;
   private live: boolean = false;
 
   public constructor(public readonly onExited: () => void) {}
@@ -51,13 +53,19 @@ class FakeEndpoint implements LiveServerEndpoint {
     return Promise.resolve(this.startsOk ? { protocol: '1.0' } : null);
   }
 
-  public request<Op extends LiveServerOp>(
+  public async request<Op extends LiveServerOp>(
     op: Op,
     params: LiveServerParams<Op>,
   ): Promise<LiveServerResponse<Op>> {
     this.sent.push({ op, params });
+    if (op === 'serve') {
+      await this.serveGate;
+      if (this.serveTimesOut) {
+        return { id: 1, ok: false, error: 'live-server did not answer in time.', timedOut: true };
+      }
+    }
     const result: unknown = op === 'serve' ? this.serveAnswer : {};
-    return Promise.resolve({ id: 1, ok: true, result } as LiveServerResponse<Op>);
+    return { id: 1, ok: true, result } as LiveServerResponse<Op>;
   }
 
   public dispose(): void {
@@ -101,6 +109,8 @@ describe('LiveServerHost (#1062)', () => {
   let descriptors: LiveServerDescriptor[];
   let links: Map<string, string>;
   let serveAnswer: unknown;
+  let roots: FakeRoots;
+  let serveGate: Promise<void> | null;
   let host: LiveServerHost;
 
   /**
@@ -124,9 +134,11 @@ describe('LiveServerHost (#1062)', () => {
     links = new Map<string, string>();
     serveAnswer = { serverId: 's1', port: 5501 };
     descriptors = [installed('live-server')];
+    roots = new FakeRoots([ROOT]);
+    serveGate = null;
     host = new LiveServerHost({
       descriptors: (): readonly LiveServerDescriptor[] => descriptors,
-      roots: new FakeRoots([ROOT]),
+      roots,
       onChanged: (servers: readonly LiveServerInfo[]): void => {
         announced.push(servers);
       },
@@ -139,6 +151,7 @@ describe('LiveServerHost (#1062)', () => {
       ): LiveServerEndpoint => {
         const endpoint: FakeEndpoint = new FakeEndpoint(onExited);
         endpoint.serveAnswer = serveAnswer;
+        endpoint.serveGate = serveGate;
         endpoints.push(endpoint);
         return endpoint;
       },
@@ -281,6 +294,39 @@ describe('LiveServerHost (#1062)', () => {
 
     expect(host.list()).toEqual([]);
     expect(endpoints[0].sent.at(-1)?.op).toBe('stop');
+  });
+
+  it('stops_aServerWhoseWorkspaceClosedWhileItStarted', async () => {
+    let release: () => void = (): void => undefined;
+    serveGate = new Promise<void>((resolve: () => void): void => {
+      release = resolve;
+    });
+    const opening: Promise<LiveServerOpenAnswer> = host.open(path.join(ROOT, 'index.html'));
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 0);
+    });
+    expect(endpoints[0].sent.at(-1)?.op).toBe('serve');
+    roots.roots.splice(0);
+    host.stopWithin(ROOT);
+    release();
+
+    const answer: LiveServerOpenAnswer = await opening;
+
+    expect(answer.ok).toBe(false);
+    expect(host.list()).toEqual([]);
+    expect(endpoints[0].sent.at(-1)).toEqual({ op: 'stop', params: { serverId: 's1' } });
+  });
+
+  it('restarts_thePlugin_whenServeTimesOut_soALateServerCannotLinger', async () => {
+    await host.open(path.join(ROOT, 'index.html'));
+    await host.stop(ROOT);
+    endpoints[0].serveTimesOut = true;
+
+    const answer: LiveServerOpenAnswer = await host.open(path.join(ROOT, 'index.html'));
+
+    expect(answer.ok).toBe(false);
+    expect(endpoints[0].disposed).toBe(true);
+    expect(host.list()).toEqual([]);
   });
 
   it('forgets_itsServers_whenThePluginExits', async () => {

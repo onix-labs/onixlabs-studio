@@ -393,12 +393,27 @@ export class LiveServerHost {
       REQUEST_TIMEOUT_MS,
     );
     if (!response.ok) {
+      if (response.timedOut === true) {
+        // The plugin may still finish starting a server nobody is waiting for, which no stop could
+        // name. Stopping its process is the only way to be sure that port is freed.
+        logger.warn(
+          'LiveServerHost',
+          `'${plugin.descriptor.id}' did not answer serve; restarting it`,
+        );
+        this.restartPlugin(plugin.descriptor.id);
+      }
       return response.error;
     }
     const serving: LiveServerServing | null = readServing(response.result);
     if (serving === null) {
       logger.warn('LiveServerHost', `'${plugin.descriptor.id}' answered serve with no server`);
       return `${plugin.descriptor.displayName} did not say where it is serving.`;
+    }
+    if (!this.options.roots.isRoot(page.root)) {
+      // The workspace closed while its server was starting, after stopWithin had looked.
+      logger.info('LiveServerHost', `${page.root} closed while its server started; stopping it`);
+      await plugin.client.request('stop', { serverId: serving.serverId }, REQUEST_TIMEOUT_MS);
+      return 'The workspace closed before its server started.';
     }
     const server: RunningServer = {
       root: page.root,

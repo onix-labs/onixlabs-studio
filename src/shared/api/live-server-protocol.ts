@@ -169,6 +169,12 @@ export type LiveServerResponse<Op extends LiveServerOp = LiveServerOp> =
        * Gets the reason, in the user's terms.
        */
       readonly error: string;
+
+      /**
+       * Gets whether Studio stopped waiting rather than the plugin answering: what was asked may still
+       * happen after the caller has given up on it. Set by Studio's client, never by a plugin.
+       */
+      readonly timedOut?: boolean;
     };
 
 /**
