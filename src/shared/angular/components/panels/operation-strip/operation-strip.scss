@@ -51,17 +51,23 @@
 }
 
 .operation-strip__title {
+  flex: 0 1 auto;
   min-inline-size: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   font-weight: 600;
 }
 
-// The count stays whole while the title gives way first: it is the line the user watches change.
+// The count gives way before the title does: in a narrow Commit panel what is being merged into what is
+// the line that cannot be read anywhere else, while the count is on the Conflicted Files group too. The
+// whole of both is the text's tooltip.
 .operation-strip__progress {
-  flex: none;
+  flex: 0 1000 auto;
+  min-inline-size: 0;
+  overflow: hidden;
   opacity: 0.85;
   font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
 }
 
 .operation-strip__actions {

@@ -58,6 +58,9 @@ const SIDE_OPTIONS: MonacoApi.editor.IEditorOptions = {
   folding: false,
   renderLineHighlight: 'none',
   contextmenu: false,
+  // A pane a third of the well wide has no room for the scope lines stuck over its top, and they would
+  // hide the very lines being lined up with the file below.
+  stickyScroll: { enabled: false },
 };
 
 /**

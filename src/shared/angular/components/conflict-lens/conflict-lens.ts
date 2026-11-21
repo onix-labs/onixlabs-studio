@@ -460,6 +460,11 @@ export class ConflictLens {
   ): HTMLElement {
     const row: HTMLElement = document.createElement('div');
     row.className = 'conflict-lens';
+    // Monaco captures the pointer on a press anywhere in the editor, so the release — and with it the
+    // click — would land on its text layer, not the button pressed. A press on a row is the row's own.
+    for (const type of ['pointerdown', 'mousedown'] as const) {
+      row.addEventListener(type, (event: Event): void => event.stopPropagation());
+    }
     if (text !== null) {
       const sentence: HTMLElement = document.createElement('span');
       sentence.className = 'conflict-lens__text';

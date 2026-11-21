@@ -26,6 +26,9 @@
 // A row sits in the content area, so it lines up with the code beneath it. Quiet, like the rest of the
 // editor's chrome: muted text, the actions underlined only on hover.
 .conflict-lens {
+  // Monaco lays its text layer over the view zones, so without this the text layer takes every click
+  // aimed at a row and its buttons never hear one. The zone is positioned by Monaco; this lifts it.
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 0.35rem;

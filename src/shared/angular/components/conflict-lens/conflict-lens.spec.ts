@@ -351,6 +351,26 @@ describe('ConflictLens', () => {
     expect(compared).toEqual([1]);
   });
 
+  it('keepsAPressOnARow_fromTheEditor_soTheClickLandsOnTheButton', () => {
+    // Monaco captures the pointer on any press it hears, which sends the release, and the click, to
+    // its text layer instead of the button.
+    const editor: FakeEditor = new FakeEditor(FILE);
+    lens = new ConflictLens(editor.asEditor(), hostOf(MERGE).host);
+    const row: HTMLElement = [...editor.zones.values()][0].domNode;
+    const outside: HTMLElement = document.createElement('div');
+    outside.append(row);
+    const heard: string[] = [];
+    for (const type of ['pointerdown', 'mousedown']) {
+      outside.addEventListener(type, (): void => void heard.push(type));
+    }
+
+    for (const type of ['pointerdown', 'mousedown']) {
+      row.querySelector('button')?.dispatchEvent(new Event(type, { bubbles: true }));
+    }
+
+    expect(heard).toEqual([]);
+  });
+
   it('highlightsTheSectionsByWhoseTheyAre_andFlipsThemInARebase', () => {
     const merge: FakeEditor = new FakeEditor(FILE);
     const rebase: FakeEditor = new FakeEditor(FILE);
