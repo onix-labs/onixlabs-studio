@@ -39,7 +39,7 @@ class HandWatcher extends EventEmitter {
 function ask(
   port: number,
   target: string,
-  options: { readonly method?: string; readonly host?: string } = {},
+  options: { readonly method?: string; readonly host?: string; readonly fetchSite?: string } = {},
 ): Promise<Answer> {
   return new Promise<Answer>((resolve, reject) => {
     const request: http.ClientRequest = http.request(
@@ -48,7 +48,10 @@ function ask(
         port,
         path: target,
         method: options.method ?? 'GET',
-        headers: { Host: options.host ?? `${LOOPBACK}:${port}` },
+        headers: {
+          Host: options.host ?? `${LOOPBACK}:${port}`,
+          ...(options.fetchSite === undefined ? {} : { 'Sec-Fetch-Site': options.fetchSite }),
+        },
       },
       (response: http.IncomingMessage) => {
         let body: string = '';
@@ -198,6 +201,20 @@ describe('LiveSite (#1062)', () => {
 
     expect(answer.status).toBe(403);
   });
+
+  it('refuses_aRequestFromAnotherSite', async () => {
+    const answer: Answer = await ask(site.port, '/site.css', { fetchSite: 'cross-site' });
+
+    expect(answer.status).toBe(403);
+    expect(answer.body).not.toContain('color');
+  });
+
+  it.each<string>(['same-origin', 'same-site', 'none'])(
+    'serves_aRequestWhoseFetchSiteIs %s',
+    async (fetchSite: string) => {
+      expect((await ask(site.port, '/site.css', { fetchSite })).status).toBe(200);
+    },
+  );
 
   it('answers_onlyGetAndHead', async () => {
     const post: Answer = await ask(site.port, '/', { method: 'POST' });

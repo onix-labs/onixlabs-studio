@@ -286,6 +286,13 @@ export class LiveSite {
         this.fail(response, 403, 'Forbidden');
         return;
       }
+      if (request.headers['sec-fetch-site'] === 'cross-site') {
+        // Another site's page pulling this folder's files in, as a script tag would. The browser
+        // says so; a request from the site itself, typed in, or from a tool that sends no such
+        // header is served.
+        this.fail(response, 403, 'Forbidden');
+        return;
+      }
       if (request.method !== 'GET' && request.method !== 'HEAD') {
         response.setHeader('Allow', 'GET, HEAD');
         this.fail(response, 405, 'Method Not Allowed');
