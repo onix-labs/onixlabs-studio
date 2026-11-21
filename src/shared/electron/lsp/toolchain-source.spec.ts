@@ -2,7 +2,15 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { GoFolders, goSourcePath, ToolchainFolders, toolchainSourcePath } from './toolchain-source';
+import {
+  GoEnvAnswer,
+  GoEnvReader,
+  GoFolders,
+  goSourcePath,
+  resolveGoFolders,
+  ToolchainFolders,
+  toolchainSourcePath,
+} from './toolchain-source';
 
 describe('toolchainSourcePath (#1210)', () => {
   let sandbox: string;
@@ -123,7 +131,7 @@ describe('goSourcePath (#1211)', () => {
     sandbox = realpathSync(mkdtempSync(path.join(tmpdir(), 'studio-go-source-')));
     folders = { roots: [path.join(sandbox, 'goroot')], modules: path.join(sandbox, 'mod') };
     mkdirSync(path.join(sandbox, 'goroot'));
-    mkdirSync(folders.modules);
+    mkdirSync(path.join(sandbox, 'mod'));
   });
 
   afterEach(() => {
@@ -168,9 +176,61 @@ describe('goSourcePath (#1211)', () => {
     ).resolves.toBeNull();
   });
 
+  it('refuses everything below the working folder when the module cache is not known', async () => {
+    const target: string = file('mod/a@v1/a.go');
+
+    await expect(goSourcePath(target, { roots: [], modules: null })).resolves.toBeNull();
+    // An empty folder setting must never stand for the working folder (`/` when packaged).
+    await expect(goSourcePath(target, { roots: [''], modules: '' })).resolves.toBeNull();
+  });
+
   it('refuses what is not a path to a Go file that exists', async () => {
     await expect(goSourcePath(undefined, folders)).resolves.toBeNull();
     await expect(goSourcePath('relative/a.go', folders)).resolves.toBeNull();
     await expect(goSourcePath(path.join(sandbox, 'mod/none.go'), folders)).resolves.toBeNull();
+  });
+});
+
+describe('resolveGoFolders (#1211)', () => {
+  /**
+   * Builds a reader answering as `go env -json GOROOT GOMODCACHE` would, or as no Go at all.
+   * @param answer The answer, or null for none.
+   * @returns Returns the reader.
+   */
+  function goEnv(answer: GoEnvAnswer | null): GoEnvReader {
+    return (): Promise<GoEnvAnswer | null> => Promise.resolve(answer);
+  }
+
+  it('takesWhatGoEnvSays', async () => {
+    await expect(
+      resolveGoFolders(
+        { GOROOT: '/elsewhere/go', GOMODCACHE: '/elsewhere/mod' },
+        goEnv({ GOROOT: '/usr/local/go', GOMODCACHE: '/home/me/go/pkg/mod' }),
+        '/home/me',
+      ),
+    ).resolves.toEqual({
+      roots: ['/usr/local/go', '/elsewhere/go'],
+      modules: '/home/me/go/pkg/mod',
+    });
+  });
+
+  it('fallsBackToTheEnvironment_thenToGosOwnDefault_whenNoGoAnswers', async () => {
+    await expect(
+      resolveGoFolders({ GOROOT: '/opt/go', GOPATH: '/work/go:/other' }, goEnv(null), '/home/me'),
+    ).resolves.toEqual({ roots: ['/opt/go'], modules: '/work/go/pkg/mod' });
+    await expect(resolveGoFolders({}, goEnv(null), '/home/me')).resolves.toEqual({
+      roots: [],
+      modules: '/home/me/go/pkg/mod',
+    });
+  });
+
+  it('treatsAnEmptyOrRelativeSettingAsUnset', async () => {
+    await expect(
+      resolveGoFolders(
+        { GOROOT: '', GOMODCACHE: '', GOPATH: '' },
+        goEnv({ GOROOT: 'go', GOMODCACHE: '' }),
+        '/home/me',
+      ),
+    ).resolves.toEqual({ roots: [], modules: '/home/me/go/pkg/mod' });
   });
 });

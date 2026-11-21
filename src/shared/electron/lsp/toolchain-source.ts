@@ -1,7 +1,23 @@
 import * as fs from 'node:fs/promises';
 import { homedir } from 'node:os';
 import * as path from 'node:path';
+import { promisify } from 'node:util';
+import { Launcher, launchStudioOwned } from '../process/launch';
 import { metadataAsSourcePath } from './metadata-as-source';
+
+/**
+ * Starts the `go env` that says where Go keeps its files, as a process Studio owns.
+ */
+const launch: Launcher = launchStudioOwned('server-provisioning');
+
+/**
+ * Runs a program and resolves with what it printed.
+ */
+const execFileAsync: (
+  file: string,
+  args: readonly string[],
+  options?: { timeout?: number },
+) => Promise<{ stdout: string; stderr: string }> = promisify(launch.execFile);
 
 /**
  * Where the Rust toolchain keeps source a language server answers Go to Definition with (#1210).
@@ -36,6 +52,10 @@ function toolchainFolders(): ToolchainFolders {
  * @returns Returns the parts, or null.
  */
 async function partsBelow(folder: string, real: string): Promise<readonly string[] | null> {
+  // An empty or relative folder would resolve against the working folder, `/` when packaged.
+  if (!path.isAbsolute(folder)) {
+    return null;
+  }
   let root: string;
   try {
     root = await fs.realpath(folder);
@@ -104,50 +124,123 @@ export interface GoFolders {
   readonly roots: readonly string[];
 
   /**
-   * Gets the module cache, where the dependencies Go downloaded are unpacked (`GOMODCACHE`).
+   * Gets the module cache, where the dependencies Go downloaded are unpacked (`GOMODCACHE`), or null
+   * when it is not known.
    */
-  readonly modules: string;
+  readonly modules: string | null;
 }
 
 /**
- * Gets Go's folders as gopls sees them: it inherits Studio's environment, and runs the Go that Studio
- * finds — `GOROOT`'s, or one in the places the provisioner looks — whose installation is the folder
- * two above the real executable (Homebrew's `/usr/local/bin/go` is a link into its own `libexec`).
- * @returns Returns the folders.
+ * What `go env` says of where Go keeps its files, or null when no Go answered.
  */
-async function goFolders(): Promise<GoFolders> {
+export interface GoEnvAnswer {
+  /**
+   * Gets the installation (`GOROOT`), as Go reported it.
+   */
+  readonly GOROOT?: unknown;
+
+  /**
+   * Gets the module cache (`GOMODCACHE`), as Go reported it.
+   */
+  readonly GOMODCACHE?: unknown;
+}
+
+/**
+ * Asks a Go for its folders.
+ */
+export type GoEnvReader = () => Promise<GoEnvAnswer | null>;
+
+/**
+ * Holds how long `go env` is given to answer before the environment is used instead.
+ */
+const GO_ENV_TIMEOUT_MS: number = 5000;
+
+/**
+ * Holds the folders once found: Go's installation and module cache do not move while Studio runs.
+ */
+let cachedGoFolders: Promise<GoFolders> | null = null;
+
+/**
+ * Reads a setting that names a folder: an absolute path, or nothing. An empty or relative value is
+ * treated as unset, as a folder resolved from one would be the process's own working folder (`/` when
+ * packaged), and everything below it would pass for Go's source.
+ * @param value The value.
+ * @returns Returns the folder, or null.
+ */
+function folderOf(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() !== '' && path.isAbsolute(value) ? value : null;
+}
+
+/**
+ * Asks the Go Studio would run for its installation and module cache, with `go env`: `GOROOT`'s, the
+ * one on the PATH, then the places the provisioner looks, the first that answers in time.
+ * @returns Returns its answer, or null when none answered.
+ */
+async function readGoEnv(): Promise<GoEnvAnswer | null> {
   const executable: string = process.platform === 'win32' ? 'go.exe' : 'go';
-  const candidates: string[] = [
-    ...(process.env['PATH'] ?? '')
-      .split(path.delimiter)
-      .filter((folder: string): boolean => folder !== '')
-      .map((folder: string): string => path.join(folder, executable)),
+  const goRoot: string | null = folderOf(process.env['GOROOT']);
+  const candidates: readonly string[] = [
+    ...(goRoot === null ? [] : [path.join(goRoot, 'bin', executable)]),
+    executable,
     ...(process.platform === 'win32'
       ? [path.join(process.env['ProgramFiles'] ?? 'C:\\Program Files', 'Go', 'bin', executable)]
       : ['/usr/local/go/bin/go', '/opt/homebrew/bin/go', '/usr/local/bin/go']),
   ];
-  const found: readonly (string | null)[] = await Promise.all(
-    candidates.map(async (candidate: string): Promise<string | null> => {
-      try {
-        return path.dirname(path.dirname(await fs.realpath(candidate)));
-      } catch {
-        return null;
+  for (const candidate of candidates) {
+    try {
+      const { stdout }: { stdout: string } = await execFileAsync(
+        candidate,
+        ['env', '-json', 'GOROOT', 'GOMODCACHE'],
+        { timeout: GO_ENV_TIMEOUT_MS },
+      );
+      const answer: unknown = JSON.parse(stdout);
+      if (typeof answer === 'object' && answer !== null) {
+        return answer;
       }
-    }),
+    } catch {
+      // Not this one: try the next.
+    }
+  }
+  return null;
+}
+
+/**
+ * Works out Go's folders (#1211): what `go env` says, and failing that the environment — `GOROOT`;
+ * `GOMODCACHE`, else the first `GOPATH` entry's `pkg/mod`, else `~/go/pkg/mod`, as Go defaults it.
+ * Only absolute paths are taken, an empty or relative setting counting as unset.
+ * @param env The environment.
+ * @param readEnv Asks a Go for its folders.
+ * @param home The home folder.
+ * @returns Returns the folders.
+ */
+export async function resolveGoFolders(
+  env: Readonly<Record<string, string | undefined>>,
+  readEnv: GoEnvReader,
+  home: string = homedir(),
+): Promise<GoFolders> {
+  const answer: GoEnvAnswer | null = await readEnv();
+  const roots: readonly string[] = [folderOf(answer?.GOROOT), folderOf(env['GOROOT'])].filter(
+    (root: string | null): root is string => root !== null,
   );
-  const goRoot: string | undefined = process.env['GOROOT'];
-  const roots: string[] = [
-    ...(goRoot !== undefined && goRoot !== '' ? [goRoot] : []),
-    ...found.filter((root: string | null): root is string => root !== null),
-  ];
-  const goPath: string | undefined = process.env['GOPATH']
-    ?.split(path.delimiter)
-    .find((folder: string): boolean => folder !== '');
-  return {
-    roots: [...new Set<string>(roots)],
-    modules:
-      process.env['GOMODCACHE'] ?? path.join(goPath ?? path.join(homedir(), 'go'), 'pkg', 'mod'),
-  };
+  const goPath: string | null =
+    (env['GOPATH'] ?? '')
+      .split(path.delimiter)
+      .map(folderOf)
+      .find((folder: string | null): folder is string => folder !== null) ?? null;
+  const modules: string | null =
+    folderOf(answer?.GOMODCACHE) ??
+    folderOf(env['GOMODCACHE']) ??
+    folderOf(path.join(goPath ?? path.join(home, 'go'), 'pkg', 'mod'));
+  return { roots: [...new Set<string>(roots)], modules };
+}
+
+/**
+ * Gets Go's folders, found once.
+ * @returns Returns the folders.
+ */
+function goFolders(): Promise<GoFolders> {
+  cachedGoFolders ??= resolveGoFolders(process.env, readGoEnv);
+  return cachedGoFolders;
 }
 
 /**
@@ -180,7 +273,8 @@ export async function goSourcePath(filePath: unknown, folders?: GoFolders): Prom
     return null;
   }
   const where: GoFolders = folders ?? (await goFolders());
-  const modules: readonly string[] | null = await partsBelow(where.modules, real);
+  const modules: readonly string[] | null =
+    where.modules === null ? null : await partsBelow(where.modules, real);
   if (modules !== null && modules[0] !== 'cache') {
     return real;
   }
