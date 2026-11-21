@@ -1187,7 +1187,91 @@
             "command": {
               "kind": "executable",
               "args": ["lsp", "stdio"]
-            }
+            },
+            "settings": [
+              {
+                "section": "evenBetterToml.schema.enabled",
+                "label": "Schema Validation",
+                "description": "Check documents against the JSON schema they are bound to, by a #:schema line or a .taplo.toml rule, and complete keys and values from it. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true
+              },
+              {
+                "section": "evenBetterToml.schema.links",
+                "label": "Schema Links",
+                "description": "Make keys into links to the documentation their schema names. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": false,
+                "startupOnly": true
+              },
+              {
+                "section": "evenBetterToml.formatter.alignEntries",
+                "label": "Align Entries",
+                "description": "Line up the = of consecutive entries when formatting. A .taplo.toml in the workspace overrides this and the other formatting settings. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": false,
+                "startupOnly": true
+              },
+              {
+                "section": "evenBetterToml.formatter.alignComments",
+                "label": "Align Comments",
+                "description": "Line up comments that follow consecutive entries when formatting. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true
+              },
+              {
+                "section": "evenBetterToml.formatter.arrayTrailingComma",
+                "label": "Trailing Commas in Arrays",
+                "description": "End each item of an array laid over several lines with a comma when formatting. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true
+              },
+              {
+                "section": "evenBetterToml.formatter.reorderKeys",
+                "label": "Sort Keys",
+                "description": "Sort keys alphabetically when formatting, within each run of entries not broken by a blank line. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": false,
+                "startupOnly": true
+              },
+              {
+                "section": "evenBetterToml.formatter.arrayAutoExpand",
+                "label": "Expand Long Arrays",
+                "description": "Lay an array over several lines when formatting, once it no longer fits on one. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true,
+                "advanced": true
+              },
+              {
+                "section": "evenBetterToml.formatter.arrayAutoCollapse",
+                "label": "Collapse Short Arrays",
+                "description": "Put an array back on one line when formatting, if it fits. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true,
+                "advanced": true
+              },
+              {
+                "section": "evenBetterToml.formatter.indentTables",
+                "label": "Indent Subtables",
+                "description": "Indent a table that follows its parent, such as [a.b] after [a], when formatting. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": false,
+                "startupOnly": true,
+                "advanced": true
+              },
+              {
+                "section": "evenBetterToml.formatter.indentEntries",
+                "label": "Indent Entries",
+                "description": "Indent the entries under each table header when formatting. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": false,
+                "startupOnly": true,
+                "advanced": true
+              },
+              {
+                "section": "evenBetterToml.taplo.configFile.enabled",
+                "label": "Taplo Config File",
+                "description": "Read the workspace's .taplo.toml (or taplo.toml) for schema rules and formatting. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true,
+                "advanced": true
+              }
+            ]
           }
         ]
       }

@@ -255,41 +255,93 @@ describe('LspServerRegistry: clangd (#1213)', () => {
 describe('LspServerRegistry: taplo (#1206)', () => {
   /**
    * Builds a registry holding the curated taplo, answering from a stand-in executable.
-   * @returns Returns the registry.
+   * @returns Returns the registry, the descriptor, and a way to change the user's values as Settings would.
    */
-  function taplo(): InstanceType<typeof LspServerRegistry> {
+  function taplo(): {
+    readonly registry: InstanceType<typeof LspServerRegistry>;
+    readonly descriptor: LanguageServerDescriptor;
+    readonly settings: ReturnType<typeof userSettings>;
+  } {
     const entry: unknown = (CURATED.plugins as readonly { id: string }[]).find(
       (plugin: { id: string }): boolean => plugin.id === 'taplo',
     );
     const manifest: ReturnType<typeof parsePluginManifest>['manifest'] =
       parsePluginManifest(entry).manifest;
+    const descriptor: LanguageServerDescriptor = toLanguageServerDescriptors(manifest!)[0];
+    const settings: ReturnType<typeof userSettings> = userSettings({});
     // Any file that exists: the path override stands in for an install.
     const manager: LspSettingsManager = {
-      ...userSettings({}).manager,
       get: (): LspSettings => ({
-        ...userSettings({}).manager.get(),
+        ...settings.manager.get(),
         serverPaths: { taplo: process.execPath },
       }),
-    } as LspSettingsManager;
+      onChange: (listener: (previous: LspSettings, next: LspSettings) => void): void =>
+        settings.manager.onChange(listener),
+    } as unknown as LspSettingsManager;
     const registry: InstanceType<typeof LspServerRegistry> = new LspServerRegistry(
       '/electron',
       manager,
     );
-    for (const descriptor of toLanguageServerDescriptors(manifest!)) {
-      registry.register(descriptor);
-    }
-    return registry;
+    registry.register(descriptor);
+    return { registry, descriptor, settings };
   }
 
   it('startsTheNativeBinaryAsALanguageServer_withNoStdioFlagItWouldRefuse', async () => {
     // taplo's argument parser rejects an unknown leading flag, so it must not run as a `node` command,
     // which puts `--stdio` before the manifest's arguments; the npm build has no language server anyway.
     const spec: Awaited<ReturnType<InstanceType<typeof LspServerRegistry>['resolve']>>['spec'] = (
-      await taplo().resolve('taplo', '/w')
+      await taplo().registry.resolve('taplo', '/w')
     ).spec;
 
     expect(spec?.command).toBe(process.execPath);
     expect(spec?.args).toEqual(['lsp', 'stdio']);
+  });
+
+  it('answersBothOfItsEvenBetterTomlItems_withTheSectionsContentsNested', () => {
+    // taplo asks for `evenBetterToml` twice as it starts, unscoped and for the workspace folder, and
+    // merges each object answer over its defaults: the shape its `LspConfig` reads (#1206 probe).
+    const { registry, settings } = taplo();
+    settings.change({ taplo: { 'evenBetterToml.formatter.reorderKeys': true } });
+    const expected: unknown = {
+      schema: { enabled: true, links: false },
+      formatter: {
+        alignEntries: false,
+        alignComments: true,
+        arrayTrailingComma: true,
+        reorderKeys: true,
+        arrayAutoExpand: true,
+        arrayAutoCollapse: true,
+        indentTables: false,
+        indentEntries: false,
+      },
+      taplo: { configFile: { enabled: true } },
+    };
+
+    expect(
+      answerConfiguration(registry.configurationOf('taplo', '/w'), [
+        { section: 'evenBetterToml' },
+        { scopeUri: 'file:///w', section: 'evenBetterToml' },
+      ]),
+    ).toEqual([expected, expected]);
+  });
+
+  it('restartsOnEveryChange_asItNeverAsksAgainAndReadsAPushFlat', () => {
+    // taplo never asks again, and applies a pushed `settings` as the section's contents, where Studio
+    // pushes them nested under the section: a restart is the only way a change reaches it.
+    const { registry, descriptor, settings } = taplo();
+    const heard: (readonly LspSettingsChange[])[] = [];
+    registry.onConfigurationChange(
+      (changes: readonly LspSettingsChange[]): void => void heard.push(changes),
+    );
+
+    expect(descriptor.settingsDelivery?.push).toBeUndefined();
+    for (const setting of descriptor.settings ?? []) {
+      expect(setting.startupOnly).toBe(true);
+      expect(setting.description).toContain('restarts');
+    }
+    settings.change({ taplo: { 'evenBetterToml.schema.links': true } });
+
+    expect(heard).toEqual([[{ serverId: 'taplo', restart: true }]]);
   });
 });
 
