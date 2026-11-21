@@ -18,7 +18,9 @@ import {
 } from '@shared/angular/services/monaco/monaco-editor-capabilities';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { basename } from '@shared/angular/services/lsp/lsp-paths';
 import {
+  EntryMove,
   FILE_OPERATION_REFUSED,
   FileTextEdits,
   SkippedEdit,
@@ -161,10 +163,19 @@ export class RenameSymbol {
       });
       return;
     }
-    if (edits.files.length > 1 && this.settings.get('textEditor.confirmMultiFileRename')) {
+    // Renaming a Go package renames its folder too (#1211): said in the question, and asked even when
+    // one file changes, as a folder moving under the user is never a small thing.
+    const moves: readonly EntryMove[] = edits.moves ?? [];
+    if (
+      (edits.files.length > 1 || moves.length > 0) &&
+      this.settings.get('textEditor.confirmMultiFileRename')
+    ) {
       const confirmed: boolean = await this.confirmation.ask({
         oldName: prepared.placeholder,
         newName,
+        ...(moves.length === 0
+          ? {}
+          : { title: moveQuestion(prepared.placeholder, newName, moves) }),
         files: confirmationFiles(edits.files, monaco, this.editors),
       });
       if (!confirmed) {
@@ -354,4 +365,25 @@ function isReadOnly(
     return editor.getOption(monaco.editor.EditorOption.readOnly);
   }
   return editor.getRawOptions().readOnly === true;
+}
+
+/**
+ * Builds the question a rename that renames folders asks (#1211): a Go package renamed, and its folder
+ * with it.
+ * @param oldName The symbol's name.
+ * @param newName Its new name.
+ * @param moves The folders and files it renames.
+ * @returns Returns the question.
+ */
+export function moveQuestion(
+  oldName: string,
+  newName: string,
+  moves: readonly EntryMove[],
+): string {
+  const [first]: readonly EntryMove[] = moves;
+  const also: string =
+    moves.length === 1
+      ? `the folder ${basename(first.from)} to ${basename(first.to)}`
+      : `${moves.length} files and folders`;
+  return `Rename ${oldName} to ${newName}, and ${also}?`;
 }

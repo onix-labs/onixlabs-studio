@@ -1,13 +1,20 @@
 import { TestBed } from '@angular/core/testing';
 import type * as MonacoApi from 'monaco-editor';
 import type { TextEditsRequest, TextEditsResponse } from '@shared/api/search-channels';
-import type { FileOperationResult } from '@shared/api/workspace-channels';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Search } from '@shared/angular/services/search/search';
-import { Workspace } from '@shared/angular/services/workspace/workspace';
+import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 import { TextEditEntry, WorkspaceEditOutcome } from './workspace-edit';
 import { WorkspaceEditApplier } from './workspace-edit-applier';
+
+/**
+ * What a workspace's rename answers: the new path, or why it failed.
+ */
+interface RenameAnswer {
+  readonly path: string | null;
+  readonly error: string | null;
+}
 
 /**
  * A fake model recording the undo stops and edit operations pushed onto it.
@@ -266,25 +273,30 @@ describe('WorkspaceEditApplier (#1015)', () => {
 
   describe('renaming a folder in place (#1211)', () => {
     let renames: string[];
-    let renamed: (path: string, name: string) => FileOperationResult;
+    let renamed: (path: string, name: string) => RenameAnswer;
+    let root: string | null;
 
     beforeEach(() => {
       renames = [];
-      renamed = (path: string, name: string): FileOperationResult => ({
-        success: true,
+      root = '/w';
+      renamed = (path: string, name: string): RenameAnswer => ({
         path: `${path.slice(0, path.lastIndexOf('/') + 1)}${name}`,
+        error: null,
       });
-      TestBed.overrideProvider(Workspace, {
+      TestBed.overrideProvider(ActiveWorkspace, {
         useValue: {
-          rename: (path: string, name: string): Promise<FileOperationResult> => {
-            renames.push(`${path} -> ${name}`);
-            return Promise.resolve(renamed(path, name));
-          },
+          activeWell: (): unknown => ({
+            root,
+            rename: (path: string, name: string): Promise<RenameAnswer> => {
+              renames.push(`${path} -> ${name}`);
+              return Promise.resolve(renamed(path, name));
+            },
+          }),
         },
       });
     });
 
-    it('renamesTheFolderAfterItsEdits_andNamesTheEditedFilesByTheirNewPaths', async () => {
+    it('renamesTheFolderAfterItsEdits_inTheWorkspaceInFront_namingTheEditedFilesByTheirNewPaths', async () => {
       const open: FakeModel = fakeModel('inmemory://model/1');
       models.push(open.model);
       TestBed.inject(Editors).register('inmemory://model/1', {
@@ -311,14 +323,13 @@ describe('WorkspaceEditApplier (#1015)', () => {
         applied: [
           { path: '/w/salute/greet.go', edits: 1, where: 'editor' },
           { path: '/w/cmd/app/main.go', edits: 1, where: 'disk' },
-          { path: '/w/salute', edits: 0, where: 'disk' },
         ],
         skipped: [],
       });
     });
 
     it('namesAFolderThatCouldNotBeRenamed', async () => {
-      renamed = (): FileOperationResult => ({ success: false, error: 'salute already exists.' });
+      renamed = (): RenameAnswer => ({ path: null, error: 'salute already exists.' });
 
       const outcome: WorkspaceEditOutcome = await TestBed.inject(WorkspaceEditApplier).apply({
         files: [],
@@ -330,6 +341,24 @@ describe('WorkspaceEditApplier (#1015)', () => {
         applied: [],
         skipped: [{ path: '/w/greet', reason: 'salute already exists.' }],
       });
+    });
+
+    it('leavesAFolderOutsideTheWorkspaceInFront_whereItIs', async () => {
+      root = '/elsewhere';
+
+      const outcome: WorkspaceEditOutcome = await TestBed.inject(WorkspaceEditApplier).apply({
+        files: [],
+        refused: [],
+        moves: [{ from: '/w/greet', to: '/w/salute' }],
+      });
+
+      expect(renames).toEqual([]);
+      expect(outcome.skipped).toEqual([
+        {
+          path: '/w/greet',
+          reason: "It isn't in the workspace in front, so it was left where it is.",
+        },
+      ]);
     });
   });
 });

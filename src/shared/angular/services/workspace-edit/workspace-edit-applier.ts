@@ -6,12 +6,14 @@ import type {
   TextEditsResponse,
   WrittenFile,
 } from '@shared/api/search-channels';
-import type { FileOperationResult } from '@shared/api/workspace-channels';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Log } from '@shared/angular/services/log/log';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Search } from '@shared/angular/services/search/search';
-import { Workspace } from '@shared/angular/services/workspace/workspace';
+import {
+  ActiveWorkspace,
+  type WorkspaceWell,
+} from '@shared/angular/services/workspace/active-workspace';
 import {
   AppliedFile,
   EntryMove,
@@ -56,8 +58,8 @@ export class WorkspaceEditApplier {
   private readonly log: Log = inject(Log);
 
   /**
-   * Holds the injector the workspace is resolved from when an edit renames a file or folder: few edits
-   * do, and the workspace is not needed by the rest.
+   * Holds the injector the workspace in front is resolved from when an edit renames a file or folder:
+   * few edits do, and it is not needed by the rest.
    */
   private readonly injector: Injector = inject(Injector);
 
@@ -118,14 +120,14 @@ export class WorkspaceEditApplier {
       }
       skipped.push(...response.failed.map(toSkipped));
     }
-    // Last, as the server ordered them: its edits are to the paths as they stood before.
+    // Last, as the server ordered them: its edits are to the paths as they stood before. The documents
+    // changed keep being named, by their new paths; the folder itself is not a document.
     for (const move of edit.moves ?? []) {
       const moved: string | null = await this.move(move, skipped);
       if (moved !== null) {
         for (const [index, file] of applied.entries()) {
           applied[index] = { ...file, path: followMove(file.path, move.from, moved) };
         }
-        applied.push({ path: moved, edits: 0, where: 'disk' });
       }
     }
     this.log.info(
@@ -137,21 +139,27 @@ export class WorkspaceEditApplier {
   }
 
   /**
-   * Renames a file or folder within its own folder as the Explorer does, so the open documents in it
-   * follow to their new paths (#1211).
+   * Renames a file or folder within its own folder as the Explorer does (#1211), through the workspace
+   * in front: its documents are the ones open in it, which follow to their new paths, and a save then
+   * writes there rather than to the old path. An entry outside that workspace is left where it is, as
+   * nothing would move its open documents with it.
    * @param move The entry and where it goes.
-   * @param skipped The parts not applied, which a failed rename joins.
-   * @returns Returns the entry's new path, or null when it could not be renamed.
+   * @param skipped The parts not applied, which a refused or failed rename joins.
+   * @returns Returns the entry's new path, or null when it was not renamed.
    */
   private async move(move: EntryMove, skipped: SkippedEdit[]): Promise<string | null> {
+    const well: WorkspaceWell | null = this.injector.get(ActiveWorkspace).activeWell();
+    if (well?.root == null || !isWithin(move.from, well.root)) {
+      skipped.push({ path: move.from, reason: MOVE_OUTSIDE_WORKSPACE });
+      return null;
+    }
     const separator: number = Math.max(move.to.lastIndexOf('/'), move.to.lastIndexOf('\\'));
-    const result: FileOperationResult = await this.injector
-      .get(Workspace)
-      .rename(move.from, move.to.slice(separator + 1));
-    if (result.success) {
+    const result: { readonly path: string | null; readonly error: string | null } =
+      await well.rename(move.from, move.to.slice(separator + 1));
+    if (result.error === null) {
       return result.path ?? move.to;
     }
-    skipped.push({ path: move.from, reason: result.error ?? "It couldn't be renamed." });
+    skipped.push({ path: move.from, reason: result.error });
     return null;
   }
 
@@ -203,6 +211,23 @@ export class WorkspaceEditApplier {
     }
     return models;
   }
+}
+
+/**
+ * Holds the reason a rename an edit asks for is not made: the entry is not in the workspace in front.
+ */
+const MOVE_OUTSIDE_WORKSPACE: string =
+  "It isn't in the workspace in front, so it was left where it is.";
+
+/**
+ * Determines whether a path is a folder or lies within it.
+ * @param path The path.
+ * @param folder The folder.
+ * @returns Returns true when it does.
+ */
+function isWithin(path: string, folder: string): boolean {
+  const root: string = folder.replace(/[\\/]+$/, '');
+  return path === root || path.startsWith(`${root}/`) || path.startsWith(`${root}\\`);
 }
 
 /**
