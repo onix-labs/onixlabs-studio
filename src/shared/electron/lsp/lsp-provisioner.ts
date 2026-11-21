@@ -219,7 +219,7 @@ export const KOTLIN_LS_SHA256: string =
  * it is built from source with the detected Go toolchain (`go install`) — pinned so every machine
  * provisions the same server.
  */
-export const GOPLS_VERSION: string = 'v0.23.0';
+export const GOPLS_VERSION: string = 'v0.24.0';
 
 /**
  * Bounds the buffered output of the `go install` and version probes, generous so a verbose build is not
