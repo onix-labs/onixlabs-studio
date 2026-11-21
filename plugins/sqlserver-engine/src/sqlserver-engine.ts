@@ -8,9 +8,11 @@ import {
   DatabaseNodeAction,
   DatabaseValue,
   ExecuteRequest,
+  ExplainOutcome,
   NamesScope,
   NodeActionOutcome,
   QueryMessage,
+  QueryPlan,
   ResultColumn,
   TransactionAction,
   TransactionOutcome,
@@ -30,6 +32,7 @@ import {
 } from '../../protocol/database/engine';
 import { splitBatches, SqlServerBatch } from './sqlserver-batches';
 import { LinkCell, LinkColumn, ServerMessage, SqlServerLink } from './sqlserver-link';
+import { SHOWPLAN_COLUMN, sqlServerPlans } from './sqlserver-plan';
 import { bracket, cellValue, declaredType, nstring, sqlTypeName } from './sqlserver-values';
 
 /**
@@ -140,7 +143,14 @@ export class SqlServerEngine implements DatabaseEngine {
     displayName: 'SQL Server',
     language: 'sql',
     queryExtension: 'sql',
-    capabilities: ['cancel', 'multipleDatabases', 'script', 'completion', 'transactions'],
+    capabilities: [
+      'cancel',
+      'multipleDatabases',
+      'script',
+      'completion',
+      'transactions',
+      'explain',
+    ],
     connectionFields: [
       {
         id: 'host',
@@ -882,6 +892,71 @@ class SqlServerSession implements EngineSession {
       return { failed: true, message: describeError(error) };
     } finally {
       this.endTransaction(target);
+    }
+  }
+
+  /**
+   * Says how SQL Server would run each statement, batch by batch at the script's `GO` lines, on a
+   * connection of its own so the session's are never left with a showplan setting on. The estimated
+   * plan comes from `SET SHOWPLAN_XML ON`, which compiles each batch without running it. Analyzing
+   * runs the script under `SET STATISTICS XML ON` inside a transaction that is rolled back, so the
+   * plans carry what actually happened while the script's changes are undone — unless the script
+   * commits its own transaction.
+   * @param sql The text, one batch or several.
+   * @param database The database to plan it against, or the connection's own.
+   * @param analyze Whether to run the statements and report what actually happened.
+   * @returns Returns a promise resolving the plans, up to the first batch that fails.
+   */
+  public async explain(sql: string, database?: string, analyze?: boolean): Promise<ExplainOutcome> {
+    const plans: QueryPlan[] = [];
+    let link: SqlServerLink;
+    try {
+      link = await this.openLink(this.settings, database ?? this.settings.database);
+    } catch (error: unknown) {
+      return { plans, failed: true, message: describeError(error) };
+    }
+    try {
+      // SHOWPLAN_XML must be the only statement in its batch.
+      const setup: readonly string[] =
+        analyze === true ? ['begin transaction', 'set statistics xml on'] : ['set showplan_xml on'];
+      for (const statement of setup) {
+        await link.rows(statement);
+      }
+      for (const batch of splitBatches(sql, 1)) {
+        const documents: string[] = [];
+        const errors: string[] = [];
+        let showplan: boolean = false;
+        const error: Error | null = await link.batch(batch.text, {
+          onColumns: (columns: readonly LinkColumn[]): void => {
+            showplan = columns.length === 1 && SHOWPLAN_COLUMN.test(columns[0]?.colName ?? '');
+          },
+          onRow: (cells: readonly LinkCell[]): void => {
+            const value: unknown = cells[0]?.value;
+            if (showplan && typeof value === 'string') {
+              documents.push(value);
+            }
+          },
+          onMessage: (message: ServerMessage): void => {
+            if (message.severity === 'error') {
+              errors.push(message.text);
+            }
+          },
+        });
+        for (const document of documents) {
+          plans.push(...sqlServerPlans(document, batch.line));
+        }
+        if (error !== null || errors.length > 0) {
+          return { plans, failed: true, message: errors[0] ?? describeError(error) };
+        }
+      }
+      return { plans, failed: false };
+    } catch (error: unknown) {
+      return { plans, failed: true, message: describeError(error) };
+    } finally {
+      if (analyze === true) {
+        await link.rows('if @@trancount > 0 rollback transaction').catch((): void => undefined);
+      }
+      link.close();
     }
   }
 

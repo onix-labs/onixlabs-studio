@@ -4,6 +4,7 @@ import {
   ConnectionField,
   DatabaseNode,
   ExecuteRequest,
+  ExplainOutcome,
   NodeActionOutcome,
 } from '../../protocol/database/protocol';
 import { encodePath, EngineExecution, EngineSession } from '../../protocol/database/engine';
@@ -13,7 +14,7 @@ import {
   SqlServerEngine,
   SqlServerSettings,
 } from './sqlserver-engine';
-import { BatchEvents, LinkCell, ServerMessage, SqlServerLink } from './sqlserver-link';
+import { BatchEvents, LinkCell, LinkColumn, ServerMessage, SqlServerLink } from './sqlserver-link';
 
 /**
  * Answers one batch a fake connection was asked to run, reporting through its events.
@@ -146,6 +147,7 @@ describe('SqlServerEngine', () => {
       'script',
       'completion',
       'transactions',
+      'explain',
     ]);
     expect(engine.info.connectionFields.map((field: ConnectionField): string => field.id)).toEqual([
       'host',
@@ -457,5 +459,115 @@ describe('SqlServerEngine', () => {
     await session.close();
 
     expect(links.map((link: FakeLink) => link.closed)).toEqual([1, 1]);
+  });
+
+  /**
+   * Sends a showplan document as the server does: a result set of one column, one row.
+   * @param events The batch's events.
+   * @param statement The statement's text.
+   * @param physical The one operator's physical operation.
+   */
+  function showplan(events: BatchEvents, statement: string, physical: string): void {
+    events.onColumns?.([
+      { colName: 'Microsoft SQL Server 2005 XML Showplan', type: { name: 'NVarChar' } },
+    ] satisfies readonly LinkColumn[]);
+    row(
+      events,
+      `<ShowPlanXML><BatchSequence><Batch><Statements><StmtSimple StatementText="${statement}" StatementType="SELECT" StatementSubTreeCost="0.5" StatementEstRows="3"><QueryPlan><RelOp PhysicalOp="${physical}" LogicalOp="${physical}" EstimateRows="3" EstimatedTotalSubtreeCost="0.5" /></QueryPlan></StmtSimple></Statements></Batch></BatchSequence></ShowPlanXML>`,
+    );
+  }
+
+  it('explain_plansEachBatchUnderShowplanXml_onAConnectionOfItsOwn_thenClosesIt', async () => {
+    const { engine, links } = fakes((sql: string, events: BatchEvents) => {
+      if (sql.startsWith('select')) {
+        showplan(events, sql, sql.includes('books') ? 'Index Seek' : 'Constant Scan');
+      }
+      return null;
+    });
+    const session: EngineSession = await engine.connect(LOGIN);
+
+    const outcome: ExplainOutcome = await session.explain!(
+      'select 1\ngo\nselect * from books',
+      'hr',
+    );
+
+    const own: FakeLink | undefined = links[1];
+    expect(own?.database).toBe('hr');
+    expect(own?.batches).toEqual(['set showplan_xml on', 'select 1', 'select * from books']);
+    expect(own?.closed).toBe(1);
+    expect(outcome.failed).toBe(false);
+    expect(
+      outcome.plans.map((plan) => [plan.statement, plan.line, plan.root.children[0]?.operator]),
+    ).toEqual([
+      ['select 1', 1, 'Constant Scan'],
+      ['select * from books', 3, 'Index Seek'],
+    ]);
+  });
+
+  it('explain_analyzed_runsUnderStatisticsXmlInATransaction_andRollsItBack', async () => {
+    const { engine, links } = fakes((sql: string, events: BatchEvents) => {
+      if (sql.startsWith('delete')) {
+        events.onDone?.(4);
+        showplan(events, sql, 'Clustered Index Delete');
+      }
+      return null;
+    });
+    const session: EngineSession = await engine.connect(LOGIN);
+
+    const outcome: ExplainOutcome = await session.explain!('delete from books', undefined, true);
+
+    expect(links[1]?.database).toBe('shop');
+    expect(links[1]?.batches).toEqual([
+      'begin transaction',
+      'set statistics xml on',
+      'delete from books',
+      'if @@trancount > 0 rollback transaction',
+    ]);
+    expect(outcome.plans[0]?.root.children[0]?.operator).toBe('Clustered Index Delete');
+  });
+
+  it('explain_stopsAtTheFirstBatchThatFails_keepingThePlansBeforeIt', async () => {
+    const { engine } = fakes((sql: string, events: BatchEvents) => {
+      if (sql === 'select 1') {
+        showplan(events, sql, 'Constant Scan');
+      } else if (sql.startsWith('select')) {
+        events.onMessage?.({
+          severity: 'error',
+          text: "Invalid object name 'nope'.",
+          lineNumber: 1,
+        });
+      }
+      return null;
+    });
+    const session: EngineSession = await engine.connect(LOGIN);
+
+    const outcome: ExplainOutcome = await session.explain!(
+      'select 1\ngo\nselect * from nope\ngo\nselect 2',
+    );
+
+    expect(outcome).toMatchObject({ failed: true, message: "Invalid object name 'nope'." });
+    expect(outcome.plans).toHaveLength(1);
+  });
+
+  it('explain_saysWhyWhenItCannotConnect', async () => {
+    const engine: SqlServerEngine = new SqlServerEngine(
+      (_settings: SqlServerSettings, database: string): Promise<SqlServerLink> =>
+        database === 'shop'
+          ? Promise.resolve(
+              new FakeLink(database, (sql: string, events: BatchEvents) => {
+                row(events, VERSION);
+                void sql;
+                return null;
+              }) as unknown as SqlServerLink,
+            )
+          : Promise.reject(new Error('Login failed.')),
+    );
+    const session: EngineSession = await engine.connect(LOGIN);
+
+    expect(await session.explain!('select 1', 'hr')).toEqual({
+      plans: [],
+      failed: true,
+      message: 'Login failed.',
+    });
   });
 });
