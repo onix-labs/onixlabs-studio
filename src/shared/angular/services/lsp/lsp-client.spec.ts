@@ -2155,6 +2155,29 @@ describe('LspClient', () => {
     });
   });
 
+  it('syncDocument_toAFullSyncServer_sendsTheWholeTextWithNoRange', async () => {
+    // taplo advertises full sync and reads a change's text as the whole document, range or not: a
+    // ranged edit left it holding only the edited span, and every schema feature then went dark (#1206).
+    lsp.startResult = { success: true, capabilities: { textDocumentSync: 1 } };
+    const client: LspClient = build();
+    const base: { documentId: string; path: string; languageId: string } = {
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+    };
+    client.syncDocument({ ...base, content: 'a = 1\n' });
+    await flush();
+    client.syncDocument({ ...base, content: 'a = 1\nb = 2\n' });
+    await flush();
+
+    const changes: { sessionId: string; params: unknown }[] = lsp.notificationsTo('didChange');
+    expect(changes).toHaveLength(1);
+    expect(changes[0].params).toEqual({
+      textDocument: { uri: 'file:///root/a.ts', version: 2 },
+      contentChanges: [{ text: 'a = 1\nb = 2\n' }],
+    });
+  });
+
   it('syncDocument_editInsideALargeDocument_sendsOnlyTheChangedSpan', async () => {
     const client: LspClient = build();
     const before: string = `class A {\n  void One() {}\n  void Two() {}\n}\n`;

@@ -47,6 +47,16 @@ export interface LspContentEdit {
 }
 
 /**
+ * A range-less content change carrying the document's whole text, for a server that asked for full sync.
+ */
+export interface LspWholeDocumentEdit {
+  /**
+   * Gets the document's whole new text.
+   */
+  readonly text: string;
+}
+
+/**
  * Computes the smallest single ranged edit that turns one document text into another, by trimming the
  * common prefix and suffix. Editors mostly change one small span at a time, so this reduces the
  * per-keystroke `textDocument/didChange` payload from the whole document to the changed span —
