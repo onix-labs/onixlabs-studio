@@ -1,8 +1,9 @@
 # Localisation
 
-Studio's interface can be shown in English, French, Spanish, German, Simplified Chinese and Arabic. This page says how the
-translation machinery works, how to mark text for translation, and what is still to do. It started as
-a spike, so most of the interface is not marked yet and reads in English in every language.
+Studio's interface can be shown in English, French, Spanish, German, Simplified Chinese and Arabic.
+This page says how the translation machinery works, how to mark text for translation, and what is
+still to do. It started as a spike, so most of the interface is not marked yet and reads in English in
+every language.
 
 ## English until the whole interface is translated
 
