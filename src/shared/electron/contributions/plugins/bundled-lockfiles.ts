@@ -1,6 +1,6 @@
-import BASH_LANGUAGE_SERVER from './lockfiles/bash-language-server.lock.json';
+import BASH_LANGUAGE_SERVER from './lockfiles/bash-language-server-5.6.0.lock.json';
 import DOCKER_ENGINE from './lockfiles/docker-engine.lock.json';
-import DOCKERFILE_LANGUAGE_SERVER from './lockfiles/dockerfile-language-server.lock.json';
+import DOCKERFILE_LANGUAGE_SERVER from './lockfiles/dockerfile-language-server-0.15.0.lock.json';
 import NEO4J_ENGINE from './lockfiles/neo4j-engine.lock.json';
 import AI_SDK_HARNESS from './lockfiles/onixlabs.ai-sdk-harness.lock.json';
 import CARGO from './lockfiles/onixlabs.cargo.lock.json';
@@ -26,9 +26,9 @@ import PODMAN_ENGINE from './lockfiles/podman-engine.lock.json';
 import POSTGRES_ENGINE from './lockfiles/postgres-engine.lock.json';
 import SQLITE_ENGINE from './lockfiles/sqlite-engine.lock.json';
 import SQLSERVER_ENGINE from './lockfiles/sqlserver-engine.lock.json';
-import SVELTE_LANGUAGE_SERVER from './lockfiles/svelte-language-server.lock.json';
-import VSCODE_LANGSERVERS_EXTRACTED from './lockfiles/vscode-langservers-extracted.lock.json';
-import YAML_LANGUAGE_SERVER from './lockfiles/yaml-language-server.lock.json';
+import SVELTE_LANGUAGE_SERVER from './lockfiles/svelte-language-server-0.18.4.lock.json';
+import VSCODE_LANGSERVERS_EXTRACTED from './lockfiles/vscode-langservers-extracted-4.10.0.lock.json';
+import YAML_LANGUAGE_SERVER from './lockfiles/yaml-language-server-1.24.0.lock.json';
 import SEED_INDEX from './curated-plugins.json';
 
 // The lockfiles for the npm-provisioned plugins the curated index offers, compiled into the
@@ -53,9 +53,9 @@ import SEED_INDEX from './curated-plugins.json';
  * silently orphaning the bundled copy and falling back to a fetch that cannot succeed.
  */
 const BUNDLED_LOCKFILES: Readonly<Record<string, unknown>> = {
-  'bash-language-server.lock.json': BASH_LANGUAGE_SERVER,
+  'bash-language-server-5.6.0.lock.json': BASH_LANGUAGE_SERVER,
   'docker-engine.lock.json': DOCKER_ENGINE,
-  'dockerfile-language-server.lock.json': DOCKERFILE_LANGUAGE_SERVER,
+  'dockerfile-language-server-0.15.0.lock.json': DOCKERFILE_LANGUAGE_SERVER,
   'neo4j-engine.lock.json': NEO4J_ENGINE,
   'onixlabs.ai-sdk-harness.lock.json': AI_SDK_HARNESS,
   'onixlabs.cargo.lock.json': CARGO,
@@ -81,9 +81,9 @@ const BUNDLED_LOCKFILES: Readonly<Record<string, unknown>> = {
   'postgres-engine.lock.json': POSTGRES_ENGINE,
   'sqlite-engine.lock.json': SQLITE_ENGINE,
   'sqlserver-engine.lock.json': SQLSERVER_ENGINE,
-  'svelte-language-server.lock.json': SVELTE_LANGUAGE_SERVER,
-  'vscode-langservers-extracted.lock.json': VSCODE_LANGSERVERS_EXTRACTED,
-  'yaml-language-server.lock.json': YAML_LANGUAGE_SERVER,
+  'svelte-language-server-0.18.4.lock.json': SVELTE_LANGUAGE_SERVER,
+  'vscode-langservers-extracted-4.10.0.lock.json': VSCODE_LANGSERVERS_EXTRACTED,
+  'yaml-language-server-1.24.0.lock.json': YAML_LANGUAGE_SERVER,
 };
 
 /**

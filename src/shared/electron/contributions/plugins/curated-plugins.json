@@ -1,5 +1,5 @@
 {
-  "revision": 70,
+  "revision": 71,
   "plugins": [
     {
       "id": "pyright",
@@ -381,7 +381,7 @@
       "apiVersion": "1.2.0",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/dockerfile-language-server.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/dockerfile-language-server-0.15.0.lock.json",
         "sha256": "ce51bba16fd25abc8db7532a7b16acf0c0e683270ac8e94b2561276a4613d67f",
         "executablePath": "node_modules/dockerfile-language-server-nodejs/bin/docker-langserver"
       },
@@ -407,7 +407,7 @@
       "apiVersion": "1.2.0",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/yaml-language-server.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/yaml-language-server-1.24.0.lock.json",
         "sha256": "c4c3136a019386738fc0ccc1ba91c69025fae4485a3d32936b01001c5d8431eb",
         "executablePath": "node_modules/yaml-language-server/bin/yaml-language-server"
       },
@@ -454,7 +454,7 @@
       "apiVersion": "1.2.0",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/bash-language-server.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/bash-language-server-5.6.0.lock.json",
         "sha256": "8c13cf54220250fd33cf79fb872fda5cca79fc204463b4e1645ece205ad8969f",
         "executablePath": "node_modules/bash-language-server/out/cli.js"
       },
@@ -481,7 +481,7 @@
       "apiVersion": "1.2.0",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/svelte-language-server.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/svelte-language-server-0.18.4.lock.json",
         "sha256": "02dcbd8c721d2404e3a8b0e3d4c18ab8ee9fdcecfe0cf6dcd800d4ab22c7c40f",
         "executablePath": "node_modules/svelte-language-server/bin/server.js"
       },
@@ -560,7 +560,7 @@
       "apiVersion": "1.3.0",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/vscode-langservers-extracted.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/vscode-langservers-extracted-4.10.0.lock.json",
         "sha256": "2e9cfac6ede4f8b4e5facd11f34f42cc875f0b5feb2984636709b4fb824a9739"
       },
       "contributes": {
