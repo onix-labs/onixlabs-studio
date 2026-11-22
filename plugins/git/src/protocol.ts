@@ -28,7 +28,12 @@
 // reachable from) and `upstreamGone` (its upstream was deleted on the remote), so the Repository panel
 // can mark branches that are safe to clean up. Additions: a 1.4 plugin sends neither, and no branch is
 // marked.
-export const VERSION_CONTROL_PROTOCOL_VERSION: string = '1.5';
+// 1.6 (#887) adds `deleteRemoteBranch`, behind `deleteRemoteBranches`, so Delete Merged Branches can
+// remove a merged branch's copy on its remote — only while the remote still has the commit Studio
+// expects — and, so nothing that must stay is offered: the refs' optional `defaultBranch`, each
+// remote's `defaultBranch`, a remote-tracking branch's `mergedInto`, and a local branch's
+// `otherWorktree`. Additions: a 1.5 plugin offers none of them, and only local branches are deleted.
+export const VERSION_CONTROL_PROTOCOL_VERSION: string = '1.6';
 
 /**
  * Names one optional capability a version-control plugin can advertise.
@@ -117,7 +122,13 @@ export type VersionControlCapability =
   /**
    * Settling a conflicted file whole, by taking one side of it (1.4, #1321).
    */
-  | 'resolveConflicts';
+  | 'resolveConflicts'
+
+  /**
+   * Deleting a branch on a remote, so a merged branch can be cleaned up there as well as locally
+   * (1.6, #887).
+   */
+  | 'deleteRemoteBranches';
 
 /**
  * Lists every optional capability. Closed on purpose, like a decoder's formats: a capability is the join
@@ -140,6 +151,7 @@ export const VERSION_CONTROL_CAPABILITIES: readonly VersionControlCapability[] =
   'stopTracking',
   'pathHistory',
   'resolveConflicts',
+  'deleteRemoteBranches',
 ];
 
 /**
@@ -147,7 +159,7 @@ export const VERSION_CONTROL_CAPABILITIES: readonly VersionControlCapability[] =
  * (#1043).
  *
  * Every other capability must be declared and confirmed both: a manifest is a promise, the handshake
- * the plugin answering. These two arrived after builds that refuse a manifest naming a capability they
+ * the plugin answering. These arrived after builds that refuse a manifest naming a capability they
  * do not know — and the curated index is read by every installed build — so a manifest declaring them
  * would make the plugin uninstallable on those builds. A plugin confirms them at start-up instead, and
  * an older build, which drops capabilities it does not know from a handshake, never offers them.
@@ -157,6 +169,7 @@ export const VCS_HANDSHAKE_CAPABILITIES: readonly VersionControlCapability[] = [
   'stopTracking',
   'pathHistory',
   'resolveConflicts',
+  'deleteRemoteBranches',
 ];
 
 /**
@@ -440,6 +453,13 @@ export interface VcsBranch {
    * Absent when the upstream exists or there is none.
    */
   readonly upstreamGone?: boolean;
+
+  /**
+   * Gets the path of another worktree that has this branch checked out, when one does (1.6, #887). Git
+   * refuses to delete such a branch. Absent for the branch checked out here (see `current`), for one
+   * checked out nowhere, and from a 1.5 plugin.
+   */
+  readonly otherWorktree?: string;
 }
 
 /**
@@ -455,6 +475,12 @@ export interface VcsRemoteBranch {
    * Gets the identifier of the commit it points at.
    */
   readonly commit: string;
+
+  /**
+   * Gets the default branch this remote-tracking branch is already merged into by ancestry, when it is
+   * (1.6, #887): what it holds is safe to delete on the remote. Absent otherwise and from a 1.5 plugin.
+   */
+  readonly mergedInto?: string;
 }
 
 /**
@@ -475,6 +501,13 @@ export interface VcsRemote {
    * Gets the remote's branches, as last fetched.
    */
   readonly branches: readonly VcsRemoteBranch[];
+
+  /**
+   * Gets the remote's own default branch, without the remote (`develop` for `upstream/develop`), as its
+   * `HEAD` names it, when the plugin could tell (1.6, #887). Never offered for deletion. Absent when the
+   * remote's `HEAD` is unknown, and from a 1.5 plugin.
+   */
+  readonly defaultBranch?: string;
 }
 
 /**
@@ -510,6 +543,12 @@ export interface VcsRefs {
    * Gets the tags. Empty from a plugin without `tags`.
    */
   readonly tags: readonly VcsTag[];
+
+  /**
+   * Gets the default branch merges are measured against (see `VcsBranch.mergedInto`), when the plugin
+   * could tell which it is (1.6, #887). Absent from a 1.5 plugin.
+   */
+  readonly defaultBranch?: string;
 }
 
 /**
@@ -864,6 +903,17 @@ export interface VersionControlOperations {
     readonly params: { readonly remote: string; readonly name: string };
     readonly result: Done;
   };
+
+  /**
+   * Deletes a branch on a remote, named without the remote (`feature`, not `origin/feature`), and its
+   * remote-tracking branch with it (1.6, #887) — only while the remote's branch is still at `expected`,
+   * so commits pushed since are never destroyed (the remote refuses, and the request fails). A branch
+   * the remote no longer has counts as deleted. Gated by `deleteRemoteBranches`.
+   */
+  readonly deleteRemoteBranch: {
+    readonly params: { readonly remote: string; readonly name: string; readonly expected: string };
+    readonly result: Done;
+  };
   readonly pushTag: {
     readonly params: { readonly remote: string; readonly name: string };
     readonly result: Done;
@@ -997,6 +1047,7 @@ export const VCS_REPOSITORY_OPS: readonly VersionControlOp[] = [
   'createTag',
   'deleteTag',
   'deleteRemoteTag',
+  'deleteRemoteBranch',
   'pushTag',
   'pushAllTags',
 ];
@@ -1040,6 +1091,7 @@ export const VCS_NETWORK_OPS: readonly VersionControlOp[] = [
   'fetchRemote',
   'pruneRemote',
   'deleteRemoteTag',
+  'deleteRemoteBranch',
   'pushTag',
   'pushAllTags',
   'clone',
@@ -1075,6 +1127,7 @@ export const VCS_OP_CAPABILITY: Readonly<
   createTag: 'tags',
   deleteTag: 'tags',
   deleteRemoteTag: 'tags',
+  deleteRemoteBranch: 'deleteRemoteBranches',
   pushTag: 'tags',
   pushAllTags: 'tags',
   clone: 'clone',

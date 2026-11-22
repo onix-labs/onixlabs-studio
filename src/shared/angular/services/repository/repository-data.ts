@@ -253,6 +253,12 @@ export interface GitBranch {
    * Gets whether the branch's upstream no longer exists on the remote (#887).
    */
   readonly upstreamGone?: boolean;
+
+  /**
+   * Gets the path of another worktree that has this branch checked out, which git will not delete it
+   * from under (#887).
+   */
+  readonly otherWorktree?: string;
 }
 
 /**
@@ -273,6 +279,11 @@ export interface GitRemote {
    * Gets the remote-tracking branches.
    */
   readonly branches: readonly GitRemoteBranch[];
+
+  /**
+   * Gets the remote's own default branch, without the remote, when the plugin could tell (#887).
+   */
+  readonly defaultBranch?: string;
 }
 
 /**
@@ -291,6 +302,12 @@ export interface GitRemoteBranch {
    * Gets the hash of the branch's tip commit.
    */
   readonly commit: string;
+
+  /**
+   * Gets the default branch this remote-tracking branch is already merged into by ancestry, when the
+   * plugin found it so (#887).
+   */
+  readonly mergedInto?: string;
 }
 
 /**
