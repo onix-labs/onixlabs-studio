@@ -1,10 +1,12 @@
-import { FSWatcher, watch, WatchEventType } from 'node:fs';
+import type { WatchEventType } from 'node:fs';
 import { access } from 'node:fs/promises';
 import * as path from 'node:path';
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
-import { shouldForwardTreeEvent } from '../directory-watch-filter';
+import { shouldForwardTreeEvent, shouldPollInside } from '../directory-watch-filter';
 import { logger } from '../logger';
+import { AdaptiveTreeWatch } from '../watching/adaptive-tree-watch';
+import { WatchModes } from '../watching/watch-modes';
 import { matchesAny, WatchRegistrations } from './lsp-watch-glob';
 
 /**
@@ -82,9 +84,10 @@ export class LspFileWatcher {
   private readonly observe: ((relativePaths: readonly string[]) => void) | undefined;
 
   /**
-   * Holds the native recursive watcher, or null once closed or when the root could not be watched.
+   * Holds the recursive watcher, native or polling (#1254), or null once closed or when the root
+   * could not be watched.
    */
-  private watcher: FSWatcher | null = null;
+  private watcher: AdaptiveTreeWatch | null = null;
 
   /**
    * Holds the server's watch registrations, whose union filters what is reported.
@@ -117,27 +120,38 @@ export class LspFileWatcher {
    * @param deliver The callback that receives each coalesced batch of events.
    * @param observe The callback told each window's changed paths before the server's patterns are
    * applied — for what the client has to act on itself, such as a solution the server does not watch.
+   * @param modes Decides whether the root is polled; never by default.
    */
   public constructor(
     root: string,
     deliver: (events: readonly FileEvent[]) => void,
     observe?: (relativePaths: readonly string[]) => void,
+    modes: WatchModes = new WatchModes(),
   ) {
     this.root = root;
     this.deliver = deliver;
     this.observe = observe;
     this.registrations = new WatchRegistrations(root);
     try {
-      this.watcher = watch(
+      this.watcher = new AdaptiveTreeWatch(
         root,
-        { recursive: true },
-        (eventType: WatchEventType, filename: string | Buffer | null): void =>
+        {
+          recursive: true,
+          modes,
+          // Polled, the folders the explorers skip (build outputs, dependency caches) are still
+          // read where the server registered for something in them, as native events would reach
+          // it: Roslyn's `obj/project.assets.json` after a restore.
+          descend: (relative: string): boolean =>
+            shouldPollInside(relative, modes.metadata()) ||
+            this.registrations.couldMatchBeneath(relative),
+        },
+        (eventType: WatchEventType, filename: string | null): void =>
           this.onEvent(eventType, filename),
+        (error: Error): void => {
+          logger.warn('LspFileWatcher', `Watcher errored for ${root}; stopping`, error);
+          this.close();
+        },
       );
-      this.watcher.on('error', (error: Error): void => {
-        logger.warn('LspFileWatcher', `Watcher errored for ${root}; stopping`, error);
-        this.close();
-      });
     } catch (error: unknown) {
       logger.error('LspFileWatcher', `Cannot watch ${root} for a language server`, error);
       this.watcher = null;
@@ -182,11 +196,11 @@ export class LspFileWatcher {
   }
 
   /**
-   * Records a native event into the coalescing window.
+   * Records a watcher's event into the coalescing window.
    * @param eventType The native event kind.
    * @param filename The changed entry's root-relative path, or null when withheld.
    */
-  private onEvent(eventType: WatchEventType, filename: string | Buffer | null): void {
+  private onEvent(eventType: WatchEventType, filename: string | null): void {
     // A native callback can land after close(); it must not reopen a coalescing window.
     if (this.watcher === null || typeof filename !== 'string' || filename.length === 0) {
       return;

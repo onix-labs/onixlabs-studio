@@ -1,0 +1,55 @@
+<div class="polling">
+  <app-setting-row [label]="title" [description]="description">
+    <app-button
+      variant="solid"
+      [icon]="Icon.FOLDER_PLUS"
+      [label]="chooseLabel"
+      data-testid="polling-choose"
+      (click)="choose()"
+    />
+  </app-setting-row>
+
+  <div class="polling__add">
+    <app-text-field
+      class="polling__field"
+      placeholder="/Volumes/Share"
+      [ariaLabel]="fieldLabel"
+      data-testid="polling-draft"
+      [(value)]="draft"
+      (enter)="add()"
+    />
+    <app-button
+      variant="ghost"
+      [label]="addLabel"
+      [icon]="Icon.PLUS"
+      [disabled]="!canAdd()"
+      data-testid="polling-add"
+      (click)="add()"
+    />
+  </div>
+
+  @if (folders().length) {
+    <ul class="polling__list">
+      @for (folder of folders(); track folder) {
+        <li class="polling__item">
+          <span class="polling__path" data-testid="polling-folder">{{ folder }}</span>
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.CLOSE"
+            [ariaLabel]="removeLabel(folder)"
+            data-testid="polling-remove"
+            (click)="remove(folder)"
+          />
+        </li>
+      }
+    </ul>
+  } @else {
+    <p
+      class="polling__empty"
+      i18n="Shown on the File Watching settings page when no folder is polled"
+    >
+      No folders are polled. Studio relies on the system to report every change.
+    </p>
+  }
+</div>

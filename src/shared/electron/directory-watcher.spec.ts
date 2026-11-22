@@ -73,6 +73,7 @@ vi.mock('node:fs', async (importOriginal: () => Promise<typeof fs>) => {
 });
 
 const { DirectoryWatcher } = await import('./directory-watcher');
+const { WatchModes } = await import('./watching/watch-modes');
 
 /**
  * Stands in for a renderer's web contents: an id, and a way to fire its destruction.
@@ -439,6 +440,37 @@ describe('DirectoryWatcher', () => {
     await vi.waitFor(
       (): void => {
         expect(sent.length).toBeGreaterThan(0);
+      },
+      { timeout: 4000, interval: 50 },
+    );
+  });
+
+  it('polledFolder_isPolledInsteadOfWatchedNatively_andAFileCreatedReachesTheRenderer', async () => {
+    vi.useRealTimers();
+    const modes: InstanceType<typeof WatchModes> = new WatchModes(undefined, false);
+    await modes.update([`${root}/`], 1);
+    manager.disposeAll();
+    manager = new DirectoryWatcher(
+      (): BrowserWindow | null =>
+        ({
+          isDestroyed: (): boolean => false,
+          webContents: {
+            send: (_channel: unknown, event: DirectoryChangeEvent): void => void sent.push(event),
+          },
+        }) as unknown as BrowserWindow,
+      undefined,
+      modes,
+    );
+    manager.register();
+    await watch();
+    await new Promise<void>((resolve: () => void): void => void setTimeout(resolve, 200));
+
+    fs.writeFileSync(path.join(root, 'from-elsewhere.txt'), 'hello');
+
+    expect(fakes.watches).toEqual([]);
+    await vi.waitFor(
+      (): void => {
+        expect(sent).toContainEqual({ root, directories: [root], overflow: false });
       },
       { timeout: 4000, interval: 50 },
     );

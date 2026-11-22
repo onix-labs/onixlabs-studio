@@ -1,5 +1,5 @@
 {
-  "revision": 75,
+  "revision": 78,
   "plugins": [
     {
       "id": "pyright",
@@ -148,7 +148,7 @@
             "url": "https://github.com/astral-sh/ty/releases/download/0.0.74/ty-x86_64-pc-windows-msvc.zip",
             "sha256": "45dbce4b3fa2f65e4672d3756c12448a9ec9a69732655dc4429c70af1fe02d37",
             "archive": "zip",
-            "executablePath": "ty-x86_64-pc-windows-msvc/ty.exe"
+            "executablePath": "ty.exe"
           }
         }
       },
@@ -354,7 +354,7 @@
             "url": "https://github.com/bscan/perlnavigator/releases/download/v0.8.20/perlnavigator-win-x86_64.zip",
             "sha256": "3a521c936b01046ed79cc6f3e3ac31a71c5368641aeeb28fea11b21577380ee2",
             "archive": "zip",
-            "executablePath": "perlnavigator-win-x86_64/perlnavigator"
+            "executablePath": "perlnavigator-win-x86_64/perlnavigator.exe"
           }
         }
       },
@@ -574,6 +574,9 @@
             "command": {
               "kind": "node"
             },
+            "initializationOptions": {
+              "provideFormatter": true
+            },
             "settings": [
               {
                 "section": "css.validate",
@@ -600,6 +603,9 @@
             "entryPoint": "node_modules/vscode-langservers-extracted/bin/vscode-css-language-server",
             "command": {
               "kind": "node"
+            },
+            "initializationOptions": {
+              "provideFormatter": true
             },
             "settings": [
               {
@@ -633,6 +639,9 @@
             "entryPoint": "node_modules/vscode-langservers-extracted/bin/vscode-json-language-server",
             "command": {
               "kind": "node"
+            },
+            "initializationOptions": {
+              "provideFormatter": true
             },
             "settings": [
               {

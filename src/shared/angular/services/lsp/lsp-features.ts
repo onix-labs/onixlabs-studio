@@ -18,6 +18,7 @@ import {
   type FoldingProvider,
   type LanguageOverrides,
   Settings,
+  type TextEditorSettings,
 } from '@shared/angular/services/settings/settings';
 import { codeLensKind, CodeLensSwitches, showsCodeLensKind } from './code-lens-kinds';
 import { BUILT_IN_FORMATTER_LANGUAGES } from '@shared/angular/services/settings/settings-registry';
@@ -50,6 +51,10 @@ import {
   WorkspaceTextEdits,
 } from '@shared/angular/services/workspace-edit/workspace-edit';
 import { markStudioProvider } from '@shared/angular/services/monaco/monaco-editor-capabilities';
+import {
+  builtInFormattingEdits,
+  setFormattingOverride,
+} from '@shared/angular/services/monaco/monaco-formatting-route';
 import { escapeMarkdown, fenced } from '@shared/angular/services/hover/hover-content';
 import type {
   HierarchyDirection,
@@ -173,6 +178,18 @@ export interface LspDocumentRef {
    * none.
    */
   readonly navigation?: LspNavigationSupport;
+
+  /**
+   * Gets whether the server sorts the document's keys on request (#1214): the JSON server's
+   * `json/sort`, which it advertises nowhere. Undefined is taken as not.
+   */
+  readonly sortsDocument?: boolean;
+
+  /**
+   * Gets the version of the document the server was last sent (#1214), which a fix a server offered
+   * for one version must not be applied to another. Undefined where it is not known.
+   */
+  readonly version?: number;
 
   /**
    * Gets the document's diagnostics exactly as the server sent them, codes and data included, which a
@@ -542,6 +559,25 @@ const JAVA_SHOW_REFERENCES_COMMAND: string = 'java.show.references';
 const JAVA_SHOW_IMPLEMENTATIONS_COMMAND: string = 'java.show.implementations';
 
 /**
+ * The JSON server's own request that sorts a document's keys (#1214), with the document's URI and
+ * formatting options, answered with text edits. It is advertised nowhere.
+ */
+const SORT_DOCUMENT_METHOD: string = 'json/sort';
+
+/**
+ * The client command the JSON server's "Sort JSON" source action runs (#1214): VS Code's, which
+ * Studio runs as Sort Document.
+ */
+export const JSON_SORT_COMMAND: string = 'json.sort';
+
+/**
+ * The client command the CSS server's quick fixes run (#1214) — `Rename to 'color'` for an unknown
+ * property — with the document's URI, its version and the fix's text edits as arguments. VS Code's
+ * client applies the edits; Studio does too.
+ */
+export const CSS_APPLY_CODE_ACTION_COMMAND: string = '_css.applyCodeAction';
+
+/**
  * The client commands that hand a lens the places it counted, for Studio to list itself.
  */
 const LOCATIONS_LENS_COMMANDS: ReadonlySet<string> = new Set<string>([
@@ -754,6 +790,22 @@ export type LspDocumentResolver = (path: string) => LspDocumentRef | null;
 interface LspPosition {
   readonly line: number;
   readonly character: number;
+}
+
+/**
+ * What a formatting request says of a document's last line: the protocol's `FormattingOptions`
+ * `insertFinalNewline` and `trimFinalNewlines`.
+ */
+interface LspFinalNewlineOptions {
+  /**
+   * Gets whether the formatted document ends with a newline.
+   */
+  readonly insertFinalNewline: boolean;
+
+  /**
+   * Gets whether blank lines after the document's last line are removed.
+   */
+  readonly trimFinalNewlines: boolean;
 }
 
 /**
@@ -1405,9 +1457,15 @@ export class LspFeatures {
         provideDocumentFormattingEdits: (
           model: MonacoApi.editor.ITextModel,
           options: MonacoApi.languages.FormattingOptions,
+          token: MonacoApi.CancellationToken,
         ): Promise<MonacoApi.languages.TextEdit[] | undefined> =>
-          this.provideFormatting(model, 'textDocument/formatting', options),
+          this.serverFormats(model, 'document')
+            ? this.provideFormatting(model, 'textDocument/formatting', options)
+            : builtInFormattingEdits(monaco, model, options, token, undefined),
       };
+      // Monaco's own formatter for the language routes to this one for a model a server formats, and
+      // this one to Monaco's for a model none does (#1214).
+      markStudioProvider(provider);
       registered.set(
         `${language}:document`,
         monaco.languages.registerDocumentFormattingEditProvider(language, provider),
@@ -1419,14 +1477,13 @@ export class LspFeatures {
           model: MonacoApi.editor.ITextModel,
           range: MonacoApi.Range,
           options: MonacoApi.languages.FormattingOptions,
+          token: MonacoApi.CancellationToken,
         ): Promise<MonacoApi.languages.TextEdit[] | undefined> =>
-          this.provideFormatting(model, 'textDocument/rangeFormatting', options, {
-            range: {
-              start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
-              end: { line: range.endLineNumber - 1, character: range.endColumn - 1 },
-            },
-          }),
+          this.serverFormats(model, 'range')
+            ? this.formatRange(model, range, options)
+            : builtInFormattingEdits(monaco, model, options, token, range),
       };
+      markStudioProvider(provider);
       registered.set(
         `${language}:range`,
         monaco.languages.registerDocumentRangeFormattingEditProvider(language, provider),
@@ -1475,6 +1532,42 @@ export class LspFeatures {
         this.formattingRegistered.delete(`${language}:${kind}`);
       }
     }
+  }
+
+  /**
+   * Determines whether a language server formats a model, as Studio has registered it to (#1214): the
+   * model's server formats this way, and Default Formatter has not given its language to Monaco.
+   * @param model The model.
+   * @param kind Whether the whole document or a range is formatted.
+   * @returns Returns true when the server formats it.
+   */
+  private serverFormats(model: MonacoApi.editor.ITextModel, kind: 'document' | 'range'): boolean {
+    const support: LspFormattingSupport | undefined = this.resolve(model)?.formatting;
+    return (
+      support !== undefined &&
+      (kind === 'document' ? support.document : support.range) &&
+      this.formattingRegistered.has(`${model.getLanguageId()}:${kind}`)
+    );
+  }
+
+  /**
+   * Asks a model's server to format a range of it.
+   * @param model The model.
+   * @param range The range, one-based.
+   * @param options The editor's indentation.
+   * @returns Returns the edits, or undefined when the server does not answer.
+   */
+  private formatRange(
+    model: MonacoApi.editor.ITextModel,
+    range: MonacoApi.IRange,
+    options: MonacoApi.languages.FormattingOptions,
+  ): Promise<MonacoApi.languages.TextEdit[] | undefined> {
+    return this.provideFormatting(model, 'textDocument/rangeFormatting', options, {
+      range: {
+        start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
+        end: { line: range.endLineNumber - 1, character: range.endColumn - 1 },
+      },
+    });
   }
 
   /**
@@ -2784,7 +2877,11 @@ export class LspFeatures {
     try {
       result = await this.bridge.invoke(LspChannel.Request, ref.sessionId, method, {
         textDocument: { uri: ref.uri },
-        options: { tabSize: options.tabSize, insertSpaces: options.insertSpaces },
+        options: {
+          tabSize: options.tabSize,
+          insertSpaces: options.insertSpaces,
+          ...this.finalNewlineOptions(model),
+        },
         ...extra,
       });
     } catch {
@@ -2805,6 +2902,26 @@ export class LspFeatures {
   }
 
   /**
+   * Builds what a formatting request says of the document's last line (#1214), which the JSON, CSS and
+   * HTML servers act on: without being told to keep it, the JSON server's formatting dropped a file's
+   * final newline. A final newline is kept when the document has one or Insert Final Newline asks for
+   * one, and extra blank lines go when Trim Final Newlines asks.
+   * @param model The model being formatted.
+   * @returns Returns the protocol's `insertFinalNewline` and `trimFinalNewlines` options.
+   */
+  private finalNewlineOptions(model: MonacoApi.editor.ITextModel): LspFinalNewlineOptions {
+    const editing: TextEditorSettings = this.settings.resolveSettingsForLanguage(
+      model.getLanguageId(),
+    );
+    const lines: number = model.getLineCount();
+    return {
+      insertFinalNewline:
+        editing.insertFinalNewline || (lines > 1 && model.getLineLength(lines) === 0),
+      trimFinalNewlines: editing.trimFinalNewlines,
+    };
+  }
+
+  /**
    * Registers the Monaco feature providers for every supported language.
    */
   private registerProviders(): void {
@@ -2813,6 +2930,25 @@ export class LspFeatures {
       return;
     }
     this.registered = true;
+    // Monaco's own formatters of JSON, CSS, HTML and the rest hand a model a server formats to the
+    // server, whichever Monaco picks (#1214).
+    setFormattingOverride(
+      monaco,
+      (
+        model: MonacoApi.editor.ITextModel,
+        options: MonacoApi.languages.FormattingOptions,
+        range: MonacoApi.Range | undefined,
+      ): Promise<MonacoApi.languages.TextEdit[] | undefined> | undefined => {
+        if (range === undefined) {
+          return this.serverFormats(model, 'document')
+            ? this.provideFormatting(model, 'textDocument/formatting', options)
+            : undefined;
+        }
+        return this.serverFormats(model, 'range')
+          ? this.formatRange(model, range, options)
+          : undefined;
+      },
+    );
     // Suppress Monaco's heuristic semantic tokens for any model a language server can serve, so the
     // server's accurate tokens are the sole source and the heuristic does no redundant work.
     this.monaco.suppressHeuristicTokensWhen((model: MonacoApi.editor.ITextModel): boolean =>
@@ -3652,6 +3788,88 @@ export class LspFeatures {
   }
 
   /**
+   * Determines whether the language server that serves a document sorts it on request, for Sort
+   * Document (#1214): the JSON server does.
+   * @param model The editor model.
+   * @returns Returns true when it does.
+   */
+  public servesDocumentSorting(model: MonacoApi.editor.ITextModel): boolean {
+    return this.resolve(model)?.sortsDocument === true;
+  }
+
+  /**
+   * Sorts a document's keys, for Sort Document (#1214): asks the JSON server (`json/sort`), which
+   * answers with the document sorted and laid out with the editor's indentation, and applies its edits
+   * to the model as one step of undo. A final newline is kept as Format Document keeps it. Nothing is applied when the document changed while the server
+   * answered, so nothing typed meanwhile is lost.
+   * @param model The editor model.
+   * @returns Returns whether it was sorted, or why it was not.
+   */
+  public async sortDocument(model: MonacoApi.editor.ITextModel): Promise<LspCommandOutcome> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref?.sortsDocument !== true) {
+      return { ran: false, reason: 'No language server sorts this document.' };
+    }
+    const version: number = model.getVersionId();
+    await ref.sync?.(model.getValue());
+    const indentation: MonacoApi.editor.TextModelResolvedOptions = model.getOptions();
+    const outcome: LspOutcome = await this.ask(ref, SORT_DOCUMENT_METHOD, {
+      uri: ref.uri,
+      options: {
+        tabSize: indentation.tabSize,
+        insertSpaces: indentation.insertSpaces,
+        ...this.finalNewlineOptions(model),
+      },
+    });
+    if (!outcome.ok) {
+      return { ran: false, reason: outcome.message };
+    }
+    const edits: MonacoApi.editor.IIdentifiedSingleEditOperation[] | null = textEditsOf(
+      outcome.result,
+    );
+    if (edits === null) {
+      return { ran: false, reason: "The language server's answer couldn't be read." };
+    }
+    if (model.isDisposed() || model.getVersionId() !== version) {
+      return { ran: false, reason: 'The document changed while it was being sorted. Try again.' };
+    }
+    applyAsOneStep(model, edits);
+    return { ran: true };
+  }
+
+  /**
+   * Applies a CSS quick fix (#1214): the edits its `_css.applyCodeAction` command carries, to the
+   * document they name, as one step of undo. The server made them for one version of the document:
+   * once the server is up to date with the editor, a fix offered for an older version is refused,
+   * since its edits would land in the wrong places.
+   * @param model The editor model the fix was offered in.
+   * @param ref The document.
+   * @param command The command.
+   * @returns Returns whether the fix was applied, or why it was not.
+   */
+  private async applyCssCodeAction(
+    model: MonacoApi.editor.ITextModel,
+    ref: LspDocumentRef,
+    command: LspCommand,
+  ): Promise<LspCommandOutcome> {
+    const [uri, version, raw]: readonly unknown[] = command.arguments ?? [];
+    const edits: MonacoApi.editor.IIdentifiedSingleEditOperation[] | null = textEditsOf(raw);
+    if (uri !== ref.uri || typeof version !== 'number' || edits === null) {
+      return { ran: false, reason: "The language server's fix couldn't be read." };
+    }
+    await ref.sync?.(model.getValue());
+    const current: number | undefined = this.resolve(model)?.version;
+    if (current !== undefined && current !== version) {
+      return {
+        ran: false,
+        reason: 'The document changed after the fix was offered. Open Quick Fix again.',
+      };
+    }
+    applyAsOneStep(model, edits);
+    return { ran: true };
+  }
+
+  /**
    * Determines whether the language server that serves a document answers Go to Parent Module (#1210).
    * @param model The editor model.
    * @returns Returns true when it does.
@@ -4255,6 +4473,14 @@ export class LspFeatures {
     if (ref === null) {
       return { ran: false, reason: 'No language server serves this document any more.' };
     }
+    // The JSON server's "Sort JSON" source action runs a client command of VS Code's; Studio runs it
+    // as its own Sort Document (#1214).
+    if (command.command === JSON_SORT_COMMAND && ref.sortsDocument === true) {
+      return this.sortDocument(model);
+    }
+    if (command.command === CSS_APPLY_CODE_ACTION_COMMAND) {
+      return this.applyCssCodeAction(model, ref, command);
+    }
     if (!(ref.commands ?? []).includes(command.command)) {
       return {
         ran: false,
@@ -4774,6 +5000,53 @@ export function hoverContents(
     }
   }
   return blocks;
+}
+
+/**
+ * Applies edits to a model as one step of undo, apart from the typing around them (#1214).
+ * @param model The model.
+ * @param edits The edits; none is no step at all.
+ */
+function applyAsOneStep(
+  model: MonacoApi.editor.ITextModel,
+  edits: MonacoApi.editor.IIdentifiedSingleEditOperation[],
+): void {
+  if (edits.length === 0) {
+    return;
+  }
+  model.pushStackElement();
+  model.pushEditOperations(null, edits, (): null => null);
+  model.pushStackElement();
+}
+
+/**
+ * Reads a server's text edits (#1214) — the JSON server's answer to a sort, the CSS server's quick
+ * fix — into Monaco's edit operations.
+ * @param result The edits, untrusted.
+ * @returns Returns the edits, or null when the answer is not a list of text edits.
+ */
+function textEditsOf(result: unknown): MonacoApi.editor.IIdentifiedSingleEditOperation[] | null {
+  if (!Array.isArray(result)) {
+    return null;
+  }
+  const edits: MonacoApi.editor.IIdentifiedSingleEditOperation[] = [];
+  for (const entry of result as readonly unknown[]) {
+    const range: unknown = (entry as { range?: unknown } | null)?.range;
+    const text: unknown = (entry as { newText?: unknown } | null)?.newText;
+    if (!isLspRange(range) || typeof text !== 'string') {
+      return null;
+    }
+    edits.push({
+      range: {
+        startLineNumber: range.start.line + 1,
+        startColumn: range.start.character + 1,
+        endLineNumber: range.end.line + 1,
+        endColumn: range.end.character + 1,
+      },
+      text,
+    });
+  }
+  return edits;
 }
 
 /**

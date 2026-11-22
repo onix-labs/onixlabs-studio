@@ -65,6 +65,62 @@ export function shouldForwardTreeEvent(
 }
 
 /**
+ * Determines whether a polling watcher should look inside a directory (#1254). Native events cost
+ * nothing until something changes, but a poll reads every directory it covers on every pass, so the
+ * directories whose changes {@link shouldForwardTreeEvent} would drop anyway are not read at all:
+ * build outputs and dependency caches, and the parts of a version-control metadata directory none of
+ * its plugin's signal patterns can reach (a repository's object store is most of its files). The
+ * directory's own entry is still seen, because its parent is read.
+ * @param relativeDirectory The directory's path relative to the watched root, using either separator;
+ * empty for the root itself.
+ * @param metadata The metadata directories and their signal patterns.
+ * @returns Returns true when the directory's entries should be read.
+ */
+export function shouldPollInside(
+  relativeDirectory: string,
+  metadata: MetadataPolicies = new Map<string, readonly string[]>(),
+): boolean {
+  const segments: string[] = relativeDirectory
+    .split(/[\\/]/)
+    .filter((segment: string): boolean => segment.length > 0);
+  for (let index: number = 0; index < segments.length; index++) {
+    const segment: string = segments[index];
+    const signals: readonly string[] | undefined = metadata.get(segment);
+    if (signals !== undefined) {
+      const inside: readonly string[] = segments.slice(index + 1);
+      return (
+        signals.length === 0 ||
+        signals.some((pattern: string): boolean => couldMatchBeneath(inside, pattern.split('/')))
+      );
+    }
+    if (IGNORED_DIRECTORIES.has(segment.toLowerCase())) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Determines whether some path beneath a directory could match a pattern.
+ * @param directory The directory's segments, relative to where the pattern applies.
+ * @param pattern The pattern segments.
+ * @returns Returns true when an entry somewhere inside the directory could match.
+ */
+function couldMatchBeneath(directory: readonly string[], pattern: readonly string[]): boolean {
+  if (directory.length === 0) {
+    return pattern.length > 0;
+  }
+  if (pattern.length === 0) {
+    return false;
+  }
+  const [head, ...rest]: readonly string[] = pattern;
+  if (head === '**') {
+    return true;
+  }
+  return matchesSegment(directory[0], head) && couldMatchBeneath(directory.slice(1), rest);
+}
+
+/**
  * Matches path segments against a pattern's segments: `**` matches any number of segments (including
  * none), and `*` within a segment matches any run of characters.
  * @param path The path segments.

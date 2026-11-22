@@ -259,6 +259,32 @@ describe('Monaco', () => {
       expect(css['lessDefaults'].options['validate']).toBe(false);
     });
 
+    it('suppressBuiltInDiagnostics_whenJson_keepsSyntaxChecking_andStopsLoadingSchemas (#1214)', () => {
+      const json: { diagnosticsOptions: Record<string, unknown> } & {
+        setDiagnosticsOptions: (options: Record<string, unknown>) => void;
+      } = {
+        diagnosticsOptions: { validate: true, allowComments: true, trailingCommas: 'error' },
+        setDiagnosticsOptions: (options: Record<string, unknown>): void => {
+          json.diagnosticsOptions = options;
+        },
+      };
+      window.monaco = {
+        languages: { css, json: { jsonDefaults: json } },
+      } as unknown as Window['monaco'];
+
+      monaco.suppressBuiltInDiagnostics('json');
+
+      // Syntax checking stays, for a file no server serves; only loading schemas goes.
+      expect(json.diagnosticsOptions).toEqual({
+        validate: true,
+        allowComments: true,
+        trailingCommas: 'error',
+        enableSchemaRequest: false,
+        schemaRequest: 'ignore',
+      });
+      expect(css['cssDefaults'].options['validate']).toBe(true);
+    });
+
     it('suppressBuiltInDiagnostics_whenNoBuiltInWorker_changesNothing', () => {
       expect(() => monaco.suppressBuiltInDiagnostics('python')).not.toThrow();
       expect(css['cssDefaults'].options['validate']).toBe(true);

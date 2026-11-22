@@ -172,6 +172,34 @@ describe('LiveServerHost (#1062)', () => {
     expect(announced).toHaveLength(1);
   });
 
+  it('serves_aWorkspaceInAPolledFolder_askingThePluginToPoll', async () => {
+    const polled: LiveServerHost = new LiveServerHost({
+      descriptors: (): readonly LiveServerDescriptor[] => descriptors,
+      roots,
+      onChanged: (): void => undefined,
+      realPath: (target: string): Promise<string> => Promise.resolve(target),
+      isFile: (): Promise<boolean> => Promise.resolve(true),
+      pollInterval: (root: string): Promise<number | undefined> =>
+        Promise.resolve(root === ROOT ? 2000 : undefined),
+      createClient: (
+        _id: string,
+        _spec: LiveServerSpec,
+        onExited: () => void,
+      ): LiveServerEndpoint => {
+        const endpoint: FakeEndpoint = new FakeEndpoint(onExited);
+        endpoint.serveAnswer = serveAnswer;
+        endpoints.push(endpoint);
+        return endpoint;
+      },
+    });
+
+    await polled.open(path.join(ROOT, 'index.html'));
+
+    expect(endpoints[0].sent).toEqual([
+      { op: 'serve', params: { root: ROOT, port: LIVE_SERVER_FIRST_PORT, pollIntervalMs: 2000 } },
+    ]);
+  });
+
   it('opens_anIndexPage_atItsFolder', async () => {
     const answer: LiveServerOpenAnswer = await host.open(path.join(ROOT, 'index.html'));
 

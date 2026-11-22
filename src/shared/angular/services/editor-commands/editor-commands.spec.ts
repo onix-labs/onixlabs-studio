@@ -68,6 +68,40 @@ describe('EditorCommands', () => {
     expect(calls.has('formatDocument')).toBe(true);
   });
 
+  it('sortDocument_whenTheActiveEditorSorts_forwardsToItsHandler (#1214)', async () => {
+    const calls: Set<string> = new Set<string>();
+    commands.register('tab-1', {
+      ...recordingHandler(calls),
+      sortDocument: (): Promise<void> => {
+        calls.add('sortDocument');
+        return Promise.resolve();
+      },
+    });
+
+    await commands.sortDocument();
+
+    expect(calls.has('sortDocument')).toBe(true);
+  });
+
+  it('canSortDocument_asksTheActiveEditor (#1214)', () => {
+    expect(commands.canSortDocument()).toBe(false);
+
+    commands.register('tab-1', {
+      ...recordingHandler(new Set<string>()),
+      offersSortDocument: (): boolean => true,
+    });
+    expect(commands.canSortDocument()).toBe(true);
+
+    commands.register('tab-2', recordingHandler(new Set<string>()));
+    expect(commands.canSortDocument()).toBe(false);
+  });
+
+  it('sortDocument_whenTheActiveEditorCannotSort_doesNothing (#1214)', async () => {
+    commands.register('tab-1', recordingHandler(new Set<string>()));
+
+    await expect(commands.sortDocument()).resolves.toBeUndefined();
+  });
+
   it('cut_whenNoHandlerRegistered_doesNothing', () => {
     expect((): void => commands.cut()).not.toThrow();
   });

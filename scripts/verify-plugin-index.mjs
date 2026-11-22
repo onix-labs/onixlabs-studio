@@ -20,6 +20,16 @@
 // Every release an entry offers is checked: the entry's own top-level release, and each older one it
 // lists under `releases` (#1467). A build that cannot run the newest installs one of those instead, so
 // a rotten pin there breaks that build just as surely.
+//
+//   node scripts/verify-plugin-index.mjs --all --published
+//
+// `--published` is for a release, when every first-party plugin release the index pins must already
+// be out. By default a first-party lockfile is hashed from this checkout, because a branch that cuts a
+// plugin release cannot have its tag yet. That also passes when the tag was never pushed at all, and
+// the install then 404s on the user's machine: claude-harness 0.22.0 was pinned on main with no
+// plugin-claude-harness-v0.22.0 release, which the install gate (#1546) found and this did not. With
+// the flag, those lockfiles are fetched from their tags, and the first-party package each one resolves
+// to is fetched too.
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -34,6 +44,11 @@ const INDEX = argv.includes('--index')
 // a ref (the plugin's release tag, or `main` for the third-party servers' version-named lockfiles), and
 // a path in the working tree.
 const OWN = /^https:\/\/raw\.githubusercontent\.com\/onix-labs\/onixlabs-studio\/([^/]+)\/(.+)$/;
+
+// A first-party plugin package, as a lockfile resolves it: an asset of the plugin's own release.
+const OWN_PACKAGE = /^https:\/\/github\.com\/onix-labs\/onixlabs-studio\/releases\/download\//;
+
+const PUBLISHED = argv.includes('--published');
 
 /**
  * Gets the platform key for the machine running this, matching the main process's own.
@@ -88,6 +103,10 @@ function localBytes(url) {
     return null;
   }
   const [, ref, path] = match;
+  // A release asks what is published, not what this checkout says will be.
+  if (PUBLISHED && ref !== 'main') {
+    return null;
+  }
   if (ref !== 'main') {
     const tagged = showAt(ref, path);
     if (tagged !== null) {
@@ -208,9 +227,62 @@ for (const check of checks) {
   }
 }
 
+/**
+ * Lists the first-party packages a lockfile resolves to, with the integrity it pins for each.
+ * @param {string} url The lockfile's pinned URL.
+ * @returns {Promise<Array<{ url: string, integrity: string }>>} Returns the packages.
+ */
+async function ownPackagesOf(url) {
+  const response = await fetch(url, { redirect: 'follow' });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const lockfile = JSON.parse(await response.text());
+  return Object.values(lockfile.packages ?? {})
+    .filter((entry) => typeof entry?.resolved === 'string' && OWN_PACKAGE.test(entry.resolved))
+    .map((entry) => ({ url: entry.resolved, integrity: entry.integrity }));
+}
+
+// The packages behind first-party lockfiles: the lockfile can be published while the release asset
+// it resolves to is not, and npm then fails on the user's machine just the same.
+let packages = 0;
+if (PUBLISHED) {
+  for (const check of checks.filter((candidate) => candidate.platform === 'lockfile')) {
+    let owned;
+    try {
+      owned = await ownPackagesOf(check.url);
+    } catch {
+      // The lockfile itself failed above, and is already counted.
+      continue;
+    }
+    for (const { url, integrity } of owned) {
+      packages += 1;
+      const label = `${check.plugin} (package)`;
+      try {
+        const response = await fetch(url, { redirect: 'follow' });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const digest = `sha512-${createHash('sha512')
+          .update(Buffer.from(await response.arrayBuffer()))
+          .digest('base64')}`;
+        if (integrity !== undefined && digest !== integrity) {
+          failures += 1;
+          stdout.write(`  MISMATCH ${label}\n    pinned ${integrity}\n    actual ${digest}\n`);
+        } else {
+          stdout.write(`  ok       ${label}\n`);
+        }
+      } catch (error) {
+        failures += 1;
+        stdout.write(`  FAILED   ${label} — ${error.message}\n    ${url}\n`);
+      }
+    }
+  }
+}
+
 stdout.write(
   failures === 0
-    ? `\nAll ${checks.length} download(s) match what the index pins.\n`
-    : `\n${failures} of ${checks.length} download(s) did not match.\n`,
+    ? `\nAll ${checks.length + packages} download(s) match what the index pins.\n`
+    : `\n${failures} of ${checks.length + packages} download(s) did not match.\n`,
 );
 exit(failures === 0 ? 0 : 1);

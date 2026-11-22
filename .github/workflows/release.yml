@@ -55,16 +55,18 @@ jobs:
           node-version-file: .nvmrc
 
       # `--all`, not this runner's platform: the index pins per-platform downloads, and a release ships
-      # every platform. Retried once so a briefly unreachable host does not fail a release.
+      # every platform. `--published`, because by now every first-party plugin release the index pins
+      # must be out: without it a pin to a tag that was never pushed passes (claude-harness 0.22.0
+      # did). Retried once so a briefly unreachable host does not fail a release.
       - name: Verify every pinned download
         shell: bash
         run: |
-          if node scripts/verify-plugin-index.mjs --all; then
+          if node scripts/verify-plugin-index.mjs --all --published; then
             exit 0
           fi
           echo "::warning::First pass failed; retrying once in 60s in case a host was briefly unreachable."
           sleep 60
-          node scripts/verify-plugin-index.mjs --all
+          node scripts/verify-plugin-index.mjs --all --published
 
   build:
     name: Build (${{ matrix.name }})
@@ -139,13 +141,24 @@ jobs:
           exit $missing
 
       - name: Build renderer (Angular)
+        if: matrix.platform != 'linux'
         run: npm run build
 
       - name: Build Electron main + preload (typecheck + bundle)
+        if: matrix.platform != 'linux'
         run: npm run build:electron
 
       - name: Package
+        if: matrix.platform != 'linux'
         run: npx electron-builder ${{ matrix.args }} --publish never
+
+      # Linux is built inside Debian 12, not on the runner. The AppImage's native module (node-pty) is
+      # compiled against the builder's glibc and will not load on a system with an older one: built on
+      # `ubuntu-latest` it needed glibc 2.42, and Studio could not start on Debian 13 or Ubuntu 24.04
+      # (the install gate found it, #1546). Debian 12's 2.36 is one every supported distribution has.
+      - name: Package (Linux, built in Debian 12)
+        if: matrix.platform == 'linux'
+        run: node scripts/package-linux.mjs
 
       # A job must emit its own target and nothing else. An `arch:` list in electron-builder.yml
       # silently overrides the CLI arch flag, and when both macOS jobs built both architectures they
@@ -220,6 +233,41 @@ jobs:
             release/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 7
+
+  # The install gate (#1546): every installer just built is installed on a clean machine of its own
+  # platform, and a full first-run setup is completed through the real plugin index, then restarted.
+  # See install-gate.yml. Only on the dry run, because that is where a release can still be stopped:
+  # the `release` branch's ruleset requires the "Install gate" check below, so a `main → release` PR
+  # whose installers cannot be installed and set up cannot merge, and the push that tags and drafts
+  # never happens.
+  #
+  # Not repeated on the push to `release`. The push builds from the commit the PR proved, so the
+  # installers it releases are the ones the gate installed; running it again would spend most of an
+  # hour proving the same thing. Should that ever stop being true — a step that changes what the push
+  # builds — give `release` a `needs:` on a gate run here too.
+  install-gate-legs:
+    name: Install gate legs
+    needs: build
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/install-gate.yml
+    with:
+      reuse-installers: true
+
+  # The check the `release` ruleset requires, under a name of its own: a job inside a called workflow
+  # is reported as "<caller> / <job>", which is no name to pin a ruleset to.
+  install-gate:
+    name: Install gate
+    needs: install-gate-legs
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every leg passed
+        env:
+          RESULT: ${{ needs.install-gate-legs.result }}
+        run: |
+          echo "install gate: $RESULT"
+          [ "$RESULT" = success ]
 
   release:
     name: Tag and draft the release

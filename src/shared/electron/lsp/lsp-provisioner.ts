@@ -18,6 +18,7 @@ import {
 } from '../provisioning/archive-provisioner';
 import { LockfileProvision } from '../provisioning/lockfile-provision';
 import { LockfileProvisioner } from '../provisioning/lockfile-provisioner';
+import { tarProgram } from '../provisioning/tar-program';
 import { bundledLockfile } from '../contributions/plugins/bundled-lockfiles';
 
 /**
@@ -974,7 +975,7 @@ export class LspProvisioner {
    */
   private async extractZip(archive: string, destination: string): Promise<void> {
     if (process.platform === 'win32') {
-      await execFileAsync('tar', ['-xf', archive, '-C', destination]);
+      await execFileAsync(tarProgram(), ['-xf', archive, '-C', destination]);
     } else {
       await execFileAsync('unzip', ['-q', '-o', archive, '-d', destination]);
     }
@@ -1009,7 +1010,7 @@ export class LspProvisioner {
         await fs.rm(archive, { force: true });
         return null;
       }
-      await execFileAsync('tar', ['-xzf', archive, '-C', installDir]);
+      await execFileAsync(tarProgram(), ['-xzf', archive, '-C', installDir]);
       await fs.rm(archive, { force: true });
       const installed: JdtlsInstall | null = await this.readInstall(installDir);
       if (installed === null) {
