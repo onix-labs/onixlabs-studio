@@ -664,6 +664,10 @@ export class CodeDocumentPanel {
           await this.sorting.sortDocument(editor);
         }
       },
+      offersSortDocument: (): boolean => {
+        const editor: MonacoApi.editor.IStandaloneCodeEditor | null = pane.getEditor();
+        return editor !== null && this.sorting.offersSortDocument(editor);
+      },
       save: (): void => {
         this.log.info('code.document', 'Save well document', this.documentId());
         void this.documents.save(this.documentId());

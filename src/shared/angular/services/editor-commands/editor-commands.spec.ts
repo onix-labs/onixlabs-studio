@@ -83,6 +83,19 @@ describe('EditorCommands', () => {
     expect(calls.has('sortDocument')).toBe(true);
   });
 
+  it('canSortDocument_asksTheActiveEditor (#1214)', () => {
+    expect(commands.canSortDocument()).toBe(false);
+
+    commands.register('tab-1', {
+      ...recordingHandler(new Set<string>()),
+      offersSortDocument: (): boolean => true,
+    });
+    expect(commands.canSortDocument()).toBe(true);
+
+    commands.register('tab-2', recordingHandler(new Set<string>()));
+    expect(commands.canSortDocument()).toBe(false);
+  });
+
   it('sortDocument_whenTheActiveEditorCannotSort_doesNothing (#1214)', async () => {
     commands.register('tab-1', recordingHandler(new Set<string>()));
 

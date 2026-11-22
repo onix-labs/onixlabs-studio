@@ -1,4 +1,4 @@
-import { inject, Injector, Service } from '@angular/core';
+import { inject, Injector, Service, signal, WritableSignal } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Log } from '@shared/angular/services/log/log';
 import { LspCommandOutcome, LspFeatures } from '@shared/angular/services/lsp/lsp-features';
@@ -38,14 +38,34 @@ export class DocumentSorting {
   private readonly log: Log = inject(Log);
 
   /**
+   * Counts the times a language server has answered, so a menu built from {@link offersSortDocument}
+   * is built again once the JSON server comes up: whether it serves a document is not a signal.
+   */
+  private readonly answers: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Gets whether {@link answers} is following the language servers yet: it starts following them the
+   * first time it is read, since the features cannot be reached while this is being made.
+   */
+  private following: boolean = false;
+
+  /**
    * Determines whether Sort Document can run in an editor: it shows a document whose language server
    * sorts it.
    * @param editor The editor.
    * @returns Returns true when it can.
    */
   public offersSortDocument(editor: MonacoApi.editor.ICodeEditor): boolean {
+    const features: LspFeatures = this.injector.get(LspFeatures);
+    if (!this.following) {
+      this.following = true;
+      features.registerServedListener((): void =>
+        this.answers.update((count: number): number => count + 1),
+      );
+    }
+    this.answers();
     const model: MonacoApi.editor.ITextModel | null = editor.getModel();
-    return model !== null && this.injector.get(LspFeatures).servesDocumentSorting(model);
+    return model !== null && features.servesDocumentSorting(model);
   }
 
   /**

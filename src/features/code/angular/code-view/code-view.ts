@@ -749,6 +749,10 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
           await this.sorting.sortDocument(editor);
         }
       },
+      offersSortDocument: (): boolean => {
+        const editor: MonacoApi.editor.IStandaloneCodeEditor | null = pane.getEditor();
+        return editor !== null && this.sorting.offersSortDocument(editor);
+      },
       save: (): void => void this.documents.saveActive(),
       saveAs: (): void => void this.documents.saveActiveAs(),
       getText: (): string => pane.getValue(),

@@ -1,3 +1,4 @@
+import { computed, Signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type * as MonacoApi from 'monaco-editor';
 import { LspCommandOutcome, LspFeatures } from '@shared/angular/services/lsp/lsp-features';
@@ -15,6 +16,12 @@ class FakeLspFeatures {
   public serves: boolean = true;
   public outcome: LspCommandOutcome = { ran: true };
   public readonly sorted: unknown[] = [];
+  public served: (() => void) | undefined;
+
+  public registerServedListener(listener: () => void): () => void {
+    this.served = listener;
+    return (): void => undefined;
+  }
 
   public servesDocumentSorting(): boolean {
     return this.serves;
@@ -62,6 +69,19 @@ describe('DocumentSorting (#1214)', () => {
     lsp.serves = false;
     expect(sorting.offersSortDocument(editorOf(model))).toBe(false);
     expect(sorting.offersSortDocument(editorOf(null))).toBe(false);
+  });
+
+  it('isOffered_onceTheServerAnswers_toAMenuBuiltFromIt', () => {
+    lsp.serves = false;
+    const offered: Signal<boolean> = computed((): boolean =>
+      sorting.offersSortDocument(editorOf(model)),
+    );
+    expect(offered()).toBe(false);
+
+    lsp.serves = true;
+    lsp.served?.();
+
+    expect(offered()).toBe(true);
   });
 
   it('isNamedSortDocument', () => {

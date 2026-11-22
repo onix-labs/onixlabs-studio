@@ -68,6 +68,13 @@ export interface EditorCommandHandler {
   sortDocument?(): Promise<void>;
 
   /**
+   * Determines whether the document's language server sorts it (#1214), so a menu offers Sort
+   * Document only then. Optional, as {@link sortDocument} is.
+   * @returns Returns true when it does.
+   */
+  offersSortDocument?(): boolean;
+
+  /**
    * Saves the document, prompting for a path when it has never been saved.
    */
   save(): void;
@@ -422,6 +429,15 @@ export class EditorCommands {
   public async codeCleanup(): Promise<void> {
     this.log.trace('EditorCommands', 'Code cleanup requested');
     await this.activeHandler()?.codeCleanup?.();
+  }
+
+  /**
+   * Determines whether the active editor's document can be sorted (#1214): its language server sorts
+   * it. Reads the active editor reactively, so a menu built from it follows the active tab.
+   * @returns Returns true when it can.
+   */
+  public canSortDocument(): boolean {
+    return this.activeHandler()?.offersSortDocument?.() === true;
   }
 
   /**

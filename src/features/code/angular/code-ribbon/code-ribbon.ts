@@ -196,11 +196,13 @@ export class CodeRibbon {
   );
 
   /**
-   * Gets a value indicating whether the active document is JSON, the one language whose server sorts a
-   * document (#1214): only then does the Edit menu offer Sort Document.
+   * Gets a value indicating whether the active document can be sorted (#1214): it is JSON, and the
+   * JSON server serves it, as the editor's right-click menu asks. Only then does the Edit menu offer
+   * Sort Document.
    */
-  protected readonly isJson: Signal<boolean> = computed(
-    (): boolean => this.activeDocument()?.language() === JSON_LANGUAGE_ID,
+  protected readonly canSort: Signal<boolean> = computed(
+    (): boolean =>
+      this.activeDocument()?.language() === JSON_LANGUAGE_ID && this.commands.canSortDocument(),
   );
 
   /**
@@ -307,8 +309,8 @@ export class CodeRibbon {
           accelerator: 'Alt+Shift+F',
           run: (): void => this.onFormat(),
         },
-        // Only for a JSON file (#1214). No accelerator: VS Code gives Sort Document none.
-        ...(this.isJson()
+        // Only for a JSON file its server serves (#1214). No accelerator: VS Code gives it none.
+        ...(this.canSort()
           ? [
               {
                 id: 'code.sortDocument',

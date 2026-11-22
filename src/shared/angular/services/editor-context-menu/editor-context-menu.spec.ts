@@ -259,6 +259,7 @@ describe('EditorContextMenu (#1012)', () => {
     servesProjectConfiguration: Mock<LspFeatures['servesProjectConfiguration']>;
     servesDocumentSorting: Mock<LspFeatures['servesDocumentSorting']>;
     sortDocument: Mock<LspFeatures['sortDocument']>;
+    registerServedListener: Mock<LspFeatures['registerServedListener']>;
   };
   let opener: { openPath: Mock<(path: string) => Promise<boolean>> };
 
@@ -311,6 +312,9 @@ describe('EditorContextMenu (#1012)', () => {
       servesDocumentSorting: vi.fn<LspFeatures['servesDocumentSorting']>((): boolean => false),
       sortDocument: vi.fn<LspFeatures['sortDocument']>((): Promise<LspCommandOutcome> =>
         Promise.resolve({ ran: true }),
+      ),
+      registerServedListener: vi.fn<LspFeatures['registerServedListener']>(
+        (): (() => void) => (): void => undefined,
       ),
     };
     opener = {
