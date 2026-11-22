@@ -43,6 +43,22 @@ describe('parseStartupSettings', () => {
   });
 });
 
+describe('parseStartupSettings interface zoom', () => {
+  it('startsAt100', () => {
+    expect(DEFAULT_STARTUP_SETTINGS.interfaceZoom).toBe(100);
+  });
+
+  it('keepsAFixedLevel', () => {
+    expect(parseStartupSettings({ interfaceZoom: 75 }).interfaceZoom).toBe(75);
+    expect(parseStartupSettings({ interfaceZoom: 200 }).interfaceZoom).toBe(200);
+  });
+
+  it('fallsBackTo100_forALevelNoOneChecked', () => {
+    expect(parseStartupSettings({ interfaceZoom: 300 }).interfaceZoom).toBe(100);
+    expect(parseStartupSettings({ interfaceZoom: '150' }).interfaceZoom).toBe(100);
+  });
+});
+
 describe('parseStartupSettings log limits', () => {
   it('keeps a value the setting offers', () => {
     expect(parseStartupSettings({ logFileSizeMb: 50 }).logFileSizeMb).toBe(50);

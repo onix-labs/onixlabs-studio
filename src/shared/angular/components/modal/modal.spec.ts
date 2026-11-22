@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ModalBackdrop } from '@shared/angular/services/modal-backdrop/modal-backdrop';
+import { Settings } from '@shared/angular/services/settings/settings';
+import type { InterfaceZoom } from '@shared/api/interface-zoom';
 import {
   ModalWindowRequest,
   ModalWindows,
@@ -493,6 +495,27 @@ describe('Modal opening focus', () => {
 
     expect(document.activeElement?.classList.contains('probe-search') ?? false).toBe(false);
   });
+
+  it.each<[InterfaceZoom, number]>([
+    [100, 448],
+    [200, 360],
+  ])(
+    'request_whenFreestandingAt %s%%_holdsItToTheDisplayInCssPixels (%s wide)',
+    (zoom: InterfaceZoom, width: number) => {
+      // The display is measured in screen pixels: 800 of them hold 400 CSS pixels at 200%, of which
+      // the modal takes at most 90%.
+      vi.spyOn(window.screen, 'availWidth', 'get').mockReturnValue(800);
+      vi.spyOn(window.screen, 'availHeight', 'get').mockReturnValue(600);
+      TestBed.inject(Settings).assign('accessibility.interfaceZoom', zoom);
+      const fixture: ComponentFixture<SurfaceHost> = TestBed.createComponent(SurfaceHost);
+      fixture.detectChanges();
+      fixture.componentInstance.open.set(true);
+      fixture.detectChanges();
+
+      expect(windows.requests[0].width).toBe(width);
+      localStorage.clear();
+    },
+  );
 
   it('open_whenClosedBeforeTheFrame_focusesNothing', () => {
     const fixture: ComponentFixture<PromptHost> = TestBed.createComponent(PromptHost);

@@ -139,8 +139,9 @@ Text typed with an input method (Chinese, Japanese, Korean) uses Enter to pick a
 ## What the spike covers
 
 Marked and translated: the application menu (and so the macOS menu bar), the Welcome screen's frame
-and its Get Started and Tools tabs, the first five settings in Settings › Application, and the time
-helpers (commit ages, durations, task timings). That's 122 messages. The French, Spanish, German,
+and its Get Started and Tools tabs, the first five settings in Settings › Application, Interface Zoom
+and Focus Ring in Settings › Application › Accessibility, and the time helpers (commit ages,
+durations, task timings). The French, Spanish, German,
 Chinese and Arabic were drafted by an AI and need review by native speakers.
 
 ## What is still to do

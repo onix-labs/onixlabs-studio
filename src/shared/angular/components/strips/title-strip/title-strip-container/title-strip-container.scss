@@ -13,8 +13,10 @@
 
 // macOS insets its traffic lights over the strip's leading end, so the strip's content starts clear
 // of them — except in full screen, where macOS draws them in the menu bar it slides down instead.
+// The traffic lights are drawn at the system's size whatever the Interface Zoom, so the room left for
+// them is divided by it: the same width on screen at every zoom, never too little at 75%.
 :host-context(:root[data-platform='darwin']:not([data-full-screen='true'])) {
-  padding-inline-start: 5.5rem;
+  padding-inline-start: calc(5.5rem / var(--interface-zoom, 1));
 }
 
 // Linux windows have no frame, so Studio draws the window controls itself at the strip's trailing
