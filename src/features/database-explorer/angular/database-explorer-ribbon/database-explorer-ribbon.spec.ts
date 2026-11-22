@@ -20,6 +20,7 @@ import { DatabaseExplorerRibbon } from './database-explorer-ribbon';
  */
 interface DatabaseExplorerRibbonInternals {
   onSaveVariant(id: string): void;
+  onExplainVariant(id: string): void;
 }
 
 /**
@@ -33,6 +34,7 @@ class RecordingHandler implements DatabaseExplorerCommandHandler {
 
   public readonly canExecute: WritableSignal<boolean> = signal<boolean>(false);
   public readonly executing: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly canExplain: WritableSignal<boolean> = signal<boolean>(false);
   public readonly connectionTarget: WritableSignal<ConnectionTarget | null> =
     signal<ConnectionTarget | null>(null);
   public readonly panels: WritableSignal<readonly RibbonPanel[]> = signal<readonly RibbonPanel[]>(
@@ -55,6 +57,14 @@ class RecordingHandler implements DatabaseExplorerCommandHandler {
    */
   public executeStatement(): void {
     this.calls.push('executeStatement');
+  }
+
+  /**
+   * Records an explain.
+   * @param analyze Whether it was analyzed.
+   */
+  public explain(analyze: boolean): void {
+    this.calls.push(analyze ? 'explainAnalyze' : 'explain');
   }
 
   /**
@@ -371,7 +381,7 @@ describe('DatabaseExplorerRibbon', () => {
     handler.executing.set(true);
     refresh();
 
-    expect(labels('Query')).toEqual(['New', 'Cancel']);
+    expect(labels('Query')).toEqual(['New', 'Cancel', 'Explain']);
     expect(iconOf(button('Query', 'Cancel'))).toBe(Icon.STOP.classList);
   });
 
@@ -383,6 +393,35 @@ describe('DatabaseExplorerRibbon', () => {
     button('Query', 'Execute').click();
 
     expect(handler.calls).toEqual(['newQuery', 'execute']);
+  });
+
+  it('explain_whenTheQueryCannotBeExplained_isDisabled', () => {
+    expect(button('Query', 'Explain').disabled).toBe(true);
+    expect(iconOf(button('Query', 'Explain'))).toBe(Icon.DATABASE_EXPLAIN.classList);
+  });
+
+  it('explain_whenPressed_explainsTheQuery_andItsDropdownAnalyzesIt', () => {
+    handler.canExplain.set(true);
+    refresh();
+
+    button('Query', 'Explain').click();
+    internals.onExplainVariant('explain-analyze');
+
+    expect(handler.calls).toEqual(['explain', 'explainAnalyze']);
+  });
+
+  it('databaseMenu_explain_followsTheRibbonsExplain', () => {
+    expect(entry('database', 'database.explain').enabled).toBe(false);
+    expect(entry('database', 'database.explainAnalyze').enabled).toBe(false);
+
+    handler.canExplain.set(true);
+    refresh();
+    menu.dispatch('database.explain');
+    menu.dispatch('database.explainAnalyze');
+
+    expect(entry('database', 'database.explain').label).toBe('Explain Query');
+    expect(entry('database', 'database.explainAnalyze').enabled).toBe(true);
+    expect(handler.calls).toEqual(['explain', 'explainAnalyze']);
   });
 
   it('tools_withNoAgentPanel_offerNothing', () => {

@@ -12,6 +12,7 @@ it's the reference. This skill is the checklist. Do the steps in order, and don'
 ## Before you start
 
 - Read the server's epic or issue, and `docs/language-servers/capability-matrix.md`.
+  - No issue for the server or the language? Don't stop for one, and don't open one yourself. Work from the request, link the issue that asked for the work (or none), and say at the top of the PR that no server issue exists, so Matthew can decide whether to open one.
 - Work on a branch from `origin/main`: one PR per issue, with a commit per area.
 - ⛔ Never probe or test against the user's own repositories. Fixtures go under `.cache/`, and the profile is a scratch one under `.cache/`.
 - Default to the sandbox. Set `GOCACHE`, `UV_CACHE_DIR` and the like under `$TMPDIR` rather than disabling it.
@@ -29,6 +30,8 @@ it's the reference. This skill is the checklist. Do the steps in order, and don'
 4. **Probe twice:**
    - `node scripts/probe-lsp.mjs --server <id> --workspace <fixture> --profile <scratch>`;
    - then the same with `--settings '<json>'` / `--init-options '<json>'` for the settings you mean to declare.
+   - Give `--file` an absolute path: it's read from the current folder, not the workspace.
+   - A server that can't start in the macOS sandbox (taplo reads the system proxy settings) needs Matthew's go-ahead to probe unsandboxed. Run only the server and its probe that way.
 5. **Read the report:** what's offered; which sections it asks for, and when; the client commands it sends; the requests it sends the client; anything that throws on a `null` answer.
 6. **Declare settings** on the descriptor, choosing pull, push, startup (`startupOnly`, "restarts" in the description) or arguments.
    - Use the server's own defaults unless a feature is otherwise unreachable; say so in the PR.
@@ -41,7 +44,7 @@ it's the reference. This skill is the checklist. Do the steps in order, and don'
    - custom requests only where advertised.
 8. **Specs.** Build from the real curated entry. Assert the answered, pushed and start-up shapes, and which settings restart the server. Run single specs only: `npx ng test --watch=false --include <file>`.
 9. **Live check** in a second instance on a scratch profile, against the fixture, feature by feature.
-10. **Matrix.** Name the report in `docs/language-servers/capability-wiring.json`, add the checked features under `verified`, and run `node scripts/probe-lsp.mjs --matrix --docs`.
+10. **Matrix.** Name the report in `docs/language-servers/capability-wiring.json`, add the checked features under `verified`, and run `node scripts/probe-lsp.mjs --matrix --docs`. This is the only place the row is added: after the live check, never straight after probing (the guide's §2 points here). The run rewrites `capability-matrix.md` whole, so restore any hand-written note it drops.
 11. **Gate and PR:**
     - `npm run format:check` and lint, then push, then a **draft** PR.
     - The title matches the conventional regex, with a lower-case subject.
@@ -53,6 +56,7 @@ it's the reference. This skill is the checklist. Do the steps in order, and don'
 ## Gotchas
 
 - Never `didOpen` twice (Roslyn aborts).
+- Edit the document in the live check, then check again: a server that goes dark after the first keystroke has lost the text (full-sync servers needed the whole text, #1206).
 - Null can mean "unchanged" (Roslyn), or crash the server (CSS; JSON and Svelte on `{ settings: null }`).
 - Features hide behind settings and init options: `provideFormatter`, `yaml.format.enable`, gopls `semanticTokens`, `Lua.hint.enable`.
 - ty ignores changes, so its settings are `startupOnly`.

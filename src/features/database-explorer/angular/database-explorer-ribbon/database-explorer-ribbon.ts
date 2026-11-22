@@ -34,6 +34,11 @@ const VARIANT_UNLOCK: string = 'unlock-passphrase';
 const VARIANT_REMOVE_PASSPHRASE: string = 'remove-passphrase';
 
 /**
+ * Identifies the Explain Analyze item in the Explain menu button's dropdown.
+ */
+const VARIANT_EXPLAIN_ANALYZE: string = 'explain-analyze';
+
+/**
  * The contextual ribbon of a Database Explorer tab (#1102), grouped by what each command acts on:
  * File (Save, its passphrase items), Connection (New, Connect/Disconnect, Refresh, Edit — on the
  * selected connection, else the front query's), Query (New, Execute/Cancel), and Tools (the agent's
@@ -109,6 +114,15 @@ const VARIANT_REMOVE_PASSPHRASE: string = 'remove-passphrase';
           [disabled]="!commands.canExecute()"
           (action)="commands.execute()"
         />
+        <app-ribbon-strip-menu-button
+          [icon]="Icon.DATABASE_EXPLAIN"
+          [label]="explainLabel"
+          [tooltip]="explainTooltip"
+          [items]="explainItems"
+          [disabled]="!commands.canExplain()"
+          (action)="commands.explain(false)"
+          (selected)="onExplainVariant($event)"
+        />
         @if (commands.manualTransactions() || commands.transactionOpen()) {
           <app-ribbon-strip-column>
             <app-ribbon-strip-button-small
@@ -147,6 +161,28 @@ const VARIANT_REMOVE_PASSPHRASE: string = 'remove-passphrase';
 export class DatabaseExplorerRibbon {
   protected readonly Icon: typeof Icon = Icon;
   protected readonly commands: DatabaseExplorerCommands = inject(DatabaseExplorerCommands);
+
+  /**
+   * Gets the Explain button's label.
+   */
+  protected readonly explainLabel: string = $localize`:A button or menu item showing a query's plan without running it:Explain`;
+
+  /**
+   * Gets the Explain button's tooltip.
+   */
+  protected readonly explainTooltip: string = $localize`:Tooltip on the ribbon's Explain button:Show how the database would run the query, without running it`;
+
+  /**
+   * Gets the Explain button's dropdown: Explain Analyze, which runs the query to show what actually
+   * happened.
+   */
+  protected readonly explainItems: readonly RibbonMenuItem[] = [
+    {
+      id: VARIANT_EXPLAIN_ANALYZE,
+      label: $localize`:A button or menu item running a query to show its plan with actual figures:Explain Analyze`,
+      icon: Icon.DATABASE_EXPLAIN_ANALYZE,
+    },
+  ];
 
   /**
    * Gets the agent panel, the one tool panel the ribbon toggles.
@@ -277,6 +313,18 @@ export class DatabaseExplorerRibbon {
             enabled: this.commands.canExecute() && !this.commands.executing(),
             run: (): void => this.commands.executeStatement(),
           },
+          {
+            id: 'database.explain',
+            label: $localize`:An application menu item showing a query's plan without running it:Explain Query`,
+            enabled: this.commands.canExplain(),
+            run: (): void => this.commands.explain(false),
+          },
+          {
+            id: 'database.explainAnalyze',
+            label: $localize`:An application menu item running a query to show its plan with actual figures:Explain Analyze Query`,
+            enabled: this.commands.canExplain(),
+            run: (): void => this.commands.explain(true),
+          },
           ...(this.commands.manualTransactions() || this.commands.transactionOpen()
             ? [
                 MENU_SEPARATOR,
@@ -317,6 +365,15 @@ export class DatabaseExplorerRibbon {
       },
     ],
   );
+
+  /**
+   * Runs the action chosen from the Explain menu button's dropdown: Explain Analyze, or a plain
+   * Explain for anything else.
+   * @param id The chosen variant.
+   */
+  protected onExplainVariant(id: string): void {
+    this.commands.explain(id === VARIANT_EXPLAIN_ANALYZE);
+  }
 
   /**
    * Runs the action chosen from the Save menu button's dropdown.

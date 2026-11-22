@@ -11,6 +11,8 @@ import {
   ExecuteOutcome,
   ExecuteRequest,
   ExpandOutcome,
+  ExplainOutcome,
+  ExplainRequest,
   FetchRequest,
   NodeActionOutcome,
   TransactionOutcome,
@@ -33,7 +35,13 @@ import { DatabaseEnginePrompt } from '@shared/angular/services/plugins/database-
 import { Settings } from '@shared/angular/services/settings/settings';
 import { DatabaseSelectAction } from '@shared/angular/services/settings/settings-registry';
 import { DatabaseClient } from '../database-client/database-client';
-import { DatabaseWorkspace, ExportRows, NodeChildren, nodeKey } from './database-workspace';
+import {
+  DatabaseWorkspace,
+  ExportRows,
+  NodeChildren,
+  nodeKey,
+  PlanOutcome,
+} from './database-workspace';
 
 /**
  * An engine with a secret password field, as a server engine has.
@@ -59,7 +67,7 @@ const SQLITE: DatabaseEngineInfo = {
   displayName: 'SQLite',
   language: 'sql',
   queryExtension: 'sql',
-  capabilities: ['script', 'transactions'],
+  capabilities: ['script', 'transactions', 'explain'],
   connectionFields: [{ id: 'file', label: 'File', kind: 'file' }],
 };
 
@@ -267,6 +275,36 @@ class FakeClient {
   public transaction(request: TransactionRequest): Promise<TransactionOutcome> {
     this.transactions.push(request);
     return Promise.resolve({ failed: false, message: 'done' });
+  }
+
+  /**
+   * Holds every explain request.
+   */
+  public readonly explains: ExplainRequest[] = [];
+
+  /**
+   * Holds what an explain resolves with.
+   */
+  public explainOutcome: ExplainOutcome = {
+    plans: [
+      {
+        statement: 'select 1',
+        line: 1,
+        root: { operator: 'Result', cost: 0.01, children: [] },
+        raw: '[]',
+      },
+    ],
+    failed: false,
+  };
+
+  /**
+   * Records an explain request.
+   * @param request The request.
+   * @returns Returns the configured outcome.
+   */
+  public explain(request: ExplainRequest): Promise<ExplainOutcome> {
+    this.explains.push(request);
+    return Promise.resolve(this.explainOutcome);
   }
 
   /**
@@ -1364,6 +1402,71 @@ describe('DatabaseWorkspace', () => {
     expect(workspace.outcome(query.id)).toEqual(outcome);
     expect(workspace.outcomes().get(query.id)).toEqual(outcome);
     expect(workspace.running().has(query.id)).toBe(false);
+  });
+
+  it('explain_connectsFirst_andRecordsThePlansWithHowTheyWereAskedFor', async () => {
+    const connection: DatabaseConnection = addPostgres();
+    const query: DatabaseQuery = workspace.addQuery(connection.id, 'shop', 'select 1');
+
+    const outcome: PlanOutcome | null = await workspace.explain(query.id, 'select 1', 4, true);
+
+    expect(client.connects).toHaveLength(1);
+    expect(client.explains).toEqual([
+      { session: 'session-1', text: 'select 1', database: 'shop', analyze: true },
+    ]);
+    expect(outcome).toMatchObject({
+      plans: client.explainOutcome.plans,
+      failed: false,
+      analyzed: true,
+      firstLine: 4,
+    });
+    expect(workspace.plans().get(query.id)).toEqual(outcome);
+    expect(workspace.explaining().has(query.id)).toBe(false);
+  });
+
+  it('explain_plainly_doesNotAskToAnalyze', async () => {
+    const query: DatabaseQuery = workspace.addQuery(addPostgres().id, undefined, 'select 1');
+
+    await workspace.explain(query.id, 'select 1');
+
+    expect(client.explains).toEqual([{ session: 'session-1', text: 'select 1' }]);
+  });
+
+  it('explain_givesEachExplanationANewIdentity', async () => {
+    const query: DatabaseQuery = workspace.addQuery(addPostgres().id, undefined, 'select 1');
+
+    const first: PlanOutcome | null = await workspace.explain(query.id, 'select 1');
+    const second: PlanOutcome | null = await workspace.explain(query.id, 'select 1');
+
+    expect(first?.id).not.toBe(second?.id);
+  });
+
+  it('explain_whenTheConnectionFails_recordsAFailedPlanWithTheReason', async () => {
+    const query: DatabaseQuery = workspace.addQuery(addPostgres().id, undefined, 'select 1');
+    client.connectOutcome = { kind: 'failure', message: 'no route to host' };
+
+    const outcome: PlanOutcome | null = await workspace.explain(query.id, 'select 1');
+
+    expect(outcome).toMatchObject({ plans: [], failed: true, message: 'no route to host' });
+    expect(client.explains).toEqual([]);
+  });
+
+  it('explain_withoutAConnection_doesNothing', async () => {
+    const query: DatabaseQuery = workspace.addQuery(null, undefined, 'select 1');
+
+    expect(await workspace.explain(query.id, 'select 1')).toBeNull();
+    expect(workspace.plans().size).toBe(0);
+  });
+
+  it('canExplain_followsTheEnginesCapability', () => {
+    const cannot: DatabaseQuery = workspace.addQuery(addPostgres().id, undefined, 'select 1');
+    const lite: DatabaseConnection = workspace.addConnection('Lite', 'sqlite', { file: 'a.db' });
+    const can: DatabaseQuery = workspace.addQuery(lite.id, undefined, 'select 1');
+    const none: DatabaseQuery = workspace.addQuery(null, undefined, 'select 1');
+
+    expect(workspace.canExplain(cannot.id)).toBe(false);
+    expect(workspace.canExplain(can.id)).toBe(true);
+    expect(workspace.canExplain(none.id)).toBe(false);
   });
 
   it('execute_withoutAConnection_doesNothing', async () => {

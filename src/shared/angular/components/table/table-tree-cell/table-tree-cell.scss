@@ -1,0 +1,47 @@
+:host {
+  display: block;
+  min-inline-size: 0;
+}
+
+// Indented a step per level; the twisty (or its stand-in) keeps the same room on every row, so labels
+// at one depth line up whether or not their row has rows beneath it.
+.tree-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-inline-size: 0;
+  padding-inline-start: calc(var(--tree-depth, 0) * var(--table-tree-indent, 1rem));
+}
+
+.tree-cell__twisty,
+.tree-cell__spacer {
+  flex: 0 0 auto;
+  inline-size: 1rem;
+  block-size: 1rem;
+}
+
+// A borderless caret, as the table's group twisty is.
+.tree-cell__twisty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: 0.2rem;
+  cursor: pointer;
+  opacity: 0.75;
+
+  &:hover,
+  &:focus-visible {
+    opacity: 1;
+  }
+}
+
+.tree-cell__label {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
