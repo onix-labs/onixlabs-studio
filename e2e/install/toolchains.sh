@@ -45,10 +45,13 @@ system() {
   grep " ${node}\$" SHASUMS256.txt | sha256sum --check --strict -
   tar -xJf "$node" -C /usr/local --strip-components=1 --no-same-owner
 
-  # The .NET SDK, through Microsoft's install script, which verifies what it fetches. Linked onto the
-  # system PATH, as the distribution packages do.
-  fetch https://dot.net/v1/dotnet-install.sh dotnet-install.sh
-  bash dotnet-install.sh --version "$DOTNET_SDK_VERSION" --install-dir /usr/share/dotnet --no-path
+  # The .NET SDK archive itself, checked against the SHA-512 Microsoft's release metadata lists for
+  # it, pinned in toolchains.env — not dotnet-install.sh, a script that changes from day to day and
+  # could not be pinned. Linked onto the system PATH, as the distribution packages do.
+  local dotnet="dotnet-sdk-${DOTNET_SDK_VERSION}-linux-x64.tar.gz"
+  fetch "https://builds.dotnet.microsoft.com/dotnet/Sdk/${DOTNET_SDK_VERSION}/${dotnet}" "$dotnet"
+  echo "${DOTNET_SDK_SHA512}  ${dotnet}" | sha512sum --check --strict -
+  mkdir -p /usr/share/dotnet && tar -xzf "$dotnet" -C /usr/share/dotnet --no-same-owner
   ln -s /usr/share/dotnet/dotnet /usr/local/bin/dotnet
 
   # Go, checked against the hash go.dev lists for it, pinned here.

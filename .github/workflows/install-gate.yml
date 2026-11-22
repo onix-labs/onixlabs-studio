@@ -35,6 +35,7 @@ on:
       - 'scripts/e2e-install.mjs'
       - 'scripts/e2e-install-report.mjs'
       - 'scripts/package-linux.mjs'
+      - '.linux-builder-image'
 
 # A newer push to the PR supersedes the run in progress. Keyed apart from release.yml's own group, so
 # a dry run calling this cannot wait on itself.
@@ -200,29 +201,56 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
 
       # Maven, Gradle and CMake come straight from their projects: they have no setup action under
-      # actions/*, and this repository allows no other publisher's actions.
+      # actions/*, and this repository allows no other publisher's actions. Each is checked against the
+      # checksum its project publishes before it is unpacked, as toolchains.sh checks them on Linux.
       - name: Set up Maven, Gradle and CMake
         if: runner.os != 'Linux'
         run: |
           set -euo pipefail
           tools="$RUNNER_TEMP/gate-tools"
           mkdir -p "$tools"
-          curl -fsSL --retry 5 -o "$tools/maven.zip" \
-            "https://archive.apache.org/dist/maven/maven-3/$MAVEN_VERSION/binaries/apache-maven-$MAVEN_VERSION-bin.zip"
+          fetch() { curl -fsSL --retry 5 -o "$2" "$1"; }
+          # check <bits> <file> <expected hex>: shasum on macOS, sha<bits>sum on Windows.
+          check() {
+            local actual
+            if command -v "sha$1sum" >/dev/null; then
+              actual="$("sha$1sum" "$2" | cut -d' ' -f1)"
+            else
+              actual="$(shasum -a "$1" "$2" | cut -d' ' -f1)"
+            fi
+            if [ -z "$3" ] || [ "$actual" != "$3" ]; then
+              echo "::error::$2 does not match its published SHA-$1 (got $actual, expected '$3')"
+              exit 1
+            fi
+            echo "verified $(basename "$2")"
+          }
+
+          maven="https://archive.apache.org/dist/maven/maven-3/$MAVEN_VERSION/binaries/apache-maven-$MAVEN_VERSION-bin.zip"
+          fetch "$maven" "$tools/maven.zip"
+          check 512 "$tools/maven.zip" "$(curl -fsSL --retry 5 "$maven.sha512" | cut -d' ' -f1)"
           unzip -q "$tools/maven.zip" -d "$tools"
           echo "$tools/apache-maven-$MAVEN_VERSION/bin" >> "$GITHUB_PATH"
-          curl -fsSL --retry 5 -o "$tools/gradle.zip" \
-            "https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip"
+
+          gradle="https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip"
+          fetch "$gradle" "$tools/gradle.zip"
+          check 256 "$tools/gradle.zip" "$(curl -fsSL --retry 5 "$gradle.sha256")"
           unzip -q "$tools/gradle.zip" -d "$tools"
           echo "$tools/gradle-$GRADLE_VERSION/bin" >> "$GITHUB_PATH"
+
           base="https://github.com/Kitware/CMake/releases/download/v$CMAKE_VERSION"
+          fetch "$base/cmake-$CMAKE_VERSION-SHA-256.txt" "$tools/cmake.sha256"
           if [ "$RUNNER_OS" = macOS ]; then
-            curl -fsSL --retry 5 -o "$tools/cmake.tar.gz" "$base/cmake-$CMAKE_VERSION-macos-universal.tar.gz"
-            tar -xzf "$tools/cmake.tar.gz" -C "$tools"
+            cmake="cmake-$CMAKE_VERSION-macos-universal.tar.gz"
+          else
+            cmake="cmake-$CMAKE_VERSION-windows-x86_64.zip"
+          fi
+          fetch "$base/$cmake" "$tools/$cmake"
+          check 256 "$tools/$cmake" "$(awk -v name="$cmake" '$2 == name { print $1 }' "$tools/cmake.sha256")"
+          if [ "$RUNNER_OS" = macOS ]; then
+            tar -xzf "$tools/$cmake" -C "$tools"
             echo "$tools/cmake-$CMAKE_VERSION-macos-universal/CMake.app/Contents/bin" >> "$GITHUB_PATH"
           else
-            curl -fsSL --retry 5 -o "$tools/cmake.zip" "$base/cmake-$CMAKE_VERSION-windows-x86_64.zip"
-            unzip -q "$tools/cmake.zip" -d "$tools"
+            unzip -q "$tools/$cmake" -d "$tools"
             echo "$tools/cmake-$CMAKE_VERSION-windows-x86_64/bin" >> "$GITHUB_PATH"
           fi
 
