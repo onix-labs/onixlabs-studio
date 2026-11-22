@@ -62,7 +62,8 @@ const SVELTE_GRAMMAR: MonacoApi.languages.IMonarchLanguage = {
       [/>/, 'metatag', '@pop'],
     ],
     comment: [
-      [/-->/, 'comment', '@pop'],
+      // HTML also ends a comment at `--!>`, so colouring stops where the browser's comment does.
+      [/--!?>/, 'comment', '@pop'],
       [/[^-]+/, 'comment.content'],
       [/./, 'comment.content'],
     ],
