@@ -79,6 +79,39 @@ export class DatabaseQueryOpener {
   }
 
   /**
+   * Holds how each open query panel explains itself.
+   */
+  private readonly explainers: Map<string, (analyze: boolean) => void> = new Map<
+    string,
+    (analyze: boolean) => void
+  >();
+
+  /**
+   * Records how an open query panel explains itself, so the ribbon's Explain explains the panel's
+   * selection exactly as the panel's own button does.
+   * @param id The query's id.
+   * @param explain Explains the panel's selection, or all of it; analyzing when asked.
+   * @returns Returns a function that forgets it again.
+   */
+  public attachExplain(id: string, explain: (analyze: boolean) => void): () => void {
+    this.explainers.set(id, explain);
+    return (): void => {
+      if (this.explainers.get(id) === explain) {
+        this.explainers.delete(id);
+      }
+    };
+  }
+
+  /**
+   * Explains an open query as its panel would.
+   * @param id The query's id.
+   * @param analyze Whether to run the statements and report what actually happened.
+   */
+  public explain(id: string, analyze: boolean): void {
+    this.explainers.get(id)?.(analyze);
+  }
+
+  /**
    * Runs an open query as its panel would.
    * @param id The query's id.
    */

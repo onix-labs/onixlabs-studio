@@ -297,6 +297,15 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
+  public deleteRemoteBranch(
+    remote: string,
+    name: string,
+    expected: string,
+  ): Promise<MutationResult> {
+    this.calls.push(`deleteRemoteBranch:${remote}:${name}@${expected}`);
+    return Promise.resolve({ success: true });
+  }
+
   public pushTag(remote: string, name: string): Promise<MutationResult> {
     this.calls.push(`pushTag:${remote}:${name}`);
     return Promise.resolve({ success: true });
@@ -1033,6 +1042,176 @@ describe('SourceControlSidebar', () => {
 
     it('readsTheMergedPullRequests_onceAHostingPluginServesTheRepository', () => {
       expect(forge.mergedLoads).toBeGreaterThan(0);
+    });
+
+    describe('Delete Merged Branches', () => {
+      /**
+       * Reveals the protected surface these tests drive.
+       * @returns Returns the internals.
+       */
+      function internals(): {
+        onContextAction(c: TreeMenuSelection): void;
+        pendingDeleteBranch(): { name: string; pullRequest?: number } | null;
+        pendingForceDeleteBranch(): { name: string } | null;
+        confirmDeleteBranch(): Promise<void>;
+      } {
+        return component as unknown as ReturnType<typeof internals>;
+      }
+
+      /**
+       * Finds an element in the open dialog by its test id.
+       * @param testId The test id.
+       * @returns Returns the element, or null.
+       */
+      function inDialog(testId: string): HTMLElement | null {
+        return windows.contentHost?.querySelector<HTMLElement>(`[data-testid="${testId}"]`) ?? null;
+      }
+
+      /**
+       * Chooses Delete Merged Branches from Local's menu.
+       */
+      async function chooseDeleteMerged(): Promise<void> {
+        internals().onContextAction({
+          itemId: 'repo.deleteMergedBranches',
+          row: sectionRow('local', 'Local'),
+        });
+        await fixture.whenStable();
+      }
+
+      beforeEach(async () => {
+        // `main` is checked out and the default; `develop` has work nowhere else; `done` was merged
+        // normally and still has its upstream; `squashed` was merged by squash through #885.
+        provider.extraBranches = [
+          {
+            name: 'done',
+            current: false,
+            upstream: 'origin/done',
+            ahead: 0,
+            behind: 0,
+            tip: 'd1',
+            mergedInto: 'main',
+          },
+          { name: 'squashed', current: false, ahead: 0, behind: 0, tip: 's1' },
+        ];
+        provider.remoteEntries = [
+          {
+            name: 'origin',
+            url: 'https://example.com/onix/studio.git',
+            branches: [
+              { name: 'origin/main', commit: 'c2' },
+              { name: 'origin/done', commit: 'd1' },
+            ],
+          },
+        ];
+        forge.mergedPullRequests.set([
+          pullRequest({ number: 885, headRef: 'squashed', headSha: 's1', state: 'merged' }),
+          // A pull request merged from main itself, as from a fork, never makes main deletable.
+          pullRequest({ number: 1, headRef: 'main', headSha: 'c2', state: 'merged' }),
+        ]);
+        await repository.refresh();
+        fixture.detectChanges();
+      });
+
+      it('listsTheMergedBranches_butNeverTheCheckedOutOrDefaultBranch', async () => {
+        await chooseDeleteMerged();
+
+        const list: string = inDialog('merged-branches-list')?.textContent ?? '';
+        expect(list).toContain('done');
+        expect(list).toContain('merged into main');
+        expect(list).toContain('squashed');
+        expect(list).toContain('merged via pull request #885');
+        expect(list).not.toContain('develop');
+        expect(
+          [...(inDialog('merged-branches-list')?.querySelectorAll('li') ?? [])].map(
+            (item: HTMLElement): string => item.querySelector('.merged__name')?.textContent ?? '',
+          ),
+        ).toEqual(['done', 'squashed']);
+      });
+
+      it('offersTheRemoteBranchThatStillExists_unticked_andDeletesOnlyLocallyByDefault', async () => {
+        await chooseDeleteMerged();
+        expect(windows.contentHost?.textContent).toContain('Also delete 1 remote branch');
+
+        inDialog('merged-branches-delete')?.querySelector<HTMLElement>('button')?.click();
+        await fixture.whenStable();
+
+        expect(provider.calls.filter((call: string): boolean => call.includes('Branch'))).toEqual([
+          'deleteBranch:done:true',
+          'deleteBranch:squashed:true',
+        ]);
+      });
+
+      it('deletesTheRemoteBranchToo_onceTheBoxIsTicked', async () => {
+        await chooseDeleteMerged();
+        inDialog('merged-branches-remote')?.querySelector<HTMLInputElement>('input')?.click();
+        await fixture.whenStable();
+
+        inDialog('merged-branches-delete')?.querySelector<HTMLElement>('button')?.click();
+        await fixture.whenStable();
+
+        expect(provider.calls.filter((call: string): boolean => call.includes('Branch'))).toEqual([
+          'deleteRemoteBranch:origin:done@d1',
+          'deleteBranch:done:true',
+          'deleteBranch:squashed:true',
+        ]);
+      });
+
+      it('isInert_whenNothingIsMerged', async () => {
+        provider.extraBranches = [];
+        forge.mergedPullRequests.set([]);
+        await repository.refresh();
+
+        const item: MenuItem | undefined = component
+          .contextMenuFor(sectionRow('local', 'Local'))
+          .find((candidate: MenuItem): boolean => candidate.id === 'repo.deleteMergedBranches');
+        expect(item?.disabled).toBe(true);
+        await chooseDeleteMerged();
+        expect(inDialog('merged-branches-list')).toBeNull();
+      });
+
+      it('deletingOneBranchMergedViaAPullRequest_saysSo_andDoesNotWarnOfUnmergedCommits', async () => {
+        provider.deleteBranchOutcome = Promise.resolve({
+          success: false,
+          error: 'not fully merged',
+          code: 'branch-not-merged',
+        });
+        internals().onContextAction({ itemId: 'branch.delete', row: branchTreeRow('squashed') });
+        await fixture.whenStable();
+
+        expect(internals().pendingDeleteBranch()).toEqual({ name: 'squashed', pullRequest: 885 });
+        expect(windows.contentHost?.textContent).toContain('Delete This Branch?');
+        expect(inDialog('delete-branch-merged-via-pull-request')?.textContent).toContain(
+          'was merged via pull request #885',
+        );
+
+        provider.deleteBranchOutcome = null;
+        await internals().confirmDeleteBranch();
+
+        // Forced at once: git cannot see the squash, and the second question would be a false alarm.
+        expect(provider.calls).toContain('deleteBranch:squashed:true');
+        expect(internals().pendingForceDeleteBranch()).toBeNull();
+      });
+
+      it('deletingOneBranchMergedNormally_keepsTheUsualQuestion', async () => {
+        internals().onContextAction({ itemId: 'branch.delete', row: branchTreeRow('done') });
+        await fixture.whenStable();
+
+        expect(internals().pendingDeleteBranch()).toEqual({ name: 'done' });
+        expect(inDialog('delete-branch-merged-via-pull-request')).toBeNull();
+        await internals().confirmDeleteBranch();
+        expect(provider.calls).toContain('deleteBranch:done:false');
+      });
+
+      /**
+       * Finds the tree row the panel built for a branch.
+       * @param name The branch.
+       * @returns Returns the row.
+       */
+      function branchTreeRow(name: string): TreeRow {
+        return (component as unknown as { rows(): readonly TreeRow[] })
+          .rows()
+          .find((candidate: TreeRow): boolean => candidate.id === `branch:${name}`)!;
+      }
     });
   });
 
@@ -3163,7 +3342,7 @@ describe('SourceControlSidebar', () => {
     });
 
     it('eachSection_offersWhatMakesSomethingInIt', () => {
-      expect(sectionLabels('local')).toEqual(['New Branch']);
+      expect(sectionLabels('local')).toEqual(['New Branch', 'Delete Merged Branches']);
       expect(sectionLabels('remote')).toEqual(['Add Remote', 'Fetch All']);
       expect(sectionLabels('tags')[0]).toBe('New Tag');
       expect(sectionLabels('stashes')).toEqual(['Stash Changes']);
@@ -3421,7 +3600,10 @@ describe('SourceControlSidebar', () => {
       const mounted: ComponentFixture<SourceControlSidebar> = mount();
 
       // A branch is made in a worktree, from its own menu: Local makes worktrees (#939).
-      expect(menuLabels(mounted, 'section:local')).toEqual(['New Worktree']);
+      expect(menuLabels(mounted, 'section:local')).toEqual([
+        'New Worktree',
+        'Delete Merged Branches',
+      ]);
       (
         mounted.componentInstance as unknown as { onContextAction(c: TreeMenuSelection): void }
       ).onContextAction({ itemId: 'repo.newWorktree', row: row(mounted, 'section:local') });
@@ -3430,7 +3612,10 @@ describe('SourceControlSidebar', () => {
       // A flat repository's Local is only branches: a new branch is all it makes.
       worktrees.worktrees.set(null);
       mounted.detectChanges();
-      expect(menuLabels(mounted, 'section:local')).toEqual(['New Branch']);
+      expect(menuLabels(mounted, 'section:local')).toEqual([
+        'New Branch',
+        'Delete Merged Branches',
+      ]);
     });
 
     it('newBranch_onAnotherWorktree_isMadeInThatWorktree_checkedAgainstItsOwnBranches', () => {

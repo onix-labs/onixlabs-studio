@@ -324,17 +324,44 @@
   <ng-template appModalContent>
     @let place = deletionPlace(pendingDeleteBranch());
     <h2 class="rail__dialog-title">Delete This Branch?</h2>
-    <p class="rail__dialog-message">
-      <strong>{{ pendingDeleteBranch()?.name }}</strong> is deleted from {{ place.before
-      }}<strong>{{ place.name }}</strong
-      >{{ place.after }}. A copy already pushed to a remote stays there.
-    </p>
+    @if (pendingDeleteBranch()?.pullRequest; as pullRequest) {
+      <!-- Merged by squash or rebase through a pull request (#887): git cannot see that merge, so the
+           question says where the work went instead of leaving git to call it unmerged. -->
+      <p
+        class="rail__dialog-message"
+        data-testid="delete-branch-merged-via-pull-request"
+        i18n="
+          Confirmation before deleting a branch Studio knows was merged through a pull request by
+          squash or rebase
+        "
+      >
+        <strong>{{ pendingDeleteBranch()?.name }}</strong> was merged via pull request #{{
+          pullRequest
+        }}. Git can't see a squash or rebase merge, but its work is in the pull request. The branch
+        is deleted from this repository; a copy already pushed to a remote stays there.
+      </p>
+    } @else {
+      <p class="rail__dialog-message">
+        <strong>{{ pendingDeleteBranch()?.name }}</strong> is deleted from {{ place.before
+        }}<strong>{{ place.name }}</strong
+        >{{ place.after }}. A copy already pushed to a remote stays there.
+      </p>
+    }
     <app-button-row>
       <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDeleteBranch()" />
       <app-button variant="none" label="Cancel" (click)="cancelDeleteBranch()" />
     </app-button-row>
   </ng-template>
 </app-modal>
+
+<!-- Delete Merged Branches (#887): the local branches it deletes, and an unticked offer to delete
+     their remote copies too. -->
+<app-delete-merged-branches
+  [branches]="pendingMergedBranches()"
+  [canDeleteRemotes]="canDeleteRemoteBranches()"
+  (confirmed)="confirmDeleteMergedBranches($event)"
+  (dismissed)="cancelDeleteMergedBranches()"
+/>
 
 <!-- The second question, asked only when git refused the first: the branch holds commits that exist
      nowhere else, and deleting it is the end of them. -->

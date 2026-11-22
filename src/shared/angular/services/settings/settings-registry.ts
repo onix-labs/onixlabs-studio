@@ -75,6 +75,7 @@ import {
   DEFAULT_FILE_NESTING_RULES,
   type FileNestingRule,
 } from '@shared/angular/services/workspace/file-nesting';
+import type { FileAssociation } from '@shared/angular/services/monaco/file-associations';
 import { isSettingsOwned } from './settings-schema';
 import type { ChoiceOption, SectionDef, SettingDef, SettingsOwnedDef } from './settings-schema';
 import {
@@ -712,6 +713,7 @@ export interface SettingsValues {
   readonly 'textEditor.largeFileSizeMb': number;
   readonly 'textEditor.largeFileLineThreshold': number;
   readonly 'textEditor.defaultLanguage': string;
+  readonly 'textEditor.fileAssociations': readonly FileAssociation[];
   readonly 'textEditor.defaultEol': DefaultEndOfLine;
   readonly 'textEditor.defaultEncoding': TextEncoding;
   readonly 'textEditor.autoDetectEncoding': boolean;
@@ -2126,6 +2128,15 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description: 'The language a new, untitled code document starts in.',
         control: { kind: 'select', options: [{ value: 'plaintext', label: 'Plain Text' }] },
         default: 'plaintext',
+      },
+      {
+        // Drawn by its own list editor beside the section (#1068); the user's entries win over every
+        // built-in rule in the one resolver, `languageForFileName`.
+        key: 'textEditor.fileAssociations',
+        title: $localize`:Settings row title, the user's own file name to language mappings:File Associations`,
+        description: $localize`:Settings row description for File Associations:The language files open in, by name or pattern, ahead of Studio's own rules. Changing the language of a file by hand offers to add one.`,
+        control: { kind: 'custom', component: 'file-associations' },
+        default: [],
       },
       {
         key: 'textEditor.defaultEncoding',

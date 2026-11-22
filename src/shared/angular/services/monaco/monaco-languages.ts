@@ -1,3 +1,5 @@
+import { associatedLanguage, type FileAssociation } from './file-associations';
+
 /**
  * Describes a supported language and its display name.
  */
@@ -99,6 +101,7 @@ const EXTENSION_TO_LANGUAGE: Readonly<Record<string, string>> = {
   '.graphql': 'graphql',
   '.vue': 'vue',
   '.svelte': 'svelte',
+  '.toml': 'toml',
 };
 
 /**
@@ -140,6 +143,7 @@ const LANGUAGE_NAMES: Readonly<Record<string, string>> = {
   graphql: 'GraphQL',
   vue: 'Vue',
   svelte: 'Svelte',
+  toml: 'TOML',
 };
 
 /**
@@ -193,20 +197,32 @@ export function languageForExtension(extension: string): string {
  * Resolves the Monaco language identifier for a file: the one resolver every surface uses (#1068), so a
  * file colours, is offered to a language server, and is named the same way wherever it is opened.
  *
- * The rules, most specific first:
- * 1. A whole file name that is its type, matched case-insensitively: `Dockerfile`, `nuget.config`,
+ * The rules, most specific first, the user's own before Studio's:
+ * 1. The user's associations (Settings › Code › File Associations), most specific first: an exact
+ *    path, an exact name (`Jenkinsfile`), a pattern over the path (`/work/ci/*.yml`), then a pattern
+ *    over the name (`*.foo`). See {@link associatedLanguage}.
+ * 2. A whole file name that is its type, matched case-insensitively: `Dockerfile`, `nuget.config`,
  *    `Directory.Build.props`.
- * 2. The file's ending: `.ts`, `.csproj`.
- * 3. For an ending that says nothing certain (`.config`), the content, when the caller has it: XML when
+ * 3. The file's ending: `.ts`, `.csproj`.
+ * 4. For an ending that says nothing certain (`.config`), the content, when the caller has it: XML when
  *    its first non-blank character is `<`, after any byte-order mark. Without the content, plain text.
  *
  * Prefer this to {@link languageForExtension} wherever the name is in hand: an extension-only lookup
  * calls `Dockerfile` and `nuget.config` plain text, so the editor never asks for their language server.
- * @param fileName The file name, with or without a path.
+ * @param fileName The file's path, or its name when it has none; a path lets path associations match.
  * @param content The file's text, when the caller has it, for the content check.
+ * @param associations The user's associations, which win over every built-in rule.
  * @returns Returns the Monaco language identifier, or `plaintext` when nothing matches.
  */
-export function languageForFileName(fileName: string, content?: string): string {
+export function languageForFileName(
+  fileName: string,
+  content?: string,
+  associations: readonly FileAssociation[] = [],
+): string {
+  const associated: string | undefined = associatedLanguage(fileName, associations);
+  if (associated !== undefined) {
+    return associated;
+  }
   const base: string = fileName.split(/[\\/]/).pop() ?? '';
   const named: string | undefined = FILENAME_TO_LANGUAGE[base.toLowerCase()];
   if (named !== undefined) {

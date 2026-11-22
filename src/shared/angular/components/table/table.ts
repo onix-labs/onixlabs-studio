@@ -188,6 +188,39 @@ export interface TableRow {
    * {@link TableRowDef} template. Defaults to false.
    */
   readonly group?: boolean;
+
+  /**
+   * Gets the data row's depth in a tree of rows: 0 (the default) at the top, one more for each level
+   * beneath. Rows are given in tree order, so a data row followed by deeper ones is their parent, and
+   * in a {@link Table.collapsible} table it can be folded to hide them. Ignored on a group row.
+   */
+  readonly depth?: number;
+}
+
+/**
+ * Where a data row sits in a tree of rows, handed to the row template as its `tree` context
+ * (`let-tree="tree"`) for a {@link TableTreeCell} to indent the row and draw its twisty.
+ */
+export interface TableTreeState {
+  /**
+   * Gets the row's depth: 0 at the top.
+   */
+  readonly depth: number;
+
+  /**
+   * Gets whether the row has rows beneath it and the table is collapsible, so it can be folded.
+   */
+  readonly expandable: boolean;
+
+  /**
+   * Gets whether the rows beneath it are showing.
+   */
+  readonly expanded: boolean;
+
+  /**
+   * Folds the row's subtree when it is showing, and unfolds it when it is not.
+   */
+  readonly toggle: () => void;
 }
 
 /**
@@ -214,7 +247,8 @@ export interface TableRowSelect {
 /**
  * Marks the `<ng-template>` a {@link Table} renders for each data row. The row is the template's
  * implicit context (`<ng-template appTableRow let-row>`), and the template must render one `<td>` per
- * column in column order.
+ * column in column order. Where the row sits in a tree is its `tree` context (`let-tree="tree"`), a
+ * {@link TableTreeState}.
  */
 @Directive({ selector: '[appTableRow]' })
 export class TableRowDef {
@@ -278,7 +312,9 @@ export class Table {
   /**
    * Gets whether group rows can be collapsed. When on, each group row grows a leading twisty that
    * hides or reveals the data rows beneath it (up to the next group), turning the table into a grouped,
-   * tree-like surface that still keeps its column headers. Defaults to false.
+   * tree-like surface that still keeps its column headers. Data rows with a {@link TableRow.depth}
+   * fold the same way, each parent hiding the deeper rows after it, so the table is a tree table: the
+   * row template draws the twisty with a {@link TableTreeCell}. Defaults to false.
    */
   public readonly collapsible: InputSignal<boolean> = input<boolean>(false);
 
@@ -471,9 +507,56 @@ export class Table {
   >(new Set<string>());
 
   /**
+   * Gets the ids of the data rows with rows beneath them in a tree: those followed by a deeper data
+   * row.
+   */
+  private readonly branchIds: Signal<ReadonlySet<string>> = computed((): ReadonlySet<string> => {
+    const rows: readonly TableRow[] = this.rows();
+    const branches: Set<string> = new Set<string>();
+    rows.forEach((row: TableRow, index: number): void => {
+      const next: TableRow | undefined = rows[index + 1];
+      if (
+        row.group !== true &&
+        next !== undefined &&
+        next.group !== true &&
+        (next.depth ?? 0) > (row.depth ?? 0)
+      ) {
+        branches.add(row.id);
+      }
+    });
+    return branches;
+  });
+
+  /**
+   * Gets where each data row sits in the tree, for the row template's `tree` context. A row can only
+   * be folded in a collapsible table.
+   */
+  protected readonly treeStates: Signal<ReadonlyMap<string, TableTreeState>> = computed(
+    (): ReadonlyMap<string, TableTreeState> => {
+      const collapsible: boolean = this.collapsible();
+      const branches: ReadonlySet<string> = this.branchIds();
+      const collapsed: ReadonlySet<string> = this.collapsedGroups();
+      const states: Map<string, TableTreeState> = new Map<string, TableTreeState>();
+      for (const row of this.rows()) {
+        if (row.group === true) {
+          continue;
+        }
+        const expandable: boolean = collapsible && branches.has(row.id);
+        states.set(row.id, {
+          depth: row.depth ?? 0,
+          expandable,
+          expanded: expandable && !collapsed.has(row.id),
+          toggle: (): void => this.toggleGroup(row),
+        });
+      }
+      return states;
+    },
+  );
+
+  /**
    * Gets the rows actually rendered: every row when not collapsible, otherwise every group row plus the
    * data rows of the groups that are expanded (a collapsed group's data rows — those up to the next
-   * group — are dropped).
+   * group — are dropped), less the rows beneath a folded tree row.
    */
   protected readonly visibleRows: Signal<readonly TableRow[]> = computed(
     (): readonly TableRow[] => {
@@ -481,14 +564,31 @@ export class Table {
         return this.rows();
       }
       const collapsed: ReadonlySet<string> = this.collapsedGroups();
+      const branches: ReadonlySet<string> = this.branchIds();
       const visible: TableRow[] = [];
       let hidden: boolean = false;
+      // The depth of the folded tree row whose subtree is being skipped, or null when none is.
+      let foldedAt: number | null = null;
       for (const row of this.rows()) {
         if (row.group === true) {
           hidden = collapsed.has(row.id);
+          foldedAt = null;
           visible.push(row);
-        } else if (!hidden) {
-          visible.push(row);
+          continue;
+        }
+        if (hidden) {
+          continue;
+        }
+        const depth: number = row.depth ?? 0;
+        if (foldedAt !== null) {
+          if (depth > foldedAt) {
+            continue;
+          }
+          foldedAt = null;
+        }
+        visible.push(row);
+        if (branches.has(row.id) && collapsed.has(row.id)) {
+          foldedAt = depth;
         }
       }
       return visible;
@@ -809,8 +909,9 @@ export class Table {
   }
 
   /**
-   * Toggles a group row's collapsed state, hiding or revealing its data rows.
-   * @param row The group row to toggle.
+   * Toggles a group row's collapsed state, hiding or revealing its data rows, or folds or unfolds a
+   * tree row's subtree.
+   * @param row The group or tree row to toggle.
    */
   protected toggleGroup(row: TableRow): void {
     const next: Set<string> = new Set<string>(this.collapsedGroups());

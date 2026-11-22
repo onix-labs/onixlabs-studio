@@ -1,0 +1,22 @@
+.remember {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.remember__title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.remember__body {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.remember__hint {
+  margin: 0;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}

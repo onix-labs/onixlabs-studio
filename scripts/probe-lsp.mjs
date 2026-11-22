@@ -736,6 +736,7 @@ const EXTENSIONS = {
   sql: ['.sql'],
   perl: ['.pl', '.pm'],
   svelte: ['.svelte'],
+  toml: ['.toml'],
 };
 
 /**

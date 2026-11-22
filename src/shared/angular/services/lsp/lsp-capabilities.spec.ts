@@ -10,7 +10,25 @@ import {
   renameSupportOf,
   semanticLegendOf,
   fileRenameFiltersOf,
+  syncsWholeDocument,
 } from './lsp-capabilities';
+
+describe('syncsWholeDocument (#1206)', () => {
+  it('readsFullSync_inEitherFormOfTextDocumentSync', () => {
+    // taplo advertises the bare kind; others put it on the options object's `change`.
+    expect(syncsWholeDocument({ textDocumentSync: 1 })).toBe(true);
+    expect(syncsWholeDocument({ textDocumentSync: { openClose: true, change: 1 } })).toBe(true);
+  });
+
+  it('readsIncrementalOrAbsentSync_asRangedEdits', () => {
+    expect(syncsWholeDocument({ textDocumentSync: 2 })).toBe(false);
+    expect(
+      syncsWholeDocument({ textDocumentSync: { change: 2, save: { includeText: true } } }),
+    ).toBe(false);
+    expect(syncsWholeDocument({})).toBe(false);
+    expect(syncsWholeDocument(undefined)).toBe(false);
+  });
+});
 
 describe('formattingSupportOf (#1141)', () => {
   it('readsRoslynsFormatters_andItsOnTypeTriggerCharacters', () => {

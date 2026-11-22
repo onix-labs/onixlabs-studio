@@ -1,0 +1,77 @@
+<!-- Asked before merged branches go (#887). Deleting here is undone by checking out the remote copy
+     again; deleting on the remote is undone by nobody, so that is a separate, unticked choice. -->
+<app-modal
+  [open]="open()"
+  [width]="34"
+  [frameless]="true"
+  ariaLabel="Delete merged branches"
+  i18n-ariaLabel="Accessible name of the dialog that deletes merged branches"
+  (dismiss)="dismiss()"
+>
+  <ng-template appModalContent>
+    <h2 class="merged__title" i18n="Title of the dialog that deletes merged branches">
+      Delete Merged Branches?
+    </h2>
+    <p
+      class="merged__message"
+      data-testid="merged-branches-message"
+      i18n="Says how many local branches the dialog deletes, and why that is safe"
+    >
+      {count(), plural,
+        =1 {1 local branch is deleted from this repository.}
+        other {{{ count() }} local branches are deleted from this repository.}
+      }
+      Nothing is lost: the work on each is already merged.
+    </p>
+    <ul class="merged__list" data-testid="merged-branches-list">
+      @for (row of rows(); track row.name) {
+        <li class="merged__item">
+          <span class="merged__name">{{ row.name }}</span>
+          <span class="merged__reason">{{ row.reason }}</span>
+        </li>
+      }
+    </ul>
+    @if (remoteCount() > 0) {
+      <!-- The checkbox atom's input sits inside the label, which is what associates the two. -->
+      <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+      <label class="merged__option">
+        <app-checkbox data-testid="merged-branches-remote" [(checked)]="includeRemotes" />
+        <span
+          i18n="
+            Checkbox in the delete merged branches dialog; ticking it deletes the branches' copies
+            on the remote too
+          "
+        >
+          {remoteCount(), plural,
+            =1 {Also delete 1 remote branch}
+            other {Also delete {{ remoteCount() }} remote branches}
+          }
+        </span>
+      </label>
+      <p
+        class="merged__note"
+        data-testid="merged-branches-remote-note"
+        i18n="Under the checkbox that deletes merged branches on the remote; lists them"
+      >
+        {{ remoteList() }}. A branch deleted on the remote is gone for everyone who works from it.
+      </p>
+    }
+    <app-button-row>
+      <app-button
+        variant="solid"
+        tone="danger"
+        label="Delete"
+        i18n-label="Confirms deleting the merged branches"
+        data-testid="merged-branches-delete"
+        (click)="confirm()"
+      />
+      <app-button
+        variant="none"
+        label="Cancel"
+        i18n-label="Closes the delete merged branches dialog without deleting anything"
+        data-testid="merged-branches-cancel"
+        (click)="dismiss()"
+      />
+    </app-button-row>
+  </ng-template>
+</app-modal>

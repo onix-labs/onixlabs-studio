@@ -251,6 +251,20 @@ export class DatabaseExplorerView implements OnInit, OnDestroy, DatabaseExplorer
   });
 
   /**
+   * Gets whether the open query can be explained: its engine can, and it is neither running nor being
+   * explained.
+   */
+  public readonly canExplain: Signal<boolean> = computed((): boolean => {
+    const id: string | null = this.openQueryId();
+    return (
+      id !== null &&
+      this.workspace.canExplain(id) &&
+      !this.workspace.running().has(id) &&
+      !this.workspace.explaining().has(id)
+    );
+  });
+
+  /**
    * Gets whether the open query runs in manual transactions.
    */
   public readonly manualTransactions: Signal<boolean> = computed((): boolean => {
@@ -495,6 +509,17 @@ export class DatabaseExplorerView implements OnInit, OnDestroy, DatabaseExplorer
     const id: string | null = this.openQueryId();
     if (id !== null) {
       this.opener.runStatement(id);
+    }
+  }
+
+  /**
+   * Explains the open query as its panel would, selection and all.
+   * @param analyze Whether to run it and report what actually happened.
+   */
+  public explain(analyze: boolean): void {
+    const id: string | null = this.openQueryId();
+    if (id !== null) {
+      this.opener.explain(id, analyze);
     }
   }
 

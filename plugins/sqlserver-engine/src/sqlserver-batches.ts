@@ -135,6 +135,22 @@ function scanLine(
 }
 
 /**
+ * Determines whether a script commits or rolls back a transaction itself: whether `COMMIT` or
+ * `ROLLBACK` appears as a word outside its strings, quoted names and comments. Deliberately broad —
+ * one inside a procedure or trigger body the script creates counts too — because it decides whether
+ * Explain Analyze may run the script inside a transaction it means to roll back.
+ * @param script The script.
+ * @returns Returns true when it does.
+ */
+export function endsTransaction(script: string): boolean {
+  const code: string = script.replace(
+    /'(?:[^']|'')*'|\[(?:[^\]]|\]\])*\]|"(?:[^"]|"")*"|--[^\n]*|\/\*[\s\S]*?\*\//g,
+    ' ',
+  );
+  return /\b(?:commit|rollback)\b/i.test(code);
+}
+
+/**
  * Determines whether a batch holds anything but whitespace and comments.
  * @param text The batch.
  * @returns Returns true when there is something to run.
