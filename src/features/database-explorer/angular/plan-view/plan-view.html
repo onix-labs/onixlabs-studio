@@ -6,16 +6,13 @@
     i18n-aria-label="The row of chips choosing which statement's plan shows"
   >
     @for (statement of statements(); track statement.index) {
-      <button
-        type="button"
-        class="plan__statement"
+      <app-button
+        size="small"
         data-testid="plan-statement"
-        [class.plan__statement--active]="statement.index === index()"
-        [attr.aria-pressed]="statement.index === index()"
+        [label]="statement.label"
+        [pressed]="statement.index === index()"
         (click)="choose(statement.index)"
-      >
-        {{ statement.label }}
-      </button>
+      />
     }
   </div>
 }

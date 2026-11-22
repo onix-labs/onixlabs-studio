@@ -88,28 +88,24 @@
           >
             @if (tab() === 'plan' && hasPlans()) {
               <div class="results__views" role="group" [attr.aria-label]="planText.views">
-                <button
-                  type="button"
-                  class="results__view"
+                <app-button
+                  size="small"
                   data-testid="plan-view-tree"
-                  [class.results__view--active]="planView() === 'tree'"
-                  [attr.aria-pressed]="planView() === 'tree'"
-                  [title]="planText.treeTitle"
+                  [icon]="Icon.DATABASE_EXPLAIN"
+                  [label]="planText.tree"
+                  [tooltip]="planText.treeTitle"
+                  [pressed]="planView() === 'tree'"
                   (click)="planView.set('tree')"
-                >
-                  <app-icon [icon]="Icon.DATABASE_EXPLAIN" /> {{ planText.tree }}
-                </button>
-                <button
-                  type="button"
-                  class="results__view"
+                />
+                <app-button
+                  size="small"
                   data-testid="plan-view-raw"
-                  [class.results__view--active]="planView() === 'raw'"
-                  [attr.aria-pressed]="planView() === 'raw'"
-                  [title]="planText.rawTitle"
+                  [icon]="Icon.DATABASE_RAW"
+                  [label]="planText.raw"
+                  [tooltip]="planText.rawTitle"
+                  [pressed]="planView() === 'raw'"
                   (click)="planView.set('raw')"
-                >
-                  <app-icon [icon]="Icon.DATABASE_RAW" /> {{ planText.raw }}
-                </button>
+                />
               </div>
             }
             @if (tab() === 'results' && resultSet()) {

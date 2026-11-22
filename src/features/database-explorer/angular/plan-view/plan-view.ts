@@ -13,6 +13,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { PlanProperty, QueryPlan } from '@shared/api/database-engine-protocol';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { TableTreeCell } from '@shared/angular/components/table/table-tree-cell/table-tree-cell';
 import { TextEditor } from '@shared/angular/components/text-editor/text-editor';
@@ -81,7 +82,7 @@ const FIGURE_WIDTH: string = '8.5rem';
  */
 @Component({
   selector: 'app-plan-view',
-  imports: [Table, TableRowDef, TableTreeCell, TextEditor],
+  imports: [Button, Table, TableRowDef, TableTreeCell, TextEditor],
   templateUrl: './plan-view.html',
   styleUrl: './plan-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

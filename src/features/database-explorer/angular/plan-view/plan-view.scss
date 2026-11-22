@@ -14,23 +14,6 @@
   padding: 0.35rem 0.5rem;
 }
 
-// The chips the results pane picks a result set with, so the two read as one control.
-.plan__statement {
-  padding: 0.15rem 0.5rem;
-  font: inherit;
-  font-size: 0.6875rem;
-  color: var(--form-muted-foreground-color);
-  background: transparent;
-  border: 0.0625rem solid var(--dock-border-color);
-  border-radius: calc(0.35rem * var(--border-radius-multiplier));
-  cursor: pointer;
-
-  &--active {
-    color: var(--accent-color);
-    border-color: var(--accent-surface-border-color);
-  }
-}
-
 // The statement planned, one line, so a long one does not push the tree down.
 .plan__caption {
   margin: 0;

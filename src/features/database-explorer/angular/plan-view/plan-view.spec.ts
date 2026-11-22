@@ -203,7 +203,7 @@ describe('PlanView', () => {
     await show([JOIN, SCAN]);
 
     const chips: readonly HTMLButtonElement[] = Array.from(
-      host().querySelectorAll<HTMLButtonElement>('[data-testid="plan-statement"]'),
+      host().querySelectorAll<HTMLButtonElement>('[data-testid="plan-statement"] button'),
     );
     expect(chips.map((chip: HTMLButtonElement): string => chip.textContent?.trim() ?? '')).toEqual([
       'Statement 1 · Line 10',
