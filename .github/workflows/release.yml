@@ -55,16 +55,18 @@ jobs:
           node-version-file: .nvmrc
 
       # `--all`, not this runner's platform: the index pins per-platform downloads, and a release ships
-      # every platform. Retried once so a briefly unreachable host does not fail a release.
+      # every platform. `--published`, because by now every first-party plugin release the index pins
+      # must be out: without it a pin to a tag that was never pushed passes (claude-harness 0.22.0
+      # did). Retried once so a briefly unreachable host does not fail a release.
       - name: Verify every pinned download
         shell: bash
         run: |
-          if node scripts/verify-plugin-index.mjs --all; then
+          if node scripts/verify-plugin-index.mjs --all --published; then
             exit 0
           fi
           echo "::warning::First pass failed; retrying once in 60s in case a host was briefly unreachable."
           sleep 60
-          node scripts/verify-plugin-index.mjs --all
+          node scripts/verify-plugin-index.mjs --all --published
 
   build:
     name: Build (${{ matrix.name }})
