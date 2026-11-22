@@ -1,5 +1,4 @@
 import * as fs from 'node:fs';
-import type { FSWatcher } from 'node:fs';
 import { EventEmitter } from 'node:events';
 import * as http from 'node:http';
 import * as net from 'node:net';
@@ -139,7 +138,7 @@ describe('LiveSite (#1062)', () => {
     watcher = new HandWatcher();
     site = new LiveSite(root, (_root: string, callback: (relative: string) => void) => {
       onChange = callback;
-      return watcher as unknown as FSWatcher;
+      return watcher;
     });
     await site.listen(0);
   });

@@ -32,6 +32,7 @@ import { PersonaLearningConnection } from './sections/persona-learning-connectio
 import { PersonalDictionary } from './sections/personal-dictionary/personal-dictionary';
 import { FileNestingRules } from './sections/file-nesting-rules/file-nesting-rules';
 import { FileAssociations } from './sections/file-associations/file-associations';
+import { PollingFolders } from './sections/polling-folders/polling-folders';
 import { NotificationTypesSettings } from './sections/notification-types/notification-types';
 import { ReadAloudVoice } from './sections/read-aloud-voice/read-aloud-voice';
 import { PluginsFolder } from './sections/plugins-folder/plugins-folder';
@@ -168,6 +169,7 @@ type SettingsSectionId =
   | 'security'
   | 'workspaces'
   | 'workspaces-explorers'
+  | 'workspaces-file-watching'
   | 'workspaces-search'
   | 'workspaces-run'
   | 'workspaces-new-projects'
@@ -332,6 +334,7 @@ interface SettingsTreeData {
     PersonalDictionary,
     FileNestingRules,
     FileAssociations,
+    PollingFolders,
     NotificationTypesSettings,
     ReadAloudVoice,
     PluginsFolder,
@@ -594,6 +597,11 @@ export class SettingsView {
       children: [
         { id: 'workspaces-general', label: 'General', sectionId: 'workspaces' },
         { id: 'workspaces-explorers', label: 'Explorers', sectionId: 'workspaces-explorers' },
+        {
+          id: 'workspaces-file-watching',
+          label: $localize`:Settings page title, under Workspaces:File Watching`,
+          sectionId: 'workspaces-file-watching',
+        },
         { id: 'workspaces-search', label: 'Search and Problems', sectionId: 'workspaces-search' },
         { id: 'workspaces-run', label: 'Run and Debug', sectionId: 'workspaces-run' },
         {

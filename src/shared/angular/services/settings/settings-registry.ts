@@ -5,6 +5,7 @@ import type { VcsPullMode, VcsSignCommits } from '@shared/api/version-control-pr
 import type { CloneLayout } from '@shared/api/clone-channels';
 import { encodingLabel, TEXT_ENCODINGS, type TextEncoding } from '@shared/api/text-encodings';
 import type { RunPresentation } from '@shared/api/studio';
+import { DEFAULT_POLLING_INTERVAL } from '@shared/api/polling-folders';
 import type {
   AiConnection,
   AiPermissionPosture,
@@ -607,6 +608,8 @@ export interface SettingsValues {
   readonly 'workspaces.confirmBeforeDeleting': boolean;
   readonly 'workspaces.moveToTrash': boolean;
   readonly 'workspaces.projectScanDepth': number;
+  readonly 'workspaces.pollingFolders': readonly string[];
+  readonly 'workspaces.pollingInterval': number;
   readonly 'workspaces.searchMaximumResults': number;
   readonly 'workspaces.searchTimeout': number;
   readonly 'workspaces.searchMaximumFileSize': number;
@@ -1713,6 +1716,41 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 2,
+      },
+    ],
+  },
+  {
+    // How Studio learns that files changed on disk (#1254): every watcher, wherever it runs, which is
+    // why it is its own page rather than an Explorers setting. Native watching is the default and has
+    // no setting; only the folders where it misses changes are listed.
+    id: 'workspaces-file-watching',
+    label: $localize`:Settings page title, under Workspaces:File Watching`,
+    settings: [
+      {
+        key: 'workspaces.pollingFolders',
+        title: $localize`:Setting title, folders checked on a timer for changes:Polled Folders`,
+        description: $localize`:Setting description:Folders whose files Studio checks on a timer instead of waiting for the system to report changes. Add network shares, container mounts and other drives where changes made elsewhere do not show up in the explorers by themselves. Everything else is watched as usual.`,
+        since: '2026.1.0-beta.12',
+        control: { kind: 'custom', component: 'polling-folders' },
+        default: [],
+      },
+      {
+        key: 'workspaces.pollingInterval',
+        title: $localize`:Setting title:Polling Interval`,
+        description: $localize`:Setting description:How often a polled folder is checked for changes. Checking less often costs less on a slow share or a large folder.`,
+        since: '2026.1.0-beta.12',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '1', label: $localize`:Polling interval choice:Every second` },
+            { value: '2', label: $localize`:Polling interval choice:Every 2 seconds` },
+            { value: '5', label: $localize`:Polling interval choice:Every 5 seconds` },
+            { value: '10', label: $localize`:Polling interval choice:Every 10 seconds` },
+            { value: '30', label: $localize`:Polling interval choice:Every 30 seconds` },
+          ],
+        },
+        default: DEFAULT_POLLING_INTERVAL,
       },
     ],
   },

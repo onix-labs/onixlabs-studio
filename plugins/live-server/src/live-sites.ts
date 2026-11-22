@@ -4,12 +4,31 @@ import { promises as fs } from 'node:fs';
 import type { Stats } from 'node:fs';
 import * as path from 'node:path';
 import { LiveSite } from './live-site';
+import { FolderPoll, pollIntervalOf } from './poll-folder';
 import { LIVE_SERVER_PROTOCOL, Serving } from './protocol';
 
 /**
- * Creates the site for a folder.
+ * Creates the site for a folder, polled on the given interval in milliseconds when Studio asked for
+ * polling and watched by the platform otherwise.
  */
-export type SiteFactory = (root: string) => LiveSite;
+export type SiteFactory = (root: string, pollIntervalMs: number | undefined) => LiveSite;
+
+/**
+ * Creates a real site: watched by the platform, or polled where Studio says the platform's watching
+ * misses changes, such as on a network share (#1254).
+ * @param root The folder's real path.
+ * @param pollIntervalMs How often to poll, or undefined to watch natively.
+ * @returns Returns the site.
+ */
+function createLiveSite(root: string, pollIntervalMs: number | undefined): LiveSite {
+  return pollIntervalMs === undefined
+    ? new LiveSite(root)
+    : new LiveSite(
+        root,
+        (folder: string, onChange: (relative: string) => void): FolderPoll =>
+          new FolderPoll(folder, pollIntervalMs, onChange),
+      );
+}
 
 /**
  * The sites one plugin process serves.
@@ -29,7 +48,7 @@ export class LiveSites {
    * Initializes the set.
    * @param createSite How a site is created; defaults to a real one.
    */
-  public constructor(createSite: SiteFactory = (root: string): LiveSite => new LiveSite(root)) {
+  public constructor(createSite: SiteFactory = createLiveSite) {
     this.createSite = createSite;
   }
 
@@ -44,7 +63,7 @@ export class LiveSites {
       case 'initialize':
         return { protocol: LIVE_SERVER_PROTOCOL };
       case 'serve':
-        return await this.serve(params['root'], params['port']);
+        return await this.serve(params['root'], params['port'], params['pollIntervalMs']);
       case 'stop':
         await this.stop(params['serverId']);
         return {};
@@ -67,9 +86,10 @@ export class LiveSites {
    * Starts serving a folder.
    * @param root The folder, untrusted.
    * @param port The port to try first, untrusted.
+   * @param pollIntervalMs How often to poll the folder, untrusted; absent to watch natively.
    * @returns Returns the site's identifier and port.
    */
-  private async serve(root: unknown, port: unknown): Promise<Serving> {
+  private async serve(root: unknown, port: unknown, pollIntervalMs: unknown): Promise<Serving> {
     if (typeof root !== 'string' || !path.isAbsolute(root) || root.includes('\0')) {
       throw new Error('The folder to serve is not an absolute path.');
     }
@@ -81,7 +101,7 @@ export class LiveSites {
     if (!stats.isDirectory()) {
       throw new Error('The folder to serve is not a folder.');
     }
-    const site: LiveSite = this.createSite(real);
+    const site: LiveSite = this.createSite(real, pollIntervalOf(pollIntervalMs));
     const listening: number = await site.listen(first);
     const serverId: string = randomUUID();
     this.sites.set(serverId, site);

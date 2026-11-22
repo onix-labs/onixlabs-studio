@@ -3,6 +3,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { FileChannel } from '@shared/api/file-channels';
 import { logger } from './logger';
+import { AdaptiveTreeWatch } from './watching/adaptive-tree-watch';
+import { WatchModes } from './watching/watch-modes';
 
 /**
  * Specifies how long, in milliseconds, to coalesce rapid change events for a file before notifying.
@@ -10,13 +12,13 @@ import { logger } from './logger';
 const DEBOUNCE_MS: number = 120;
 
 /**
- * Tracks a watched directory: its native watcher and the reference count of each watched file name.
+ * Tracks a watched directory: its watcher and the reference count of each watched file name.
  */
 interface WatchedDirectory {
   /**
-   * Gets the native directory watcher.
+   * Gets the directory watcher, native or polling (#1254).
    */
-  readonly watcher: fs.FSWatcher;
+  readonly watcher: AdaptiveTreeWatch;
 
   /**
    * Gets the reference count of each watched base file name in the directory.
@@ -47,11 +49,21 @@ export class FileWatcher {
   private readonly timers: Map<string, NodeJS.Timeout> = new Map<string, NodeJS.Timeout>();
 
   /**
+   * Holds the policy deciding which directories are polled rather than watched natively.
+   */
+  private readonly modes: WatchModes;
+
+  /**
    * Initializes a new instance of the {@link FileWatcher} class.
    * @param windowGetter A function that returns the window change notifications are sent to.
+   * @param modes Decides which directories are polled; none by default.
    */
-  public constructor(windowGetter: () => BrowserWindow | null) {
+  public constructor(
+    windowGetter: () => BrowserWindow | null,
+    modes: WatchModes = new WatchModes(),
+  ) {
     this.windowGetter = windowGetter;
+    this.modes = modes;
   }
 
   /**
@@ -101,13 +113,20 @@ export class FileWatcher {
     let directory: WatchedDirectory | undefined = this.directories.get(directoryPath);
     if (directory === undefined) {
       try {
-        const watcher: fs.FSWatcher = fs.watch(
+        const watcher: AdaptiveTreeWatch = new AdaptiveTreeWatch(
           directoryPath,
-          (_eventType: fs.WatchEventType, filename: string | Buffer | null): void =>
+          {
+            recursive: false,
+            modes: this.modes,
+            // Polled, only the files watched are looked at, not everything else in their folder.
+            files: (): readonly string[] => [
+              ...(this.directories.get(directoryPath)?.files.keys() ?? []),
+            ],
+          },
+          (_eventType: string, filename: string | null): void =>
             this.onDirectoryEvent(directoryPath, filename),
+          (error: Error): void => this.onWatcherError(directoryPath, error),
         );
-        // An `error` event with no listener is an uncaught exception in the main process.
-        watcher.on('error', (error: Error): void => this.onWatcherError(directoryPath, error));
         directory = { watcher, files: new Map<string, number>() };
         this.directories.set(directoryPath, directory);
         logger.info('FileWatcher', `Started watching directory ${directoryPath}`);
@@ -149,13 +168,18 @@ export class FileWatcher {
   }
 
   /**
-   * Handles a native directory event, debouncing per file and notifying only for watched files that
+   * Handles a directory watcher's event, debouncing per file and notifying only for watched files that
    * still exist (modifications, not deletions).
    * @param directoryPath The absolute directory path the event occurred in.
    * @param filename The changed file's name, or null when the platform did not provide it.
    */
-  private onDirectoryEvent(directoryPath: string, filename: string | Buffer | null): void {
-    if (typeof filename !== 'string') {
+  private onDirectoryEvent(directoryPath: string, filename: string | null): void {
+    if (filename === null) {
+      // The watcher cannot say what changed (it switched between native watching and polling, and
+      // may have missed something meanwhile): look again at every file watched here.
+      for (const name of this.directories.get(directoryPath)?.files.keys() ?? []) {
+        this.schedule(path.join(directoryPath, name));
+      }
       return;
     }
     if (this.directories.get(directoryPath)?.files.has(filename) !== true) {

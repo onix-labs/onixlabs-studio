@@ -1,0 +1,49 @@
+.polling {
+  display: flex;
+  flex-direction: column;
+
+  &__add {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 8px;
+  }
+
+  &__field {
+    flex: 1 1 auto;
+  }
+
+  &__list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0 0 12px;
+    padding: 0;
+    list-style: none;
+  }
+
+  &__item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 2px 2px 10px;
+    border: 0.0625rem solid var(--settings-border-color);
+    border-radius: calc(0.375rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
+    background: var(--settings-control-background-color);
+  }
+
+  &__path {
+    flex: 1 1 auto;
+    overflow: hidden;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__empty {
+    margin: 0 0 12px;
+    color: var(--settings-muted-foreground-color);
+    font-size: 12px;
+  }
+}

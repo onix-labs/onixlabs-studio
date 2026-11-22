@@ -71,6 +71,10 @@
           <app-settings-section sectionId="workspaces-explorers" />
           <app-file-nesting-rules />
         }
+        @case ('workspaces-file-watching') {
+          <app-polling-folders />
+          <app-settings-section sectionId="workspaces-file-watching" />
+        }
         @case ('workspaces-search') {
           <app-settings-section sectionId="workspaces-search" />
         }

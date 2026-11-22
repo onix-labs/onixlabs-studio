@@ -62,6 +62,7 @@ import { LspServerTail } from './lsp-server-tail';
 import { launchFor, RunToken, RunTokens } from '../process/launch';
 import { ApplyEditResult, LspApplyEditForwarder } from './lsp-apply-edit';
 import { clientCapabilities } from './lsp-client-capabilities';
+import { WatchModes } from '../watching/watch-modes';
 
 /**
  * The reason a server start is held for a folder the user has not trusted.
@@ -315,6 +316,11 @@ export class LspManager {
   private readonly indentation: LspIndentationForwarder;
 
   /**
+   * Holds the policy deciding which sessions' roots are polled rather than watched natively (#1254).
+   */
+  private readonly watchModes: WatchModes;
+
+  /**
    * Initializes a new instance of the {@link LspManager} class.
    * @param windowGetter A function that returns the window server notifications are sent to.
    * @param workspaceContext The open-workspace tracker used to confine sessions to opened roots.
@@ -324,6 +330,7 @@ export class LspManager {
    * @param attaches The forwarder that asks the renderer to attach the debugger (#1150).
    * @param questions The forwarder that puts a server's questions to the user (#1154).
    * @param indentation The forwarder that asks the renderer how a document is indented (#1208).
+   * @param watchModes Decides which roots are polled (#1254); none by default.
    */
   public constructor(
     windowGetter: () => BrowserWindow | null,
@@ -334,6 +341,7 @@ export class LspManager {
     attaches: LspAttachDebuggerForwarder = new LspAttachDebuggerForwarder(),
     questions: LspShowMessageForwarder = new LspShowMessageForwarder(),
     indentation: LspIndentationForwarder = new LspIndentationForwarder(),
+    watchModes: WatchModes = new WatchModes(),
   ) {
     this.windowGetter = windowGetter;
     this.workspaceContext = workspaceContext;
@@ -343,6 +351,7 @@ export class LspManager {
     this.attaches = attaches;
     this.questions = questions;
     this.indentation = indentation;
+    this.watchModes = watchModes;
   }
 
   /**
@@ -757,6 +766,7 @@ export class LspManager {
           }
         }
       },
+      this.watchModes,
     );
     const session: LspSession = {
       connection,
