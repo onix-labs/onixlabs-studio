@@ -114,6 +114,30 @@ describe('WatchModes', () => {
     expect(told).toBe(2);
   });
 
+  it('keepsAFolderListedByALinkMatching_whileAnotherIsAdded', async () => {
+    const resolving: string[] = [];
+    const modes: WatchModes = new WatchModes(
+      (): MetadataPolicies => new Map<string, readonly string[]>(),
+      false,
+      (target: string): Promise<string | undefined> => {
+        resolving.push(target);
+        return Promise.resolve(target === '/Users/me/share' ? '/Volumes/Share' : target);
+      },
+    );
+    await modes.update(['/Users/me/share'], 2);
+    const seen: (number | undefined)[] = [];
+    modes.onChange((): void => {
+      seen.push(modes.pollIntervalFor('/Volumes/Share/site'));
+    });
+    resolving.length = 0;
+
+    await modes.update(['/Users/me/share', '/mnt/nfs'], 2);
+
+    // Never flipped to native while the new folder resolved, and only the new one was resolved.
+    expect(seen).toEqual([2000]);
+    expect(resolving).toEqual(['/mnt/nfs']);
+  });
+
   it('dropsWhatIsNotAnAbsoluteFolder', async () => {
     const modes: WatchModes = modesWith();
 

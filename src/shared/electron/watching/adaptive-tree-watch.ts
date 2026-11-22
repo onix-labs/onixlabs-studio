@@ -2,7 +2,12 @@ import * as fs from 'node:fs';
 import { shouldPollInside } from '../directory-watch-filter';
 import { logger } from '../logger';
 import { PollingTreeWatcher } from './polling-tree-watcher';
-import type { TreeWatch, TreeWatchErrorListener, TreeWatchListener } from './tree-watch';
+import type {
+  PollDescent,
+  TreeWatch,
+  TreeWatchErrorListener,
+  TreeWatchListener,
+} from './tree-watch';
 import type { WatchModes } from './watch-modes';
 
 /**
@@ -18,6 +23,19 @@ export interface AdaptiveTreeWatchOptions {
    * Gets the policy deciding whether the root is polled.
    */
   readonly modes: WatchModes;
+
+  /**
+   * Gets which directories a poll reads, when it should differ from the default (everything but
+   * build outputs, dependency caches and the version-control bookkeeping nothing listens to): a
+   * language server that registered for files in `obj` needs `obj` read.
+   */
+  readonly descend?: PollDescent;
+
+  /**
+   * Gets, for a watch of one folder's own entries, the only names the watcher cares about. A poll
+   * then examines just those instead of listing the folder and examining everything in it.
+   */
+  readonly files?: () => readonly string[];
 }
 
 /**
@@ -132,17 +150,31 @@ export class AdaptiveTreeWatch implements TreeWatch {
    */
   private open(interval: number | undefined): TreeWatch {
     if (interval !== undefined) {
-      return new PollingTreeWatcher(
+      const onEvent: TreeWatchListener = (
+        eventType: fs.WatchEventType,
+        filename: string | null,
+      ): void => this.forward(eventType, filename);
+      const onError: TreeWatchErrorListener = (error: Error): void => this.fail(error);
+      const files: (() => readonly string[]) | undefined = this.options.files;
+      if (files !== undefined && !this.options.recursive) {
+        return new PollingTreeWatcher(
+          this.root,
+          { intervalMs: interval, recursive: false, descend: (): boolean => false, files },
+          onEvent,
+          onError,
+        );
+      }
+      const descend: PollDescent =
+        this.options.descend ??
+        ((relative: string): boolean => shouldPollInside(relative, this.options.modes.metadata()));
+      // One poll per folder, shared with every other watcher on it.
+      return this.options.modes.polls.subscribe(
         this.root,
-        {
-          intervalMs: interval,
-          recursive: this.options.recursive,
-          descend: (relative: string): boolean =>
-            shouldPollInside(relative, this.options.modes.metadata()),
-        },
-        (eventType: fs.WatchEventType, filename: string | null): void =>
-          this.forward(eventType, filename),
-        (error: Error): void => this.fail(error),
+        interval,
+        this.options.recursive,
+        descend,
+        onEvent,
+        onError,
       );
     }
     const onEvent: (eventType: fs.WatchEventType, filename: string | Buffer | null) => void = (

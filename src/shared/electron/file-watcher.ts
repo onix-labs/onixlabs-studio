@@ -115,7 +115,14 @@ export class FileWatcher {
       try {
         const watcher: AdaptiveTreeWatch = new AdaptiveTreeWatch(
           directoryPath,
-          { recursive: false, modes: this.modes },
+          {
+            recursive: false,
+            modes: this.modes,
+            // Polled, only the files watched are looked at, not everything else in their folder.
+            files: (): readonly string[] => [
+              ...(this.directories.get(directoryPath)?.files.keys() ?? []),
+            ],
+          },
           (_eventType: string, filename: string | null): void =>
             this.onDirectoryEvent(directoryPath, filename),
           (error: Error): void => this.onWatcherError(directoryPath, error),
@@ -167,7 +174,12 @@ export class FileWatcher {
    * @param filename The changed file's name, or null when the platform did not provide it.
    */
   private onDirectoryEvent(directoryPath: string, filename: string | null): void {
-    if (typeof filename !== 'string') {
+    if (filename === null) {
+      // The watcher cannot say what changed (it switched between native watching and polling, and
+      // may have missed something meanwhile): look again at every file watched here.
+      for (const name of this.directories.get(directoryPath)?.files.keys() ?? []) {
+        this.schedule(path.join(directoryPath, name));
+      }
       return;
     }
     if (this.directories.get(directoryPath)?.files.has(filename) !== true) {

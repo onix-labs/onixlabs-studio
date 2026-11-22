@@ -135,8 +135,12 @@ export class FolderPoll implements FolderWatcher {
       let entries: Dirent[];
       try {
         entries = await fs.readdir(path.join(this.root, folder), { withFileTypes: true });
-      } catch {
-        // A folder that went away, or one that cannot be read, has nothing in it to show.
+      } catch (error: unknown) {
+        // A folder that went away has nothing in it to show; one that cannot be reached just now (a
+        // share that timed out) keeps what was last seen in it, or every page would reload twice.
+        if (!isGone(error)) {
+          this.carryForward(folder, files);
+        }
         continue;
       }
       for (const entry of entries) {
@@ -152,12 +156,43 @@ export class FolderPoll implements FolderWatcher {
         }
         try {
           const stats: Stats = await fs.lstat(path.join(this.root, relative));
-          files.set(relative, `${stats.size}:${stats.mtimeMs}`);
-        } catch {
-          // Gone since the folder was read; the next poll reports it as gone if it was there before.
+          // The inode and change time catch a same-size rewrite inside the modification time's
+          // granularity, and a file replaced by renaming another over it.
+          files.set(relative, `${stats.size}:${stats.mtimeMs}:${stats.ctimeMs}:${stats.ino}`);
+        } catch (error: unknown) {
+          // Gone since the folder was read is reported as gone; unreadable for now keeps its last look.
+          const before: string | undefined = this.snapshot?.get(relative);
+          if (!isGone(error) && before !== undefined) {
+            files.set(relative, before);
+          }
         }
       }
     }
     return files;
   }
+
+  /**
+   * Copies what the last poll saw inside a folder that cannot be read now.
+   * @param folder The folder, relative to the root.
+   * @param files The files being collected.
+   */
+  private carryForward(folder: string, files: Map<string, string>): void {
+    const prefix: string = folder === '' ? '' : folder + path.sep;
+    for (const [relative, signature] of this.snapshot ?? []) {
+      if (relative.startsWith(prefix)) {
+        files.set(relative, signature);
+      }
+    }
+  }
+}
+
+/**
+ * Determines whether a file-system error means the path is not there, rather than unreachable.
+ * @param error The error.
+ * @returns Returns true for a missing path.
+ */
+function isGone(error: unknown): boolean {
+  const code: unknown =
+    typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
+  return code === 'ENOENT' || code === 'ENOTDIR';
 }

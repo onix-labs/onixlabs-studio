@@ -312,6 +312,35 @@ describe('LspFileWatcher', () => {
     );
   });
 
+  it('aPolledRoot_stillReadsObj_whereTheServerRegisteredForIt (#1254)', async () => {
+    mkdirSync(path.join(root, 'obj'));
+    writeFileSync(path.join(root, 'obj', 'project.assets.json'), '{}');
+    const modes: WatchModes = new WatchModes(undefined, false);
+    await modes.update([root], 1);
+    watcher = new LspFileWatcher(
+      root,
+      (delivered: readonly FileEvent[]): void => {
+        batches.push(delivered);
+      },
+      undefined,
+      modes,
+    );
+    watcher.register('restore', [{ globPattern: '**/obj/project.assets.json' }]);
+    await settle();
+    await settle();
+
+    writeFileSync(path.join(root, 'obj', 'project.assets.json'), '{"restored": true}');
+    await vi.waitFor(
+      (): void => {
+        expect(events()).toContainEqual({
+          uri: pathToFileURL(path.join(root, 'obj', 'project.assets.json')).href,
+          type: FileChangeType.Changed,
+        });
+      },
+      { timeout: 4000, interval: 50 },
+    );
+  });
+
   it('close_stopsDelivering', async () => {
     start();
     await settle();

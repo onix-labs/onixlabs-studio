@@ -3,7 +3,7 @@ import { access } from 'node:fs/promises';
 import * as path from 'node:path';
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
-import { shouldForwardTreeEvent } from '../directory-watch-filter';
+import { shouldForwardTreeEvent, shouldPollInside } from '../directory-watch-filter';
 import { logger } from '../logger';
 import { AdaptiveTreeWatch } from '../watching/adaptive-tree-watch';
 import { WatchModes } from '../watching/watch-modes';
@@ -135,7 +135,16 @@ export class LspFileWatcher {
     try {
       this.watcher = new AdaptiveTreeWatch(
         root,
-        { recursive: true, modes },
+        {
+          recursive: true,
+          modes,
+          // Polled, the folders the explorers skip (build outputs, dependency caches) are still
+          // read where the server registered for something in them, as native events would reach
+          // it: Roslyn's `obj/project.assets.json` after a restore.
+          descend: (relative: string): boolean =>
+            shouldPollInside(relative, modes.metadata()) ||
+            this.registrations.couldMatchBeneath(relative),
+        },
         (eventType: WatchEventType, filename: string | null): void =>
           this.onEvent(eventType, filename),
         (error: Error): void => {

@@ -65,6 +65,21 @@ describe('FolderPoll (#1254)', () => {
     ]);
   });
 
+  it('reportsASameSizeReplacement_withTheSameModificationTime', async () => {
+    const page: string = path.join(scratch, 'index.html');
+    const { mtime }: fs.Stats = fs.statSync(page);
+    start();
+    await settle();
+
+    const next: string = path.join(scratch, 'index.tmp');
+    fs.writeFileSync(next, '<p>new</p>');
+    fs.utimesSync(next, mtime, mtime);
+    fs.renameSync(next, page);
+    await settle();
+
+    expect(changed).toContain('index.html');
+  });
+
   it('readsNothingInsideDotFoldersOrDependencies', async () => {
     fs.mkdirSync(path.join(scratch, '.git'));
     fs.mkdirSync(path.join(scratch, 'node_modules'));

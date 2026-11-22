@@ -8,6 +8,7 @@ import {
 } from '@shared/api/polling-folders';
 import type { MetadataPolicies } from '../directory-watch-filter';
 import { logger } from '../logger';
+import { SharedTreePolls } from './shared-tree-polls';
 
 /**
  * Resolves a path's links, answering undefined when it cannot be resolved.
@@ -33,9 +34,16 @@ export class WatchModes {
   private folders: readonly string[] = [];
 
   /**
-   * Holds the configured folders' real paths, filled in as they resolve.
+   * Holds the configured folders' real paths, where they differ from the folders as written.
    */
   private realFolders: readonly string[] = [];
+
+  /**
+   * Holds what each configured folder resolved to, so an edit to the list resolves only the folders
+   * it added, and a watcher matched through a link never sees its folder vanish while the rest
+   * resolve.
+   */
+  private resolved: ReadonlyMap<string, string | undefined> = new Map<string, string | undefined>();
 
   /**
    * Holds how often a polled root is checked, in milliseconds.
@@ -66,6 +74,11 @@ export class WatchModes {
    * Gets the version-control metadata policies, which decide what a poll need not read.
    */
   public readonly metadata: () => MetadataPolicies;
+
+  /**
+   * Gets the polls in progress, one per folder however many watchers want it.
+   */
+  public readonly polls: SharedTreePolls = new SharedTreePolls();
 
   /**
    * Initializes a new instance of the {@link WatchModes} class, with no folder polled.
@@ -111,26 +124,33 @@ export class WatchModes {
     const generation: number = ++this.generation;
     this.folders = next;
     this.intervalMs = intervalMs;
-    this.realFolders = [];
+    const known: ReadonlyMap<string, string | undefined> = this.resolved;
+    this.realFolders = this.realPathsOf(next, known);
     logger.info(
       'WatchModes',
       next.length === 0
         ? 'No folder is polled; every watcher is native'
         : `Polling ${next.length} folder(s) every ${intervalMs} ms`,
     );
-    // What is known straight away is acted on straight away; links are resolved after.
+    // What is known straight away is acted on straight away; only the folders new to the list are
+    // resolved, after.
     this.notify();
+    const added: readonly string[] = next.filter((folder: string): boolean => !known.has(folder));
     const resolved: readonly (string | undefined)[] = await Promise.all(
-      next.map((folder: string): Promise<string | undefined> => this.resolveRealPath(folder)),
+      added.map((folder: string): Promise<string | undefined> => this.resolveRealPath(folder)),
     );
     if (generation !== this.generation) {
       return;
     }
-    this.realFolders = resolved.filter(
-      (real: string | undefined, index: number): real is string =>
-        real !== undefined && real !== next[index],
-    );
-    if (this.realFolders.length > 0) {
+    const all: Map<string, string | undefined> = new Map<string, string | undefined>();
+    for (const folder of next) {
+      const index: number = added.indexOf(folder);
+      all.set(folder, index === -1 ? known.get(folder) : resolved[index]);
+    }
+    this.resolved = all;
+    const realFolders: readonly string[] = this.realPathsOf(next, all);
+    if (realFolders.length !== this.realFolders.length) {
+      this.realFolders = realFolders;
       this.notify();
     }
   }
@@ -182,6 +202,24 @@ export class WatchModes {
       findPollingFolder(target, this.folders, this.caseInsensitive) !== undefined ||
       findPollingFolder(target, this.realFolders, this.caseInsensitive) !== undefined
     );
+  }
+
+  /**
+   * Lists the real paths known for folders, where they differ from the folders as written.
+   * @param folders The folders.
+   * @param resolved What each folder is known to resolve to.
+   * @returns Returns the real paths.
+   */
+  private realPathsOf(
+    folders: readonly string[],
+    resolved: ReadonlyMap<string, string | undefined>,
+  ): readonly string[] {
+    return folders
+      .map((folder: string): string | undefined => {
+        const real: string | undefined = resolved.get(folder);
+        return real === folder ? undefined : real;
+      })
+      .filter((real: string | undefined): real is string => real !== undefined);
   }
 
   /**
