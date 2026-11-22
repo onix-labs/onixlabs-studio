@@ -89,6 +89,8 @@ interface CapturedProviders {
   };
   /** The semantic-token change emitter per registered language, in registration order. */
   semanticEmitters: Map<string, FakeEmitter>;
+  /** The range-token change emitter per language whose server colours ranges (#1211). */
+  rangeEmitters?: Map<string, FakeEmitter>;
   /** The formatting providers registered, keyed `<language>:<document|range|onType>` (#1141). */
   formatting?: Map<string, FakeFormattingProvider>;
   /** The Python formatter Studio registers at start for its projects' own tools (#1212). */
@@ -242,6 +244,10 @@ function fakeMonacoNamespace(
       },
       registerDocumentRangeSemanticTokensProvider: (language: string, provider: unknown): void => {
         (captured.structure ??= new Map()).set(`${language}:rangeTokens`, provider);
+        const lastEmitter: FakeEmitter | undefined = created[created.length - 1];
+        if (lastEmitter !== undefined) {
+          (captured.rangeEmitters ??= new Map()).set(language, lastEmitter);
+        }
       },
       registerSelectionRangeProvider: (language: string, provider: unknown): void => {
         (captured.structure ??= new Map()).set(`${language}:selectionRanges`, provider);
@@ -301,6 +307,48 @@ function fakeModel(uri: string, languageId: string = 'typescript', value: string
     getLanguageId: (): string => languageId,
     getVersionId: (): number => 1,
     getValue: (): string => value,
+    getLineCount: (): number => value.split('\n').length,
+    getLineMaxColumn: (line: number): number => (value.split('\n')[line - 1] ?? '').length + 1,
+  };
+}
+
+/**
+ * Records what was done to a fake model's semantic-token completeness (#1211).
+ */
+interface FakeTokenization {
+  /** Whether Monaco holds the model's tokens as complete. */
+  complete: boolean;
+  /** Each `setSemanticTokens` call, as `<tokens> <isComplete>`. */
+  readonly calls: string[];
+  hasCompleteSemanticTokens(): boolean;
+  setSemanticTokens(tokens: null, isComplete: boolean): void;
+}
+
+/**
+ * Builds a fake model carrying Monaco's internal tokenization part, which says whether its semantic
+ * tokens are complete (#1211).
+ * @param complete Whether its tokens start complete, as after any whole-document answer.
+ * @param value The model text.
+ * @returns Returns the model and its tokenization.
+ */
+function tokenizedModel(
+  complete: boolean,
+  value: string = 'Widget Run()',
+): { model: unknown; tokenization: FakeTokenization } {
+  const tokenization: FakeTokenization = {
+    complete,
+    calls: [],
+    hasCompleteSemanticTokens(): boolean {
+      return this.complete;
+    },
+    setSemanticTokens(tokens: null, isComplete: boolean): void {
+      this.calls.push(`${String(tokens)} ${String(isComplete)}`);
+      this.complete = isComplete;
+    },
+  };
+  return {
+    model: { ...(fakeModel('inmemory://model/1', 'csharp', value) as object), tokenization },
+    tokenization,
   };
 }
 
@@ -383,6 +431,7 @@ describe('LspFeatures', () => {
     testsRun = undefined;
     captured.codeLens = undefined;
     captured.structure = undefined;
+    captured.rangeEmitters = undefined;
     captured.inlayHints = undefined;
     captured.formatting = undefined;
     const bridge: Bridge = {
@@ -2434,15 +2483,172 @@ describe('LspFeatures', () => {
       responses['textDocument/semanticTokens/full'] = new Error(
         "Error invoking remote method 'lsp:request': Error: semantic tokens: range big.go too large (542563 > 100000)",
       );
-      await build();
+      responses['textDocument/semanticTokens/range'] = { data: [0, 0, 6, 0, 0] };
+      const features: LspFeatures = await build();
+      features.enableStructure('csharp', ALL);
+      const { model } = tokenizedModel(false, 'Widget Run()\nnext line');
 
       const outcome: Promise<unknown> | undefined =
-        captured.semantic?.provideDocumentSemanticTokens(
-          fakeModel(MODEL_URI, 'csharp', 'Widget Run()'),
-        );
+        captured.semantic?.provideDocumentSemanticTokens(model);
 
       // Monaco reads exactly this name and message as a cancellation, not a failure to report.
       await expect(outcome).rejects.toMatchObject({ name: 'Canceled', message: 'Canceled' });
+      // The first refusal comes before Monaco has asked for any range, so the server is asked for the
+      // document's first lines to find out whether it colours ranges at all.
+      expect(requests.map((request: { method: string }): string => request.method)).toEqual([
+        'textDocument/semanticTokens/full',
+        'textDocument/semanticTokens/range',
+      ]);
+      expect(requests[1]?.params).toEqual({
+        textDocument: { uri: 'file:///root/app.ts' },
+        range: { start: { line: 0, character: 0 }, end: { line: 1, character: 9 } },
+      });
+      // And Monaco is asked to fetch the screen.
+      expect(captured.rangeEmitters?.get('csharp')?.fired).toBe(1);
+    });
+
+    it('aWholeDocumentRefused_afterARangeWasColoured_isCancelledWithoutAskingAgain', async () => {
+      structureSupport = ALL;
+      semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+      responses['textDocument/semanticTokens/full'] = new Error('too large');
+      responses['textDocument/semanticTokens/range'] = { data: [0, 0, 6, 0, 0] };
+      const features: LspFeatures = await build();
+      features.enableStructure('csharp', ALL);
+      const { model } = tokenizedModel(false);
+      await captured.structure
+        ?.get('csharp:rangeTokens')
+        ?.provideDocumentRangeSemanticTokens?.(model, {
+          startLineNumber: 1,
+          startColumn: 1,
+          endLineNumber: 1,
+          endColumn: 13,
+        });
+      requests.length = 0;
+
+      await expect(captured.semantic?.provideDocumentSemanticTokens(model)).rejects.toMatchObject({
+        name: 'Canceled',
+      });
+      expect(requests.map((request: { method: string }): string => request.method)).toEqual([
+        'textDocument/semanticTokens/full',
+      ]);
+    });
+
+    it.each([
+      [
+        'a file opened before its server was ready, which the heuristic coloured whole',
+        'cold start',
+      ],
+      ['a file coloured again after Semantic Highlighting was turned off and on', 'toggled'],
+    ])('aWholeDocumentRefused_forAModelMonacoHoldsComplete_reopensItForRanges: %s', async () => {
+      // Any whole-document answer marks Monaco's tokens complete, after which it neither asks for
+      // nor paints a range; a cancellation alone would leave the file as it was (#1211).
+      structureSupport = ALL;
+      semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+      responses['textDocument/semanticTokens/full'] = new Error('too large');
+      responses['textDocument/semanticTokens/range'] = { data: [0, 0, 6, 0, 0] };
+      const features: LspFeatures = await build();
+      features.enableStructure('csharp', ALL);
+      const { model, tokenization } = tokenizedModel(true);
+
+      await expect(captured.semantic?.provideDocumentSemanticTokens(model)).rejects.toMatchObject({
+        name: 'Canceled',
+      });
+
+      expect(tokenization.calls).toEqual(['null false']);
+      expect(tokenization.complete).toBe(false);
+      expect(captured.rangeEmitters?.get('csharp')?.fired).toBe(1);
+    });
+
+    it('aWholeDocumentRefused_leavesAModelWhoseTokensAreNotComplete_asItIs', async () => {
+      structureSupport = ALL;
+      semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+      responses['textDocument/semanticTokens/full'] = new Error('too large');
+      responses['textDocument/semanticTokens/range'] = { data: [0, 0, 6, 0, 0] };
+      await build();
+      const { model, tokenization } = tokenizedModel(false);
+
+      await expect(captured.semantic?.provideDocumentSemanticTokens(model)).rejects.toMatchObject({
+        name: 'Canceled',
+      });
+      // The range tokens already painted stay.
+      expect(tokenization.calls).toEqual([]);
+    });
+
+    it('aWholeDocumentRefused_forAModelWithoutMonacosTokenizationPart_isStillCancelled', async () => {
+      structureSupport = ALL;
+      semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+      responses['textDocument/semanticTokens/full'] = new Error('too large');
+      responses['textDocument/semanticTokens/range'] = { data: [0, 0, 6, 0, 0] };
+      await build();
+
+      await expect(
+        captured.semantic?.provideDocumentSemanticTokens(
+          fakeModel(MODEL_URI, 'csharp', 'Widget Run()'),
+        ),
+      ).rejects.toMatchObject({ name: 'Canceled' });
+    });
+
+    it.each([
+      ['refuses the range too', new Error('too large')],
+      ['colours no range', { data: [] }],
+    ])(
+      'aWholeDocumentRefused_byAServerThat%s_keepsTheHeuristic',
+      async (_label: string, rangeAnswer: unknown) => {
+        structureSupport = ALL;
+        semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+        responses['textDocument/semanticTokens/full'] = new Error('too large');
+        responses['textDocument/semanticTokens/range'] = rangeAnswer;
+        const features: LspFeatures = await build();
+        features.enableStructure('csharp', ALL);
+        const { model, tokenization } = tokenizedModel(true);
+
+        const tokens: { data: Uint32Array } | undefined =
+          await captured.semantic?.provideDocumentSemanticTokens(model);
+
+        expect([...(tokens?.data ?? [])]).toEqual([0, 0, 6, 1, 0, 0, 7, 3, 12, 0]);
+        expect(tokenization.calls).toEqual([]);
+        expect(captured.rangeEmitters?.get('csharp')?.fired).toBe(0);
+      },
+    );
+
+    it('aRangeThatStopsBeingColoured_letsTheNextRefusalKeepTheHeuristic', async () => {
+      structureSupport = ALL;
+      semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+      responses['textDocument/semanticTokens/full'] = new Error('too large');
+      responses['textDocument/semanticTokens/range'] = { data: [0, 0, 6, 0, 0] };
+      const features: LspFeatures = await build();
+      features.enableStructure('csharp', ALL);
+      const { model } = tokenizedModel(false);
+      const range: unknown = {
+        startLineNumber: 1,
+        startColumn: 1,
+        endLineNumber: 1,
+        endColumn: 13,
+      };
+      const rangeTokens: FakeStructureProvider | undefined =
+        captured.structure?.get('csharp:rangeTokens');
+      await rangeTokens?.provideDocumentRangeSemanticTokens?.(model, range);
+      responses['textDocument/semanticTokens/range'] = new Error('gone');
+      await rangeTokens?.provideDocumentRangeSemanticTokens?.(model, range);
+
+      const tokens: { data: Uint32Array } | undefined =
+        await captured.semantic?.provideDocumentSemanticTokens(model);
+
+      expect([...(tokens?.data ?? [])]).toEqual([0, 0, 6, 1, 0, 0, 7, 3, 12, 0]);
+    });
+
+    it('aRefresh_alsoAsksForTheRangesOfItsLanguagesOnly', async () => {
+      const features: LspFeatures = await build();
+      features.enableStructure('csharp', ALL);
+      features.enableStructure('java', ALL);
+
+      features.refreshSemanticTokens(['csharp']);
+      expect(captured.rangeEmitters?.get('csharp')?.fired).toBe(1);
+      expect(captured.rangeEmitters?.get('java')?.fired).toBe(0);
+
+      features.refreshSemanticTokens();
+      expect(captured.rangeEmitters?.get('csharp')?.fired).toBe(2);
+      expect(captured.rangeEmitters?.get('java')?.fired).toBe(1);
     });
 
     it('aWholeDocumentRefused_byAServerThatColoursNoRanges_stillFallsBackToTheHeuristic', async () => {

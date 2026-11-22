@@ -1006,6 +1006,34 @@ const HEURISTIC_CACHE_LIMIT: number = 64;
 const MONACO_CANCELLED: string = 'Canceled';
 
 /**
+ * Bounds the lines asked for when finding out whether a server colours a document's ranges (#1211):
+ * enough to hold real tokens in any source file, few enough to stay well under gopls's 100,000-byte
+ * limit.
+ */
+const RANGE_PROBE_LINES: number = 50;
+
+/**
+ * Describes the part of Monaco's internal text-model tokenization that says whether a model's
+ * semantic tokens are complete (Monaco 0.57; not in its public typings), as far as
+ * {@link LspFeatures} reads and resets it (#1211).
+ */
+interface SemanticTokensCompleteness {
+  /**
+   * Gets whether the model's semantic tokens cover the whole document, after which Monaco neither
+   * asks for nor paints a range's.
+   * @returns Returns true when they are complete.
+   */
+  hasCompleteSemanticTokens(): boolean;
+
+  /**
+   * Replaces the model's semantic tokens.
+   * @param tokens The tokens, or null to clear them.
+   * @param isComplete Whether they cover the whole document.
+   */
+  setSemanticTokens(tokens: null, isComplete: boolean): void;
+}
+
+/**
  * Registers Monaco language features (completion, hover, go-to-definition, references) backed by the
  * application's language servers. Monaco's providers are global per language, so this root service
  * owns them and routes each request to the workspace whose client owns the model — clients register a
@@ -1175,6 +1203,24 @@ export class LspFeatures {
     string,
     MonacoApi.Emitter<void>
   >();
+
+  /**
+   * Fires to ask Monaco to re-request the range tokens of a language's open models, one emitter per
+   * language whose server colours ranges (#1211). Monaco asks for a range only on scrolls, edits and
+   * a provider's change, so a refresh that re-asks for the whole document must re-ask for the screen
+   * too, or a file the server will not colour whole stays as it was.
+   */
+  private readonly rangeTokensChanged: Map<string, MonacoApi.Emitter<void>> = new Map<
+    string,
+    MonacoApi.Emitter<void>
+  >();
+
+  /**
+   * Holds the URIs of the models a server has coloured a range of with real tokens (#1211). Only for
+   * these is a refused whole-document request left to the ranges; anything else keeps the heuristic,
+   * so a server that colours neither never leaves a document uncoloured.
+   */
+  private readonly rangeColoured: Set<string> = new Set<string>();
 
   /**
    * Holds the listeners notified when a server demonstrably serves a session (a request returns a
@@ -2030,11 +2076,14 @@ export class LspFeatures {
     }
     if (support.rangeTokens && !registered.has(`${language}:rangeTokens`)) {
       registered.add(`${language}:rangeTokens`);
+      const rangeTokensChanged: MonacoApi.Emitter<void> = new monaco.Emitter<void>();
+      this.rangeTokensChanged.set(language, rangeTokensChanged);
       monaco.languages.registerDocumentRangeSemanticTokensProvider(language, {
+        onDidChange: rangeTokensChanged.event,
         getLegend: (): MonacoApi.languages.SemanticTokensLegend => SEMANTIC_LEGEND,
         provideDocumentRangeSemanticTokens: (
           model: MonacoApi.editor.ITextModel,
-          range: MonacoApi.Range,
+          range: MonacoApi.IRange,
         ): Promise<MonacoApi.languages.SemanticTokens | null> =>
           this.provideRangeSemanticTokens(model, range),
       });
@@ -2429,14 +2478,16 @@ export class LspFeatures {
    * onto the fixed legend. Only real tokens are given: while the server cannot serve them, the whole
    * document's tokens (with their heuristic stand-in) colour it. Monaco asks until the whole
    * document's tokens arrive, so for a file the server will not colour whole (gopls past 100,000
-   * bytes, #1211) these are the only colours it gets, asked again on every scroll and edit.
+   * bytes, #1211) these are the only colours it gets, asked again on every scroll and edit. Whether
+   * the server answered with real tokens is remembered per model, which decides what a refused
+   * whole-document request falls back to.
    * @param model The model.
    * @param range The range shown.
    * @returns Returns the tokens, or null to leave the range to the whole document's.
    */
   private async provideRangeSemanticTokens(
     model: MonacoApi.editor.ITextModel,
-    range: MonacoApi.Range,
+    range: MonacoApi.IRange,
   ): Promise<MonacoApi.languages.SemanticTokens | null> {
     const ref: LspDocumentRef | null = this.resolve(model);
     const legend: LspSemanticTokensLegend | null | undefined = ref?.semanticLegend;
@@ -2469,14 +2520,19 @@ export class LspFeatures {
         },
       );
     } catch {
+      this.rangeColoured.delete(model.uri.toString());
       return null;
     }
     const data: unknown = (result as { data?: unknown } | null)?.data;
-    if (!Array.isArray(data)) {
+    const remapped: Uint32Array = Array.isArray(data)
+      ? this.remapSemanticTokens(data as number[], legend)
+      : new Uint32Array(0);
+    if (remapped.length === 0) {
+      this.rangeColoured.delete(model.uri.toString());
       return null;
     }
-    const remapped: Uint32Array = this.remapSemanticTokens(data as number[], legend);
-    return remapped.length === 0 ? null : { data: remapped };
+    this.rangeColoured.add(model.uri.toString());
+    return { data: remapped };
   }
 
   /**
@@ -2874,6 +2930,14 @@ export class LspFeatures {
         emitter.fire();
       }
     }
+    // Monaco re-asks for the screen only when its range provider changes, so the ranges are refreshed
+    // with the whole document: a file the server colours only by range would otherwise keep the
+    // colours it had before the refresh (#1211).
+    for (const [language, emitter] of this.rangeTokensChanged) {
+      if (languages === undefined || languages.includes(language)) {
+        emitter.fire();
+      }
+    }
   }
 
   /**
@@ -2927,7 +2991,7 @@ export class LspFeatures {
    * @returns Returns the semantic tokens, or undefined when no server owns the model and no heuristic
    * applies.
    * @throws {Error} Throws an error Monaco reads as cancelled when the request fails for a server that
-   * colours ranges, so the range tokens colour the document instead.
+   * has coloured a range of the document, so the range tokens colour it instead.
    */
   private async fetchSemanticTokens(
     model: MonacoApi.editor.ITextModel,
@@ -2959,9 +3023,12 @@ export class LspFeatures {
       // A server that also colours a range can refuse the whole document yet still colour the screen:
       // gopls refuses a file over 100,000 bytes (#1211). Whatever is returned here Monaco takes as the
       // whole document's tokens, painted over the screen's and ending its range requests, so the
-      // heuristic would replace the server's colours on a large file. Ending as cancelled leaves the
-      // range tokens painted and the range requests going, on every scroll and edit.
-      if (ref.structure?.rangeTokens === true) {
+      // heuristic would replace the server's colours on a large file. Once the server is known to
+      // colour this document's ranges, ending as cancelled leaves the range tokens painted and the
+      // range requests going, on every scroll and edit; otherwise the heuristic stays.
+      if (ref.structure?.rangeTokens === true && (await this.coloursRanges(model))) {
+        this.reopenForRanges(model);
+        this.rangeTokensChanged.get(model.getLanguageId())?.fire();
         const cancelled: Error = new Error(MONACO_CANCELLED);
         cancelled.name = MONACO_CANCELLED;
         throw cancelled;
@@ -2978,6 +3045,52 @@ export class LspFeatures {
     }
     this.notifyServed(ref.sessionId);
     return { data: remapped };
+  }
+
+  /**
+   * Determines whether the server serving a model colours its ranges (#1211): known once a range of
+   * it has come back with real tokens, and otherwise found out by asking for the document's first
+   * lines. Monaco asks for the screen only about 100 ms after the whole document, so the first refusal
+   * usually comes before any range has, and must not be taken as the server colouring nothing.
+   * @param model The model.
+   * @returns Returns true when a range of it has been coloured with real tokens.
+   */
+  private async coloursRanges(model: MonacoApi.editor.ITextModel): Promise<boolean> {
+    if (this.rangeColoured.has(model.uri.toString())) {
+      return true;
+    }
+    const endLineNumber: number = Math.min(model.getLineCount(), RANGE_PROBE_LINES);
+    await this.provideRangeSemanticTokens(model, {
+      startLineNumber: 1,
+      startColumn: 1,
+      endLineNumber,
+      endColumn: model.getLineMaxColumn(endLineNumber),
+    });
+    return this.rangeColoured.has(model.uri.toString());
+  }
+
+  /**
+   * Lets Monaco ask for a model's ranges again after it has taken the model's tokens as complete
+   * (#1211). Any answer to a whole-document request, the heuristic's or none, marks them complete,
+   * and from then on Monaco neither asks for a range nor paints one: a file opened before its server
+   * was ready, or coloured again after Semantic Highlighting was turned off and on, would stay as it
+   * was. Clearing the tokens as incomplete undoes that; the range tokens asked for next repaint it.
+   * @param model The model.
+   */
+  private reopenForRanges(model: MonacoApi.editor.ITextModel): void {
+    // ⛔ `tokenization` is Monaco's internal text-model part (0.57), absent from its public typings:
+    // nothing public marks a model's semantic tokens incomplete. It is narrowly typed and checked
+    // before use, so a Monaco without it leaves the model as it is rather than throwing.
+    const tokenization: Partial<SemanticTokensCompleteness> | undefined = (
+      model as unknown as { tokenization?: Partial<SemanticTokensCompleteness> }
+    ).tokenization;
+    if (
+      typeof tokenization?.hasCompleteSemanticTokens === 'function' &&
+      typeof tokenization.setSemanticTokens === 'function' &&
+      tokenization.hasCompleteSemanticTokens()
+    ) {
+      tokenization.setSemanticTokens(null, false);
+    }
   }
 
   /**
