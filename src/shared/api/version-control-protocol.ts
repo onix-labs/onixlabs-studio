@@ -39,11 +39,11 @@
 // expects — and, so nothing that must stay is offered: the refs' optional `defaultBranch`, each
 // remote's `defaultBranch`, a remote-tracking branch's `mergedInto`, and a local branch's
 // `otherWorktree`. Additions: a 1.5 plugin offers none of them, and only local branches are deleted.
-// 1.6 also (#1255) adds the failure codes `ssh-key-rejected` and `ssh-host-unknown`, with a failure's optional
+// 1.7 (#1255) adds the failure codes `ssh-key-rejected` and `ssh-host-unknown`, with a failure's optional
 // `sshHost` (the server SSH named) and `output` (the tool's own words), so Studio can say in the user's
 // language what to do about the two SSH failures a non-interactive run cannot get past. Additions: a
-// 1.5 plugin sends none of them, and its `error` is shown as it always was.
-export const VERSION_CONTROL_PROTOCOL_VERSION: string = '1.6';
+// 1.6 plugin sends none of them, and its `error` is shown as it always was.
+export const VERSION_CONTROL_PROTOCOL_VERSION: string = '1.7';
 
 /**
  * Names one optional capability a version-control plugin can advertise.
