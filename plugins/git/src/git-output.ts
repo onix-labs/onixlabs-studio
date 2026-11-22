@@ -251,7 +251,7 @@ function parseTrack(track: string): { ahead: number; behind: number } {
  * The `git for-each-ref` format {@link parseRefs} reads.
  */
 export const REFS_FORMAT: string =
-  '%(refname)%1f%(objectname)%1f%(HEAD)%1f%(upstream:short)%1f%(upstream:track)';
+  '%(refname)%1f%(objectname)%1f%(HEAD)%1f%(upstream:short)%1f%(upstream:track)%1f%(worktreepath)';
 
 /**
  * Parses `git for-each-ref` output in {@link REFS_FORMAT} into local branches, remotes and tags. The
@@ -268,7 +268,8 @@ export function parseRefs(output: string): VcsRefs {
     if (line.trim().length === 0) {
       continue;
     }
-    const [refName, objectName, head, upstreamShort, track]: string[] = line.split(US);
+    const [refName, objectName, head, upstreamShort, track, worktreePath]: string[] =
+      line.split(US);
     if (refName.startsWith('refs/heads/')) {
       const counts: { ahead: number; behind: number } = parseTrack(track ?? '');
       branches.push({
@@ -282,6 +283,11 @@ export function parseRefs(output: string): VcsRefs {
         tip: objectName,
         // `[gone]`: the upstream was deleted on the remote, as after a merged pull request (#887).
         ...((track ?? '').includes('gone') ? { upstreamGone: true } : {}),
+        // Checked out in another worktree, which git will not delete it from under (#887). The
+        // branch checked out here is `current` instead.
+        ...(head !== '*' && worktreePath !== undefined && worktreePath.trim().length > 0
+          ? { otherWorktree: worktreePath.trim() }
+          : {}),
       });
     } else if (refName.startsWith('refs/remotes/')) {
       const short: string = refName.slice('refs/remotes/'.length);

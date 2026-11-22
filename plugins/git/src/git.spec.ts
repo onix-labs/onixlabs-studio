@@ -565,6 +565,15 @@ describe('GitVersionControl', () => {
     );
 
     expect(mergedInto).toEqual({ done: 'main', fresh: undefined, main: undefined, wip: undefined });
+    expect(refs.defaultBranch).toBe('main');
+  });
+
+  it('refs_namesNoDefaultBranch_whenThereIsNone (#887)', GIT_TEST_TIMEOUT, async () => {
+    await git(repo, 'branch', '-m', 'trunk');
+
+    const refs: VcsRefs = await result('refs', {});
+
+    expect(refs.defaultBranch).toBeUndefined();
   });
 
   it(

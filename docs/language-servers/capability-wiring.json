@@ -13,6 +13,7 @@
     "rust": "2026-07-13.json",
     "sqls": "0.2.48.with-settings.json",
     "svelte-language-server": "0.18.4.json",
+    "taplo": "0.10.0.with-settings.json",
     "ty": "0.0.74.studio-defaults.json",
     "typescript": "4.4.1.with-settings.json",
     "vscode-css-language-server": "4.10.0.with-settings.json",
@@ -54,6 +55,7 @@
       "selectionRange",
       "documentLink",
       "semanticTokens/full",
+      "semanticTokens/range",
       "documentSymbol",
       "workspace/symbol",
       "callHierarchy",
@@ -81,6 +83,15 @@
       "documentHighlight",
       "documentSymbol",
       "textDocument/diagnostic"
+    ],
+    "taplo": [
+      "hover",
+      "completion",
+      "formatting",
+      "rename",
+      "foldingRange",
+      "documentSymbol",
+      "publishDiagnostics"
     ],
     "vscode-css-language-server": [
       "hover",
@@ -128,7 +139,8 @@
       "typeDefinition"
     ],
     "yaml-language-server": ["callHierarchy", "typeHierarchy", "implementation"],
-    "dockerfile-language-server": ["callHierarchy", "typeHierarchy", "implementation"]
+    "dockerfile-language-server": ["callHierarchy", "typeHierarchy", "implementation"],
+    "taplo": ["callHierarchy", "typeHierarchy", "implementation", "typeDefinition"]
   },
   "servers": {
     "ty": {

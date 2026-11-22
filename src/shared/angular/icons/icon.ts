@@ -2004,6 +2004,16 @@ export class Icon {
   public static readonly DATABASE_RAW: Icon = new Icon('ph-duotone ph-brackets-curly');
 
   /**
+   * Gets the icon of Explain, and of the Plan tab's Tree view: a query's plan, a tree of steps.
+   */
+  public static readonly DATABASE_EXPLAIN: Icon = new Icon('ph-duotone ph-tree-view');
+
+  /**
+   * Gets the icon of Explain Analyze, which runs the query to time its plan.
+   */
+  public static readonly DATABASE_EXPLAIN_ANALYZE: Icon = new Icon('ph-duotone ph-gauge');
+
+  /**
    * Gets the icon of the Fit to View column sizing: the columns share the grid's width.
    */
   public static readonly DATABASE_FIT_VIEW: Icon = new Icon(

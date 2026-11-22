@@ -5,6 +5,7 @@ import {
   MODAL_WINDOW_URL,
 } from '@shared/api/window-channels';
 
+import { Settings } from '@shared/angular/services/settings/settings';
 import { ModalWindow, ModalWindowRequest, ModalWindows } from './modal-windows';
 
 /**
@@ -310,6 +311,61 @@ describe('ModalWindows', () => {
     modal!.fit(500, 360);
 
     expect(owner.child.moved).toEqual([{ x: 600 - 50, y: 300 - 20 }]);
+  });
+
+  describe('at an Interface Zoom', () => {
+    beforeEach(() => {
+      TestBed.inject(Settings).assign('accessibility.interfaceZoom', 200);
+    });
+
+    afterEach(() => {
+      localStorage.clear();
+    });
+
+    it('features_askForTheSizeOnScreen_theCssSizeTimesTheZoom', () => {
+      open({ minimum: { width: 300, height: 200 }, maximum: { width: 600, height: 400 } });
+
+      const features: string = owner.features!;
+      expect(feature(features, 'width')).toBe(832);
+      expect(feature(features, 'height')).toBe(560);
+      expect(feature(features, 'minwidth')).toBe(600);
+      expect(feature(features, 'minheight')).toBe(400);
+      expect(feature(features, 'maxwidth')).toBe(1200);
+      expect(feature(features, 'maxheight')).toBe(800);
+    });
+
+    it('position_centresTheWindowAtItsSizeOnScreen', () => {
+      open();
+
+      expect(feature(owner.features!, 'left')).toBe(200 + (1200 - 832) / 2);
+      expect(feature(owner.features!, 'top')).toBe(100 + Math.round((800 - 560) / 3));
+    });
+
+    it('fit_sizesTheWindowForTheContentOnScreen_withTheChromeMeasuredInScreenPixels', () => {
+      const modal: ModalWindow | null = open();
+      // 150 CSS pixels of content drawn at 200% is 300 screen pixels, under 20 of chrome.
+      owner.child.innerWidth = 200;
+      owner.child.innerHeight = 150;
+      owner.child.outerWidth = 400;
+      owner.child.outerHeight = 320;
+
+      modal!.fit(250, 200);
+
+      expect(owner.child.resized).toEqual([{ width: 500, height: 420 }]);
+    });
+  });
+
+  it('features_whenTheStoredZoomIsNotALevel_sizeTheWindowAt100', () => {
+    localStorage.setItem('settings', JSON.stringify({ 'accessibility.interfaceZoom': 'abc' }));
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({});
+    windows = TestBed.inject(ModalWindows);
+
+    open();
+
+    expect(feature(owner.features!, 'width')).toBe(416);
+    expect(owner.features).not.toContain('NaN');
+    localStorage.clear();
   });
 
   it('fit_whenTheWindowHasClosed_doesNothing', () => {

@@ -8,8 +8,11 @@ import {
   VcsErrorCode,
   VcsFileVersion,
   VcsIdentity,
+  VcsBranch,
   VcsOperationState,
   VcsRefs,
+  VcsRemote,
+  VcsRemoteBranch,
   VersionControlDescription,
   VersionControlExecutableChoice,
   VersionControlOp,
@@ -17,6 +20,7 @@ import {
   VcsParams,
 } from './protocol';
 import { debug, note } from './log';
+import { DefaultBranch, defaultBranchOf } from './default-branch';
 import { classifyOperation, firstFile, probeOperation } from './git-operation-state';
 import {
   LOG_FORMAT,
@@ -609,6 +613,8 @@ export class GitVersionControl {
           : Promise.resolve(fail('Invalid tag name'));
       case 'deleteRemoteTag':
         return this.deleteRemoteTag(root, params['remote'], params['name']);
+      case 'deleteRemoteBranch':
+        return this.deleteRemoteBranch(root, params['remote'], params['name'], params['expected']);
       case 'pushTag':
         // `git push <remote> tag <name>` names the tag without building a refspec from caller input,
         // so a name carrying a colon cannot become a source-and-destination pair.
@@ -700,112 +706,120 @@ export class GitVersionControl {
       return fail(refs.error ?? 'git for-each-ref failed');
     }
     const parsed: VcsRefs = parseRefs(refs.stdout);
+    const heads: ReadonlyMap<string, string> = await this.remoteHeads(root, parsed);
+    const target: DefaultBranch | null = defaultBranchOf(parsed, heads);
+    const marked: VcsRefs = await this.markMerged(root, parsed, target);
     return ok({
-      ...parsed,
-      branches: await this.markMerged(root, parsed),
+      ...marked,
       remotes: mergeRemoteUrls(
-        parsed.remotes,
+        marked.remotes,
         parseRemoteUrls(remotes.success ? remotes.stdout : ''),
-      ),
+      ).map((remote: VcsRemote): VcsRemote => {
+        // Each remote's own default, so a fork's `upstream/develop` is never offered for deletion
+        // just because `origin`'s default is `main` (#887).
+        const head: string | undefined = heads.get(remote.name);
+        return head === undefined
+          ? remote
+          : { ...remote, defaultBranch: head.slice(remote.name.length + 1) };
+      }),
+      // Named so Delete Merged Branches never offers the branch everything is merged into (#887).
+      ...(target === null ? {} : { defaultBranch: target.name }),
     });
   }
 
   /**
-   * Marks the local branches already merged into the default branch by ancestry (#887): those whose
-   * tip the default branch reaches, through a merge commit or a fast-forward. The default branch is the
-   * one the remote's `HEAD` names (`origin/main`, checked against the remote-tracking branch, so a merge
-   * on the host counts once fetched), or else a local `main` or `master`.
+   * Marks what is already merged into the default branch by ancestry (#887): the local branches whose
+   * tip the default branch reaches, through a merge commit or a fast-forward, and the remote-tracking
+   * branches likewise, whose copy on the remote is then safe to delete. The default branch is the one
+   * the remote's `HEAD` names (`origin/main`, checked against the remote-tracking branch, so a merge on
+   * the host counts once fetched), or else a local `main` or `master`.
    *
-   * Two are never marked: the default branch itself, and a branch sitting exactly at the default
-   * branch's tip, which is as likely a branch just created as one just fast-forwarded. A squash or
-   * rebase merge leaves the tip unreachable, so it is not found here; the hosting plugin's merged pull
-   * requests find those. Best-effort: when the default branch cannot be found or asked, no branch is
+   * Two local branches are never marked: the default branch itself, and a branch sitting exactly at the
+   * default branch's tip, which is as likely a branch just created as one just fast-forwarded. A squash
+   * or rebase merge leaves the tip unreachable, so it is not found here; the hosting plugin's merged pull
+   * requests find those. Best-effort: when the default branch cannot be found or asked, nothing is
    * marked rather than the listing failing.
    * @param root The repository root.
    * @param refs The parsed refs.
-   * @returns Returns the local branches, with `mergedInto` set on the merged ones.
+   * @param target The default branch (see {@link defaultBranchOf}), or null when there is none.
+   * @returns Returns the refs, with `mergedInto` set on the merged branches.
    */
-  private async markMerged(root: string, refs: VcsRefs): Promise<VcsRefs['branches']> {
-    const target: { ref: string; name: string; tip: string } | null = await this.defaultBranch(
-      root,
-      refs,
-    );
+  private async markMerged(
+    root: string,
+    refs: VcsRefs,
+    target: DefaultBranch | null,
+  ): Promise<VcsRefs> {
     if (target === null) {
-      return refs.branches;
+      return refs;
     }
     const merged: GitRun = await this.git(root, [
       'for-each-ref',
       `--merged=${target.ref}`,
       '--format=%(refname)',
       'refs/heads',
+      'refs/remotes',
     ]);
     if (!merged.success) {
-      return refs.branches;
+      return refs;
     }
     const names: ReadonlySet<string> = new Set<string>(
-      merged.stdout
-        .split('\n')
-        .map((line: string): string => line.trim())
-        .filter((line: string): boolean => line.startsWith('refs/heads/'))
-        .map((line: string): string => line.slice('refs/heads/'.length)),
+      merged.stdout.split('\n').map((line: string): string => line.trim()),
     );
-    return refs.branches.map((branch: VcsRefs['branches'][number]) =>
-      names.has(branch.name) && branch.name !== target.name && branch.tip !== target.tip
-        ? { ...branch, mergedInto: target.name }
-        : branch,
-    );
+    return {
+      ...refs,
+      branches: refs.branches.map((branch: VcsBranch): VcsBranch =>
+        names.has(`refs/heads/${branch.name}`) &&
+        branch.name !== target.name &&
+        branch.tip !== target.tip
+          ? { ...branch, mergedInto: target.name }
+          : branch,
+      ),
+      remotes: refs.remotes.map((remote: VcsRemote): VcsRemote => ({
+        ...remote,
+        branches: remote.branches.map((branch: VcsRemoteBranch): VcsRemoteBranch =>
+          names.has(`refs/remotes/${branch.name}`) &&
+          `refs/remotes/${branch.name}` !== target.ref &&
+          !branch.name.endsWith('/HEAD')
+            ? { ...branch, mergedInto: target.name }
+            : branch,
+        ),
+      })),
+    };
   }
 
   /**
-   * Finds the default branch to measure merges against: the remote-tracking branch a remote's `HEAD`
-   * points at (the first remote that has one, `origin` first), or else a local `main` or `master`.
+   * Reads where each remote's `HEAD` points, for the remotes whose `HEAD` names a remote-tracking branch
+   * that exists. Asked in parallel: one `symbolic-ref` per remote.
    * @param root The repository root.
    * @param refs The parsed refs.
-   * @returns Returns the ref to ask against, the branch's short name and its tip, or null for none.
+   * @returns Returns the remote-tracking branch (`origin/main`) by remote name.
    */
-  private async defaultBranch(
-    root: string,
-    refs: VcsRefs,
-  ): Promise<{ ref: string; name: string; tip: string } | null> {
-    const remotes: readonly string[] = [
-      ...refs.remotes.filter(
-        (remote: VcsRefs['remotes'][number]): boolean => remote.name === 'origin',
-      ),
-      ...refs.remotes.filter(
-        (remote: VcsRefs['remotes'][number]): boolean => remote.name !== 'origin',
-      ),
-    ].map((remote: VcsRefs['remotes'][number]): string => remote.name);
-    for (const remote of remotes) {
-      const head: GitRun = await this.git(root, [
-        'symbolic-ref',
-        '--quiet',
-        '--short',
-        `refs/remotes/${remote}/HEAD`,
-      ]);
-      const tracking: string = head.success ? head.stdout.trim() : '';
-      const branch: VcsRefs['remotes'][number]['branches'][number] | undefined = refs.remotes
-        .find((candidate: VcsRefs['remotes'][number]): boolean => candidate.name === remote)
-        ?.branches.find(
-          (candidate: VcsRefs['remotes'][number]['branches'][number]): boolean =>
-            candidate.name === tracking,
-        );
-      if (branch !== undefined && tracking.startsWith(`${remote}/`)) {
-        return {
-          ref: `refs/remotes/${tracking}`,
-          name: tracking.slice(remote.length + 1),
-          tip: branch.commit,
-        };
-      }
-    }
-    for (const name of ['main', 'master']) {
-      const local: VcsRefs['branches'][number] | undefined = refs.branches.find(
-        (branch: VcsRefs['branches'][number]): boolean => branch.name === name,
+  private async remoteHeads(root: string, refs: VcsRefs): Promise<ReadonlyMap<string, string>> {
+    const answers: readonly (readonly [string, string])[] = await Promise.all(
+      refs.remotes.map(async (remote: VcsRemote): Promise<readonly [string, string]> => {
+        const head: GitRun = await this.git(root, [
+          'symbolic-ref',
+          '--quiet',
+          '--short',
+          `refs/remotes/${remote.name}/HEAD`,
+        ]);
+        return [remote.name, head.success ? head.stdout.trim() : ''] as const;
+      }),
+    );
+    const heads: Map<string, string> = new Map<string, string>();
+    for (const [name, tracking] of answers) {
+      const remote: VcsRemote | undefined = refs.remotes.find(
+        (candidate: VcsRemote): boolean => candidate.name === name,
       );
-      if (local !== undefined) {
-        return { ref: `refs/heads/${name}`, name, tip: local.tip };
+      if (
+        tracking.startsWith(`${name}/`) &&
+        remote?.branches.some((branch: VcsRemoteBranch): boolean => branch.name === tracking) ===
+          true
+      ) {
+        heads.set(name, tracking);
       }
     }
-    return null;
+    return heads;
   }
 
   /**
@@ -1363,6 +1377,71 @@ export class GitVersionControl {
       return Promise.resolve(fail('Invalid remote or tag name'));
     }
     return this.network(root, ['push', remote, '--delete', `refs/tags/${name}`]);
+  }
+
+  /**
+   * Deletes a branch on a remote (#887), spelled out as `refs/heads/<name>` so a tag of the same name
+   * cannot be deleted instead. Pushing the deletion removes the remote-tracking branch too.
+   *
+   * ⛔ Leased: the remote deletes the branch only while it still points at `expected`, the commit Studio
+   * found merged. A branch someone pushed to since is refused by the remote rather than lost, and the
+   * refusal is reported.
+   *
+   * A branch the remote no longer has is the outcome asked for, not a failure: the host may have
+   * deleted it when its pull request merged, after the last fetch. That is told by asking the remote
+   * (`ls-remote` answering nothing) rather than by reading git's message, which is translated. Its stale
+   * remote-tracking branch is dropped so the panel stops offering it.
+   * @param root The repository root.
+   * @param remote The remote.
+   * @param name The branch name on the remote, without the remote.
+   * @param expected The commit the remote's branch must still point at.
+   * @returns Returns the outcome.
+   */
+  private async deleteRemoteBranch(
+    root: string,
+    remote: unknown,
+    name: unknown,
+    expected: unknown,
+  ): Promise<Outcome> {
+    if (
+      !isSafeOperand(remote) ||
+      !isSafeOperand(name) ||
+      remote.includes(':') ||
+      name.includes(':')
+    ) {
+      return fail('Invalid remote or branch name');
+    }
+    if (typeof expected !== 'string' || !/^[0-9a-f]{7,64}$/.test(expected)) {
+      return fail('Invalid expected commit');
+    }
+    const ref: string = `refs/heads/${name}`;
+    const run: GitRun = await this.git(
+      root,
+      await this.withSshCommand(root, [
+        'push',
+        `--force-with-lease=${ref}:${expected}`,
+        remote,
+        '--delete',
+        ref,
+      ]),
+      GIT_NETWORK_TIMEOUT_MS,
+      GIT_NETWORK_ENV,
+    );
+    if (run.success) {
+      return ok(DONE);
+    }
+    const listed: GitRun = await this.git(
+      root,
+      await this.withSshCommand(root, ['ls-remote', remote, ref]),
+      GIT_NETWORK_TIMEOUT_MS,
+      GIT_NETWORK_ENV,
+    );
+    if (listed.success && listed.stdout.trim().length === 0) {
+      await this.git(root, ['update-ref', '-d', `refs/remotes/${remote}/${name}`]);
+      return ok(DONE);
+    }
+    debug('GitVersionControl', 'Network git push --delete failed');
+    return fail(networkFailureMessage(run));
   }
 
   /**

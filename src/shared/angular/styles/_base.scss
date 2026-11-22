@@ -60,6 +60,62 @@ select:focus-visible {
   border-color: var(--accent-color) !important;
 }
 
+// Focus Ring set to High Visibility (Settings › Application › Accessibility): a 3px outline in the
+// theme's strongest colour (near white on dark, near black on light) rather than a 1px accent one.
+// Components that draw their own ring from the tokens follow at once.
+:root[data-focus-ring='high-visibility'] {
+  --focus-ring-width: 0.1875rem;
+  --focus-ring-color: var(--body-foreground-color);
+}
+
+// ...and so does every other control. Many state their own quieter cue — a 2px accent ring, a
+// recoloured border, a hover fill — and each of those is overridden here, so focus reads the same,
+// and plainly, on every control. `!important` for the same reason as the form-control policy above:
+// those rules out-rank this one. Each keeps its own `outline-offset`, which is what holds a ring
+// inside a row or tab that clips its overflow.
+//
+// Left alone: everything inside the code editors and terminals, whose hidden input surfaces take
+// focus for typing and sit at the caret (a ring there would box the caret), and which draw their own
+// focus; and rich-text surfaces, where the ring would frame the whole document being written in.
+:root[data-focus-ring='high-visibility']
+  :focus-visible:not(
+    :is(
+      input:not([type]),
+      input[type='text'],
+      input[type='password'],
+      input[type='email'],
+      input[type='number'],
+      input[type='search'],
+      input[type='tel'],
+      input[type='url'],
+      textarea,
+      select,
+      [contenteditable],
+      .monaco-editor *,
+      .xterm *
+    )
+  ) {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color) !important;
+}
+
+// Text boxes keep their accent border, and gain the high-visibility ring around it: drawn as a
+// shadow so it hugs the box's rounded corners whatever its own outline rules say.
+:root[data-focus-ring='high-visibility']
+  :is(
+    input:not([type]),
+    input[type='text'],
+    input[type='password'],
+    input[type='email'],
+    input[type='number'],
+    input[type='search'],
+    input[type='tel'],
+    input[type='url'],
+    textarea,
+    select
+  ):focus-visible:not(.monaco-editor *, .xterm *) {
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring-color) !important;
+}
+
 // The small, quiet uppercase label that heads a section (PLUGINS, INSTALLED, AVAILABLE): the Welcome
 // screen's section title, for the rest of the application.
 .section-label {

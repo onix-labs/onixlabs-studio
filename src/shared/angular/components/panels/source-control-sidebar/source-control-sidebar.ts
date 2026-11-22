@@ -54,6 +54,9 @@ import {
   branchMerge,
   describeBranchMerge,
 } from '@shared/angular/services/repository/branch-merge';
+import type { MergedBranch } from '@shared/angular/services/repository/merged-branch';
+import { mergedBranches } from '@shared/angular/services/repository/merged-branches';
+import { DeleteMergedBranches } from '../delete-merged-branches/delete-merged-branches';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
@@ -104,6 +107,13 @@ interface BranchDeletion {
    * Gets the worktree the branch lives in, when it is not this repository's.
    */
   readonly worktree?: RepositoryWorktree;
+
+  /**
+   * Gets the number of the pull request the branch was merged through, when Studio knows of one
+   * (#887). Its merge was a squash or rebase git cannot see, so the confirmation says so, and the
+   * delete is forced rather than refused as unmerged.
+   */
+  readonly pullRequest?: number;
 }
 
 /**
@@ -420,6 +430,11 @@ const ACTION_PUSH_ALL_TAGS: string = 'repo.pushAllTags';
 const ACTION_NEW_BRANCH: string = 'repo.newBranch';
 
 /**
+ * Identifies the Delete Merged Branches command on Local's menu (#887).
+ */
+const ACTION_DELETE_MERGED_BRANCHES: string = 'repo.deleteMergedBranches';
+
+/**
  * Identifies the Stash command on the tool strip's more-actions menu.
  */
 const ACTION_STASH: string = 'repo.stash';
@@ -622,6 +637,7 @@ interface DeletionPlace {
     RepositoryRestricted,
     Chip,
     PanelStatus,
+    DeleteMergedBranches,
   ],
   templateUrl: './source-control-sidebar.html',
   styleUrl: './source-control-sidebar.scss',
@@ -994,6 +1010,26 @@ export class SourceControlSidebar implements OnDestroy {
   }
 
   /**
+   * Builds the Delete Merged Branches command (#887). Shown but inert when nothing is merged, so the
+   * command can be found before it has anything to do.
+   * @returns Returns the item.
+   */
+  private deleteMergedBranchesItem(): MenuItem {
+    const none: boolean = this.mergedCandidates().length === 0;
+    return {
+      id: ACTION_DELETE_MERGED_BRANCHES,
+      label: $localize`:Command on the Local branches menu that deletes every merged branch:Delete Merged Branches`,
+      icon: Icon.TRASH,
+      disabled: none,
+      ...(none
+        ? {
+            status: $localize`:Beside the disabled Delete Merged Branches command; no local branch is merged:none merged`,
+          }
+        : {}),
+    };
+  }
+
+  /**
    * Builds the New Tag command, shared by the more menu and Tags' own menu.
    * @returns Returns the item.
    */
@@ -1067,9 +1103,10 @@ export class SourceControlSidebar implements OnDestroy {
     switch (key) {
       case 'local':
         // Local holds the worktrees when there are any, so it makes a worktree; a branch is made in a
-        // worktree, from that worktree's own menu. A flat repository's Local is only branches.
+        // worktree, from that worktree's own menu. A flat repository's Local is only branches. Either
+        // way, Delete Merged Branches cleans up this view's own branches (#887).
         return this.worktrees() === null
-          ? this.grouped('local', [[this.newBranchItem()]])
+          ? this.grouped('local', [[this.newBranchItem()], [this.deleteMergedBranchesItem()]])
           : this.grouped('local', [
               [
                 {
@@ -1079,6 +1116,7 @@ export class SourceControlSidebar implements OnDestroy {
                   disabled: this.worktreeSource?.busy() ?? false,
                 },
               ],
+              [this.deleteMergedBranchesItem()],
             ]);
       case 'remote':
         return this.grouped('remote', [[this.addRemoteItem()], [this.fetchItem('Fetch All')]]);
@@ -1161,6 +1199,9 @@ export class SourceControlSidebar implements OnDestroy {
         break;
       case ACTION_NEW_BRANCH:
         this.openBranchDialog();
+        break;
+      case ACTION_DELETE_MERGED_BRANCHES:
+        this.requestDeleteMergedBranches();
         break;
       case ACTION_NEW_TAG:
         this.openTagDialog();
@@ -1673,11 +1714,30 @@ export class SourceControlSidebar implements OnDestroy {
   }
 
   /**
+   * Asks before deleting one of this repository's branches, noting the pull request it was merged
+   * through when it was merged by squash or rebase (#887), so the question says the work is safe
+   * rather than leaving git to warn that it is not.
+   * @param branch The branch to delete.
+   */
+  private requestDeleteBranch(branch: GitBranch): void {
+    const merge: BranchMerge | null = branchMerge(branch, this.forge.mergedPullRequests());
+    this.pendingDeleteBranch.set(
+      merge?.kind === 'pull-request'
+        ? { name: branch.name, pullRequest: merge.number }
+        : { name: branch.name },
+    );
+  }
+
+  /**
    * Confirms the delete, attempting it without force first.
    *
    * A refusal for unmerged commits is not reported as a failure but asked about: git declined because
    * the branch holds work that exists nowhere else, and whether to lose it is the user's call. Every
    * other failure is left to the panel's error surface.
+   *
+   * A branch merged through a pull request is deleted with force at once (#887): its confirmation
+   * already said the work is in the pull request, and git, which cannot see a squash or rebase merge,
+   * would only ask a second time about commits that are not lost.
    */
   protected async confirmDeleteBranch(): Promise<void> {
     const branch: BranchDeletion | null = this.pendingDeleteBranch();
@@ -1686,7 +1746,7 @@ export class SourceControlSidebar implements OnDestroy {
       return;
     }
     this.log.info('SourceControlSidebar', `Deleting branch '${branch.name}'`);
-    if (await this.deleteBranch(branch, false)) {
+    if (await this.deleteBranch(branch, branch.pullRequest !== undefined)) {
       this.pendingForceDeleteBranch.set(branch);
     }
   }
@@ -1736,6 +1796,68 @@ export class SourceControlSidebar implements OnDestroy {
    */
   protected cancelForceDeleteBranch(): void {
     this.pendingForceDeleteBranch.set(null);
+  }
+
+  /**
+   * Gets the local branches Delete Merged Branches would delete (#887): merged by ancestry or through
+   * a merged pull request, never the checked-out branch or the default branch.
+   */
+  protected readonly mergedCandidates: Signal<readonly MergedBranch[]> = computed(
+    (): readonly MergedBranch[] =>
+      mergedBranches(
+        this.repository.branches(),
+        this.forge.mergedPullRequests(),
+        this.repository.remotes(),
+        this.repository.defaultBranch(),
+      ),
+  );
+
+  /**
+   * Holds the branches the Delete Merged Branches dialog is asking about, or null while it is closed.
+   * A snapshot taken as it opens, so a refresh underneath cannot change what the user is agreeing to.
+   */
+  protected readonly pendingMergedBranches: WritableSignal<readonly MergedBranch[] | null> = signal<
+    readonly MergedBranch[] | null
+  >(null);
+
+  /**
+   * Gets whether the plugin can delete branches on a remote, which the dialog's checkbox needs.
+   */
+  protected readonly canDeleteRemoteBranches: Signal<boolean> = computed(
+    (): boolean =>
+      this.repository.supports('remotes') && this.repository.supports('deleteRemoteBranches'),
+  );
+
+  /**
+   * Opens the Delete Merged Branches dialog on what is merged now, unless nothing is.
+   */
+  private requestDeleteMergedBranches(): void {
+    const branches: readonly MergedBranch[] = this.mergedCandidates();
+    if (branches.length > 0) {
+      this.pendingMergedBranches.set(branches);
+    }
+  }
+
+  /**
+   * Confirms Delete Merged Branches, deleting the branches listed, and their remote copies when asked.
+   * @param includeRemotes Whether the remote branches are deleted too.
+   */
+  protected confirmDeleteMergedBranches(includeRemotes: boolean): void {
+    const branches: readonly MergedBranch[] | null = this.pendingMergedBranches();
+    this.pendingMergedBranches.set(null);
+    if (branches !== null) {
+      void this.repository.deleteMergedBranches(
+        branches,
+        includeRemotes && this.canDeleteRemoteBranches(),
+      );
+    }
+  }
+
+  /**
+   * Dismisses Delete Merged Branches, deleting nothing.
+   */
+  protected cancelDeleteMergedBranches(): void {
+    this.pendingMergedBranches.set(null);
   }
 
   /**
@@ -3079,7 +3201,7 @@ export class SourceControlSidebar implements OnDestroy {
         break;
       case ACTION_DELETE_BRANCH:
         if (node.branch !== undefined) {
-          this.pendingDeleteBranch.set(node.branch);
+          this.requestDeleteBranch(node.branch);
         }
         break;
       case ACTION_MERGE_BRANCH:

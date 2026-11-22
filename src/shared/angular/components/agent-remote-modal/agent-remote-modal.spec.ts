@@ -3,6 +3,11 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import type { AiRemoteControlPosture } from '@shared/api/ai-types';
 import { Settings } from '@shared/angular/services/settings/settings';
+import {
+  SETTINGS_DEFAULTS,
+  type SettingsKey,
+  type SettingsValues,
+} from '@shared/angular/services/settings/settings-registry';
 import { AgentRemoteModal } from './agent-remote-modal';
 
 /**
@@ -22,7 +27,12 @@ describe('AgentRemoteModal', () => {
 
   beforeEach(async () => {
     posture = signal<AiRemoteControlPosture>('control');
-    const settingsStub: Partial<Settings> = { aiRemoteControlPosture: posture.asReadonly() };
+    const settingsStub: Partial<Settings> = {
+      aiRemoteControlPosture: posture.asReadonly(),
+      // The modal reads the Interface Zoom as it sizes its window; every other setting at its default.
+      value: <K extends SettingsKey>(key: K): Signal<SettingsValues[K]> =>
+        signal<SettingsValues[K]>(SETTINGS_DEFAULTS[key]),
+    };
 
     await TestBed.configureTestingModule({
       imports: [AgentRemoteModal],

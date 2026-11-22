@@ -1,0 +1,18 @@
+<span class="tree-cell" [style.--tree-depth]="depth()">
+  @if (tree()?.expandable) {
+    <button
+      type="button"
+      class="tree-cell__twisty"
+      data-testid="tree-twisty"
+      [attr.aria-expanded]="tree()?.expanded"
+      [attr.aria-label]="twistyLabel()"
+      [title]="twistyLabel()"
+      (click)="toggle($event)"
+    >
+      <app-icon [icon]="tree()?.expanded ? Icon.CARET_DOWN : Icon.CARET_RIGHT" [size]="0.75" />
+    </button>
+  } @else {
+    <span class="tree-cell__spacer" aria-hidden="true"></span>
+  }
+  <span class="tree-cell__label"><ng-content /></span>
+</span>

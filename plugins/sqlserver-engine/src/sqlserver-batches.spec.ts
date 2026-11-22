@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { splitBatches, SqlServerBatch } from './sqlserver-batches';
+import { endsTransaction, splitBatches, SqlServerBatch } from './sqlserver-batches';
 
 /**
  * Reduces batches to their text, line and repeat count.
@@ -67,5 +67,24 @@ describe('splitBatches', () => {
 
   it('countsFromTheFirstLineItIsGiven', () => {
     expect(splitBatches('select 1\nGO\nselect 2', 10).map((b) => b.line)).toEqual([10, 12]);
+  });
+});
+
+describe('endsTransaction', () => {
+  it('findsACommitOrRollback_inAnyCase', () => {
+    expect(endsTransaction('begin tran\nupdate a set x = 1\nROLLBACK TRAN')).toBe(true);
+    expect(endsTransaction('update a set x = 1; Commit;')).toBe(true);
+  });
+
+  it('ignoresTheWords_inStringsQuotedNamesAndComments', () => {
+    expect(
+      endsTransaction(
+        "select 'commit' as [rollback], \"commit\" -- rollback\n/* commit */ from t where note = 'it''s rollback'",
+      ),
+    ).toBe(false);
+  });
+
+  it('ignoresWordsThatOnlyContainThem', () => {
+    expect(endsTransaction('select committed, rollbacks from audit')).toBe(false);
   });
 });

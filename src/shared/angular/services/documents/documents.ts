@@ -6,6 +6,7 @@ import {
   Service,
   signal,
   Signal,
+  untracked,
   WritableSignal,
 } from '@angular/core';
 import { FileInfo, FileWriteResult } from '@shared/api/file-channels';
@@ -33,6 +34,11 @@ import { FileConflicts } from '../file-conflicts/file-conflicts';
 import { FileSystem } from '../file-system/file-system';
 import { FileWatch } from '../file-watch/file-watch';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
+import {
+  fileAssociations,
+  type FileAssociation,
+} from '@shared/angular/services/monaco/file-associations';
+import { languageForFileName } from '@shared/angular/services/monaco/monaco-languages';
 import { RecentItems, RecentKind } from '@shared/angular/services/recent-items/recent-items';
 import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -407,6 +413,17 @@ export class Documents implements UnsavedWorkSource {
       }
       honoured = honour;
     });
+    let associations: readonly FileAssociation[] | undefined;
+    effect((): void => {
+      const next: readonly FileAssociation[] = fileAssociations(
+        this.settings.value('textEditor.fileAssociations')(),
+      );
+      const previous: readonly FileAssociation[] | undefined = associations;
+      associations = next;
+      if (previous !== undefined) {
+        untracked((): void => this.reapplyFileAssociations(previous, next));
+      }
+    });
     inject(DestroyRef).onDestroy((): void => {
       window.removeEventListener('blur', onBlur);
       for (const timer of this.autoSaveTimers.values()) {
@@ -647,7 +664,7 @@ export class Documents implements UnsavedWorkSource {
     this.markEntriesChanged();
     entry.filePath.set(fileInfo.path);
     entry.fileName.set(fileInfo.name);
-    entry.language.set(this.monaco.getLanguageForFileName(fileInfo.name, fileInfo.content));
+    entry.language.set(this.monaco.getLanguageForFileName(fileInfo.path, fileInfo.content));
     entry.content.set(fileInfo.content);
     entry.original.set(fileInfo.content);
     entry.encoding.set(fileInfo.encoding ?? ASSUMED_ENCODING);
@@ -677,7 +694,7 @@ export class Documents implements UnsavedWorkSource {
     this.markEntriesChanged();
     entry.filePath.set(fileInfo.path);
     entry.fileName.set(fileInfo.name);
-    entry.language.set(this.monaco.getLanguageForFileName(fileInfo.name, fileInfo.content));
+    entry.language.set(this.monaco.getLanguageForFileName(fileInfo.path, fileInfo.content));
     entry.content.set(fileInfo.content);
     entry.original.set(fileInfo.content);
     entry.encoding.set(fileInfo.encoding ?? ASSUMED_ENCODING);
@@ -719,7 +736,7 @@ export class Documents implements UnsavedWorkSource {
     this.markEntriesChanged();
     entry.filePath.set(fileInfo.path);
     entry.fileName.set(fileInfo.name);
-    entry.language.set(this.monaco.getLanguageForFileName(fileInfo.name, fileInfo.content));
+    entry.language.set(this.monaco.getLanguageForFileName(fileInfo.path, fileInfo.content));
     entry.content.set(fileInfo.content);
     entry.original.set(fileInfo.content);
     entry.encoding.set(fileInfo.encoding ?? ASSUMED_ENCODING);
@@ -1420,7 +1437,49 @@ export class Documents implements UnsavedWorkSource {
    * @param entry The document's entry, already re-pointed at its new path.
    */
   private redetectLanguage(id: string, entry: DocumentEntry): void {
-    entry.language.set(this.monaco.getLanguageForFileName(entry.fileName(), entry.content()));
+    this.applyDetectedLanguage(
+      id,
+      entry,
+      this.monaco.getLanguageForFileName(entry.filePath() ?? entry.fileName(), entry.content()),
+    );
+  }
+
+  /**
+   * Follows a change to the user's file associations into the open documents (#1068): each file
+   * whose language the change alters takes the new one — unless its language was not the one the old
+   * associations gave it, since that is a language the user (or an agent) chose by hand for this tab,
+   * which an edit to a list elsewhere must not undo.
+   * @param before The associations before the change.
+   * @param after The associations now.
+   */
+  private reapplyFileAssociations(
+    before: readonly FileAssociation[],
+    after: readonly FileAssociation[],
+  ): void {
+    for (const [id, entry] of this.entries) {
+      const path: string | null = entry.filePath();
+      if (path === null) {
+        continue;
+      }
+      const was: string = languageForFileName(path, entry.content(), before);
+      const now: string = languageForFileName(path, entry.content(), after);
+      if (was !== now && entry.language() === was) {
+        this.applyDetectedLanguage(id, entry, now);
+        this.log.info('Documents', `Language follows file associations: '${now}'`, id, path);
+      }
+    }
+  }
+
+  /**
+   * Gives a document the language its file resolves to, and — for a well document — swaps its dock
+   * panel's icon to match: a change across the markdown boundary swaps the editor beneath the tab, so
+   * the tab must swap with it.
+   * @param id The document identifier.
+   * @param entry The document's entry.
+   * @param language The language resolved for it.
+   */
+  private applyDetectedLanguage(id: string, entry: DocumentEntry, language: string): void {
+    entry.language.set(language);
     if (this.dockPanels.get(id) === undefined) {
       return;
     }

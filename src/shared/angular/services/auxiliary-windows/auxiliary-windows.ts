@@ -83,7 +83,8 @@ const AUX_STYLES: string = `
       max(0.75rem, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)));
     background: var(--title-strip-background-color);
     -webkit-app-region: drag; user-select: none; }
-  :root[data-platform='darwin'] .aux-window__titlebar { padding-inline-start: 5.5rem; }
+  :root[data-platform='darwin'] .aux-window__titlebar {
+    padding-inline-start: calc(5.5rem / var(--interface-zoom, 1)); }
   :root[data-platform='linux'] .aux-window__titlebar { padding-block: 0.375rem;
     padding-inline-end: 0.375rem; }
   .aux-window__title { flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis;

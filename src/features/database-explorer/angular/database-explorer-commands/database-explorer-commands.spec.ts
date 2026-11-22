@@ -20,6 +20,7 @@ class RecordingHandler implements DatabaseExplorerCommandHandler {
 
   public readonly canExecute: WritableSignal<boolean> = signal<boolean>(false);
   public readonly executing: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly canExplain: WritableSignal<boolean> = signal<boolean>(false);
   public readonly connectionTarget: WritableSignal<ConnectionTarget | null> =
     signal<ConnectionTarget | null>(null);
   public readonly panels: WritableSignal<readonly RibbonPanel[]> = signal<readonly RibbonPanel[]>(
@@ -42,6 +43,14 @@ class RecordingHandler implements DatabaseExplorerCommandHandler {
    */
   public executeStatement(): void {
     this.calls.push('executeStatement');
+  }
+
+  /**
+   * Records an explain.
+   * @param analyze Whether it was analyzed.
+   */
+  public explain(analyze: boolean): void {
+    this.calls.push(analyze ? 'explainAnalyze' : 'explain');
   }
 
   /**
@@ -150,6 +159,8 @@ class RecordingHandler implements DatabaseExplorerCommandHandler {
  */
 function runEveryCommand(commands: DatabaseExplorerCommands): void {
   commands.execute();
+  commands.explain();
+  commands.explain(true);
   commands.newQuery();
   commands.newConnection();
   commands.saveDocument();
@@ -177,6 +188,7 @@ describe('DatabaseExplorerCommands', () => {
   it('state_withNoHandler_readsAsNothingToActOn', () => {
     expect(commands.canExecute()).toBe(false);
     expect(commands.executing()).toBe(false);
+    expect(commands.canExplain()).toBe(false);
     expect(commands.connectionTarget()).toBeNull();
     expect(commands.panels()).toEqual([]);
     expect(commands.hasPassphrase()).toBe(false);
@@ -197,12 +209,14 @@ describe('DatabaseExplorerCommands', () => {
     handler.canExecute.set(true);
     handler.executing.set(true);
     handler.connectionTarget.set(target);
+    handler.canExplain.set(true);
     handler.panels.set(panels);
     handler.hasPassphrase.set(true);
     handler.locked.set(true);
 
     expect(commands.canExecute()).toBe(true);
     expect(commands.executing()).toBe(true);
+    expect(commands.canExplain()).toBe(true);
     expect(commands.connectionTarget()).toBe(target);
     expect(commands.panels()).toBe(panels);
     expect(commands.hasPassphrase()).toBe(true);
@@ -216,6 +230,8 @@ describe('DatabaseExplorerCommands', () => {
 
     expect(handler.calls).toEqual([
       'execute',
+      'explain',
+      'explainAnalyze',
       'newQuery',
       'newConnection',
       'save',

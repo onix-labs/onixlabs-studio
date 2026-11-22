@@ -8,9 +8,11 @@ import {
   DatabaseNodeAction,
   DatabaseValue,
   ExecuteRequest,
+  ExplainOutcome,
   NamesScope,
   NodeActionOutcome,
   QueryMessage,
+  QueryPlan,
   ResultColumn,
   TransactionAction,
   TransactionOutcome,
@@ -28,9 +30,38 @@ import {
   splitQualifiedName,
   text,
 } from '../../protocol/database/engine';
-import { splitBatches, SqlServerBatch } from './sqlserver-batches';
+import { endsTransaction, splitBatches, SqlServerBatch } from './sqlserver-batches';
 import { LinkCell, LinkColumn, ServerMessage, SqlServerLink } from './sqlserver-link';
+import {
+  SHOWPLAN_COLUMN,
+  sqlServerPlans,
+  StatementLocator,
+  statementLocator,
+} from './sqlserver-plan';
 import { bracket, cellValue, declaredType, nstring, sqlTypeName } from './sqlserver-values';
+
+/**
+ * How long an explanation waits for a lock before giving up, in milliseconds: long enough for an
+ * ordinary wait, short enough that a lock the user's own open transaction holds ends in an error
+ * rather than a Plan tab that never fills.
+ */
+const EXPLAIN_LOCK_TIMEOUT_MS: number = 30_000;
+
+/**
+ * What Explain Analyze says of a script that commits or rolls back a transaction itself.
+ */
+const ENDS_TRANSACTION: string =
+  'Explain Analyze runs the script in a transaction it rolls back, so it cannot run a script that commits or rolls back a transaction itself. Use Explain instead.';
+
+/**
+ * Asks whether a connection still has a transaction open.
+ * @param link The connection.
+ * @returns Returns a promise resolving true when `@@trancount` is above 0.
+ */
+async function stillInTransaction(link: SqlServerLink): Promise<boolean> {
+  const rows: readonly (readonly unknown[])[] = await link.rows('select @@trancount');
+  return Number(rows[0]?.[0] ?? 0) > 0;
+}
 
 /**
  * How long a connection waits for the server when Studio does not say, in milliseconds.
@@ -140,7 +171,14 @@ export class SqlServerEngine implements DatabaseEngine {
     displayName: 'SQL Server',
     language: 'sql',
     queryExtension: 'sql',
-    capabilities: ['cancel', 'multipleDatabases', 'script', 'completion', 'transactions'],
+    capabilities: [
+      'cancel',
+      'multipleDatabases',
+      'script',
+      'completion',
+      'transactions',
+      'explain',
+    ],
     connectionFields: [
       {
         id: 'host',
@@ -882,6 +920,91 @@ class SqlServerSession implements EngineSession {
       return { failed: true, message: describeError(error) };
     } finally {
       this.endTransaction(target);
+    }
+  }
+
+  /**
+   * Says how SQL Server would run each statement, batch by batch at the script's `GO` lines, on a
+   * connection of its own so the session's are never left with a showplan setting on. The estimated
+   * plan comes from `SET SHOWPLAN_XML ON`, which compiles each batch without running it. Analyzing
+   * runs the script under `SET STATISTICS XML ON` inside a transaction that is rolled back, so the
+   * plans carry what actually happened while the script's changes are undone.
+   *
+   * A script that commits or rolls back a transaction itself would end that one, and whatever ran
+   * after it would stay done. So analyzing refuses such a script up front, and checks after every
+   * batch that the transaction is still open, stopping with the rest not run if it is not. Lock waits
+   * are bounded ({@link EXPLAIN_LOCK_TIMEOUT_MS}), so a plan never hangs on a lock the user's own
+   * open transaction holds.
+   * @param sql The text, one batch or several.
+   * @param database The database to plan it against, or the connection's own.
+   * @param analyze Whether to run the statements and report what actually happened.
+   * @returns Returns a promise resolving the plans, up to the first batch that fails.
+   */
+  public async explain(sql: string, database?: string, analyze?: boolean): Promise<ExplainOutcome> {
+    const plans: QueryPlan[] = [];
+    if (analyze === true && endsTransaction(sql)) {
+      return { plans, failed: true, message: ENDS_TRANSACTION };
+    }
+    let link: SqlServerLink;
+    try {
+      link = await this.openLink(this.settings, database ?? this.settings.database);
+    } catch (error: unknown) {
+      return { plans, failed: true, message: describeError(error) };
+    }
+    try {
+      // SHOWPLAN_XML must be the only statement in its batch.
+      const setup: readonly string[] = [
+        `set lock_timeout ${EXPLAIN_LOCK_TIMEOUT_MS}`,
+        ...(analyze === true
+          ? ['begin transaction', 'set statistics xml on']
+          : ['set showplan_xml on']),
+      ];
+      for (const statement of setup) {
+        await link.rows(statement);
+      }
+      for (const batch of splitBatches(sql, 1)) {
+        const documents: string[] = [];
+        const errors: string[] = [];
+        let showplan: boolean = false;
+        const error: Error | null = await link.batch(batch.text, {
+          onColumns: (columns: readonly LinkColumn[]): void => {
+            showplan = columns.length === 1 && SHOWPLAN_COLUMN.test(columns[0]?.colName ?? '');
+          },
+          onRow: (cells: readonly LinkCell[]): void => {
+            const value: unknown = cells[0]?.value;
+            if (showplan && typeof value === 'string') {
+              documents.push(value);
+            }
+          },
+          onMessage: (message: ServerMessage): void => {
+            if (message.severity === 'error') {
+              errors.push(message.text);
+            }
+          },
+        });
+        const locate: StatementLocator = statementLocator(batch.text, batch.line);
+        for (const document of documents) {
+          plans.push(...sqlServerPlans(document, locate));
+        }
+        if (error !== null || errors.length > 0) {
+          return { plans, failed: true, message: errors[0] ?? describeError(error) };
+        }
+        if (analyze === true && !(await stillInTransaction(link))) {
+          return {
+            plans,
+            failed: true,
+            message: `The script ended the transaction Explain Analyze runs it in (the batch at line ${batch.line}), so the rest of it was not run.`,
+          };
+        }
+      }
+      return { plans, failed: false };
+    } catch (error: unknown) {
+      return { plans, failed: true, message: describeError(error) };
+    } finally {
+      if (analyze === true) {
+        await link.rows('if @@trancount > 0 rollback transaction').catch((): void => undefined);
+      }
+      link.close();
     }
   }
 
