@@ -1,4 +1,8 @@
-import type { VcsConflictResolution, VcsIgnoreRule } from '@shared/api/version-control-protocol';
+import type {
+  VcsConflictResolution,
+  VcsIgnoreRule,
+  VcsSshHost,
+} from '@shared/api/version-control-protocol';
 import { GitMergeMode, GitOperationState } from '@shared/api/source-control-channels';
 import {
   GitBranch,
@@ -121,6 +125,16 @@ export interface MutationResult {
    * a caller never has to read git's prose to tell one refusal from another.
    */
   readonly code?: string;
+
+  /**
+   * Gets the SSH server an SSH failure names (#1255), untrusted until checked, or undefined.
+   */
+  readonly sshHost?: VcsSshHost;
+
+  /**
+   * Gets the tool's own output, when the error rewords it, or undefined.
+   */
+  readonly output?: string;
 }
 
 /**

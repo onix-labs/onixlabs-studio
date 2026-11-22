@@ -84,6 +84,27 @@ describe('Clone (#1493)', () => {
     });
   });
 
+  it('aCloneOfAnUnknownSshHost_saysWhatToRun_andKeepsGitsOwnWords (#1255)', async () => {
+    outcome = {
+      ok: false,
+      error: "SSH doesn't know github.com's host key yet. (the plugin's English)",
+      code: 'ssh-host-unknown',
+      sshHost: { host: 'github.com' },
+      output: 'Host key verification failed.',
+    };
+    const clone: Clone = TestBed.inject(Clone);
+
+    await clone.clone(REQUEST);
+
+    expect(raised[0]).toMatchObject({
+      severity: 'error',
+      title: "Couldn't clone shop",
+      commands: ['ssh -T git@github.com', 'ssh-keyscan github.com | ssh-keygen -lf -'],
+      output: 'Host key verification failed.',
+    });
+    expect(raised[0].detail).toContain('the host key of github.com');
+  });
+
   it('aCloneTheUserCancelled_raisesNothing (#1504)', async () => {
     outcome = { ok: false, error: 'The clone was cancelled.', cancelled: true };
     const clone: Clone = TestBed.inject(Clone);

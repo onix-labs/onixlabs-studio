@@ -284,10 +284,20 @@ class FakeProvider implements SourceControlProvider {
    */
   public failNextPushWith: string | null = null;
 
+  /**
+   * Makes the next push fail with this whole outcome, code and all.
+   */
+  public nextPushResult: MutationResult | null = null;
+
   public push(target?: PushTarget): Promise<MutationResult> {
     this.calls.push(
       `push:${target?.remote ?? ''}/${target?.branch ?? ''}:${String(target?.setUpstream ?? '')}`,
     );
+    if (this.nextPushResult !== null) {
+      const result: MutationResult = this.nextPushResult;
+      this.nextPushResult = null;
+      return Promise.resolve(result);
+    }
     if (this.failNextPushWith !== null) {
       const error: string = this.failNextPushWith;
       this.failNextPushWith = null;
@@ -1085,6 +1095,27 @@ describe('Repository', () => {
     expect(toast.sticky).toBe(true);
     expect(toast.title).toBe('Push failed — repo');
     expect(toast.detail).toBe('Authentication required.');
+  });
+
+  it('push_whenTheSshKeyIsRejected_explainsIt_withTheCommand_andGitsOwnWords (#1255)', async () => {
+    provider.nextPushResult = {
+      success: false,
+      error: "github.com didn't accept your SSH key. (the plugin's English)",
+      code: 'ssh-key-rejected',
+      sshHost: { host: 'github.com' },
+      output: 'git@github.com: Permission denied (publickey).',
+    };
+
+    await repository.push();
+
+    const toast: Notification = notifications.toasts()[0];
+    expect(toast.title).toBe('Push failed — repo');
+    expect(toast.detail).toContain(
+      "github.com didn't accept your SSH key. If the key has a passphrase",
+    );
+    expect(toast.commands?.length).toBe(1);
+    expect(toast.commands?.[0]).toMatch(/^ssh-add/);
+    expect(toast.output).toBe('git@github.com: Permission denied (publickey).');
   });
 
   it('push_whenRetriedAfterAFailure_replacesTheFailureToast', async () => {

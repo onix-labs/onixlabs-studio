@@ -249,10 +249,16 @@ export class CloneManager {
       logger.info('CloneManager', `Cloned into ${outcome.path}`);
       return outcome;
     }
-    // The plugin's error can echo the command line it ran, URL and all.
+    // The plugin's error can echo the command line it ran, URL and all, and so can git's own output.
     const error: string = redactSecrets(outcome.error);
     logger.warn('CloneManager', `Clone failed: ${error}`);
-    return { ok: false, error };
+    return {
+      ok: false,
+      error,
+      ...(outcome.code === undefined ? {} : { code: outcome.code }),
+      ...(outcome.sshHost === undefined ? {} : { sshHost: outcome.sshHost }),
+      ...(outcome.output === undefined ? {} : { output: redactSecrets(outcome.output) }),
+    };
   }
 
   /**
@@ -276,7 +282,7 @@ export class CloneManager {
         ...cloneFlags(request),
       },
     );
-    return cloned.ok ? { ok: true, path: destination } : { ok: false, error: cloned.error };
+    return cloned.ok ? { ok: true, path: destination } : cloneFailure(cloned);
   }
 
   /**
@@ -309,7 +315,7 @@ export class CloneManager {
     );
     if (!cloned.ok) {
       fs.rmSync(destination, { recursive: true, force: true });
-      return { ok: false, error: cloned.error };
+      return cloneFailure(cloned);
     }
     try {
       const studio: string = path.join(destination, STUDIO_DIR);
@@ -368,6 +374,25 @@ export function parseRequest(value: unknown): CloneRequest | string {
     ...(branch === undefined ? {} : { branch }),
     ...(submodules === true ? { submodules } : {}),
     ...(shallow === true ? { shallow } : {}),
+  };
+}
+
+/**
+ * Carries a plugin's failed clone over as a clone outcome, with the code, server and output an SSH
+ * failure comes with (#1255), so the renderer can word it. The server is passed on unchecked: the
+ * renderer checks it before it builds a command from it.
+ * @param cloned The plugin's failed answer.
+ * @returns Returns the outcome.
+ */
+function cloneFailure(
+  cloned: Extract<VersionControlResponse<'clone'>, { ok: false }>,
+): CloneOutcome {
+  return {
+    ok: false,
+    error: cloned.error,
+    ...(cloned.code === undefined ? {} : { code: cloned.code }),
+    ...(cloned.sshHost === undefined ? {} : { sshHost: cloned.sshHost }),
+    ...(typeof cloned.output === 'string' ? { output: cloned.output } : {}),
   };
 }
 

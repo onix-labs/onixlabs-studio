@@ -5,6 +5,10 @@ import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Log } from '@shared/angular/services/log/log';
 import { CoreNotificationType } from '@shared/angular/services/notifications/core-notification-types';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
+import {
+  SshFailureNotice,
+  sshFailureNotice,
+} from '@shared/angular/services/source-control/ssh-failure-notice';
 
 /**
  * The renderer client for cloning a repository into a new folder (#805): a thin, typed wrapper over
@@ -99,10 +103,17 @@ export class Clone implements CloneClient {
       // The user chose not to clone: nothing to report.
       return;
     }
+    // An SSH failure is worded here, in the user's language, with the commands that fix it (#1255).
+    const ssh: SshFailureNotice | null = sshFailureNotice(
+      outcome.code,
+      outcome.sshHost,
+      window.host?.platform,
+    );
     this.notifications.notify({
       severity: 'error',
       title: `Couldn't clone ${name}`,
-      detail: outcome.error,
+      detail: ssh?.detail ?? outcome.error,
+      ...(ssh === null ? {} : { commands: ssh.commands, output: outcome.output ?? outcome.error }),
       key: `clone:${name}`,
       sticky: true,
       type: CoreNotificationType.CloneFailed,

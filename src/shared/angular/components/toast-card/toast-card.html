@@ -16,6 +16,39 @@
 @if (notification().detail) {
   <p class="toast__detail">{{ notification().detail }}</p>
 }
+<!-- Commands the detail suggests (#1255): selectable code, each with a Copy button of its own. -->
+@for (command of notification().commands ?? []; track command) {
+  <div class="toast__command" data-testid="toast-command">
+    <code class="toast__command-text">{{ command }}</code>
+    <app-button
+      variant="none"
+      size="small"
+      [tone]="toneFor(notification().severity)"
+      [icon]="copiedCommand() === command ? Icon.CHECK : Icon.COPY"
+      [ariaLabel]="copiedCommand() === command ? copiedLabel : copyLabel"
+      [tooltip]="copiedCommand() === command ? copiedLabel : copyLabel"
+      data-testid="toast-copy-command"
+      (pointerdown)="$event.preventDefault()"
+      (click)="copy(command); $event.stopPropagation()"
+    />
+  </div>
+}
+<!-- The tool's own words behind a reworded detail, out of the way until asked for. -->
+@if (notification().output) {
+  <app-button
+    class="toast__details-toggle"
+    variant="none"
+    size="small"
+    [label]="detailsShown() ? hideDetailsLabel : showDetailsLabel"
+    [attr.aria-expanded]="detailsShown()"
+    data-testid="toast-details"
+    (pointerdown)="$event.preventDefault()"
+    (click)="toggleDetails(); $event.stopPropagation()"
+  />
+  @if (detailsShown()) {
+    <pre class="toast__output" data-testid="toast-output">{{ notification().output }}</pre>
+  }
+}
 @if (notification().actions.length > 0) {
   <div class="toast__actions">
     @for (action of notification().actions; track action.label) {

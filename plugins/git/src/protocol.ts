@@ -33,7 +33,11 @@
 // expects — and, so nothing that must stay is offered: the refs' optional `defaultBranch`, each
 // remote's `defaultBranch`, a remote-tracking branch's `mergedInto`, and a local branch's
 // `otherWorktree`. Additions: a 1.5 plugin offers none of them, and only local branches are deleted.
-export const VERSION_CONTROL_PROTOCOL_VERSION: string = '1.6';
+// 1.7 (#1255) adds the failure codes `ssh-key-rejected` and `ssh-host-unknown`, with a failure's optional
+// `sshHost` (the server SSH named) and `output` (the tool's own words), so Studio can say in the user's
+// language what to do about the two SSH failures a non-interactive run cannot get past. Additions: a
+// 1.6 host ignores them and shows `error`, which still explains both in English.
+export const VERSION_CONTROL_PROTOCOL_VERSION: string = '1.7';
 
 /**
  * Names one optional capability a version-control plugin can advertise.
@@ -690,6 +694,10 @@ export interface VcsPushTarget {
  * - `unsupported`: the operation needs a capability the plugin did not advertise. The host answers this
  *   itself, without asking the plugin.
  * - `refused`: the host would not send the request — a root that is not open, or a malformed request.
+ * - `ssh-key-rejected`: the SSH server refused every key offered. Usually a key with a passphrase,
+ *   which a run with no terminal cannot unlock; it has to be loaded into ssh-agent first (#1255).
+ * - `ssh-host-unknown`: SSH does not know the server's host key yet, and a run with no terminal cannot
+ *   ask the user to accept it (#1255). Never sent for a host key that has changed.
  */
 export type VcsErrorCode =
   | 'conflicted'
@@ -698,7 +706,24 @@ export type VcsErrorCode =
   | 'no-operation'
   | 'skip-unsupported'
   | 'unsupported'
-  | 'refused';
+  | 'refused'
+  | 'ssh-key-rejected'
+  | 'ssh-host-unknown';
+
+/**
+ * Names an SSH server, as a failure reports it so the remedy can name it too (#1255).
+ */
+export interface VcsSshHost {
+  /**
+   * Gets the server's host name or address, as SSH connects to it: an alias already resolved.
+   */
+  readonly host: string;
+
+  /**
+   * Gets the server's port, when it is not SSH's own 22.
+   */
+  readonly port?: number;
+}
 
 /**
  * Describes what a plugin says it is, in answer to `initialize`.
@@ -1202,6 +1227,18 @@ export type VersionControlResponse<Op extends VersionControlOp = VersionControlO
        * failure.
        */
       readonly code?: VcsErrorCode;
+
+      /**
+       * Gets the SSH server a `ssh-key-rejected` or `ssh-host-unknown` failure is about, when it is
+       * known.
+       */
+      readonly sshHost?: VcsSshHost;
+
+      /**
+       * Gets the tool's own output for the failure, when `error` is a rewording of it: kept so the
+       * user can still read exactly what the tool said.
+       */
+      readonly output?: string;
     };
 
 /**

@@ -27,6 +27,11 @@ class FakeHost {
   public failWith: string | null = null;
 
   /**
+   * Holds what else the next failure carries: a code, a server and the tool's output.
+   */
+  public failExtra: Partial<Extract<VersionControlResponse<'clone'>, { ok: false }>> = {};
+
+  /**
    * Gets the plugin that clones.
    * @returns Returns a stand-in descriptor.
    */
@@ -46,7 +51,7 @@ class FakeHost {
   ): Promise<VersionControlResponse<'clone'>> {
     this.clones.push(params);
     if (this.failWith !== null) {
-      return Promise.resolve({ id: 1, ok: false, error: this.failWith });
+      return Promise.resolve({ ...this.failExtra, id: 1, ok: false, error: this.failWith });
     }
     fs.mkdirSync(params.directory, { recursive: true });
     fs.writeFileSync(path.join(params.directory, 'README.md'), '# cloned');
@@ -335,6 +340,29 @@ describe('CloneManager', () => {
     );
     expect(written).not.toContain('ghp_');
     expect(parseWorktreeConfig(JSON.parse(written)).origin).toBe('https://github.com/a/b.git');
+  });
+
+  it('carriesAnSshFailuresCodeServerAndOutput_redactingTheOutput (#1255)', async () => {
+    const url: string = 'ssh://me:ghp_abcdefghijklmnopqrstuvwxyz0123@git.example.com/a/b.git';
+    host.failWith = "SSH doesn't know git.example.com's host key yet.";
+    host.failExtra = {
+      code: 'ssh-host-unknown',
+      sshHost: { host: 'git.example.com' },
+      output: `Cloning from ${url}\nHost key verification failed.`,
+    };
+
+    for (const layout of ['flat', 'worktree'] as const) {
+      const failed: CloneOutcome = await manager().clone({ url, name: `b-${layout}`, layout });
+
+      expect(failed).toEqual({
+        ok: false,
+        error: "SSH doesn't know git.example.com's host key yet.",
+        code: 'ssh-host-unknown',
+        sshHost: { host: 'git.example.com' },
+        output:
+          'Cloning from ssh://[redacted]@git.example.com/a/b.git\nHost key verification failed.',
+      });
+    }
   });
 
   it('removesTheContainer_whenItsCloneFails', async () => {
