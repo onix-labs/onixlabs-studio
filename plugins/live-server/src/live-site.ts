@@ -12,6 +12,7 @@ import {
   RELOAD_CLIENT,
   withReloadClient,
 } from './reload-client';
+import type { FolderWatcher } from './poll-folder';
 import { resolveRequest, ResolvedRequest } from './resolve-request';
 
 /**
@@ -48,7 +49,10 @@ const COMMON_HEADERS: Readonly<Record<string, string>> = {
 /**
  * Watches a folder, calling back with the changed files' paths relative to it.
  */
-export type FolderWatch = (root: string, onChange: (relative: string) => void) => FSWatcher | null;
+export type FolderWatch = (
+  root: string,
+  onChange: (relative: string) => void,
+) => FolderWatcher | null;
 
 /**
  * Watches a folder and everything under it with the platform's own recursive watcher.
@@ -123,7 +127,7 @@ export class LiveSite {
   /**
    * Holds the folder's watcher, or null before it listens and after it closes.
    */
-  private watcher: FSWatcher | null = null;
+  private watcher: FolderWatcher | null = null;
 
   /**
    * Holds the timer gathering changes, or null when none are waiting.

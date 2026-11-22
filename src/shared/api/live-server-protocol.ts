@@ -18,12 +18,16 @@
 //   onto it.
 // - **The plugin watches what it serves.** The workspace watcher reports changed folders, not files,
 //   and telling a stylesheet's change from a page's is what lets CSS restyle without a reload.
+// - **Studio says when to poll** (1.1, #1254). A folder inside one of Settings' polled folders, such as
+//   a network share, comes with `pollIntervalMs`, and the plugin checks it on that timer instead of
+//   relying on the platform's notifications, which never arrive for another machine's writes. A 1.0
+//   plugin ignores the field and watches natively, as before.
 
 /**
  * Holds the protocol version this build speaks. A plugin announcing a different major version is
  * refused rather than spoken to.
  */
-export const LIVE_SERVER_PROTOCOL_VERSION: string = '1.0';
+export const LIVE_SERVER_PROTOCOL_VERSION: string = '1.1';
 
 /**
  * Describes what a plugin said it is, in answer to `initialize`.
@@ -81,6 +85,12 @@ export interface LiveServerOperations {
        * Gets the port to try first.
        */
       readonly port: number;
+
+      /**
+       * Gets how often to poll the folder for changes, in milliseconds, when it lies in a polled
+       * folder; absent to use the platform's own watching. Since 1.1.
+       */
+      readonly pollIntervalMs?: number;
     };
     readonly result: LiveServerServing;
   };

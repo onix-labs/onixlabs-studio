@@ -3,6 +3,11 @@ import {
   parseInterfaceZoom,
   type InterfaceZoom,
 } from '@shared/api/interface-zoom';
+import {
+  DEFAULT_POLLING_INTERVAL,
+  sanitizePollingFolders,
+  sanitizePollingInterval,
+} from './polling-folders';
 
 /**
  * What happens on macOS when the last window closes: Studio keeps running in the dock (the platform's
@@ -175,6 +180,18 @@ export interface StartupSettings {
    * follows from launch to keep the GPU's history.
    */
   readonly gpuMonitoring: boolean;
+
+  /**
+   * Gets the folders whose files are polled instead of watched natively (#1254). The main process runs
+   * every watcher, and a language server or a workspace can start watching before any window has read
+   * its settings.
+   */
+  readonly pollingFolders: readonly string[];
+
+  /**
+   * Gets how often a polled folder is checked, in seconds.
+   */
+  readonly pollingInterval: number;
 }
 
 /**
@@ -203,6 +220,8 @@ export const DEFAULT_STARTUP_SETTINGS: StartupSettings = {
   ollamaKeepAliveMinutes: 5,
   skillLibraryFolder: '',
   gpuMonitoring: true,
+  pollingFolders: [],
+  pollingInterval: DEFAULT_POLLING_INTERVAL,
 };
 
 /**
@@ -319,5 +338,7 @@ export function parseStartupSettings(raw: unknown): StartupSettings {
       typeof record['gpuMonitoring'] === 'boolean'
         ? record['gpuMonitoring']
         : defaults.gpuMonitoring,
+    pollingFolders: sanitizePollingFolders(record['pollingFolders']),
+    pollingInterval: sanitizePollingInterval(record['pollingInterval']),
   };
 }

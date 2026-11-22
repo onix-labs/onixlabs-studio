@@ -7,7 +7,7 @@
 /**
  * The protocol version this plugin speaks.
  */
-export const LIVE_SERVER_PROTOCOL: string = '1.0';
+export const LIVE_SERVER_PROTOCOL: string = '1.1';
 
 /**
  * Describes a folder being served, in answer to `serve`.
