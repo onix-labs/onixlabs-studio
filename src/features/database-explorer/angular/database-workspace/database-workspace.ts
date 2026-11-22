@@ -18,7 +18,9 @@ import {
   ExecuteOptions,
   ExecuteOutcome,
   ExpandOutcome,
+  ExplainOutcome,
   NodeActionOutcome,
+  QueryPlan,
   ResultColumn,
   ResultSet,
   TransactionAction,
@@ -108,6 +110,53 @@ export interface ExportRows {
    */
   readonly complete: boolean;
 }
+
+/**
+ * What explaining some of a query's text came to (#1099): the engine's plans, and how they were asked
+ * for, so the Plan tab can say whether they hold actual figures and place each statement in the
+ * document.
+ */
+export interface PlanOutcome {
+  /**
+   * Gets the explanation's identity, new for every Explain, so the view knows a fresh plan arrived.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the plan of each statement, in order, up to the one that could not be explained.
+   */
+  readonly plans: readonly QueryPlan[];
+
+  /**
+   * Gets whether a statement could not be explained.
+   */
+  readonly failed: boolean;
+
+  /**
+   * Gets why, when one could not, fit to show.
+   */
+  readonly message?: string;
+
+  /**
+   * Gets whether the statements were run to report what actually happened.
+   */
+  readonly analyzed: boolean;
+
+  /**
+   * Gets the document line the explained text starts on, which each plan's own line counts from.
+   */
+  readonly firstLine: number;
+
+  /**
+   * Gets how long the explanation took, in milliseconds.
+   */
+  readonly elapsedMs: number;
+}
+
+/**
+ * What an Explain says when the connection could not be opened and the engine gave no reason.
+ */
+const COULD_NOT_CONNECT: string = $localize`:Shown on the Plan tab when a query's connection could not be opened:Could not connect.`;
 
 /**
  * How many rows an export fetches at a time.
@@ -233,6 +282,12 @@ export class DatabaseWorkspace {
   private readonly runningSignal: WritableSignal<ReadonlyMap<string, string>> = signal<
     ReadonlyMap<string, string>
   >(new Map<string, string>());
+  private readonly plansSignal: WritableSignal<ReadonlyMap<string, PlanOutcome>> = signal<
+    ReadonlyMap<string, PlanOutcome>
+  >(new Map<string, PlanOutcome>());
+  private readonly explainingSignal: WritableSignal<ReadonlySet<string>> = signal<
+    ReadonlySet<string>
+  >(new Set<string>());
   private readonly selectionSignal: WritableSignal<DatabaseSelection | null> =
     signal<DatabaseSelection | null>(null);
   private readonly filePathSignal: WritableSignal<string | null> = signal<string | null>(null);
@@ -1301,6 +1356,121 @@ export class DatabaseWorkspace {
         },
       );
     }
+  }
+
+  /**
+   * Gets every query's latest plan this session, keyed by query id.
+   */
+  public readonly plans: Signal<ReadonlyMap<string, PlanOutcome>> = this.plansSignal.asReadonly();
+
+  /**
+   * Gets the ids of the queries being explained.
+   */
+  public readonly explaining: Signal<ReadonlySet<string>> = this.explainingSignal.asReadonly();
+
+  /**
+   * Determines whether a query's connection's engine can explain a query.
+   * @param id The query's id.
+   * @returns Returns true when it declares `explain`.
+   */
+  public canExplain(id: string): boolean {
+    const connection: DatabaseConnection | undefined = this.connection(
+      this.query(id)?.connectionId ?? null,
+    );
+    return (
+      connection !== undefined &&
+      this.engine(connection.engine)?.capabilities.includes('explain') === true
+    );
+  }
+
+  /**
+   * Asks how a query's text — the whole document or the selection — would run, as a plan per
+   * statement, connecting first if need be. Analyzing runs the statements, so the caller asks the user
+   * first wherever running them would.
+   * @param id The query's id.
+   * @param text The text to explain.
+   * @param firstLine The document line the text starts on.
+   * @param analyze Whether to run the statements and report what actually happened.
+   * @returns Returns a promise resolving the plans, or null when the query cannot be explained.
+   */
+  public async explain(
+    id: string,
+    text: string,
+    firstLine: number = 1,
+    analyze: boolean = false,
+  ): Promise<PlanOutcome | null> {
+    const query: DatabaseQuery | undefined = this.query(id);
+    if (
+      query === undefined ||
+      query.connectionId === null ||
+      this.explainingSignal().has(id) ||
+      this.runningSignal().has(id)
+    ) {
+      return null;
+    }
+    const connectionId: string = query.connectionId;
+    const started: number = Date.now();
+    this.explainingSignal.update(
+      (ids: ReadonlySet<string>): ReadonlySet<string> => new Set<string>([...ids, id]),
+    );
+    try {
+      const outcome: ExplainOutcome = await this.explainOn(query, connectionId, text, analyze);
+      const plan: PlanOutcome = {
+        id: newId(),
+        plans: outcome.plans,
+        failed: outcome.failed,
+        ...(outcome.message === undefined ? {} : { message: outcome.message }),
+        analyzed: analyze,
+        firstLine,
+        elapsedMs: Date.now() - started,
+      };
+      this.plansSignal.update(
+        (plans: ReadonlyMap<string, PlanOutcome>): ReadonlyMap<string, PlanOutcome> =>
+          new Map<string, PlanOutcome>([...plans, [id, plan]]),
+      );
+      this.lastUsed.set(connectionId, Date.now());
+      return plan;
+    } finally {
+      this.explainingSignal.update((ids: ReadonlySet<string>): ReadonlySet<string> => {
+        const next: Set<string> = new Set<string>(ids);
+        next.delete(id);
+        return next;
+      });
+    }
+  }
+
+  /**
+   * Connects a query's connection if need be and asks its engine for the plans.
+   * @param query The query.
+   * @param connectionId Its connection.
+   * @param text The text to explain.
+   * @param analyze Whether to run the statements.
+   * @returns Returns a promise resolving the engine's answer, or a failure saying why there is none.
+   */
+  private async explainOn(
+    query: DatabaseQuery,
+    connectionId: string,
+    text: string,
+    analyze: boolean,
+  ): Promise<ExplainOutcome> {
+    if (!(await this.connect(connectionId))) {
+      return {
+        plans: [],
+        failed: true,
+        message: this.connectionErrorsSignal().get(connectionId) ?? COULD_NOT_CONNECT,
+      };
+    }
+    const open: OpenSession | undefined = this.sessionsSignal().get(connectionId);
+    if (open === undefined) {
+      return { plans: [], failed: true, message: COULD_NOT_CONNECT };
+    }
+    this.lastUsed.set(connectionId, Date.now());
+    return this.client.explain({
+      session: open.session,
+      text,
+      ...(query.database === undefined ? {} : { database: query.database }),
+      ...(analyze ? { analyze: true } : {}),
+    });
   }
 
   /**
