@@ -5,7 +5,7 @@
 # The base is pinned to a dated snapshot, so the distribution's own packages only move when this line
 # does; the toolchains are pinned in toolchains.env.
 
-FROM debian:trixie-20261104
+FROM debian:trixie-20261104@sha256:9c6e381421d0f48d1b8133e573f33c185ee16cbf505eda9c4a8a4791b25ea8a6
 
 ARG NODE_VERSION
 ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8

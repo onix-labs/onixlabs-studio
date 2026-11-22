@@ -16,6 +16,14 @@
 //                                                          whose own node_modules is not Linux's)
 //
 // Writes release/*.AppImage, unsigned, exactly as `electron-builder --linux --x64` does.
+//
+// The image is pinned by digest in .linux-builder-image, beside .nvmrc, because it builds what ships:
+// a tag can be repointed under us. Bump the two together — when .nvmrc moves, put the new version's
+// bookworm tag and its digest in .linux-builder-image:
+//
+//   docker buildx imagetools inspect node:<version>-bookworm --format '{{json .Manifest.Digest}}'
+//
+// This refuses to build when the two disagree.
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -25,6 +33,19 @@ import { fileURLToPath } from 'node:url';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
 const NODE_VERSION = readFileSync(join(REPO, '.nvmrc'), 'utf8').trim();
+const IMAGE = readFileSync(join(REPO, '.linux-builder-image'), 'utf8').trim();
+
+if (
+  !new RegExp(`^node:${NODE_VERSION.replaceAll('.', '\\.')}-bookworm@sha256:[0-9a-f]{64}$`).test(
+    IMAGE,
+  )
+) {
+  console.error(
+    `.linux-builder-image (${IMAGE}) must be node:${NODE_VERSION}-bookworm@sha256:<digest>, the ` +
+      'version .nvmrc names, pinned by digest. Bump the two together.',
+  );
+  exit(1);
+}
 
 /**
  * Reads an option's value.
@@ -81,7 +102,7 @@ const result = spawnSync(
     // As release.yml: electron-builder downloads its own Electron for the target.
     '--env',
     'ELECTRON_SKIP_BINARY_DOWNLOAD=1',
-    `node:${NODE_VERSION}-bookworm`,
+    IMAGE,
     'bash',
     '-c',
     steps,
