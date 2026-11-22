@@ -44,7 +44,6 @@ export const SHOWPLAN_COLUMN: RegExp = /XML Showplan/i;
 const MAPPED_OPERATOR_ATTRIBUTES: ReadonlySet<string> = new Set<string>([
   'PhysicalOp',
   'LogicalOp',
-  'EstimateRows',
   'EstimatedTotalSubtreeCost',
 ]);
 
@@ -172,28 +171,58 @@ function encodeAttribute(value: string): string {
 }
 
 /**
+ * Finds the line a statement starts on in the text it was sent in.
+ */
+export type StatementLocator = (statement: string) => number;
+
+/**
+ * Builds a locator for one batch. Showplan names no lines, so each statement's text is looked for
+ * in the batch, from where the previous statement was found onwards, and its line counted from the
+ * batch's first. A statement the server rewrote, so its text is not found as written, is placed on
+ * the batch's first line.
+ * @param text The batch's text.
+ * @param firstLine The line the batch starts on.
+ * @returns Returns the locator.
+ */
+export function statementLocator(text: string, firstLine: number): StatementLocator {
+  let from: number = 0;
+  return (statement: string): number => {
+    const sought: string = statement.trim();
+    const at: number = sought === '' ? -1 : text.indexOf(sought, from);
+    if (at < 0) {
+      return firstLine;
+    }
+    from = at + sought.length;
+    return firstLine + (text.slice(0, at).match(/\n/g)?.length ?? 0);
+  };
+}
+
+/**
  * Builds the plans of one showplan document: one per statement that has a query plan (a `SET` or
  * `DECLARE` has none), in the document's order. Each plan's top step is the statement itself — its
  * type, its estimated cost and rows, and its query plan's facts — over the operator tree, as SSMS
- * draws it. The raw plan is the whole document, indented.
+ * draws it. Each plan's raw text is its own statement's element, indented, not the whole batch's
+ * document: a batch of thousands of statements would otherwise send its document thousands of times.
  * @param xml The document, as the server sent it.
- * @param line The line the batch it came from starts on.
+ * @param locate Finds the line each statement starts on.
  * @returns Returns the plans.
  */
-export function sqlServerPlans(xml: string, line: number): readonly QueryPlan[] {
+export function sqlServerPlans(xml: string, locate: StatementLocator): readonly QueryPlan[] {
   const document: XmlElement | undefined = parseXml(xml);
   if (document === undefined) {
     return [];
   }
-  const raw: string = formatXml(document);
   return descendants(document, 'StmtSimple', undefined)
     .filter((statement: XmlElement): boolean => child(statement, 'QueryPlan') !== undefined)
-    .map((statement: XmlElement): QueryPlan => ({
-      statement: (statement.attributes.get('StatementText') ?? '').trim(),
-      line,
-      root: statementStep(statement),
-      raw,
-    }));
+    .map((statement: XmlElement): QueryPlan => {
+      const text: string = (statement.attributes.get('StatementText') ?? '').trim();
+      return {
+        statement: text,
+        line: locate(text),
+        root: statementStep(statement),
+        raw: formatXml(statement),
+      };
+    });
 }
 
 /**
@@ -252,12 +281,34 @@ function operatorStep(operator: XmlElement): PlanNode {
     operator: physical,
     ...(detail === '' ? {} : { detail }),
     ...numberField('cost', operator.attributes.get('EstimatedTotalSubtreeCost')),
-    ...numberField('estimatedRows', operator.attributes.get('EstimateRows')),
+    ...estimatedRowsField(operator),
     ...(actualRows === undefined ? {} : { actualRows }),
     ...(times.length === 0 ? {} : { time: Math.max(...times) }),
     ...(properties.length === 0 ? {} : { properties }),
     children: descendants(operator, 'RelOp', 'RelOp', true).map(operatorStep),
   };
+}
+
+/**
+ * Reads an operator's estimated rows across all its executions, as SSMS's "Estimated Number of Rows
+ * for All Executions" does. `EstimateRows` is per execution — the inner side of a Nested Loops runs
+ * once per outer row — while the actual rows are summed over every execution, so comparing the two
+ * would flag every inner side as misestimated. The executions are the rebinds and rewinds plus the
+ * first; the per-execution figure stays among the properties.
+ * @param operator The `RelOp` element.
+ * @returns Returns the field, or nothing when the operator states no estimate.
+ */
+function estimatedRowsField(operator: XmlElement): Record<string, number> {
+  const perExecution: number = Number(operator.attributes.get('EstimateRows') ?? NaN);
+  if (!Number.isFinite(perExecution)) {
+    return {};
+  }
+  const count: (name: string) => number = (name: string): number => {
+    const value: number = Number(operator.attributes.get(name) ?? 0);
+    return Number.isFinite(value) ? value : 0;
+  };
+  const executions: number = count('EstimateRebinds') + count('EstimateRewinds') + 1;
+  return { estimatedRows: perExecution * executions };
 }
 
 /**

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { PlanNode, QueryPlan } from '../../protocol/database/protocol';
-import { formatXml, parseXml, sqlServerPlans, XmlElement } from './sqlserver-plan';
+import {
+  formatXml,
+  parseXml,
+  sqlServerPlans,
+  statementLocator,
+  XmlElement,
+} from './sqlserver-plan';
 
 /**
  * An estimated showplan as SQL Server 2022 sends it for one batch of two statements: a `DECLARE`,
@@ -63,15 +69,54 @@ function outline(node: PlanNode, depth: number = 0): readonly string[] {
   ];
 }
 
+/**
+ * Places every statement on line 1, for the specs that are not about lines.
+ * @returns Returns 1.
+ */
+function firstLine(): number {
+  return 1;
+}
+
+/**
+ * A Nested Loops whose inner side, an index seek, runs once per outer row: SQL Server estimates its
+ * rows per execution (1) and reports its actual rows over all of them (1,000).
+ */
+const NESTED: string = [
+  '<ShowPlanXML><BatchSequence><Batch><Statements>',
+  '<StmtSimple StatementText="select * from orders o join customers c on c.id = o.customer_id" StatementType="SELECT">',
+  '<QueryPlan>',
+  '<RelOp PhysicalOp="Nested Loops" LogicalOp="Inner Join" EstimateRows="1000" EstimatedTotalSubtreeCost="3.2">',
+  '<RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="1000" ActualExecutions="1" /></RunTimeInformation>',
+  '<NestedLoops>',
+  '<RelOp PhysicalOp="Clustered Index Scan" LogicalOp="Clustered Index Scan" EstimateRows="1000" EstimatedTotalSubtreeCost="0.8">',
+  '<RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="1000" ActualExecutions="1" /></RunTimeInformation>',
+  '</RelOp>',
+  '<RelOp PhysicalOp="Clustered Index Seek" LogicalOp="Clustered Index Seek" EstimateRows="1" EstimateRebinds="998" EstimateRewinds="1" EstimatedTotalSubtreeCost="2.1">',
+  '<RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="1000" ActualExecutions="1000" /></RunTimeInformation>',
+  '</RelOp>',
+  '</NestedLoops>',
+  '</RelOp></QueryPlan></StmtSimple></Statements></Batch></BatchSequence></ShowPlanXML>',
+].join('');
+
+/**
+ * A batch's estimated showplan holding two statements, each with a plan.
+ */
+const TWO_STATEMENTS: string = [
+  '<ShowPlanXML><BatchSequence><Batch><Statements>',
+  '<StmtSimple StatementText="select 1" StatementType="SELECT"><QueryPlan><RelOp PhysicalOp="Constant Scan" LogicalOp="Constant Scan" EstimateRows="1" /></QueryPlan></StmtSimple>',
+  '<StmtSimple StatementText="select name from authors" StatementType="SELECT"><QueryPlan><RelOp PhysicalOp="Table Scan" LogicalOp="Table Scan" EstimateRows="40" /></QueryPlan></StmtSimple>',
+  '</Statements></Batch></BatchSequence></ShowPlanXML>',
+].join('');
+
 describe('sqlServerPlans', () => {
   it('builds_aPlanPerStatementWithAQueryPlan_underTheStatementAsSsmsDraws', () => {
-    const plans: readonly QueryPlan[] = sqlServerPlans(ESTIMATED, 4);
+    const plans: readonly QueryPlan[] = sqlServerPlans(ESTIMATED, firstLine);
 
     expect(plans).toHaveLength(1);
     expect(plans[0]?.statement).toBe(
       'select b.title, a.name from books b join authors a on a.id = b.author_id where b.year > 1990',
     );
-    expect(plans[0]?.line).toBe(4);
+    expect(plans[0]?.line).toBe(1);
     expect(outline(plans[0].root)).toEqual([
       'SELECT',
       '  Hash Match Inner Join',
@@ -81,7 +126,7 @@ describe('sqlServerPlans', () => {
   });
 
   it('reads_theEstimatedCostAndRows_ofTheStatementAndEachOperator', () => {
-    const root: PlanNode = sqlServerPlans(ESTIMATED, 1)[0].root;
+    const root: PlanNode = sqlServerPlans(ESTIMATED, firstLine)[0].root;
     const join: PlanNode = root.children[0];
 
     expect(root).toMatchObject({ cost: 0.0391, estimatedRows: 120 });
@@ -92,7 +137,7 @@ describe('sqlServerPlans', () => {
   });
 
   it('keeps_everyOtherAttributeAsAProperty_inTheEnginesOwnNames', () => {
-    const root: PlanNode = sqlServerPlans(ESTIMATED, 1)[0].root;
+    const root: PlanNode = sqlServerPlans(ESTIMATED, firstLine)[0].root;
 
     expect(root.properties).toEqual(
       expect.arrayContaining([
@@ -112,7 +157,7 @@ describe('sqlServerPlans', () => {
   });
 
   it('sums_anActualPlansRowsAcrossThreads_andTakesTheSlowestThreadsTime', () => {
-    const root: PlanNode = sqlServerPlans(ACTUAL, 1)[0].root;
+    const root: PlanNode = sqlServerPlans(ACTUAL, firstLine)[0].root;
     const scan: PlanNode = root.children[0];
 
     expect(scan).toMatchObject({ estimatedRows: 1000, actualRows: 1500, time: 3 });
@@ -130,19 +175,46 @@ describe('sqlServerPlans', () => {
     );
   });
 
-  it('gives_theWholeDocumentIndented_asTheRawPlan', () => {
-    const raw: string = sqlServerPlans(ESTIMATED, 1)[0].raw;
+  it('gives_eachStatementItsOwnElementIndented_asItsRawPlan_notTheWholeBatch', () => {
+    const plans: readonly QueryPlan[] = sqlServerPlans(TWO_STATEMENTS, firstLine);
 
-    expect(raw.split('\n')[0]).toBe(
-      '<ShowPlanXML xmlns="http://schemas.microsoft.com/sqlserver/2004/07/showplan" Version="1.564" Build="16.0.4165.4">',
+    expect(plans.map((plan: QueryPlan): string => plan.raw.split('\n')[0] ?? '')).toEqual([
+      '<StmtSimple StatementText="select 1" StatementType="SELECT">',
+      '<StmtSimple StatementText="select name from authors" StatementType="SELECT">',
+    ]);
+    expect(plans[0]?.raw).not.toContain('authors');
+    expect(sqlServerPlans(ESTIMATED, firstLine)[0]?.raw).toContain('where b.year &gt; 1990"');
+    expect(sqlServerPlans(ESTIMATED, firstLine)[0]?.raw).not.toContain('declare @n');
+  });
+
+  it('places_eachStatementOnItsOwnLine_withinTheBatch', () => {
+    const batch: string = 'select 1\n\n-- the authors\nselect name\nfrom authors';
+    const plans: readonly QueryPlan[] = sqlServerPlans(
+      TWO_STATEMENTS.replace('select name from authors', 'select name\nfrom authors'),
+      statementLocator(batch, 10),
     );
-    expect(raw).toContain('\n        <StmtSimple StatementText="declare @n int = 3"');
-    expect(raw).toContain('where b.year &gt; 1990"');
+
+    expect(plans.map((plan: QueryPlan): number => plan.line)).toEqual([10, 13]);
+  });
+
+  it('places_aStatementTheServerRewrote_onTheBatchsFirstLine', () => {
+    const locate: (statement: string) => number = statementLocator('select  1', 7);
+
+    expect(locate('select 1')).toBe(7);
+  });
+
+  it('estimates_anInnerSidesRowsAcrossAllItsExecutions_soItIsNotFlaggedAsMisestimated', () => {
+    const loops: PlanNode = sqlServerPlans(NESTED, firstLine)[0].root.children[0];
+    const seek: PlanNode = loops.children[1];
+
+    expect(seek).toMatchObject({ estimatedRows: 1000, actualRows: 1000 });
+    expect(seek.properties).toContainEqual({ name: 'EstimateRows', value: '1' });
+    expect(loops.children[0]).toMatchObject({ estimatedRows: 1000, actualRows: 1000 });
   });
 
   it('answers_noPlans_forTextThatIsNotADocument', () => {
-    expect(sqlServerPlans('', 1)).toEqual([]);
-    expect(sqlServerPlans('not xml', 1)).toEqual([]);
+    expect(sqlServerPlans('', firstLine)).toEqual([]);
+    expect(sqlServerPlans('not xml', firstLine)).toEqual([]);
   });
 });
 

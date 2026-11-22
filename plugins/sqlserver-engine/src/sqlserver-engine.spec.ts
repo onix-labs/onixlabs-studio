@@ -493,7 +493,12 @@ describe('SqlServerEngine', () => {
 
     const own: FakeLink | undefined = links[1];
     expect(own?.database).toBe('hr');
-    expect(own?.batches).toEqual(['set showplan_xml on', 'select 1', 'select * from books']);
+    expect(own?.batches).toEqual([
+      'set lock_timeout 30000',
+      'set showplan_xml on',
+      'select 1',
+      'select * from books',
+    ]);
     expect(own?.closed).toBe(1);
     expect(outcome.failed).toBe(false);
     expect(
@@ -509,6 +514,8 @@ describe('SqlServerEngine', () => {
       if (sql.startsWith('delete')) {
         events.onDone?.(4);
         showplan(events, sql, 'Clustered Index Delete');
+      } else if (sql === 'select @@trancount') {
+        row(events, 1);
       }
       return null;
     });
@@ -518,12 +525,67 @@ describe('SqlServerEngine', () => {
 
     expect(links[1]?.database).toBe('shop');
     expect(links[1]?.batches).toEqual([
+      'set lock_timeout 30000',
       'begin transaction',
       'set statistics xml on',
       'delete from books',
+      'select @@trancount',
       'if @@trancount > 0 rollback transaction',
     ]);
     expect(outcome.plans[0]?.root.children[0]?.operator).toBe('Clustered Index Delete');
+  });
+
+  it('explain_analyzed_refusesAScriptThatEndsATransactionItself_andRunsNothing', async () => {
+    const { engine, links } = fakes();
+    const session: EngineSession = await engine.connect(LOGIN);
+
+    const outcome: ExplainOutcome = await session.explain!(
+      'begin tran\nupdate a set x = 1\nrollback tran\ngo\nupdate b set y = 2',
+      undefined,
+      true,
+    );
+
+    expect(outcome).toMatchObject({ plans: [], failed: true });
+    expect(outcome.message).toContain('cannot run a script that commits or rolls back');
+    expect(links).toHaveLength(1);
+  });
+
+  it('explain_plainly_plansAScriptThatEndsATransaction_sinceNothingRuns', async () => {
+    const { engine, links } = fakes();
+    const session: EngineSession = await engine.connect(LOGIN);
+
+    const outcome: ExplainOutcome = await session.explain!('begin tran\ncommit');
+
+    expect(outcome.failed).toBe(false);
+    expect(links[1]?.batches).toContain('begin tran\ncommit');
+  });
+
+  it('explain_analyzed_stopsWhenABatchLeftNoTransactionOpen_withTheRestNotRun', async () => {
+    let batches: number = 0;
+    const { engine, links } = fakes((sql: string, events: BatchEvents) => {
+      if (sql.startsWith('update')) {
+        batches += 1;
+        showplan(events, sql, 'Table Update');
+      } else if (sql === 'select @@trancount') {
+        // The first batch ended the transaction some other way, as XACT_ABORT does on an error.
+        row(events, batches === 1 ? 0 : 1);
+      }
+      return null;
+    });
+    const session: EngineSession = await engine.connect(LOGIN);
+
+    const outcome: ExplainOutcome = await session.explain!(
+      'update a set x = 1\ngo\nupdate b set y = 2',
+      undefined,
+      true,
+    );
+
+    expect(outcome.failed).toBe(true);
+    expect(outcome.message).toBe(
+      'The script ended the transaction Explain Analyze runs it in (the batch at line 1), so the rest of it was not run.',
+    );
+    expect(outcome.plans).toHaveLength(1);
+    expect(links[1]?.batches).not.toContain('update b set y = 2');
   });
 
   it('explain_stopsAtTheFirstBatchThatFails_keepingThePlansBeforeIt', async () => {

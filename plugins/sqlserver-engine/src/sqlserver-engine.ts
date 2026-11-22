@@ -30,10 +30,38 @@ import {
   splitQualifiedName,
   text,
 } from '../../protocol/database/engine';
-import { splitBatches, SqlServerBatch } from './sqlserver-batches';
+import { endsTransaction, splitBatches, SqlServerBatch } from './sqlserver-batches';
 import { LinkCell, LinkColumn, ServerMessage, SqlServerLink } from './sqlserver-link';
-import { SHOWPLAN_COLUMN, sqlServerPlans } from './sqlserver-plan';
+import {
+  SHOWPLAN_COLUMN,
+  sqlServerPlans,
+  StatementLocator,
+  statementLocator,
+} from './sqlserver-plan';
 import { bracket, cellValue, declaredType, nstring, sqlTypeName } from './sqlserver-values';
+
+/**
+ * How long an explanation waits for a lock before giving up, in milliseconds: long enough for an
+ * ordinary wait, short enough that a lock the user's own open transaction holds ends in an error
+ * rather than a Plan tab that never fills.
+ */
+const EXPLAIN_LOCK_TIMEOUT_MS: number = 30_000;
+
+/**
+ * What Explain Analyze says of a script that commits or rolls back a transaction itself.
+ */
+const ENDS_TRANSACTION: string =
+  'Explain Analyze runs the script in a transaction it rolls back, so it cannot run a script that commits or rolls back a transaction itself. Use Explain instead.';
+
+/**
+ * Asks whether a connection still has a transaction open.
+ * @param link The connection.
+ * @returns Returns a promise resolving true when `@@trancount` is above 0.
+ */
+async function stillInTransaction(link: SqlServerLink): Promise<boolean> {
+  const rows: readonly (readonly unknown[])[] = await link.rows('select @@trancount');
+  return Number(rows[0]?.[0] ?? 0) > 0;
+}
 
 /**
  * How long a connection waits for the server when Studio does not say, in milliseconds.
@@ -900,8 +928,13 @@ class SqlServerSession implements EngineSession {
    * connection of its own so the session's are never left with a showplan setting on. The estimated
    * plan comes from `SET SHOWPLAN_XML ON`, which compiles each batch without running it. Analyzing
    * runs the script under `SET STATISTICS XML ON` inside a transaction that is rolled back, so the
-   * plans carry what actually happened while the script's changes are undone — unless the script
-   * commits its own transaction.
+   * plans carry what actually happened while the script's changes are undone.
+   *
+   * A script that commits or rolls back a transaction itself would end that one, and whatever ran
+   * after it would stay done. So analyzing refuses such a script up front, and checks after every
+   * batch that the transaction is still open, stopping with the rest not run if it is not. Lock waits
+   * are bounded ({@link EXPLAIN_LOCK_TIMEOUT_MS}), so a plan never hangs on a lock the user's own
+   * open transaction holds.
    * @param sql The text, one batch or several.
    * @param database The database to plan it against, or the connection's own.
    * @param analyze Whether to run the statements and report what actually happened.
@@ -909,6 +942,9 @@ class SqlServerSession implements EngineSession {
    */
   public async explain(sql: string, database?: string, analyze?: boolean): Promise<ExplainOutcome> {
     const plans: QueryPlan[] = [];
+    if (analyze === true && endsTransaction(sql)) {
+      return { plans, failed: true, message: ENDS_TRANSACTION };
+    }
     let link: SqlServerLink;
     try {
       link = await this.openLink(this.settings, database ?? this.settings.database);
@@ -917,8 +953,12 @@ class SqlServerSession implements EngineSession {
     }
     try {
       // SHOWPLAN_XML must be the only statement in its batch.
-      const setup: readonly string[] =
-        analyze === true ? ['begin transaction', 'set statistics xml on'] : ['set showplan_xml on'];
+      const setup: readonly string[] = [
+        `set lock_timeout ${EXPLAIN_LOCK_TIMEOUT_MS}`,
+        ...(analyze === true
+          ? ['begin transaction', 'set statistics xml on']
+          : ['set showplan_xml on']),
+      ];
       for (const statement of setup) {
         await link.rows(statement);
       }
@@ -942,11 +982,19 @@ class SqlServerSession implements EngineSession {
             }
           },
         });
+        const locate: StatementLocator = statementLocator(batch.text, batch.line);
         for (const document of documents) {
-          plans.push(...sqlServerPlans(document, batch.line));
+          plans.push(...sqlServerPlans(document, locate));
         }
         if (error !== null || errors.length > 0) {
           return { plans, failed: true, message: errors[0] ?? describeError(error) };
+        }
+        if (analyze === true && !(await stillInTransaction(link))) {
+          return {
+            plans,
+            failed: true,
+            message: `The script ended the transaction Explain Analyze runs it in (the batch at line ${batch.line}), so the rest of it was not run.`,
+          };
         }
       }
       return { plans, failed: false };
