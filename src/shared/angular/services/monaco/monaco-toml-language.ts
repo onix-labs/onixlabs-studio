@@ -21,7 +21,12 @@ const TOML_GRAMMAR: MonacoApi.languages.IMonarchLanguage = {
       [/#.*$/, 'comment'],
       [/^\s*\[\[[^\]]*\]\]/, 'type'],
       [/^\s*\[[^\]]*\]/, 'type'],
-      [/[A-Za-z0-9_-]+(?=\s*(\.|=))/, 'variable'],
+      // A bare key may start with a digit or a minus (`1234 = "x"`), but so does a number, and `3.14`
+      // or `-1.5` looks like a dotted key up to its `.`. So at the start of a line a bare key, dotted
+      // parts and all (`1.2 = true`), is a key when an `=` follows it; elsewhere (in an inline table) a
+      // key must not start like a number.
+      [/^\s*[A-Za-z0-9_-]+(\s*\.\s*[A-Za-z0-9_-]+)*(?=\s*=)/, 'variable'],
+      [/([A-Za-z_]|-(?!\d))[A-Za-z0-9_-]*(?=\s*(\.|=))/, 'variable'],
       [/"""/, 'string', '@basicMultiline'],
       [/'''/, 'string', '@literalMultiline'],
       [/"([^"\\]|\\.)*"/, 'string'],
