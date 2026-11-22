@@ -198,6 +198,10 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
+  public deleteRemoteBranch(): Promise<MutationResult> {
+    return Promise.resolve({ success: true });
+  }
+
   public pushTag(): Promise<MutationResult> {
     return Promise.resolve({ success: true });
   }

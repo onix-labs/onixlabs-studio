@@ -68,7 +68,7 @@ import {
   toDiagnostic,
   toMarkerData,
 } from './lsp-diagnostic-mapper';
-import { LspContentEdit, minimalReplaceEdit } from './lsp-text-sync';
+import { LspContentEdit, LspWholeDocumentEdit, minimalReplaceEdit } from './lsp-text-sync';
 import {
   codeActionSupportOf,
   fileRenameFiltersOf,
@@ -83,6 +83,7 @@ import {
   saveIncludesText,
   semanticLegendOf,
   supportsPullDiagnostics,
+  syncsWholeDocument,
 } from './lsp-capabilities';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { EditorConfigs } from '@shared/angular/services/editor-config/editor-configs';
@@ -1165,6 +1166,11 @@ export class LspClient implements OnDestroy {
    * Holds the sessions whose server asked for the document text to accompany `didSave`.
    */
   private readonly saveWithText: Set<string> = new Set<string>();
+
+  /**
+   * Holds the sessions whose server takes each change as the whole document (full sync, #1206).
+   */
+  private readonly wholeDocumentSync: Set<string> = new Set<string>();
 
   /**
    * Holds the pending debounced diagnostic-pull timers, keyed by document id.
@@ -2559,8 +2565,12 @@ export class LspClient implements OnDestroy {
     // Send the smallest single ranged edit that turns the previous text into the new one. The
     // explicit range is what servers advertising incremental sync require (a range-less full-text
     // change crashes them), and trimming to the changed span keeps a keystroke in a large file from
-    // shipping — and forcing the server to re-process — the whole document.
-    const edit: LspContentEdit | null = minimalReplaceEdit(tracked.text, content);
+    // shipping — and forcing the server to re-process — the whole document. A server that asked for
+    // full sync reads a change's text as the whole document, range or not, so it gets the whole text
+    // (#1206).
+    const edit: LspContentEdit | LspWholeDocumentEdit | null = this.wholeDocumentSync.has(sessionId)
+      ? { text: content }
+      : minimalReplaceEdit(tracked.text, content);
     if (edit === null) {
       return;
     }
@@ -2796,6 +2806,11 @@ export class LspClient implements OnDestroy {
             this.saveWithText.add(sessionId);
           } else {
             this.saveWithText.delete(sessionId);
+          }
+          if (syncsWholeDocument(result.capabilities)) {
+            this.wholeDocumentSync.add(sessionId);
+          } else {
+            this.wholeDocumentSync.delete(sessionId);
           }
           this.log.info(
             'LspClient',

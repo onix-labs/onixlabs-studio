@@ -43,6 +43,7 @@ import { registerScssLanguage } from './monaco-scss-language';
 import { registerCypherLanguage } from './monaco-cypher-language';
 import { registerGoModuleLanguages } from './monaco-go-module-language';
 import { installFileLinkOpener } from './monaco-link-opener';
+import { registerTomlLanguage } from './monaco-toml-language';
 import { registerDocCommentRules } from './monaco-doc-comment-rules';
 import { registerBraceFolding } from './monaco-folding';
 import { installFindCommands } from './monaco-find-commands';
@@ -822,6 +823,7 @@ export class Monaco {
     registerCsharpLanguage(window.monaco);
     registerCypherLanguage(window.monaco);
     registerGoModuleLanguages(window.monaco);
+    registerTomlLanguage(window.monaco);
     registerDocCommentRules(window.monaco);
     this.foldingRefreshers.push(
       registerBraceFolding(
@@ -1129,6 +1131,7 @@ export class Monaco {
       registerCsharpLanguage(monaco, target);
       registerCypherLanguage(monaco, target);
       registerGoModuleLanguages(monaco, target);
+      registerTomlLanguage(monaco, target);
       registerDocCommentRules(monaco);
       this.foldingRefreshers.push(
         registerBraceFolding(

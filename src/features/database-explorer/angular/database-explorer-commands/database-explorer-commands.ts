@@ -64,6 +64,12 @@ export interface DatabaseExplorerCommandHandler {
   readonly executing: Signal<boolean>;
 
   /**
+   * Gets whether the query open in the well can be explained: its engine can explain, and it is
+   * neither running nor being explained.
+   */
+  readonly canExplain: Signal<boolean>;
+
+  /**
    * Gets the connection the Connection buttons act on, or null when there is none.
    */
   readonly connectionTarget: Signal<ConnectionTarget | null>;
@@ -102,6 +108,12 @@ export interface DatabaseExplorerCommandHandler {
    * Runs the statement the open query's caret is in.
    */
   executeStatement(): void;
+
+  /**
+   * Shows how the open query (its selection, or all of it) would run, in its Plan tab.
+   * @param analyze Whether to run it and report what actually happened.
+   */
+  explain(analyze: boolean): void;
 
   /**
    * Commits the open transaction.
@@ -198,6 +210,13 @@ export class DatabaseExplorerCommands {
   );
 
   /**
+   * Gets whether the active view's open query can be explained.
+   */
+  public readonly canExplain: Signal<boolean> = computed(
+    (): boolean => this.handler()?.canExplain() ?? false,
+  );
+
+  /**
    * Gets the connection the Connection buttons act on, or null.
    */
   public readonly connectionTarget: Signal<ConnectionTarget | null> = computed(
@@ -269,6 +288,14 @@ export class DatabaseExplorerCommands {
    */
   public executeStatement(): void {
     this.handler()?.executeStatement();
+  }
+
+  /**
+   * Shows how the open query would run.
+   * @param analyze Whether to run it and report what actually happened.
+   */
+  public explain(analyze: boolean = false): void {
+    this.handler()?.explain(analyze);
   }
 
   /**

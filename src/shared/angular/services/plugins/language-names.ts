@@ -36,6 +36,7 @@ const LANGUAGE_NAMES: Readonly<Record<string, string>> = {
   graphql: 'GraphQL',
   vue: 'Vue',
   svelte: 'Svelte',
+  toml: 'TOML',
   r: 'R',
 };
 

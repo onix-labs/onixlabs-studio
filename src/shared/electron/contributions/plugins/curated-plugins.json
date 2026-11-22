@@ -1,5 +1,5 @@
 {
-  "revision": 72,
+  "revision": 74,
   "plugins": [
     {
       "id": "pyright",
@@ -1136,6 +1136,147 @@
       }
     },
     {
+      "id": "taplo",
+      "name": "Taplo",
+      "description": "TOML validation, formatting and schema-aware completion.",
+      "version": "0.10.0",
+      "apiVersion": "1.8.0",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-darwin-aarch64.gz",
+            "sha256": "713734314c3e71894b9e77513c5349835eefbd52908445a0d73b0c7dc469347d",
+            "archive": "gz",
+            "executablePath": "taplo"
+          },
+          "darwin-x64": {
+            "url": "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-darwin-x86_64.gz",
+            "sha256": "898122cde3a0b1cd1cbc2d52d3624f23338218c91b5ddb71518236a4c2c10ef2",
+            "archive": "gz",
+            "executablePath": "taplo"
+          },
+          "linux-arm64": {
+            "url": "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-linux-aarch64.gz",
+            "sha256": "033681d01eec8376c3fd38fa3703c79316f5e14bb013d859943b60a07bccdcc3",
+            "archive": "gz",
+            "executablePath": "taplo"
+          },
+          "linux-x64": {
+            "url": "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-linux-x86_64.gz",
+            "sha256": "8fe196b894ccf9072f98d4e1013a180306e17d244830b03986ee5e8eabeb6156",
+            "archive": "gz",
+            "executablePath": "taplo"
+          },
+          "win32-x64": {
+            "url": "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-windows-x86_64.zip",
+            "sha256": "1615eed140039bd58e7089109883b1c434de5d6de8f64a993e6e8c80ca57bdf9",
+            "archive": "zip",
+            "members": ["taplo.exe"],
+            "executablePath": "taplo.exe"
+          }
+        }
+      },
+      "contributes": {
+        "languageServers": [
+          {
+            "id": "taplo",
+            "displayName": "Taplo",
+            "languages": ["toml"],
+            "priority": 100,
+            "command": {
+              "kind": "executable",
+              "args": ["lsp", "stdio"]
+            },
+            "settings": [
+              {
+                "section": "evenBetterToml.schema.enabled",
+                "label": "Schema Validation",
+                "description": "Check documents against the JSON schema they are bound to, by a #:schema line or a .taplo.toml rule, and complete keys and values from it. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true
+              },
+              {
+                "section": "evenBetterToml.schema.links",
+                "label": "Schema Links",
+                "description": "Make keys into links to the documentation their schema names. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": false,
+                "startupOnly": true
+              },
+              {
+                "section": "evenBetterToml.formatter.alignEntries",
+                "label": "Align Entries",
+                "description": "Line up the = of consecutive entries when formatting. A .taplo.toml in the workspace overrides this and the other formatting settings. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": false,
+                "startupOnly": true
+              },
+              {
+                "section": "evenBetterToml.formatter.alignComments",
+                "label": "Align Comments",
+                "description": "Line up comments that follow consecutive entries when formatting. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true
+              },
+              {
+                "section": "evenBetterToml.formatter.arrayTrailingComma",
+                "label": "Trailing Commas in Arrays",
+                "description": "End each item of an array laid over several lines with a comma when formatting. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true
+              },
+              {
+                "section": "evenBetterToml.formatter.reorderKeys",
+                "label": "Sort Keys",
+                "description": "Sort keys alphabetically when formatting, within each run of entries not broken by a blank line. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": false,
+                "startupOnly": true
+              },
+              {
+                "section": "evenBetterToml.formatter.arrayAutoExpand",
+                "label": "Expand Long Arrays",
+                "description": "Lay an array over several lines when formatting, once it no longer fits on one. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true,
+                "advanced": true
+              },
+              {
+                "section": "evenBetterToml.formatter.arrayAutoCollapse",
+                "label": "Collapse Short Arrays",
+                "description": "Put an array back on one line when formatting, if it fits. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true,
+                "advanced": true
+              },
+              {
+                "section": "evenBetterToml.formatter.indentTables",
+                "label": "Indent Subtables",
+                "description": "Indent a table that follows its parent, such as [a.b] after [a], when formatting. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": false,
+                "startupOnly": true,
+                "advanced": true
+              },
+              {
+                "section": "evenBetterToml.formatter.indentEntries",
+                "label": "Indent Entries",
+                "description": "Indent the entries under each table header when formatting. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": false,
+                "startupOnly": true,
+                "advanced": true
+              },
+              {
+                "section": "evenBetterToml.taplo.configFile.enabled",
+                "label": "Taplo Config File",
+                "description": "Read the workspace's .taplo.toml (or taplo.toml) for schema rules and formatting. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true,
+                "advanced": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "id": "netcoredbg",
       "name": ".NET Debugger (netcoredbg)",
       "description": "Debug .NET projects.",
@@ -1873,13 +2014,13 @@
       "id": "onixlabs.git",
       "name": "Git",
       "description": "Git version control: status, history, diffs, commits, branches, remotes, tags, stashes, merges, rebases, worktree checkouts, ignore rules and per-file history.",
-      "version": "0.9.0",
+      "version": "0.10.0",
       "apiVersion": "1.14.0",
       "detail": "Drives the git installed on your machine, or one you point it at in Settings. Needs git 2.23 or later.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-git-v0.9.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.git.lock.json",
-        "sha256": "b538e5dce3bcad767d66f603694de1b745a6e78766b0ba0095d95651026c38cc",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-git-v0.10.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.git.lock.json",
+        "sha256": "3c7e91c3115904a9579edacac9e3844624902a88c63a449eddc24f17541e757d",
         "executablePath": "node_modules/@onixlabs/git/main.js"
       },
       "contributes": {

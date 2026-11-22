@@ -1092,6 +1092,7 @@ describe('PostgresEngine', (): void => {
 
     const planner: FakeClient = pgMock.clients[1];
     expect(planner.queries.map((call: QueryCall): string => call.text)).toEqual([
+      "set lock_timeout = '30s'",
       'explain (format json) select * from orders',
       'explain (format json) select * from people',
     ]);
@@ -1115,6 +1116,7 @@ describe('PostgresEngine', (): void => {
     const outcome: ExplainOutcome = await session.explain!('delete from orders', undefined, true);
 
     expect(pgMock.clients[1].queries.map((call: QueryCall): string => call.text)).toEqual([
+      "set lock_timeout = '30s'",
       'begin',
       'explain (analyze, format json) delete from orders',
       'rollback',
