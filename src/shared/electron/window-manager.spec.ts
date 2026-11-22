@@ -202,10 +202,12 @@ const electron: {
   appListeners: Map<string, () => void>;
   userData: string;
   ownerOf: unknown;
+  workArea: { x: number; y: number; width: number; height: number };
 } = vi.hoisted(() => ({
   appListeners: new Map<string, () => void>(),
   userData: '',
   ownerOf: null,
+  workArea: { x: 0, y: 0, width: 1920, height: 1080 },
 }));
 
 vi.mock('electron', () => ({
@@ -215,10 +217,10 @@ vi.mock('electron', () => ({
       void electron.appListeners.set(event, listener),
   },
   screen: {
-    getAllDisplays: (): object[] => [{ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }],
+    getAllDisplays: (): object[] => [{ workArea: electron.workArea }],
     getDisplayMatching: (): object => ({
-      workArea: { x: 0, y: 0, width: 1920, height: 1080 },
-      workAreaSize: { width: 1920, height: 1080 },
+      workArea: electron.workArea,
+      workAreaSize: { width: electron.workArea.width, height: electron.workArea.height },
     }),
   },
   // A getter, because the class is declared after this factory is hoisted.
@@ -305,6 +307,7 @@ describe('WindowManager', () => {
     electron.userData = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'window-manager-')));
     electron.appListeners.clear();
     electron.ownerOf = null;
+    electron.workArea = { x: 0, y: 0, width: 1920, height: 1080 };
     FakeWindow.created = [];
     closed = 0;
     loads = 0;
@@ -938,31 +941,47 @@ describe('WindowManager', () => {
       expect(window.minimumSize).toEqual([1125, 915]);
     });
 
-    it('modal_isRescaledAboutItsCentre_withItsLimits', () => {
-      const modal: FakeWindow = new FakeWindow();
-      modal.bounds = { x: 500, y: 200, width: 400, height: 340 };
-      modal.size = [400, 340];
-      modal.contentSize = [400, 300];
-      modal.minimumSize = [300, 200];
-      modal.maximumSize = [600, 0];
+    /**
+     * Opens a modal the way Electron does: options built from the features, then a window created
+     * with them (its frame none, as on macOS), then adopted.
+     * @param features The window-open features string.
+     * @returns Returns the modal's fake.
+     */
+    function openModal(features: string): FakeWindow {
+      const options: Electron.BrowserWindowConstructorOptions = manager.modalWindowOptions(
+        features,
+        null,
+      );
+      const modal: FakeWindow = new FakeWindow(options as Record<string, unknown>);
+      const width: number = options.width ?? 0;
+      const height: number = options.height ?? 0;
+      modal.bounds = { x: options.x ?? 0, y: options.y ?? 0, width, height };
+      modal.size = [width, height];
+      modal.contentSize = [width, height];
+      modal.minimumSize = [options.minWidth ?? 0, options.minHeight ?? 0];
+      modal.maximumSize = [options.maxWidth ?? 0, options.maxHeight ?? 0];
       manager.adoptModalWindow(real(modal), CHILD_NAME);
+      return modal;
+    }
+
+    it('modal_isRescaledAboutItsCentre_withItsLimits', () => {
+      const modal: FakeWindow = openModal(
+        'width=400,height=300,left=500,top=200,minwidth=300,minheight=200,maxwidth=600,maxheight=500,resizable=1',
+      );
 
       interfaceZoom = 150;
       manager.applyInterfaceZoom();
 
       expect(modal.minimumSize).toEqual([450, 300]);
-      expect(modal.maximumSize).toEqual([900, 0]);
-      expect(modal.bounds).toEqual({ x: 400, y: 150, width: 600, height: 490 });
+      expect(modal.maximumSize).toEqual([900, 750]);
+      expect(modal.bounds).toEqual({ x: 400, y: 150, width: 600, height: 450 });
       expect(modal.webContents.zoom).toBe(1.5);
     });
 
     it('modal_isNeverRescaledPastTheDisplay', () => {
-      const modal: FakeWindow = new FakeWindow();
-      modal.bounds = { x: 0, y: 0, width: 1500, height: 900 };
-      modal.size = [1500, 900];
-      modal.contentSize = [1500, 900];
-      modal.minimumSize = [1400, 800];
-      manager.adoptModalWindow(real(modal), CHILD_NAME);
+      const modal: FakeWindow = openModal(
+        'width=1500,height=900,minwidth=1400,minheight=800,resizable=1',
+      );
 
       interfaceZoom = 200;
       manager.applyInterfaceZoom();
@@ -971,14 +990,60 @@ describe('WindowManager', () => {
       expect(modal.minimumSize).toEqual([1920, 1080]);
     });
 
+    it('modal_heldToTheDisplayAtAHighZoom_getsItsOwnSizeBack (round trip)', () => {
+      // The welcome screen on a 1440×900 display: 1024×720 at 100% would be 2048×1440 at 200%.
+      electron.workArea = { x: 0, y: 0, width: 1440, height: 900 };
+      const modal: FakeWindow = openModal(
+        'width=1024,height=720,minwidth=960,minheight=600,maxwidth=1024,maxheight=720,resizable=1',
+      );
+
+      interfaceZoom = 200;
+      manager.applyInterfaceZoom();
+      expect(modal.bounds).toMatchObject({ width: 1440, height: 900 });
+      expect(modal.minimumSize).toEqual([1440, 900]);
+
+      interfaceZoom = 100;
+      manager.applyInterfaceZoom();
+
+      expect(modal.bounds).toMatchObject({ width: 1024, height: 720 });
+      expect(modal.minimumSize).toEqual([960, 600]);
+      expect(modal.maximumSize).toEqual([1024, 720]);
+    });
+
+    it('modal_openedAtAHighZoomAndHeldToTheDisplay_getsItsOwnSizeAtALowerOne', () => {
+      electron.workArea = { x: 0, y: 0, width: 1440, height: 900 };
+      interfaceZoom = 200;
+      const modal: FakeWindow = openModal(
+        'width=2048,height=1440,minwidth=1920,minheight=1200,maxwidth=2048,maxheight=1440,resizable=1',
+      );
+      expect(modal.bounds).toMatchObject({ width: 1440, height: 900 });
+
+      interfaceZoom = 100;
+      manager.applyInterfaceZoom();
+
+      expect(modal.bounds).toMatchObject({ width: 1024, height: 720 });
+      expect(modal.minimumSize).toEqual([960, 600]);
+    });
+
+    it('modal_resizedByItsOpener_isRescaledFromItsNewSize', () => {
+      const modal: FakeWindow = openModal('width=400,height=300');
+      // The opener fits the dialog to its content; the window reports the resize.
+      modal.setBounds({ x: 0, y: 0, width: 400, height: 240 });
+      modal.emit('resize');
+
+      interfaceZoom = 200;
+      manager.applyInterfaceZoom();
+
+      expect(modal.bounds).toMatchObject({ width: 800, height: 480 });
+    });
+
     it('modal_isLeftAsItIs_whenTheZoomItWasSizedForHasNotChanged', () => {
-      const modal: FakeWindow = new FakeWindow();
-      manager.adoptModalWindow(real(modal), CHILD_NAME);
+      const modal: FakeWindow = openModal('width=400,height=300');
 
       modal.webContents.emit('did-finish-load');
 
-      expect(modal.calls).not.toContain('setMinimumSize 800x600');
-      expect(modal.bounds).toEqual({ x: 0, y: 0, width: 1000, height: 800 });
+      expect(modal.calls).toEqual(['show']);
+      expect(modal.bounds).toMatchObject({ width: 400, height: 300 });
     });
 
     it('modalOptions_holdAStatedMinimumToTheDisplay', () => {

@@ -21,6 +21,7 @@ import { logger } from './logger';
 import type { StartupSettings } from '@shared/api/startup-settings';
 import { zoomFactorOf } from '@shared/api/interface-zoom';
 import { overlayHeightAt, trafficLightPositionAt } from './zoomed-chrome';
+import type { ModalSizing, PixelSize } from './modal-sizing';
 
 /**
  * Describes the application-supplied pieces the window manager needs to build windows: where the
@@ -215,6 +216,12 @@ export class WindowManager {
    * or when none is pending.
    */
   private pendingModalParent: BrowserWindow | null = null;
+
+  /**
+   * Holds the size the next modal window means to be, in CSS pixels, recorded with its parent when
+   * its options are built and consumed the moment it is adopted.
+   */
+  private pendingModalSizing: ModalSizing | null = null;
 
   /**
    * Initializes a new instance of the {@link WindowManager} class.
@@ -575,6 +582,21 @@ export class WindowManager {
       width: Math.max(minimum.width, Math.min(requested.width, maximum?.width ?? Infinity)),
       height: Math.max(minimum.height, Math.min(requested.height, maximum?.height ?? Infinity)),
     };
+    // What the modal asked for before the display held it, in CSS pixels, so a later zoom change can
+    // give it back what the display took (see ModalSizing).
+    const zoom: number = this.zoomFactor();
+    this.pendingModalSizing = {
+      size: {
+        width: Math.max(stated.width, Math.min(requested.width, maximum?.width ?? Infinity)) / zoom,
+        height:
+          Math.max(stated.height, Math.min(requested.height, maximum?.height ?? Infinity)) / zoom,
+      },
+      minimum: { width: stated.width / zoom, height: stated.height / zoom },
+      maximum:
+        maximum === null ? null : { width: maximum.width / zoom, height: maximum.height / zoom },
+      zoom,
+      applied: { width: 0, height: 0 },
+    };
     const position: { x: number; y: number } | null =
       standIn === null ? parseRequestedPosition(features) : centredOver(standIn.getBounds(), size);
     const rect: WindowRect | null = restoreWindowRect(
@@ -806,12 +828,11 @@ export class WindowManager {
   }
 
   /**
-   * Holds the zoom factor each modal window's size and size limits were worked out for, so a change of
-   * Interface Zoom can rescale them.
+   * Holds the size each modal window means to be, so a change of Interface Zoom can work it out again.
    */
-  private readonly modalZooms: WeakMap<BrowserWindow, number> = new WeakMap<
+  private readonly modalSizings: WeakMap<BrowserWindow, ModalSizing> = new WeakMap<
     BrowserWindow,
-    number
+    ModalSizing
   >();
 
   /**
@@ -834,10 +855,9 @@ export class WindowManager {
       return;
     }
     const factor: number = this.zoomFactor();
-    const sizedFor: number | undefined = this.modalZooms.get(window);
-    if (sizedFor !== undefined && sizedFor !== factor) {
-      this.modalZooms.set(window, factor);
-      this.rescaleModal(window, factor / sizedFor);
+    const sizing: ModalSizing | undefined = this.modalSizings.get(window);
+    if (sizing !== undefined && sizing.zoom !== factor) {
+      this.rescaleModal(window, sizing, factor);
     }
     window.webContents.setZoomFactor(factor);
     if (process.platform === 'darwin') {
@@ -858,36 +878,36 @@ export class WindowManager {
 
   /**
    * Rescales a modal window for a change of Interface Zoom. Its opener sized it, and set its limits,
-   * from its content in CSS pixels, which the zoom draws larger or smaller on screen: so its content
-   * area and its limits scale by the change, about the window's centre (and a third of the way down,
-   * as the opener places it). The renderer cannot do this itself, because its window may not be
-   * resized past limits only the main process can change, and the limits must move first.
+   * from CSS pixels, which the zoom draws larger or smaller on screen: so the size and limits it
+   * means to have (see {@link ModalSizing}) are worked out again at the new zoom, about the window's
+   * centre (and a third of the way down, as the opener places it). The renderer cannot do this
+   * itself, because its window may not be resized past limits only the main process can change, and
+   * the limits must move first.
    *
    * Nothing is allowed past the display's work area: a modal that filled most of the screen at 100%
-   * would otherwise open off it at 200%. Its content scrolls instead.
+   * would otherwise open off it at 200%. Its content scrolls instead. Because the size is worked out
+   * from what the modal means to be rather than from what it was held to, going back to a smaller
+   * zoom gives it its own size again.
    * @param window The modal window.
-   * @param scale The new zoom factor over the old.
+   * @param sizing The size it means to be.
+   * @param factor The zoom factor now in force.
    */
-  private rescaleModal(window: BrowserWindow, scale: number): void {
+  private rescaleModal(window: BrowserWindow, sizing: ModalSizing, factor: number): void {
     const area: Electron.Rectangle = screen.getDisplayMatching(window.getBounds()).workArea;
-    const [minimumWidth, minimumHeight]: number[] = window.getMinimumSize();
-    const [maximumWidth, maximumHeight]: number[] = window.getMaximumSize();
-    const [outerWidth, outerHeight]: number[] = window.getSize();
-    const [innerWidth, innerHeight]: number[] = window.getContentSize();
-    const frameWidth: number = outerWidth - innerWidth;
-    const frameHeight: number = outerHeight - innerHeight;
-    const width: number = Math.min(area.width, Math.round(innerWidth * scale) + frameWidth);
-    const height: number = Math.min(area.height, Math.round(innerHeight * scale) + frameHeight);
+    const width: number = Math.min(area.width, Math.round(sizing.size.width * factor));
+    const height: number = Math.min(area.height, Math.round(sizing.size.height * factor));
     // Limits first, so the new size is not held to the old ones. Zero means no maximum.
-    const newMinimumWidth: number = Math.min(width, Math.round(minimumWidth * scale));
-    const newMinimumHeight: number = Math.min(height, Math.round(minimumHeight * scale));
-    window.setMinimumSize(newMinimumWidth, newMinimumHeight);
-    if (maximumWidth > 0 || maximumHeight > 0) {
+    window.setMinimumSize(
+      Math.min(width, Math.round(sizing.minimum.width * factor)),
+      Math.min(height, Math.round(sizing.minimum.height * factor)),
+    );
+    if (sizing.maximum !== null) {
       window.setMaximumSize(
-        maximumWidth > 0 ? Math.max(width, Math.round(maximumWidth * scale)) : 0,
-        maximumHeight > 0 ? Math.max(height, Math.round(maximumHeight * scale)) : 0,
+        Math.max(width, Math.round(sizing.maximum.width * factor)),
+        Math.max(height, Math.round(sizing.maximum.height * factor)),
       );
     }
+    this.modalSizings.set(window, { ...sizing, zoom: factor, applied: { width, height } });
     const bounds: Electron.Rectangle = window.getBounds();
     const x: number = Math.round(bounds.x + (bounds.width - width) / 2);
     const y: number = Math.round(bounds.y + (bounds.height - height) / 3);
@@ -898,10 +918,29 @@ export class WindowManager {
       height,
     });
     logger.debug('WindowManager.rescaleModal', 'rescaled modal for interface zoom', {
-      scale,
+      factor,
       width,
       height,
     });
+  }
+
+  /**
+   * Records a modal window's own resize as the size it now means to be, unless the window manager
+   * made it. The opener fits a dialog to its content, and the user may resize one that allows it;
+   * either is what the window should come back to after a zoom change.
+   * @param window The modal window.
+   */
+  private recordModalResize(window: BrowserWindow): void {
+    const sizing: ModalSizing | undefined = this.modalSizings.get(window);
+    if (sizing === undefined || window.isDestroyed()) {
+      return;
+    }
+    const [width, height]: number[] = window.getSize();
+    if (width === sizing.applied.width && height === sizing.applied.height) {
+      return;
+    }
+    const size: PixelSize = { width: width / sizing.zoom, height: height / sizing.zoom };
+    this.modalSizings.set(window, { ...sizing, size, applied: { width, height } });
   }
 
   /**
@@ -954,8 +993,15 @@ export class WindowManager {
     const entry: RegisteredWindow<BrowserWindow> = this.registry.add('modal', window);
     this.recordChildName(window, name);
     this.options.applySecurity(window.webContents);
-    // The opener sized the modal for the zoom in force now; a later change rescales it.
-    this.modalZooms.set(window, this.zoomFactor());
+    // The opener sized the modal for the zoom in force now; a later change rescales it from what it
+    // asked for, not from what the display held it to.
+    const sizing: ModalSizing | null = this.pendingModalSizing;
+    this.pendingModalSizing = null;
+    if (sizing !== null) {
+      const [width, height]: number[] = window.getSize();
+      this.modalSizings.set(window, { ...sizing, applied: { width, height } });
+      window.on('resize', (): void => this.recordModalResize(window));
+    }
     this.applyZoom(window);
     window.webContents.on('did-finish-load', (): void => this.applyZoom(window));
     window.on('closed', (): void => {
