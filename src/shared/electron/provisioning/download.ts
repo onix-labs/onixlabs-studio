@@ -6,6 +6,7 @@ import * as path from 'node:path';
 import { Readable } from 'node:stream';
 import { createGunzip } from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
+import { tarProgram } from './tar-program';
 import { promisify } from 'node:util';
 
 /**
@@ -142,12 +143,12 @@ export async function extractArchive(
     return;
   }
   if (kind === 'tar.gz') {
-    await execFileAsync('tar', ['-xzf', archive, '-C', destination, ...strip, ...members]);
+    await execFileAsync(tarProgram(), ['-xzf', archive, '-C', destination, ...strip, ...members]);
     return;
   }
   // `tar` reads zips through libarchive on Windows and modern macOS; `unzip` is the fallback.
   if (process.platform === 'win32') {
-    await execFileAsync('tar', ['-xf', archive, '-C', destination, ...strip, ...members]);
+    await execFileAsync(tarProgram(), ['-xf', archive, '-C', destination, ...strip, ...members]);
     return;
   }
   // `unzip` wants the members before the destination flag, unlike tar's trailing operands.

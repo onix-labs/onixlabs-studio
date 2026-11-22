@@ -49,7 +49,24 @@ const CSHARP: PluginSummary = {
   installedVersion: '1.0.0',
   detail: null,
   origin: null,
-  contributions: [{ slot: 'language-server', id: 'roslyn', language: 'csharp' }],
+  contributions: [{ slot: 'language-server', id: 'roslyn', languages: ['csharp'] }],
+} as unknown as PluginSummary;
+
+/**
+ * The installed clangd plugin, which serves C and C++.
+ */
+const CLANGD: PluginSummary = {
+  id: 'clangd',
+  name: 'clangd',
+  description: '',
+  state: 'installed',
+  version: '22.1.6',
+  installedVersion: '22.1.6',
+  detail: null,
+  origin: null,
+  contributions: [
+    { slot: 'language-server', id: 'clangd', displayName: 'clangd', languages: ['cpp', 'c'] },
+  ],
 } as unknown as PluginSummary;
 
 describe('SetupStepSummary', () => {
@@ -290,5 +307,26 @@ describe('SetupStepSummary', () => {
       (name: Element): string => name.textContent?.trim() ?? '',
     );
     expect(names).toEqual(['Node.js', 'Go']);
+  });
+
+  it('render_whenClangdIsNotOnPathButItsPluginIsInstalled_reportsItAsInstalled', async () => {
+    // The plugin installs clangd into Studio's own folder, which the login shell's PATH never sees.
+    results.set([{ id: 'clangd', status: 'missing', detail: 'Not found.' }]);
+    installed.set([GIT, CLANGD]);
+
+    await render();
+
+    expect(row('clangd')?.classList).toContain('env__item--ok');
+    expect(row('clangd')?.querySelector('.env__detail')?.textContent?.trim()).toBe(
+      'Installed as the clangd plugin',
+    );
+  });
+
+  it('render_whenClangdIsMissingAndNoPluginServesC_reportsItMissing', async () => {
+    results.set([{ id: 'clangd', status: 'missing', detail: 'Not found.' }]);
+
+    await render();
+
+    expect(row('clangd')?.classList).toContain('env__item--missing');
   });
 });
