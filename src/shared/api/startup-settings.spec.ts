@@ -94,3 +94,25 @@ describe('parseStartupSettings AI Manager', () => {
     });
   });
 });
+
+describe('parseStartupSettings polled folders', () => {
+  it('keepsTheFoldersAndAnOfferedInterval', () => {
+    const parsed: StartupSettings = parseStartupSettings({
+      pollingFolders: ['/Volumes/Share/', '/mnt/nfs'],
+      pollingInterval: 5,
+    });
+
+    expect(parsed.pollingFolders).toEqual(['/Volumes/Share', '/mnt/nfs']);
+    expect(parsed.pollingInterval).toBe(5);
+  });
+
+  it('dropsWhatIsNotAnAbsoluteFolder_andAnIntervalNotOffered', () => {
+    const parsed: StartupSettings = parseStartupSettings({
+      pollingFolders: ['relative', 7, ''],
+      pollingInterval: 3,
+    });
+
+    expect(parsed.pollingFolders).toEqual([]);
+    expect(parsed.pollingInterval).toBe(2);
+  });
+});

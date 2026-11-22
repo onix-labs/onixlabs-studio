@@ -65,6 +65,87 @@ export function compileWatchPattern(glob: unknown, root: string): RegExp | null 
 }
 
 /**
+ * Rewrites one `FileSystemWatcher.globPattern` as a glob relative to the watched root, as
+ * {@link compileWatchPattern} reads it, so where it could match can be judged a folder at a time.
+ * @param glob The registered glob pattern, untrusted.
+ * @param root The absolute watched root.
+ * @returns Returns the root-relative glob with `/` separators, or null when it names nothing under
+ * the root.
+ */
+export function rootRelativeGlob(glob: unknown, root: string): string | null {
+  if (typeof glob === 'string') {
+    if (glob.startsWith('file:') || path.isAbsolute(glob)) {
+      const absolute: string | null = glob.startsWith('file:') ? safeFilePath(glob) : glob;
+      return absolute === null ? null : relativeUnder(absolute, root, '');
+    }
+    return glob;
+  }
+  if (typeof glob !== 'object' || glob === null) {
+    return null;
+  }
+  const relative: { baseUri?: unknown; pattern?: unknown } = glob;
+  if (typeof relative.pattern !== 'string') {
+    return null;
+  }
+  const base: unknown =
+    typeof relative.baseUri === 'object' && relative.baseUri !== null
+      ? (relative.baseUri as { uri?: unknown }).uri
+      : relative.baseUri;
+  if (typeof base !== 'string') {
+    return relative.pattern;
+  }
+  const basePath: string | null = base.startsWith('file:') ? safeFilePath(base) : base;
+  return basePath === null ? null : relativeUnder(basePath, root, relative.pattern);
+}
+
+/**
+ * Joins an absolute anchor's place under the root onto a pattern.
+ * @param anchor The absolute folder, or an absolute glob when `pattern` is empty.
+ * @param root The absolute watched root.
+ * @param pattern The glob relative to the anchor, or empty.
+ * @returns Returns the root-relative glob, or null when the anchor lies outside the root.
+ */
+function relativeUnder(anchor: string, root: string, pattern: string): string | null {
+  const relative: string = path.relative(root, anchor).split(path.sep).join('/');
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    return null;
+  }
+  if (pattern === '') {
+    return relative === '' ? null : relative;
+  }
+  return relative === '' ? pattern : `${relative}/${pattern}`;
+}
+
+/**
+ * Determines whether some path inside a folder could match a root-relative glob, judging the folder's
+ * segments against the glob's leading segments. It errs towards yes: a folder is only ruled out when
+ * a literal or wildcard segment of the glob cannot match it.
+ * @param directory The folder's segments, relative to the root.
+ * @param glob The glob's segments.
+ * @returns Returns true when an entry somewhere inside the folder could match.
+ */
+export function globCouldMatchBeneath(
+  directory: readonly string[],
+  glob: readonly string[],
+): boolean {
+  if (directory.length === 0) {
+    return glob.length > 0;
+  }
+  if (glob.length === 0) {
+    return false;
+  }
+  const [head, ...rest]: readonly string[] = glob;
+  if (head.includes('**')) {
+    return true;
+  }
+  // A segment with alternatives may hold a separator (`{src/a,lib}`); too clever to rule out.
+  if (head.includes('{')) {
+    return true;
+  }
+  return globToRegExp(head).test(directory[0]) && globCouldMatchBeneath(directory.slice(1), rest);
+}
+
+/**
  * Compiles a pattern anchored at an absolute folder (or an absolute glob) into a root-relative
  * matcher, or null when the folder lies outside the root.
  * @param anchor The absolute folder the pattern is relative to, or an absolute glob when `pattern` is
@@ -134,6 +215,15 @@ export class WatchRegistrations {
   private union: readonly RegExp[] | null = null;
 
   /**
+   * Holds each live registration's patterns as root-relative globs split into segments, keyed by
+   * registration id, for judging which folders a poll has to read (#1254).
+   */
+  private readonly globsById: Map<string, readonly (readonly string[])[]> = new Map<
+    string,
+    readonly (readonly string[])[]
+  >();
+
+  /**
    * Initializes a new instance of the {@link WatchRegistrations} class.
    * @param root The absolute watched root the patterns are compiled against.
    */
@@ -148,16 +238,20 @@ export class WatchRegistrations {
    */
   public register(id: string, watchers: unknown): void {
     const compiled: RegExp[] = [];
+    const globs: (readonly string[])[] = [];
     for (const watcher of Array.isArray(watchers) ? watchers : []) {
-      const matcher: RegExp | null = compileWatchPattern(
-        (watcher as { globPattern?: unknown } | null)?.globPattern,
-        this.root,
-      );
+      const pattern: unknown = (watcher as { globPattern?: unknown } | null)?.globPattern;
+      const matcher: RegExp | null = compileWatchPattern(pattern, this.root);
       if (matcher !== null) {
         compiled.push(matcher);
+        const glob: string | null = rootRelativeGlob(pattern, this.root);
+        if (glob !== null) {
+          globs.push(glob.split('/').filter((segment: string): boolean => segment !== ''));
+        }
       }
     }
     this.byId.set(id, compiled);
+    this.globsById.set(id, globs);
     this.union = null;
   }
 
@@ -168,7 +262,29 @@ export class WatchRegistrations {
    */
   public unregister(id: string): boolean {
     this.union = null;
+    this.globsById.delete(id);
     return this.byId.delete(id);
+  }
+
+  /**
+   * Determines whether a live registration could match something inside a folder, so a poll reads a
+   * folder it would otherwise skip (a build output, a dependency cache) when the server asked for
+   * what is in it: Roslyn's `obj/project.assets.json` after a restore. False when there are none.
+   * @param relativeDirectory The folder's path relative to the watched root (either separator).
+   * @returns Returns true when a registration could match an entry inside it.
+   */
+  public couldMatchBeneath(relativeDirectory: string): boolean {
+    const directory: readonly string[] = relativeDirectory
+      .split(/[\\/]/)
+      .filter((segment: string): boolean => segment !== '');
+    for (const globs of this.globsById.values()) {
+      if (
+        globs.some((glob: readonly string[]): boolean => globCouldMatchBeneath(directory, glob))
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

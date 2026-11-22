@@ -205,4 +205,28 @@ describe('WatchRegistrations', () => {
     registrations.unregister('b');
     expect(registrations.matches('B/obj/project.assets.json')).toBe(false);
   });
+
+  it('couldMatchBeneath_aFolderWhereARegistrationLooks_andNotElsewhere (#1254)', () => {
+    const registrations: WatchRegistrations = new WatchRegistrations(root);
+    registrations.register('restore', [watcher('B/obj', 'project.assets.json')]);
+    registrations.register('json', [{ globPattern: 'src/*/config/*.json' }]);
+
+    expect(registrations.couldMatchBeneath('B')).toBe(true);
+    expect(registrations.couldMatchBeneath('B/obj')).toBe(true);
+    expect(registrations.couldMatchBeneath('A/obj')).toBe(false);
+    expect(registrations.couldMatchBeneath('B/obj/Debug')).toBe(false);
+    expect(registrations.couldMatchBeneath('src/app/config')).toBe(true);
+    expect(registrations.couldMatchBeneath('src/app/bin')).toBe(false);
+  });
+
+  it('couldMatchBeneath_anywhere_forADoubleStar', () => {
+    const registrations: WatchRegistrations = new WatchRegistrations(root);
+    registrations.register('all', [watcher('', '**/*.json')]);
+
+    expect(registrations.couldMatchBeneath('A/obj/Debug')).toBe(true);
+  });
+
+  it('couldMatchBeneath_nothing_withNoRegistrations', () => {
+    expect(new WatchRegistrations(root).couldMatchBeneath('obj')).toBe(false);
+  });
 });
