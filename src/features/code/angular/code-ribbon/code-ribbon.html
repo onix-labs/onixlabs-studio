@@ -48,7 +48,7 @@
     <app-ribbon-strip-column [spread]="true">
       <app-ribbon-strip-field
         label="Syntax"
-        [options]="languageOptions"
+        [options]="languageOptions()"
         [value]="languageName()"
         [fullWidth]="false"
         (changed)="onLanguageChange($event)"
@@ -81,3 +81,7 @@
     <app-ribbon-strip-button [icon]="Icon.CODE" label="Generated" (action)="onGeneratedCode()" />
   </app-ribbon-strip-group>
 </app-ribbon-overflow>
+
+@if (rememberOffer(); as offer) {
+  <app-remember-language-modal [offer]="offer" (chosen)="onRememberChosen($event)" />
+}
