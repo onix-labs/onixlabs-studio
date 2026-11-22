@@ -77,4 +77,14 @@ describe('Accessibility', () => {
     expect(accessibility.zoomFactor()).toBe(0.75);
     expect(document.documentElement.style.getPropertyValue('--interface-zoom')).toBe('0.75');
   });
+
+  it('interfaceZoom_storedAsSomethingThatIsNotALevel_isOne_asTheMainProcessDrawsIt', () => {
+    // A stored value is read as it was written, so a hand-edited or imported 250 reaches the store.
+    localStorage.setItem('settings', JSON.stringify({ 'accessibility.interfaceZoom': 250 }));
+    const accessibility: Accessibility = TestBed.inject(Accessibility);
+    TestBed.tick();
+
+    expect(accessibility.zoomFactor()).toBe(1);
+    expect(document.documentElement.style.getPropertyValue('--interface-zoom')).toBe('1');
+  });
 });

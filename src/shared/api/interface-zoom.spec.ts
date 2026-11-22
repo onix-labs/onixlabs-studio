@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_INTERFACE_ZOOM,
   INTERFACE_ZOOM_LEVELS,
+  interfaceZoomFactor,
   type InterfaceZoom,
   parseInterfaceZoom,
   zoomFactorOf,
@@ -34,6 +35,18 @@ describe('interface zoom', () => {
     'parse_turnsAnythingElseIntoTheDefault %s',
     (candidate: unknown) => {
       expect(parseInterfaceZoom(candidate)).toBe(100);
+    },
+  );
+
+  it('interfaceZoomFactor_ofALevel_isItsFactor', () => {
+    expect(interfaceZoomFactor(150)).toBe(1.5);
+    expect(interfaceZoomFactor(75)).toBe(0.75);
+  });
+
+  it.each([[250], ['125'], ['abc'], [undefined]])(
+    'interfaceZoomFactor_ofAnythingElse %s_isOne_asTheMainProcessDrawsIt',
+    (raw: unknown) => {
+      expect(interfaceZoomFactor(raw)).toBe(1);
     },
   );
 });

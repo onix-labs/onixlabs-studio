@@ -355,6 +355,19 @@ describe('ModalWindows', () => {
     });
   });
 
+  it('features_whenTheStoredZoomIsNotALevel_sizeTheWindowAt100', () => {
+    localStorage.setItem('settings', JSON.stringify({ 'accessibility.interfaceZoom': 'abc' }));
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({});
+    windows = TestBed.inject(ModalWindows);
+
+    open();
+
+    expect(feature(owner.features!, 'width')).toBe(416);
+    expect(owner.features).not.toContain('NaN');
+    localStorage.clear();
+  });
+
   it('fit_whenTheWindowHasClosed_doesNothing', () => {
     const modal: ModalWindow | null = open();
     owner.child.closed = true;

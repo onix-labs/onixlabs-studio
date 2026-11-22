@@ -39,3 +39,15 @@ export function parseInterfaceZoom(candidate: unknown): InterfaceZoom {
 export function zoomFactorOf(level: InterfaceZoom): number {
   return level / 100;
 }
+
+/**
+ * Turns a stored Interface Zoom into the zoom factor, reading it as untrusted first. The main process
+ * draws a value that is not one of the levels at 100%, so the renderer must reckon with the same
+ * factor: an imported `250` or `"abc"` taken at face value would size windows and the room left for
+ * the window controls for a zoom no window is drawn at.
+ * @param raw The stored value.
+ * @returns Returns the zoom factor (1 for anything that is not one of the levels).
+ */
+export function interfaceZoomFactor(raw: unknown): number {
+  return zoomFactorOf(parseInterfaceZoom(raw));
+}

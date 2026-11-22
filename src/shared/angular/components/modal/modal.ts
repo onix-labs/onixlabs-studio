@@ -23,7 +23,7 @@ import {
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
-import { zoomFactorOf } from '@shared/api/interface-zoom';
+import { interfaceZoomFactor } from '@shared/api/interface-zoom';
 import {
   MODAL_WINDOW_CONFIG,
   ModalWindowHost,
@@ -519,7 +519,7 @@ export class Modal implements OnDestroy {
    * @returns Returns the available width and height in CSS pixels.
    */
   private available(owner: Window): { width: number; height: number } {
-    const zoom: number = zoomFactorOf(this.settings.value('accessibility.interfaceZoom')());
+    const zoom: number = interfaceZoomFactor(this.settings.value('accessibility.interfaceZoom')());
     return this.freestanding()
       ? { width: owner.screen.availWidth / zoom, height: owner.screen.availHeight / zoom }
       : { width: owner.innerWidth, height: owner.innerHeight };

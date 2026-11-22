@@ -9,7 +9,7 @@ import { watchChildWindowClosed } from '@shared/angular/services/child-window-cl
 import { ChildWindowStyling } from '@shared/angular/services/child-window-styling/child-window-styling';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
-import { zoomFactorOf } from '@shared/api/interface-zoom';
+import { interfaceZoomFactor } from '@shared/api/interface-zoom';
 
 /**
  * Describes the window a modal asks for: how it is sized and chromed, and whether it hangs off the
@@ -252,7 +252,7 @@ export class ModalWindows implements OnDestroy {
    * @returns Returns the zoom factor.
    */
   public zoomFactor(): number {
-    return zoomFactorOf(this.settings.value('accessibility.interfaceZoom')());
+    return interfaceZoomFactor(this.settings.value('accessibility.interfaceZoom')());
   }
 
   /**

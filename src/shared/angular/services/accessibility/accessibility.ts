@@ -11,7 +11,7 @@ import {
 } from '@angular/core';
 import { Settings } from '@shared/angular/services/settings/settings';
 import type { FocusRing, ScrollBars } from '@shared/angular/services/settings/settings-registry';
-import { zoomFactorOf } from '@shared/api/interface-zoom';
+import { interfaceZoomFactor } from '@shared/api/interface-zoom';
 
 /**
  * Applies the Application › Accessibility settings that reach across the whole interface: Reduce
@@ -64,7 +64,7 @@ export class Accessibility {
    * pixels each CSS pixel takes.
    */
   public readonly zoomFactor: Signal<number> = computed((): number =>
-    zoomFactorOf(this.settings.value('accessibility.interfaceZoom')()),
+    interfaceZoomFactor(this.settings.value('accessibility.interfaceZoom')()),
   );
 
   /**
