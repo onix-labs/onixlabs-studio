@@ -38,6 +38,21 @@ const CHANGED_HOST_KEY: RegExp =
   /REMOTE HOST IDENTIFICATION HAS CHANGED|POSSIBLE DNS SPOOFING|host key for \S+ has changed|host key has changed/i;
 
 /**
+ * Matches any of ssh's warning signs: its `@@@` banners, a `WARNING:` line, a revoked key ("REVOKED
+ * HOST KEY DETECTED"), and CheckHostIP's "differs from the key for the IP address" and "Offending key
+ * for IP" (on by default before OpenSSH 8.5, and in Windows' 8.1). Each also ends in "Host key
+ * verification failed.", and each may be an attack, so output carrying one is never classified: the
+ * user reads ssh's own warning rather than a remedy that would trust the key.
+ */
+const WARNING_SIGNS: RegExp = /@@@|WARNING:|revoked|differs from the key for the IP|Offending/i;
+
+/**
+ * Matches a line the server sent through git (`remote: …`), from a hook or the server's own
+ * messages. The server chooses its words, so none of them is read as something ssh said.
+ */
+const REMOTE_LINE: RegExp = /^\s*remote:.*$/gim;
+
+/**
  * Matches a server whose host key is not known: BatchMode's bare "Host key verification failed.",
  * strict checking's "No ED25519 host key is known for …" (RSA, ECDSA and DSA in older versions), and
  * the question asked with no terminal to answer it.
@@ -82,8 +97,10 @@ const SAFE_HOST: RegExp = /^(?:[A-Za-z0-9](?:[A-Za-z0-9._-]{0,252})|[0-9A-Fa-f:.
  * @returns Returns the failure, or null when it is neither of the two this recognises.
  */
 export function classifySshFailure(output: string): SshFailure | null {
-  const text: string = output.replace(/\r/g, '');
-  if (CHANGED_HOST_KEY.test(text)) {
+  // The server's own lines are dropped before anything is read, so a hook cannot pose as ssh or choose
+  // the host a suggested command names.
+  const text: string = output.replace(/\r/g, '').replace(REMOTE_LINE, '');
+  if (CHANGED_HOST_KEY.test(text) || WARNING_SIGNS.test(text)) {
     return null;
   }
   if (UNKNOWN_HOST.test(text)) {

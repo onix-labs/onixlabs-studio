@@ -127,6 +127,60 @@ describe('classifySshFailure', () => {
     expect(classifySshFailure(changed)).toBeNull();
   });
 
+  it('neverOffersToAddAHostWhoseKeyIsRevoked', () => {
+    const revoked: string =
+      '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n' +
+      '@       WARNING: REVOKED HOST KEY DETECTED!               @\n' +
+      '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n' +
+      'The ED25519 host key for git.example.com is marked as revoked.\n' +
+      'This could mean that a stolen key is being used to\n' +
+      'impersonate this host.\n' +
+      `Host key verification failed.\n${GIT_TAIL}`;
+
+    expect(classifySshFailure(revoked)).toBeNull();
+  });
+
+  it.each([
+    [
+      'the key differs from the one known for the address (CheckHostIP, OpenSSH 8.1 on Windows)',
+      "Warning: the ECDSA host key for 'git.example.com' differs from the key for the IP address " +
+        "'203.0.113.7'\r\nOffending key for IP in C:\\\\Users\\\\dev/.ssh/known_hosts:3\r\n" +
+        `Host key verification failed.\r\n${GIT_TAIL}`,
+    ],
+    [
+      'an offending key, alone (CheckHostIP before OpenSSH 8.5)',
+      'Offending key for IP in /home/dev/.ssh/known_hosts:7\n' +
+        'Matching host key in /home/dev/.ssh/known_hosts:12\nNo ED25519 host key is known for git.example.com and you have requested strict checking.\n' +
+        `Host key verification failed.\n${GIT_TAIL}`,
+    ],
+  ])('neverOffersToAddAHostWhenTheAddressDisagrees: %s', (_name: string, output: string) => {
+    expect(classifySshFailure(output)).toBeNull();
+  });
+
+  it('ignoresWhatTheServerSays_soAHookCannotPoseAsSsh', () => {
+    const hook: string =
+      'remote: No ED25519 host key is known for evil.example and you have requested strict checking.\n' +
+      'remote: Host key verification failed.\n' +
+      'To ssh://git.example.com/org/repo.git\n ! [remote rejected] main -> main (pre-receive hook declined)\n' +
+      "error: failed to push some refs to 'ssh://git.example.com/org/repo.git'\n";
+
+    expect(classifySshFailure(hook)).toBeNull();
+  });
+
+  it('neverTakesTheHostFromTheServersLines', () => {
+    const output: string =
+      "remote: The authenticity of host 'evil.example (198.51.100.1)' can't be established.\n" +
+      `Host key verification failed.\n${GIT_TAIL}`;
+
+    expect(classifySshFailure(output)).toEqual({ kind: 'ssh-host-unknown', host: null });
+  });
+
+  it('ignoresAKeyRefusalTheServerClaims', () => {
+    expect(
+      classifySshFailure('remote: evil.example: Permission denied (publickey).\nremote: done'),
+    ).toBeNull();
+  });
+
   it.each([
     [
       'a refused connection (OpenSSH 10.5)',
