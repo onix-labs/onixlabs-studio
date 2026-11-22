@@ -175,6 +175,24 @@ describe('FileAssociations', () => {
     ]);
   });
 
+  it('importedEntriesDifferingOnlyInCase_listOnce_theFirstKept', async (): Promise<void> => {
+    settings.set('textEditor.fileAssociations', [
+      { pattern: '*.FOO', language: 'json' },
+      { pattern: '*.foo', language: 'yaml' },
+      { pattern: '*.bar', language: 'yaml' },
+    ]);
+    await fixture.whenStable();
+
+    expect(listed()).toEqual(['*.FOO', '*.bar']);
+
+    await click('[aria-label="Remove the association for *.FOO"]');
+
+    expect(listed()).toEqual(['*.bar']);
+    expect(settings.get('textEditor.fileAssociations')).toEqual([
+      { pattern: '*.bar', language: 'yaml' },
+    ]);
+  });
+
   it('remove_takesTheEntryOut', async (): Promise<void> => {
     settings.set('textEditor.fileAssociations', [
       { pattern: '*.foo', language: 'json' },

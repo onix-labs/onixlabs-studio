@@ -65,6 +65,39 @@ describe('file-associations', () => {
     ).toBe('first');
   });
 
+  it('associatedLanguage_matchesAPathHoldingWildcardCharactersLiterally', () => {
+    // Bracketed folders are routes in Next, SvelteKit and Nuxt; "This File" saves such a path as is.
+    const associations: readonly FileAssociation[] = [
+      { pattern: '/ws/app/[id]/notes.foo', language: 'markdown' },
+      { pattern: '/ws/app/{slug}/page?.foo', language: 'json' },
+      { pattern: '[draft].txt', language: 'yaml' },
+    ];
+
+    expect(associatedLanguage('/ws/app/[id]/notes.foo', associations)).toBe('markdown');
+    expect(associatedLanguage('/ws/app/{slug}/page?.foo', associations)).toBe('json');
+    expect(associatedLanguage('/ws/[draft].txt', associations)).toBe('yaml');
+  });
+
+  it('fileAssociations_keepsTheFirstOfTwoEntriesForTheSamePattern', () => {
+    expect(
+      fileAssociations([
+        { pattern: '*.FOO', language: 'json' },
+        { pattern: '*.foo', language: 'yaml' },
+        { pattern: 'C:\\ws\\a.txt', language: 'xml' },
+        { pattern: 'c:/ws/a.txt', language: 'ini' },
+      ]),
+    ).toEqual([
+      { pattern: '*.FOO', language: 'json' },
+      { pattern: 'C:\\ws\\a.txt', language: 'xml' },
+    ]);
+  });
+
+  it('fileAssociations_givesTheSameListForTheSameValue', () => {
+    const value: readonly FileAssociation[] = [{ pattern: '*.foo', language: 'json' }];
+
+    expect(fileAssociations(value)).toBe(fileAssociations(value));
+  });
+
   it('fileAssociations_keepsOnlyWellFormedEntries', () => {
     expect(
       fileAssociations([

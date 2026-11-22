@@ -48,7 +48,7 @@
     <app-ribbon-strip-column [spread]="true">
       <app-ribbon-strip-field
         label="Syntax"
-        [options]="languageOptions"
+        [options]="languageOptions()"
         [value]="languageName()"
         [fullWidth]="false"
         (changed)="onLanguageChange($event)"

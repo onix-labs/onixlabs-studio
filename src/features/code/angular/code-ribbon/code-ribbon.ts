@@ -151,29 +151,47 @@ export class CodeRibbon {
   private readonly settings: Settings = inject(Settings);
 
   /**
-   * Holds the language list, in display order.
+   * Gets the language list, in display order: every language a file can be associated with (#1068),
+   * so a file a user association gives a language only Monaco knows (`*.cls` as Apex) is named rightly
+   * rather than read as Plain Text. A document in a language the list lacks altogether — one an agent
+   * set by id — is offered under that id, so the field never misnames it.
    */
-  private readonly languages: readonly LanguageInfo[] = this.monaco.getSupportedLanguages();
+  private readonly languages: Signal<readonly LanguageInfo[]> = computed(
+    (): readonly LanguageInfo[] => {
+      const known: readonly LanguageInfo[] = this.monaco.associableLanguages();
+      const current: string | undefined = this.activeDocument()?.language();
+      return current === undefined ||
+        known.some((info: LanguageInfo): boolean => info.id === current)
+        ? known
+        : [...known, { id: current, name: current }];
+    },
+  );
 
   /**
    * Maps a language display name to its identifier.
    */
-  private readonly idByName: ReadonlyMap<string, string> = new Map<string, string>(
-    this.languages.map((info: LanguageInfo): [string, string] => [info.name, info.id]),
+  private readonly idByName: Signal<ReadonlyMap<string, string>> = computed(
+    (): ReadonlyMap<string, string> =>
+      new Map<string, string>(
+        this.languages().map((info: LanguageInfo): [string, string] => [info.name, info.id]),
+      ),
   );
 
   /**
    * Maps a language identifier to its display name.
    */
-  private readonly nameById: ReadonlyMap<string, string> = new Map<string, string>(
-    this.languages.map((info: LanguageInfo): [string, string] => [info.id, info.name]),
+  private readonly nameById: Signal<ReadonlyMap<string, string>> = computed(
+    (): ReadonlyMap<string, string> =>
+      new Map<string, string>(
+        this.languages().map((info: LanguageInfo): [string, string] => [info.id, info.name]),
+      ),
   );
 
   /**
    * Gets the language display names offered by the syntax field.
    */
-  protected readonly languageOptions: readonly string[] = this.languages.map(
-    (info: LanguageInfo): string => info.name,
+  protected readonly languageOptions: Signal<readonly string[]> = computed((): readonly string[] =>
+    this.languages().map((info: LanguageInfo): string => info.name),
   );
 
   /**
@@ -198,7 +216,8 @@ export class CodeRibbon {
    */
   protected readonly languageName: Signal<string> = computed((): string => {
     const language: string = this.activeDocument()?.language() ?? PLAIN_TEXT_LANGUAGE_ID;
-    return this.nameById.get(language) ?? this.nameById.get(PLAIN_TEXT_LANGUAGE_ID) ?? '';
+    const names: ReadonlyMap<string, string> = this.nameById();
+    return names.get(language) ?? names.get(PLAIN_TEXT_LANGUAGE_ID) ?? '';
   });
 
   /**
@@ -507,7 +526,7 @@ export class CodeRibbon {
    */
   protected onLanguageChange(name: string): void {
     const id: string | undefined = this.tabs.activeTabId();
-    const language: string | undefined = this.idByName.get(name);
+    const language: string | undefined = this.idByName().get(name);
     if (id !== undefined && language !== undefined) {
       this.log.info('code.ribbon', 'Language changed', language);
       this.documents.setLanguage(id, language);

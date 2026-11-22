@@ -25,6 +25,7 @@ import type { RememberLanguageOffer } from './remember-language-modal/remember-l
 interface CodeRibbonInternals {
   onLanguageChange(name: string): void;
   languageName(): string;
+  languageOptions(): readonly string[];
   rememberOffer(): RememberLanguageOffer | undefined;
   onRememberChosen(choice: RememberLanguageChoice): void;
 }
@@ -222,6 +223,23 @@ describe('CodeRibbon', () => {
       expect(TestBed.inject(Settings).get('textEditor.fileAssociations')).toEqual([]);
       expect(documents.get(tab.id)?.language()).toBe('json');
       expect(internals.rememberOffer()).toBeUndefined();
+    });
+
+    it('aLanguageOnlyAnAssociationGives_isNamedInTheField_andPlainTextCanBePickedBack', () => {
+      // `apex` is not among Studio's own languages, and before Monaco loads it is not in the full
+      // list either; the field must still name it rather than call it Plain Text.
+      TestBed.inject(Settings).set('textEditor.fileAssociations', [
+        { pattern: '*.cls', language: 'apex' },
+      ]);
+      const tab: Tab = openFile('/ws/Account.cls');
+      TestBed.tick();
+      expect(documents.get(tab.id)?.language()).toBe('apex');
+      expect(internals.languageName()).toBe('apex');
+      expect(internals.languageOptions()).toContain('apex');
+
+      internals.onLanguageChange('Plain Text');
+
+      expect(documents.get(tab.id)?.language()).toBe('plaintext');
     });
 
     it('extension_carriesTheLanguageToOtherOpenFilesWithTheEnding', async () => {
