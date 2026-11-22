@@ -210,13 +210,14 @@ jobs:
           tools="$RUNNER_TEMP/gate-tools"
           mkdir -p "$tools"
           fetch() { curl -fsSL --retry 5 -o "$2" "$1"; }
-          # check <bits> <file> <expected hex>: shasum on macOS, sha<bits>sum on Windows.
+          # check <bits> <file> <expected hex>: shasum on macOS, sha<bits>sum on Windows. The file goes
+          # in on stdin: given a Windows path, sha<bits>sum escapes its output line with a leading `\`.
           check() {
             local actual
             if command -v "sha$1sum" >/dev/null; then
-              actual="$("sha$1sum" "$2" | cut -d' ' -f1)"
+              actual="$("sha$1sum" < "$2" | cut -d' ' -f1)"
             else
-              actual="$(shasum -a "$1" "$2" | cut -d' ' -f1)"
+              actual="$(shasum -a "$1" < "$2" | cut -d' ' -f1)"
             fi
             if [ -z "$3" ] || [ "$actual" != "$3" ]; then
               echo "::error::$2 does not match its published SHA-$1 (got $actual, expected '$3')"
