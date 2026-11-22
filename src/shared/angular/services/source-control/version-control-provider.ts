@@ -613,13 +613,19 @@ export class VersionControlProvider implements SourceControlProvider {
   }
 
   /**
-   * Deletes a branch on a remote, and its remote-tracking branch (#887).
+   * Deletes a branch on a remote, and its remote-tracking branch (#887), only while the remote's
+   * branch still points at the expected commit.
    * @param remote The remote to delete on.
    * @param name The branch's name on the remote, without the remote.
+   * @param expected The commit the remote's branch must still point at.
    * @returns Returns the outcome.
    */
-  public deleteRemoteBranch(remote: string, name: string): Promise<MutationResult> {
-    return this.mutate('deleteRemoteBranch', { remote, name });
+  public deleteRemoteBranch(
+    remote: string,
+    name: string,
+    expected: string,
+  ): Promise<MutationResult> {
+    return this.mutate('deleteRemoteBranch', { remote, name, expected });
   }
 
   /**

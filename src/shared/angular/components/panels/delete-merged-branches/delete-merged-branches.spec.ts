@@ -10,7 +10,7 @@ import { DeleteMergedBranches } from './delete-merged-branches';
 const DONE: MergedBranch = {
   name: 'feature/done',
   merge: { kind: 'local', into: 'main' },
-  remoteBranch: { remote: 'origin', name: 'feature/done' },
+  remoteBranch: { remote: 'origin', name: 'feature/done', expected: 'abc1234' },
 };
 
 /**

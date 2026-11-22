@@ -385,8 +385,8 @@ describe('GitVersionControl operations', () => {
       ['createTag', 'message', { name: 'x', commit: 'HEAD', message: '' }],
       ['deleteTag', 'name', { name: '-l' }],
       ['deleteRemoteTag', 'name', { remote: 'origin', name: 'x:y' }],
-      ['deleteRemoteBranch', 'name', { remote: 'origin', name: 'x:y' }],
-      ['deleteRemoteBranch', 'remote', { remote: '--mirror', name: 'x' }],
+      ['deleteRemoteBranch', 'name', { remote: 'origin', name: 'x:y', expected: 'abc1234' }],
+      ['deleteRemoteBranch', 'remote', { remote: '--mirror', name: 'x', expected: 'abc1234' }],
       ['pushTag', 'remote', { remote: '--mirror', name: 'x' }],
       ['pushAllTags', 'remote', { remote: '--mirror' }],
       ['fetchRemote', 'remote', { remote: '--all' }],
@@ -624,14 +624,52 @@ describe('GitVersionControl operations', () => {
   });
 
   describe('remote branches (#887)', () => {
+    /**
+     * Reads the commit a ref points at.
+     * @param cwd The repository.
+     * @param ref The ref.
+     * @returns Returns the commit.
+     */
+    async function tip(cwd: string, ref: string): Promise<string> {
+      return (await git(cwd, 'rev-parse', ref)).trim();
+    }
+
     it('deleteRemoteBranch_deletesTheBranchOnTheRemoteAndItsTrackingBranch', SLOW, async () => {
       const bare: string = await remote();
       await git(repo, 'push', 'origin', 'main:done');
       await git(repo, 'fetch', 'origin');
 
-      expect((await ask('deleteRemoteBranch', { remote: 'origin', name: 'done' })).ok).toBe(true);
+      expect(
+        (
+          await ask('deleteRemoteBranch', {
+            remote: 'origin',
+            name: 'done',
+            expected: await tip(repo, 'main'),
+          })
+        ).ok,
+      ).toBe(true);
       expect((await git(bare, 'branch', '--list', 'done')).trim()).toBe('');
       expect((await git(repo, 'branch', '-r', '--list', 'origin/done')).trim()).toBe('');
+    });
+
+    it('deleteRemoteBranch_refusesABranchPushedToSince_andKeepsItsCommits', SLOW, async () => {
+      // ⛔ The data-loss case: someone pushed to the branch after the commit Studio found merged.
+      const bare: string = await remote();
+      const merged: string = await tip(repo, 'main');
+      await git(repo, 'push', 'origin', 'main:shared');
+      await write('later.txt', 'later\n');
+      await commit('pushed later');
+      await git(repo, 'push', 'origin', 'HEAD:shared');
+      const later: string = await tip(repo, 'HEAD');
+
+      const answer: Answer = await ask('deleteRemoteBranch', {
+        remote: 'origin',
+        name: 'shared',
+        expected: merged,
+      });
+
+      expect(answer.ok).toBe(false);
+      expect(await tip(bare, 'refs/heads/shared')).toBe(later);
     });
 
     it('deleteRemoteBranch_leavesATagOfTheSameNameAlone', SLOW, async () => {
@@ -640,7 +678,15 @@ describe('GitVersionControl operations', () => {
       await git(repo, 'push', 'origin', 'tag', 'done');
       await git(repo, 'push', 'origin', 'main:done');
 
-      expect((await ask('deleteRemoteBranch', { remote: 'origin', name: 'done' })).ok).toBe(true);
+      expect(
+        (
+          await ask('deleteRemoteBranch', {
+            remote: 'origin',
+            name: 'done',
+            expected: await tip(repo, 'main'),
+          })
+        ).ok,
+      ).toBe(true);
       expect((await git(bare, 'tag', '--list', 'done')).trim()).toBe('done');
     });
 
@@ -651,8 +697,82 @@ describe('GitVersionControl operations', () => {
       // Deleted on the host, as when a pull request merges, and not fetched since.
       await git(bare, 'branch', '-D', 'gone');
 
-      expect((await ask('deleteRemoteBranch', { remote: 'origin', name: 'gone' })).ok).toBe(true);
+      expect(
+        (
+          await ask('deleteRemoteBranch', {
+            remote: 'origin',
+            name: 'gone',
+            expected: await tip(repo, 'main'),
+          })
+        ).ok,
+      ).toBe(true);
       expect((await git(repo, 'branch', '-r', '--list', 'origin/gone')).trim()).toBe('');
+    });
+
+    it('deleteRemoteBranch_refusesAnExpectedCommitThatIsNotAHash', SLOW, async () => {
+      await remote();
+
+      expect(
+        (await ask('deleteRemoteBranch', { remote: 'origin', name: 'x', expected: 'HEAD' })).ok,
+      ).toBe(false);
+    });
+
+    it('refs_namesEachRemotesOwnDefaultBranch', SLOW, async () => {
+      // A fork: origin's default is main, upstream's is develop.
+      await remote();
+      const upstream: string = path.join(base, 'upstream.git');
+      await git(base, 'init', '--bare', '-b', 'develop', upstream);
+      await git(repo, 'remote', 'add', 'upstream', upstream);
+      await git(repo, 'push', 'upstream', 'main:develop');
+      await git(repo, 'fetch', 'upstream');
+      await git(repo, 'remote', 'set-head', 'origin', 'main');
+      await git(repo, 'remote', 'set-head', 'upstream', 'develop');
+
+      const refs: { remotes: { name: string; defaultBranch?: string }[] } = (await ask('refs'))
+        .result as { remotes: { name: string; defaultBranch?: string }[] };
+
+      expect(
+        Object.fromEntries(refs.remotes.map((entry) => [entry.name, entry.defaultBranch])),
+      ).toEqual({ origin: 'main', upstream: 'develop' });
+    });
+
+    it('refs_marksTheRemoteBranchesMainAlreadyContains_andNotOnesAhead', SLOW, async () => {
+      await remote();
+      await git(repo, 'push', 'origin', 'main:done');
+      await git(repo, 'checkout', '-b', 'ahead');
+      await write('ahead.txt', 'ahead\n');
+      await commit('ahead');
+      await git(repo, 'push', 'origin', 'ahead');
+      await git(repo, 'checkout', 'main');
+      await git(repo, 'fetch', 'origin');
+      await git(repo, 'remote', 'set-head', 'origin', 'main');
+
+      const refs: { remotes: { branches: { name: string; mergedInto?: string }[] }[] } = (
+        await ask('refs')
+      ).result as { remotes: { branches: { name: string; mergedInto?: string }[] }[] };
+
+      expect(
+        Object.fromEntries(
+          (refs.remotes[0]?.branches ?? []).map((entry) => [entry.name, entry.mergedInto]),
+        ),
+      ).toMatchObject({
+        'origin/done': 'main',
+        'origin/ahead': undefined,
+        'origin/main': undefined,
+      });
+    });
+
+    it('refs_namesTheOtherWorktreeABranchIsCheckedOutIn', SLOW, async () => {
+      await git(repo, 'branch', 'elsewhere');
+      const other: string = path.join(base, 'other');
+      await git(repo, 'worktree', 'add', other, 'elsewhere');
+
+      const refs: { branches: { name: string; otherWorktree?: string }[] } = (await ask('refs'))
+        .result as { branches: { name: string; otherWorktree?: string }[] };
+
+      expect(
+        Object.fromEntries(refs.branches.map((entry) => [entry.name, entry.otherWorktree])),
+      ).toEqual({ elsewhere: other, main: undefined });
     });
   });
 

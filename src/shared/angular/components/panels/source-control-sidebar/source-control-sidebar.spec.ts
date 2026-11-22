@@ -297,8 +297,12 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
-  public deleteRemoteBranch(remote: string, name: string): Promise<MutationResult> {
-    this.calls.push(`deleteRemoteBranch:${remote}:${name}`);
+  public deleteRemoteBranch(
+    remote: string,
+    name: string,
+    expected: string,
+  ): Promise<MutationResult> {
+    this.calls.push(`deleteRemoteBranch:${remote}:${name}@${expected}`);
     return Promise.resolve({ success: true });
   }
 
@@ -1146,7 +1150,7 @@ describe('SourceControlSidebar', () => {
         await fixture.whenStable();
 
         expect(provider.calls.filter((call: string): boolean => call.includes('Branch'))).toEqual([
-          'deleteRemoteBranch:origin:done',
+          'deleteRemoteBranch:origin:done@d1',
           'deleteBranch:done:true',
           'deleteBranch:squashed:true',
         ]);

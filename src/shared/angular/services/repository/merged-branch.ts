@@ -13,6 +13,12 @@ export interface MergedRemoteBranch {
    * Gets the branch's name on the remote, without the remote: `feature`, not `origin/feature`.
    */
   readonly name: string;
+
+  /**
+   * Gets the commit the remote's branch must still point at for the delete to go ahead: the one last
+   * fetched, which was found merged. Anything pushed since is refused by the remote, never lost.
+   */
+  readonly expected: string;
 }
 
 /**

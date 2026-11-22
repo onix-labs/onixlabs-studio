@@ -4,8 +4,9 @@ import type { MergedBranch, MergedRemoteBranch } from './merged-branch';
 import type { GitBranch, GitRemote, GitRemoteBranch } from './repository-data';
 
 /**
- * The names taken as the default branch when the plugin does not say which it is (one before protocol
- * 1.6). Leaving a merged `main` or `master` alone is the safe mistake to make.
+ * The names taken as a default branch when the plugin does not say which it is (one before protocol
+ * 1.6, or a remote whose `HEAD` is unknown). Leaving a merged `main` or `master` alone is the safe
+ * mistake to make.
  */
 const CONVENTIONAL_DEFAULT_BRANCHES: readonly string[] = ['main', 'master'];
 
@@ -14,13 +15,12 @@ const CONVENTIONAL_DEFAULT_BRANCHES: readonly string[] = ['main', 'master'];
  * lists them: those whose work is already in the default branch, by ancestry or through a merged pull
  * request (see {@link branchMerge}).
  *
- * ⛔ Two are never offered: the checked-out branch, which git cannot delete from under itself, and the
- * default branch, which everything else is measured against. When the plugin does not name the default
- * branch, every branch others are merged into is taken as one, and so are `main` and `master`.
+ * ⛔ Never offered: the checked-out branch, a branch checked out in another worktree (git cannot delete
+ * either from under it), and the default branch, which everything else is measured against. When the
+ * plugin does not name the default branch, every branch others are merged into is taken as one, and so
+ * are `main` and `master`.
  *
- * A branch's copy on a remote is offered only when it is the branch's upstream and is still there:
- * not gone (`[gone]`), still listed among the remote-tracking branches, and not the remote's default
- * branch.
+ * A branch's copy on a remote is offered only when it is safe to lose: see {@link upstreamOnRemote}.
  * @param branches The local branches.
  * @param mergedPullRequests The host's merged pull requests.
  * @param remotes The remotes and their remote-tracking branches.
@@ -41,7 +41,7 @@ export function mergedBranches(
   ]);
   const offered: MergedBranch[] = [];
   for (const branch of branches) {
-    if (branch.current || protectedNames.has(branch.name)) {
+    if (branch.current || branch.otherWorktree !== undefined || protectedNames.has(branch.name)) {
       continue;
     }
     const merge: BranchMerge | null = branchMerge(branch, mergedPullRequests);
@@ -63,10 +63,19 @@ export function mergedBranches(
 }
 
 /**
- * Finds a branch's upstream on its remote, when it is still there and may be deleted.
+ * Finds a merged branch's upstream on its remote, when deleting it there loses nothing.
+ *
+ * ⛔ Offered only when all of these hold:
+ * - it is the branch's upstream, still among the remote-tracking branches, and not `[gone]`;
+ * - it holds nothing the local branch was not found merged with: its commit is the local tip, or is
+ *   itself merged into the default branch. A copy someone pushed to after the merge is never offered,
+ *   and the delete carries the commit it expects, so one pushed to after the last fetch is refused by
+ *   the remote;
+ * - it is not that remote's own default branch (a fork's `upstream/develop`), nor, for a remote whose
+ *   default is unknown, any of the names protected locally.
  * @param branch The local branch.
  * @param remotes The remotes and their remote-tracking branches.
- * @param protectedNames The default branch's possible names, never deleted on a remote either.
+ * @param protectedNames The default branch's possible names.
  * @returns Returns the remote branch, or undefined when there is none to offer.
  */
 function upstreamOnRemote(
@@ -82,15 +91,22 @@ function upstreamOnRemote(
   const remote: GitRemote | undefined = [...remotes]
     .sort((left: GitRemote, right: GitRemote): number => right.name.length - left.name.length)
     .find((candidate: GitRemote): boolean => upstream.startsWith(`${candidate.name}/`));
-  const stillThere: boolean =
-    remote?.branches.some((tracking: GitRemoteBranch): boolean => tracking.name === upstream) ===
-    true;
-  if (remote === undefined || !stillThere) {
+  const tracking: GitRemoteBranch | undefined = remote?.branches.find(
+    (candidate: GitRemoteBranch): boolean => candidate.name === upstream,
+  );
+  if (remote === undefined || tracking === undefined) {
+    return undefined;
+  }
+  if (tracking.commit !== branch.tip && tracking.mergedInto === undefined) {
     return undefined;
   }
   const name: string = upstream.slice(remote.name.length + 1);
-  if (name === 'HEAD' || protectedNames.has(name)) {
+  const remoteDefaults: ReadonlySet<string> =
+    remote.defaultBranch === undefined
+      ? new Set<string>([...protectedNames, ...CONVENTIONAL_DEFAULT_BRANCHES])
+      : new Set<string>([remote.defaultBranch, ...protectedNames]);
+  if (name === 'HEAD' || remoteDefaults.has(name)) {
     return undefined;
   }
-  return { remote: remote.name, name };
+  return { remote: remote.name, name, expected: tracking.commit };
 }

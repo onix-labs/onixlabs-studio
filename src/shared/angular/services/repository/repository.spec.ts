@@ -142,12 +142,18 @@ class FakeProvider implements SourceControlProvider {
           behind: this.behind,
           tip: 'c2',
         },
+        ...this.extraBranches,
       ],
       remotes: this.remoteNames.map((name: string) => ({ name, url: '', branches: [] })),
       tags: [],
       ...(this.defaultBranch === undefined ? {} : { defaultBranch: this.defaultBranch }),
     });
   }
+
+  /**
+   * Holds further local branches a test adds beside `main`.
+   */
+  public extraBranches: readonly GitBranch[] = [];
 
   /**
    * Holds the default branch returned by {@link getRefs}; undefined is a plugin that does not say.
@@ -325,8 +331,12 @@ class FakeProvider implements SourceControlProvider {
    */
   public failingRemoteBranches: ReadonlyMap<string, string> = new Map<string, string>();
 
-  public deleteRemoteBranch(remote: string, name: string): Promise<MutationResult> {
-    this.calls.push(`deleteRemoteBranch:${remote}:${name}`);
+  public deleteRemoteBranch(
+    remote: string,
+    name: string,
+    expected: string,
+  ): Promise<MutationResult> {
+    this.calls.push(`deleteRemoteBranch:${remote}:${name}@${expected}`);
     const error: string | undefined = this.failingRemoteBranches.get(name);
     return Promise.resolve(error === undefined ? { success: true } : { success: false, error });
   }
@@ -1473,7 +1483,7 @@ describe('Repository', () => {
           {
             name: 'squashed',
             merge: { kind: 'pull-request', number: 7 },
-            remoteBranch: { remote: 'origin', name: 'squashed' },
+            remoteBranch: { remote: 'origin', name: 'squashed', expected: 's1' },
           },
           { name: 'done', merge: { kind: 'local', into: 'main' } },
         ],
@@ -1499,7 +1509,7 @@ describe('Repository', () => {
           {
             name: 'feature',
             merge: { kind: 'local', into: 'main' },
-            remoteBranch: { remote: 'origin', name: 'feature' },
+            remoteBranch: { remote: 'origin', name: 'feature', expected: 'f1' },
           },
           { name: 'local-only', merge: { kind: 'local', into: 'main' } },
         ],
@@ -1507,7 +1517,7 @@ describe('Repository', () => {
       );
 
       expect(provider.calls.filter((call: string): boolean => call.includes('Branch'))).toEqual([
-        'deleteRemoteBranch:origin:feature',
+        'deleteRemoteBranch:origin:feature@f1',
         'deleteBranch:feature:true',
         'deleteBranch:local-only:true',
       ]);
@@ -1517,15 +1527,16 @@ describe('Repository', () => {
       );
     });
 
-    it('deleteMergedBranches_whenTheRemoteRefuses_keepsThatLocalBranch_andSaysWhy (#887)', async () => {
-      provider.failingRemoteBranches = new Map<string, string>([['locked', 'protected branch']]);
+    it('deleteMergedBranches_whenTheRemoteRefusesTheLease_keepsThatLocalBranch_andSaysWhy (#887)', async () => {
+      // The remote's branch moved since it was found merged, so the leased delete is refused.
+      provider.failingRemoteBranches = new Map<string, string>([['locked', 'stale info']]);
 
       const deletion: MergedBranchesDeletion = await repository.deleteMergedBranches(
         [
           {
             name: 'locked',
             merge: { kind: 'local', into: 'main' },
-            remoteBranch: { remote: 'origin', name: 'locked' },
+            remoteBranch: { remote: 'origin', name: 'locked', expected: 'l1' },
           },
           { name: 'done', merge: { kind: 'local', into: 'main' } },
         ],
@@ -1534,11 +1545,41 @@ describe('Repository', () => {
 
       expect(provider.calls).not.toContain('deleteBranch:locked:true');
       expect(deletion.deleted).toEqual(['done']);
-      expect(deletion.failed).toEqual([{ name: 'locked', error: 'protected branch' }]);
+      expect(deletion.failed).toEqual([{ name: 'locked', error: 'stale info' }]);
       expect(notifications.toasts()[0]).toMatchObject({
         severity: 'error',
-        detail: 'locked: protected branch',
+        detail: 'locked: stale info',
       });
+    });
+
+    it('deleteMergedBranches_skipsABranchCheckedOutInAnotherWorktree_beforeTouchingTheRemote (#887)', async () => {
+      provider.extraBranches = [
+        {
+          name: 'elsewhere',
+          current: false,
+          ahead: 0,
+          behind: 0,
+          tip: 'e1',
+          otherWorktree: '/work/other',
+        },
+      ];
+      await repository.refresh();
+
+      const deletion: MergedBranchesDeletion = await repository.deleteMergedBranches(
+        [
+          {
+            name: 'elsewhere',
+            merge: { kind: 'local', into: 'main' },
+            remoteBranch: { remote: 'origin', name: 'elsewhere', expected: 'e1' },
+          },
+        ],
+        true,
+      );
+
+      expect(provider.calls.filter((call: string): boolean => call.includes('Branch'))).toEqual([]);
+      expect(deletion.failed).toEqual([
+        { name: 'elsewhere', error: 'It is checked out in /work/other.' },
+      ]);
     });
 
     it('pushTag_whenNoRemoteIsNamed_usesTheDefaultRemote', async () => {

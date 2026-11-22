@@ -1843,7 +1843,11 @@ export class Repository {
    * branch merged by squash, or one whose upstream is gone.
    *
    * A branch's remote copy goes first, as a tag's does ({@link deleteTagEverywhere}): when the remote
-   * refuses, the local branch is left as it was, so nothing is half-done and the retry is obvious.
+   * refuses — including because someone pushed to the branch since it was found merged, which the
+   * expected commit catches — the local branch is left as it was, so nothing is half-done and the retry
+   * is obvious. And before the remote is touched, the local delete is checked against the branches as
+   * they are now: one checked out here or in another worktree since the dialog opened is skipped and
+   * reported, rather than left deleted on the remote and refused locally.
    * @param branches The merged branches to delete.
    * @param includeRemotes Whether to delete their copies on the remote too.
    * @returns Returns what was deleted, and what was not and why.
@@ -1865,6 +1869,11 @@ export class Repository {
     const failed: MergedBranchFailure[] = [];
     // One at a time: each is a git process against the same repository, and a remote may rate-limit.
     for (const branch of branches) {
+      const blocker: string | undefined = this.localDeleteBlocker(branch.name);
+      if (blocker !== undefined) {
+        failed.push({ name: branch.name, error: blocker });
+        continue;
+      }
       const remote: MergedRemoteBranch | undefined = includeRemotes
         ? branch.remoteBranch
         : undefined;
@@ -1872,6 +1881,7 @@ export class Repository {
         const remoteResult: MutationResult = await provider.deleteRemoteBranch(
           remote.remote,
           remote.name,
+          remote.expected,
         );
         if (!remoteResult.success) {
           failed.push({ name: branch.name, error: remoteResult.error ?? FAILED_OPERATION });
@@ -1891,6 +1901,25 @@ export class Repository {
     this.notifyMergedBranchesDeleted(outcome);
     await this.refresh();
     return outcome;
+  }
+
+  /**
+   * Says why git would refuse to delete a local branch as the branches stand now, or nothing when it
+   * would not: a branch checked out here, or in another worktree, cannot be deleted (#887).
+   * @param name The branch.
+   * @returns Returns the reason, or undefined when the delete can go ahead.
+   */
+  private localDeleteBlocker(name: string): string | undefined {
+    const branch: GitBranch | undefined = this.branchesSignal().find(
+      (candidate: GitBranch): boolean => candidate.name === name,
+    );
+    if (branch?.current === true) {
+      return $localize`:Why a merged branch was not deleted; it is checked out:It is checked out.`;
+    }
+    if (branch?.otherWorktree !== undefined) {
+      return $localize`:Why a merged branch was not deleted; another worktree has it checked out:It is checked out in ${branch.otherWorktree}:path:.`;
+    }
+    return undefined;
   }
 
   /**

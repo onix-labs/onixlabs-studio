@@ -14,7 +14,7 @@
     "node_modules/@onixlabs/git": {
       "version": "0.10.0",
       "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-git-v0.10.0/onixlabs-git-0.10.0.tgz",
-      "integrity": "sha512-dvHWdL5cjpNLyupSiR+vBOh7eRA94s+3OG7d37R8D9DLrCCQVo17NsWP0KDb203j+mBOOtSLCh9VUz6+8UpunA=="
+      "integrity": "sha512-brJJz7ujME948leh1rhjevzKbX3N+4yMwEMRwOqno95iwbNaDpdWhpuCJbP5eLNYhWwrFp+IWhNTA6f5eJwAig=="
     }
   }
 }

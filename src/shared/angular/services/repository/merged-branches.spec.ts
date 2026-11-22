@@ -125,7 +125,7 @@ describe('mergedBranches (#887)', () => {
     );
 
     expect(offered.map((candidate: MergedBranch) => candidate.remoteBranch)).toEqual([
-      { remote: 'origin', name: 'kept' },
+      { remote: 'origin', name: 'kept', expected: 'kept-tip' },
       undefined,
       undefined,
       undefined,
@@ -154,6 +154,97 @@ describe('mergedBranches (#887)', () => {
       'main',
     );
 
-    expect(offered[0]?.remoteBranch).toEqual({ remote: 'team/core', name: 'x' });
+    expect(offered[0]?.remoteBranch).toEqual({ remote: 'team/core', name: 'x', expected: 'x-tip' });
+  });
+
+  it('neverOffersAnUpstreamWithCommitsBeyondTheLocalTip', () => {
+    // ⛔ Someone pushed to origin/feature after the merge: deleting it there would lose their work.
+    const offered: readonly MergedBranch[] = mergedBranches(
+      [branch('feature', { mergedInto: 'main', upstream: 'origin/feature' })],
+      [],
+      [
+        {
+          name: 'origin',
+          url: 'u',
+          branches: [{ name: 'origin/feature', commit: 'pushed-later' }],
+        },
+      ],
+      'main',
+    );
+
+    expect(offered).toEqual([{ name: 'feature', merge: { kind: 'local', into: 'main' } }]);
+  });
+
+  it('offersAnUpstreamAheadOfTheLocalTip_whenItIsItselfMerged', () => {
+    const offered: readonly MergedBranch[] = mergedBranches(
+      [branch('feature', { mergedInto: 'main', upstream: 'origin/feature' })],
+      [],
+      [
+        {
+          name: 'origin',
+          url: 'u',
+          branches: [{ name: 'origin/feature', commit: 'later', mergedInto: 'main' }],
+        },
+      ],
+      'main',
+    );
+
+    expect(offered[0]?.remoteBranch).toEqual({
+      remote: 'origin',
+      name: 'feature',
+      expected: 'later',
+    });
+  });
+
+  it('neverOffersABranchCheckedOutInAnotherWorktree', () => {
+    const offered: readonly MergedBranch[] = mergedBranches(
+      [
+        branch('main'),
+        branch('elsewhere', { mergedInto: 'main', otherWorktree: '/work/other' }),
+        branch('done', { mergedInto: 'main' }),
+      ],
+      [],
+      [],
+      'main',
+    );
+
+    expect(names(offered)).toEqual(['done']);
+  });
+
+  it('neverOffersARemotesOwnDefaultBranch_inAFork', () => {
+    // origin's default is main; upstream's is develop, which a local branch happens to track.
+    const offered: readonly MergedBranch[] = mergedBranches(
+      [branch('develop', { mergedInto: 'main', upstream: 'upstream/develop' })],
+      [],
+      [
+        origin('main'),
+        {
+          name: 'upstream',
+          url: 'u',
+          defaultBranch: 'develop',
+          branches: [{ name: 'upstream/develop', commit: 'develop-tip' }],
+        },
+      ],
+      'main',
+    );
+
+    expect(offered).toEqual([{ name: 'develop', merge: { kind: 'local', into: 'main' } }]);
+  });
+
+  it('withARemotesDefaultUnknown_protectsMainAndMasterThere', () => {
+    const offered: readonly MergedBranch[] = mergedBranches(
+      [branch('master', { mergedInto: 'trunk', upstream: 'upstream/master' })],
+      [],
+      [
+        {
+          name: 'upstream',
+          url: 'u',
+          branches: [{ name: 'upstream/master', commit: 'master-tip' }],
+        },
+      ],
+      'trunk',
+    );
+
+    expect(offered[0]?.remoteBranch).toBeUndefined();
   });
 });
