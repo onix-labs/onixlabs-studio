@@ -11,6 +11,7 @@ import { Log } from '@shared/angular/services/log/log';
 import { CodeAgents } from '@features/code/angular/code-agents/code-agents';
 import { CodeGeneratedPanels } from '@features/code/angular/generated-code/code-generated-panels';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
+import { DocumentSorting } from '@shared/angular/services/document-sorting/document-sorting';
 import { CodeRunner } from '@features/code/angular/code-runner/code-runner';
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import {
@@ -55,6 +56,11 @@ import type { RememberLanguageOffer } from './remember-language-modal/remember-l
  * document's language is unknown or its entry has not been created yet.
  */
 const PLAIN_TEXT_LANGUAGE_ID: string = 'plaintext';
+
+/**
+ * Identifies the JSON language, whose documents the Edit menu offers Sort Document for (#1214).
+ */
+const JSON_LANGUAGE_ID: string = 'json';
 
 /**
  * Identifies the Save-As item in the Save menu button's dropdown.
@@ -151,6 +157,11 @@ export class CodeRibbon {
   private readonly settings: Settings = inject(Settings);
 
   /**
+   * Holds Sort Document, whose name the Edit menu shows (#1214).
+   */
+  private readonly sorting: DocumentSorting = inject(DocumentSorting);
+
+  /**
    * Gets the language list, in display order: every language a file can be associated with (#1068),
    * so a file a user association gives a language only Monaco knows (`*.cls` as Apex) is named rightly
    * rather than read as Plain Text. A document in a language the list lacks altogether — one an agent
@@ -227,6 +238,16 @@ export class CodeRibbon {
   protected readonly hasSymbols: Signal<boolean> = computed(
     (): boolean =>
       (this.activeDocument()?.language() ?? PLAIN_TEXT_LANGUAGE_ID) !== PLAIN_TEXT_LANGUAGE_ID,
+  );
+
+  /**
+   * Gets a value indicating whether the active document can be sorted (#1214): it is JSON, and the
+   * JSON server serves it, as the editor's right-click menu asks. Only then does the Edit menu offer
+   * Sort Document.
+   */
+  protected readonly canSort: Signal<boolean> = computed(
+    (): boolean =>
+      this.activeDocument()?.language() === JSON_LANGUAGE_ID && this.commands.canSortDocument(),
   );
 
   /**
@@ -333,6 +354,16 @@ export class CodeRibbon {
           accelerator: 'Alt+Shift+F',
           run: (): void => this.onFormat(),
         },
+        // Only for a JSON file its server serves (#1214). No accelerator: VS Code gives it none.
+        ...(this.canSort()
+          ? [
+              {
+                id: 'code.sortDocument',
+                label: this.sorting.label,
+                run: (): void => this.onSortDocument(),
+              },
+            ]
+          : []),
       ],
     },
     {
@@ -459,6 +490,14 @@ export class CodeRibbon {
   protected onFormat(): void {
     this.log.info('code.ribbon', 'Format document requested');
     this.commands.formatDocument();
+  }
+
+  /**
+   * Sorts the active document's keys, through its language server (#1214).
+   */
+  protected onSortDocument(): void {
+    this.log.info('code.ribbon', 'Sort document requested');
+    void this.commands.sortDocument();
   }
 
   /**

@@ -47,6 +47,7 @@ import {
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { Editors, RevealRequest } from '@shared/angular/services/editors/editors';
+import { DocumentSorting } from '@shared/angular/services/document-sorting/document-sorting';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
@@ -145,6 +146,11 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
    * document and a reveal request can target this editor.
    */
   private readonly editors: Editors = inject(Editors);
+
+  /**
+   * Holds Sort Document, which the Edit menu runs on this view's editor where its server sorts (#1214).
+   */
+  private readonly sorting: DocumentSorting = inject(DocumentSorting);
 
   /**
    * Holds the language-server client this view keeps its document synchronised with, so the workspace
@@ -736,6 +742,16 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
         // would otherwise lay out, so formatting has to see the tidied text.
         await pane.organizeImports();
         await pane.runAction('editor.action.formatDocument');
+      },
+      sortDocument: async (): Promise<void> => {
+        const editor: MonacoApi.editor.IStandaloneCodeEditor | null = pane.getEditor();
+        if (editor !== null) {
+          await this.sorting.sortDocument(editor);
+        }
+      },
+      offersSortDocument: (): boolean => {
+        const editor: MonacoApi.editor.IStandaloneCodeEditor | null = pane.getEditor();
+        return editor !== null && this.sorting.offersSortDocument(editor);
       },
       save: (): void => void this.documents.saveActive(),
       saveAs: (): void => void this.documents.saveActiveAs(),

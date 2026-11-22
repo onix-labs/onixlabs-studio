@@ -42,6 +42,8 @@ import { registerCsharpLanguage } from './monaco-csharp-language';
 import { registerScssLanguage } from './monaco-scss-language';
 import { registerCypherLanguage } from './monaco-cypher-language';
 import { registerGoModuleLanguages } from './monaco-go-module-language';
+import { registerSvelteLanguage } from './monaco-svelte-language';
+import { captureBuiltInFormatters } from './monaco-formatting-route';
 import { installFileLinkOpener } from './monaco-link-opener';
 import { registerTomlLanguage } from './monaco-toml-language';
 import { registerDocCommentRules } from './monaco-doc-comment-rules';
@@ -190,6 +192,33 @@ interface MonacoCssContribution {
    * Gets the Less language service defaults.
    */
   readonly lessDefaults: MonacoStylesheetDefaults;
+}
+
+/**
+ * A minimal view of Monaco's JSON language defaults, exposing only its diagnostics options. Like the
+ * stylesheet contribution, the AMD build assigns the real contribution to `languages.json`.
+ */
+interface MonacoJsonDefaults {
+  /**
+   * Gets the JSON worker's diagnostics options.
+   */
+  readonly diagnosticsOptions: Readonly<Record<string, unknown>>;
+
+  /**
+   * Sets the JSON worker's diagnostics options.
+   * @param options The options, replacing the current ones.
+   */
+  setDiagnosticsOptions(options: Readonly<Record<string, unknown>>): void;
+}
+
+/**
+ * The shape of Monaco's JSON language contribution used to disable its built-in diagnostics.
+ */
+interface MonacoJsonContribution {
+  /**
+   * Gets the JSON language service defaults.
+   */
+  readonly jsonDefaults: MonacoJsonDefaults;
 }
 
 /**
@@ -588,7 +617,10 @@ export class Monaco {
   /**
    * Disables Monaco's built-in diagnostics for a language, so a language server can be the sole
    * source of that language's diagnostics. TypeScript and JavaScript have a built-in diagnostics
-   * worker, as do CSS, SCSS and Less; other languages have none, so this is a no-op for them. The
+   * worker, as do CSS, SCSS and Less; other languages have none, so this is a no-op for them. JSON's
+   * worker keeps checking syntax, for a JSON file no server serves, but stops loading schemas (#1214):
+   * it cannot read one named by a relative `$schema`, and said so as an error on a file the JSON
+   * server checks against that very schema. The
    * change is global (Monaco's language defaults are process-wide) and idempotent, and only takes
    * effect once Monaco has loaded.
    * @param languageId The Monaco language identifier whose built-in diagnostics are disabled.
@@ -612,6 +644,19 @@ export class Monaco {
     if (stylesheet !== undefined) {
       // Only validation goes: the other options (lint rules, custom data) are carried over.
       stylesheet.setOptions({ ...stylesheet.options, validate: false });
+      return;
+    }
+    if (languageId === 'json') {
+      const json: MonacoJsonDefaults | undefined = (
+        monaco.languages as unknown as { json?: Partial<MonacoJsonContribution> }
+      ).json?.jsonDefaults;
+      // Its syntax checking stays, for a JSON file no server serves. Only its schema loading goes: it
+      // cannot read a schema, and said so as an error on a file the server checks against it.
+      json?.setDiagnosticsOptions({
+        ...json.diagnosticsOptions,
+        enableSchemaRequest: false,
+        schemaRequest: 'ignore',
+      });
       return;
     }
     const typescript: MonacoTypescriptContribution | undefined = (
@@ -816,6 +861,7 @@ export class Monaco {
     if (window.monaco !== undefined) {
       captureDocumentSymbolProviders(window.monaco);
       captureEditorCapabilities(window.monaco);
+      captureBuiltInFormatters(window.monaco);
     }
     defineThemes(window.monaco, this.settings.textEditorAccentSelection());
     registerAsmLanguage(window.monaco);
@@ -824,6 +870,7 @@ export class Monaco {
     registerCypherLanguage(window.monaco);
     registerGoModuleLanguages(window.monaco);
     registerTomlLanguage(window.monaco);
+    registerSvelteLanguage(window.monaco);
     registerDocCommentRules(window.monaco);
     this.foldingRefreshers.push(
       registerBraceFolding(
@@ -1125,6 +1172,7 @@ export class Monaco {
     try {
       captureDocumentSymbolProviders(monaco);
       captureEditorCapabilities(monaco);
+      captureBuiltInFormatters(monaco);
       defineThemes(monaco, this.settings.textEditorAccentSelection());
       registerAsmLanguage(monaco, target);
       registerScssLanguage(monaco, target);
@@ -1132,6 +1180,7 @@ export class Monaco {
       registerCypherLanguage(monaco, target);
       registerGoModuleLanguages(monaco, target);
       registerTomlLanguage(monaco, target);
+      registerSvelteLanguage(monaco, target);
       registerDocCommentRules(monaco);
       this.foldingRefreshers.push(
         registerBraceFolding(
