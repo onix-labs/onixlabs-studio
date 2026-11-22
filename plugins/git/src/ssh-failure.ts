@@ -178,12 +178,12 @@ export function sshFailureMessage(kind: SshFailureKind, host: VcsSshHost | null)
   if (kind === 'ssh-host-unknown') {
     const fix: string =
       host === null
-        ? 'Connect to it once in a terminal with ssh, or add it with ssh-keyscan'
-        : `Connect to it once in a terminal (ssh -T${port} git@${host.host}), or add it with ` +
-          `ssh-keyscan${port} ${host.host} >> ~/.ssh/known_hosts`;
+        ? 'Connect to it once in a terminal with ssh'
+        : `Connect to it once in a terminal (ssh -T${port} git@${host.host})`;
     return (
       `SSH doesn't know ${name}'s host key yet, and Studio runs git without a terminal, so it ` +
-      `can't ask you to accept it. ${fix}, then try again.`
+      `can't ask you to accept it. ${fix}, check that the fingerprint it shows is the one the ` +
+      "server's owner publishes, and accept it. Then try again."
     );
   }
   return (

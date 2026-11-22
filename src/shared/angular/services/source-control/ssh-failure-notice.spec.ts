@@ -34,17 +34,14 @@ describe('sshFailureNotice', () => {
     expect(notice?.detail).toContain('the host key of github.com');
     expect(notice?.commands).toEqual([
       'ssh -T git@github.com',
-      'ssh-keyscan github.com >> ~/.ssh/known_hosts',
+      'ssh-keyscan github.com | ssh-keygen -lf -',
     ]);
   });
 
   it('anUnknownHostOnAPort_passesThePort', () => {
     expect(
       sshFailureNotice('ssh-host-unknown', { host: '127.0.0.1', port: 2299 }, 'linux')?.commands,
-    ).toEqual([
-      'ssh -T -p 2299 git@127.0.0.1',
-      'ssh-keyscan -p 2299 127.0.0.1 >> ~/.ssh/known_hosts',
-    ]);
+    ).toEqual(['ssh -T -p 2299 git@127.0.0.1', 'ssh-keyscan -p 2299 127.0.0.1 | ssh-keygen -lf -']);
   });
 
   it('anUnknownHostThatIsNotNamed_offersNoCommand', () => {

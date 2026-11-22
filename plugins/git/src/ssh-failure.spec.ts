@@ -253,7 +253,7 @@ describe('parseSshConfig', () => {
 });
 
 describe('sshFailureMessage', () => {
-  it('namesTheHostAndBothRemediesForAnUnknownHost', () => {
+  it('namesTheHostAndAsksForTheFingerprintToBeChecked_neverWritingAKey', () => {
     const message: string = sshFailureMessage('ssh-host-unknown', {
       host: 'git.example.com',
       port: 2222,
@@ -261,7 +261,9 @@ describe('sshFailureMessage', () => {
 
     expect(message).toContain("git.example.com's host key");
     expect(message).toContain('ssh -T -p 2222 git@git.example.com');
-    expect(message).toContain('ssh-keyscan -p 2222 git.example.com >> ~/.ssh/known_hosts');
+    expect(message).toContain('fingerprint');
+    expect(message).not.toContain('known_hosts');
+    expect(message).not.toContain('ssh-keyscan');
   });
 
   it('suggestsSshAgentAndTheKeychainForARejectedKey', () => {

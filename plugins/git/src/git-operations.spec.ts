@@ -610,7 +610,7 @@ describe('GitVersionControl operations', () => {
           code: 'ssh-host-unknown',
           sshHost: { host: 'git.example.test', port: 2299 },
         });
-        expect(answer.error).toContain('ssh-keyscan -p 2299 git.example.test');
+        expect(answer.error).toContain('ssh -T -p 2299 git@git.example.test');
         expect(answer.output).toContain('Host key verification failed.');
         expect(answer.output).toContain('Could not read from remote repository');
       });

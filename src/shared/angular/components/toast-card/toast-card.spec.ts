@@ -116,7 +116,7 @@ describe('ToastCard', () => {
       ...notification('error'),
       title: 'Fetch failed — studio',
       detail: "SSH doesn't know the host key of github.com yet.",
-      commands: ['ssh -T git@github.com', 'ssh-keyscan github.com >> ~/.ssh/known_hosts'],
+      commands: ['ssh -T git@github.com', 'ssh-keyscan github.com | ssh-keygen -lf -'],
       output: 'Host key verification failed.\nfatal: Could not read from remote repository.',
     };
 
@@ -140,7 +140,7 @@ describe('ToastCard', () => {
       fixture.detectChanges();
 
       expect(commands).toEqual(unknownHost.commands);
-      expect(copied).toEqual(['ssh-keyscan github.com >> ~/.ssh/known_hosts']);
+      expect(copied).toEqual(['ssh-keyscan github.com | ssh-keygen -lf -']);
       expect(
         host
           .querySelectorAll('[data-testid="toast-copy-command"] button')[1]

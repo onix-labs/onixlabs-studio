@@ -99,7 +99,7 @@ describe('Clone (#1493)', () => {
     expect(raised[0]).toMatchObject({
       severity: 'error',
       title: "Couldn't clone shop",
-      commands: ['ssh -T git@github.com', 'ssh-keyscan github.com >> ~/.ssh/known_hosts'],
+      commands: ['ssh -T git@github.com', 'ssh-keyscan github.com | ssh-keygen -lf -'],
       output: 'Host key verification failed.',
     });
     expect(raised[0].detail).toContain('the host key of github.com');

@@ -71,16 +71,19 @@ export function sshFailureNotice(
   if (code === 'ssh-host-unknown') {
     if (server === null) {
       return {
-        detail: $localize`:SSH unknown-host failure, when the server is not known:SSH doesn't know this server's host key yet, and Studio can't ask you to accept it. Connect to the server once in a terminal, or add its key to your known hosts, then try again.`,
+        detail: $localize`:SSH unknown-host failure, when the server is not known:SSH doesn't know this server's host key yet, and Studio can't ask you to accept it. Connect to the server once in a terminal, check that the fingerprint it shows is the one the server's owner publishes, and accept it. Then try again.`,
         commands: [],
       };
     }
     const port: string = server.port === undefined ? '' : ` -p ${server.port}`;
+    // Nothing here writes a key: `ssh -T` shows the fingerprint and asks, and the second command only
+    // prints the fingerprints to compare. Appending `ssh-keyscan` to known_hosts would trust whatever
+    // key a hostile network served.
     return {
-      detail: $localize`:SSH unknown-host failure. host is a server name such as github.com:SSH doesn't know the host key of ${server.host}:host: yet, and Studio can't ask you to accept it. Connect to it once in a terminal and check the key, or add the key to your known hosts, then try again.`,
+      detail: $localize`:SSH unknown-host failure. host is a server name such as github.com:SSH doesn't know the host key of ${server.host}:host: yet, and Studio can't ask you to accept it. Connect to it once in a terminal, check that the fingerprint it shows is the one the server's owner publishes, and accept it. Then try again. The second command only prints the fingerprints, to compare.`,
       commands: [
         `ssh -T${port} git@${server.host}`,
-        `ssh-keyscan${port} ${server.host} >> ~/.ssh/known_hosts`,
+        `ssh-keyscan${port} ${server.host} | ssh-keygen -lf -`,
       ],
     };
   }
