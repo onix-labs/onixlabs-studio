@@ -40,6 +40,7 @@
       "selectionRange",
       "documentLink",
       "semanticTokens/full",
+      "semanticTokens/range",
       "documentSymbol",
       "workspace/symbol",
       "callHierarchy",
