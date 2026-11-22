@@ -51,6 +51,10 @@ import {
   WorkspaceTextEdits,
 } from '@shared/angular/services/workspace-edit/workspace-edit';
 import { markStudioProvider } from '@shared/angular/services/monaco/monaco-editor-capabilities';
+import {
+  builtInFormattingEdits,
+  setFormattingOverride,
+} from '@shared/angular/services/monaco/monaco-formatting-route';
 import { escapeMarkdown, fenced } from '@shared/angular/services/hover/hover-content';
 import type {
   HierarchyDirection,
@@ -180,6 +184,12 @@ export interface LspDocumentRef {
    * `json/sort`, which it advertises nowhere. Undefined is taken as not.
    */
   readonly sortsDocument?: boolean;
+
+  /**
+   * Gets the version of the document the server was last sent (#1214), which a fix a server offered
+   * for one version must not be applied to another. Undefined where it is not known.
+   */
+  readonly version?: number;
 
   /**
    * Gets the document's diagnostics exactly as the server sent them, codes and data included, which a
@@ -1386,10 +1396,6 @@ export class LspFeatures {
       if (this.settings.resolveSettingsForLanguage(language).defaultFormatter === 'built-in') {
         return;
       }
-      // Monaco's own formatter for its web languages registers after this one, and would win (#1214).
-      if (support.document || support.range) {
-        this.monaco.useBuiltInFormatter(language, false);
-      }
     }
     const registered: Map<string, MonacoApi.IDisposable> = this.formattingRegistered;
     if (support.document && !registered.has(`${language}:document`)) {
@@ -1397,9 +1403,15 @@ export class LspFeatures {
         provideDocumentFormattingEdits: (
           model: MonacoApi.editor.ITextModel,
           options: MonacoApi.languages.FormattingOptions,
+          token: MonacoApi.CancellationToken,
         ): Promise<MonacoApi.languages.TextEdit[] | undefined> =>
-          this.provideFormatting(model, 'textDocument/formatting', options),
+          this.serverFormats(model, 'document')
+            ? this.provideFormatting(model, 'textDocument/formatting', options)
+            : builtInFormattingEdits(monaco, model, options, token, undefined),
       };
+      // Monaco's own formatter for the language routes to this one for a model a server formats, and
+      // this one to Monaco's for a model none does (#1214).
+      markStudioProvider(provider);
       registered.set(
         `${language}:document`,
         monaco.languages.registerDocumentFormattingEditProvider(language, provider),
@@ -1411,14 +1423,13 @@ export class LspFeatures {
           model: MonacoApi.editor.ITextModel,
           range: MonacoApi.Range,
           options: MonacoApi.languages.FormattingOptions,
+          token: MonacoApi.CancellationToken,
         ): Promise<MonacoApi.languages.TextEdit[] | undefined> =>
-          this.provideFormatting(model, 'textDocument/rangeFormatting', options, {
-            range: {
-              start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
-              end: { line: range.endLineNumber - 1, character: range.endColumn - 1 },
-            },
-          }),
+          this.serverFormats(model, 'range')
+            ? this.formatRange(model, range, options)
+            : builtInFormattingEdits(monaco, model, options, token, range),
       };
+      markStudioProvider(provider);
       registered.set(
         `${language}:range`,
         monaco.languages.registerDocumentRangeFormattingEditProvider(language, provider),
@@ -1466,8 +1477,43 @@ export class LspFeatures {
         this.formattingRegistered.get(`${language}:${kind}`)?.dispose();
         this.formattingRegistered.delete(`${language}:${kind}`);
       }
-      this.monaco.useBuiltInFormatter(language, true);
     }
+  }
+
+  /**
+   * Determines whether a language server formats a model, as Studio has registered it to (#1214): the
+   * model's server formats this way, and Default Formatter has not given its language to Monaco.
+   * @param model The model.
+   * @param kind Whether the whole document or a range is formatted.
+   * @returns Returns true when the server formats it.
+   */
+  private serverFormats(model: MonacoApi.editor.ITextModel, kind: 'document' | 'range'): boolean {
+    const support: LspFormattingSupport | undefined = this.resolve(model)?.formatting;
+    return (
+      support !== undefined &&
+      (kind === 'document' ? support.document : support.range) &&
+      this.formattingRegistered.has(`${model.getLanguageId()}:${kind}`)
+    );
+  }
+
+  /**
+   * Asks a model's server to format a range of it.
+   * @param model The model.
+   * @param range The range, one-based.
+   * @param options The editor's indentation.
+   * @returns Returns the edits, or undefined when the server does not answer.
+   */
+  private formatRange(
+    model: MonacoApi.editor.ITextModel,
+    range: MonacoApi.IRange,
+    options: MonacoApi.languages.FormattingOptions,
+  ): Promise<MonacoApi.languages.TextEdit[] | undefined> {
+    return this.provideFormatting(model, 'textDocument/rangeFormatting', options, {
+      range: {
+        start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
+        end: { line: range.endLineNumber - 1, character: range.endColumn - 1 },
+      },
+    });
   }
 
   /**
@@ -2814,6 +2860,25 @@ export class LspFeatures {
       return;
     }
     this.registered = true;
+    // Monaco's own formatters of JSON, CSS, HTML and the rest hand a model a server formats to the
+    // server, whichever Monaco picks (#1214).
+    setFormattingOverride(
+      monaco,
+      (
+        model: MonacoApi.editor.ITextModel,
+        options: MonacoApi.languages.FormattingOptions,
+        range: MonacoApi.Range | undefined,
+      ): Promise<MonacoApi.languages.TextEdit[] | undefined> | undefined => {
+        if (range === undefined) {
+          return this.serverFormats(model, 'document')
+            ? this.provideFormatting(model, 'textDocument/formatting', options)
+            : undefined;
+        }
+        return this.serverFormats(model, 'range')
+          ? this.formatRange(model, range, options)
+          : undefined;
+      },
+    );
     // Suppress Monaco's heuristic semantic tokens for any model a language server can serve, so the
     // server's accurate tokens are the sole source and the heuristic does no redundant work.
     this.monaco.suppressHeuristicTokensWhen((model: MonacoApi.editor.ITextModel): boolean =>
@@ -3635,21 +3700,31 @@ export class LspFeatures {
 
   /**
    * Applies a CSS quick fix (#1214): the edits its `_css.applyCodeAction` command carries, to the
-   * document they name, as one step of undo.
+   * document they name, as one step of undo. The server made them for one version of the document:
+   * once the server is up to date with the editor, a fix offered for an older version is refused,
+   * since its edits would land in the wrong places.
    * @param model The editor model the fix was offered in.
    * @param ref The document.
    * @param command The command.
    * @returns Returns whether the fix was applied, or why it was not.
    */
-  private applyCssCodeAction(
+  private async applyCssCodeAction(
     model: MonacoApi.editor.ITextModel,
     ref: LspDocumentRef,
     command: LspCommand,
-  ): LspCommandOutcome {
-    const [uri, , raw]: readonly unknown[] = command.arguments ?? [];
+  ): Promise<LspCommandOutcome> {
+    const [uri, version, raw]: readonly unknown[] = command.arguments ?? [];
     const edits: MonacoApi.editor.IIdentifiedSingleEditOperation[] | null = textEditsOf(raw);
-    if (uri !== ref.uri || edits === null) {
+    if (uri !== ref.uri || typeof version !== 'number' || edits === null) {
       return { ran: false, reason: "The language server's fix couldn't be read." };
+    }
+    await ref.sync?.(model.getValue());
+    const current: number | undefined = this.resolve(model)?.version;
+    if (current !== undefined && current !== version) {
+      return {
+        ran: false,
+        reason: 'The document changed after the fix was offered. Open Quick Fix again.',
+      };
     }
     applyAsOneStep(model, edits);
     return { ran: true };

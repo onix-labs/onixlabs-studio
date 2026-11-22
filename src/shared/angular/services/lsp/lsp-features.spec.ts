@@ -344,8 +344,8 @@ describe('LspFeatures', () => {
   let formattingSupport: LspFormattingSupport | undefined;
   let navigationSupport: LspNavigationSupport | undefined;
   let sortsDocument: boolean | undefined;
-  /** Each time Monaco's own formatter of a language was turned on or off. */
-  let builtInFormatters: string[];
+  /** The version of the document the server was last sent, when a test gives one. */
+  let documentVersion: number | undefined;
   let inlayHintSupport: LspInlayHintSupport | undefined;
   /** What the main process answers a project formatting request with, and what it was asked. */
   let projectFormatAnswer: unknown;
@@ -382,7 +382,7 @@ describe('LspFeatures', () => {
     formattingSupport = undefined;
     navigationSupport = undefined;
     sortsDocument = undefined;
-    builtInFormatters = [];
+    documentVersion = undefined;
     inlayHintSupport = undefined;
     structureSupport = undefined;
     autoInsertTriggers = undefined;
@@ -454,8 +454,6 @@ describe('LspFeatures', () => {
       useAutoInsert: (handler: (editor: unknown, ch: string) => void): void => {
         autoInsertHandler = handler;
       },
-      useBuiltInFormatter: (language: string, enabled: boolean): void =>
-        void builtInFormatters.push(`${language}:${enabled ? 'on' : 'off'}`),
     };
     TestBed.configureTestingModule({ providers: [{ provide: Monaco, useValue: monaco }] });
     const editors: Editors = TestBed.inject(Editors);
@@ -477,6 +475,7 @@ describe('LspFeatures', () => {
             ...(formattingSupport === undefined ? {} : { formatting: formattingSupport }),
             ...(navigationSupport === undefined ? {} : { navigation: navigationSupport }),
             ...(sortsDocument === undefined ? {} : { sortsDocument }),
+            ...(documentVersion === undefined ? {} : { version: documentVersion }),
             ...(inlayHintSupport === undefined ? {} : { inlayHints: inlayHintSupport }),
             ...(structureSupport === undefined ? {} : { structure: structureSupport }),
             ...(autoInsertTriggers === undefined ? {} : { autoInsertTriggers }),
@@ -705,17 +704,23 @@ describe('LspFeatures', () => {
       });
     });
 
-    it('monacosOwnFormatter_isTurnedOff_whereTheServerFormatsOneOfMonacosLanguages (#1214)', async () => {
+    it('formatDocument_asksNoServer_forAModelNoServerServes (#1214)', async () => {
+      formattingSupport = ROSLYN;
       const features: LspFeatures = await build();
-      const settings: Settings = TestBed.inject(Settings);
+      features.enableFormatting('csharp', ROSLYN);
 
-      features.enableFormatting('json', ROSLYN);
-      expect(builtInFormatters).toEqual(['json:off']);
+      const edits: unknown = await captured.formatting
+        ?.get('csharp:document')
+        ?.provideDocumentFormattingEdits?.(
+          fakeModel('inmemory://model/unsaved', 'csharp'),
+          OPTIONS,
+        );
 
-      settings.setLanguageOverride('json', 'defaultFormatter', 'built-in');
-      TestBed.tick();
-      expect(builtInFormatters).toEqual(['json:off', 'json:on']);
-      expect(captured.formatting?.has('json:document')).toBe(false);
+      // Monaco's own formatter answers for it; this fake Monaco has none.
+      expect(edits).toBeUndefined();
+      expect(requests.filter((request) => request.method === 'textDocument/formatting')).toEqual(
+        [],
+      );
     });
 
     it('formatOnType_bringsTheServerUpToDate_thenSendsThePositionAndCharacter', async () => {
@@ -2936,6 +2941,7 @@ describe('LspFeatures', () => {
 
     it('aCssQuickFix_appliesTheEditsItCarries_asOneStepOfUndo', async () => {
       codeActionSupport = 'actions';
+      documentVersion = 4;
       const features: LspFeatures = await build();
       const fixed: SortedModel = jsonModel(['.box {', '  colr: red;', '}']);
       const edit: unknown = {
@@ -2958,6 +2964,32 @@ describe('LspFeatures', () => {
       ]);
       expect(fixed.steps).toEqual(['stop', 'edit', 'stop']);
       expect(requests.map((request) => request.method)).not.toContain('workspace/executeCommand');
+    });
+
+    it('aCssQuickFix_forAnOlderVersionOfTheDocument_isRefused', async () => {
+      codeActionSupport = 'actions';
+      documentVersion = 5;
+      const order: string[] = [];
+      syncHook = (): Promise<void> => {
+        order.push('sync');
+        return Promise.resolve();
+      };
+      const features: LspFeatures = await build();
+      const fixed: SortedModel = jsonModel(['.box {', '  colr: red;', '}']);
+
+      expect(
+        await features.executeCommand(fixed.model, {
+          title: "Rename to 'color'",
+          command: '_css.applyCodeAction',
+          arguments: ['file:///root/app.ts', 4, []],
+        }),
+      ).toEqual({
+        ran: false,
+        reason: 'The document changed after the fix was offered. Open Quick Fix again.',
+      });
+      // The server is brought up to date first, so the version compared is the editor's.
+      expect(order).toEqual(['sync']);
+      expect(fixed.steps).toEqual([]);
     });
 
     it('aCssQuickFix_forAnotherDocument_isNotApplied', async () => {

@@ -1,5 +1,5 @@
 {
-  "revision": 72,
+  "revision": 73,
   "plugins": [
     {
       "id": "pyright",

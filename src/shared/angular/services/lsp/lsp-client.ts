@@ -1786,6 +1786,7 @@ export class LspClient implements OnDestroy {
       runTests: (lens: unknown): void => void this.runTests(sessionId, tracked, lens),
       navigation: this.navigationSupport.get(sessionId),
       sortsDocument: DOCUMENT_SORTING_SERVERS.has(tracked.serverId),
+      version: tracked.version,
       completion: this.assistSupport.get(sessionId)?.completion ?? null,
       signatureHelp: this.assistSupport.get(sessionId)?.signatureHelp ?? null,
       diagnostics: this.serverDiagnostics.get(tracked.documentId) ?? [],
