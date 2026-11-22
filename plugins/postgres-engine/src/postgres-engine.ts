@@ -49,6 +49,13 @@ const TEMPORAL_OIDS: ReadonlySet<number> = new Set<number>([1082, 1083, 1266, 11
 const INT8_OID: number = 20;
 
 /**
+ * Bounds how long an explanation waits for a lock: long enough for an ordinary wait, short enough
+ * that a lock the user's own open transaction holds ends in an error rather than a Plan tab that
+ * never fills.
+ */
+const EXPLAIN_LOCK_TIMEOUT: string = "set lock_timeout = '30s'";
+
+/**
  * The type oid of `text[]`, whose parser reads an array's items as the server wrote them.
  */
 const TEXT_ARRAY_OID: number = 1009;
@@ -885,7 +892,10 @@ class PostgresSession implements EngineSession {
    * client of its own so neither the tree's client nor an open manual transaction is touched. Analyzing
    * runs the statement, so each analyzed statement runs inside a transaction that is rolled back: its
    * writes are undone, though a sequence it advanced stays advanced, as PostgreSQL never rolls those
-   * back.
+   * back. A script cannot end that transaction early: only an explainable statement (a query or a
+   * write, never `COMMIT`, `ROLLBACK` or `CALL`) can follow `EXPLAIN`, so each is rolled back whatever
+   * it is. Lock waits are bounded, so a plan never hangs on a lock the user's own open transaction
+   * holds.
    * @param sql The text, one statement or several.
    * @param database The database, or the connection's own.
    * @param analyze Whether to run the statements and report what actually happened.
@@ -900,6 +910,11 @@ class PostgresSession implements EngineSession {
       return { plans, failed: true, message: describeError(error) };
     }
     try {
+      try {
+        await client.query(EXPLAIN_LOCK_TIMEOUT);
+      } catch (error: unknown) {
+        return { plans, failed: true, message: describeError(error) };
+      }
       for (const statement of splitStatements(sql)) {
         try {
           if (analyze === true) {
