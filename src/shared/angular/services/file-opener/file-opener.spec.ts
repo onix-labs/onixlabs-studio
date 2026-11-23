@@ -16,6 +16,7 @@ import {
 } from '@shared/angular/services/dock-layout/dock-tree';
 import { Icon } from '@shared/angular/icons/icon';
 import { RecentItem, RecentItems } from '@shared/angular/services/recent-items/recent-items';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { WorkspaceAgentStart, Workspaces } from '../workspaces/workspaces';
@@ -82,7 +83,8 @@ interface ImageOpenerCalls {
 
 /**
  * Builds a fake transport whose open/open-file/reopen-file channels resolve with
- * {@link nextSelection} and whose reopen-folder channel resolves with {@link nextListing}.
+ * {@link nextSelection} and whose open-folder and reopen-folder channels resolve with
+ * {@link nextListing}.
  */
 function fakeBridge(): Bridge {
   return {
@@ -94,7 +96,10 @@ function fakeBridge(): Bridge {
       ) {
         return Promise.resolve(nextSelection as T);
       }
-      if (channel === (WorkspaceChannel.ReopenFolder as string)) {
+      if (
+        channel === (WorkspaceChannel.OpenFolder as string) ||
+        channel === (WorkspaceChannel.ReopenFolder as string)
+      ) {
         return Promise.resolve(nextListing as T);
       }
       if (channel === (FileChannel.Read as string)) {
@@ -532,6 +537,35 @@ describe('FileOpener', () => {
     expect(await opener.reopenDirectory('/ws', start)).toBe(true);
 
     expect(workspaces.takeAgentStart(tabs.tabs()[0].id)).toBe(start);
+  });
+
+  it('reopenFile_ofAnSvgThatOpensAsCode_recordsItBeforeAnswering_orAnswersFalse', async () => {
+    TestBed.inject(Settings).set('imageViewer.openSvgAs', 'code');
+    nextSelection = { kind: 'image', path: '/ws/logo.svg' };
+    nextFileInfo = { path: '/ws/logo.svg', name: 'logo.svg', extension: '.svg', content: '<svg/>' };
+
+    expect(await opener.reopenFile('/ws/logo.svg')).toBe(true);
+    expect(TestBed.inject(RecentItems).items()[0]).toMatchObject({ path: '/ws/logo.svg' });
+
+    nextFileInfo = null;
+    expect(await opener.reopenFile('/ws/logo.svg')).toBe(false);
+  });
+
+  it('openFolderInteractive_opensTheChosenFolder_asAWorkspaceTabAndARecentItem', async () => {
+    nextListing = ROOT_LISTING;
+
+    expect(await opener.openFolderInteractive()).toBe(ROOT_LISTING.path);
+
+    expect(tabs.tabs().map((tab: Tab): string => tab.type)).toEqual(['directory']);
+    expect(TestBed.inject(RecentItems).items()[0]).toMatchObject({
+      path: ROOT_LISTING.path,
+      kind: 'directory',
+    });
+  });
+
+  it('openFolderInteractive_whenCancelled_opensNothing', async () => {
+    expect(await opener.openFolderInteractive()).toBeNull();
+    expect(tabs.tabs()).toHaveLength(0);
   });
 
   it('reopenDirectory_whenUntrusted_opensNothing', async () => {

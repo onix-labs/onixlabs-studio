@@ -369,6 +369,66 @@ describe('WorkspaceManager', () => {
       expect(workspace.isRoot(outside)).toBe(true);
     });
 
+    it('reopenFolder_ofATrustedPath_makesItTheNewestRemembered', async () => {
+      trusted.remember(outside);
+      trusted.remember(path.join(sandbox, 'opened-since'));
+
+      await invoke(WorkspaceChannel.ReopenFolder, outside);
+
+      expect(trusted.list()[0]).toBe(outside);
+    });
+
+    it('reopenFile_ofATrustedPath_makesItTheNewestRemembered', async () => {
+      trusted.remember(secret);
+      trusted.remember(path.join(sandbox, 'opened-since'));
+
+      await invoke(WorkspaceChannel.ReopenFile, secret);
+
+      expect(trusted.list()[0]).toBe(secret);
+    });
+
+    it('reopenFolder_forgottenWhileItIsListed_staysForgotten', async () => {
+      trusted.remember(outside);
+
+      const reopening: Promise<unknown> = invoke(WorkspaceChannel.ReopenFolder, outside);
+      trusted.forget(outside);
+      await reopening;
+
+      expect(trusted.has(outside)).toBe(false);
+    });
+
+    it('reopenFile_merelyWithinTheWorkspace_isNotRemembered', async () => {
+      const file: string = inWorkspace('a.txt');
+
+      expect(await invoke(WorkspaceChannel.ReopenFile, file)).toMatchObject({ kind: 'file' });
+
+      expect(trusted.has(file)).toBe(false);
+    });
+
+    it('openFile_howeverMany_neverForgetsTheFolderTheyCameFrom', async () => {
+      // Two of each origin, so a handful of files is more than the store holds.
+      const small: InstanceType<typeof TrustedPaths> = new TrustedPaths(
+        path.join(sandbox, 'small.json'),
+        2,
+      );
+      small.remember(workspaceRoot);
+      new WorkspaceManager(
+        (): BrowserWindow | null => null,
+        workspace,
+        small,
+        new RunTokens({ decisionFor: (): RepositoryTrustDecision => decision }),
+      ).register();
+
+      for (const name of ['one.txt', 'two.txt', 'three.txt']) {
+        fs.writeFileSync(inWorkspace(name), 'x');
+        await invoke(WorkspaceChannel.OpenFile, inWorkspace(name));
+      }
+
+      expect(small.has(workspaceRoot)).toBe(true);
+      expect(small.has(inWorkspace('one.txt'))).toBe(false);
+      expect(small.has(inWorkspace('three.txt'))).toBe(true);
+    });
+
     it('reopenFolder_ofATrustedFolderThatIsGone_leavesNoRootBehind', async () => {
       const gone: string = path.join(sandbox, 'gone');
       trusted.remember(gone);

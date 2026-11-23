@@ -527,7 +527,7 @@ describe('FileManager', () => {
       // Opening a workspace file remembers its name, and the agent's shell can replace a file by a link.
       const link: string = path.join(directory, 'planted');
       fs.symlinkSync(secret, link);
-      trusted.remember(link);
+      trusted.rememberOpened(link);
 
       expect((await invoke<FileWriteResult>(FileChannel.Write, link, 'x')).success).toBe(false);
 
