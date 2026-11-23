@@ -23,7 +23,7 @@ import {
 } from '../../../services/dock-layout/pointer-coalesce';
 import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 import { Icon } from '@shared/angular/icons/icon';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { FileIcon } from '@shared/angular/components/file-icon/file-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { DockPanelOutlet } from '../dock-panel-outlet/dock-panel-outlet';
 
@@ -66,7 +66,7 @@ const FLYOUT_EDGE_GAP: number = 6;
  */
 @Component({
   selector: 'app-dock-collapsed-strip',
-  imports: [AppIcon, DockPanelOutlet, Button],
+  imports: [FileIcon, DockPanelOutlet, Button],
   templateUrl: './dock-collapsed-strip.html',
   styleUrl: './dock-collapsed-strip.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

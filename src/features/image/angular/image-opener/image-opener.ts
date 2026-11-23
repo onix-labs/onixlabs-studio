@@ -1,4 +1,4 @@
-import { inject, Service } from '@angular/core';
+import { inject, Service, signal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { ImageFileOpener } from '@shared/angular/services/file-opener/image-file-opener';
@@ -41,6 +41,7 @@ export class ImageOpener implements ImageFileOpener {
       id,
       title: document.fileName,
       icon: Icon.IMAGE_FILE,
+      filePath: signal<string | null>(path).asReadonly(),
       role: 'document',
       component: ImageWellPanel,
       dirty: document.dirty,

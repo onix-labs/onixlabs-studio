@@ -22,6 +22,7 @@ import { Settings } from '@shared/angular/services/settings/settings';
 import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { FileIcon } from '@shared/angular/components/file-icon/file-icon';
 import { Chip } from '@shared/angular/components/chip/chip';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
@@ -119,7 +120,17 @@ type ProblemRow =
 
 @Component({
   selector: 'app-problems-panel',
-  imports: [Chip, Button, AppIcon, CdkMenuTrigger, Dropdown, Menu, PanelToolbar, TreeView],
+  imports: [
+    Chip,
+    Button,
+    AppIcon,
+    FileIcon,
+    CdkMenuTrigger,
+    Dropdown,
+    Menu,
+    PanelToolbar,
+    TreeView,
+  ],
   templateUrl: './problems-panel.html',
   styleUrl: './problems-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

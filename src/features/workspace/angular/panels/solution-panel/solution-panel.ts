@@ -45,6 +45,7 @@ import {
 } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { FileIcon } from '@shared/angular/components/file-icon/file-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { PanelStatus } from '@shared/angular/components/panel-status/panel-status';
@@ -171,6 +172,7 @@ interface PendingProjectAction {
   selector: 'app-solution-panel',
   imports: [
     AppIcon,
+    FileIcon,
     TreeView,
     ExplorerToolbar,
     HighlightedText,
@@ -1460,6 +1462,42 @@ export class SolutionPanel {
         return row.expanded ? Icon.FOLDER_OPEN : Icon.DIRECTORY;
       default:
         return this.fileIconFor(row.label);
+    }
+  }
+
+  /**
+   * Gets the path an icon theme matches a row by. A solution's row stands for the workspace and opens
+   * nothing, so it goes by its solution file, when there is one.
+   * @param row The row.
+   * @returns Returns the path, or null when there is none.
+   */
+  public iconPathOf(row: SolutionRow): string | null {
+    switch (row.kind) {
+      case 'solution':
+        return this.solution.model()?.solution?.path ?? row.label;
+      case 'folder':
+      case 'item-folder':
+        return row.label;
+      default:
+        return row.path;
+    }
+  }
+
+  /**
+   * Gets what an icon theme matches a row as: a solution without a solution file is the workspace's
+   * root folder.
+   * @param row The row.
+   * @returns Returns the kind.
+   */
+  public iconKindOf(row: SolutionRow): 'file' | 'folder' | 'root' {
+    switch (row.kind) {
+      case 'solution':
+        return this.solution.model()?.solution == null ? 'root' : 'file';
+      case 'folder':
+      case 'item-folder':
+        return 'folder';
+      default:
+        return 'file';
     }
   }
 

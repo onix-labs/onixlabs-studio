@@ -11,7 +11,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Chip } from '@shared/angular/components/chip/chip';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { FileIcon } from '@shared/angular/components/file-icon/file-icon';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 import { FindResultItem } from '@shared/angular/components/find-panel/find-adapter';
 import { fileIconFor } from '@shared/angular/icons/file-icon';
@@ -80,7 +80,7 @@ export type SearchResultRow = SearchFileRow | SearchMatchRow;
  */
 @Component({
   selector: 'app-search-results-tree',
-  imports: [Chip, AppIcon, TreeView],
+  imports: [Chip, FileIcon, TreeView],
   templateUrl: './search-results-tree.html',
   styleUrl: './search-results-tree.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

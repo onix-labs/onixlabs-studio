@@ -9,7 +9,7 @@
   <ng-template let-row>
     @let result = rowOf(row);
     @if (result.kind === 'file') {
-      <app-icon class="tree-icon" [icon]="fileIcon(result.file)" />
+      <app-file-icon class="tree-icon" [path]="result.file" [icon]="fileIcon(result.file)" />
       <span class="tree-name" [title]="result.file">{{ result.file }}</span>
       <app-chip class="tree-count">{{ result.count }}</app-chip>
     } @else {

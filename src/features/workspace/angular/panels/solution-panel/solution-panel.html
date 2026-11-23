@@ -35,10 +35,14 @@
     <!-- A row being renamed keeps its icon; the tree's field takes the place of the rest. -->
     <ng-template let-row let-editing="editing">
       @let r = rowOf(row);
-      <app-icon
+      <app-file-icon
         class="tree-icon"
         [class.tree-icon--folder]="r.kind === 'folder' || r.kind === 'item-folder'"
         [class.tree-icon--project]="r.kind === 'project' || r.kind === 'solution'"
+        [path]="iconPathOf(r)"
+        [kind]="iconKindOf(r)"
+        [expanded]="r.expanded"
+        [named]="r.kind === 'project' || r.kind === 'solution'"
         [icon]="iconFor(r)"
       />
       @if (!editing) {

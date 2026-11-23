@@ -42,9 +42,12 @@
            icon stays, so a placeholder already reads as the kind of entry it is about to become. -->
       <ng-template let-row let-editing="editing">
         @let node = nodeOf(row);
-        <app-icon
+        <app-file-icon
           class="tree-icon"
           [class.tree-icon--folder]="node.type === 'directory'"
+          [path]="node.path"
+          [kind]="node.type === 'directory' ? 'folder' : 'file'"
+          [expanded]="node.expanded"
           [icon]="iconFor(node)"
         />
         @if (!editing) {

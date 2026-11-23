@@ -91,7 +91,11 @@
             }
           }
           @case ('file') {
-            <app-icon class="tree-icon" [icon]="fileIcon(entry.file)" />
+            <app-file-icon
+              class="tree-icon"
+              [path]="entry.file.label"
+              [icon]="fileIcon(entry.file)"
+            />
             <span class="tree-name">{{ entry.file.label }}</span>
             <app-chip class="tree-count">{{ entry.file.problems.length }}</app-chip>
           }

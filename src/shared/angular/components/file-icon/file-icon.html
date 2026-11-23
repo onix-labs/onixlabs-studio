@@ -1,0 +1,6 @@
+@if (picture(); as source) {
+  <!-- An image element, never inline markup: an image's SVG cannot run scripts or load anything. -->
+  <img class="file-icon__picture" [src]="source" alt="" draggable="false" />
+} @else {
+  <app-icon [icon]="icon()" />
+}

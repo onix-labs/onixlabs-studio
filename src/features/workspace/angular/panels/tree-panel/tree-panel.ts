@@ -46,6 +46,7 @@ import {
 } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { FileIcon } from '@shared/angular/components/file-icon/file-icon';
 import { MenuItem } from '@shared/angular/components/menu/menu';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Modal } from '@shared/angular/components/modal/modal';
@@ -160,6 +161,7 @@ export interface NameEdit {
     Button,
     ButtonRow,
     AppIcon,
+    FileIcon,
     TreeView,
     ExplorerToolbar,
     HighlightedText,

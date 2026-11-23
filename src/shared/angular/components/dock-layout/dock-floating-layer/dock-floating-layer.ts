@@ -15,6 +15,7 @@ import {
 } from '../../../services/dock-layout/pointer-coalesce';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { FileIcon } from '@shared/angular/components/file-icon/file-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { DockPanelOutlet } from '../dock-panel-outlet/dock-panel-outlet';
 
@@ -61,7 +62,7 @@ interface ResolvedFloat {
  */
 @Component({
   selector: 'app-dock-floating-layer',
-  imports: [DockPanelOutlet, AppIcon, Button],
+  imports: [DockPanelOutlet, AppIcon, FileIcon, Button],
   templateUrl: './dock-floating-layer.html',
   styleUrl: './dock-floating-layer.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

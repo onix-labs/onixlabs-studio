@@ -48,7 +48,7 @@
                 [class.app-menu-panel__item-check--checked]="item.checked"
               ></span>
             } @else if (item.icon; as icon) {
-              <app-icon [icon]="icon" />
+              <app-file-icon [path]="item.filePath ?? null" [icon]="icon" />
             }
             <span class="app-menu-panel__item-label">{{ item.label }}</span>
             @if (item.status; as status) {

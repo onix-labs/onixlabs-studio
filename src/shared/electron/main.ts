@@ -86,6 +86,7 @@ import { DebugAdapterLocator } from './debug/debug-adapter-locator';
 import { LspManager } from './lsp/lsp-manager';
 import { LspServerRegistry } from './lsp/lsp-server-registry';
 import { LspSettingsManager } from './lsp/lsp-settings';
+import { IconThemeManager } from '@shared/electron/icon-themes/icon-theme-manager';
 import { MediaProtocol } from '@shared/electron/media-protocol';
 import { MenuManager } from '@shared/electron/menu-manager';
 import { openFilePathsFromArgv } from '@shared/electron/open-with-paths';
@@ -721,6 +722,11 @@ class Program {
    * Serves local image files to the markdown editor over the custom media protocol.
    */
   private readonly mediaProtocol: MediaProtocol = new MediaProtocol();
+
+  /**
+   * Serves the active file icon theme (spike, #1551).
+   */
+  private readonly iconThemeManager: IconThemeManager = new IconThemeManager();
 
   /**
    * Exports the current document to a PDF on behalf of the renderer's editors.
@@ -1371,6 +1377,7 @@ class Program {
     this.logger.register();
     this.securityManager.register();
     this.mediaProtocol.register();
+    this.iconThemeManager.register();
     this.printManager.register();
     this.spellingManager.register();
     this.terminalManager.register();

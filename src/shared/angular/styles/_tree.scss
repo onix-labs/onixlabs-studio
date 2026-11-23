@@ -120,8 +120,10 @@ app-tree-view {
   color: var(--form-muted-foreground-color);
   opacity: 0.85;
 
+  // An icon theme's picture keeps its own colours at full strength.
   &.tree-icon--folder,
-  &.tree-icon--project {
+  &.tree-icon--project,
+  &.file-icon--picture {
     opacity: 1;
   }
 }

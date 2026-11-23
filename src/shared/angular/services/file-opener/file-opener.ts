@@ -527,7 +527,7 @@ export class FileOpener {
         component: DocumentPanel,
         // Surface the well document's unsaved state to the dock tab (a dirty marker) and guard its close
         // so an edited-but-unsaved file prompts to save before the tab is removed.
-        ...(document === undefined ? {} : { dirty: document.dirty }),
+        ...(document === undefined ? {} : { dirty: document.dirty, filePath: document.filePath }),
         confirmClose: (): Promise<boolean> => this.confirmCloseWellDocument(id),
         // The well's switch to the file's diff. Resolved here rather than injected: the switch reaches
         // back to this opener.

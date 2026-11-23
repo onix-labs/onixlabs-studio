@@ -33,6 +33,7 @@ import { DockMinimums } from '../../../services/dock-layout/dock-minimums';
 import { PopoutPanels } from '../../../services/dock-layout/popout-panels';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { FileIcon } from '@shared/angular/components/file-icon/file-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Menu, MenuChoice, MenuItem } from '@shared/angular/components/menu/menu';
 import { MenuSubject } from '@shared/angular/components/menu/menu-subject';
@@ -92,6 +93,7 @@ const FILL_THRESHOLD_PX: number = 16;
     MenuSubject,
     Menu,
     AppIcon,
+    FileIcon,
     Button,
     TooltipTrigger,
   ],
@@ -232,6 +234,7 @@ export class DockTabGroup {
         id: panel.id,
         label: panel.title,
         icon: panel.icon,
+        filePath: panel.filePath?.() ?? null,
         action: { icon: Icon.CLOSE, label: 'Close' },
       })),
   );

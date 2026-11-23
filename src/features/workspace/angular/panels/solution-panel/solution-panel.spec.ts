@@ -1549,6 +1549,18 @@ describe('SolutionPanel', () => {
     ).toBe(Icon.FOLDER_OPEN);
   });
 
+  it('iconPathOf_aSolution_isItsSolutionFile_orElseTheWorkspaceRoot', () => {
+    const row: SolutionRow = makeRow({ kind: 'solution', label: 'Work (main)', path: null });
+
+    expect([component.iconPathOf(row), component.iconKindOf(row)]).toEqual(['Work (main)', 'root']);
+
+    solution.model.set({ ...model, solution: { name: 'App', path: '/ws/App.slnx' } });
+    expect([component.iconPathOf(row), component.iconKindOf(row)]).toEqual([
+      '/ws/App.slnx',
+      'file',
+    ]);
+  });
+
   it('iconFor_resolvesByKindAndExpansion', () => {
     expect(component.iconFor(makeRow({ kind: 'solution' }))).toBe(Icon.SOLUTION_EXPLORER);
     expect(component.iconFor(makeRow({ kind: 'project' }))).toBe(Icon.PROJECT);

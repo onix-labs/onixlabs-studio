@@ -25,6 +25,13 @@ export interface DockPanel {
   readonly icon: Icon;
 
   /**
+   * Gets the path of the file the panel shows, whose own icon an icon theme draws in place of
+   * {@link icon}. Null while the document is unsaved. Absent for a panel that is more than its file — a
+   * diff, a merge — or shows none.
+   */
+  readonly filePath?: Signal<string | null>;
+
+  /**
    * Gets the role the panel docks as: a tool window or an editor document.
    */
   readonly role: StackRole;

@@ -14,6 +14,7 @@ import {
 } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { FileIcon } from '@shared/angular/components/file-icon/file-icon';
 import { ButtonTone } from '@shared/angular/components/forms/button/button';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 import { MenuPointerGuard } from './menu-pointer-guard';
@@ -54,6 +55,12 @@ export interface MenuItem {
    * Gets the item's leading icon, if any.
    */
   readonly icon?: Icon;
+
+  /**
+   * Gets the path of the file the item stands for, whose own icon an icon theme draws in place of
+   * {@link icon}. Null or absent when it stands for none.
+   */
+  readonly filePath?: string | null;
 
   /**
    * Gets a value indicating whether the item is the current selection, shown with an accent marker.
@@ -146,7 +153,15 @@ export interface MenuChoice {
  */
 @Component({
   selector: 'app-menu',
-  imports: [AppIcon, CdkMenu, CdkMenuItem, CdkMenuTrigger, MenuPointerGuard, TooltipTrigger],
+  imports: [
+    AppIcon,
+    FileIcon,
+    CdkMenu,
+    CdkMenuItem,
+    CdkMenuTrigger,
+    MenuPointerGuard,
+    TooltipTrigger,
+  ],
   templateUrl: './menu.html',
   styleUrl: './menu.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -1,0 +1,12 @@
+:host {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+// Sized by the row's font, as the glyph it stands in for is; theme pictures are drawn on a 16px grid.
+.file-icon__picture {
+  width: 16px;
+  height: 16px;
+}

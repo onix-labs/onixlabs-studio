@@ -9,7 +9,11 @@
     (mousedown)="bringToFront(item.window.panelId)"
   >
     <div class="dock-float__title" (mousedown)="startMove(item.window, $event)">
-      <app-icon class="dock-float__icon" [icon]="item.panel.icon" />
+      <app-file-icon
+        class="dock-float__icon"
+        [path]="item.panel.filePath?.() ?? null"
+        [icon]="item.panel.icon"
+      />
       <span class="dock-float__title-text">{{ item.panel.title }}</span>
       <span class="dock-float__title-buttons">
         <app-button

@@ -9,7 +9,11 @@
       [title]="panel.title"
       (click)="peek(panel.id)"
     >
-      <app-icon class="dock-collapsed-strip__icon" [icon]="panel.icon" />
+      <app-file-icon
+        class="dock-collapsed-strip__icon"
+        [path]="panel.filePath?.() ?? null"
+        [icon]="panel.icon"
+      />
       <span class="dock-collapsed-strip__label">{{ panel.title }}</span>
     </button>
   }

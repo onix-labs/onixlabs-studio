@@ -77,7 +77,11 @@
         (keydown.enter)="activate(panel.id)"
         (keydown.space)="activate(panel.id)"
       >
-        <app-icon class="dock-tab__icon" [icon]="panel.icon" />
+        <app-file-icon
+          class="dock-tab__icon"
+          [path]="panel.filePath?.() ?? null"
+          [icon]="panel.icon"
+        />
         <span class="dock-tab__label">{{ panel.title }}</span>
         <!-- A document with unsaved changes shows a dirty dot; the close button reveals over it on hover. -->
         @if (panel.dirty?.()) {

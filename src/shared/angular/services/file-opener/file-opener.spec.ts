@@ -7,6 +7,7 @@ import { DirectoryListing, OpenSelection, WorkspaceChannel } from '@shared/api/w
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
+import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
 import {
@@ -514,6 +515,10 @@ describe('FileOpener', () => {
     expect(await opener.openAsText('/ws/logo.svg')).toBe(true);
     expect(wellPanels()).toHaveLength(1);
     expect(tabs.tabs()).toHaveLength(0);
+    // What an icon theme draws the tab by.
+    expect(TestBed.inject(DockPanelRegistry).get(wellPanels()[0])?.filePath?.()).toBe(
+      '/ws/logo.svg',
+    );
   });
 
   it('openAsText_whenUnreadable_opensNothing', async () => {
