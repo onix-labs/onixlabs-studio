@@ -1,6 +1,6 @@
 import { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
-import { isModalWindow, modalWindow } from './helpers';
+import { answerOpenDialogWith, answerTrustPrompt, isModalWindow, modalWindow } from './helpers';
 
 /**
  * Reads whether the main window is on screen, from the main process. The welcome screen stands in
@@ -186,6 +186,44 @@ test.describe('welcome & tabs', () => {
         }),
       )
       .toBe(true);
+  });
+
+  test('locate_ofARecentFolderStudioNoLongerRemembers_opensIt_andKeepsItsEntry', async ({
+    app,
+    page,
+    scratch,
+  }) => {
+    // A recent folder the main process does not remember the user choosing, as when enough files have
+    // been opened since: it is where it was, but it is refused until the user chooses it again.
+    const first: Page = await modalWindow(app);
+    await page.evaluate(
+      ([folder, openedAt]: readonly [string, number]): void => {
+        localStorage.setItem(
+          'welcome.recentItems',
+          JSON.stringify([
+            { path: folder, name: 'scratch', kind: 'directory', openedAt, pinned: true },
+          ]),
+        );
+      },
+      [scratch, Date.now()] as const,
+    );
+    await page.reload();
+    const welcome: Page = await modalWindow(app, [first]);
+    await welcome.locator('.welcome__recent-open').click();
+    const missing: Page = await modalWindow(app, [first, welcome]);
+    await expect(missing.locator('.welcome__confirm-title')).toBeVisible();
+
+    await answerOpenDialogWith(app, scratch);
+    await missing.getByRole('button', { name: 'Locate', exact: true }).click();
+
+    await expect(page.locator('app-directory-view')).toBeVisible();
+    await answerTrustPrompt(app, 'Trust');
+    await expect.poll((): number => app.windows().filter(isModalWindow).length).toBe(0);
+    expect(
+      await page.evaluate((): unknown =>
+        JSON.parse(localStorage.getItem('welcome.recentItems') ?? 'null'),
+      ),
+    ).toMatchObject([{ path: scratch, pinned: true }]);
   });
 
   test('newMarkdownFile_opensAMarkdownTab_andShowsTheMainWindow', async ({ app, page }) => {

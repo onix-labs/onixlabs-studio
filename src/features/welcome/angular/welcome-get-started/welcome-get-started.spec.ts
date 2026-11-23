@@ -1,6 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import type { TabType } from '@shared/angular/services/tabs/tab';
+import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
 import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { RecentItem, RecentItems } from '@shared/angular/services/recent-items/recent-items';
@@ -14,6 +16,7 @@ interface GetStartedInternals {
   openRecent(item: RecentItem): Promise<void>;
   missingItem(): RecentItem | null;
   removeMissing(): void;
+  locateMissing(): Promise<void>;
   dismissMissing(): void;
 }
 
@@ -171,6 +174,100 @@ describe('WelcomeGetStarted', () => {
     expect(recentItems.items().some((entry: RecentItem): boolean => entry.path === item.path)).toBe(
       false,
     );
+  });
+
+  describe('locateMissing', () => {
+    let opener: FileOpener;
+    let reported: number;
+
+    beforeEach(() => {
+      opener = TestBed.inject(FileOpener);
+      reported = 0;
+      fixture.componentInstance.opened.subscribe((): void => {
+        reported += 1;
+      });
+    });
+
+    /**
+     * Stands in for the folder dialog: records the chosen folder as opening it does.
+     * @param path The folder the user chose, or null when they cancelled.
+     */
+    function chooseFolder(path: string | null): void {
+      vi.spyOn(opener, 'openFolderInteractive').mockImplementation((): Promise<string | null> => {
+        if (path !== null) {
+          recentItems.record(path, 'project', 'directory');
+        }
+        return Promise.resolve(path);
+      });
+    }
+
+    /**
+     * Records a directory and opens it, which fails outside Electron, so the prompt shows.
+     * @param pinned Whether it is starred.
+     */
+    async function promptForDirectory(pinned: boolean = false): Promise<void> {
+      recentItems.record('/gone/project', 'project', 'directory');
+      if (pinned) {
+        recentItems.togglePin('/gone/project');
+      }
+      await internals.openRecent(recentItems.items()[0]);
+    }
+
+    it('ofAFolderThatMoved_opensIt_andReplacesTheOldEntry', async () => {
+      await promptForDirectory(true);
+      chooseFolder('/moved/project');
+
+      await internals.locateMissing();
+
+      expect(recentItems.items()).toMatchObject([{ path: '/moved/project', pinned: true }]);
+      expect(internals.missingItem()).toBeNull();
+      expect(reported).toBe(1);
+    });
+
+    it('ofAFolderStillWhereItWas_keepsItsEntryAndItsStar', async () => {
+      await promptForDirectory(true);
+      chooseFolder('/gone/project');
+
+      await internals.locateMissing();
+
+      expect(recentItems.items()).toMatchObject([{ path: '/gone/project', pinned: true }]);
+      expect(reported).toBe(1);
+    });
+
+    it('whereTheNewPathIsAlreadyStarred_leavesItStarred', async () => {
+      recentItems.record('/moved/project', 'project', 'directory');
+      recentItems.togglePin('/moved/project');
+      await promptForDirectory(true);
+      chooseFolder('/moved/project');
+
+      await internals.locateMissing();
+
+      expect(recentItems.items()).toMatchObject([{ path: '/moved/project', pinned: true }]);
+    });
+
+    it('whenTheDialogIsCancelled_leavesThePromptUp', async () => {
+      await promptForDirectory();
+      chooseFolder(null);
+
+      await internals.locateMissing();
+
+      expect(internals.missingItem()?.path).toBe('/gone/project');
+      expect(reported).toBe(0);
+    });
+
+    it('ofAFile_reopensTheChosenFile', async () => {
+      await internals.openRecent(seedRecent());
+      vi.spyOn(TestBed.inject(FileSystem), 'pickPath').mockResolvedValue('/moved/report.md');
+      vi.spyOn(opener, 'reopenFile').mockImplementation((path: string): Promise<boolean> => {
+        recentItems.record(path, 'report.md', 'markdown');
+        return Promise.resolve(true);
+      });
+
+      await internals.locateMissing();
+
+      expect(recentItems.items()).toMatchObject([{ path: '/moved/report.md' }]);
+      expect(reported).toBe(1);
+    });
   });
 
   it('dismissMissing_whenPrompted_keepsTheItemButHidesThePrompt', async () => {

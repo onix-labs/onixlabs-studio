@@ -381,35 +381,31 @@ export class WelcomeGetStarted {
   }
 
   /**
-   * Lets the user point the missing recent item at its new location: a file picker (matching the item's
-   * kind) is shown, and the chosen path — now trusted because the user picked it through the dialog — is
-   * re-opened. On success the stale entry is dropped (the freshly opened path records its own entry)
-   * and its pinned state is carried across. Cancelling the picker or failing to open leaves the prompt
-   * up so the user can choose again, remove, or cancel.
+   * Lets the user point the missing recent item at its new location: a dialog matching the item's kind
+   * is shown and the chosen path opened. On success the stale entry is dropped (the opened path records
+   * its own) and its star carried across. The path may be the one it already had, when what was missing
+   * was only Studio's record that the user chose it; the entry is then kept. Cancelling or failing to
+   * open leaves the prompt up so the user can choose again, remove, or cancel.
    */
   protected async locateMissing(): Promise<void> {
     const item: RecentItem | null = this.missingItem();
     if (item === null) {
       return;
     }
-    const located: string | null = await this.fileSystem.pickPath(
-      item.kind === 'directory' ? 'folder' : 'file',
-    );
+    const located: string | null = await this.openLocated(item);
     if (located === null) {
       return;
     }
-    this.log.info('welcome', 'Relocating missing recent item', item.path, located);
-    const opened: boolean =
-      item.kind === 'directory'
-        ? await this.fileOpener.reopenDirectory(located)
-        : await this.fileOpener.reopenFile(located);
-    if (!opened) {
-      return;
+    this.log.info('welcome', 'Located missing recent item', item.path, located);
+    if (located !== item.path) {
+      const alreadyPinned: boolean = this.recentItems
+        .items()
+        .some((entry: RecentItem): boolean => entry.path === located && entry.pinned);
+      if (item.pinned && !alreadyPinned) {
+        this.recentItems.togglePin(located);
+      }
+      this.recentItems.remove(item.path);
     }
-    if (item.pinned && located !== item.path) {
-      this.recentItems.togglePin(located);
-    }
-    this.recentItems.remove(item.path);
     this.missingItem.set(null);
     this.opened.emit();
   }
@@ -483,6 +479,22 @@ export class WelcomeGetStarted {
     if (await this.fileOpener.openInteractive()) {
       this.opened.emit();
     }
+  }
+
+  /**
+   * Asks the user for a missing recent item and opens what they choose.
+   *
+   * A folder is chosen through the dialog that opens it, never by picking a path and re-opening that:
+   * only an opened folder is one the main process will re-open.
+   * @param item The missing item.
+   * @returns Returns the opened path, or null when cancelled or it could not be opened.
+   */
+  private async openLocated(item: RecentItem): Promise<string | null> {
+    if (item.kind === 'directory') {
+      return this.fileOpener.openFolderInteractive();
+    }
+    const located: string | null = await this.fileSystem.pickPath('file');
+    return located !== null && (await this.fileOpener.reopenFile(located)) ? located : null;
   }
 
   /**

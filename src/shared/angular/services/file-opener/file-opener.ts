@@ -184,6 +184,19 @@ export class FileOpener {
   }
 
   /**
+   * Shows an open-folder dialog and opens the chosen folder as a workspace tab.
+   * @returns Returns the opened folder's path, or null when cancelled or unreadable.
+   */
+  public async openFolderInteractive(): Promise<string | null> {
+    const listing: DirectoryListing | null = await this.workspace.chooseFolder();
+    if (listing === null) {
+      return null;
+    }
+    this.openDirectory(listing);
+    return listing.path;
+  }
+
+  /**
    * Opens a file from a workspace's directory tree into that workspace's document well, reusing the
    * panel when the file is already open. The editor is chosen by file type (Milkdown for markdown,
    * Monaco otherwise).
@@ -304,7 +317,7 @@ export class FileOpener {
    * @param selection The selection to route, or null when the dialog was cancelled.
    * @returns Returns true when something was opened; otherwise, false.
    */
-  private route(selection: OpenSelection | null): boolean {
+  private async route(selection: OpenSelection | null): Promise<boolean> {
     if (selection === null) {
       return false;
     }
@@ -325,8 +338,7 @@ export class FileOpener {
       }
       case 'image':
         if (this.opensAsCode(selection.path)) {
-          void this.openAsText(selection.path);
-          return true;
+          return this.openAsText(selection.path);
         }
         return this.openImage(selection.path);
       case 'binary':

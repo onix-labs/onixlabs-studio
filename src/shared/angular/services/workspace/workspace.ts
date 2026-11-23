@@ -431,14 +431,25 @@ export class Workspace {
    * @returns Returns a promise that resolves once the folder has been opened (or the dialog cancelled).
    */
   public async openFolder(): Promise<void> {
-    const listing: DirectoryListing | null = await (this.bridge?.invoke<DirectoryListing | null>(
-      WorkspaceChannel.OpenFolder,
-    ) ?? Promise.resolve(null));
+    const listing: DirectoryListing | null = await this.chooseFolder();
     if (listing === null) {
       return;
     }
     this.log.info('Workspace', `Opened folder '${listing.name}'`, listing.path);
     this.setListing(listing);
+  }
+
+  /**
+   * Shows an open-folder dialog. The main process opens the chosen folder as a root; routing it into a
+   * tab or this workspace is the caller's responsibility.
+   * @returns Returns the chosen folder's listing, or null when cancelled, unreadable, or outside
+   * Electron.
+   */
+  public chooseFolder(): Promise<DirectoryListing | null> {
+    return (
+      this.bridge?.invoke<DirectoryListing | null>(WorkspaceChannel.OpenFolder) ??
+      Promise.resolve(null)
+    );
   }
 
   /**

@@ -562,7 +562,7 @@ export class WorkspaceManager {
       const resolved: string = path.resolve(filePath as string);
       const selection: OpenSelection = await this.readFileSelection(resolved, policy);
       // Remember the file so it can be re-opened from the welcome screen once its workspace is closed.
-      this.trusted.remember(resolved);
+      this.trusted.rememberOpened(resolved);
       return selection;
     } catch (error: unknown) {
       logger.debug('WorkspaceManager', 'Failed to open file', error);
@@ -831,7 +831,9 @@ export class WorkspaceManager {
     this.workspace.addRoot(resolved);
     logger.info('WorkspaceManager.reopenFolder', `Re-opened workspace root ${resolved}`);
     try {
-      return await this.readListing(resolved);
+      const listing: DirectoryListing = await this.readListing(resolved);
+      this.trusted.refresh(resolved);
+      return listing;
     } catch (error: unknown) {
       logger.warn('WorkspaceManager', `Failed to refresh root ${resolved}; removing`, error);
       this.workspace.removeRoot(resolved);
@@ -856,7 +858,10 @@ export class WorkspaceManager {
       return null;
     }
     try {
-      return await this.readFileSelection(path.resolve(filePath as string), policy);
+      const resolved: string = path.resolve(filePath as string);
+      const selection: OpenSelection = await this.readFileSelection(resolved, policy);
+      this.trusted.refresh(resolved);
+      return selection;
     } catch (error: unknown) {
       logger.debug('WorkspaceManager', 'Failed to read file selection', error);
       return null;
