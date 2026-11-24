@@ -83,6 +83,19 @@ export interface DockPanel {
    * and tab strip (#1064). Absent means 6rem.
    */
   readonly minBlockSize?: number;
+
+  /**
+   * Gets the size, in pixels, the panel prefers its group to open at beside a main group: a width at its
+   * sides, a height above or below it. The group keeps that size as the window resizes, where one whose
+   * panels prefer none takes a share of the room. Absent when the panel prefers none.
+   */
+  readonly defaultSize?: number;
+
+  /**
+   * Gets the greatest size, in pixels, the panel's group may be dragged to beside a main group, for a
+   * panel with a {@link defaultSize}. Absent when nothing limits it but the window.
+   */
+  readonly maxSize?: number;
 }
 
 /**

@@ -225,4 +225,48 @@ describe('dock-persistence', () => {
       expect(restoreLayout(saved, known)).toBeNull();
     });
   });
+
+  describe('sizes in pixels (#1567)', () => {
+    const known: ReadonlySet<string> = new Set<string>(['editor', 'agent', 'find']);
+    const own: StackNode = mkStack('main', ['editor']);
+
+    it('restore_keepsThem', () => {
+      const saved: DockNode = mkSplit('row', [own, { ...mkStack('tool', ['agent']), size: 360 }]);
+
+      const restored: SplitNode = restoreLayout(
+        JSON.parse(JSON.stringify(saved)),
+        known,
+        own,
+      ) as SplitNode;
+
+      expect(restored.children[1].size).toBe(360);
+    });
+
+    it('restore_whenAColumnIsLeftWithOneGroup_givesItTheColumnsSize', () => {
+      const saved: DockNode = mkSplit('row', [
+        own,
+        {
+          ...mkSplit('col', [
+            mkStack('tool', ['gone']),
+            { ...mkStack('tool', ['find']), size: 90 },
+          ]),
+          size: 360,
+        },
+      ]);
+
+      const restored: SplitNode = restoreLayout(saved, known, own) as SplitNode;
+
+      expect(restored.children[1].size).toBe(360);
+    });
+
+    it('restore_whenOneIsNotASize_seedsAfresh', () => {
+      for (const size of ['wide', -1, 0, null]) {
+        const saved: unknown = {
+          ...mkSplit('row', [own, { ...mkStack('tool', ['agent']), size }] as never),
+        };
+
+        expect(restoreLayout(saved, known, own)).toBeNull();
+      }
+    });
+  });
 });

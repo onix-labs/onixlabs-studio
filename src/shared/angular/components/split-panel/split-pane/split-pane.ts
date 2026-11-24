@@ -22,8 +22,8 @@ import { SplitSizes } from '../split-sizes';
  * Represents one pane of a split. A pane is sized in one of two ways:
  *
  * - **by its {@link share}** of the room the split has, growing and shrinking with it; or
- * - **in pixels**, when it is given a {@link defaultSize} or a {@link defaultFraction}: it keeps its
- *   size as the split resizes, within its limits, and the panes sized by share take up the difference.
+ * - **in pixels**, when it is given a {@link defaultSize}, a {@link defaultFraction} or a
+ *   {@link hostSize}: it keeps its size as the split resizes, within its limits, and the panes sized by share take up the difference.
  *
  * A pane draws nothing but its content, so its host gives it whatever surface it wants.
  */
@@ -88,6 +88,13 @@ export class SplitPane {
   public readonly defaultFraction: InputSignal<number | null> = input<number | null>(null);
 
   /**
+   * Gets the size, in pixels, the host keeps for the pane, or null when the pane keeps its own or takes a
+   * share. A divider that sizes it reports the new size through {@link sizeChange} and changes nothing
+   * here, so the host gives it back.
+   */
+  public readonly hostSize: InputSignal<number | null> = input<number | null>(null);
+
+  /**
    * Gets the least size, in pixels, the pane may be given along the split's axis, by a divider or by
    * the room there is.
    */
@@ -140,7 +147,9 @@ export class SplitPane {
   /**
    * Gets the pane's size in pixels, or null while its share sizes it.
    */
-  public readonly size: Signal<number | null> = this.opened.asReadonly();
+  public readonly size: Signal<number | null> = computed(
+    (): number | null => this.hostSize() ?? this.opened(),
+  );
 
   /**
    * Gets whether the pane keeps a size of its own rather than taking a share.
@@ -266,6 +275,12 @@ export class SplitPane {
    */
   public commitSize(size: number): void {
     const rounded: number = Math.round(size);
+    if (this.hostSize() !== null) {
+      // The host may give back the size already bound, which would leave the preview's fraction behind.
+      this.clearPreview();
+      this.sizeChange.emit(rounded);
+      return;
+    }
     this.opened.set(rounded);
     // The bound value may be the one already there, which would leave the preview's fraction behind.
     this.clearPreview();

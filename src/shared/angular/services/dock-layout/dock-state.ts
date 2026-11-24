@@ -27,6 +27,7 @@ import {
   seatDocuments,
   setActive,
   setCollapsed,
+  setNodeSize,
   setSizes,
   splitPanelOut,
   splitStack,
@@ -472,6 +473,15 @@ export class DockState {
    */
   public setSizes(splitId: string, sizes: readonly number[]): void {
     this.commit(setSizes(this.tree(), splitId, sizes));
+  }
+
+  /**
+   * Sets the size a divider gave a node that keeps one in pixels.
+   * @param nodeId The identifier of the node.
+   * @param size The size in pixels.
+   */
+  public setNodeSize(nodeId: string, size: number): void {
+    this.commit(setNodeSize(this.tree(), nodeId, size));
   }
 
   /**

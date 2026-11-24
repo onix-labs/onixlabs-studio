@@ -145,6 +145,52 @@ describe('a dock with a main group (#1565)', () => {
     document.dispatchEvent(new MouseEvent('mouseup'));
   });
 
+  it('a_groupBesideIt_keepsThePixelsItsPanelPrefers_andADividerSetsThem', () => {
+    const registry: DockPanelRegistry = TestBed.inject(DockPanelRegistry);
+    registry.register({ ...registry.get('agent')!, defaultSize: 360, maxSize: 400 });
+    fixture.detectChanges();
+    const panes: HTMLElement[] = [...host.querySelectorAll<HTMLElement>('.dock-node__pane')];
+    expect(panes.map((pane: HTMLElement): string => pane.style.flexBasis)).toEqual([
+      '0px',
+      '0px',
+      '360px',
+    ]);
+    panes[1].getBoundingClientRect = (): DOMRect => new DOMRect(0, 0, 900, 500);
+    panes[2].getBoundingClientRect = (): DOMRect => new DOMRect(0, 0, 360, 500);
+
+    /**
+     * Drags the divider beside the group.
+     * @param by How far, in pixels.
+     */
+    function dragBy(by: number): void {
+      [...host.querySelectorAll('app-split-divider')]
+        .at(-1)!
+        .dispatchEvent(
+          new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: 0 }),
+        );
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: by }));
+      document.dispatchEvent(new MouseEvent('mouseup'));
+      fixture.detectChanges();
+    }
+
+    dragBy(-20);
+    expect(panes[2].style.flexBasis).toBe('380px');
+    expect(findStackOfPanel(dock.layout(), 'agent')?.size).toBe(380);
+
+    dragBy(-200);
+    expect(panes[2].style.flexBasis).toBe('400px');
+
+    dock.undo();
+    fixture.detectChanges();
+    expect(panes[2].style.flexBasis).toBe('380px');
+
+    dock.reset();
+    fixture.detectChanges();
+    expect(
+      [...host.querySelectorAll<HTMLElement>('.dock-node__pane')].at(-1)?.style.flexBasis,
+    ).toBe('360px');
+  });
+
   it('a_panelDroppedOnIt_staysWhereItWas', () => {
     const drag: DockDrag = TestBed.inject(DockDrag);
     const before: DockNode = dock.layout();

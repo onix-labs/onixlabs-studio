@@ -45,6 +45,13 @@ export interface SplitNode {
    * share of the split is its weight divided by the sum of all weights.
    */
   readonly sizes: readonly number[];
+
+  /**
+   * Gets the size, in pixels along its parent split, a divider last gave this node while it kept a size
+   * of its own rather than a share (see {@link import('./dock-group-sizes').DockGroupSizes}). Absent
+   * until one has.
+   */
+  readonly size?: number;
 }
 
 /**
@@ -111,6 +118,13 @@ export interface StackNode {
    * with a main stack, the main stack is the primary slot.
    */
   readonly primary?: boolean;
+
+  /**
+   * Gets the size, in pixels along its parent split, a divider last gave this node while it kept a size
+   * of its own rather than a share (see {@link import('./dock-group-sizes').DockGroupSizes}). Absent
+   * until one has.
+   */
+  readonly size?: number;
 }
 
 /**

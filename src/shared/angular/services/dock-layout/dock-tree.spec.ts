@@ -32,6 +32,7 @@ import {
   seatDocuments,
   setActive,
   setCollapsed,
+  setNodeSize,
   setSizes,
   splitPanelOut,
   splitStack,
@@ -1206,6 +1207,59 @@ describe('dock-tree', () => {
       const closed: DockNode = removeFromLayout(opened, 'doc');
       expect(countStacks(closed, 'document')).toBe(0);
       expect(findNode(closed, main.id)).toEqual(main);
+    });
+  });
+
+  describe('sizes in pixels (#1567)', () => {
+    it('setNodeSize_setsIt_andIgnoresAnUnknownNode', () => {
+      const agent: StackNode = mkStack('tool', ['agent']);
+      const tree: DockNode = mkSplit('row', [mkStack('main', ['editor']), agent]);
+
+      expect(findNode(setNodeSize(tree, agent.id, 360), agent.id)?.size).toBe(360);
+      expect(setNodeSize(tree, 'nowhere', 360)).toBe(tree);
+    });
+
+    it('dockingAcrossASizedGroup_givesTheColumnItsSize', () => {
+      const agent: StackNode = mkStack('tool', ['agent']);
+      const tree: DockNode = setNodeSize(
+        mkSplit('row', [mkStack('main', ['editor']), agent]),
+        agent.id,
+        360,
+      );
+
+      const next: DockNode = splitStack(tree, agent.id, 'find', 'bottom', 'tool');
+
+      const column: DockNode = (next as SplitNode).children[1];
+      expect(column.kind).toBe('split');
+      expect(column.size).toBe(360);
+      expect(findNode(next, agent.id)?.size).toBeUndefined();
+    });
+
+    it('closingOneOfAColumn_givesTheOtherTheColumnsSize_notItsOwn', () => {
+      const agent: StackNode = mkStack('tool', ['agent']);
+      const start: DockNode = mkSplit('row', [mkStack('main', ['editor']), agent]);
+      const split: DockNode = splitStack(
+        setNodeSize(start, agent.id, 360),
+        agent.id,
+        'find',
+        'bottom',
+        'tool',
+      );
+      const tall: DockNode = setNodeSize(split, agent.id, 120);
+
+      const next: DockNode = removeFromLayout(tall, 'find');
+
+      expect(findNode(next, agent.id)?.size).toBe(360);
+    });
+
+    it('movingASizedGroup_forgetsItsSize', () => {
+      const agent: StackNode = mkStack('tool', ['agent']);
+      const main: StackNode = mkStack('main', ['editor']);
+      const tree: DockNode = setNodeSize(mkSplit('row', [main, agent]), agent.id, 500);
+
+      const next: DockNode = splitStackBeside(tree, agent.id, main.id, 'bottom');
+
+      expect(findStackOfPanel(next, 'agent')?.size).toBeUndefined();
     });
   });
 });

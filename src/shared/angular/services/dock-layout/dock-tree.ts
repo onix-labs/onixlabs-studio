@@ -223,9 +223,38 @@ export function removeNode(tree: DockNode, id: string): DockNode | null {
     return null;
   }
   if (children.length === 1) {
-    return children[0];
+    return withSize(children[0], tree.size);
   }
   return { ...tree, children, sizes };
+}
+
+/**
+ * Gives a node the size of the one whose place it takes, in place of any it had: that was along another
+ * split.
+ * @param node The node.
+ * @param size The size in pixels, or undefined for none.
+ * @returns Returns the node with the size.
+ */
+export function withSize(node: DockNode, size: number | undefined): DockNode {
+  if (node.size === size) {
+    return node;
+  }
+  const next: DockNode = { ...node };
+  delete (next as { size?: number }).size;
+  return size === undefined ? next : { ...next, size };
+}
+
+/**
+ * Sets the size a divider gave a node along its parent split. The call is ignored when the node does not
+ * exist.
+ * @param tree The root of the tree to transform.
+ * @param nodeId The identifier of the node.
+ * @param size The size in pixels.
+ * @returns Returns the transformed tree.
+ */
+export function setNodeSize(tree: DockNode, nodeId: string, size: number): DockNode {
+  const node: DockNode | null = findNode(tree, nodeId);
+  return node === null ? tree : replaceNode(tree, nodeId, withSize(node, size));
 }
 
 /**
@@ -579,7 +608,8 @@ export function setCollapsed(
 }
 
 /**
- * Wraps a node in a new split so that a new sibling docks beside it along the given axis.
+ * Wraps a node in a new split so that a new sibling docks beside it along the given axis. The split takes
+ * the node's place, and so its size.
  * @param target The existing node to dock beside.
  * @param sibling The new node to place alongside it.
  * @param dir The orientation of the wrapping split.
@@ -587,7 +617,8 @@ export function setCollapsed(
  * @returns Returns the new split node.
  */
 function wrap(target: DockNode, sibling: DockNode, dir: SplitDirection, before: boolean): DockNode {
-  return mkSplit(dir, before ? [sibling, target] : [target, sibling], [1, 1]);
+  const inner: DockNode = withSize(target, undefined);
+  return withSize(mkSplit(dir, before ? [sibling, inner] : [inner, sibling], [1, 1]), target.size);
 }
 
 /**

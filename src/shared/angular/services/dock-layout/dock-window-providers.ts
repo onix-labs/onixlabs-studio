@@ -4,6 +4,7 @@ import { DockDrag } from './dock-drag';
 import { DockFloating } from './dock-floating';
 import { DockFocus } from './dock-focus';
 import { DockGeometry } from './dock-geometry';
+import { DockGroupSizes } from './dock-group-sizes';
 import { DockMinimums } from './dock-minimums';
 import { DockReveal } from './dock-reveal';
 import { DockState } from './dock-state';
@@ -22,6 +23,7 @@ export function dockWindowProviders(): Provider[] {
     DockState,
     DockGeometry,
     DockMinimums,
+    DockGroupSizes,
     DockFocus,
     DockFloating,
     DockAutoHide,

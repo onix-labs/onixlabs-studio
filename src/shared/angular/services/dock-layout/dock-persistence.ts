@@ -1,5 +1,5 @@
 import { DockNode, DockSide, isSplitNode, reserveNodeIds, StackNode } from './dock-node';
-import { countStacks, findPrimaryStack, firstStackOfRole } from './dock-tree';
+import { countStacks, findPrimaryStack, firstStackOfRole, withSize } from './dock-tree';
 
 /**
  * The dock sides a persisted {@link StackNode.side} may carry, used to reject hand-edited storage.
@@ -83,6 +83,10 @@ function isPersistedNode(value: unknown): value is DockNode {
   if (typeof node['id'] !== 'string' || node['id'].length === 0) {
     return false;
   }
+  const size: unknown = node['size'];
+  if (size !== undefined && !(typeof size === 'number' && Number.isFinite(size) && size > 0)) {
+    return false;
+  }
   if (node['kind'] === 'stack') {
     return (
       (node['role'] === 'tool' || node['role'] === 'document' || node['role'] === 'main') &&
@@ -140,7 +144,7 @@ function sanitizeNode(
       return null;
     }
     if (children.length === 1) {
-      return children[0];
+      return withSize(children[0], node.size);
     }
     return { ...node, children, sizes };
   }

@@ -13,6 +13,7 @@ import {
   SplitNode,
   StackNode,
 } from '../../../services/dock-layout/dock-node';
+import { DockGroupSize, DockGroupSizes } from '../../../services/dock-layout/dock-group-sizes';
 import { DockGeometry } from '../../../services/dock-layout/dock-geometry';
 import { DockPanelAvailability } from '../../../services/dock-layout/dock-panel-availability';
 import { DockMinimum, DockMinimums } from '../../../services/dock-layout/dock-minimums';
@@ -77,6 +78,16 @@ export class DockNode {
    * tab strips' fill measurement) can defer their forced layouts until the gesture settles.
    */
   protected readonly geometry: DockGeometry = inject(DockGeometry);
+
+  /**
+   * Holds the sizes groups beside a main group keep.
+   */
+  private readonly groupSizes: DockGroupSizes = inject(DockGroupSizes);
+
+  /**
+   * Exposes infinity to the template, for a pane nothing limits.
+   */
+  protected readonly Infinity: number = Number.POSITIVE_INFINITY;
 
   /**
    * Gets the node to render.
@@ -221,6 +232,16 @@ export class DockNode {
       return '0';
     }
     return this.isCollapsed(node) ? COLLAPSED_SIZE : null;
+  }
+
+  /**
+   * Gets the size a child keeps along its split, whatever its weight: none for one that renders nothing.
+   * @param child The child.
+   * @param split The split.
+   * @returns Returns the size and its limit, or null when the child's weight sizes it.
+   */
+  protected sizeOf(child: DockTreeNode, split: SplitNode): DockGroupSize | null {
+    return this.isEmptyPane(child) ? null : this.groupSizes.sizeOf(child, split);
   }
 
   /**

@@ -77,11 +77,24 @@ export class DockTemplatePanel implements OnInit, OnDestroy {
   public readonly minBlockSize: InputSignal<number | undefined> = input<number | undefined>();
 
   /**
+   * Gets the size, in pixels, the panel prefers its group to open at beside a main group; undefined for a
+   * share of the room.
+   */
+  public readonly defaultSize: InputSignal<number | undefined> = input<number | undefined>();
+
+  /**
+   * Gets the greatest size, in pixels, the panel's group may be dragged to; undefined for no limit.
+   */
+  public readonly maxSize: InputSignal<number | undefined> = input<number | undefined>();
+
+  /**
    * Gets the panel as the dock knows it.
    */
   private readonly panel: Signal<DockPanel> = computed((): DockPanel => {
     const minInlineSize: number | undefined = this.minInlineSize();
     const minBlockSize: number | undefined = this.minBlockSize();
+    const defaultSize: number | undefined = this.defaultSize();
+    const maxSize: number | undefined = this.maxSize();
     return {
       id: this.appDockPanel(),
       title: this.panelTitle(),
@@ -90,6 +103,8 @@ export class DockTemplatePanel implements OnInit, OnDestroy {
       template: this.template,
       ...(minInlineSize === undefined ? {} : { minInlineSize }),
       ...(minBlockSize === undefined ? {} : { minBlockSize }),
+      ...(defaultSize === undefined ? {} : { defaultSize }),
+      ...(maxSize === undefined ? {} : { maxSize }),
     };
   });
 

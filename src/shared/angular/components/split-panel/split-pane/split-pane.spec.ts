@@ -105,4 +105,32 @@ describe('SplitPane', () => {
     expect(host.style.flexBasis).toBe('200px');
     expect(reported).toEqual([200]);
   });
+
+  it('render_whenItsHostKeepsTheSize_followsIt', () => {
+    fixture.componentRef.setInput('defaultSize', 320);
+    fixture.componentRef.setInput('hostSize', 240);
+    fixture.detectChanges();
+    expect(host.style.flexBasis).toBe('240px');
+
+    fixture.componentRef.setInput('hostSize', 260);
+    fixture.detectChanges();
+    expect(host.style.flexBasis).toBe('260px');
+
+    fixture.componentRef.setInput('hostSize', null);
+    fixture.detectChanges();
+    expect(host.style.flexBasis).toBe('320px');
+  });
+
+  it('commitSize_whenItsHostKeepsTheSize_reportsItAndChangesNothing', () => {
+    const reported: number[] = [];
+    fixture.componentInstance.sizeChange.subscribe((size: number): number => reported.push(size));
+    fixture.componentRef.setInput('hostSize', 240);
+    fixture.detectChanges();
+    fixture.componentInstance.previewSize(300.4);
+
+    fixture.componentInstance.commitSize(300.4);
+
+    expect(reported).toEqual([300]);
+    expect(host.style.flexBasis).toBe('240px');
+  });
 });

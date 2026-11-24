@@ -16,6 +16,7 @@
       (sharesChange)="dockState.setSizes(node.id, $event)"
     >
       @for (child of node.children; track child.id; let i = $index, last = $last) {
+        @let size = sizeOf(child, node);
         <app-split-pane
           class="dock-node__pane"
           [class.dock-node__pane--leaf]="isStack(child)"
@@ -26,6 +27,9 @@
           [share]="node.sizes[i]"
           [minSize]="minimumAlong(child, node.dir)"
           [lockedSize]="lockedSize(child)"
+          [hostSize]="size?.size ?? null"
+          [maxSize]="size?.max ?? Infinity"
+          (sizeChange)="dockState.setNodeSize(child.id, $event)"
           [style.min-inline-size.px]="paneMinimum(child)?.inline ?? null"
           [style.min-block-size.px]="paneMinimum(child)?.block ?? null"
         >
