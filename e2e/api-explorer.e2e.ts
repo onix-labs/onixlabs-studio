@@ -5,14 +5,27 @@ import { expect, test } from './fixtures';
 import { MOD, openTabFromWelcome } from './helpers';
 
 /**
+ * Adds a request from the ribbon, waiting for its panel so what follows is done to it and not to the
+ * one before.
+ * @param page The main application window.
+ * @returns Returns the request's panel.
+ */
+async function addRequest(page: Page): Promise<Locator> {
+  const panels: Locator = page.locator('app-api-request-panel');
+  const before: number = await panels.count();
+  await page.getByRole('button', { name: 'Request', exact: true }).click();
+  await expect(panels).toHaveCount(before + 1);
+  return panels.nth(before);
+}
+
+/**
  * Adds a request from the ribbon and sends it.
  * @param page The main application window.
  * @param url The address to send it to.
  * @returns Returns the request's panel.
  */
 async function sendNewRequest(page: Page, url: string): Promise<Locator> {
-  await page.getByRole('button', { name: 'Request', exact: true }).click();
-  const request: Locator = page.locator('app-api-request-panel').last();
+  const request: Locator = await addRequest(page);
   await request.locator('.request__url input').fill(url);
   await request.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(request.locator('.request__status')).toContainText('200');
@@ -84,9 +97,8 @@ test.describe('the API Explorer', () => {
     await expect(find.locator('.search-view__results .tree-row')).toHaveCount(3);
 
     // A request with no body open has nothing to search, until it has been sent.
-    await page.getByRole('button', { name: 'Request', exact: true }).click();
+    const second: Locator = await addRequest(page);
     await expect(find).toContainText('no body open to search');
-    const second: Locator = page.locator('app-api-request-panel').last();
     await second.locator('.request__url input').fill(url);
     await second.getByRole('button', { name: 'Send', exact: true }).click();
     await expect(find.locator('.search-view__results .tree-row')).toHaveCount(3);
