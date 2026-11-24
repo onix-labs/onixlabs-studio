@@ -145,6 +145,35 @@ describe('a dock with a main group (#1565)', () => {
     document.dispatchEvent(new MouseEvent('mouseup'));
   });
 
+  it('a_panelDroppedOnIt_staysWhereItWas', () => {
+    const drag: DockDrag = TestBed.inject(DockDrag);
+    const before: DockNode = dock.layout();
+    host.querySelector<HTMLElement>('app-dock-main')!.getBoundingClientRect = (): DOMRect =>
+      new DOMRect(0, 0, 900, 900);
+
+    drag.begin('agent', new MouseEvent('mousedown', { clientX: 10, clientY: 10 }));
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 450, clientY: 450 }));
+    expect(drag.active()).toBe(true);
+    document.dispatchEvent(new MouseEvent('mouseup', { clientX: 450, clientY: 450 }));
+
+    expect(drag.active()).toBe(false);
+    expect(dock.layout()).toBe(before);
+    expect(TestBed.inject(DockFloating).floats()).toEqual([]);
+  });
+
+  it('a_panelDroppedOnItsSide_docksThere', () => {
+    const drag: DockDrag = TestBed.inject(DockDrag);
+    host.querySelector<HTMLElement>('app-dock-main')!.getBoundingClientRect = (): DOMRect =>
+      new DOMRect(0, 0, 900, 900);
+
+    drag.begin('agent', new MouseEvent('mousedown', { clientX: 10, clientY: 10 }));
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 450, clientY: 850 }));
+    document.dispatchEvent(new MouseEvent('mouseup', { clientX: 450, clientY: 850 }));
+
+    const split: DockNode = dock.layout();
+    expect(split.kind === 'split' && split.children[1].kind).toBe('split');
+  });
+
   it('a_dragCanFindItsSlot_howeverOftenTheLayoutChanges', async () => {
     const geometry: DockGeometry = TestBed.inject(DockGeometry);
     await dock.requestClose('files');

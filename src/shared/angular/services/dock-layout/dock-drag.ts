@@ -19,7 +19,7 @@ import { DockPanel } from './dock-panel';
 import { DockPanelRegistry } from './dock-panel-registry';
 import { DockNode, DockSide, isStackNode, StackNode, StackRole } from './dock-node';
 import { DockState } from './dock-state';
-import { findNode, findStackOfPanel } from './dock-tree';
+import { findNode, findStackOfPanel, firstStackOfRole } from './dock-tree';
 
 /**
  * Identifies a compass guide: the centre tab-into guide or one of the four split sides.
@@ -633,7 +633,9 @@ export class DockDrag {
    * drop handler (a tear-out beyond the window, a drop onto another window), floats the panel when
    * dropped on in-window void, or does nothing when the press never became a drag. A group released
    * over no target stays where it is — the floating layer and the pop-out windows both hold single
-   * panels, so neither can take a whole group.
+   * panels, so neither can take a whole group. In a layout with a main group a panel stays where it is
+   * too: most of such a layout is the main content, where nothing docks, and letting go over it cancels
+   * the drag. Floating is the title bar's button's to do there.
    * @param event The release event.
    */
   private onRelease(event: MouseEvent): void {
@@ -670,6 +672,8 @@ export class DockDrag {
     } else if (this.externalDrop?.(panel, event) === true) {
       this.log.debug('DockDrag', `Panel '${panel.id}' consumed by external drop handler`);
       return;
+    } else if (firstStackOfRole(this.dockState.layout(), 'main') !== null) {
+      this.log.debug('DockDrag', `Cancelled drop of panel '${panel.id}' over no target`);
     } else if (ghost !== null) {
       this.log.info('DockDrag', `Floated panel '${panel.id}' on void drop`);
       this.floating.float(panel.id, ghost);
