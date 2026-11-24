@@ -1,10 +1,10 @@
 :host {
-  // The divider is 4px with pill ends, but a 2px transparent margin on each side along the
-  // resize axis keeps the inter-pane gap at its original 8px footprint.
+  // The divider is 4px, square unless its split rounds it, but a 2px transparent margin on each side
+  // along the resize axis keeps the inter-pane gap at its original 8px footprint.
   flex: 0 0 0.25rem;
   align-self: stretch;
   background: var(--split-divider-color);
-  border-radius: calc(0.125rem * var(--border-radius-multiplier));
+  border-radius: var(--split-divider-radius);
   transition: var(--hover-transition);
   z-index: 5;
 
@@ -31,49 +31,6 @@
     pointer-events: none;
     background: var(--split-divider-color);
     cursor: default;
-  }
-
-  // Drawn over the inner edge of the pane it sizes instead of in a gap of its own, so the panes meet. It
-  // rests transparent and reads as part of the pane until hovered.
-  &.split-divider--overlay {
-    position: relative;
-    flex-basis: 0;
-    margin: 0;
-    background: transparent;
-    z-index: 6;
-
-    .split-divider__grip {
-      position: absolute;
-      transition: background 150ms ease-in-out;
-    }
-
-    &.split-divider--row .split-divider__grip {
-      inset-block: 0;
-      inset-inline-start: 0;
-      inline-size: 0.375rem;
-    }
-
-    &.split-divider--col .split-divider__grip {
-      inset-inline: 0;
-      inset-block-start: 0;
-      block-size: 0.375rem;
-    }
-
-    &.split-divider--row.split-divider--over-before .split-divider__grip {
-      inset-inline: auto 0;
-    }
-
-    &.split-divider--col.split-divider--over-before .split-divider__grip {
-      inset-block: auto 0;
-    }
-
-    &:hover .split-divider__grip {
-      background: var(--split-overlay-color--hover);
-    }
-
-    &.split-divider--dragging .split-divider__grip {
-      background: var(--accent-surface-border-color);
-    }
   }
 
   // Nothing to divide, so not even the gap.

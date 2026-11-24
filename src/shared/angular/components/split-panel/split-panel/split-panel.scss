@@ -1,4 +1,8 @@
 :host {
+  // Square ends. Set on every split, so one inside another's pane never inherits its rounding; a host
+  // that wants its own split's dividers rounded sets this on it.
+  --split-divider-radius: 0;
+
   display: flex;
   flex: 1;
   min-inline-size: 0;

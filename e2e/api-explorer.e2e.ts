@@ -59,12 +59,14 @@ test.describe('the API Explorer', () => {
     const first: Locator = await sendNewRequest(page, url);
     const before: number = (await first.locator('.request__response').boundingBox())!.height;
 
-    const box: { x: number; y: number; width: number } = (await first
-      .locator('.request__response')
+    const box: { x: number; y: number; width: number; height: number } = (await first
+      .locator('app-split-divider')
       .boundingBox())!;
-    await page.mouse.move(box.x + box.width / 2, box.y + 2);
+    const x: number = box.x + box.width / 2;
+    const y: number = box.y + box.height / 2;
+    await page.mouse.move(x, y);
     await page.mouse.down();
-    await page.mouse.move(box.x + box.width / 2, box.y - 38, { steps: 4 });
+    await page.mouse.move(x, y - 40, { steps: 4 });
     await page.mouse.up();
     const dragged: number = (await first.locator('.request__response').boundingBox())!.height;
     expect(dragged).toBeGreaterThan(before + 30);

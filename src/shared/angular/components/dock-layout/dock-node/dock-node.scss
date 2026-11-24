@@ -6,6 +6,11 @@
   inline-size: 100%;
 }
 
+// The dock's dividers lie in the gaps between its groups, with pill ends.
+.dock-node__split {
+  --split-divider-radius: calc(0.125rem * var(--border-radius-multiplier));
+}
+
 .dock-node__pane {
   display: flex;
   min-inline-size: 2.625rem;
