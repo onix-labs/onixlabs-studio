@@ -307,4 +307,64 @@ describe("a dock that keeps its closed panels' places (#1568)", () => {
     expect(findStackOfPanel(openDock(own).state.layout(), 'agent')).toBeNull();
     expect(firstStackOfRole(dock.state.layout(), 'main')).not.toBeNull();
   });
+
+  describe('toggling a panel', () => {
+    it('whenItIsClosed_opensIt', () => {
+      const dock: Dock = openDock();
+
+      dock.reveal.toggle('terminal');
+
+      expect(open(dock)).toEqual(['terminal', 'agent']);
+    });
+
+    it('whenItsGroupIsShowingIt_closesIt', () => {
+      const dock: Dock = openDock();
+
+      dock.reveal.toggle('agent');
+
+      expect(open(dock)).toEqual([]);
+    });
+
+    it('whenItIsOpenBehindAnother_bringsItToTheFront', () => {
+      const dock: Dock = openDock();
+      dock.reveal.open('find');
+
+      dock.reveal.toggle('agent');
+
+      expect(open(dock)).toEqual(['agent', 'find']);
+      expect(findStackOfPanel(dock.state.layout(), 'agent')?.active).toBe('agent');
+    });
+
+    it('whenItStandsInForTheClosedPanelInFrontOfIt_closesIt', async () => {
+      const dock: Dock = openDock();
+      dock.reveal.open('find');
+      await dock.state.requestClose('find');
+
+      dock.reveal.toggle('agent');
+
+      expect(open(dock)).toEqual([]);
+    });
+
+    it('whenItIsFloating_keepsItOpen', () => {
+      const dock: Dock = openDock();
+      dock.floating.float('agent', { left: 0, top: 0, width: 200, height: 200 });
+
+      dock.reveal.toggle('agent');
+
+      expect(dock.floating.floats()).toHaveLength(1);
+      expect(dock.reveal.isOpen('agent')).toBe(true);
+    });
+
+    it('whenItsGroupIsCollapsed_peeksIt_andThenClosesIt', () => {
+      const dock: Dock = openDock();
+      const stack: StackNode = findStackOfPanel(dock.state.layout(), 'agent')!;
+      dock.state.setCollapsed(stack.id, true);
+
+      dock.reveal.toggle('agent');
+      expect(open(dock)).toEqual(['agent']);
+
+      dock.reveal.toggle('agent');
+      expect(open(dock)).toEqual([]);
+    });
+  });
 });

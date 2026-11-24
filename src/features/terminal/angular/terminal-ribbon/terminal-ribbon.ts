@@ -16,7 +16,6 @@ import {
 } from '@shared/angular/services/app-menu/app-menu-model';
 import { Log } from '@shared/angular/services/log/log';
 import { ShellInfo } from '@shared/api/terminal-channels';
-import { TerminalAgents } from '@features/terminal/angular/terminal-agents/terminal-agents';
 import { TerminalCommands } from '@features/terminal/angular/terminal-commands/terminal-commands';
 import {
   locationCommand,
@@ -25,7 +24,6 @@ import {
   TerminalLocation,
 } from '@features/terminal/angular/terminal-commands/shell-commands';
 import { TerminalShells } from '@shared/angular/services/terminal-shells/terminal-shells';
-import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 
 /**
@@ -121,16 +119,6 @@ export class TerminalRibbon {
    * Holds the terminal commands registry the ribbon actions are routed through.
    */
   private readonly commands: TerminalCommands = inject(TerminalCommands);
-
-  /**
-   * Holds the tab registry, used to resolve the active terminal tab for the agent toggle.
-   */
-  private readonly tabs: Tabs = inject(Tabs);
-
-  /**
-   * Holds the docked agent-panel state for terminal tabs.
-   */
-  private readonly terminalAgents: TerminalAgents = inject(TerminalAgents);
 
   /**
    * Holds the installed-shells provider backing the shell picker.
@@ -388,11 +376,8 @@ export class TerminalRibbon {
    * Toggles the active terminal tab's docked agent panel.
    */
   protected onAgent(): void {
-    const id: string | undefined = this.tabs.activeTabId();
-    if (id !== undefined) {
-      this.log.info('terminal.ribbon', 'Toggled terminal agent panel', id);
-      this.terminalAgents.toggle(id);
-    }
+    this.log.info('terminal.ribbon', 'Toggled terminal agent panel');
+    this.commands.toggleAgent();
   }
 
   /**

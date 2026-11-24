@@ -4,6 +4,7 @@ import { DockAutoHide } from './dock-auto-hide';
 import { DockFloating, FloatWindow } from './dock-floating';
 import { DockFocus } from './dock-focus';
 import { DockNode, StackNode } from './dock-node';
+import { DockPanelAvailability } from './dock-panel-availability';
 import { DockState } from './dock-state';
 import { findStackOfPanel } from './dock-tree';
 import { PopoutPanels } from './popout-panels';
@@ -25,6 +26,11 @@ export class DockReveal {
    * Holds the layout state activation is driven through.
    */
   private readonly dockState: DockState = inject(DockState);
+
+  /**
+   * Holds which panels can be shown, which decides the one a group shows.
+   */
+  private readonly availability: DockPanelAvailability = inject(DockPanelAvailability);
 
   /**
    * Holds the auto-hide manager used to peek collapsed stacks.
@@ -58,13 +64,64 @@ export class DockReveal {
    * @param panelId The identifier of the panel to open.
    */
   public open(panelId: string): void {
-    const elsewhere: boolean =
-      this.popouts.isPopped(panelId) ||
-      this.floating.floats().some((float: FloatWindow): boolean => float.panelId === panelId);
-    if (!elsewhere) {
+    if (!this.isElsewhere(panelId)) {
       this.dockState.open(panelId);
     }
     this.reveal(panelId);
+  }
+
+  /**
+   * Determines whether a panel is open anywhere: in the layout, or in a floating or pop-out window.
+   * @param panelId The identifier of the panel.
+   * @returns Returns true when it is.
+   */
+  public isOpen(panelId: string): boolean {
+    return this.isElsewhere(panelId) || this.dockState.isOpen(panelId);
+  }
+
+  /**
+   * Closes a panel its group is showing, and otherwise opens and reveals it, so a panel that is open
+   * behind another tab is brought to the front rather than closed.
+   * @param panelId The identifier of the panel to toggle.
+   */
+  public toggle(panelId: string): void {
+    if (this.isShowing(panelId)) {
+      void this.dockState.requestClose(panelId);
+    } else {
+      this.open(panelId);
+    }
+  }
+
+  /**
+   * Determines whether a panel lives in a floating or pop-out window.
+   * @param panelId The identifier of the panel.
+   * @returns Returns true when it does.
+   */
+  private isElsewhere(panelId: string): boolean {
+    return (
+      this.popouts.isPopped(panelId) ||
+      this.floating.floats().some((float: FloatWindow): boolean => float.panelId === panelId)
+    );
+  }
+
+  /**
+   * Determines whether a panel is the one its group in the layout is showing.
+   * @param panelId The identifier of the panel.
+   * @returns Returns true when it is.
+   */
+  private isShowing(panelId: string): boolean {
+    const stack: StackNode | null = findStackOfPanel(this.dockState.layout(), panelId);
+    if (
+      stack === null ||
+      (stack.collapsed === true && this.autoHide.flyoutStackId() !== stack.id)
+    ) {
+      return false;
+    }
+    const available: readonly string[] = stack.panels.filter((id: string): boolean =>
+      this.availability.isAvailable(id),
+    );
+    const active: string | undefined = available.find((id: string): boolean => id === stack.active);
+    return (active ?? available[0]) === panelId;
   }
 
   /**
@@ -81,10 +138,7 @@ export class DockReveal {
       return;
     }
 
-    const floated: boolean = this.floating
-      .floats()
-      .some((float: FloatWindow): boolean => float.panelId === panelId);
-    if (floated) {
+    if (this.isElsewhere(panelId)) {
       this.log.debug('DockReveal', `Panel '${panelId}' is floating; bringing to front`);
       this.floating.bringToFront(panelId);
       return;

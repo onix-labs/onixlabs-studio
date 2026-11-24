@@ -278,6 +278,21 @@ describe('DockTabGroup', () => {
     document.dispatchEvent(new MouseEvent('mouseup'));
   });
 
+  it('titleBar_whenAnotherPanelStandsInForTheActiveOne_actsOnTheOneItShows', () => {
+    availability.set({ output: false });
+    render(mkStack('tool', ['output', 'errors']));
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    const title: HTMLElement | null = element.querySelector<HTMLElement>('.dock-tab-group__title');
+    title?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 10, clientY: 10 }));
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 60, clientY: 60 }));
+    expect(drag.panel()?.id).toBe('errors');
+    document.dispatchEvent(new MouseEvent('mouseup'));
+
+    element.querySelector<HTMLButtonElement>('button[aria-label="Float"]')?.click();
+    expect(floating.floats().some((window): boolean => window.panelId === 'output')).toBe(false);
+  });
+
   it('startGroupDrag_whenTabRailPressedAndDragged_startsACompassDragForTheWholeGroup', () => {
     // The group must be the one the layout holds: a group drag moves a stack of the live tree.
     const stack: StackNode = findStackOfPanel(TestBed.inject(DockState).layout(), 'output')!;

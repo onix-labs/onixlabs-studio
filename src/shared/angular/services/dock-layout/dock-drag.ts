@@ -16,6 +16,7 @@ import {
 } from './dock-legality';
 import { DockFocus } from './dock-focus';
 import { DockPanel } from './dock-panel';
+import { DockPanelAvailability } from './dock-panel-availability';
 import { DockPanelRegistry } from './dock-panel-registry';
 import { DockNode, DockSide, isStackNode, StackNode, StackRole } from './dock-node';
 import { DockState } from './dock-state';
@@ -92,7 +93,7 @@ export type DragSubject =
       readonly panel: DockPanel | null;
 
       /**
-       * Gets the number of panels the group holds.
+       * Gets the number of panels the group shows.
        */
       readonly count: number;
     };
@@ -201,6 +202,11 @@ export class DockDrag {
    * Holds the registry the dragged panel is resolved through.
    */
   private readonly registry: DockPanelRegistry = inject(DockPanelRegistry);
+
+  /**
+   * Holds which panels can be shown: a group's others are neither named nor counted as it is dragged.
+   */
+  private readonly availability: DockPanelAvailability = inject(DockPanelAvailability);
 
   /**
    * Holds the geometry registry the cursor is hit-tested against.
@@ -430,15 +436,18 @@ export class DockDrag {
     if (node === null || !isStackNode(node) || node.role === 'main' || node.panels.length === 0) {
       return;
     }
-    const active: DockPanel | undefined =
-      node.active !== null ? this.registry.get(node.active) : undefined;
+    const shown: readonly string[] = node.panels.filter((id: string): boolean =>
+      this.availability.isAvailable(id),
+    );
+    const active: string | undefined =
+      shown.find((id: string): boolean => id === node.active) ?? shown[0];
     this.arm(
       {
         kind: 'group',
         stackId,
         role: node.role,
-        panel: active ?? null,
-        count: node.panels.length,
+        panel: active === undefined ? null : (this.registry.get(active) ?? null),
+        count: shown.length,
       },
       stackId,
       event,

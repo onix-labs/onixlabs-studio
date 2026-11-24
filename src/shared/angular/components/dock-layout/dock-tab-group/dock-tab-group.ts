@@ -679,8 +679,8 @@ export class DockTabGroup {
    * Floats the active panel out of the layout into a window.
    */
   protected requestFloat(): void {
-    const active: string | null = this.stack().active;
-    if (active !== null) {
+    const active: string | undefined = this.activePanel()?.id;
+    if (active !== undefined) {
       const rect: Rect = this.geometry.rectOf(this.stack().id) ?? FALLBACK_FLOAT_RECT;
       this.floating.float(active, rect);
     }
@@ -692,7 +692,7 @@ export class DockTabGroup {
    * stays consistent; it is disabled in views without pop-out support.
    */
   protected readonly canPopOutActive: Signal<boolean> = computed(
-    (): boolean => this.stack().active !== null && this.popouts.canPopOut(),
+    (): boolean => this.activePanel() !== undefined && this.popouts.canPopOut(),
   );
 
   /**
@@ -707,8 +707,8 @@ export class DockTabGroup {
    * Pops the active panel out into its own OS window through its registered handler.
    */
   protected popOutActive(): void {
-    const active: string | null = this.stack().active;
-    if (active !== null) {
+    const active: string | undefined = this.activePanel()?.id;
+    if (active !== undefined) {
       this.popouts.popOut(active);
     }
   }
@@ -726,8 +726,8 @@ export class DockTabGroup {
    * @param event The originating mouse event.
    */
   protected startDrag(event: MouseEvent): void {
-    const active: string | null = this.stack().active;
-    if (active !== null) {
+    const active: string | undefined = this.activePanel()?.id;
+    if (active !== undefined) {
       this.dockDrag.begin(active, event);
     }
   }

@@ -9,6 +9,8 @@ import {
   inject,
   input,
   InputSignal,
+  model,
+  ModelSignal,
   OnDestroy,
   output,
   OutputEmitterRef,
@@ -83,14 +85,20 @@ export class FindPanel implements OnDestroy {
   public readonly showHeader: InputSignal<boolean> = input<boolean>(true);
 
   /**
+   * Gets a value indicating whether the search outlives the panel: the host keeps it while the panel is
+   * out of sight (behind another tab of its dock group, say), and clears it when Find is closed.
+   */
+  public readonly keepsSearch: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Emits when the user dismisses the panel, so the host can close it.
    */
   public readonly closed: OutputEmitterRef<void> = output<void>();
 
   /**
-   * Holds the current find text.
+   * Gets the current find text, which a host may keep.
    */
-  protected readonly findText: WritableSignal<string> = signal<string>('');
+  public readonly findText: ModelSignal<string> = model<string>('');
 
   /**
    * Holds the current replacement text.
@@ -367,9 +375,12 @@ export class FindPanel implements OnDestroy {
 
   /**
    * Clears the query highlights when the panel is removed by any means (including a host that closes
-   * it without the close button), so no stale matches remain highlighted.
+   * it without the close button), so no stale matches remain highlighted — unless the host keeps the
+   * search ({@link keepsSearch}).
    */
   public ngOnDestroy(): void {
-    this.adapter()?.clear();
+    if (!this.keepsSearch()) {
+      this.adapter()?.clear();
+    }
   }
 }

@@ -4,6 +4,7 @@ import { TEST_DOCK_BLUEPRINT } from './dock-test-blueprint';
 import { DockDrag } from './dock-drag';
 import { DockNode, StackNode } from './dock-node';
 import { DockPanel } from './dock-panel';
+import { DockPanelAvailability } from './dock-panel-availability';
 import { DockState } from './dock-state';
 import { findStackOfPanel, firstStackOfRole } from './dock-tree';
 
@@ -107,6 +108,21 @@ describe('DockDrag', () => {
 
     document.dispatchEvent(new MouseEvent('mouseup'));
     expect(drag.active()).toBe(false);
+  });
+
+  it('beginGroup_whenSomePanelsCannotBeShown_namesAndCountsOnlyTheRest', () => {
+    TestBed.inject(DockPanelAvailability).set({ output: false });
+
+    drag.beginGroup(
+      stackOf('output').id,
+      new MouseEvent('mousedown', { clientX: 100, clientY: 100 }),
+    );
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 140, clientY: 140 }));
+
+    expect(drag.panel()?.id).not.toBe('output');
+    expect(drag.title()).toMatch(/ \+1$/);
+
+    document.dispatchEvent(new MouseEvent('mouseup'));
   });
 
   it('beginGroup_whenTheGroupIsEmpty_neverActivates', () => {

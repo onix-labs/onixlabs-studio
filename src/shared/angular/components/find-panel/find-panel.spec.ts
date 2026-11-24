@@ -192,4 +192,21 @@ describe('FindPanel', () => {
 
     expect(clearCalls).toBe(1);
   });
+
+  it('destroy_whenTheHostKeepsTheSearch_leavesTheAdapterAlone', async () => {
+    fixture.componentRef.setInput('keepsSearch', true);
+    await fixture.whenStable();
+
+    fixture.destroy();
+
+    expect(clearCalls).toBe(0);
+  });
+
+  it('findText_whenTheHostKeptIt_isSearchedForAndShownAgain', async () => {
+    fixture.componentRef.setInput('findText', 'kept');
+    await fixture.whenStable();
+
+    expect(queries.at(-1)?.text).toBe('kept');
+    expect(host.querySelector<HTMLInputElement>('.find-panel__input input')?.value).toBe('kept');
+  });
 });
