@@ -1,5 +1,5 @@
-import { DockNode, DockSide, isSplitNode, reserveNodeIds } from './dock-node';
-import { findPrimaryStack, firstStackOfRole } from './dock-tree';
+import { DockNode, DockSide, isSplitNode, reserveNodeIds, StackNode } from './dock-node';
+import { countStacks, findPrimaryStack, firstStackOfRole } from './dock-tree';
 
 /**
  * The dock sides a persisted {@link StackNode.side} may carry, used to reject hand-edited storage.
@@ -17,10 +17,17 @@ const DOCK_SIDES: readonly DockSide[] = ['left', 'right', 'top', 'bottom'];
  * @param raw The value read from the store (untrusted — may be null, malformed, or from an older schema).
  * @param knownPanelIds The panel ids still registered this session; a restored panel not in this set is
  * dropped, which naturally removes every dynamic document id that no longer exists after a restart.
+ * @param main The main group this dock's own layout has, or null when it has none. A saved layout whose
+ * main group is not the same — one saved before the view had it, or with another panel in it — is not
+ * one this dock can show.
  * @returns Returns a usable layout tree, or null when nothing usable survives (the caller then seeds a
  * fresh layout).
  */
-export function restoreLayout(raw: unknown, knownPanelIds: ReadonlySet<string>): DockNode | null {
+export function restoreLayout(
+  raw: unknown,
+  knownPanelIds: ReadonlySet<string>,
+  main: StackNode | null = null,
+): DockNode | null {
   if (!isPersistedNode(raw)) {
     return null;
   }
@@ -33,8 +40,33 @@ export function restoreLayout(raw: unknown, knownPanelIds: ReadonlySet<string>):
   ) {
     return null;
   }
+  if (!hasMain(sanitized, main)) {
+    return null;
+  }
   reserveNodeIds(sanitized);
   return sanitized;
+}
+
+/**
+ * Determines whether a layout has the main group a dock's own has: exactly that one, holding the same
+ * panel in the primary slot, or none.
+ * @param tree The layout.
+ * @param main The main group the dock's own layout has, or null when it has none.
+ * @returns Returns true when the two agree.
+ */
+function hasMain(tree: DockNode, main: StackNode | null): boolean {
+  if (countStacks(tree, 'main') !== (main === null ? 0 : 1)) {
+    return false;
+  }
+  const own: StackNode | null = firstStackOfRole(tree, 'main');
+  return (
+    own === null ||
+    main === null ||
+    (own.primary === true &&
+      own.collapsed !== true &&
+      own.panels.length === 1 &&
+      own.panels[0] === main.panels[0])
+  );
 }
 
 /**
@@ -53,7 +85,7 @@ function isPersistedNode(value: unknown): value is DockNode {
   }
   if (node['kind'] === 'stack') {
     return (
-      (node['role'] === 'tool' || node['role'] === 'document') &&
+      (node['role'] === 'tool' || node['role'] === 'document' || node['role'] === 'main') &&
       Array.isArray(node['panels']) &&
       node['panels'].every((panel: unknown): boolean => typeof panel === 'string') &&
       (node['active'] === null || typeof node['active'] === 'string') &&
@@ -79,7 +111,7 @@ function isPersistedNode(value: unknown): value is DockNode {
 
 /**
  * Prunes a validated tree to the panels still known this session: drops unknown panel ids, removes
- * emptied tool stacks, and promotes single-child splits. Empty document wells are kept so reopened
+ * emptied tool and main stacks, and promotes single-child splits. Empty document wells are kept so reopened
  * documents have a home. Each panel id is also kept at most once across the whole tree, so a layout
  * corrupted by an earlier double-add (which would otherwise render the same panel several times) is
  * healed on restore.
@@ -120,7 +152,7 @@ function sanitizeNode(
       seen.add(id);
     }
   }
-  if (panels.length === 0 && node.role === 'tool') {
+  if (panels.length === 0 && node.role !== 'document') {
     return null;
   }
   const active: string | null =

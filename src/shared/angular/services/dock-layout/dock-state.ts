@@ -16,6 +16,8 @@ import {
   dockNodeEdge,
   dockStackEdge,
   findNode,
+  findStackOfPanel,
+  firstStackOfRole,
   movePanel,
   occupyWell,
   occupyWellWithStack,
@@ -26,8 +28,8 @@ import {
   setActive,
   setCollapsed,
   setSizes,
-  splitStack,
   splitPanelOut,
+  splitStack,
   splitStackBeside,
   splitWellBeside,
   tabInto,
@@ -151,6 +153,16 @@ export class DockState {
   }
 
   /**
+   * Determines whether a panel is the main group's: the content the view is built around, which never
+   * closes, moves, collapses, floats or pops out.
+   * @param panelId The identifier of the panel.
+   * @returns Returns true when it is the main group's panel.
+   */
+  public isMain(panelId: string): boolean {
+    return findStackOfPanel(this.tree(), panelId)?.role === 'main';
+  }
+
+  /**
    * Adds a panel as a tab in the given stack and makes it active — or, opened in the background,
    * leaves the stack's active tab in front, so what the user was looking at stays put. A stack with no
    * active tab shows the new one either way: there was nothing in front to keep.
@@ -249,9 +261,12 @@ export class DockState {
    * chrome's close controls use; a plain move still calls {@link removeFromLayout} directly.
    * @param panelId The identifier of the panel to close.
    * @returns Returns a promise that resolves to true once the panel is closed, or false when its guard
-   * cancelled the close.
+   * cancelled the close, or the panel is the main group's.
    */
   public async requestClose(panelId: string): Promise<boolean> {
+    if (this.isMain(panelId)) {
+      return false;
+    }
     const panel: DockPanel | undefined = this.panels.get(panelId);
     if (panel?.confirmClose !== undefined && !(await panel.confirmClose())) {
       this.log.debug('DockState', `Close of panel '${panelId}' cancelled by guard`);
@@ -270,6 +285,9 @@ export class DockState {
    * @param panelId The identifier of the panel to close.
    */
   public release(panelId: string): void {
+    if (this.isMain(panelId)) {
+      return;
+    }
     this.released.add(panelId);
     this.removeFromLayout(panelId);
   }
@@ -323,10 +341,14 @@ export class DockState {
 
   /**
    * Removes a whole stack from the layout, collapsing the tree around it. The call is ignored when
-   * removing the stack would empty the entire layout.
+   * removing the stack would empty the entire layout, or the stack is the main group.
    * @param stackId The identifier of the stack to remove.
    */
   public removeStack(stackId: string): void {
+    const stack: DockNode | null = findNode(this.tree(), stackId);
+    if (stack !== null && isStackNode(stack) && stack.role === 'main') {
+      return;
+    }
     const next: DockNode | null = removeNode(this.tree(), stackId);
     if (next !== null) {
       this.commit(next);
@@ -527,7 +549,11 @@ export class DockState {
       return this.createLayout();
     }
     const raw: unknown = this.store.get<unknown>(`dock.layout.${this.persistKey}`, null);
-    const restored: DockNode | null = restoreLayout(raw, this.knownPanelIds);
+    const restored: DockNode | null = restoreLayout(
+      raw,
+      this.knownPanelIds,
+      firstStackOfRole(this.createLayout(), 'main'),
+    );
     if (restored !== null) {
       this.log.info('DockState', `Restored persisted layout '${this.persistKey}'`);
       return restored;

@@ -402,7 +402,7 @@ export class DockDrag {
   }
 
   /**
-   * Begins a compass dock drag for the given panel.
+   * Begins a compass dock drag for the given panel. Ignored for the main group's, which never moves.
    * @param panelId The identifier of the panel to drag.
    * @param event The originating mouse event.
    */
@@ -412,18 +412,22 @@ export class DockDrag {
       return;
     }
     const source: StackNode | null = findStackOfPanel(this.dockState.layout(), panelId);
+    if (source?.role === 'main') {
+      return;
+    }
     this.arm({ kind: 'panel', panel }, source?.id ?? null, event);
   }
 
   /**
    * Begins a compass dock drag for a whole group: every tab in the stack moves as one, wherever the
-   * drop resolves. Empty groups are ignored — there is nothing to move.
+   * drop resolves. Empty groups are ignored — there is nothing to move — and so is the main group, which
+   * never does.
    * @param stackId The identifier of the stack to drag.
    * @param event The originating mouse event.
    */
   public beginGroup(stackId: string, event: MouseEvent): void {
     const node: DockNode | null = findNode(this.dockState.layout(), stackId);
-    if (node === null || !isStackNode(node) || node.panels.length === 0) {
+    if (node === null || !isStackNode(node) || node.role === 'main' || node.panels.length === 0) {
       return;
     }
     const active: DockPanel | undefined =

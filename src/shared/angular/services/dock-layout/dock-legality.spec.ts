@@ -1,5 +1,6 @@
 import {
   DockResolution,
+  GuideLegality,
   guideLegality,
   nearestEdge,
   Rect,
@@ -58,6 +59,26 @@ describe('dock-legality', () => {
 
     it('guideLegality_whenToolOverTool_allowsEveryGuide', () => {
       expect(guideLegality('tool', 'tool').center).toBe(true);
+    });
+
+    it('guideLegality_whenOverTheMainGroup_allowsSplitsButNeverTabInto (#1565)', () => {
+      const splits: GuideLegality = {
+        center: false,
+        left: true,
+        right: true,
+        top: true,
+        bottom: true,
+      };
+
+      expect(guideLegality('tool', 'main')).toEqual(splits);
+      expect(guideLegality('tool', 'main', true)).toEqual(splits);
+      expect(guideLegality('document', 'main', false, true)).toEqual(splits);
+      expect(Object.values(guideLegality('document', 'main'))).not.toContain(true);
+    });
+
+    it('guideLegality_whenTheMainGroupIsDragged_forbidsEveryGuide (#1565)', () => {
+      expect(Object.values(guideLegality('main', 'tool'))).not.toContain(true);
+      expect(Object.values(guideLegality('main', 'document'))).not.toContain(true);
     });
 
     it('guideLegality_whenToolOverEmptyDocument_allowsEveryGuide', () => {

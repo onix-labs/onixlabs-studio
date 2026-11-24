@@ -7,6 +7,8 @@
   block-size: 100%;
   inline-size: 100%;
   background: var(--dock-container-background-color);
+  // Every open tab's dock is mounted at once, so each keeps its main slot's anchor to itself.
+  anchor-scope: --dock-main;
 }
 
 // The optional background texture, tiled behind the docked panes. The pattern arrives as
@@ -37,4 +39,14 @@
   block-size: 100%;
   inline-size: 100%;
   gap: 0;
+}
+
+// Laid over the main group's slot, following it through every resize without being measured. Above the
+// panes' own level and beneath what is meant to cover them: dividers, collapsed strips and their peeks.
+.dock-container__main {
+  position: absolute;
+  inset-block: anchor(--dock-main top) anchor(--dock-main bottom);
+  inset-inline: anchor(--dock-main left) anchor(--dock-main right);
+  z-index: 1;
+  overflow: hidden;
 }

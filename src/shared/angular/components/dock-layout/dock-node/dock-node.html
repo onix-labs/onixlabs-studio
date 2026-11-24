@@ -1,6 +1,8 @@
 <ng-template #render let-node let-side="side">
   @if (isCollapsed(node)) {
     <app-dock-collapsed-strip [stack]="asStack(node)" [side]="side" />
+  } @else if (isMain(node)) {
+    <app-dock-main [stack]="asStack(node)" />
   } @else if (isStack(node)) {
     <app-dock-tab-group [stack]="node" [side]="side" />
   } @else {

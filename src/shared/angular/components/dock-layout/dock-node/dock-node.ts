@@ -18,6 +18,7 @@ import { DockPanelAvailability } from '../../../services/dock-layout/dock-panel-
 import { DockMinimum, DockMinimums } from '../../../services/dock-layout/dock-minimums';
 import { DockState } from '../../../services/dock-layout/dock-state';
 import { DockCollapsedStrip } from '../dock-collapsed-strip/dock-collapsed-strip';
+import { DockMain } from '../dock-main/dock-main';
 import { DockTabGroup } from '../dock-tab-group/dock-tab-group';
 
 /**
@@ -26,7 +27,8 @@ import { DockTabGroup } from '../dock-tab-group/dock-tab-group';
 const COLLAPSED_SIZE: string = '1.875rem';
 
 /**
- * Renders a node of the dock layout tree. A stack renders as a tab group; a split renders its
+ * Renders a node of the dock layout tree. A stack renders as a tab group, or as the slot of the main
+ * group; a split renders its
  * children as the panes of a {@link SplitPanel} interleaved with dividers, recursing into each child
  * through a self-referencing template (so the component need not import itself). A collapsed stack
  * renders as a thin {@link DockCollapsedStrip} in its slot instead of a full tab group, and the dividers
@@ -41,6 +43,7 @@ const COLLAPSED_SIZE: string = '1.875rem';
     SplitDivider,
     DockTabGroup,
     DockCollapsedStrip,
+    DockMain,
   ],
   templateUrl: './dock-node.html',
   styleUrl: './dock-node.scss',
@@ -87,6 +90,15 @@ export class DockNode {
    */
   protected isStack(node: DockTreeNode): boolean {
     return isStackNode(node);
+  }
+
+  /**
+   * Determines whether the given node is the main group.
+   * @param node The node to test.
+   * @returns Returns true when the node is the main group; otherwise, false.
+   */
+  protected isMain(node: DockTreeNode): boolean {
+    return isStackNode(node) && node.role === 'main';
   }
 
   /**

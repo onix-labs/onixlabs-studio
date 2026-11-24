@@ -63,14 +63,14 @@ export class DockAutoHide {
 
   /**
    * Collapses a tool stack to a strip in its slot, remembering the edge it was hugging so the strip
-   * keeps that edge as the tree is rearranged around it. The call is ignored for document wells and
-   * unknown stacks.
+   * keeps that edge as the tree is rearranged around it. The call is ignored for anything but a tool
+   * stack.
    * @param stackId The identifier of the stack to collapse.
    * @param side The edge the stack is hugging, or undefined when the caller cannot say.
    */
   public pin(stackId: string, side?: DockSide): void {
     const node: DockNode | null = findNode(this.dockState.layout(), stackId);
-    if (node === null || !isStackNode(node) || node.role === 'document') {
+    if (node === null || !isStackNode(node) || node.role !== 'tool') {
       return;
     }
     this.log.info(

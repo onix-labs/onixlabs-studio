@@ -425,6 +425,10 @@ export function splitWellBeside(
   const well: StackNode = mkStack('document', [panelId], false);
   // Wrap the (still primary) tool stack in a fresh split, well first, both at weight one (50/50),
   // regardless of the parent's orientation — so the ratio is exactly the documented default.
+  if (placement === 'collapse' && target.role === 'main') {
+    // A main group never collapses, so the well goes beside it.
+    return replaceNode(tree, stackId, wrap(target, well, 'row', true));
+  }
   if (placement === 'collapse') {
     // A tool already collapsed keeps its own edge, and is not the one to hand the space back to.
     const tool: StackNode =
@@ -514,11 +518,12 @@ export function seatDocuments(
  * @param tree The root of the tree to transform.
  * @param stackId The identifier of the stack to tab into.
  * @param panelId The identifier of the panel to add.
- * @returns Returns the transformed tree, or the original tree when the stack does not exist.
+ * @returns Returns the transformed tree, or the original tree when the stack does not exist or is the
+ * main group, which nothing joins.
  */
 export function tabInto(tree: DockNode, stackId: string, panelId: string): DockNode {
   const target: DockNode | null = findNode(tree, stackId);
-  if (target === null || !isStackNode(target)) {
+  if (target === null || !isStackNode(target) || target.role === 'main') {
     return tree;
   }
   const updated: StackNode = { ...target, panels: [...target.panels, panelId], active: panelId };
@@ -545,7 +550,7 @@ export function setActive(tree: DockNode, stackId: string, panelId: string): Doc
  * tree, so expanding it restores its exact position and size. Collapsing also records the edge the
  * stack was hugging at the time, so its strip keeps that edge as the tree is rearranged around it
  * (see {@link StackNode.side}); expanding forgets it again. The call is ignored when the stack does
- * not exist, is not a stack, or is a document well (wells never collapse).
+ * not exist, or is not a tool stack (nothing else collapses).
  * @param tree The root of the tree to transform.
  * @param stackId The identifier of the stack to collapse or expand.
  * @param collapsed Whether the stack should be collapsed.
@@ -559,7 +564,7 @@ export function setCollapsed(
   side?: DockSide,
 ): DockNode {
   const target: DockNode | null = findNode(tree, stackId);
-  if (target === null || !isStackNode(target) || target.role === 'document') {
+  if (target === null || !isStackNode(target) || target.role !== 'tool') {
     return tree;
   }
   if ((target.collapsed ?? false) === collapsed) {
@@ -731,14 +736,14 @@ export function dockEdge(tree: DockNode, panelId: string, side: DockSide): DockN
 
 /**
  * Removes a panel from the layout, updating its stack's active panel and pruning the stack when it
- * becomes empty.
+ * becomes empty. The main group's panel never leaves.
  * @param tree The root of the tree to transform.
  * @param panelId The identifier of the panel to remove.
  * @returns Returns the transformed tree.
  */
 export function removeFromLayout(tree: DockNode, panelId: string): DockNode {
   const stack: StackNode | null = findStackOfPanel(tree, panelId);
-  if (stack === null) {
+  if (stack === null || stack.role === 'main') {
     return tree;
   }
   const panels: readonly string[] = stack.panels.filter((id: string): boolean => id !== panelId);
@@ -780,7 +785,7 @@ export function reorderTab(
 /**
  * Moves a panel into a stack at a given index, removing it from its current stack and pruning that
  * stack when it empties. Moving within the same stack reorders it. The call is ignored when the
- * panel or target stack does not exist.
+ * panel or target stack does not exist, or either is the main group.
  * @param tree The root of the tree to transform.
  * @param panelId The identifier of the panel to move.
  * @param targetStackId The identifier of the stack to move the panel into.
@@ -796,6 +801,9 @@ export function movePanel(
   const source: StackNode | null = findStackOfPanel(tree, panelId);
   const target: DockNode | null = findNode(tree, targetStackId);
   if (source === null || target === null || !isStackNode(target)) {
+    return tree;
+  }
+  if (source.role === 'main' || target.role === 'main') {
     return tree;
   }
   if (source.id === targetStackId) {
@@ -852,12 +860,17 @@ interface LiftedStack {
  * well rather than vanishing.
  * @param tree The root of the tree to transform.
  * @param stackId The identifier of the stack to lift.
- * @returns Returns the lifted stack, or null when the node does not exist, is not a stack, or holds
- * no panels (an empty group has nothing to move).
+ * @returns Returns the lifted stack, or null when the node does not exist, is not a stack, holds no
+ * panels (an empty group has nothing to move), or is the main group, which never moves.
  */
 function liftStack(tree: DockNode, stackId: string): LiftedStack | null {
   const source: DockNode | null = findNode(tree, stackId);
-  if (source === null || !isStackNode(source) || source.panels.length === 0) {
+  if (
+    source === null ||
+    !isStackNode(source) ||
+    source.role === 'main' ||
+    source.panels.length === 0
+  ) {
     return null;
   }
   const emptied: StackNode = { ...source, panels: [], active: null };
@@ -892,8 +905,8 @@ function reseatedStack(lifted: LiftedStack, sourceStackId: string): StackNode {
 /**
  * Moves every panel of one stack into another as tabs, in order, keeping the moved group's active
  * panel active. The source stack is lifted first, so the layout collapses around it exactly as it
- * would if its tabs had been closed. The call is ignored when either stack does not exist, the
- * source holds no panels, or both are the same stack.
+ * would if its tabs had been closed. The call is ignored when either stack does not exist or
+ * is the main group, the source holds no panels, or both are the same stack.
  * @param tree The root of the tree to transform.
  * @param sourceStackId The identifier of the stack whose panels move.
  * @param targetStackId The identifier of the stack they move into.
@@ -912,7 +925,7 @@ export function tabStackInto(
     return tree;
   }
   const target: DockNode | null = findNode(lifted.tree, targetStackId);
-  if (target === null || !isStackNode(target)) {
+  if (target === null || !isStackNode(target) || target.role === 'main') {
     return tree;
   }
   return replaceNode(lifted.tree, targetStackId, {

@@ -1,4 +1,4 @@
-import { DockNode, mkStack, SplitNode, StackNode } from './dock-node';
+import { DockNode, mkSplit, mkStack, SplitNode, StackNode } from './dock-node';
 import { restoreLayout } from './dock-persistence';
 
 describe('dock-persistence', () => {
@@ -168,5 +168,61 @@ describe('dock-persistence', () => {
     restoreLayout(raw, new Set<string>());
 
     expect(mkStack('tool', ['a']).id).toBe(`dock-${reserved + 1}`);
+  });
+
+  describe('the main group (#1565)', () => {
+    const own: StackNode = mkStack('main', ['editor']);
+    const known: ReadonlySet<string> = new Set<string>(['editor', 'agent']);
+
+    it('restore_whenTheSavedLayoutHasIt_keepsIt', () => {
+      const saved: DockNode = mkSplit('row', [
+        mkStack('main', ['editor']),
+        mkStack('tool', ['agent']),
+      ]);
+
+      const restored: DockNode | null = restoreLayout(
+        JSON.parse(JSON.stringify(saved)),
+        known,
+        own,
+      );
+
+      expect(restored).toEqual(saved);
+    });
+
+    it('restore_whenTheSavedLayoutHasNone_seedsAfresh', () => {
+      const saved: DockNode = mkSplit('row', [
+        mkStack('document', [], true),
+        mkStack('tool', ['agent']),
+      ]);
+
+      expect(restoreLayout(saved, known, own)).toBeNull();
+    });
+
+    it('restore_whenItHoldsAnotherPanel_seedsAfresh', () => {
+      const saved: DockNode = mkSplit('row', [
+        mkStack('main', ['agent']),
+        mkStack('tool', ['editor']),
+      ]);
+
+      expect(restoreLayout(saved, known, own)).toBeNull();
+    });
+
+    it('restore_whenItsPanelIsNoLongerKnown_seedsAfresh', () => {
+      const saved: DockNode = mkSplit('row', [
+        mkStack('main', ['editor']),
+        mkStack('tool', ['agent']),
+      ]);
+
+      expect(restoreLayout(saved, new Set<string>(['agent']), own)).toBeNull();
+    });
+
+    it('restore_whenTheDockHasNone_refusesALayoutWithOne', () => {
+      const saved: DockNode = mkSplit('row', [
+        mkStack('main', ['editor']),
+        mkStack('document', []),
+      ]);
+
+      expect(restoreLayout(saved, known)).toBeNull();
+    });
   });
 });

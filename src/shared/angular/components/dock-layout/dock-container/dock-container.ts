@@ -23,6 +23,7 @@ import { firstStackOfRole } from '../../../services/dock-layout/dock-tree';
 import { DockFloatingLayer } from '../dock-floating-layer/dock-floating-layer';
 import { DockNode } from '../dock-node/dock-node';
 import { DockOverlay } from '../dock-overlay/dock-overlay';
+import { DockPanelOutlet } from '../dock-panel-outlet/dock-panel-outlet';
 
 /**
  * The dock-area padding, in rem. Matches the splitter thickness so the gap is uniform around the
@@ -38,7 +39,7 @@ const BASE_INSET: string = '0.5rem';
  */
 @Component({
   selector: 'app-dock-container',
-  imports: [DockNode, DockOverlay, DockFloatingLayer, CdkDropListGroup],
+  imports: [DockNode, DockOverlay, DockFloatingLayer, DockPanelOutlet, CdkDropListGroup],
   templateUrl: './dock-container.html',
   styleUrl: './dock-container.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -113,6 +114,20 @@ export class DockContainer {
    * Gets the root of the layout tree to render.
    */
   protected readonly layout: Signal<DockTreeNode> = this.dockState.layout;
+
+  /**
+   * Gets the main group, or null when the layout has none.
+   */
+  private readonly mainStack: Signal<StackNode | null> = computed((): StackNode | null =>
+    firstStackOfRole(this.layout(), 'main'),
+  );
+
+  /**
+   * Gets the identifier of the main group's panel, or null when the layout has none.
+   */
+  protected readonly mainPanelId: Signal<string | null> = computed(
+    (): string | null => this.mainStack()?.panels[0] ?? null,
+  );
 
   /**
    * Gets the background texture to paint behind the docked panes, or null when the user has chosen
@@ -228,10 +243,22 @@ export class DockContainer {
   }
 
   /**
-   * Focuses the first document well so the editor starts (and resets) accented.
+   * Focuses the main group when its content, which lies outside the group, is pressed.
+   */
+  protected focusMain(): void {
+    const main: StackNode | null = this.mainStack();
+    if (main !== null) {
+      this.dockFocus.focus(main.id);
+    }
+  }
+
+  /**
+   * Focuses the first document well, or the main group, so the editor starts (and resets) accented.
    */
   private focusDocumentWell(): void {
-    const well: StackNode | null = firstStackOfRole(this.dockState.layout(), 'document');
+    const layout: DockTreeNode = this.dockState.layout();
+    const well: StackNode | null =
+      firstStackOfRole(layout, 'document') ?? firstStackOfRole(layout, 'main');
     if (well !== null) {
       this.dockFocus.focus(well.id);
     }

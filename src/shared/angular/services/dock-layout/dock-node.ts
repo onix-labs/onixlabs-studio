@@ -3,9 +3,11 @@ import { SplitDirection } from '@shared/angular/components/split-panel/split-dir
 /**
  * Specifies the role a {@link StackNode} plays, which governs docking legality. Tool stacks may
  * dock to edges and beside or into any stack; document stacks form the editor wells and only ever
- * hold documents.
+ * hold documents. A main stack holds the one panel a view is built around — an editor, a terminal — and
+ * stays where it is: it shows no tabs or title, nothing joins it, and it never closes, moves, collapses,
+ * floats or pops out.
  */
-export type StackRole = 'tool' | 'document';
+export type StackRole = 'tool' | 'document' | 'main';
 
 /**
  * Specifies the side of a stack or the application edge a panel can dock against. `left` and
@@ -105,7 +107,8 @@ export interface StackNode {
    * away (when emptied it reverts to an empty document well rather than vanishing, so the centre
    * always keeps a documents-home and a hoverable blank target), and it is the stack a tool
    * occupies when dropped on the empty centre (its role flips to `tool` in place). The flag moves to
-   * the freshly split-off well when a document is opened against a tool-occupied centre.
+   * the freshly split-off well when a document is opened against a tool-occupied centre. In a layout
+   * with a main stack, the main stack is the primary slot.
    */
   readonly primary?: boolean;
 }
@@ -187,10 +190,9 @@ export interface StackOptions {
  * @param role The role of the stack, which governs docking legality.
  * @param panels The ordered identifiers of the panels the stack should hold.
  * @param primary Whether this stack is the layout's primary (centre) slot; omitted for every stack
- * but the centre well.
+ * but the centre well. A main stack always is.
  * @param options The optional authored state — which panel starts in front, whether the stack starts
- * collapsed, and against which edge. Document wells are never collapsed, so those flags are ignored
- * for them.
+ * collapsed, and against which edge. Only tool stacks collapse, so those flags are ignored for others.
  * @returns Returns a new {@link StackNode} whose active panel is the one named in the options, else
  * the first supplied panel, or `null` when no panels are supplied.
  */
@@ -200,7 +202,7 @@ export function mkStack(
   primary: boolean = false,
   options: StackOptions = {},
 ): StackNode {
-  const collapsed: boolean = role !== 'document' && options.collapsed === true;
+  const collapsed: boolean = role === 'tool' && options.collapsed === true;
   const active: string | null =
     options.active !== undefined && panels.includes(options.active)
       ? options.active
@@ -211,7 +213,7 @@ export function mkStack(
     role,
     panels: [...panels],
     active,
-    ...(primary ? { primary: true } : {}),
+    ...(primary || role === 'main' ? { primary: true } : {}),
     ...(collapsed ? { collapsed: true } : {}),
     ...(collapsed && options.side !== undefined ? { side: options.side } : {}),
   };

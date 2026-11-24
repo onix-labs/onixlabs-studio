@@ -33,9 +33,9 @@ import {
   setActive,
   setCollapsed,
   setSizes,
+  splitPanelOut,
   splitStack,
   splitStackBeside,
-  splitPanelOut,
   splitWellBeside,
   tabInto,
   tabStackInto,
@@ -1131,6 +1131,81 @@ describe('dock-tree', () => {
       const tree: DockNode = mkStack('tool', ['agent'], true);
 
       expect(seatDocuments(tree, [], null)).toBe(tree);
+    });
+  });
+
+  describe('the main group (#1565)', () => {
+    /**
+     * Builds a layout of a main group between two tool groups.
+     */
+    function withMain(): { tree: DockNode; main: StackNode; left: StackNode; right: StackNode } {
+      const left: StackNode = mkStack('tool', ['files']);
+      const main: StackNode = mkStack('main', ['editor']);
+      const right: StackNode = mkStack('tool', ['agent', 'find']);
+      return { tree: mkSplit('row', [left, main, right]), main, left, right };
+    }
+
+    it('mkStack_whenMain_isThePrimarySlot_andNeverCollapsed', () => {
+      const main: StackNode = mkStack('main', ['editor'], false, { collapsed: true, side: 'left' });
+
+      expect(main.primary).toBe(true);
+      expect(main.collapsed).toBeUndefined();
+    });
+
+    it('nothing_joinsIt', () => {
+      const { tree, main, left } = withMain();
+
+      expect(tabInto(tree, main.id, 'output')).toBe(tree);
+      expect(movePanel(tree, 'find', main.id, 0)).toBe(tree);
+      expect(tabStackInto(tree, left.id, main.id)).toBe(tree);
+      expect(occupyWell(tree, main.id, 'output')).toBe(tree);
+    });
+
+    it('its_panelNeverLeaves', () => {
+      const { tree, main, left } = withMain();
+
+      expect(removeFromLayout(tree, 'editor')).toBe(tree);
+      expect(movePanel(tree, 'editor', left.id, 0)).toBe(tree);
+      expect(tabStackInto(tree, main.id, left.id)).toBe(tree);
+      expect(splitPanelOut(tree, 'editor', 'right')).toBe(tree);
+    });
+
+    it('it_neverMovesOrCollapses', () => {
+      const { tree, main, left } = withMain();
+
+      expect(setCollapsed(tree, main.id, true, 'left')).toBe(tree);
+      expect(splitStackBeside(tree, main.id, left.id, 'left')).toBe(tree);
+      expect(dockStackEdge(tree, main.id, 'left')).toBe(tree);
+    });
+
+    it('a_panelDocksOnAnySideOfIt', () => {
+      const { tree, main } = withMain();
+
+      const next: DockNode = splitStack(tree, main.id, 'output', 'bottom', 'tool');
+
+      expect(findStackOfPanel(next, 'editor')).toBe(main);
+      expect(findStackOfPanel(next, 'output')?.role).toBe('tool');
+    });
+
+    it('closing_everythingElse_leavesItAlone', () => {
+      const { tree, main } = withMain();
+
+      const next: DockNode = ['files', 'agent', 'find'].reduce(removeFromLayout, tree);
+
+      expect(next).toBe(main);
+      expect(countStacks(next, 'document')).toBe(0);
+    });
+
+    it('a_documentWellBesideIt_neverCollapsesIt_andGoesWhenItEmpties', () => {
+      const { tree, main } = withMain();
+
+      const opened: DockNode = splitWellBeside(tree, main.id, 'doc', 'collapse');
+      expect((findNode(opened, main.id) as StackNode).collapsed).toBeUndefined();
+      expect(countStacks(opened, 'document')).toBe(1);
+
+      const closed: DockNode = removeFromLayout(opened, 'doc');
+      expect(countStacks(closed, 'document')).toBe(0);
+      expect(findNode(closed, main.id)).toEqual(main);
     });
   });
 });
