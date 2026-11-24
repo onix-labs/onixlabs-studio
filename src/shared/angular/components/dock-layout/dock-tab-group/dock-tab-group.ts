@@ -2,11 +2,13 @@ import { CdkDrag, CdkDragDrop, CdkDropList } from '@angular/cdk/drag-drop';
 import { CdkContextMenuTrigger, CdkMenuTrigger } from '@angular/cdk/menu';
 import {
   afterNextRender,
+  afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
   computed,
   DestroyRef,
   effect,
+  EffectCleanupRegisterFn,
   ElementRef,
   inject,
   input,
@@ -19,7 +21,7 @@ import {
 } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
 import { ALL_DOCK_BUTTONS, DockButton } from '../../../services/dock-layout/dock-appearance';
-import { DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-blueprint';
+import { DOCK_BLUEPRINT, DockBlueprint } from '../../../services/dock-layout/dock-blueprint';
 import { DockAutoHide } from '../../../services/dock-layout/dock-auto-hide';
 import { DockDrag } from '../../../services/dock-layout/dock-drag';
 import { DockFloating } from '../../../services/dock-layout/dock-floating';
@@ -163,10 +165,14 @@ export class DockTabGroup {
   private readonly dockFocus: DockFocus = inject(DockFocus);
 
   /**
+   * Holds the blueprint specialising the dock, or null when none was provided.
+   */
+  private readonly blueprint: DockBlueprint | null = inject(DOCK_BLUEPRINT, { optional: true });
+
+  /**
    * Holds the buttons the dock's title bars show.
    */
-  private readonly buttons: readonly DockButton[] =
-    inject(DOCK_BLUEPRINT, { optional: true })?.buttons ?? ALL_DOCK_BUTTONS;
+  private readonly buttons: readonly DockButton[] = this.blueprint?.buttons ?? ALL_DOCK_BUTTONS;
 
   /**
    * Holds the structured logger.
@@ -185,6 +191,14 @@ export class DockTabGroup {
    */
   private readonly tabstrip: Signal<ElementRef<HTMLElement> | undefined> =
     viewChild<ElementRef<HTMLElement>>('tabstrip');
+
+  /**
+   * Holds the tab strip itself: the same for as long as it lasts, where the query makes a new reference
+   * to it whenever the template changes around it.
+   */
+  private readonly tabstripElement: Signal<HTMLElement | undefined> = computed(
+    (): HTMLElement | undefined => this.tabstrip()?.nativeElement,
+  );
 
   /**
    * Holds the dock's minimum sizes, which this group reports its own chrome to (#1064).
@@ -318,6 +332,15 @@ export class DockTabGroup {
   protected readonly isEmpty: Signal<boolean> = computed((): boolean => this.panels().length === 0);
 
   /**
+   * Gets a value indicating whether the group shows its tabs. In the simple look a tool group showing a
+   * single panel doesn't: its title bar already names it.
+   */
+  protected readonly showsTabs: Signal<boolean> = computed(
+    (): boolean =>
+      this.isDocuments() || this.blueprint?.appearance !== 'simple' || this.panels().length > 1,
+  );
+
+  /**
    * Gets a value indicating whether the active document can be dragged out of the well into a separate
    * group: only when the well holds more than one document, so dragging it out leaves the well behind.
    */
@@ -395,20 +418,31 @@ export class DockTabGroup {
       this.geometry.registerGroup(stack.id, stack.role, this.hostElement.nativeElement);
     });
 
-    afterNextRender((): void => {
-      // Re-measure whenever the strip is resized (the panel narrows or widens) — coalesced to one
-      // measurement per frame: the observer can fire several times within a frame, and each
-      // measurement is a forced layout (see measureTabsFill).
-      const strip: HTMLElement | undefined = this.tabstrip()?.nativeElement;
-      if (strip !== undefined && typeof ResizeObserver !== 'undefined') {
-        const observer: ResizeObserver = new ResizeObserver(
-          (entries: readonly ResizeObserverEntry[]): void => this.onStripResized(entries),
-        );
-        observer.observe(strip);
-        destroyRef.onDestroy((): void => observer.disconnect());
+    // Re-measure whenever the strip is resized (the panel narrows or widens) — coalesced to one
+    // measurement per frame: the observer can fire several times within a frame, and each
+    // measurement is a forced layout (see measureTabsFill). Followed after each render because the strip
+    // comes and goes: a group showing nothing has none (see also showsTabs). A document well's tabs never
+    // fill it, so one that opens empty is not followed.
+    let drawn: boolean = false;
+    afterRenderEffect((onCleanup: EffectCleanupRegisterFn): void => {
+      const strip: HTMLElement | undefined = this.tabstripElement();
+      const late: boolean = drawn;
+      drawn = true;
+      if (
+        strip === undefined ||
+        typeof ResizeObserver === 'undefined' ||
+        (late && untracked(this.isDocuments))
+      ) {
+        return;
       }
-      this.measureTabsFill();
+      const observer: ResizeObserver = new ResizeObserver(
+        (entries: readonly ResizeObserverEntry[]): void => this.onStripResized(entries),
+      );
+      observer.observe(strip);
+      onCleanup((): void => observer.disconnect());
     });
+
+    afterNextRender((): void => this.measureTabsFill());
 
     destroyRef.onDestroy((): void => {
       this.geometry.unregisterGroup(this.stack().id);

@@ -109,6 +109,29 @@ describe("a dock's appearance and buttons (#1569)", () => {
     ).toEqual(['Agent', 'Find']);
   });
 
+  it('simple_showsAGroupsTabs_onlyWhileItShowsMoreThanOnePanel', () => {
+    draw(blueprint({ appearance: 'simple', startsOpen: ['agent'] }));
+    const dock: DockState = TestBed.inject(DockState);
+
+    expect(host.querySelector('.dock-tab-group__title-text')?.textContent).toBe('Agent');
+    expect(host.querySelector('.dock-tab-group__tabstrip')).toBeNull();
+
+    dock.open('find');
+    fixture.detectChanges();
+    expect(host.querySelectorAll('.dock-tab')).toHaveLength(2);
+
+    dock.release('agent');
+    fixture.detectChanges();
+    expect(host.querySelector('.dock-tab-group__title-text')?.textContent).toBe('Find');
+    expect(host.querySelector('.dock-tab-group__tabstrip')).toBeNull();
+  });
+
+  it('full_showsTheTabOfASinglePanelToo', () => {
+    draw(blueprint({ startsOpen: ['agent'] }));
+
+    expect(host.querySelectorAll('.dock-tab')).toHaveLength(1);
+  });
+
   it('buttons_whenNamed_areTheOnlyOnesShown', () => {
     draw(blueprint({ buttons: ['close'] }));
 
