@@ -1,5 +1,7 @@
+// Its one child fills it, both ways, without having to say so.
 :host {
-  display: flex;
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   min-inline-size: 0;
   min-block-size: 0;
   overflow: hidden;

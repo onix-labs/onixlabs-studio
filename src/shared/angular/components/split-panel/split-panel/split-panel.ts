@@ -15,6 +15,12 @@ import type { SplitDivider } from '../split-divider/split-divider';
 import { SplitPane } from '../split-pane/split-pane';
 
 /**
+ * Specifies how a split draws its dividers: `gap` gives each a gap of its own between its panes, and
+ * `overlay` draws it over the inner edge of the pane it sizes, unseen until hovered.
+ */
+export type SplitDividers = 'gap' | 'overlay';
+
+/**
  * Represents a split: a row or column of {@link SplitPane}s, with a
  * {@link import('../split-divider/split-divider').SplitDivider} placed between each pair the user may
  * resize. The panes and dividers are the host's own content, in order:
@@ -47,6 +53,12 @@ export class SplitPanel implements SplitContext {
    * Gets the orientation in which the panes are laid out.
    */
   public readonly dir: InputSignal<SplitDirection> = input.required<SplitDirection>();
+
+  /**
+   * Gets how the dividers are drawn: in a gap of their own between the panes, or over the edge of the
+   * pane they size, taking no room.
+   */
+  public readonly dividers: InputSignal<SplitDividers> = input<SplitDividers>('gap');
 
   /**
    * Gets the key the panes' pixel sizes are remembered under, shared by every split of one kind: a new

@@ -40,8 +40,8 @@ const NOTHING_DISABLED: ReadonlySet<FindScope> = new Set<FindScope>();
 
 /**
  * Holds the state of a tab's own Find & Replace outside a workspace (#1007): a standalone code tab
- * (its code or its generated code), a binary tab's disassembly, or an API Explorer request's bodies.
- * The tab keeps one, opens it from its {@link import('@shared/angular/services/find-router/find-host').FindHost},
+ * (its code or its generated code), a binary tab's disassembly, or the API Explorer's request and
+ * response bodies. The tab keeps one, opens it from its {@link import('@shared/angular/services/find-router/find-host').FindHost},
  * and shows it as the shared search view — the same view the workspace's Search panel is — through
  * {@link import('./editor-search-panel').EditorSearchPanel}.
  *
@@ -77,6 +77,17 @@ export class EditorSearch {
    * Holds whether that editor is read-only.
    */
   private readonly readOnlyState: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds how many times the editor searched has changed other than by a request.
+   */
+  private readonly revisionState: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Gets a number that changes whenever {@link retarget} moves the search to another editor, so the
+   * view can search again there.
+   */
+  public readonly revision: Signal<number> = this.revisionState.asReadonly();
 
   /**
    * Gets whether the view is shown.
@@ -135,6 +146,26 @@ export class EditorSearch {
     this.readOnlyState.set(target.getRawOptions().readOnly === true);
     this.requestState.set({ ...request });
     this.visibleState.set(true);
+  }
+
+  /**
+   * Moves the search to another editor without a request, for a host whose one view follows what is in
+   * front. What was found, and the selection the last request snapshotted, belong to the editor left
+   * behind. Does nothing when the search is already there.
+   * @param editor The editor to search, or null when there is none.
+   */
+  public retarget(editor: MonacoApi.editor.ICodeEditor | null): void {
+    if (untracked(this.editorState) === editor) {
+      return;
+    }
+    this.adapter.clear();
+    this.editorState.set(editor);
+    this.readOnlyState.set(editor?.getRawOptions().readOnly === true);
+    this.requestState.set(null);
+    if (untracked(this.adapter.scope) === 'selection') {
+      this.adapter.setScope('file');
+    }
+    this.revisionState.update((revision: number): number => revision + 1);
   }
 
   /**

@@ -54,6 +54,8 @@ interface SplitNeighbours {
     '[attr.aria-orientation]': "split.dir() === 'row' ? 'vertical' : 'horizontal'",
     '[class.split-divider--row]': "split.dir() === 'row'",
     '[class.split-divider--col]': "split.dir() === 'col'",
+    '[class.split-divider--overlay]': "split.dividers() === 'overlay'",
+    '[class.split-divider--over-before]': 'neighbours()?.before.sized() === true',
     '[class.split-divider--disabled]': 'inert()',
     '[class.split-divider--hidden]': 'neighbours() === null',
     '(mousedown)': 'onPress($event)',

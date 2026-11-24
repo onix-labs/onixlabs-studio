@@ -16,13 +16,22 @@ export class SplitSizes {
   private readonly store: SettingsStore = inject(SettingsStore);
 
   /**
-   * Gets the size last set for a pane.
+   * Gets the size last set for a pane: under its split, or else by the panel layout the split replaced,
+   * whose size is taken over.
    * @param key The split's key.
    * @param paneId The pane's id.
    * @returns Returns the size in pixels, or null when none was set.
    */
   public get(key: string, paneId: string): number | null {
-    return this.read(key)[paneId] ?? null;
+    const size: number | undefined = this.read(key)[paneId];
+    if (size !== undefined) {
+      return size;
+    }
+    const inherited: number | null = this.inherited(key, paneId);
+    if (inherited !== null) {
+      this.set(key, paneId, inherited);
+    }
+    return inherited;
   }
 
   /**
@@ -41,16 +50,39 @@ export class SplitSizes {
    * @returns Returns the sizes, by pane id.
    */
   private read(key: string): Readonly<Record<string, number>> {
-    const raw: unknown = this.store.get<unknown>(SplitSizes.storeKey(key), null);
-    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
-      return {};
-    }
     return Object.fromEntries(
-      Object.entries(raw).filter(
-        (entry: [string, unknown]): entry is [string, number] =>
-          typeof entry[1] === 'number' && Number.isFinite(entry[1]) && entry[1] > 0,
+      Object.entries(this.readObject(SplitSizes.storeKey(key))).filter(
+        (entry: [string, unknown]): entry is [string, number] => isSize(entry[1]),
       ),
     );
+  }
+
+  /**
+   * Reads the size a panel of the same name had in the panel layout the split replaced (#1564), which
+   * kept each panel's placement, size and all, under a key of its own.
+   * @param key The split's key, which is the layout's.
+   * @param paneId The pane's id, which is the panel's.
+   * @returns Returns the size in pixels, or null when there is none.
+   */
+  private inherited(key: string, paneId: string): number | null {
+    const placement: unknown = this.readObject(`panel-layout.${key}`)[paneId];
+    if (placement === null || typeof placement !== 'object') {
+      return null;
+    }
+    const size: unknown = (placement as Record<string, unknown>)['size'];
+    return isSize(size) ? size : null;
+  }
+
+  /**
+   * Reads a stored object.
+   * @param storeKey The store key.
+   * @returns Returns the object, empty when nothing usable is stored.
+   */
+  private readObject(storeKey: string): Readonly<Record<string, unknown>> {
+    const raw: unknown = this.store.get<unknown>(storeKey, null);
+    return raw === null || typeof raw !== 'object' || Array.isArray(raw)
+      ? {}
+      : (raw as Record<string, unknown>);
   }
 
   /**
@@ -61,4 +93,13 @@ export class SplitSizes {
   private static storeKey(key: string): string {
     return `split.${key}`;
   }
+}
+
+/**
+ * Determines whether a stored value is a usable size.
+ * @param value The value.
+ * @returns Returns true for a positive, finite number.
+ */
+function isSize(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }

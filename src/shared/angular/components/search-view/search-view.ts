@@ -159,6 +159,12 @@ export class SearchView implements OnDestroy {
   public readonly request: InputSignal<FindRequest | null> = input<FindRequest | null>(null);
 
   /**
+   * Gets a number the host changes when what the adapter searches has changed under the view, which
+   * runs the search last asked for again, there.
+   */
+  public readonly revision: InputSignal<number> = input<number>(0);
+
+  /**
    * Gets whether the host's text can be replaced; false hides the Replace toggle and keeps the view
    * to finding (a read-only editor).
    */
@@ -378,6 +384,15 @@ export class SearchView implements OnDestroy {
       if (request !== null) {
         untracked((): void => this.answer(request));
       }
+    });
+
+    let seen: number | null = null;
+    effect((): void => {
+      const revision: number = this.revision();
+      if (seen !== null && seen !== revision) {
+        untracked((): void => this.optionChanged());
+      }
+      seen = revision;
     });
   }
 

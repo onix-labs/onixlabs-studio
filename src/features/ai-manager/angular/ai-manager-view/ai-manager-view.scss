@@ -4,6 +4,11 @@
   block-size: 100%;
 }
 
+// The fixed list stands on the surface every panel shares.
+.ai-manager__side {
+  background: var(--panel-surface-color);
+}
+
 .ai-manager {
   block-size: 100%;
 }

@@ -25,6 +25,9 @@ import { SkillLibrarySection } from '../skill-library/skill-library';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
+import { SplitDivider } from '@shared/angular/components/split-panel/split-divider/split-divider';
+import { SplitPane } from '@shared/angular/components/split-panel/split-pane/split-pane';
+import { SplitPanel } from '@shared/angular/components/split-panel/split-panel/split-panel';
 import {
   toolViewConversationContext,
   ToolViewAgentPanel,
@@ -40,7 +43,6 @@ import { AiManagerAgentCapabilities } from '../ai-manager-agent/ai-manager-agent
 import { AiManagerAgentPanelState } from '../ai-manager-agent/ai-manager-agent-panel-state';
 import { AiManagerSidebar } from '../ai-manager-sidebar/ai-manager-sidebar';
 import { AiManagerSidebarState } from '../ai-manager-sidebar/ai-manager-sidebar-state';
-import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Icon } from '@shared/angular/icons/icon';
 
@@ -75,6 +77,9 @@ export interface LibraryCounts {
     SkillLibrarySection,
     Panel,
     PanelLayout,
+    SplitDivider,
+    SplitPane,
+    SplitPanel,
     ToolViewAgentPanel,
   ],
   // The agent and its conversation live on the VIEW, not the docked panel (#967), so a run outlives
@@ -128,11 +133,6 @@ export class AiManagerView implements OnInit {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
-
-  /**
-   * Gets the edges the sidebar may sit on: only its own, since it is part of the view.
-   */
-  protected readonly sideEdges: readonly PanelEdge[] = ['left'];
 
   /**
    * Holds whether the docked agent is showing, shared with the ribbon.

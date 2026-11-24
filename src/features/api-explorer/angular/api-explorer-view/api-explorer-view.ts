@@ -64,6 +64,8 @@ import {
   AgentHostRegistrar,
   createAgentHostRegistrar,
 } from '@shared/angular/services/agent-hosts/agent-host-registration';
+import { FIND_HOST } from '@shared/angular/services/find-router/find-host';
+import { ApiFind } from '../api-find/api-find';
 import { ApiPrompts } from '../api-prompts/api-prompts';
 import { ApiHttp } from '../api-http/api-http';
 import { ApiRequestOpener } from '../api-request-opener/api-request-opener';
@@ -95,6 +97,9 @@ import { ApiWorkspace } from '../api-workspace/api-workspace';
     ApiWorkspace,
     ApiPrompts,
     ApiRequestOpener,
+    // The explorer's one Find & Replace, which answers ⌘F in any request's bodies.
+    ApiFind,
+    { provide: FIND_HOST, useExisting: ApiFind },
     // The diagnostics the well's status strip counts: this tab's own, so a request body's JSON or XML
     // problems are counted here and nowhere else, as a workspace tab's are.
     Diagnostics,

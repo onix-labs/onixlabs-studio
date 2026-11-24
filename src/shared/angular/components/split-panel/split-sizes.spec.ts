@@ -45,4 +45,31 @@ describe('SplitSizes', () => {
 
     expect(sizes.get('query', '0')).toBeNull();
   });
+
+  describe('a size the panel layout kept', () => {
+    beforeEach(() => {
+      localStorage.setItem(
+        'panel-layout.query',
+        JSON.stringify({ results: { edge: 'bottom', order: 0, size: 310 }, odd: { size: 'tall' } }),
+      );
+    });
+
+    it('get_whenNoneIsSetUnderTheSplit_takesItOver', () => {
+      expect(sizes.get('query', 'results')).toBe(310);
+
+      localStorage.removeItem('panel-layout.query');
+      expect(sizes.get('query', 'results')).toBe(310);
+    });
+
+    it('get_whenOneIsSetUnderTheSplit_prefersIt', () => {
+      sizes.set('query', 'results', 200);
+
+      expect(sizes.get('query', 'results')).toBe(200);
+    });
+
+    it('get_whenItIsNotASize_returnsNull', () => {
+      expect(sizes.get('query', 'odd')).toBeNull();
+      expect(sizes.get('query', 'missing')).toBeNull();
+    });
+  });
 });

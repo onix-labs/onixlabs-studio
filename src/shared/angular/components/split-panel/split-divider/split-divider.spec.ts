@@ -53,7 +53,11 @@ class TestHost {
 @Component({
   imports: [SplitPanel, SplitPane, SplitDivider],
   template: `
-    <app-split-panel dir="row" (sharesChange)="shares = shares + 1">
+    <app-split-panel
+      dir="row"
+      [dividers]="overlay() ? 'overlay' : 'gap'"
+      (sharesChange)="shares = shares + 1"
+    >
       <app-split-pane
         [defaultSize]="200"
         [minSize]="100"
@@ -73,6 +77,7 @@ class SizedHost {
   public readonly middle: WritableSignal<boolean> = signal<boolean>(true);
   public readonly last: WritableSignal<boolean> = signal<boolean>(true);
   public readonly resizable: WritableSignal<boolean> = signal<boolean>(true);
+  public readonly overlay: WritableSignal<boolean> = signal<boolean>(false);
   public readonly panes: Signal<readonly SplitPane[]> = viewChildren<SplitPane>(SplitPane);
   public shares: number = 0;
 
@@ -385,6 +390,17 @@ describe('SplitDivider', () => {
       expect(sized.componentInstance.sizes()[0]).toBe(200);
       expect(handles()[0].classList.contains('split-divider--disabled')).toBe(true);
       expect(handles()[1].classList.contains('split-divider--disabled')).toBe(false);
+    });
+
+    it('render_whenOverlaid_liesOverThePaneItSizes', () => {
+      expect(handles()[0].classList.contains('split-divider--overlay')).toBe(false);
+
+      sized.componentInstance.overlay.set(true);
+      sized.detectChanges();
+
+      expect(handles()[0].classList.contains('split-divider--overlay')).toBe(true);
+      expect(handles()[0].classList.contains('split-divider--over-before')).toBe(true);
+      expect(handles()[1].classList.contains('split-divider--over-before')).toBe(false);
     });
 
     it('render_whenAnEndPaneIsHidden_hidesItsDivider', () => {

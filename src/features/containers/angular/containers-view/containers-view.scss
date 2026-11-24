@@ -5,6 +5,15 @@
   block-size: 100%;
 }
 
+.containers {
+  block-size: 100%;
+}
+
+// The fixed list stands on the surface every panel shares.
+.containers__side {
+  background: var(--panel-surface-color);
+}
+
 // The main area holds the one table, edge to edge, its header in view while its rows scroll; or the
 // engine's empty state.
 .containers-main {

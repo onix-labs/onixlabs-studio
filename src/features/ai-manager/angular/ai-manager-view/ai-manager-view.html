@@ -1,60 +1,64 @@
-<app-panel-layout class="ai-manager">
+<app-split-panel class="ai-manager" dir="row" dividers="overlay">
   <!-- One sidebar for every sub-view: the search, then Local Models, Persona and Skills as
        accordions, one open at a time. The open one is the sub-view shown beside it. -->
-  <app-panel
-    panelId="ai-manager-sidebar"
-    defaultEdge="left"
-    [allowedEdges]="sideEdges"
-    [movable]="false"
+  <app-split-pane
+    class="ai-manager__side"
+    paneId="ai-manager-sidebar"
     [defaultSize]="260"
     [minSize]="240"
     [maxSize]="480"
   >
     <app-ai-manager-sidebar />
-  </app-panel>
+  </app-split-pane>
 
-  <div main class="ai-manager__section">
-    @switch (section()) {
-      @case ('models') {
-        <app-model-manager-view [isActive]="isActive()" />
-      }
-      @case ('persona') {
-        <app-persona />
-      }
-      @case ('skills') {
-        <app-skill-library />
-      }
-      @default {
-        <!-- Nothing open: the sidebar's sections are all closed. -->
-        <div class="ai-manager__overview">
-          <app-icon class="ai-manager__overview-icon" [icon]="Icon.AI_MODELS" />
-          <p class="ai-manager__overview-title">AI Manager</p>
-          <p class="ai-manager__overview-hint">
-            Open Local Models, Persona or Skills in the sidebar.
-          </p>
-        </div>
-      }
-    }
-  </div>
+  <app-split-divider />
 
-  <!-- The AI Manager's own agent (#967), docked on the right across every sub-view. It mounts on
+  <app-split-pane>
+    <app-panel-layout>
+      <div main class="ai-manager__section">
+        @switch (section()) {
+          @case ('models') {
+            <app-model-manager-view [isActive]="isActive()" />
+          }
+          @case ('persona') {
+            <app-persona />
+          }
+          @case ('skills') {
+            <app-skill-library />
+          }
+          @default {
+            <!-- Nothing open: the sidebar's sections are all closed. -->
+            <div class="ai-manager__overview">
+              <app-icon class="ai-manager__overview-icon" [icon]="Icon.AI_MODELS" />
+              <p class="ai-manager__overview-title">AI Manager</p>
+              <p class="ai-manager__overview-hint">
+                Open Local Models, Persona or Skills in the sidebar.
+              </p>
+            </div>
+          }
+        }
+      </div>
+
+      <!-- The AI Manager's own agent (#967), docked on the right across every sub-view. It mounts on
        first show and stays mounted, so closing it keeps its conversation. -->
-  @if (agentPanel.mounted()) {
-    <app-panel
-      panelId="agent"
-      defaultEdge="right"
-      [visible]="agentPanel.visible()"
-      [defaultSize]="360"
-      [minSize]="240"
-      [maxSize]="900"
-    >
-      <app-tool-view-agent-panel
-        surface="models"
-        [context]="agentContext"
-        [tabId]="tabId()"
-        [isActive]="isActive() && agentPanel.visible()"
-        (closed)="agentPanel.hide()"
-      />
-    </app-panel>
-  }
-</app-panel-layout>
+      @if (agentPanel.mounted()) {
+        <app-panel
+          panelId="agent"
+          defaultEdge="right"
+          [visible]="agentPanel.visible()"
+          [defaultSize]="360"
+          [minSize]="240"
+          [maxSize]="900"
+        >
+          <app-tool-view-agent-panel
+            surface="models"
+            [context]="agentContext"
+            [tabId]="tabId()"
+            [isActive]="isActive() && agentPanel.visible()"
+            (closed)="agentPanel.hide()"
+          />
+        </app-panel>
+      }
+    </app-panel-layout>
+  </app-split-pane>
+</app-split-panel>

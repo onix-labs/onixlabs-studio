@@ -26,6 +26,9 @@ import { ButtonRow } from '@shared/angular/components/forms/button-row/button-ro
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
+import { SplitDivider } from '@shared/angular/components/split-panel/split-divider/split-divider';
+import { SplitPane } from '@shared/angular/components/split-panel/split-pane/split-pane';
+import { SplitPanel } from '@shared/angular/components/split-panel/split-panel/split-panel';
 import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
 import { DocumentVisibility } from '@shared/angular/services/document-visibility/document-visibility';
@@ -239,6 +242,9 @@ const MENU_RESUME: string = 'resume';
     Chip,
     Menu,
     PanelLayout,
+    SplitDivider,
+    SplitPane,
+    SplitPanel,
     Panel,
     Table,
     TableRowDef,
@@ -356,11 +362,6 @@ export class ContainersView implements OnInit, OnDestroy {
    * Gets the edges the terminal panel may dock to — the bottom by default, or a side.
    */
   protected readonly terminalEdges: readonly PanelEdge[] = ['bottom', 'right', 'left'];
-
-  /**
-   * Gets the edges the side panel may sit on: only its own, since it is part of the view.
-   */
-  protected readonly sideEdges: readonly PanelEdge[] = ['left'];
 
   /**
    * Gets the Containers table's columns.

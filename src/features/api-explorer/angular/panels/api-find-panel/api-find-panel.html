@@ -1,0 +1,16 @@
+<!-- Kept mounted while there is nothing to search, so what was typed is still there when there is. -->
+<app-search-view
+  [class.api-find__view--hidden]="!find.hasTarget()"
+  [adapter]="find.search.adapter"
+  [scopes]="find.search.scopes"
+  [disabledScopes]="find.search.disabledScopes()"
+  [request]="find.search.request()"
+  [replaceable]="find.search.replaceable()"
+  [revision]="find.search.revision()"
+/>
+@if (!find.hasTarget()) {
+  <p class="api-find__hint">
+    The request in front has no body open to search. Open its Body section, or send it to search its
+    response.
+  </p>
+}

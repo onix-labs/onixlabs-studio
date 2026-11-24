@@ -1,11 +1,9 @@
-<app-panel-layout layoutKey="containers">
+<app-split-panel class="containers" dir="row" dividers="overlay" sizesKey="containers">
   <!-- The kinds of thing the engine holds (#952): search and the running-only switch, then Containers
        and Images. Part of the view, so it can be resized but not closed or moved. -->
-  <app-panel
-    panelId="containers-kinds"
-    defaultEdge="left"
-    [allowedEdges]="sideEdges"
-    [movable]="false"
+  <app-split-pane
+    class="containers__side"
+    paneId="containers-kinds"
     [defaultSize]="240"
     [minSize]="240"
     [maxSize]="480"
@@ -19,329 +17,347 @@
       [selectedId]="kind()"
       (selectedIdChange)="showKind($event)"
     />
-  </app-panel>
+  </app-split-pane>
 
-  <div main class="containers-main">
-    @if (available() === null) {
-      <div class="containers__empty">
-        <app-icon class="containers__empty-icon" [icon]="Icon.CONTAINERS" />
-        <p class="containers__empty-text">Connecting to {{ engineLabel() }}…</p>
-      </div>
-    } @else if (available() === false) {
-      <!-- Nothing installed and nothing running are both "no dashboard", and need opposite things said
+  <app-split-divider />
+
+  <app-split-pane>
+    <app-panel-layout layoutKey="containers">
+      <div main class="containers-main">
+        @if (available() === null) {
+          <div class="containers__empty">
+            <app-icon class="containers__empty-icon" [icon]="Icon.CONTAINERS" />
+            <p class="containers__empty-text">Connecting to {{ engineLabel() }}…</p>
+          </div>
+        } @else if (available() === false) {
+          <!-- Nothing installed and nothing running are both "no dashboard", and need opposite things said
            about them: one is fixed by installing something, the other by starting it. -->
-      @if (noEngineInstalled()) {
-        <div class="containers__empty">
-          <app-icon class="containers__empty-icon" [icon]="Icon.CONTAINERS" />
-          <p class="containers__empty-text">No container engine is installed</p>
-          @if (engineCandidate(); as candidate) {
-            <p class="containers__empty-hint">
-              {{ candidate.name }} provides one. Studio talks to whichever engine you install.
-            </p>
-            <!-- "start" only clears the row's trailing-edge margin; the empty state's column then
+          @if (noEngineInstalled()) {
+            <div class="containers__empty">
+              <app-icon class="containers__empty-icon" [icon]="Icon.CONTAINERS" />
+              <p class="containers__empty-text">No container engine is installed</p>
+              @if (engineCandidate(); as candidate) {
+                <p class="containers__empty-hint">
+                  {{ candidate.name }} provides one. Studio talks to whichever engine you install.
+                </p>
+                <!-- "start" only clears the row's trailing-edge margin; the empty state's column then
                  centres it like the text above. -->
-            <app-button-row align="start">
-              <app-button
-                variant="solid"
-                [icon]="Icon.DOWNLOAD"
-                [label]="'Install ' + candidate.name"
-                [disabled]="busy()"
-                (click)="installEngine()"
-              />
-              <app-button
-                variant="ghost"
-                [icon]="Icon.REFRESH"
-                label="Refresh"
-                (click)="refresh()"
-              />
-            </app-button-row>
+                <app-button-row align="start">
+                  <app-button
+                    variant="solid"
+                    [icon]="Icon.DOWNLOAD"
+                    [label]="'Install ' + candidate.name"
+                    [disabled]="busy()"
+                    (click)="installEngine()"
+                  />
+                  <app-button
+                    variant="ghost"
+                    [icon]="Icon.REFRESH"
+                    label="Refresh"
+                    (click)="refresh()"
+                  />
+                </app-button-row>
+              } @else {
+                <p class="containers__empty-hint">
+                  No container engine plugin is available to install.
+                </p>
+              }
+            </div>
           } @else {
-            <p class="containers__empty-hint">
-              No container engine plugin is available to install.
-            </p>
+            <div class="containers__empty">
+              <app-icon class="containers__empty-icon" [icon]="Icon.WARNING" />
+              <p class="containers__empty-text">{{ engineTitle() }} isn't running</p>
+              <p class="containers__empty-hint">
+                Start {{ engineLabel() }} to manage containers and images.
+              </p>
+              <!-- Told about rather than pretended at: Studio talks to an engine, it does not run one. -->
+              @if (engineStartCommand(); as command) {
+                <p class="containers__empty-command">
+                  Run <code>{{ command }}</code> in a terminal.
+                </p>
+              }
+              <app-button-row align="start">
+                <app-button
+                  variant="ghost"
+                  [icon]="Icon.REFRESH"
+                  label="Refresh"
+                  (click)="refresh()"
+                />
+              </app-button-row>
+            </div>
           }
-        </div>
-      } @else {
-        <div class="containers__empty">
-          <app-icon class="containers__empty-icon" [icon]="Icon.WARNING" />
-          <p class="containers__empty-text">{{ engineTitle() }} isn't running</p>
-          <p class="containers__empty-hint">
-            Start {{ engineLabel() }} to manage containers and images.
-          </p>
-          <!-- Told about rather than pretended at: Studio talks to an engine, it does not run one. -->
-          @if (engineStartCommand(); as command) {
-            <p class="containers__empty-command">
-              Run <code>{{ command }}</code> in a terminal.
-            </p>
+        } @else {
+          @if (notice(); as message) {
+            <p class="containers__notice" role="status">{{ message }}</p>
           }
-          <app-button-row align="start">
-            <app-button variant="ghost" [icon]="Icon.REFRESH" label="Refresh" (click)="refresh()" />
-          </app-button-row>
-        </div>
-      }
-    } @else {
-      @if (notice(); as message) {
-        <p class="containers__notice" role="status">{{ message }}</p>
-      }
 
-      <!-- One list at a time, chosen in the side panel, filling the rest of the view. -->
-      @if (kind() === 'containers') {
-        <app-table
-          class="containers__table"
-          [columns]="containerColumns"
-          [rows]="containerRows()"
-          [striped]="true"
-          rowSize="comfortable"
-          [selectedIds]="selectedContainerIds()"
-          [emptyText]="
-            filtered() || query().trim() ? 'No containers match these filters.' : 'No containers.'
-          "
-          (rowClick)="select($event.id)"
-        >
-          <ng-template appTableRow let-row>
-            @let container = containerOf(row);
-            <td>
-              <span
-                class="containers__select"
-                role="presentation"
-                [attr.title]="'Select ' + displayName(container)"
-                (click)="$event.stopPropagation()"
-                (keydown)="$event.stopPropagation()"
-              >
-                <app-checkbox
-                  [checked]="checked().has(container.id)"
-                  (checkedChange)="setChecked(container.id, $event)"
-                />
-              </span>
-            </td>
-            <td>
-              <span
-                class="containers__state"
-                [class.containers__state--running]="isRunning(container)"
-                [attr.title]="container.state"
-              ></span>
-            </td>
-            <td class="containers__name">{{ displayName(container) }}</td>
-            <td>
-              <!-- The image it runs, as a link to it in the Images list. -->
-              <button
-                type="button"
-                class="containers__image-link"
-                (click)="$event.stopPropagation(); showImage(container)"
-              >
-                {{ container.image }}
-              </button>
-            </td>
-            <td class="containers__ports" [attr.title]="formatPorts(container)">
-              {{ formatPorts(container) }}
-            </td>
-            <td class="containers__numeric">{{ formatCpu(container.id) }}</td>
-            <td class="containers__numeric">{{ formatMemory(container.id) }}</td>
-            <td>
-              <app-chip [tone]="statusTone(container)" [attr.title]="container.status">{{
-                container.status
-              }}</app-chip>
-            </td>
-            <td>
-              <span
-                class="containers__actions"
-                role="presentation"
-                (click)="$event.stopPropagation()"
-                (keydown)="$event.stopPropagation()"
-              >
-                <app-button
-                  variant="none"
-                  [icon]="Icon.DOTS_THREE_BOLD"
-                  [ariaLabel]="'More actions for ' + displayName(container)"
-                  tooltip="More Actions"
-                  [cdkMenuTriggerFor]="rowMenu.panel() ?? null"
-                  [cdkMenuPosition]="rowMenu.position()"
-                  (click)="menuTarget.set(container)"
-                />
-              </span>
-            </td>
-          </ng-template>
-        </app-table>
-      } @else if (kind() === 'images') {
-        <app-table
-          class="containers__table"
-          [columns]="imageColumns"
-          [rows]="imageRows()"
-          [striped]="true"
-          rowSize="comfortable"
-          [selectedIds]="selectedImageIds()"
-          [emptyText]="query().trim() ? 'No images match this search.' : 'No images.'"
-          (rowClick)="selectedImageId.set($event.id)"
-        >
-          <ng-template appTableRow let-row>
-            @let entry = imageOf(row);
-            <td class="containers__name">{{ displayTag(entry.image) }}</td>
-            <td class="containers__numeric">{{ formatSize(entry.image.size) }}</td>
-            <td class="containers__numeric">{{ entry.usedBy }}</td>
-            <td>
-              <span
-                class="containers__actions"
-                role="presentation"
-                (click)="$event.stopPropagation()"
-                (keydown)="$event.stopPropagation()"
-              >
-                <app-button
-                  variant="none"
-                  tone="success"
-                  [icon]="Icon.PLAY"
-                  [ariaLabel]="'Run ' + displayTag(entry.image)"
-                  tooltip="Run…"
-                  (click)="openRun(entry.image.tags[0] ?? entry.image.id)"
-                />
-                <app-button
-                  variant="none"
-                  tone="danger"
-                  [icon]="Icon.TRASH_DUOTONE"
-                  [ariaLabel]="'Remove ' + displayTag(entry.image)"
-                  tooltip="Remove"
-                  [disabled]="busy()"
-                  (click)="removeImage(entry)"
-                />
-              </span>
-            </td>
-          </ng-template>
-        </app-table>
-      } @else {
-        <app-table
-          class="containers__table"
-          [columns]="volumeColumns"
-          [rows]="volumeRows()"
-          [striped]="true"
-          rowSize="comfortable"
-          [emptyText]="query().trim() ? 'No volumes match this search.' : 'No volumes.'"
-        >
-          <ng-template appTableRow let-row>
-            @let entry = volumeOf(row);
-            <td class="containers__name" [attr.title]="entry.volume.name">
-              {{ displayVolume(entry.volume) }}
-            </td>
-            <td>{{ entry.volume.driver }}</td>
-            <td class="containers__numeric">{{ entry.usedBy }}</td>
-            <td>
-              <span class="containers__actions">
-                <app-button
-                  variant="none"
-                  tone="danger"
-                  [icon]="Icon.TRASH_DUOTONE"
-                  [ariaLabel]="'Remove ' + displayVolume(entry.volume)"
-                  [tooltip]="entry.usedBy > 0 ? 'In use' : 'Remove'"
-                  [disabled]="busy() || entry.usedBy > 0"
-                  (click)="removeVolume(entry)"
-                />
-              </span>
-            </td>
-          </ng-template>
-        </app-table>
-      }
-    }
-  </div>
+          <!-- One list at a time, chosen in the side panel, filling the rest of the view. -->
+          @if (kind() === 'containers') {
+            <app-table
+              class="containers__table"
+              [columns]="containerColumns"
+              [rows]="containerRows()"
+              [striped]="true"
+              rowSize="comfortable"
+              [selectedIds]="selectedContainerIds()"
+              [emptyText]="
+                filtered() || query().trim()
+                  ? 'No containers match these filters.'
+                  : 'No containers.'
+              "
+              (rowClick)="select($event.id)"
+            >
+              <ng-template appTableRow let-row>
+                @let container = containerOf(row);
+                <td>
+                  <span
+                    class="containers__select"
+                    role="presentation"
+                    [attr.title]="'Select ' + displayName(container)"
+                    (click)="$event.stopPropagation()"
+                    (keydown)="$event.stopPropagation()"
+                  >
+                    <app-checkbox
+                      [checked]="checked().has(container.id)"
+                      (checkedChange)="setChecked(container.id, $event)"
+                    />
+                  </span>
+                </td>
+                <td>
+                  <span
+                    class="containers__state"
+                    [class.containers__state--running]="isRunning(container)"
+                    [attr.title]="container.state"
+                  ></span>
+                </td>
+                <td class="containers__name">{{ displayName(container) }}</td>
+                <td>
+                  <!-- The image it runs, as a link to it in the Images list. -->
+                  <button
+                    type="button"
+                    class="containers__image-link"
+                    (click)="$event.stopPropagation(); showImage(container)"
+                  >
+                    {{ container.image }}
+                  </button>
+                </td>
+                <td class="containers__ports" [attr.title]="formatPorts(container)">
+                  {{ formatPorts(container) }}
+                </td>
+                <td class="containers__numeric">{{ formatCpu(container.id) }}</td>
+                <td class="containers__numeric">{{ formatMemory(container.id) }}</td>
+                <td>
+                  <app-chip [tone]="statusTone(container)" [attr.title]="container.status">{{
+                    container.status
+                  }}</app-chip>
+                </td>
+                <td>
+                  <span
+                    class="containers__actions"
+                    role="presentation"
+                    (click)="$event.stopPropagation()"
+                    (keydown)="$event.stopPropagation()"
+                  >
+                    <app-button
+                      variant="none"
+                      [icon]="Icon.DOTS_THREE_BOLD"
+                      [ariaLabel]="'More actions for ' + displayName(container)"
+                      tooltip="More Actions"
+                      [cdkMenuTriggerFor]="rowMenu.panel() ?? null"
+                      [cdkMenuPosition]="rowMenu.position()"
+                      (click)="menuTarget.set(container)"
+                    />
+                  </span>
+                </td>
+              </ng-template>
+            </app-table>
+          } @else if (kind() === 'images') {
+            <app-table
+              class="containers__table"
+              [columns]="imageColumns"
+              [rows]="imageRows()"
+              [striped]="true"
+              rowSize="comfortable"
+              [selectedIds]="selectedImageIds()"
+              [emptyText]="query().trim() ? 'No images match this search.' : 'No images.'"
+              (rowClick)="selectedImageId.set($event.id)"
+            >
+              <ng-template appTableRow let-row>
+                @let entry = imageOf(row);
+                <td class="containers__name">{{ displayTag(entry.image) }}</td>
+                <td class="containers__numeric">{{ formatSize(entry.image.size) }}</td>
+                <td class="containers__numeric">{{ entry.usedBy }}</td>
+                <td>
+                  <span
+                    class="containers__actions"
+                    role="presentation"
+                    (click)="$event.stopPropagation()"
+                    (keydown)="$event.stopPropagation()"
+                  >
+                    <app-button
+                      variant="none"
+                      tone="success"
+                      [icon]="Icon.PLAY"
+                      [ariaLabel]="'Run ' + displayTag(entry.image)"
+                      tooltip="Run…"
+                      (click)="openRun(entry.image.tags[0] ?? entry.image.id)"
+                    />
+                    <app-button
+                      variant="none"
+                      tone="danger"
+                      [icon]="Icon.TRASH_DUOTONE"
+                      [ariaLabel]="'Remove ' + displayTag(entry.image)"
+                      tooltip="Remove"
+                      [disabled]="busy()"
+                      (click)="removeImage(entry)"
+                    />
+                  </span>
+                </td>
+              </ng-template>
+            </app-table>
+          } @else {
+            <app-table
+              class="containers__table"
+              [columns]="volumeColumns"
+              [rows]="volumeRows()"
+              [striped]="true"
+              rowSize="comfortable"
+              [emptyText]="query().trim() ? 'No volumes match this search.' : 'No volumes.'"
+            >
+              <ng-template appTableRow let-row>
+                @let entry = volumeOf(row);
+                <td class="containers__name" [attr.title]="entry.volume.name">
+                  {{ displayVolume(entry.volume) }}
+                </td>
+                <td>{{ entry.volume.driver }}</td>
+                <td class="containers__numeric">{{ entry.usedBy }}</td>
+                <td>
+                  <span class="containers__actions">
+                    <app-button
+                      variant="none"
+                      tone="danger"
+                      [icon]="Icon.TRASH_DUOTONE"
+                      [ariaLabel]="'Remove ' + displayVolume(entry.volume)"
+                      [tooltip]="entry.usedBy > 0 ? 'In use' : 'Remove'"
+                      [disabled]="busy() || entry.usedBy > 0"
+                      (click)="removeVolume(entry)"
+                    />
+                  </span>
+                </td>
+              </ng-template>
+            </app-table>
+          }
+        }
+      </div>
 
-  <!-- The Containers view's own agent (#969), docked on the right. It mounts on first show and stays
+      <!-- The Containers view's own agent (#969), docked on the right. It mounts on first show and stays
        mounted, so closing it keeps its conversation. -->
-  @if (agentPanel.mounted()) {
-    <app-panel
-      panelId="agent"
-      defaultEdge="right"
-      [visible]="agentPanel.visible()"
-      [defaultSize]="360"
-      [minSize]="240"
-      [maxSize]="900"
-    >
-      <app-tool-view-agent-panel
-        surface="containers"
-        [context]="agentContext"
-        [tabId]="tabId()"
-        [isActive]="isActive() && agentPanel.visible()"
-        (closed)="agentPanel.hide()"
-      />
-    </app-panel>
-  }
+      @if (agentPanel.mounted()) {
+        <app-panel
+          panelId="agent"
+          defaultEdge="right"
+          [visible]="agentPanel.visible()"
+          [defaultSize]="360"
+          [minSize]="240"
+          [maxSize]="900"
+        >
+          <app-tool-view-agent-panel
+            surface="containers"
+            [context]="agentContext"
+            [tabId]="tabId()"
+            [isActive]="isActive() && agentPanel.visible()"
+            (closed)="agentPanel.hide()"
+          />
+        </app-panel>
+      }
 
-  <!-- A row's further actions, shared by every row: the ⋮ button records which container it opened
+      <!-- A row's further actions, shared by every row: the ⋮ button records which container it opened
        for before the menu shows. -->
-  <app-menu #rowMenu [items]="rowMenuItems()" placement="down-end" (selected)="onRowMenu($event)" />
+      <app-menu
+        #rowMenu
+        [items]="rowMenuItems()"
+        placement="down-end"
+        (selected)="onRowMenu($event)"
+      />
 
-  <!-- Pulling an image and running a container (#974). -->
-  <app-container-pull-dialog [open]="pullOpen()" (closed)="onPullClosed($event)" />
-  <app-container-run-dialog
-    [open]="runImage() !== null"
-    [initialImage]="runImage() ?? ''"
-    (closed)="onRunClosed($event)"
-  />
+      <!-- Pulling an image and running a container (#974). -->
+      <app-container-pull-dialog [open]="pullOpen()" (closed)="onPullClosed($event)" />
+      <app-container-run-dialog
+        [open]="runImage() !== null"
+        [initialImage]="runImage() ?? ''"
+        (closed)="onRunClosed($event)"
+      />
 
-  <!-- The logs/shell terminals opened from container rows dock at the bottom (P5): a titled panel, as a
+      <!-- The logs/shell terminals opened from container rows dock at the bottom (P5): a titled panel, as a
        code tab's Terminal is, that can be closed, moved and resized. Closing it hides the sessions;
        opening another shows it again. Reuses the shared terminal pane: each `run` session's PTY is
        spawned by ContainerTerminals and this pane attaches to it by id. -->
-  <app-panel
-    panelId="terminal"
-    defaultEdge="bottom"
-    [allowedEdges]="terminalEdges"
-    [visible]="terminals.sessions().length > 0 && !terminalsHidden()"
-    [defaultSize]="260"
-    [minSize]="140"
-    [maxSize]="640"
-  >
-    <app-tool-panel
-      title="Output"
-      [icon]="Icon.TERMINAL"
-      closeLabel="Close output"
-      [flush]="true"
-      (closed)="hideTerminals()"
-    >
-      <div class="containers__terminal">
-        <div class="containers__terminal-tabs" role="tablist">
-          @for (session of terminals.sessions(); track session.id) {
-            <div
-              class="containers__terminal-tab"
-              [class.containers__terminal-tab--active]="session.id === terminals.activeId()"
-            >
-              <button
-                type="button"
-                class="containers__terminal-tab-select"
-                (click)="terminals.activate(session.id)"
-              >
-                {{ session.name }}
-              </button>
-              <button
-                type="button"
-                class="containers__terminal-tab-close"
-                [attr.aria-label]="'Close ' + session.name"
-                [appTooltip]="'Close ' + session.name"
-                (click)="terminals.close(session.id)"
-              >
-                <app-icon [icon]="Icon.CLOSE" />
-              </button>
-            </div>
-          }
-        </div>
-        <div class="containers__terminal-panes">
-          @for (session of terminals.sessions(); track session.id) {
-            <div
-              class="containers__terminal-pane"
-              [class.containers__terminal-pane--hidden]="session.id !== terminals.activeId()"
-            >
-              @if (session.kind === 'logs') {
-                <app-container-logs
-                  [containerId]="session.containerId ?? ''"
-                  [isActive]="isActive() && session.id === terminals.activeId()"
-                />
-              } @else {
-                <app-terminal
-                  [terminalId]="session.id"
-                  kind="run"
-                  [isActive]="isActive() && session.id === terminals.activeId()"
-                />
+      <app-panel
+        panelId="terminal"
+        defaultEdge="bottom"
+        [allowedEdges]="terminalEdges"
+        [visible]="terminals.sessions().length > 0 && !terminalsHidden()"
+        [defaultSize]="260"
+        [minSize]="140"
+        [maxSize]="640"
+      >
+        <app-tool-panel
+          title="Output"
+          [icon]="Icon.TERMINAL"
+          closeLabel="Close output"
+          [flush]="true"
+          (closed)="hideTerminals()"
+        >
+          <div class="containers__terminal">
+            <div class="containers__terminal-tabs" role="tablist">
+              @for (session of terminals.sessions(); track session.id) {
+                <div
+                  class="containers__terminal-tab"
+                  [class.containers__terminal-tab--active]="session.id === terminals.activeId()"
+                >
+                  <button
+                    type="button"
+                    class="containers__terminal-tab-select"
+                    (click)="terminals.activate(session.id)"
+                  >
+                    {{ session.name }}
+                  </button>
+                  <button
+                    type="button"
+                    class="containers__terminal-tab-close"
+                    [attr.aria-label]="'Close ' + session.name"
+                    [appTooltip]="'Close ' + session.name"
+                    (click)="terminals.close(session.id)"
+                  >
+                    <app-icon [icon]="Icon.CLOSE" />
+                  </button>
+                </div>
               }
             </div>
-          }
-        </div>
-      </div>
-    </app-tool-panel>
-  </app-panel>
-</app-panel-layout>
+            <div class="containers__terminal-panes">
+              @for (session of terminals.sessions(); track session.id) {
+                <div
+                  class="containers__terminal-pane"
+                  [class.containers__terminal-pane--hidden]="session.id !== terminals.activeId()"
+                >
+                  @if (session.kind === 'logs') {
+                    <app-container-logs
+                      [containerId]="session.containerId ?? ''"
+                      [isActive]="isActive() && session.id === terminals.activeId()"
+                    />
+                  } @else {
+                    <app-terminal
+                      [terminalId]="session.id"
+                      kind="run"
+                      [isActive]="isActive() && session.id === terminals.activeId()"
+                    />
+                  }
+                </div>
+              }
+            </div>
+          </div>
+        </app-tool-panel>
+      </app-panel>
+    </app-panel-layout>
+  </app-split-pane>
+</app-split-panel>

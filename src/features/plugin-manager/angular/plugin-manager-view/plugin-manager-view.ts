@@ -21,9 +21,11 @@ import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Chip, ChipTone } from '@shared/angular/components/chip/chip';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
-import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { CategoryItem, CategoryList } from '@shared/angular/components/category-list/category-list';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
+import { SplitDivider } from '@shared/angular/components/split-panel/split-divider/split-divider';
+import { SplitPane } from '@shared/angular/components/split-panel/split-pane/split-pane';
+import { SplitPanel } from '@shared/angular/components/split-panel/split-panel/split-panel';
 import { PluginAction } from '@shared/angular/components/plugin-action/plugin-action';
 import { PluginInstallError } from '@shared/angular/components/plugin-install-error/plugin-install-error';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
@@ -109,6 +111,9 @@ const COLUMNS: readonly TableColumn[] = [
     Chip,
     NgTemplateOutlet,
     PanelLayout,
+    SplitDivider,
+    SplitPane,
+    SplitPanel,
     Panel,
     PluginAction,
     PluginInstallError,
@@ -210,11 +215,6 @@ export class PluginManagerView implements OnInit {
    * Gets the table's columns.
    */
   protected readonly columns: readonly TableColumn[] = COLUMNS;
-
-  /**
-   * Gets the edges the side panel may sit on: only its own, since it is part of the view.
-   */
-  protected readonly sideEdges: readonly PanelEdge[] = ['left'];
 
   /**
    * Gets the table's rows, one per plugin the filter and search leave, in the chosen order.

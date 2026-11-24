@@ -280,6 +280,20 @@ describe('SearchView (#1007)', () => {
     );
   });
 
+  it('aNewRevision_searchesAgain_onlyOnceSomethingHasBeenSearchedFor', async () => {
+    fixture.componentRef.setInput('revision', 1);
+    await fixture.whenStable();
+    expect(adapter.queries).toEqual([]);
+
+    await ask({ mode: 'find', scope: 'file', seed: 'todo' });
+    const before: number = adapter.queries.length;
+    fixture.componentRef.setInput('revision', 2);
+    await fixture.whenStable();
+
+    expect(adapter.queries.length).toBe(before + 1);
+    expect(adapter.queries.at(-1)?.text).toBe('todo');
+  });
+
   it('clearsTheAdapter_whenItGoes', () => {
     adapter.matches.set([{ line: 1, column: 1, before: '', text: 'x', after: '' }]);
 
