@@ -31,8 +31,7 @@ describe('DockGroupSizes (#1567)', () => {
    * @returns Returns the size, or undefined when it takes a share.
    */
   function besideMain(node: DockNode): number | undefined {
-    return sizes.sizeOf(node, mkSplit('row', [mkStack('main', ['editor']), node]))
-      ?.size;
+    return sizes.sizeOf(node, mkSplit('row', [mkStack('main', ['editor']), node]))?.size;
   }
 
   beforeEach(() => {
