@@ -18,6 +18,8 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+import { ALL_DOCK_BUTTONS, DockButton } from '../../../services/dock-layout/dock-appearance';
+import { DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-blueprint';
 import { DockAutoHide } from '../../../services/dock-layout/dock-auto-hide';
 import { DockDrag } from '../../../services/dock-layout/dock-drag';
 import { DockFloating } from '../../../services/dock-layout/dock-floating';
@@ -159,6 +161,12 @@ export class DockTabGroup {
    * Holds the focus tracker that decides which panel is accented.
    */
   private readonly dockFocus: DockFocus = inject(DockFocus);
+
+  /**
+   * Holds the buttons the dock's title bars show.
+   */
+  private readonly buttons: readonly DockButton[] =
+    inject(DOCK_BLUEPRINT, { optional: true })?.buttons ?? ALL_DOCK_BUTTONS;
 
   /**
    * Holds the structured logger.
@@ -584,6 +592,22 @@ export class DockTabGroup {
       title: Math.ceil(titleWidth),
       chrome: Math.max(0, Math.ceil(chrome)),
     });
+  }
+
+  /**
+   * Gets the panel the title bar's close button closes, or undefined when it shows none.
+   */
+  protected readonly closable: Signal<DockPanel | undefined> = computed(
+    (): DockPanel | undefined => (this.shows('close') ? this.activePanel() : undefined),
+  );
+
+  /**
+   * Determines whether the title bar shows a button.
+   * @param button The button.
+   * @returns Returns true when it does.
+   */
+  protected shows(button: DockButton): boolean {
+    return this.buttons.includes(button);
   }
 
   /**

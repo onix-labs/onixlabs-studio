@@ -15,6 +15,8 @@ import { DockMinimum, DockMinimums } from '../../../services/dock-layout/dock-mi
 import { Display } from '@shared/angular/services/display/display';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings, WorkspaceTexture } from '@shared/angular/services/settings/settings';
+import { DockAppearance } from '../../../services/dock-layout/dock-appearance';
+import { DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-blueprint';
 import { DockFocus } from '../../../services/dock-layout/dock-focus';
 import { DockGeometry } from '../../../services/dock-layout/dock-geometry';
 import { DockNode as DockTreeNode, StackNode } from '../../../services/dock-layout/dock-node';
@@ -47,6 +49,7 @@ const BASE_INSET: string = '0.5rem';
     // The chosen texture rides on the element itself rather than on the document root: the dock
     // container also renders in pop-out windows, and an attribute on the host follows it there.
     '[attr.data-texture]': 'texture()',
+    '[attr.data-appearance]': 'appearance',
   },
 })
 export class DockContainer {
@@ -111,6 +114,12 @@ export class DockContainer {
   );
 
   /**
+   * Gets how the dock looks, whose style values its groups, strips and windows take on.
+   */
+  protected readonly appearance: DockAppearance =
+    inject(DOCK_BLUEPRINT, { optional: true })?.appearance ?? 'full';
+
+  /**
    * Gets the root of the layout tree to render.
    */
   protected readonly layout: Signal<DockTreeNode> = this.dockState.layout;
@@ -131,22 +140,24 @@ export class DockContainer {
 
   /**
    * Gets the background texture to paint behind the docked panes, or null when the user has chosen
-   * none — the attribute is then absent, and the texture layer resolves to nothing.
+   * none — the attribute is then absent, and the texture layer resolves to nothing. The simple look has
+   * none.
    *
    * Anything below the full graphics-acceleration level also resolves to null: the texture is a
    * full-workspace masked layer repainted with everything behind it, which is among the costliest
    * things to draw. The choice itself is preserved and returns at the full level.
    */
   protected readonly texture: Signal<string | null> = computed((): string | null => {
+    if (this.appearance === 'simple') return null;
     if (this.display.resolvedGraphicsAcceleration() !== 'full') return null;
     const texture: WorkspaceTexture = this.settings.workspaceTexture();
     return texture === 'none' ? null : texture;
   });
 
   /**
-   * Gets the uniform dock-area padding.
+   * Gets the dock-area padding: uniform around the groups, or none in the simple look.
    */
-  protected readonly padding: string = BASE_INSET;
+  protected readonly padding: string = this.appearance === 'simple' ? '0' : BASE_INSET;
 
   /**
    * Gets a value indicating whether an earlier layout can be restored.

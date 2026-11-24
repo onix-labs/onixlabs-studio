@@ -65,9 +65,16 @@ export const POPOUT_DOCK_CONFIG: InjectionToken<PopoutDockConfig> =
       provide: DOCK_BLUEPRINT,
       useFactory: (): DockBlueprint => {
         const panelId: string = inject(POPOUT_DOCK_CONFIG).panelId;
+        // It looks as the dock it came from does.
+        const view: DockBlueprint | null = inject(DOCK_BLUEPRINT, {
+          optional: true,
+          skipSelf: true,
+        });
         return {
           createLayout: (): DockNode => mkStack('tool', [panelId]),
           panels: [],
+          appearance: view?.appearance,
+          buttons: view?.buttons,
         };
       },
     },

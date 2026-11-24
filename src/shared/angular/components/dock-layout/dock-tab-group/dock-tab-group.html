@@ -6,36 +6,42 @@
            controls are one control at two call sites. `mousedown` is stopped on each so pressing one
            does not start the title bar's drag. -->
       <span class="dock-tab-group__title-buttons">
-        <app-button
-          variant="none"
-          size="small"
-          [icon]="collapseIcon()"
-          [iconRotation]="collapseRotation()"
-          ariaLabel="Auto Hide"
-          tooltip="Auto Hide"
-          (mousedown)="$event.stopPropagation()"
-          (click)="requestPin()"
-        />
-        <app-button
-          variant="none"
-          size="small"
-          [icon]="Icon.FLOAT"
-          ariaLabel="Float"
-          tooltip="Float"
-          (mousedown)="$event.stopPropagation()"
-          (click)="requestFloat()"
-        />
-        <app-button
-          variant="none"
-          size="small"
-          [icon]="Icon.POP_OUT"
-          ariaLabel="Open in New Window"
-          [tooltip]="popOutTitle()"
-          [disabled]="!canPopOutActive()"
-          (mousedown)="$event.stopPropagation()"
-          (click)="popOutActive()"
-        />
-        @if (activePanel(); as panel) {
+        @if (shows('auto-hide')) {
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="collapseIcon()"
+            [iconRotation]="collapseRotation()"
+            ariaLabel="Auto Hide"
+            tooltip="Auto Hide"
+            (mousedown)="$event.stopPropagation()"
+            (click)="requestPin()"
+          />
+        }
+        @if (shows('float')) {
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.FLOAT"
+            ariaLabel="Float"
+            tooltip="Float"
+            (mousedown)="$event.stopPropagation()"
+            (click)="requestFloat()"
+          />
+        }
+        @if (shows('pop-out')) {
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.POP_OUT"
+            ariaLabel="Open in New Window"
+            [tooltip]="popOutTitle()"
+            [disabled]="!canPopOutActive()"
+            (mousedown)="$event.stopPropagation()"
+            (click)="popOutActive()"
+          />
+        }
+        @if (closable(); as panel) {
           <app-button
             variant="none"
             size="small"

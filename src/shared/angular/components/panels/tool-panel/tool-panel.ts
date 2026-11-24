@@ -13,6 +13,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-drag-handle';
+import { DOCK_PANEL_HOST } from '@shared/angular/services/dock-layout/dock-panel-host';
 import { Log } from '@shared/angular/services/log/log';
 
 /**
@@ -34,7 +35,7 @@ import { Log } from '@shared/angular/services/log/log';
   imports: [AppIcon, Button, PanelDragHandle],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    @if (header()) {
+    @if (showsHeader()) {
       <header class="tool-panel__header" [appPanelDragHandle]="handle()">
         @if (icon(); as glyph) {
           <app-icon class="tool-panel__icon" [icon]="glyph" />
@@ -129,6 +130,11 @@ export class ToolPanel {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds whether the panel is a dock panel's content, whose group draws its title and buttons.
+   */
+  private readonly inDock: boolean = inject(DOCK_PANEL_HOST, { optional: true }) ?? false;
+
+  /**
    * Gets the panel's title.
    */
   public readonly title: InputSignal<string> = input.required<string>();
@@ -146,10 +152,17 @@ export class ToolPanel {
   public readonly dragTitle: InputSignal<string | undefined> = input<string | undefined>(undefined);
 
   /**
-   * Gets a value indicating whether the header is shown. A host that supplies its own chrome (or docks
-   * the panel somewhere already titled) hides it and keeps only the body.
+   * Gets a value indicating whether the header is shown. A host that supplies its own chrome hides
+   * it and keeps only the body; in a dock, whose groups are titled already, it is never shown.
    */
   public readonly header: InputSignal<boolean> = input<boolean>(true);
+
+  /**
+   * Gets a value indicating whether the header is drawn.
+   */
+  protected readonly showsHeader: Signal<boolean> = computed(
+    (): boolean => this.header() && !this.inDock,
+  );
 
   /**
    * Gets a value indicating whether the header offers a close button.

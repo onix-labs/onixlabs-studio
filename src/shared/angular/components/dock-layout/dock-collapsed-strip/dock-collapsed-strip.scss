@@ -83,7 +83,7 @@
   flex-direction: column;
   background: var(--dock-background-color);
   border: 0.0625rem solid var(--dock-border-color);
-  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  border-radius: var(--dock-flyout-radius, calc(0.375rem * var(--border-radius-multiplier)));
   corner-shape: var(--app-corner-shape, squircle);
   box-shadow: 0 0.5rem 1.625rem rgb(0 0 0 / 45%);
   z-index: 2;
@@ -165,9 +165,9 @@
   color: var(--dock-title-foreground-color);
   background: var(--dock-title-background-color);
   border-block-end: 0.0625rem solid var(--dock-border-color);
-  border-start-start-radius: 0.375rem;
-  border-start-end-radius: 0.375rem;
-  font-weight: 600;
+  border-start-start-radius: var(--dock-flyout-radius, 0.375rem);
+  border-start-end-radius: var(--dock-flyout-radius, 0.375rem);
+  font-weight: var(--dock-title-font-weight, 600);
 
   &-text {
     flex: 1;
@@ -189,7 +189,7 @@
   flex: 1;
   min-block-size: 0;
   background: var(--dock-tab-background-color--active);
-  border-end-start-radius: 0.375rem;
-  border-end-end-radius: 0.375rem;
+  border-end-start-radius: var(--dock-flyout-radius, 0.375rem);
+  border-end-end-radius: var(--dock-flyout-radius, 0.375rem);
   overflow: auto;
 }

@@ -1,4 +1,5 @@
 import { InjectionToken } from '@angular/core';
+import { DockAppearance, DockButton } from './dock-appearance';
 import { DockNode } from './dock-node';
 import { DockPanel } from './dock-panel';
 
@@ -51,6 +52,17 @@ export interface DockBlueprint {
    * Absent for a dock whose layout holds only the panels that are open, where closing one removes it.
    */
   readonly startsOpen?: readonly string[];
+
+  /**
+   * Gets how the dock looks. Absent means `full`.
+   */
+  readonly appearance?: DockAppearance;
+
+  /**
+   * Gets the buttons its groups' title bars show. One left out is only not shown: what it does can still
+   * be done. Absent means all of them.
+   */
+  readonly buttons?: readonly DockButton[];
 }
 
 /**

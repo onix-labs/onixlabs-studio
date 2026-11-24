@@ -28,7 +28,7 @@
   // The separator is an inset shadow rather than a bottom border so it sits inside the accent side
   // borders and never miters into (and notches) the panel's accent outline.
   box-shadow: inset 0 -0.0625rem 0 var(--dock-border-color);
-  font-weight: 600;
+  font-weight: var(--dock-title-font-weight, 600);
   cursor: move;
   -webkit-app-region: no-drag;
 
@@ -222,7 +222,7 @@
 :host(.dock-tab-group--tool) {
   // The seam (panel border, active-tab border and feet) is neutral by default and accented only on
   // the focused panel.
-  --dock-seam-color: var(--dock-border-color);
+  --dock-seam-color: var(--dock-group-border-color, var(--dock-border-color));
 
   background: transparent;
   border: none;
@@ -236,7 +236,7 @@
 }
 
 :host(.dock-tab-group--focused) {
-  --dock-seam-color: var(--accent-color);
+  --dock-seam-color: var(--dock-group-border-color--focused, var(--accent-color));
 }
 
 // The strip hugs its tabs (no fixed height or padding) and lets the active tab's feet flare onto

@@ -11,6 +11,8 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { ALL_DOCK_BUTTONS, DockButton } from '../../../services/dock-layout/dock-appearance';
+import { DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-blueprint';
 import { DockAutoHide, PeekSize } from '../../../services/dock-layout/dock-auto-hide';
 import { DockFloating } from '../../../services/dock-layout/dock-floating';
 import { Rect } from '../../../services/dock-layout/dock-legality';
@@ -102,6 +104,12 @@ export class DockCollapsedStrip {
    * Holds the auto-hide store driving the peek.
    */
   private readonly autoHide: DockAutoHide = inject(DockAutoHide);
+
+  /**
+   * Holds the buttons the dock's title bars show.
+   */
+  private readonly buttons: readonly DockButton[] =
+    inject(DOCK_BLUEPRINT, { optional: true })?.buttons ?? ALL_DOCK_BUTTONS;
 
   /**
    * Holds the floating layer the float button detaches the active panel into.
@@ -237,6 +245,15 @@ export class DockCollapsedStrip {
     const room: number | null = this.room();
     return room === null ? this.preferredSize() : Math.min(this.preferredSize(), room);
   });
+
+  /**
+   * Determines whether the peek's title bar shows a button.
+   * @param button The button.
+   * @returns Returns true when it does.
+   */
+  protected shows(button: DockButton): boolean {
+    return this.buttons.includes(button);
+  }
 
   /**
    * Flies the stack out (or toggles the peek closed) on the chosen panel, measuring the room it has

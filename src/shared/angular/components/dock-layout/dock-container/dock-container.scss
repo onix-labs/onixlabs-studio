@@ -11,6 +11,22 @@
   anchor-scope: --dock-main;
 }
 
+// The simple look: square and flat, the groups filling the view. Only values, which everything the dock
+// draws inside this element takes on; nothing is laid out differently.
+:host([data-appearance='simple']) {
+  --dock-panel-radius: 0;
+  --dock-panel-foot-radius: 0;
+  --dock-flyout-radius: 0;
+  --dock-divider-radius: 0;
+  --dock-title-background-color: var(--panel-surface-color);
+  --dock-title-background-color--focused: var(--panel-surface-color);
+  --dock-title-font-weight: 500;
+  --dock-group-border-color: transparent;
+  --dock-group-border-color--focused: transparent;
+
+  background: transparent;
+}
+
 // The optional background texture, tiled behind the docked panes. The pattern arrives as
 // `--dock-texture-image` from the global texture catalogue (`_textures.scss`) when the user has
 // chosen one, and is applied as a MASK over a flat fill: the SVG contributes only its shape, and the
