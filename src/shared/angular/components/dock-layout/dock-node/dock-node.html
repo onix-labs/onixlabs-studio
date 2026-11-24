@@ -23,7 +23,7 @@
           [class.dock-node__pane--empty]="isEmptyPane(child)"
           [share]="node.sizes[i]"
           [minSize]="minimumAlong(child, node.dir)"
-          [fixedSize]="fixedSize(child)"
+          [lockedSize]="lockedSize(child)"
           [style.min-inline-size.px]="paneMinimum(child)?.inline ?? null"
           [style.min-block-size.px]="paneMinimum(child)?.block ?? null"
         >

@@ -204,7 +204,7 @@ export class DockNode {
    * @param node The node the pane holds.
    * @returns Returns the CSS length, or null when the pane's weight sizes it.
    */
-  protected fixedSize(node: DockTreeNode): string | null {
+  protected lockedSize(node: DockTreeNode): string | null {
     if (this.isEmptyPane(node)) {
       return '0';
     }

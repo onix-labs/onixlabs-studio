@@ -32,6 +32,11 @@
     background: var(--split-divider-color);
     cursor: default;
   }
+
+  // Nothing to divide, so not even the gap.
+  &.split-divider--hidden {
+    display: none;
+  }
 }
 
 .split-divider__grip {
