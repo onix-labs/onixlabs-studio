@@ -16,14 +16,14 @@ export const DEFAULT_PANEL_MIN_INLINE_REM: number = 16;
 export const DEFAULT_PANEL_MIN_BLOCK_REM: number = 6;
 
 /**
- * The room one splitter takes along its split, in rem: the 0.25rem handle and the 2px margin either
- * side of it (see `dock-splitter.scss`).
+ * The room one divider takes along its split, in rem: the 0.25rem handle and the 2px margin either
+ * side of it (see `split-divider.scss`).
  */
-const SPLITTER_REM: number = 0.5;
+const DIVIDER_REM: number = 0.5;
 
 /**
  * The fixed thickness, in rem, of a collapsed (auto-hidden) group's strip along its split (see
- * `COLLAPSED_FLEX` in `dock-node.ts`).
+ * `COLLAPSED_SIZE` in `dock-node.ts`).
  */
 const COLLAPSED_REM: number = 1.875;
 
@@ -76,11 +76,11 @@ const NOTHING: DockMinimum = { inline: 0, block: 0 };
  * A **group**'s minimum is the largest of its tabs at their natural width, its title bar, and the
  * minimum each of its panels declares (16rem wide and 6rem of content when it declares none) — every
  * panel's, not the active one's, so switching tabs never makes a group jump in size. A **split**
- * needs, along its axis, the sum of its children's minimums and the splitters between them; across
+ * needs, along its axis, the sum of its children's minimums and the dividers between them; across
  * it, the largest child's. So a column's minimum includes every group stacked in it, and widening the
  * group beside it stops when the column is as narrow as its contents allow.
  *
- * The splitter clamps a drag to these, the panes carry them as CSS so a window resize cannot crush
+ * The divider clamps a drag to these, the panes carry them as CSS so a window resize cannot crush
  * them either, and the window's own minimum size follows the root's.
  *
  * Exempt, taking only their fixed or zero size: auto-hidden groups (their strip), groups whose every
@@ -223,7 +223,7 @@ export class DockMinimums {
   }
 
   /**
-   * Gets a split's minimum: along its axis, its children's minimums and the splitters between the ones
+   * Gets a split's minimum: along its axis, its children's minimums and the dividers between the ones
    * that take room; across it, the largest child's.
    * @param split The split.
    * @returns Returns the minimum, in pixels.
@@ -235,14 +235,14 @@ export class DockMinimums {
     const minimums: readonly DockMinimum[] = shown.map((child: DockTreeNode): DockMinimum =>
       this.minimumOf(child),
     );
-    const splitters: number = Math.max(0, shown.length - 1) * SPLITTER_REM * this.rem;
+    const dividers: number = Math.max(0, shown.length - 1) * DIVIDER_REM * this.rem;
     const along: (minimum: DockMinimum) => number = (minimum: DockMinimum): number =>
       split.dir === 'row' ? minimum.inline : minimum.block;
     const across: (minimum: DockMinimum) => number = (minimum: DockMinimum): number =>
       split.dir === 'row' ? minimum.block : minimum.inline;
     const sum: number =
       minimums.reduce((total: number, minimum: DockMinimum): number => total + along(minimum), 0) +
-      splitters;
+      dividers;
     const widest: number = minimums.reduce(
       (most: number, minimum: DockMinimum): number => Math.max(most, across(minimum)),
       0,

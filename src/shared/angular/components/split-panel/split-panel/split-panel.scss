@@ -1,0 +1,14 @@
+:host {
+  display: flex;
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 0;
+
+  &.split-panel--row {
+    flex-direction: row;
+  }
+
+  &.split-panel--col {
+    flex-direction: column;
+  }
+}

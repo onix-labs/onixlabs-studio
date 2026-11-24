@@ -1,8 +1,4 @@
-/**
- * Specifies the orientation in which a {@link SplitNode} lays out its children: `row` places them
- * side by side along the horizontal axis, `col` stacks them along the vertical axis.
- */
-export type SplitDirection = 'row' | 'col';
+import { SplitDirection } from '@shared/angular/components/split-panel/split-direction';
 
 /**
  * Specifies the role a {@link StackNode} plays, which governs docking legality. Tool stacks may

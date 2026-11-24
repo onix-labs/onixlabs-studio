@@ -1,36 +1,47 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
+import { SplitDirection } from '@shared/angular/components/split-panel/split-direction';
+import { SplitDivider } from '@shared/angular/components/split-panel/split-divider/split-divider';
+import { SplitPane } from '@shared/angular/components/split-panel/split-pane/split-pane';
+import { SplitPanel } from '@shared/angular/components/split-panel/split-panel/split-panel';
 import { DockAutoHide } from '../../../services/dock-layout/dock-auto-hide';
 import {
   axisOf,
   DockNode as DockTreeNode,
   DockSide,
   isStackNode,
-  SplitDirection,
   SplitNode,
   StackNode,
 } from '../../../services/dock-layout/dock-node';
+import { DockGeometry } from '../../../services/dock-layout/dock-geometry';
 import { DockPanelAvailability } from '../../../services/dock-layout/dock-panel-availability';
 import { DockMinimum, DockMinimums } from '../../../services/dock-layout/dock-minimums';
+import { DockState } from '../../../services/dock-layout/dock-state';
 import { DockCollapsedStrip } from '../dock-collapsed-strip/dock-collapsed-strip';
-import { DockSplitter } from '../dock-splitter/dock-splitter';
 import { DockTabGroup } from '../dock-tab-group/dock-tab-group';
 
 /**
- * The flex shorthand sizing a collapsed pane to a fixed thin strip, regardless of its stored weight.
+ * The thickness of the strip a collapsed pane keeps, regardless of its stored weight.
  */
-const COLLAPSED_FLEX: string = '0 0 1.875rem';
+const COLLAPSED_SIZE: string = '1.875rem';
 
 /**
  * Renders a node of the dock layout tree. A stack renders as a tab group; a split renders its
- * children as flex panes interleaved with splitters, recursing into each child through a
- * self-referencing template (so the component need not import itself). A collapsed stack renders as
- * a thin {@link DockCollapsedStrip} in its slot instead of a full tab group, and the splitters
- * beside it are inert so its fixed size holds.
+ * children as the panes of a {@link SplitPanel} interleaved with dividers, recursing into each child
+ * through a self-referencing template (so the component need not import itself). A collapsed stack
+ * renders as a thin {@link DockCollapsedStrip} in its slot instead of a full tab group, and the dividers
+ * beside it are locked so its fixed size holds.
  */
 @Component({
   selector: 'app-dock-node',
-  imports: [NgTemplateOutlet, DockSplitter, DockTabGroup, DockCollapsedStrip],
+  imports: [
+    NgTemplateOutlet,
+    SplitPanel,
+    SplitPane,
+    SplitDivider,
+    DockTabGroup,
+    DockCollapsedStrip,
+  ],
   templateUrl: './dock-node.html',
   styleUrl: './dock-node.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -54,9 +65,15 @@ export class DockNode {
   private readonly minimums: DockMinimums = inject(DockMinimums);
 
   /**
-   * Gets the flex shorthand sizing a collapsed pane to a fixed thin strip.
+   * Holds the layout state a resize commits to.
    */
-  protected readonly collapsedFlex: string = COLLAPSED_FLEX;
+  protected readonly dockState: DockState = inject(DockState);
+
+  /**
+   * Holds the dock geometry, told when a drag starts and ends so measurement-driven consumers (the
+   * tab strips' fill measurement) can defer their forced layouts until the gesture settles.
+   */
+  protected readonly geometry: DockGeometry = inject(DockGeometry);
 
   /**
    * Gets the node to render.
@@ -144,7 +161,7 @@ export class DockNode {
   }
 
   /**
-   * Reads a split child at the given index, used to test whether the pane after a splitter is
+   * Reads a split child at the given index, used to test whether the pane after a divider is
    * collapsed.
    * @param split The split node.
    * @param index The index of the child to read.
@@ -155,18 +172,9 @@ export class DockNode {
   }
 
   /**
-   * Builds the flex shorthand that sizes a pane by its flex-grow weight.
-   * @param grow The flex-grow weight of the pane.
-   * @returns Returns the `flex` shorthand value.
-   */
-  protected paneFlex(grow: number): string {
-    return `${grow} 1 0`;
-  }
-
-  /**
    * Determines whether a slot is one this workspace cannot fill: a stack that holds panels but can
    * show none of them, or a split whose every child is itself unfillable. Such a slot is given no
-   * width rather than being dropped from the split, so the surviving splitters keep their positional
+   * width rather than being dropped from the split, so the surviving dividers keep their positional
    * pairing with the weights they resize, and it fills out again the moment its panels can be shown.
    *
    * Deliberately availability alone, not registration. An unregistered id is a stale layout rather
@@ -191,21 +199,21 @@ export class DockNode {
   }
 
   /**
-   * Builds the flex shorthand for a pane, which is zero for one that renders nothing.
+   * Gets the size a pane keeps whatever its weight: none at all for one that renders nothing, and its
+   * strip's for a collapsed one.
    * @param node The node the pane holds.
-   * @param grow The flex-grow weight of the pane.
-   * @returns Returns the `flex` shorthand value.
+   * @returns Returns the CSS length, or null when the pane's weight sizes it.
    */
-  protected slotFlex(node: DockTreeNode, grow: number): string {
+  protected fixedSize(node: DockTreeNode): string | null {
     if (this.isEmptyPane(node)) {
-      return '0 0 0';
+      return '0';
     }
-    return this.isCollapsed(node) ? COLLAPSED_FLEX : this.paneFlex(grow);
+    return this.isCollapsed(node) ? COLLAPSED_SIZE : null;
   }
 
   /**
    * Gets the least size a pane may be given (#1064): its node's minimum — a group's tabs, title and
-   * panels, or a nested split's sum of them — so neither a splitter nor the window can crush it. None
+   * panels, or a nested split's sum of them — so neither a divider nor the window can crush it. None
    * for a collapsed or empty pane, whose own rules size it.
    * @param node The pane's node.
    * @returns Returns the minimum in pixels, or null to leave it to the pane's rules.
@@ -218,14 +226,28 @@ export class DockNode {
   }
 
   /**
-   * Determines whether the splitter following a pane should be rendered. A splitter is dropped when
+   * Gets the least size, along its split's axis, a divider may drag a pane down to (#1064).
+   * @param node The pane's node.
+   * @param dir The orientation of the split the pane is in.
+   * @returns Returns the minimum in pixels.
+   */
+  protected minimumAlong(node: DockTreeNode, dir: SplitDirection): number {
+    const minimum: DockMinimum | null = this.paneMinimum(node);
+    if (minimum === null) {
+      return 0;
+    }
+    return dir === 'row' ? minimum.inline : minimum.block;
+  }
+
+  /**
+   * Determines whether the divider following a pane should be rendered. A divider is dropped when
    * either pane it sits between renders nothing: it would otherwise be a divider against a slot with
    * no width, resizing something invisible.
    * @param split The split being rendered.
-   * @param index The index of the child the splitter follows.
-   * @returns Returns true when the splitter should be rendered; otherwise, false.
+   * @param index The index of the child the divider follows.
+   * @returns Returns true when the divider should be rendered; otherwise, false.
    */
-  protected hasSplitter(split: SplitNode, index: number): boolean {
+  protected hasDivider(split: SplitNode, index: number): boolean {
     return !this.isEmptyPane(split.children[index]) && !this.isEmptyPane(split.children[index + 1]);
   }
 }

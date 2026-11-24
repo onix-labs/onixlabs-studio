@@ -58,7 +58,7 @@ export class DockGeometry {
   private workspace: HTMLElement | null = null;
 
   /**
-   * Counts the interactive resizes in progress (a splitter drag, chiefly), so layout-reading work
+   * Counts the interactive resizes in progress (a divider drag, chiefly), so layout-reading work
    * can wait for the gesture to finish instead of thrashing per frame.
    */
   private readonly interactiveResizes: WritableSignal<number> = signal<number>(0);

@@ -1,3 +1,4 @@
+import { SplitDirection } from '@shared/angular/components/split-panel/split-direction';
 import {
   axisOf,
   DockNode,
@@ -6,7 +7,6 @@ import {
   isStackNode,
   mkSplit,
   mkStack,
-  SplitDirection,
   StackNode,
   StackRole,
 } from './dock-node';

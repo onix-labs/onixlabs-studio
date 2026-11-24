@@ -6,26 +6,9 @@
   inline-size: 100%;
 }
 
-.dock-node__split {
-  display: flex;
-  flex: 1;
-  min-inline-size: 0;
-  min-block-size: 0;
-
-  &--row {
-    flex-direction: row;
-  }
-
-  &--col {
-    flex-direction: column;
-  }
-}
-
 .dock-node__pane {
-  display: flex;
   min-inline-size: 2.625rem;
   min-block-size: 2rem;
-  overflow: hidden;
 }
 
 // Only leaf panes (those holding a tab group, not a nested split) are framed: a softly rounded cell
@@ -54,7 +37,7 @@
 }
 
 // A collapsed pane shrinks to its strip's fixed size and lets the peek flyout escape its bounds to
-// overlay the neighbouring panes, sitting above them and the splitters while it is open.
+// overlay the neighbouring panes, sitting above them and the dividers while it is open.
 .dock-node__pane--collapsed {
   position: relative;
   z-index: 10;
