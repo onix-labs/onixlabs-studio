@@ -206,7 +206,7 @@ describe('DockTemplatePanel (#1566)', () => {
   it('undeclared_isPassedOverAndKeepsItsPlace', async () => {
     const before: DockNode = dock.layout();
     expect(tabs()).not.toContain('Find');
-    expect(host.querySelectorAll('app-split-divider').length).toBe(1);
+    expect(host.querySelectorAll('app-split-divider:not(.split-divider--hidden)').length).toBe(1);
 
     fixture.componentInstance.finding.set(true);
     await fixture.whenStable();

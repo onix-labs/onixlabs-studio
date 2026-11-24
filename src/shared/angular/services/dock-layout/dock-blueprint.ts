@@ -40,6 +40,17 @@ export interface DockBlueprint {
    * so a layout may hold them before they are declared. Absent when it declares none.
    */
   readonly templatePanels?: readonly string[];
+
+  /**
+   * Gets the identifiers of the tool panels open when the dock opens, for a dock that keeps its closed
+   * panels' places (#1568). Its layout holds every panel where it goes, open or not: closing one hides it
+   * there, and opening it shows it there again. What is saved is then where panels go and not which are
+   * open, and only rearranging saves it, so a dock opens as the one last rearranged was arranged, with
+   * these panels open.
+   *
+   * Absent for a dock whose layout holds only the panels that are open, where closing one removes it.
+   */
+  readonly startsOpen?: readonly string[];
 }
 
 /**

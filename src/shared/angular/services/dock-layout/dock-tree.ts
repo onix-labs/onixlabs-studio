@@ -766,6 +766,79 @@ export function dockEdge(tree: DockNode, panelId: string, side: DockSide): DockN
 }
 
 /**
+ * Puts a panel a layout does not hold where another layout has it: as a tab beside one it shares a group
+ * with there, or else on the same side of the main group. Used to bring a panel a saved arrangement has
+ * never seen into it, at the place its dock's own layout gives it.
+ * @param tree The root of the tree to transform.
+ * @param from The layout that has the panel.
+ * @param panelId The identifier of the panel.
+ * @returns Returns the transformed tree, or the original tree when it holds the panel already or the other
+ * layout does not.
+ */
+export function placeAsIn(tree: DockNode, from: DockNode, panelId: string): DockNode {
+  const home: StackNode | null = findStackOfPanel(from, panelId);
+  if (home?.role !== 'tool' || findStackOfPanel(tree, panelId) !== null) {
+    return tree;
+  }
+  for (const neighbour of home.panels) {
+    const stack: StackNode | null = findStackOfPanel(tree, neighbour);
+    if (stack?.role === 'tool') {
+      return replaceNode(tree, stack.id, { ...stack, panels: [...stack.panels, panelId] });
+    }
+  }
+  const main: StackNode | null = firstStackOfRole(tree, 'main');
+  const place: MainSide | null = sideOfMain(from, home.id);
+  return main === null || place === null || place.wholeEdge
+    ? dockEdge(tree, panelId, place?.side ?? 'right')
+    : splitStack(tree, main.id, panelId, place.side, 'tool');
+}
+
+/**
+ * Where a group is from the main group.
+ */
+interface MainSide {
+  /**
+   * Gets the side of the main group it is on.
+   */
+  readonly side: DockSide;
+
+  /**
+   * Gets whether it lies along the whole edge of the layout, rather than between the groups that do.
+   */
+  readonly wholeEdge: boolean;
+}
+
+/**
+ * Finds which side of the main group a group is on: where their branches of the tree part.
+ * @param tree The root of the tree to search.
+ * @param stackId The identifier of the group.
+ * @returns Returns the side, or null when the tree lacks either.
+ */
+function sideOfMain(tree: DockNode, stackId: string): MainSide | null {
+  let node: DockNode = tree;
+  while (isSplitNode(node)) {
+    const main: number = node.children.findIndex(
+      (child: DockNode): boolean => countStacks(child, 'main') > 0,
+    );
+    const group: number = node.children.findIndex(
+      (child: DockNode): boolean => findNode(child, stackId) !== null,
+    );
+    if (main === -1 || group === -1) {
+      return null;
+    }
+    if (main !== group) {
+      const before: boolean = group < main;
+      return {
+        side: node.dir === 'row' ? (before ? 'left' : 'right') : before ? 'top' : 'bottom',
+        wholeEdge: node === tree,
+      };
+    }
+    node = node.children[main];
+  }
+  return null;
+}
+
+/**
  * Removes a panel from the layout, updating its stack's active panel and pruning the stack when it
  * becomes empty. The main group's panel never leaves.
  * @param tree The root of the tree to transform.

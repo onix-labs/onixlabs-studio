@@ -5,8 +5,6 @@ import {
   computed,
   ElementRef,
   inject,
-  input,
-  InputSignal,
   OnDestroy,
   Signal,
 } from '@angular/core';
@@ -77,12 +75,6 @@ export class SplitDivider implements OnDestroy {
   protected readonly split: SplitPanel = inject(SplitPanel);
 
   /**
-   * Gets whether the handle is inert, used when an adjacent pane keeps a size that must not be
-   * dragged. A locked handle keeps the gap but ignores drags.
-   */
-  public readonly locked: InputSignal<boolean> = input<boolean>(false);
-
-  /**
    * Gets the panes the handle divides, or null when there is nothing for it to divide: a hidden pane
    * leaves no shown pane on one side, or another divider already serves the same pair.
    */
@@ -109,16 +101,11 @@ export class SplitDivider implements OnDestroy {
   );
 
   /**
-   * Gets whether the handle ignores drags.
+   * Gets whether the handle ignores drags, beside a pane that is not to be resized. It keeps its gap.
    */
   protected readonly inert: Signal<boolean> = computed((): boolean => {
     const neighbours: SplitNeighbours | null = this.neighbours();
-    return (
-      this.locked() ||
-      neighbours === null ||
-      !neighbours.before.resizable() ||
-      !neighbours.after.resizable()
-    );
+    return neighbours === null || !neighbours.before.resizable() || !neighbours.after.resizable();
   });
 
   /**

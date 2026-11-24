@@ -6,6 +6,7 @@ import { DOCK_BLUEPRINT, DockBlueprint } from './dock-blueprint';
 import { OpenOptions } from '@shared/angular/services/tabs/tab';
 import { DockNode, DockSide, isStackNode, mkStack, StackNode, StackRole } from './dock-node';
 import { DockPanel } from './dock-panel';
+import { DockPanelAvailability } from './dock-panel-availability';
 import { DockPanelRegistry } from './dock-panel-registry';
 import { restoreLayout } from './dock-persistence';
 import {
@@ -20,6 +21,7 @@ import {
   firstStackOfRole,
   movePanel,
   occupyWell,
+  placeAsIn,
   occupyWellWithStack,
   removeFromLayout,
   removeNode,
@@ -73,6 +75,11 @@ export class DockState {
    * next session.
    */
   private readonly store: SettingsStore = inject(SettingsStore);
+
+  /**
+   * Holds which panels can be shown, and so which are closed in a dock that keeps their places.
+   */
+  private readonly availability: DockPanelAvailability = inject(DockPanelAvailability);
 
   /**
    * Holds the structured logger.
@@ -137,11 +144,16 @@ export class DockState {
    * mutation path — structural commits, undo/redo, and tab activation — because all of them replace the
    * tree signal; its first run harmlessly re-writes the just-restored layout. Persistence is a no-op
    * when no blueprint (hence no key) was provided.
+   *
+   * A dock that keeps its closed panels' places persists only when it is rearranged instead
+   * ({@link rearrange}): other docks open with its key start from the arrangement last made, and choosing
+   * a tab in one is not making one.
    */
   public constructor() {
     effect((): void => {
-      if (this.persistKey !== null) {
-        this.store.set<DockNode>(`dock.layout.${this.persistKey}`, this.tree());
+      const tree: DockNode = this.tree();
+      if (!this.availability.keepsPlaces) {
+        this.persist(tree);
       }
     });
     // A released panel that comes back into the layout (undo, reopen) is no longer let go.
@@ -290,8 +302,53 @@ export class DockState {
     if (this.isMain(panelId)) {
       return;
     }
+    if (this.keepsPlaceOf(panelId)) {
+      this.availability.close(panelId);
+      return;
+    }
     this.released.add(panelId);
     this.removeFromLayout(panelId);
+  }
+
+  /**
+   * Opens a panel: brings it to the front of its group where it is, or puts it where the dock's own layout
+   * has it when the layout does not hold it. Does nothing for a panel neither knows. A panel that may be
+   * in a floating or pop-out window is opened through {@link import('./dock-reveal').DockReveal.open}.
+   * @param panelId The identifier of the panel.
+   */
+  public open(panelId: string): void {
+    this.availability.open(panelId);
+    const placed: DockNode = placeAsIn(this.tree(), this.createLayout(), panelId);
+    if (placed !== this.tree()) {
+      this.commit(placed);
+    }
+    const stack: StackNode | null = findStackOfPanel(this.tree(), panelId);
+    if (stack !== null) {
+      this.setActive(stack.id, panelId);
+    }
+  }
+
+  /**
+   * Determines whether a panel is open in the layout: held by it, and not closed there.
+   * @param panelId The identifier of the panel.
+   * @returns Returns true when it is.
+   */
+  public isOpen(panelId: string): boolean {
+    return findStackOfPanel(this.tree(), panelId) !== null && !this.availability.isClosed(panelId);
+  }
+
+  /**
+   * Determines whether closing a panel keeps its place: a tool panel the dock's own layout knows, in a
+   * dock that keeps its closed panels' places.
+   * @param panelId The identifier of the panel.
+   * @returns Returns true when it does.
+   */
+  private keepsPlaceOf(panelId: string): boolean {
+    return (
+      this.availability.keepsPlaces &&
+      this.knownPanelIds.has(panelId) &&
+      findStackOfPanel(this.tree(), panelId)?.role === 'tool'
+    );
   }
 
   /**
@@ -494,6 +551,7 @@ export class DockState {
    */
   public reset(carry: readonly string[] = [], active: string | null = null): void {
     this.log.info('DockState', `Reset layout to seeded default`, this.persistKey, carry.length);
+    this.availability.reset();
     this.commit(carryIntoWell(this.createLayout(), carry, active));
   }
 
@@ -510,7 +568,7 @@ export class DockState {
     this.log.debug('DockState', 'Undo layout change');
     this.past.set(past.slice(0, -1));
     this.future.set([this.tree(), ...this.future()]);
-    this.tree.set(previous);
+    this.rearrange(previous);
   }
 
   /**
@@ -525,7 +583,7 @@ export class DockState {
     this.log.debug('DockState', 'Redo layout change');
     this.future.set(future.slice(1));
     this.past.set([...this.past(), this.tree()]);
-    this.tree.set(next);
+    this.rearrange(next);
   }
 
   /**
@@ -538,7 +596,28 @@ export class DockState {
     const history: readonly DockNode[] = [...this.past(), this.tree()];
     this.past.set(history.slice(-LAYOUT_HISTORY_DEPTH));
     this.future.set([]);
+    this.rearrange(next);
+  }
+
+  /**
+   * Applies a rearranged layout, remembering it for the docks with this one's key that open next.
+   * @param next The layout tree to apply.
+   */
+  private rearrange(next: DockNode): void {
     this.tree.set(next);
+    if (this.availability.keepsPlaces) {
+      this.persist(next);
+    }
+  }
+
+  /**
+   * Stores a layout under the dock's key, when it has one.
+   * @param tree The layout.
+   */
+  private persist(tree: DockNode): void {
+    if (this.persistKey !== null) {
+      this.store.set<DockNode>(`dock.layout.${this.persistKey}`, tree);
+    }
   }
 
   /**
@@ -560,14 +639,22 @@ export class DockState {
       return this.createLayout();
     }
     const raw: unknown = this.store.get<unknown>(`dock.layout.${this.persistKey}`, null);
+    const own: DockNode = this.createLayout();
     const restored: DockNode | null = restoreLayout(
       raw,
       this.knownPanelIds,
-      firstStackOfRole(this.createLayout(), 'main'),
+      firstStackOfRole(own, 'main'),
     );
     if (restored !== null) {
       this.log.info('DockState', `Restored persisted layout '${this.persistKey}'`);
-      return restored;
+      // A dock that keeps its panels' places holds them all, so one this arrangement has never seen goes
+      // where the dock's own layout has it.
+      return this.availability.keepsPlaces
+        ? collectPanelIds(own).reduce(
+            (tree: DockNode, id: string): DockNode => placeAsIn(tree, own, id),
+            restored,
+          )
+        : restored;
     }
     this.log.info('DockState', `No usable persisted layout '${this.persistKey}'; seeding fresh`);
     return this.createLayout();

@@ -184,21 +184,10 @@ export class DockNode {
   }
 
   /**
-   * Reads a split child at the given index, used to test whether the pane after a divider is
-   * collapsed.
-   * @param split The split node.
-   * @param index The index of the child to read.
-   * @returns Returns the child node, or undefined when out of range.
-   */
-  protected childAt(split: SplitNode, index: number): DockTreeNode | undefined {
-    return split.children[index];
-  }
-
-  /**
    * Determines whether a slot is one this workspace cannot fill: a stack that holds panels but can
-   * show none of them, or a split whose every child is itself unfillable. Such a slot is given no
-   * width rather than being dropped from the split, so the surviving dividers keep their positional
-   * pairing with the weights they resize, and it fills out again the moment its panels can be shown.
+   * show none of them, or a split whose every child is itself unfillable. Such a slot is hidden
+   * rather than dropped from the split, so it keeps its weight and fills out again the moment its panels
+   * can be shown, and the slots either side of it share one divider meanwhile.
    *
    * Deliberately availability alone, not registration. An unregistered id is a stale layout rather
    * than a workspace without the thing behind a panel — {@link import('../../../services/dock-layout/dock-persistence').restoreLayout}
@@ -222,15 +211,11 @@ export class DockNode {
   }
 
   /**
-   * Gets the size a pane keeps whatever its weight: none at all for one that renders nothing, and its
-   * strip's for a collapsed one.
+   * Gets the size a pane keeps whatever its weight: its strip's, for a collapsed one.
    * @param node The node the pane holds.
    * @returns Returns the CSS length, or null when the pane's weight sizes it.
    */
   protected lockedSize(node: DockTreeNode): string | null {
-    if (this.isEmptyPane(node)) {
-      return '0';
-    }
     return this.isCollapsed(node) ? COLLAPSED_SIZE : null;
   }
 
@@ -270,17 +255,5 @@ export class DockNode {
       return 0;
     }
     return dir === 'row' ? minimum.inline : minimum.block;
-  }
-
-  /**
-   * Determines whether the divider following a pane should be rendered. A divider is dropped when
-   * either pane it sits between renders nothing: it would otherwise be a divider against a slot with
-   * no width, resizing something invisible.
-   * @param split The split being rendered.
-   * @param index The index of the child the divider follows.
-   * @returns Returns true when the divider should be rendered; otherwise, false.
-   */
-  protected hasDivider(split: SplitNode, index: number): boolean {
-    return !this.isEmptyPane(split.children[index]) && !this.isEmptyPane(split.children[index + 1]);
   }
 }

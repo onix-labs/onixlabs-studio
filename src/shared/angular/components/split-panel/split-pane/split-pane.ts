@@ -119,8 +119,8 @@ export class SplitPane {
 
   /**
    * Gets the CSS length the pane is locked to along the split's axis, whatever its share or size, or
-   * null when it is not. Both are kept meanwhile, so the pane returns to them. A divider beside a
-   * locked pane is the host's to lock.
+   * null when it is not. Both are kept meanwhile, so the pane returns to them. Whether the
+   * dividers beside it may resize it is {@link resizable}'s to say.
    */
   public readonly lockedSize: InputSignal<string | null> = input<string | null>(null);
 

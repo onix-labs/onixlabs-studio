@@ -53,6 +53,21 @@ export class DockReveal {
   private readonly log: Log = inject(Log);
 
   /**
+   * Opens a panel and reveals it: where it lives already, when that is a floating or pop-out window, or
+   * else in the layout (see {@link DockState.open}).
+   * @param panelId The identifier of the panel to open.
+   */
+  public open(panelId: string): void {
+    const elsewhere: boolean =
+      this.popouts.isPopped(panelId) ||
+      this.floating.floats().some((float: FloatWindow): boolean => float.panelId === panelId);
+    if (!elsewhere) {
+      this.dockState.open(panelId);
+    }
+    this.reveal(panelId);
+  }
+
+  /**
    * Reveals a panel: focuses its pop-out window when it lives in one; otherwise activates it in its
    * stack (focusing the stack), peeks its collapsed stack, or brings its floating window to the
    * front. A panel absent from the dock is ignored.

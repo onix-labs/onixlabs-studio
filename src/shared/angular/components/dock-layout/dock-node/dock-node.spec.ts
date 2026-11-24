@@ -11,6 +11,7 @@ import {
   SplitNode,
   StackNode,
 } from '../../../services/dock-layout/dock-node';
+import { DockPanelAvailability } from '../../../services/dock-layout/dock-panel-availability';
 import { DockState } from '../../../services/dock-layout/dock-state';
 import { TEST_DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-test-blueprint';
 import { DockNode } from './dock-node';
@@ -173,5 +174,23 @@ describe('DockNode', () => {
 
     expect(geometry.resizing()).toBe(false);
     expect((state.layout() as SplitNode).sizes).not.toEqual((split as SplitNode).sizes);
+  });
+
+  it('render_whenAMiddleGroupCannotBeShown_leavesOneDividerBetweenItsNeighbours', () => {
+    TestBed.inject(DockPanelAvailability).set({ b: false });
+    render(
+      mkSplit('row', [mkStack('tool', ['a']), mkStack('tool', ['b']), mkStack('tool', ['c'])]),
+    );
+
+    expect(classesOf('.dock-node__pane', 1)).toContain('dock-node__pane--empty');
+    expect(classesOf('app-split-divider', 0)).not.toContain('split-divider--hidden');
+    expect(classesOf('app-split-divider', 1)).toContain('split-divider--hidden');
+  });
+
+  it('render_whenAnEndGroupCannotBeShown_leavesNoDividerBesideIt', () => {
+    TestBed.inject(DockPanelAvailability).set({ b: false });
+    render(mkSplit('row', [mkStack('tool', ['a']), mkStack('tool', ['b'])]));
+
+    expect(classesOf('app-split-divider', 0)).toContain('split-divider--hidden');
   });
 });

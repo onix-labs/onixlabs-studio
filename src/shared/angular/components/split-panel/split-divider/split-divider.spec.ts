@@ -18,9 +18,9 @@ import { SplitDivider } from './split-divider';
         (resizeEnd)="events.push('end')"
         (sharesChange)="onShares($event)"
       >
-        <app-split-pane [share]="shares()[0]" [minSize]="minimum()" />
+        <app-split-pane [share]="shares()[0]" [minSize]="minimum()" [resizable]="!fixed()" />
         @if (divider()) {
-          <app-split-divider [locked]="locked()" />
+          <app-split-divider />
         }
         <app-split-pane [share]="shares()[1]" />
         @if (third()) {
@@ -35,7 +35,7 @@ class TestHost {
   public readonly split: WritableSignal<boolean> = signal<boolean>(true);
   public readonly divider: WritableSignal<boolean> = signal<boolean>(true);
   public readonly third: WritableSignal<boolean> = signal<boolean>(true);
-  public readonly locked: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly fixed: WritableSignal<boolean> = signal<boolean>(false);
   public readonly minimum: WritableSignal<number> = signal<number>(0);
   public readonly dir: WritableSignal<SplitDirection> = signal<SplitDirection>('row');
   public readonly shares: WritableSignal<readonly number[]> = signal<readonly number[]>([1, 1, 2]);
@@ -232,8 +232,8 @@ describe('SplitDivider', () => {
     expect(host.shares()).toEqual([1, 1, 2]);
   });
 
-  it('press_whenLocked_doesNothing', () => {
-    host.locked.set(true);
+  it('press_besideAPaneThatIsNotToBeResized_doesNothing', () => {
+    host.fixed.set(true);
     fixture.detectChanges();
 
     press();

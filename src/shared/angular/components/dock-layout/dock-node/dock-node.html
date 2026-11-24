@@ -26,6 +26,8 @@
           [class.dock-node__pane--empty]="isEmptyPane(child)"
           [share]="node.sizes[i]"
           [minSize]="minimumAlong(child, node.dir)"
+          [visible]="!isEmptyPane(child)"
+          [resizable]="!isCollapsed(child)"
           [lockedSize]="lockedSize(child)"
           [hostSize]="size?.size ?? null"
           [maxSize]="size?.max ?? Infinity"
@@ -38,8 +40,8 @@
             [ngTemplateOutletContext]="{ $implicit: child, side: sideOf(child, node.dir, i) }"
           />
         </app-split-pane>
-        @if (!last && hasDivider(node, i)) {
-          <app-split-divider [locked]="isCollapsed(child) || isCollapsed(childAt(node, i + 1))" />
+        @if (!last) {
+          <app-split-divider />
         }
       }
     </app-split-panel>
