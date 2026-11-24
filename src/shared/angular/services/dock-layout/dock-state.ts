@@ -88,9 +88,10 @@ export class DockState {
    * Holds the ids of the panels the blueprint catalogues, used to prune a restored layout of panels no
    * longer known this session (stale features, and every dynamic document id, which is gone on restart).
    */
-  private readonly knownPanelIds: ReadonlySet<string> = new Set<string>(
-    this.blueprint?.panels.map((panel): string => panel.id) ?? [],
-  );
+  private readonly knownPanelIds: ReadonlySet<string> = new Set<string>([
+    ...(this.blueprint?.panels.map((panel): string => panel.id) ?? []),
+    ...(this.blueprint?.templatePanels ?? []),
+  ]);
 
   /**
    * Holds the current layout tree, restored from persistence when available, otherwise seeded from the

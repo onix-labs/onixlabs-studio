@@ -27,19 +27,9 @@ import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
 import { Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
-import { DOCK_BLUEPRINT } from '@shared/angular/services/dock-layout/dock-blueprint';
-import { DockAutoHide } from '@shared/angular/services/dock-layout/dock-auto-hide';
-import { DockDrag } from '@shared/angular/services/dock-layout/dock-drag';
-import { DockFloating } from '@shared/angular/services/dock-layout/dock-floating';
-import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
-import { DockGeometry } from '@shared/angular/services/dock-layout/dock-geometry';
-import { DockMinimums } from '@shared/angular/services/dock-layout/dock-minimums';
-import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
-import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
+import { dockProviders } from '@shared/angular/services/dock-layout/dock-providers';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
-import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
-import { PanelPopout } from '@shared/angular/services/panel-popout/panel-popout';
 import { TerminalSessions } from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
 import { firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
@@ -105,21 +95,9 @@ import { ApiWorkspace } from '../api-workspace/api-workspace';
     Diagnostics,
     // The agent's in-app tools, registered against this tab's workspace for as long as it is open.
     ApiAgentCapabilities,
-    // The dock framework, instantiated per dock-hosting view.
-    DockTabContext,
-    DockState,
-    DockGeometry,
-    DockMinimums,
-    DockFocus,
-    DockPanelRegistry,
-    DockFloating,
-    DockAutoHide,
-    DockDrag,
-    DockReveal,
     TerminalSessions,
-    PopoutPanels,
-    PanelPopout,
-    { provide: DOCK_BLUEPRINT, useValue: API_EXPLORER_DOCK_BLUEPRINT },
+    // The dock framework, instantiated per dock-hosting view.
+    ...dockProviders(API_EXPLORER_DOCK_BLUEPRINT),
     // The agent conversation lives at the view's level for the same reason it does in a workspace: a
     // conversation scoped to the dock panel would lose its transcript whenever a sibling tool
     // activated.

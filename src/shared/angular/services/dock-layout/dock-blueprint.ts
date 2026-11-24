@@ -33,6 +33,13 @@ export interface DockBlueprint {
    * open files or diffs) are still registered dynamically as they open.
    */
   readonly panels: readonly DockPanel[];
+
+  /**
+   * Gets the identifiers of the panels the view declares in its own template (see
+   * {@link import('../../components/dock-layout/dock-template-panel/dock-template-panel').DockTemplatePanel}),
+   * so a layout may hold them before they are declared. Absent when it declares none.
+   */
+  readonly templatePanels?: readonly string[];
 }
 
 /**

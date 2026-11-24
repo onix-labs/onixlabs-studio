@@ -1,10 +1,12 @@
-import { Signal, Type } from '@angular/core';
+import { Signal, TemplateRef, Type } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { StackRole } from './dock-node';
 
 /**
- * Describes a dockable panel: the metadata the dock chrome renders (title, icon, role) and the
- * component projected into the panel body. Every panel component receives the {@link DockPanel} as
+ * Describes a dockable panel: the metadata the dock chrome renders (title, icon, role) and the content
+ * projected into the panel body — a component, or a template the view wrote (see
+ * {@link import('../../components/dock-layout/dock-template-panel/dock-template-panel').DockTemplatePanel}).
+ * Every panel component receives the {@link DockPanel} as
  * its `panel` input, so the {@link import('./dock-panel-registry').DockPanelRegistry} outlet can
  * project any registered component uniformly.
  */
@@ -30,9 +32,14 @@ export interface DockPanel {
   readonly role: StackRole;
 
   /**
-   * Gets the component projected into the panel body.
+   * Gets the component projected into the panel body. Absent for a panel a view wrote in its template.
    */
-  readonly component: Type<unknown>;
+  readonly component?: Type<unknown>;
+
+  /**
+   * Gets the template drawn in the panel body, for a panel a view wrote in its own.
+   */
+  readonly template?: TemplateRef<void>;
 
   /**
    * Gets whether the panel's document has unsaved changes, driving the tab's dirty marker. Present

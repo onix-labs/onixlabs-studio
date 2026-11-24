@@ -1,4 +1,6 @@
-import { Service, Signal, signal, WritableSignal } from '@angular/core';
+import { inject, Service, Signal, signal, WritableSignal } from '@angular/core';
+import { DOCK_BLUEPRINT } from './dock-blueprint';
+import { DockPanelRegistry } from './dock-panel-registry';
 
 /**
  * Holds the availability of each panel a dock can hold: false while the thing behind the panel does
@@ -12,12 +14,27 @@ import { Service, Signal, signal, WritableSignal } from '@angular/core';
  * Explorer still mentions it after being applied to a plain folder, so saving from that session
  * cannot quietly lose it.
  *
+ * A panel the view declares in its template is available while it is declared, and passed over the rest
+ * of the time.
+ *
  * An unlisted panel is available. Availability is a per-view fact (it depends on what that tab has
  * open), so this service is scoped alongside {@link import('./dock-state').DockState} and the view
  * pushes its own map in.
  */
 @Service()
 export class DockPanelAvailability {
+  /**
+   * Holds the registered panels, which a panel declared in a template is one of only while it is declared.
+   */
+  private readonly registry: DockPanelRegistry = inject(DockPanelRegistry);
+
+  /**
+   * Holds the identifiers of the panels the view declares in its template.
+   */
+  private readonly templatePanels: ReadonlySet<string> = new Set<string>(
+    inject(DOCK_BLUEPRINT, { optional: true })?.templatePanels ?? [],
+  );
+
   /**
    * Holds the availability of each panel that depends on something existing.
    */
@@ -46,6 +63,9 @@ export class DockPanelAvailability {
    * false.
    */
   public isAvailable(id: string): boolean {
-    return this.map()[id] !== false;
+    return (
+      this.map()[id] !== false &&
+      (!this.templatePanels.has(id) || this.registry.get(id) !== undefined)
+    );
   }
 }
