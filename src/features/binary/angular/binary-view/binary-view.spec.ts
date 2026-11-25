@@ -1,16 +1,18 @@
 import { CodeListing } from '@shared/api/code-listing';
 import { ApplicationRef } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { Bridge } from '@shared/api/bridge';
 import { WorkspaceChannel } from '@shared/api/workspace-channels';
 import {
   BinaryEditOp,
   BinaryVisibleRange,
 } from '@shared/angular/components/binary-editor/binary-editor';
+import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { BinaryContext, BinaryStatus } from '../binary-status/binary-status';
 import { BinaryDocumentEntry, BinaryDocuments } from '../binary-document/binary-document';
-import { BinaryPanels } from '../binary-panels/binary-panels';
+import { BinaryInspector } from '../binary-inspector/binary-inspector';
 import { BinaryView } from './binary-view';
 
 /**
@@ -67,15 +69,16 @@ function flush(): Promise<void> {
 
 describe('BinaryView', () => {
   let documents: BinaryDocuments;
-  let panels: BinaryPanels;
+  let docks: TabDocks;
 
   beforeEach(async () => {
+    localStorage.clear();
     (window as unknown as { bridge: Bridge }).bridge = fakeBridge();
     await TestBed.configureTestingModule({
       imports: [BinaryView],
     }).compileComponents();
     documents = TestBed.inject(BinaryDocuments);
-    panels = TestBed.inject(BinaryPanels);
+    docks = TestBed.inject(TabDocks);
   });
 
   afterEach(() => {
@@ -106,14 +109,14 @@ describe('BinaryView', () => {
     const { fixture } = await createView();
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
     expect(host.querySelector('app-binary-editor')).not.toBeNull();
-    expect(host.querySelector('app-panel-layout')).not.toBeNull();
+    expect(host.querySelector('app-dock-container')).not.toBeNull();
   });
 
   it('render_withoutABackingDocument_rendersNothing', async () => {
     const fixture: ComponentFixture<BinaryView> = TestBed.createComponent(BinaryView);
     fixture.componentRef.setInput('tabId', 'no-such-tab');
     await fixture.whenStable();
-    expect((fixture.nativeElement as HTMLElement).querySelector('app-panel-layout')).toBeNull();
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-dock-container')).toBeNull();
   });
 
   it('status_publishesThePathAndSizeToTheViewsOwnStatus', async () => {
@@ -172,22 +175,57 @@ describe('BinaryView', () => {
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
     expect(host.querySelector('app-binary-inspector')).toBeNull();
 
-    panels.toggle(tab.id, 'inspector');
+    docks.toggle(tab.id, 'inspector');
     await fixture.whenStable();
 
     expect(host.querySelector('app-binary-inspector')).not.toBeNull();
   });
 
+  it('panels_areTabbedTogetherOnTheRight', async () => {
+    const { fixture, tab } = await createView();
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    docks.open(tab.id, 'disassembly');
+    docks.open(tab.id, 'inspector');
+    await fixture.whenStable();
+
+    expect(
+      [...host.querySelectorAll('.dock-tab__label')].map((label: Element): string =>
+        (label.textContent ?? '').trim(),
+      ),
+    ).toEqual(['Assembly', 'Inspector']);
+  });
+
+  it('inspector_keepsItsSwitches_whenItComesBackFromBehindAnotherTab', async () => {
+    const { fixture, tab } = await createView();
+    const inspector: () => BinaryInspector = (): BinaryInspector =>
+      fixture.debugElement.query(By.directive(BinaryInspector))
+        .componentInstance as BinaryInspector;
+    docks.open(tab.id, 'inspector');
+    await fixture.whenStable();
+    const first: BinaryInspector = inspector();
+    first.littleEndian.set(false);
+    await fixture.whenStable();
+
+    docks.open(tab.id, 'disassembly');
+    await fixture.whenStable();
+    docks.open(tab.id, 'inspector');
+    await fixture.whenStable();
+
+    expect(inspector()).not.toBe(first);
+    expect(inspector().littleEndian()).toBe(false);
+  });
+
   it('destroy_releasesTheDocumentAndPanelState', async () => {
     const { fixture, tab } = await createView(true);
-    panels.toggle(tab.id, 'inspector');
+    docks.toggle(tab.id, 'inspector');
     await fixture.whenStable();
 
     fixture.destroy();
     TestBed.inject(ApplicationRef).tick();
 
     expect(documents.get(tab.id)).toBeUndefined();
-    expect(panels.isMounted(tab.id, 'inspector')).toBe(false);
+    expect(docks.isOpen(tab.id, 'inspector')).toBe(false);
   });
 });
 

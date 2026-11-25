@@ -65,6 +65,7 @@ function fakeDocument(format: BinaryFormat): FakeDocument {
     cursor: signal<number | null>(null),
     revealVersion: signal<number>(0),
     revealOffset: null,
+    disasmView: { revealedVersion: -1, scrollTop: null },
   } as unknown as BinaryDocumentEntry;
   return { entry, instructions, format: formatSignal };
 }
@@ -82,12 +83,11 @@ describe('BinaryDisasmPanel', () => {
     return fixture;
   }
 
-  it('render_showsTheTitleBarOverTheComposedEditor', async () => {
+  it('render_showsTheComposedEditor', async () => {
     const fixture: ComponentFixture<BinaryDisasmPanel> = await create(
       fakeDocument({ kind: 'pe', architecture: 'x64', managed: false }),
     );
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
-    expect(host.querySelector('.tool-panel__title')?.textContent).toContain('Assembly');
     expect(host.querySelector('app-text-editor')).not.toBeNull();
   });
 
@@ -169,21 +169,5 @@ describe('BinaryDisasmPanel', () => {
     );
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
     expect(host.querySelector('.disasm__empty')?.textContent).toContain('JVM class');
-  });
-
-  it('close_clickEmitsTheClosedOutput', async () => {
-    const fixture: ComponentFixture<BinaryDisasmPanel> = await create(
-      fakeDocument({ kind: 'unknown' }),
-    );
-    let closed: number = 0;
-    fixture.componentInstance.closed.subscribe((): void => {
-      closed += 1;
-    });
-
-    (fixture.nativeElement as HTMLElement)
-      .querySelector<HTMLButtonElement>('.tool-panel__header button')
-      ?.click();
-
-    expect(closed).toBe(1);
   });
 });
