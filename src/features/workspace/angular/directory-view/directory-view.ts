@@ -48,14 +48,11 @@ import { IssueActions } from '@shared/angular/services/issues/issue-actions';
 import { IssueAgent } from '@shared/angular/services/issues/issue-agent';
 import { IssueOpener } from '@shared/angular/services/issues/issue-opener';
 import { IssueStore } from '@shared/angular/services/issues/issue-store';
-import { DockAutoHide } from '@shared/angular/services/dock-layout/dock-auto-hide';
-import { DockDrag } from '@shared/angular/services/dock-layout/dock-drag';
 import { DockFloating, FloatWindow } from '@shared/angular/services/dock-layout/dock-floating';
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
-import { DockGeometry } from '@shared/angular/services/dock-layout/dock-geometry';
-import { DockMinimums } from '@shared/angular/services/dock-layout/dock-minimums';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
-import { DOCK_BLUEPRINT, DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
+import { DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
+import { dockProviders } from '@shared/angular/services/dock-layout/dock-providers';
 import { DockNode } from '@shared/angular/services/dock-layout/dock-node';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { restoreLayout } from '@shared/angular/services/dock-layout/dock-persistence';
@@ -328,73 +325,55 @@ const AGENT_OPEN: OpenOptions = { background: true };
     IssueOpener,
     IssueAgent,
     IssueActions,
-    DockTabContext,
-    DockState,
-    DockGeometry,
-    DockMinimums,
-    DockFocus,
-    DockPanelRegistry,
-    // Which of this tab's panels have something behind them, which the dock filters its stacks
-    // through. Scoped here beside DockState, since availability is a fact about THIS workspace.
-    DockPanelAvailability,
-    DockFloating,
-    DockAutoHide,
-    DockDrag,
-    DockReveal,
     // The terminal sessions live at this view's level, not in the dock's terminal panel: tool stacks
     // destroy an inactive panel when another activates, and sessions scoped to the panel would tear
     // every PTY down on a tool-tab switch. Here they live as long as the tab.
     TerminalSessions,
-    // The pop-out seam: which panels live in their own OS windows (reveals focus those windows)
-    // and the auxiliary-window coordinator that pops any panel into one.
-    PopoutPanels,
-    PanelPopout,
-    {
-      // The dock seeds from the root's ACTIVE LAYOUT rather than a persisted tree: the blueprint
-      // carries no key (session rearrangements are ephemeral by ruling — every construction and
-      // reset re-applies the layout's saved definition), and createLayout reads the layout store at
-      // call time so DockState.reset() is exactly "apply the active layout".
-      provide: DOCK_BLUEPRINT,
-      useFactory: (): DockBlueprint => {
-        const layouts: Layouts = inject(Layouts);
-        const context: DockTabContext = inject(DockTabContext);
-        // Templates are registered and seeded HERE, not in the component's constructor, because of
-        // ordering: this factory runs while DockState is being built, which is a field initializer
-        // and so runs BEFORE any constructor body. Seeding afterwards would leave the very first tab
-        // of a fresh install showing the fallback while its seeded Default layout sat unused —
-        // and the re-seed-on-root effect would not correct it, since the root's layout and the
-        // default are then the same layout. Both calls are idempotent.
-        for (const template of LAYOUT_TEMPLATES) {
-          layouts.registerTemplate(template);
-        }
-        layouts.seedFromTemplates();
-        // The unified panel catalogue: the workspace panels plus the repository view's own
-        // (branches rail, history graph, commit detail) — shared-id panels (terminal, agent) keep
-        // the workspace definition. Any preset may arrange any of them.
-        const workspaceIds: ReadonlySet<string> = new Set<string>(
-          WORKSPACE_DOCK_BLUEPRINT.panels.map((panel: DockPanel): string => panel.id),
-        );
-        const panels: readonly DockPanel[] = [
-          ...WORKSPACE_DOCK_BLUEPRINT.panels,
-          ...REPOSITORY_DOCK_BLUEPRINT.panels.filter(
-            (panel: DockPanel): boolean => !workspaceIds.has(panel.id),
-          ),
-        ];
-        const known: ReadonlySet<string> = new Set<string>(
-          panels.map((panel: DockPanel): string => panel.id),
-        );
-        return {
-          panels,
-          createLayout: (): DockNode => {
-            const layout: DockNode | null = layouts.layoutForRoot(context.presetRoot());
-            return (
-              (layout !== null ? restoreLayout(layout, known) : null) ??
-              WORKSPACE_DOCK_BLUEPRINT.createLayout()
-            );
-          },
-        };
-      },
-    },
+    // The dock framework, instantiated per dock-hosting view.
+    //
+    // The dock seeds from the root's ACTIVE LAYOUT rather than a persisted tree: the blueprint
+    // carries no key (session rearrangements are ephemeral by ruling — every construction and
+    // reset re-applies the layout's saved definition), and createLayout reads the layout store at
+    // call time so DockState.reset() is exactly "apply the active layout".
+    ...dockProviders((): DockBlueprint => {
+      const layouts: Layouts = inject(Layouts);
+      const context: DockTabContext = inject(DockTabContext);
+      // Templates are registered and seeded HERE, not in the component's constructor, because of
+      // ordering: this factory runs while DockState is being built, which is a field initializer
+      // and so runs BEFORE any constructor body. Seeding afterwards would leave the very first tab
+      // of a fresh install showing the fallback while its seeded Default layout sat unused —
+      // and the re-seed-on-root effect would not correct it, since the root's layout and the
+      // default are then the same layout. Both calls are idempotent.
+      for (const template of LAYOUT_TEMPLATES) {
+        layouts.registerTemplate(template);
+      }
+      layouts.seedFromTemplates();
+      // The unified panel catalogue: the workspace panels plus the repository view's own
+      // (branches rail, history graph, commit detail) — shared-id panels (terminal, agent) keep
+      // the workspace definition. Any preset may arrange any of them.
+      const workspaceIds: ReadonlySet<string> = new Set<string>(
+        WORKSPACE_DOCK_BLUEPRINT.panels.map((panel: DockPanel): string => panel.id),
+      );
+      const panels: readonly DockPanel[] = [
+        ...WORKSPACE_DOCK_BLUEPRINT.panels,
+        ...REPOSITORY_DOCK_BLUEPRINT.panels.filter(
+          (panel: DockPanel): boolean => !workspaceIds.has(panel.id),
+        ),
+      ];
+      const known: ReadonlySet<string> = new Set<string>(
+        panels.map((panel: DockPanel): string => panel.id),
+      );
+      return {
+        panels,
+        createLayout: (): DockNode => {
+          const layout: DockNode | null = layouts.layoutForRoot(context.presetRoot());
+          return (
+            (layout !== null ? restoreLayout(layout, known) : null) ??
+            WORKSPACE_DOCK_BLUEPRINT.createLayout()
+          );
+        },
+      };
+    }),
     // The agent conversation lives at this view's level, not in the dock's agent panel: tool stacks
     // destroy an inactive panel when another activates, and a conversation scoped to the panel would
     // lose its transcript and in-flight run on every switch. Here it lives as long as the tab.

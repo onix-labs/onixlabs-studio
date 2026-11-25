@@ -1,5 +1,10 @@
-<app-panel-layout layoutKey="code">
-  <div main class="code-layout__editor">
+<ng-template
+  [appDockPanel]="editorPanel"
+  panelTitle="Editor"
+  [panelIcon]="Icon.CODE"
+  panelRole="main"
+>
+  <div class="code-layout__editor">
     <app-code-document
       [documentId]="tabId()"
       [removeOnDestroy]="removeOnDestroy()"
@@ -11,81 +16,83 @@
       (selectionChange)="onSelectionChange($event)"
     />
   </div>
+</ng-template>
 
-  @if (terminalMounted()) {
-    <app-panel
-      panelId="terminal"
-      defaultEdge="bottom"
-      [allowedEdges]="terminalDockEdges"
-      [visible]="terminalVisible()"
-      [defaultSize]="260"
-      [minSize]="80"
-      [maxSize]="1600"
-    >
-      <app-code-terminal-panel [tabId]="tabId()" [isActive]="isActive() && terminalVisible()" />
-    </app-panel>
-  }
+<ng-template
+  [appDockPanel]="terminalPanel"
+  panelTitle="Terminal"
+  [panelIcon]="Icon.TERMINAL"
+  [sides]="terminalSides"
+  [minInlineSize]="16"
+  [minBlockSize]="7.5"
+  [defaultInlineSize]="360"
+  [defaultBlockSize]="260"
+  [maxInlineSize]="1600"
+  [maxBlockSize]="1600"
+>
+  <app-code-terminal-panel [tabId]="tabId()" [isActive]="isActive()" />
+</ng-template>
 
-  <!-- The agent panel mounts on first show; Mission Control registration is service-only (the view
-       provides the agent and registers it in ngOnInit), so an unopened panel costs no DOM. -->
-  @if (agentMounted()) {
-    <app-panel
-      panelId="agent"
-      defaultEdge="right"
-      [visible]="agentVisible()"
-      [defaultSize]="360"
-      [minSize]="240"
-      [maxSize]="900"
-    >
-      <app-code-agent-panel [tabId]="tabId()" [isActive]="isActive() && agentVisible()" />
-    </app-panel>
-  }
+<ng-template
+  [appDockPanel]="agentPanel"
+  panelTitle="Agent"
+  [panelIcon]="Icon.AGENT"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="22.5"
+  [defaultInlineSize]="360"
+  [maxInlineSize]="900"
+>
+  <app-agent-conversation-panel [tabId]="tabId()" [isActive]="isActive()" />
+</ng-template>
 
-  <!-- Mounts on first show, like the agent panel: an unopened panel reads no build output and costs
-       no DOM. -->
-  @if (generatedMounted()) {
-    <app-panel
-      panelId="generated"
-      defaultEdge="right"
-      [visible]="generatedVisible()"
-      [defaultSize]="420"
-      [minSize]="280"
-      [maxSize]="900"
-    >
-      <app-code-generated-panel
-        [sourcePath]="generatedSourcePath()"
-        [caretLine]="generatedCaretLine()"
-        (closed)="onGeneratedClosed()"
-      />
-    </app-panel>
-  }
+<!-- Drawn only while it shows, and reads nothing until it first is. -->
+<ng-template
+  [appDockPanel]="generatedPanel"
+  panelTitle="Generated code"
+  [panelIcon]="Icon.CODE"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="17.5"
+  [defaultInlineSize]="420"
+  [maxInlineSize]="900"
+>
+  <app-code-generated-panel
+    [sourcePath]="generatedSourcePath()"
+    [caretLine]="generatedCaretLine()"
+    (editorCreated)="onGeneratedEditor($event)"
+  />
+</ng-template>
 
-  @if (editorSearch.visible()) {
-    <app-panel
-      panelId="find"
-      defaultEdge="right"
-      [defaultSize]="320"
-      [minSize]="260"
-      [maxSize]="520"
-    >
-      <app-editor-search-panel [search]="editorSearch" (closed)="onFindClosed()" />
-    </app-panel>
-  }
+<ng-template
+  [appDockPanel]="findPanel"
+  [panelTitle]="editorSearch.replaceable() ? 'Find and Replace' : 'Find'"
+  [panelIcon]="Icon.SEARCH"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="16"
+  [defaultInlineSize]="320"
+  [maxInlineSize]="520"
+>
+  <app-editor-search-panel
+    [focuses]="dockReveal.isInUse(findPanel)"
+    [search]="editorSearch"
+    (closed)="onFindClosed()"
+  />
+</ng-template>
 
-  <!-- Find All References outside a workspace (#1014): the tab's own list, beside the editor. -->
-  @if (references(); as list) {
-    <app-panel
-      panelId="references"
-      defaultEdge="right"
-      [defaultSize]="320"
-      [minSize]="260"
-      [maxSize]="520"
-    >
-      <app-editor-references-panel
-        [list]="list"
-        (chosen)="onReferenceChosen($event)"
-        (closed)="onReferencesClosed()"
-      />
-    </app-panel>
-  }
-</app-panel-layout>
+<!-- Find All References outside a workspace (#1014): the tab's own list, beside the editor. -->
+<ng-template
+  [appDockPanel]="referencesPanel"
+  panelTitle="References"
+  [panelIcon]="Icon.REFERENCES"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="16"
+  [defaultInlineSize]="320"
+  [maxInlineSize]="520"
+>
+  <app-editor-references-panel
+    [list]="references()"
+    (chosen)="onReferenceChosen($event)"
+    (closed)="onReferencesClosed()"
+  />
+</ng-template>
+
+<app-dock-container />

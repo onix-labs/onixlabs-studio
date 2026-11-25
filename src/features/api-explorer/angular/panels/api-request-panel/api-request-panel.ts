@@ -8,8 +8,6 @@ import {
   computed,
   DestroyRef,
   effect,
-  ElementRef,
-  forwardRef,
   inject,
   input,
   InputSignal,
@@ -20,20 +18,12 @@ import {
 import type * as MonacoApi from 'monaco-editor';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { TabList, TabListTab } from '@shared/angular/components/forms/tab-list/tab-list';
-import { EditorSearch } from '@shared/angular/components/search-view/editor-search';
-import { EditorSearchPanel } from '@shared/angular/components/search-view/editor-search-panel';
-import type { FindRequest } from '@shared/angular/components/find-panel/find-request';
-import { FIND_HOST, FindHost } from '@shared/angular/services/find-router/find-host';
-import { Log } from '@shared/angular/services/log/log';
 import { CodeField, CodeFieldMarker } from '@shared/angular/components/forms/code-field/code-field';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { PasswordField } from '@shared/angular/components/forms/password-field/password-field';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { Panel } from '@shared/angular/components/panel-layout/panel';
-import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
-import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import {
   PropertyGrid,
@@ -54,6 +44,10 @@ import {
   HttpOutcome,
   HttpResponse,
 } from '@shared/api/api-client-types';
+import { SplitDivider } from '@shared/angular/components/split-panel/split-divider/split-divider';
+import { SplitPane } from '@shared/angular/components/split-panel/split-pane/split-pane';
+import { SplitPanel } from '@shared/angular/components/split-panel/split-panel/split-panel';
+import { ApiFind } from '../../api-find/api-find';
 import { ApiRequestOpener } from '../../api-request-opener/api-request-opener';
 import { ApiWorkspace } from '../../api-workspace/api-workspace';
 import { diagnosticsForBody } from './api-body-diagnostics';
@@ -95,19 +89,10 @@ const BODY_KINDS: readonly { readonly id: HttpBodyKind; readonly label: string }
 ];
 
 /**
- * The edges the response pane may sit on: beneath the request only.
+ * The fraction of the panel the response pane opens at, so a short well and a tall one both show a
+ * usable request half.
  */
-const RESPONSE_EDGES: readonly PanelEdge[] = ['bottom'];
-
-/**
- * The share of the panel's height the response pane opens at.
- */
-const RESPONSE_SHARE: number = 0.4;
-
-/**
- * The least height, in pixels, the response pane can be dragged to.
- */
-const RESPONSE_MIN_SIZE: number = 120;
+const RESPONSE_FRACTION: number = 0.4;
 
 /**
  * Counts the request panels created, so each registers its body diagnostics under its own provider.
@@ -139,24 +124,22 @@ let panelSequence: number = 0;
     DecimalPipe,
     Dropdown,
     AppIcon,
-    EditorSearchPanel,
     NgTemplateOutlet,
-    Panel,
-    PanelLayout,
     PanelToolbar,
     PasswordField,
     PropertyGrid,
     SettingRow,
+    SplitDivider,
+    SplitPane,
+    SplitPanel,
     Textarea,
     TextField,
   ],
-  // The request answers ⌘F in its bodies with its own Find panel (#1007).
-  providers: [{ provide: FIND_HOST, useExisting: forwardRef((): unknown => ApiRequestPanel) }],
   templateUrl: './api-request-panel.html',
   styleUrl: './api-request-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ApiRequestPanel implements FindHost {
+export class ApiRequestPanel {
   /**
    * Gets the dock panel this component is projected into; its id is the request's id.
    */
@@ -178,12 +161,6 @@ export class ApiRequestPanel implements FindHost {
   private readonly diagnostics: Diagnostics = inject(Diagnostics);
 
   /**
-   * Holds the panel's host element, measured for the response pane's default height.
-   */
-  private readonly elementRef: ElementRef<HTMLElement> =
-    inject<ElementRef<HTMLElement>>(ElementRef);
-
-  /**
    * Holds the settings behind the panel's defaults.
    */
   private readonly settings: Settings = inject(Settings);
@@ -194,47 +171,19 @@ export class ApiRequestPanel implements FindHost {
   private readonly remembered: RememberedState = inject(RememberedState);
 
   /**
-   * Holds the panel's height in pixels as last observed, or null before it has one — while it is
-   * the inactive tab of its well, say — in which case the split is not laid out yet.
+   * Holds the explorer's Find, which searches this request's bodies while it is in front.
    */
-  private readonly hostHeight: WritableSignal<number | null> = signal<number | null>(null);
+  private readonly find: ApiFind = inject(ApiFind);
 
   /**
-   * Gets the height the response pane opens at before the user has dragged the divider: a share of
-   * the panel rather than a fixed number of pixels, so a short well and a tall one both show a
-   * usable request half. Null until the panel has a height to share out.
+   * Gets the fraction of the panel the response pane opens at, until the user drags the divider.
    */
-  protected readonly responseDefaultSize: Signal<number | null> = computed((): number | null => {
-    const height: number | null = this.hostHeight();
-    return height === null
-      ? null
-      : Math.max(RESPONSE_MIN_SIZE, Math.round(height * RESPONSE_SHARE));
-  });
+  protected readonly responseFraction: number = RESPONSE_FRACTION;
 
   /**
    * Holds the icon tokens used by the template.
    */
   protected readonly Icon: typeof Icon = Icon;
-
-  /**
-   * Holds the structured logger.
-   */
-  private readonly log: Log = inject(Log);
-
-  /**
-   * Holds this request's Find & Replace, over the body ⌘F was pressed in: the request body, or the
-   * response body (read-only, so without replace). It has no main editor to search.
-   */
-  protected readonly editorSearch: EditorSearch = new EditorSearch({
-    mainEditor: (): MonacoApi.editor.ICodeEditor | null => null,
-    labelOf: (editor: MonacoApi.editor.ICodeEditor): string =>
-      editor.getRawOptions().readOnly === true ? 'Response Body' : 'Request Body',
-  });
-
-  /**
-   * Holds the edges the response pane may be docked to.
-   */
-  protected readonly responseEdges: readonly PanelEdge[] = RESPONSE_EDGES;
 
   /**
    * Holds the problems last marked in the raw body editor.
@@ -412,20 +361,7 @@ export class ApiRequestPanel implements FindHost {
       const markers: readonly CodeFieldMarker[] = this.bodyMarkers();
       this.publish?.(request === undefined ? [] : diagnosticsForBody(request, markers));
     });
-    const destroyRef: DestroyRef = inject(DestroyRef);
-    destroyRef.onDestroy(unregister);
-
-    // Measure the panel for the response pane's default height. The split is laid out only once
-    // there is a height to share, so the default seeded into the remembered arrangement is a share
-    // of a real pane, not of nothing.
-    if (typeof ResizeObserver !== 'undefined') {
-      const host: HTMLElement = this.elementRef.nativeElement;
-      const observer: ResizeObserver = new ResizeObserver((): void => {
-        this.hostHeight.set(host.clientHeight > 0 ? host.clientHeight : null);
-      });
-      observer.observe(host);
-      destroyRef.onDestroy((): void => observer.disconnect());
-    }
+    inject(DestroyRef).onDestroy(unregister);
   }
 
   /**
@@ -437,20 +373,11 @@ export class ApiRequestPanel implements FindHost {
   }
 
   /**
-   * Opens this request's Find panel as a request asks, over the body it came from (#1007).
-   * @param request The find to open.
-   * @param editor The body editor ⌘F was pressed in, or null when the request names none.
+   * Offers a body's editor to the explorer's Find.
+   * @param editor The editor, which Find lets go of when it is disposed.
    */
-  public openFind(request: FindRequest, editor: MonacoApi.editor.ICodeEditor | null): void {
-    this.log.debug('api-explorer.request', 'Open find panel', this.panel().id, request.mode);
-    this.editorSearch.open(request, editor);
-  }
-
-  /**
-   * Hides the Find panel when it asks to close.
-   */
-  protected onFindClosed(): void {
-    this.editorSearch.close();
+  protected onBodyEditor(editor: MonacoApi.editor.ICodeEditor): void {
+    this.find.attach(this.panel().id, editor);
   }
 
   /**

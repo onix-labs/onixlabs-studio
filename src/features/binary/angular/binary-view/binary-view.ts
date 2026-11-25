@@ -10,7 +10,10 @@ import {
   InputSignal,
   OnDestroy,
   OnInit,
+  signal,
   Signal,
+  untracked,
+  WritableSignal,
 } from '@angular/core';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
@@ -25,24 +28,41 @@ import {
   BinaryRange,
   BinaryVisibleRange,
 } from '@shared/angular/components/binary-editor/binary-editor';
+import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
+import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
+import { DockTemplatePanel } from '@shared/angular/components/dock-layout/dock-template-panel/dock-template-panel';
+import { dockProviders } from '@shared/angular/services/dock-layout/dock-providers';
+import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
+import {
+  createDockTabRegistrar,
+  DockTabRegistrar,
+} from '@shared/angular/services/dock-layout/dock-tab-registration';
+import { linkDockPanel } from '@shared/angular/services/dock-layout/link-dock-panel';
+import { Icon } from '@shared/angular/icons/icon';
+import { DockSides } from '@shared/angular/services/dock-layout/dock-sides';
+import type { ConversationContext } from '@shared/api/agent-conversation-channels';
 import { Log } from '@shared/angular/services/log/log';
 import type * as MonacoApi from 'monaco-editor';
 import { EditorSearch } from '@shared/angular/components/search-view/editor-search';
 import { EditorSearchPanel } from '@shared/angular/components/search-view/editor-search-panel';
 import type { FindRequest } from '@shared/angular/components/find-panel/find-request';
 import { FIND_HOST, FindHost } from '@shared/angular/services/find-router/find-host';
-import { Panel } from '@shared/angular/components/panel-layout/panel';
-import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import {
   BinaryDocumentEntry,
   BinaryDocuments,
   BinarySelection,
 } from '../binary-document/binary-document';
+import {
+  BINARY_AGENT_PANEL_ID,
+  BINARY_DISASSEMBLY_PANEL_ID,
+  BINARY_DOCK_BLUEPRINT,
+  BINARY_EDITOR_PANEL_ID,
+  BINARY_FIND_PANEL_ID,
+  BINARY_INSPECTOR_PANEL_ID,
+} from '../binary-dock-blueprint';
 import { describeFormat } from '../binary-format/binary-format';
-import { BinaryAgentPanel } from './binary-agent-panel/binary-agent-panel';
 import { BinaryDisasmPanel } from '../binary-disasm-panel/binary-disasm-panel';
 import { BinaryInspector } from '../binary-inspector/binary-inspector';
-import { BinaryPanels } from '../binary-panels/binary-panels';
 import { BinaryStatus } from '../binary-status/binary-status';
 import {
   createViewInjectorRegistrar,
@@ -78,30 +98,30 @@ interface DisasmWindow {
 }
 
 /**
- * Represents the binary editor's tab view: the shared {@link BinaryEditor} grid in the centre, with
- * toggleable Disassembly, Inspector and Agent panels docked around it via the shared panel layout —
- * where each panel lives is the user's choice, dragged and persisted per view type. It owns the
+ * Represents the binary editor's tab view: the shared {@link BinaryEditor} grid in the main group
+ * of a dock, with Disassembly, Inspector, Agent and Find panels that dock around it. It owns the
  * binary-tab concerns the grid does not — resolving the backing document, loading the visible byte
  * window and its disassembly, and the status segment. Read-only for this phase.
  */
 @Component({
   selector: 'app-binary-view',
   imports: [
-    PanelLayout,
-    Panel,
-    BinaryEditor,
+    AgentConversationPanel,
     BinaryDisasmPanel,
+    BinaryEditor,
     BinaryInspector,
-    BinaryAgentPanel,
+    DockContainer,
+    DockTemplatePanel,
     EditorSearchPanel,
   ],
-  // The tab's agent and conversation live on the VIEW, not the docked agent panel: the panel mounts
-  // lazily on first show, and the conversation (and an in-flight run) must span the panel's whole
-  // mounted/unmounted life — and register with Mission Control whether or not the panel was opened.
+  // The tab's agent and conversation live on the VIEW, not the docked agent panel: the dock draws the
+  // panel only while it shows, and the conversation (and an in-flight run) must outlive it — and register
+  // with Mission Control whether or not the panel was opened.
   providers: [
     Agent,
     AgentConversation,
     { provide: AGENT_CONVERSATION_KIND, useValue: 'code' },
+    ...dockProviders(BINARY_DOCK_BLUEPRINT),
     // One per binary tab: the status strip reads this view's own context through its injector.
     BinaryStatus,
     // The tab answers ⌘F in its disassembly with its own Find panel (#1007).
@@ -123,9 +143,44 @@ export class BinaryView implements OnInit, OnDestroy, FindHost {
   private readonly binaryStatus: BinaryStatus = inject(BinaryStatus);
 
   /**
-   * Holds the side-panel state (which of the Disassembly/Inspector panels are shown).
+   * Holds what opens the dock's panels wherever they are.
    */
-  private readonly binaryPanels: BinaryPanels = inject(BinaryPanels);
+  protected readonly dockReveal: DockReveal = inject(DockReveal);
+
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Exposes the sides a panel may dock to to the template.
+   */
+  protected readonly DockSides: typeof DockSides = DockSides;
+
+  /**
+   * Gets the identifier of the bytes' panel.
+   */
+  protected readonly editorPanel: string = BINARY_EDITOR_PANEL_ID;
+
+  /**
+   * Gets the identifier of the disassembly panel.
+   */
+  protected readonly disassemblyPanel: string = BINARY_DISASSEMBLY_PANEL_ID;
+
+  /**
+   * Gets the identifier of the data inspector's panel.
+   */
+  protected readonly inspectorPanel: string = BINARY_INSPECTOR_PANEL_ID;
+
+  /**
+   * Gets the identifier of the agent panel.
+   */
+  protected readonly agentPanel: string = BINARY_AGENT_PANEL_ID;
+
+  /**
+   * Gets the identifier of the Find panel.
+   */
+  protected readonly findPanel: string = BINARY_FIND_PANEL_ID;
 
   /**
    * Holds the structured logger for the binary view.
@@ -136,6 +191,20 @@ export class BinaryView implements OnInit, OnDestroy, FindHost {
    * Holds the settings, which say what a double-click selects.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds whether the inspector decodes multi-byte values little-endian.
+   */
+  protected readonly littleEndian: WritableSignal<boolean> = signal<boolean>(
+    this.settings.get('binaryEditor.inspectorEndian') === 'little',
+  );
+
+  /**
+   * Holds whether the inspector's integer interpretations are signed.
+   */
+  protected readonly signed: WritableSignal<boolean> = signal<boolean>(
+    this.settings.get('binaryEditor.inspectorSign') === 'signed',
+  );
 
   /**
    * Holds this tab's Find, over the disassembly listing ⌘F was pressed in. The listing is read-only,
@@ -179,14 +248,32 @@ export class BinaryView implements OnInit, OnDestroy, FindHost {
    */
   private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
     isActive: this.isActive,
+    context: (): ConversationContext | undefined => this.fileContext(),
     surface: 'binary',
   });
+
+  /**
+   * Registers this tab's dock, so the ribbon can open and close its panels. Finalised in
+   * {@link ngOnInit} once the tab id is readable.
+   */
+  private readonly dockTab: DockTabRegistrar = createDockTabRegistrar();
 
   /**
    * Holds the resolved binary document, or undefined when the tab has none.
    */
   protected readonly document: Signal<BinaryDocumentEntry | undefined> = computed(
     (): BinaryDocumentEntry | undefined => this.binaryDocuments.get(this.tabId()),
+  );
+
+  /**
+   * Gets the agent's conversation context: the binary file's path when known, else undefined so the
+   * conversation falls back to its workspace or global context.
+   */
+  private readonly fileContext: Signal<ConversationContext | undefined> = computed(
+    (): ConversationContext | undefined => {
+      const path: string | undefined = this.document()?.path;
+      return path === undefined ? undefined : { kind: 'file', key: path };
+    },
   );
 
   /**
@@ -199,6 +286,16 @@ export class BinaryView implements OnInit, OnDestroy, FindHost {
    * Initializes the view: loads disassembly for the visible range and publishes status while active.
    */
   public constructor() {
+    linkDockPanel(
+      BINARY_FIND_PANEL_ID,
+      (): boolean => this.editorSearch.visible(),
+      (open: boolean): void => {
+        if (!open) {
+          this.editorSearch.close();
+        }
+      },
+    );
+
     // Decode a bounded window of instructions around the focus — the cursor, which the entry-point jump
     // on open, the go-to-offset action, and clicking a byte or a disassembly line all set. The panel
     // owns where it looks rather than mirroring the hex viewport's scroll, so the entry jump reliably
@@ -250,64 +347,18 @@ export class BinaryView implements OnInit, OnDestroy, FindHost {
    */
   public ngOnInit(): void {
     this.log.info('binary.view', 'Binary view opened', this.tabId());
+    this.dockTab.register(this.tabId());
     this.agentHost.register(this.tabId());
     this.statusHost.register(this.tabId());
   }
 
   /**
-   * Clears this view's panel state when the tab closes. Its status needs no clearing: the strip's
-   * status component is scoped to this view and is destroyed with it.
+   * Releases the document when the tab closes. The view's status needs no clearing: the strip's status
+   * component is scoped to this view and is destroyed with it.
    */
   public ngOnDestroy(): void {
     this.log.info('binary.view', 'Binary view closed', this.tabId());
-    this.binaryPanels.remove(this.tabId());
     this.binaryDocuments.release(this.tabId());
-  }
-
-  /**
-   * Gets whether the disassembly panel is mounted.
-   * @returns Returns true when the panel has been shown at least once.
-   */
-  protected disasmMounted(): boolean {
-    return this.binaryPanels.isMounted(this.tabId(), 'disassembly');
-  }
-
-  /**
-   * Gets whether the disassembly panel is currently visible.
-   * @returns Returns true when the panel is shown.
-   */
-  protected disasmVisible(): boolean {
-    return this.binaryPanels.isVisible(this.tabId(), 'disassembly');
-  }
-
-  /**
-   * Gets whether the inspector panel is mounted.
-   * @returns Returns true when the panel has been shown at least once.
-   */
-  protected inspectorMounted(): boolean {
-    return this.binaryPanels.isMounted(this.tabId(), 'inspector');
-  }
-
-  /**
-   * Gets whether the inspector panel is currently visible.
-   * @returns Returns true when the panel is shown.
-   */
-  protected inspectorVisible(): boolean {
-    return this.binaryPanels.isVisible(this.tabId(), 'inspector');
-  }
-
-  /**
-   * Hides the disassembly panel when it asks to close.
-   */
-  protected onHideDisasm(): void {
-    this.binaryPanels.hide(this.tabId(), 'disassembly');
-  }
-
-  /**
-   * Hides the inspector panel when it asks to close.
-   */
-  protected onHideInspector(): void {
-    this.binaryPanels.hide(this.tabId(), 'inspector');
   }
 
   /**
@@ -318,29 +369,26 @@ export class BinaryView implements OnInit, OnDestroy, FindHost {
   public openFind(request: FindRequest, editor: MonacoApi.editor.ICodeEditor | null): void {
     this.log.debug('binary.view', 'Open find panel', this.tabId(), request.mode);
     this.editorSearch.open(request, editor);
+    // The listing is what is searched, so it stays in sight.
+    this.dockReveal.openClearOf(BINARY_FIND_PANEL_ID, BINARY_DISASSEMBLY_PANEL_ID);
   }
 
   /**
-   * Hides the Find panel when it asks to close.
+   * Moves an open search to the disassembly's editor, which is a new one each time the dock draws the
+   * panel.
+   * @param editor The editor.
+   */
+  protected onDisassemblyEditor(editor: MonacoApi.editor.ICodeEditor): void {
+    if (untracked(this.editorSearch.visible)) {
+      this.editorSearch.retarget(editor);
+    }
+  }
+
+  /**
+   * Ends the search when the Find panel asks to close.
    */
   protected onFindClosed(): void {
     this.editorSearch.close();
-  }
-
-  /**
-   * Gets whether the agent panel is mounted.
-   * @returns Returns true when the panel has been shown at least once.
-   */
-  protected agentMounted(): boolean {
-    return this.binaryPanels.isMounted(this.tabId(), 'agent');
-  }
-
-  /**
-   * Gets whether the agent panel is currently visible.
-   * @returns Returns true when the panel is shown.
-   */
-  protected agentVisible(): boolean {
-    return this.binaryPanels.isVisible(this.tabId(), 'agent');
   }
 
   /**

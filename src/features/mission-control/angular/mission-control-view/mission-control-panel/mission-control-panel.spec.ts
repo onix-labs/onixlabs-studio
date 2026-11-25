@@ -202,10 +202,10 @@ describe('MissionControlPanel', () => {
     hosts.set([makeHost('h1', { label: 'Alpha' })]);
     fixture.detectChanges();
 
-    // The panel is the agent rail and nothing else: no Agents/Settings tab switch, and no gear in the
-    // header deep-linking to the settings category.
+    // The panel is the agent rail and nothing else: no Agents/Settings tab switch, and no header (its
+    // dock titles it) with a gear deep-linking to the settings category.
     expect(host.querySelector('.panel__tabs')).toBeNull();
-    expect(host.querySelector('.panel__header app-button')).toBeNull();
+    expect(host.querySelector('.panel__header')).toBeNull();
   });
 
   it('render_answersNoRequestInline_soTheRailOnlyPointsAtTheColumn', () => {

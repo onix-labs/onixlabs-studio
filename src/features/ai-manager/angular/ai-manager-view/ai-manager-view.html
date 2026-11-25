@@ -1,19 +1,25 @@
-<app-panel-layout class="ai-manager">
-  <!-- One sidebar for every sub-view: the search, then Local Models, Persona and Skills as
-       accordions, one open at a time. The open one is the sub-view shown beside it. -->
-  <app-panel
-    panelId="ai-manager-sidebar"
-    defaultEdge="left"
-    [allowedEdges]="sideEdges"
-    [movable]="false"
-    [defaultSize]="260"
-    [minSize]="240"
-    [maxSize]="480"
-  >
-    <app-ai-manager-sidebar />
-  </app-panel>
+<!-- One sidebar for every sub-view: the search, then Local Models, Persona and Skills as
+     accordions, one open at a time. The open one is the sub-view shown beside it. -->
+<ng-template
+  [appDockPanel]="listPanel"
+  panelTitle="AI Library"
+  [panelIcon]="Icon.AI_MODELS"
+  [sides]="DockSides.Horizontal"
+  [closable]="false"
+  [minInlineSize]="15"
+  [defaultInlineSize]="260"
+  [maxInlineSize]="480"
+>
+  <app-ai-manager-sidebar />
+</ng-template>
 
-  <div main class="ai-manager__section">
+<ng-template
+  [appDockPanel]="mainPanel"
+  panelTitle="AI Manager"
+  [panelIcon]="Icon.AI_MODELS"
+  panelRole="main"
+>
+  <div class="ai-manager__section">
     @switch (section()) {
       @case ('models') {
         <app-model-manager-view [isActive]="isActive()" />
@@ -36,25 +42,19 @@
       }
     }
   </div>
+</ng-template>
 
-  <!-- The AI Manager's own agent (#967), docked on the right across every sub-view. It mounts on
-       first show and stays mounted, so closing it keeps its conversation. -->
-  @if (agentPanel.mounted()) {
-    <app-panel
-      panelId="agent"
-      defaultEdge="right"
-      [visible]="agentPanel.visible()"
-      [defaultSize]="360"
-      [minSize]="240"
-      [maxSize]="900"
-    >
-      <app-tool-view-agent-panel
-        surface="models"
-        [context]="agentContext"
-        [tabId]="tabId()"
-        [isActive]="isActive() && agentPanel.visible()"
-        (closed)="agentPanel.hide()"
-      />
-    </app-panel>
-  }
-</app-panel-layout>
+<!-- The AI Manager's own agent (#967), across every sub-view. -->
+<ng-template
+  [appDockPanel]="agentPanel"
+  panelTitle="Agent"
+  [panelIcon]="Icon.AGENT"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="22.5"
+  [defaultInlineSize]="360"
+  [maxInlineSize]="900"
+>
+  <app-agent-conversation-panel surface="models" [tabId]="tabId()" [isActive]="isActive()" />
+</ng-template>
+
+<app-dock-container />

@@ -4,7 +4,7 @@ import type { FindRequest } from '@shared/angular/components/find-panel/find-req
 
 /**
  * Describes a tab that answers a find with a Find panel of its own (#1007): a standalone code tab, a
- * binary tab's disassembly, an API Explorer request. The tab provides itself through
+ * binary tab's disassembly, the API Explorer. The tab provides itself through
  * {@link FIND_HOST}; every text editor inside it injects the token and hands it to the
  * {@link import('./find-router').FindRouter} with its Monaco editor, so ⌘F in any of them opens the
  * tab's panel — outside a workspace, where no Search panel answers instead.

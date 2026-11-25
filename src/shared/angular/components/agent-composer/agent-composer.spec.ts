@@ -72,6 +72,7 @@ describe('AgentComposer', () => {
   let effortChanges: (AiEffort | null)[];
   let attachedContext: AgentContextRef[];
   let conversationDraft: WritableSignal<string>;
+  let conversationImages: WritableSignal<readonly AiImageRef[]>;
   let sentEvents: number;
   let windows: FakeModalWindows;
   let signInSupported: WritableSignal<boolean>;
@@ -87,6 +88,7 @@ describe('AgentComposer', () => {
     logouts = 0;
     workspaceRoot = signal<{ path: string } | null>({ path: '/repo' });
     conversationDraft = signal<string>('');
+    conversationImages = signal<readonly AiImageRef[]>([]);
     compacted = 0;
     clearedChats = 0;
     modeChanges = [];
@@ -212,7 +214,12 @@ describe('AgentComposer', () => {
         // by it exactly as it is in the app (the source of the survives-remount behaviour below).
         {
           provide: AgentConversation,
-          useValue: { draft: conversationDraft } as unknown as AgentConversation,
+          useValue: {
+            draft: conversationDraft,
+            images: conversationImages,
+            editing: signal<AgentItem | null>(null),
+            draftBeforeEdit: signal<string>(''),
+          } as unknown as AgentConversation,
         },
         { provide: ModalWindows, useValue: windows },
       ],
@@ -692,6 +699,49 @@ describe('AgentComposer', () => {
     component.send();
     expect(rewinds).toEqual([]);
     expect(sent).toEqual(['half-written draft']);
+  });
+
+  it('editMode_survivesTheComposerBeingDrawnAfresh', () => {
+    const userItem: AgentItem = { id: 'item-1', kind: 'user', text: 'original' };
+    items.set([userItem]);
+    component.onInput('half-written draft');
+    component.beginEdit(userItem);
+    component.onInput('improved');
+    fixture.destroy();
+
+    const again: AgentComposer = TestBed.createComponent(AgentComposer).componentInstance;
+    again.send();
+    expect(rewinds).toEqual([{ id: 'item-1', text: 'improved' }]);
+    expect(sent).toEqual([]);
+
+    again.onInput('another draft');
+    again.beginEdit(userItem);
+    TestBed.createComponent(AgentComposer).componentInstance.cancelEdit();
+    expect(conversationDraft()).toBe('another draft');
+  });
+
+  it('images_surviveTheComposerBeingDrawnAfresh_andAreSent', () => {
+    const image: AiImageRef = { mediaType: 'image/png', data: 'AAAA' };
+    conversationImages.set([image]);
+    fixture.destroy();
+
+    const again: AgentComposer = TestBed.createComponent(AgentComposer).componentInstance;
+    again.onInput('look');
+    again.send();
+
+    expect(sentImages).toEqual([[image]]);
+    expect(conversationImages()).toEqual([]);
+  });
+
+  it('markdownComposer_takenAwayWhileOpen_returnsItsTextToTheDraft', () => {
+    component.onInput('a draft');
+    component.openMarkdown();
+    component.onMarkdownChange('a draft, at length');
+    expect(conversationDraft()).toBe('');
+
+    fixture.destroy();
+
+    expect(conversationDraft()).toBe('a draft, at length');
   });
 
   it('images_whenAnImageFileIsAttached_showsAChipAndSendsItWithTheMessage', async () => {

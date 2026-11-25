@@ -9,11 +9,21 @@ import {
   OnInit,
   untracked,
 } from '@angular/core';
+import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
+import { DockTemplatePanel } from '@shared/angular/components/dock-layout/dock-template-panel/dock-template-panel';
+import { dockProviders } from '@shared/angular/services/dock-layout/dock-providers';
+import {
+  createDockTabRegistrar,
+  DockTabRegistrar,
+} from '@shared/angular/services/dock-layout/dock-tab-registration';
+import { linkDockPanel } from '@shared/angular/services/dock-layout/link-dock-panel';
+import {
+  AGENT_CHAT_PANEL_ID,
+  AGENT_DOCK_BLUEPRINT,
+  AGENT_HISTORY_PANEL_ID,
+} from '@features/agent/angular/agent-dock-blueprint';
 import { AgentChat } from '@shared/angular/components/agent-chat/agent-chat';
 import { AgentConversationList } from '@shared/angular/components/agent-conversation-list/agent-conversation-list';
-import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
-import { Panel } from '@shared/angular/components/panel-layout/panel';
-import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
@@ -26,24 +36,26 @@ import {
 } from '@shared/angular/services/view-injectors/view-injector-registration';
 import { WorkspaceAgentStart, Workspaces } from '@shared/angular/services/workspaces/workspaces';
 import { Icon } from '@shared/angular/icons/icon';
+import { DockSides } from '@shared/angular/services/dock-layout/dock-sides';
 import { WorkspaceProposals } from '@shared/angular/services/workspace-proposals/workspace-proposals';
 
 /**
- * Hosts the agent conversation as a top-level tab: the {@link AgentChat} shell in the centre with the
- * conversation history docked as a side panel toggled from the ribbon. It provides the per-tab
+ * Hosts the agent conversation as a top-level tab: the {@link AgentChat} shell in the main group
+ * of a dock, with the conversation history beside it, toggled from the ribbon. It provides the per-tab
  * {@link Agent} and {@link AgentConversation}, so the chat and the history list drive one conversation,
  * and publishes that conversation to {@link AgentSessions} while the tab is active so the ribbon's
  * Session group (New Chat / Stop / History) drives it.
  */
 @Component({
   selector: 'app-agent-view',
-  imports: [PanelLayout, Panel, AgentChat, AgentConversationList, ToolPanel],
+  imports: [AgentChat, AgentConversationList, DockContainer, DockTemplatePanel],
   providers: [
     Agent,
     AgentConversation,
     // The workspace this tab's agent offers is made from this tab's conversation (#876).
     WorkspaceProposals,
     { provide: AGENT_CONVERSATION_KIND, useValue: 'agent' },
+    ...dockProviders(AGENT_DOCK_BLUEPRINT),
   ],
   templateUrl: './agent-view.html',
   styleUrl: './agent-view.scss',
@@ -54,6 +66,21 @@ export class AgentView implements OnInit, OnDestroy {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Exposes the sides a panel may dock to to the template.
+   */
+  protected readonly DockSides: typeof DockSides = DockSides;
+
+  /**
+   * Gets the identifier of the conversation's panel.
+   */
+  protected readonly chatPanel: string = AGENT_CHAT_PANEL_ID;
+
+  /**
+   * Gets the identifier of the Conversation History panel.
+   */
+  protected readonly historyPanel: string = AGENT_HISTORY_PANEL_ID;
 
   /**
    * Holds this tab's conversation, published to the session registry while active and shared by the
@@ -117,11 +144,24 @@ export class AgentView implements OnInit, OnDestroy {
   });
 
   /**
+   * Registers this tab's dock. Finalised in {@link ngOnInit} once the tab id is readable.
+   */
+  private readonly dockTab: DockTabRegistrar = createDockTabRegistrar();
+
+  /**
    * Initializes a new instance of the {@link AgentView} class, publishing this tab's conversation to
    * the session registry while active (so the ribbon drives it) and registering/releasing the keyboard
    * accelerators as the view's active state changes.
    */
   public constructor() {
+    // The conversation says whether its history is open: the ribbon toggles it there, and choosing a
+    // conversation closes it.
+    linkDockPanel(
+      AGENT_HISTORY_PANEL_ID,
+      (): boolean => this.conversation.historyOpen(),
+      (): void => this.conversation.toggleHistory(),
+    );
+
     effect((): void => {
       const active: boolean = this.isActive();
       untracked((): void => {
@@ -158,6 +198,7 @@ export class AgentView implements OnInit, OnDestroy {
   public ngOnInit(): void {
     const id: string | undefined = this.tabId();
     if (id !== undefined) {
+      this.dockTab.register(id);
       this.statusHost.register(id);
       this.proposals.bind(id);
     }

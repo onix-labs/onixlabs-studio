@@ -5,12 +5,11 @@ import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
 import { MenuContribution, MenuEntry } from '@shared/angular/services/app-menu/app-menu-model';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
-import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
+import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
 import { Printing } from '@shared/angular/services/printing/printing';
 import type { PrintResult } from '@shared/api/print-channels';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
-import { CodeAgents } from '@features/code/angular/code-agents/code-agents';
 import { CodeRunner } from '@features/code/angular/code-runner/code-runner';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
@@ -105,11 +104,9 @@ describe('CodeRibbon', () => {
         return Promise.resolve();
       },
     };
-    const terminalsStub: Partial<EditorTerminals> = {
-      toggle: (id: string): void => void calls.push(`terminal:${id}`),
-    };
-    const agentsStub: Partial<CodeAgents> = {
-      toggle: (id: string): void => void calls.push(`agent:${id}`),
+    const docksStub: Partial<TabDocks> = {
+      toggle: (tabId: string | undefined, panelId: string): void =>
+        void calls.push(`${panelId}:${tabId ?? ''}`),
     };
 
     await TestBed.configureTestingModule({
@@ -118,8 +115,7 @@ describe('CodeRibbon', () => {
         { provide: EditorCommands, useValue: commandsStub },
         { provide: Printing, useValue: printingStub },
         { provide: CodeRunner, useValue: runnerStub },
-        { provide: EditorTerminals, useValue: terminalsStub },
-        { provide: CodeAgents, useValue: agentsStub },
+        { provide: TabDocks, useValue: docksStub },
         { provide: ModalWindows, useValue: new FakeModalWindows() },
       ],
     }).compileComponents();

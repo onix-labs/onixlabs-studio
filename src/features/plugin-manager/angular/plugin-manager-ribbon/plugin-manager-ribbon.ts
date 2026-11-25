@@ -1,4 +1,7 @@
-import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
+import { TOOL_VIEW_AGENT_PANEL_ID } from '@shared/angular/services/tool-view-dock/tool-view-dock';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
@@ -7,7 +10,6 @@ import { Icon } from '@shared/angular/icons/icon';
 import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
 import { MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
-import { PluginManagerAgentPanelState } from '../plugin-manager-agent/plugin-manager-agent-panel-state';
 import { PluginUpdateAll } from '../plugin-update-all/plugin-update-all';
 
 /**
@@ -55,14 +57,21 @@ export class PluginManagerRibbon {
   protected readonly updateAllEnabled: Signal<boolean> = this.updates.enabled;
 
   /**
-   * Holds whether the docked agent is showing (#968).
+   * Holds the tabs' docks, which the agent is shown and hidden in.
    */
-  private readonly agentPanel: PluginManagerAgentPanelState = inject(PluginManagerAgentPanelState);
+  private readonly docks: TabDocks = inject(TabDocks);
+
+  /**
+   * Holds the tab registry, which names this view's tab.
+   */
+  private readonly tabs: Tabs = inject(Tabs);
 
   /**
    * Gets whether the docked agent is showing.
    */
-  protected readonly agentShown: Signal<boolean> = this.agentPanel.visible;
+  protected readonly agentShown: Signal<boolean> = computed((): boolean =>
+    this.docks.isOpen(this.tabs.activeTabId(), TOOL_VIEW_AGENT_PANEL_ID),
+  );
 
   /**
    * Contributes this tab's menu while the plugin-manager ribbon is mounted.
@@ -108,6 +117,6 @@ export class PluginManagerRibbon {
    * Shows or hides the docked agent.
    */
   protected onToggleAgent(): void {
-    this.agentPanel.toggle();
+    this.docks.toggle(this.tabs.activeTabId(), TOOL_VIEW_AGENT_PANEL_ID);
   }
 }

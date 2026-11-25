@@ -38,18 +38,19 @@ const page = browser.contexts()[0].pages()[0];   // real mouse: page.mouse.move/
 - The title-bar Settings gear is disabled while a Settings tab already exists; activate
   the existing Settings tab from the title strip instead.
 - Tabs are NOT persisted across reload — `page.reload()` returns to the welcome screen.
-- Panel-layout arrangements persist in localStorage under `panel-layout.<key>`
-  (markdown/code/terminal/agent/binary); dock layouts under `dock.layout.<key>`.
-  Clear these to reset UI state between scenarios.
+- Every tab's dock layout persists in localStorage under `dock.layout.<key>`
+  (workspace/markdown/code/terminal/agent/binary/…). Clear these to reset UI state
+  between scenarios.
 - Coordinates are CSS px (window is 1280×800 by default; screenshots are 2× DPR).
 
 ## Worth driving
 
-- Panel drag-docking: mousedown on a panel header (ToolPanel header or `__bar` divs),
-  move >5px → edge guides + preview overlay; drop on an edge band (≤28px from the
-  layout border) or on a guide square. Verify `data-edge`, wrapper parent, and the
-  localStorage arrangement.
-- Grip resize: 6px strip overlapping each edge stack's inner boundary; drag commits
-  one localStorage write on release.
+- Panel drag-docking: mousedown on a group's title bar (`.dock-tab-group__title`, moves
+  the panel in front) or on its tab rail (moves the group), move >5px → guides + preview
+  overlay; drop on an edge of the dock or on a guide square. Verify the group's place and
+  the localStorage layout. In a tab with a main group (no document well), a drop on no
+  target cancels.
+- Divider resize: `app-split-divider` sits in the gap between panes; drag commits one
+  localStorage write on release.
 - Terminal session survival: type a marker, move the panel, assert the same element
   (`window.__el === t`) and marker text survive.
