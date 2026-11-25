@@ -26,6 +26,7 @@ import { OpenWith } from '@shared/angular/services/open-with/open-with';
 import { Printing } from '@shared/angular/services/printing/printing';
 import { SetupWizard } from '@shared/angular/services/setup-wizard/setup-wizard';
 import { StartupSettingsMirror } from '@shared/angular/services/settings/startup-settings-mirror';
+import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { FeatureDescriptor, FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
@@ -60,6 +61,10 @@ export const config: ApplicationConfig = {
     // initializers') reach the main-process logger. No-op outside Electron.
     provideAppInitializer((): void => {
       inject(ConsoleForwarder);
+    }),
+    // Forget the panel arrangements of versions before the one dock (#1573), which nothing reads.
+    provideAppInitializer((): void => {
+      inject(SettingsStore).removeAll('panel-layout.');
     }),
     // Instantiate the Theme service at start-up so the persisted mode and accent are applied to the
     // document before the first view renders.

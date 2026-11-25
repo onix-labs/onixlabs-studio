@@ -92,4 +92,17 @@ describe('CodeGeneratedPanel', () => {
     expect((fixture.componentInstance as unknown as PanelInternals).mode()).toBe('jit');
     expect(captures).toEqual([{ path: '/ws/bin/App.dll', tier: 'full-opts' }]);
   });
+
+  it('aPanelDrawnAgain_showsWhatTheTabHolds_withoutReadingOrCapturingAgain', async () => {
+    const first: ComponentFixture<CodeGeneratedPanel> = await render('jit');
+    first.destroy();
+
+    const again: ComponentFixture<CodeGeneratedPanel> = TestBed.createComponent(CodeGeneratedPanel);
+    again.componentRef.setInput('sourcePath', '/ws/src/Program.cs');
+    again.detectChanges();
+    await again.whenStable();
+
+    expect((again.componentInstance as unknown as PanelInternals).mode()).toBe('jit');
+    expect(captures).toHaveLength(1);
+  });
 });

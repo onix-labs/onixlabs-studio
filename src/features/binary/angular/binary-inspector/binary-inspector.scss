@@ -4,8 +4,7 @@
   min-height: 0;
 }
 
-// Fills the shared tool panel's flush body (a plain block) and keeps its own padding, gaps and
-// scrolling, which are denser than the shared padded body.
+// Fills the panel, with its own padding, gaps and scrolling.
 .inspector__body {
   display: flex;
   flex-direction: column;

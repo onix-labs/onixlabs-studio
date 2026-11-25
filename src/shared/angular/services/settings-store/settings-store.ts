@@ -62,6 +62,24 @@ export class SettingsStore {
   }
 
   /**
+   * Removes every value stored under a key with the given prefix.
+   * @param prefix The prefix.
+   */
+  public removeAll(prefix: string): void {
+    try {
+      const storage: Storage | undefined = globalThis.localStorage;
+      for (const key of Object.keys(storage ?? {})) {
+        if (key.startsWith(prefix)) {
+          storage?.removeItem(key);
+        }
+      }
+    } catch (error: unknown) {
+      // Same contract as writing: persistence is best-effort and never throws at the caller.
+      this.log.error('SettingsStore', `Failed to remove '${prefix}…'`, error);
+    }
+  }
+
+  /**
    * Subscribes to changes ANOTHER window makes to the given key, so per-window state read once at
    * boot (the theme, the settings map) can follow live edits made elsewhere — a pop-out window
    * following the main window's appearance. The browser fires the `storage` event only in the

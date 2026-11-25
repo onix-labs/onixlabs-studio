@@ -9,10 +9,11 @@ import {
   inject,
   input,
   InputSignal,
+  model,
+  ModelSignal,
   OnDestroy,
   output,
   OutputEmitterRef,
-  signal,
   Signal,
   viewChild,
   WritableSignal,
@@ -25,7 +26,6 @@ import {
   ButtonGroupOption,
 } from '@shared/angular/components/forms/button-group/button-group';
 import { Icon } from '@shared/angular/icons/icon';
-import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 import { Log } from '@shared/angular/services/log/log';
 import { FindAdapter, FindQuery, FindResultItem } from './find-adapter';
 import { FindOptions } from '@shared/angular/services/find-options/find-options';
@@ -33,7 +33,7 @@ import { FindOptions } from '@shared/angular/services/find-options/find-options'
 /**
  * Identifies which view the find panel shows.
  */
-type FindMode = 'find' | 'replace';
+export type FindMode = 'find' | 'replace';
 
 /**
  * The most match rows rendered in the results list at once. Beyond this the list adds no
@@ -51,17 +51,12 @@ const MAX_RENDERED_MATCHES: number = 1000;
  */
 @Component({
   selector: 'app-find-panel',
-  imports: [ToolPanel, ButtonGroup, Button, TextField, Checkbox],
+  imports: [ButtonGroup, Button, TextField, Checkbox],
   templateUrl: './find-panel.html',
   styleUrl: './find-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FindPanel implements OnDestroy {
-  /**
-   * Gets the icon set, exposed for the template.
-   */
-  protected readonly Icon: typeof Icon = Icon;
-
   /**
    * Gets the two find modes, offered as one segmented control.
    */
@@ -76,11 +71,15 @@ export class FindPanel implements OnDestroy {
   public readonly adapter: InputSignal<FindAdapter | null> = input<FindAdapter | null>(null);
 
   /**
-   * Gets a value indicating whether the panel shows its own title-and-close header. Hosts that supply
-   * their own chrome (for example a dock panel with a tab and close control) set this false to avoid
-   * doubling it.
+   * Gets whether the find field takes the keyboard when the panel is drawn.
    */
-  public readonly showHeader: InputSignal<boolean> = input<boolean>(true);
+  public readonly focuses: InputSignal<boolean> = input<boolean>(true);
+
+  /**
+   * Gets a value indicating whether the search outlives the panel: the host keeps it while the panel is
+   * out of sight (behind another tab of its dock group, say), and clears it when Find is closed.
+   */
+  public readonly keepsSearch: InputSignal<boolean> = input<boolean>(false);
 
   /**
    * Emits when the user dismisses the panel, so the host can close it.
@@ -88,14 +87,14 @@ export class FindPanel implements OnDestroy {
   public readonly closed: OutputEmitterRef<void> = output<void>();
 
   /**
-   * Holds the current find text.
+   * Gets the current find text, which a host may keep.
    */
-  protected readonly findText: WritableSignal<string> = signal<string>('');
+  public readonly findText: ModelSignal<string> = model<string>('');
 
   /**
-   * Holds the current replacement text.
+   * Gets the current replacement text, which a host may keep.
    */
-  protected readonly replaceText: WritableSignal<string> = signal<string>('');
+  public readonly replaceText: ModelSignal<string> = model<string>('');
 
   /**
    * Holds a value indicating whether the search is case-sensitive — remembered for the session, as
@@ -115,9 +114,10 @@ export class FindPanel implements OnDestroy {
   protected readonly regexp: WritableSignal<boolean> = inject(FindOptions).panel.regexp;
 
   /**
-   * Holds the requested view; forced to find when the surface does not support replace.
+   * Gets the requested view, which a host may keep; forced to find when the surface does not support
+   * replace.
    */
-  private readonly requestedMode: WritableSignal<FindMode> = signal<FindMode>('find');
+  public readonly requestedMode: ModelSignal<FindMode> = model<FindMode>('find');
 
   /**
    * Gets the previous-match icon.
@@ -150,13 +150,6 @@ export class FindPanel implements OnDestroy {
    */
   protected readonly supportsReplace: Signal<boolean> = computed(
     (): boolean => this.adapter()?.supportsReplace ?? false,
-  );
-
-  /**
-   * Gets the panel's header title, reflecting whether the bound surface offers replace.
-   */
-  protected readonly title: Signal<string> = computed((): string =>
-    this.supportsReplace() ? 'Find and Replace' : 'Find',
   );
 
   /**
@@ -279,7 +272,9 @@ export class FindPanel implements OnDestroy {
 
     afterNextRender((): void => {
       this.log.info('FindPanel', 'Find panel opened');
-      this.findField()?.nativeElement.querySelector('input')?.focus();
+      if (this.focuses()) {
+        this.findField()?.nativeElement.querySelector('input')?.focus();
+      }
     });
 
     // Keep the active row visible as the selection moves through the list; runs after render so the
@@ -367,9 +362,12 @@ export class FindPanel implements OnDestroy {
 
   /**
    * Clears the query highlights when the panel is removed by any means (including a host that closes
-   * it without the close button), so no stale matches remain highlighted.
+   * it without the close button), so no stale matches remain highlighted — unless the host keeps the
+   * search ({@link keepsSearch}).
    */
   public ngOnDestroy(): void {
-    this.adapter()?.clear();
+    if (!this.keepsSearch()) {
+      this.adapter()?.clear();
+    }
   }
 }

@@ -28,13 +28,12 @@ import { CdkMenuTrigger } from '@angular/cdk/menu';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { Icon } from '@shared/angular/icons/icon';
+import { DockSides } from '@shared/angular/services/dock-layout/dock-sides';
 import { LogContextCard } from '../tabs/logs-tab/log-context-card/log-context-card';
 import { SummaryItem, ViewSummary } from '../tabs/view-summary/view-summary';
 import { LogDetailsCard } from '../tabs/logs-tab/log-details-card/log-details-card';
 import { SEVERITY_TONES } from '@shared/angular/components/chip/severity-tones';
 import { formatLogTime } from '../tabs/logs-tab/log-format';
-import { Panel } from '@shared/angular/components/panel-layout/panel';
-import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { Log } from '@shared/angular/services/log/log';
 import { DocumentVisibility } from '@shared/angular/services/document-visibility/document-visibility';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -74,6 +73,7 @@ import {
   SystemMonitorCommands,
 } from '../system-monitor-commands/system-monitor-commands';
 import { Chip, ChipTone } from '@shared/angular/components/chip/chip';
+import { ConversationContext } from '@shared/api/agent-conversation-channels';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import {
@@ -81,8 +81,23 @@ import {
   createAgentHostRegistrar,
 } from '@shared/angular/services/agent-hosts/agent-host-registration';
 import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
+import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
+import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
+import { DockTemplatePanel } from '@shared/angular/components/dock-layout/dock-template-panel/dock-template-panel';
+import { dockProviders } from '@shared/angular/services/dock-layout/dock-providers';
+import {
+  createDockTabRegistrar,
+  DockTabRegistrar,
+} from '@shared/angular/services/dock-layout/dock-tab-registration';
+import {
+  TOOL_VIEW_AGENT_PANEL_ID,
+  TOOL_VIEW_MAIN_PANEL_ID,
+  toolViewConversationContext,
+  toolViewDockBlueprint,
+} from '@shared/angular/services/tool-view-dock/tool-view-dock';
+import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
+import { keepLogPrivacyNotice } from '../system-monitor-agent/log-privacy-notice';
 import { SystemMonitorAgentCapabilities } from '../system-monitor-agent/system-monitor-agent-capabilities';
-import { SystemMonitorAgentPanel } from '../system-monitor-agent/system-monitor-agent-panel';
 
 /**
  * The audit table's columns: a fixed-width severity badge and timestamp bracket a fixed-width source
@@ -228,12 +243,12 @@ interface AuditEntry {
     StorageTab,
     NetworkTab,
     GpuTab,
-    Panel,
-    PanelLayout,
-    SystemMonitorAgentPanel,
+    AgentConversationPanel,
+    DockContainer,
+    DockTemplatePanel,
   ],
-  // The agent and its conversation live on the VIEW, not the docked panel (#966): the panel mounts on
-  // first show and can be closed, and a run in flight must outlive both.
+  // The agent and its conversation live on the VIEW, not the docked panel (#966): the dock draws the
+  // panel only while it shows, and a run in flight must outlive it.
   providers: [
     Agent,
     AgentConversation,
@@ -245,6 +260,7 @@ interface AuditEntry {
     SystemMonitorGpu,
     SystemMonitorStorage,
     SystemMonitorNetwork,
+    ...dockProviders(toolViewDockBlueprint('system-monitor')),
   ],
   templateUrl: './system-monitor-view.html',
   styleUrl: './system-monitor-view.scss',
@@ -260,6 +276,11 @@ export class SystemMonitorView implements OnInit {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Exposes the sides a panel may dock to to the template.
+   */
+  protected readonly DockSides: typeof DockSides = DockSides;
 
   /**
    * Gets the severities in display order, exposed for the filter chips.
@@ -516,6 +537,7 @@ export class SystemMonitorView implements OnInit {
    */
   private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
     isActive: this.isActive,
+    context: (): ConversationContext => this.agentContext,
     surface: 'monitor',
   });
 
@@ -527,15 +549,30 @@ export class SystemMonitorView implements OnInit {
   );
 
   /**
-   * Holds whether the agent panel has been shown, after which it stays mounted so a closed panel keeps
-   * its place and its conversation.
+   * Gets the identifier of the panel holding the view's content.
    */
-  protected readonly agentMounted: WritableSignal<boolean> = signal<boolean>(false);
+  protected readonly mainPanel: string = TOOL_VIEW_MAIN_PANEL_ID;
 
   /**
-   * Holds whether the agent panel is showing.
+   * Gets the identifier of the agent panel.
    */
-  protected readonly agentVisible: WritableSignal<boolean> = signal<boolean>(false);
+  protected readonly agentPanel: string = TOOL_VIEW_AGENT_PANEL_ID;
+
+  /**
+   * Registers this tab's dock, so the ribbon can open and close its agent. Finalised in
+   * {@link ngOnInit} once the tab id is readable.
+   */
+  private readonly dockTab: DockTabRegistrar = createDockTabRegistrar();
+
+  /**
+   * Gets the context every System Monitor conversation is filed under.
+   */
+  private readonly agentContext: ConversationContext = toolViewConversationContext('monitor');
+
+  /**
+   * Holds what opens the dock's panels wherever they are.
+   */
+  private readonly dockReveal: DockReveal = inject(DockReveal);
 
   /**
    * Publishes this view's injector to the status strip and its agent to Mission Control, now that the
@@ -543,18 +580,8 @@ export class SystemMonitorView implements OnInit {
    */
   public ngOnInit(): void {
     this.statusHost.register(this.tabId());
+    this.dockTab.register(this.tabId());
     this.agentHost.register(this.tabId());
-  }
-
-  /**
-   * Shows the agent panel, or hides it.
-   */
-  protected toggleAgent(): void {
-    const showing: boolean = !this.agentVisible();
-    if (showing) {
-      this.agentMounted.set(true);
-    }
-    this.agentVisible.set(showing);
   }
 
   /**
@@ -678,8 +705,8 @@ export class SystemMonitorView implements OnInit {
    * Holds the handler the ribbon drives the active view through.
    */
   private readonly commandHandler: SystemMonitorCommandHandler = {
-    agentShown: this.agentVisible,
-    toggleAgent: (): void => this.toggleAgent(),
+    agentShown: computed((): boolean => this.dockReveal.isOpen(TOOL_VIEW_AGENT_PANEL_ID)),
+    toggleAgent: (): void => this.dockReveal.toggle(TOOL_VIEW_AGENT_PANEL_ID),
     refresh: (): void => this.refresh(),
     clearFilters: (): void => this.clearFilters(),
     tab: this.selectedTab.asReadonly(),
@@ -710,6 +737,8 @@ export class SystemMonitorView implements OnInit {
    * Loads the sessions and the live session's records, then streams new live records in.
    */
   public constructor() {
+    keepLogPrivacyNotice();
+
     void this.loadSessions();
     void this.loadRecords();
 

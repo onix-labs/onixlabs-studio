@@ -1,4 +1,7 @@
-import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
+import { TOOL_VIEW_AGENT_PANEL_ID } from '@shared/angular/services/tool-view-dock/tool-view-dock';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
@@ -21,7 +24,6 @@ import { SkillTransfer } from '@shared/angular/services/skills/skill-transfer';
 import { Persona } from '@shared/angular/services/persona/persona';
 import { AiLibraryCommands, AiLibrarySection } from '../ai-library-commands/ai-library-commands';
 import { ModelManagerCommands } from '../model-manager-commands/model-manager-commands';
-import { AiManagerAgentPanelState } from '../ai-manager-agent/ai-manager-agent-panel-state';
 
 /**
  * The contextual ribbon shown while the AI Manager tab is active (#948). Its View group chooses the
@@ -89,14 +91,21 @@ export class AiManagerRibbon {
   protected readonly canTransfer: boolean = this.transfer.isAvailable;
 
   /**
-   * Holds whether the docked agent is showing (#967).
+   * Holds the tabs' docks, which the agent is shown and hidden in.
    */
-  private readonly agentPanel: AiManagerAgentPanelState = inject(AiManagerAgentPanelState);
+  private readonly docks: TabDocks = inject(TabDocks);
+
+  /**
+   * Holds the tab registry, which names this view's tab.
+   */
+  private readonly tabs: Tabs = inject(Tabs);
 
   /**
    * Gets whether the docked agent is showing.
    */
-  protected readonly agentShown: Signal<boolean> = this.agentPanel.visible;
+  protected readonly agentShown: Signal<boolean> = computed((): boolean =>
+    this.docks.isOpen(this.tabs.activeTabId(), TOOL_VIEW_AGENT_PANEL_ID),
+  );
 
   /**
    * Gets the sub-view shown.
@@ -285,7 +294,7 @@ export class AiManagerRibbon {
    * Shows or hides the docked agent.
    */
   protected onToggleAgent(): void {
-    this.agentPanel.toggle();
+    this.docks.toggle(this.tabs.activeTabId(), TOOL_VIEW_AGENT_PANEL_ID);
   }
 
   /**

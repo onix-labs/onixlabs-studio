@@ -2,11 +2,13 @@ import { CdkDrag, CdkDragDrop, CdkDropList } from '@angular/cdk/drag-drop';
 import { CdkContextMenuTrigger, CdkMenuTrigger } from '@angular/cdk/menu';
 import {
   afterNextRender,
+  afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
   computed,
   DestroyRef,
   effect,
+  EffectCleanupRegisterFn,
   ElementRef,
   inject,
   input,
@@ -18,6 +20,8 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+import { ALL_DOCK_BUTTONS, DockButton } from '../../../services/dock-layout/dock-appearance';
+import { DOCK_BLUEPRINT, DockBlueprint } from '../../../services/dock-layout/dock-blueprint';
 import { DockAutoHide } from '../../../services/dock-layout/dock-auto-hide';
 import { DockDrag } from '../../../services/dock-layout/dock-drag';
 import { DockFloating } from '../../../services/dock-layout/dock-floating';
@@ -28,6 +32,8 @@ import { DockPanel } from '../../../services/dock-layout/dock-panel';
 import { DockPanelAvailability } from '../../../services/dock-layout/dock-panel-availability';
 import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 import { DockSide, StackNode } from '../../../services/dock-layout/dock-node';
+import { layoutAfterDrop } from '../../../services/dock-layout/dock-drop';
+import { DockRoom } from '../../../services/dock-layout/dock-room';
 import { DockState } from '../../../services/dock-layout/dock-state';
 import { DockMinimums } from '../../../services/dock-layout/dock-minimums';
 import { PopoutPanels } from '../../../services/dock-layout/popout-panels';
@@ -114,6 +120,11 @@ export class DockTabGroup {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
+   * Holds which layouts there is room for.
+   */
+  private readonly room: DockRoom = inject(DockRoom);
+
+  /**
    * Holds the layout state activation, closing and tab moves drive.
    */
   private readonly dockState: DockState = inject(DockState);
@@ -161,6 +172,16 @@ export class DockTabGroup {
   private readonly dockFocus: DockFocus = inject(DockFocus);
 
   /**
+   * Holds the blueprint specialising the dock, or null when none was provided.
+   */
+  private readonly blueprint: DockBlueprint | null = inject(DOCK_BLUEPRINT, { optional: true });
+
+  /**
+   * Holds the buttons the dock's title bars show.
+   */
+  private readonly buttons: readonly DockButton[] = this.blueprint?.buttons ?? ALL_DOCK_BUTTONS;
+
+  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
@@ -177,6 +198,14 @@ export class DockTabGroup {
    */
   private readonly tabstrip: Signal<ElementRef<HTMLElement> | undefined> =
     viewChild<ElementRef<HTMLElement>>('tabstrip');
+
+  /**
+   * Holds the tab strip itself: the same for as long as it lasts, where the query makes a new reference
+   * to it whenever the template changes around it.
+   */
+  private readonly tabstripElement: Signal<HTMLElement | undefined> = computed(
+    (): HTMLElement | undefined => this.tabstrip()?.nativeElement,
+  );
 
   /**
    * Holds the dock's minimum sizes, which this group reports its own chrome to (#1064).
@@ -310,6 +339,15 @@ export class DockTabGroup {
   protected readonly isEmpty: Signal<boolean> = computed((): boolean => this.panels().length === 0);
 
   /**
+   * Gets a value indicating whether the group shows its tabs. In the simple look a tool group showing a
+   * single panel doesn't: its title bar already names it.
+   */
+  protected readonly showsTabs: Signal<boolean> = computed(
+    (): boolean =>
+      this.isDocuments() || this.blueprint?.appearance !== 'simple' || this.panels().length > 1,
+  );
+
+  /**
    * Gets a value indicating whether the active document can be dragged out of the well into a separate
    * group: only when the well holds more than one document, so dragging it out leaves the well behind.
    */
@@ -387,20 +425,31 @@ export class DockTabGroup {
       this.geometry.registerGroup(stack.id, stack.role, this.hostElement.nativeElement);
     });
 
-    afterNextRender((): void => {
-      // Re-measure whenever the strip is resized (the panel narrows or widens) — coalesced to one
-      // measurement per frame: the observer can fire several times within a frame, and each
-      // measurement is a forced layout (see measureTabsFill).
-      const strip: HTMLElement | undefined = this.tabstrip()?.nativeElement;
-      if (strip !== undefined && typeof ResizeObserver !== 'undefined') {
-        const observer: ResizeObserver = new ResizeObserver(
-          (entries: readonly ResizeObserverEntry[]): void => this.onStripResized(entries),
-        );
-        observer.observe(strip);
-        destroyRef.onDestroy((): void => observer.disconnect());
+    // Re-measure whenever the strip is resized (the panel narrows or widens) — coalesced to one
+    // measurement per frame: the observer can fire several times within a frame, and each
+    // measurement is a forced layout (see measureTabsFill). Followed after each render because the strip
+    // comes and goes: a group showing nothing has none (see also showsTabs). A document well's tabs never
+    // fill it, so one that opens empty is not followed.
+    let drawn: boolean = false;
+    afterRenderEffect((onCleanup: EffectCleanupRegisterFn): void => {
+      const strip: HTMLElement | undefined = this.tabstripElement();
+      const late: boolean = drawn;
+      drawn = true;
+      if (
+        strip === undefined ||
+        typeof ResizeObserver === 'undefined' ||
+        (late && untracked(this.isDocuments))
+      ) {
+        return;
       }
-      this.measureTabsFill();
+      const observer: ResizeObserver = new ResizeObserver(
+        (entries: readonly ResizeObserverEntry[]): void => this.onStripResized(entries),
+      );
+      observer.observe(strip);
+      onCleanup((): void => observer.disconnect());
     });
+
+    afterNextRender((): void => this.measureTabsFill());
 
     destroyRef.onDestroy((): void => {
       this.geometry.unregisterGroup(this.stack().id);
@@ -587,6 +636,25 @@ export class DockTabGroup {
   }
 
   /**
+   * Gets the panel the title bar's close button closes, or undefined when it shows none.
+   */
+  protected readonly closable: Signal<DockPanel | undefined> = computed(
+    (): DockPanel | undefined =>
+      this.shows('close') && this.activePanel()?.closable !== false
+        ? this.activePanel()
+        : undefined,
+  );
+
+  /**
+   * Determines whether the title bar shows a button.
+   * @param button The button.
+   * @returns Returns true when it does.
+   */
+  protected shows(button: DockButton): boolean {
+    return this.buttons.includes(button);
+  }
+
+  /**
    * Focuses this panel so it becomes the accented one. Fired on any press within the group.
    */
   protected focusPanel(): void {
@@ -598,7 +666,8 @@ export class DockTabGroup {
    * ever holds panels of its own role — documents into document wells, tools into tool stacks. This
    * is literal tab-strip membership, distinct from the compass's occupy rule: a tool taking over an
    * empty centre well replaces the well (a compass drop through {@link DockDrag}), it never becomes a
-   * tab in a documents-only strip, so that case must not enter here.
+   * tab in a documents-only strip, so that case must not enter here. Nor does a tab the group has no room
+   * for, or that may not be on the group's side.
    * @param drag The tab being dragged, whose data is the panel identifier.
    * @returns Returns true when the tab may drop here; otherwise, false.
    */
@@ -606,24 +675,44 @@ export class DockTabGroup {
     drag: CdkDrag<string>,
   ): boolean => {
     const panel: DockPanel | undefined = this.registry.get(drag.data);
-    return panel?.role === this.stack().role;
+    return (
+      panel?.role === this.stack().role &&
+      this.room.admits(
+        layoutAfterDrop(this.dockState.layout(), panel.id, panel.role, {
+          kind: 'tab',
+          stackId: this.stack().id,
+        }),
+        [panel.id],
+      )
+    );
   };
 
   /**
-   * Commits a tab drop, reordering within this group or moving the tab in from another group.
+   * Commits a tab drop, reordering within this group or moving the tab in from another group. The drop's
+   * indices count the tabs shown; the group also holds the places of panels that aren't.
    * @param event The CDK drop event.
    */
   protected onDrop(event: CdkDragDrop<StackNode>): void {
     const panelId: string = event.item.data as string;
+    const held: readonly string[] = this.stack().panels;
+    const displaced: string | undefined = this.panels()[event.currentIndex]?.id;
     if (event.previousContainer === event.container) {
       this.log.debug(
         'DockTabGroup',
         `Reordered tab '${panelId}' within stack '${this.stack().id}'`,
       );
-      this.dockState.reorderTab(this.stack().id, event.previousIndex, event.currentIndex);
+      this.dockState.reorderTab(
+        this.stack().id,
+        held.indexOf(panelId),
+        displaced === undefined ? -1 : held.indexOf(displaced),
+      );
     } else {
       this.log.info('DockTabGroup', `Moved tab '${panelId}' into stack '${this.stack().id}'`);
-      this.dockState.movePanel(panelId, this.stack().id, event.currentIndex);
+      this.dockState.movePanel(
+        panelId,
+        this.stack().id,
+        displaced === undefined ? held.length : held.indexOf(displaced),
+      );
     }
   }
 
@@ -655,8 +744,8 @@ export class DockTabGroup {
    * Floats the active panel out of the layout into a window.
    */
   protected requestFloat(): void {
-    const active: string | null = this.stack().active;
-    if (active !== null) {
+    const active: string | undefined = this.activePanel()?.id;
+    if (active !== undefined) {
       const rect: Rect = this.geometry.rectOf(this.stack().id) ?? FALLBACK_FLOAT_RECT;
       this.floating.float(active, rect);
     }
@@ -668,7 +757,7 @@ export class DockTabGroup {
    * stays consistent; it is disabled in views without pop-out support.
    */
   protected readonly canPopOutActive: Signal<boolean> = computed(
-    (): boolean => this.stack().active !== null && this.popouts.canPopOut(),
+    (): boolean => this.activePanel() !== undefined && this.popouts.canPopOut(),
   );
 
   /**
@@ -683,8 +772,8 @@ export class DockTabGroup {
    * Pops the active panel out into its own OS window through its registered handler.
    */
   protected popOutActive(): void {
-    const active: string | null = this.stack().active;
-    if (active !== null) {
+    const active: string | undefined = this.activePanel()?.id;
+    if (active !== undefined) {
       this.popouts.popOut(active);
     }
   }
@@ -702,8 +791,8 @@ export class DockTabGroup {
    * @param event The originating mouse event.
    */
   protected startDrag(event: MouseEvent): void {
-    const active: string | null = this.stack().active;
-    if (active !== null) {
+    const active: string | undefined = this.activePanel()?.id;
+    if (active !== undefined) {
       this.dockDrag.begin(active, event);
     }
   }

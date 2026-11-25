@@ -93,6 +93,11 @@
     color: var(--dock-title-background-color);
     background: var(--accent-color);
   }
+
+  &--disabled {
+    opacity: 0.25;
+    filter: grayscale(1);
+  }
 }
 
 .dock-overlay__ghost {

@@ -1,12 +1,19 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DockAutoHide } from '../../../services/dock-layout/dock-auto-hide';
+import { DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-blueprint';
+import { DockGeometry } from '../../../services/dock-layout/dock-geometry';
 import {
   DockNode as DockTreeNode,
   DockSide,
+  isSplitNode,
   mkSplit,
   mkStack,
+  SplitNode,
   StackNode,
 } from '../../../services/dock-layout/dock-node';
+import { DockPanelAvailability } from '../../../services/dock-layout/dock-panel-availability';
+import { DockState } from '../../../services/dock-layout/dock-state';
+import { TEST_DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-test-blueprint';
 import { DockNode } from './dock-node';
 
 describe('DockNode', () => {
@@ -48,6 +55,7 @@ describe('DockNode', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [DockNode],
+      providers: [{ provide: DOCK_BLUEPRINT, useValue: TEST_DOCK_BLUEPRINT }],
     }).compileComponents();
 
     fixture = TestBed.createComponent(DockNode);
@@ -66,12 +74,12 @@ describe('DockNode', () => {
     expect(element.querySelector('app-dock-tab-group')).not.toBeNull();
   });
 
-  it('render_whenSplitWithTwoChildren_interleavesOneSplitter', () => {
+  it('render_whenSplitWithTwoChildren_interleavesOneDivider', () => {
     render(mkSplit('row', [mkStack('tool', ['a']), mkStack('tool', ['b'])]));
 
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
     expect(element.querySelectorAll('.dock-node__pane').length).toBe(2);
-    expect(element.querySelectorAll('app-dock-splitter').length).toBe(1);
+    expect(element.querySelectorAll('app-split-divider').length).toBe(1);
   });
 
   it('render_whenNestedSplit_recursesIntoChildren', () => {
@@ -135,5 +143,54 @@ describe('DockNode', () => {
 
     expect(classesOf('.dock-node__pane', 0)).toContain('dock-node__pane--peeking');
     expect(classesOf('.dock-node__pane', 1)).not.toContain('dock-node__pane--peeking');
+  });
+
+  it('render_whenAStackIsCollapsed_keepsItsStripsSizeAndLocksTheDividerBesideIt', () => {
+    render(mkSplit('row', [collapsed(['agent']), mkStack('document', ['doc'])]));
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    const pane: HTMLElement = element.querySelector<HTMLElement>('.dock-node__pane')!;
+    expect(pane.style.flexGrow).toBe('0');
+    expect(pane.style.flexBasis).toBe('1.875rem');
+    expect(classesOf('app-split-divider', 0)).toContain('split-divider--disabled');
+  });
+
+  it('drag_whenADividerIsReleased_commitsTheSizesAndLetsMeasuringResume', () => {
+    const state: DockState = TestBed.inject(DockState);
+    const geometry: DockGeometry = TestBed.inject(DockGeometry);
+    const split: DockTreeNode = state.layout();
+    expect(isSplitNode(split)).toBe(true);
+    render(split);
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    const panel: HTMLElement = element.querySelector<HTMLElement>('app-split-panel')!;
+    panel.getBoundingClientRect = (): DOMRect => new DOMRect(0, 0, 4000, 1000);
+
+    element
+      .querySelector('app-split-divider')!
+      .dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 0 }));
+    expect(geometry.resizing()).toBe(true);
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 100 }));
+    document.dispatchEvent(new MouseEvent('mouseup'));
+
+    expect(geometry.resizing()).toBe(false);
+    expect((state.layout() as SplitNode).sizes).not.toEqual((split as SplitNode).sizes);
+  });
+
+  it('render_whenAMiddleGroupCannotBeShown_leavesOneDividerBetweenItsNeighbours', () => {
+    TestBed.inject(DockPanelAvailability).set({ b: false });
+    render(
+      mkSplit('row', [mkStack('tool', ['a']), mkStack('tool', ['b']), mkStack('tool', ['c'])]),
+    );
+
+    expect(classesOf('.dock-node__pane', 1)).toContain('dock-node__pane--empty');
+    expect(classesOf('app-split-divider', 0)).not.toContain('split-divider--hidden');
+    expect(classesOf('app-split-divider', 1)).toContain('split-divider--hidden');
+  });
+
+  it('render_whenAnEndGroupCannotBeShown_leavesNoDividerBesideIt', () => {
+    TestBed.inject(DockPanelAvailability).set({ b: false });
+    render(mkSplit('row', [mkStack('tool', ['a']), mkStack('tool', ['b'])]));
+
+    expect(classesOf('app-split-divider', 0)).toContain('split-divider--hidden');
   });
 });

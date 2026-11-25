@@ -1,38 +1,30 @@
-<app-tool-panel
-  title="Inspector"
-  [icon]="Icon.SEARCH"
-  closeLabel="Close inspector"
-  [flush]="true"
-  (closed)="onClose()"
->
-  <div class="inspector__body">
-    <div class="inspector__toggles">
-      <app-button-group
-        ariaLabel="Endianness"
-        [options]="endianOptions"
-        [value]="littleEndian() ? 'le' : 'be'"
-        (valueChange)="setEndian($event === 'le')"
-      />
+<div class="inspector__body">
+  <div class="inspector__toggles">
+    <app-button-group
+      ariaLabel="Endianness"
+      [options]="endianOptions"
+      [value]="littleEndian() ? 'le' : 'be'"
+      (valueChange)="setEndian($event === 'le')"
+    />
 
-      <app-button-group
-        ariaLabel="Signedness"
-        [options]="signOptions"
-        [value]="signed() ? 'signed' : 'unsigned'"
-        (valueChange)="setSigned($event === 'signed')"
-      />
-    </div>
-
-    @if (rows().length > 0) {
-      <dl class="inspector__list">
-        @for (row of rows(); track row.label) {
-          <div class="inspector__row">
-            <dt class="inspector__label">{{ row.label }}</dt>
-            <dd class="inspector__value">{{ row.value }}</dd>
-          </div>
-        }
-      </dl>
-    } @else {
-      <p class="inspector__empty">Select a byte to inspect its value.</p>
-    }
+    <app-button-group
+      ariaLabel="Signedness"
+      [options]="signOptions"
+      [value]="signed() ? 'signed' : 'unsigned'"
+      (valueChange)="setSigned($event === 'signed')"
+    />
   </div>
-</app-tool-panel>
+
+  @if (rows().length > 0) {
+    <dl class="inspector__list">
+      @for (row of rows(); track row.label) {
+        <div class="inspector__row">
+          <dt class="inspector__label">{{ row.label }}</dt>
+          <dd class="inspector__value">{{ row.value }}</dd>
+        </div>
+      }
+    </dl>
+  } @else {
+    <p class="inspector__empty">Select a byte to inspect its value.</p>
+  }
+</div>

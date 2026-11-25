@@ -48,11 +48,11 @@ import { ProgressBar } from '@shared/angular/components/progress-bar/progress-ba
  */
 const INSTALLED_COLUMNS: readonly TableColumn[] = [
   { id: 'name', header: 'Model' },
-  { id: 'parameters', header: 'Parameters', width: '9rem' },
-  { id: 'quantization', header: 'Quantisation', width: '9rem' },
-  { id: 'size', header: 'Size', width: '8rem', align: 'end' },
-  { id: 'modified', header: 'Modified', width: '11rem' },
-  { id: 'state', header: 'State', width: '10.5rem' },
+  { id: 'parameters', header: 'Parameters', width: '9rem', hideBelow: 46 },
+  { id: 'quantization', header: 'Quantisation', width: '9rem', hideBelow: 55 },
+  { id: 'size', header: 'Size', width: '8rem', align: 'end', hideBelow: 37 },
+  { id: 'modified', header: 'Modified', width: '11rem', hideBelow: 66 },
+  { id: 'state', header: 'State', width: '10.5rem', hideBelow: 29 },
   { id: 'actions', header: '', width: '8.5rem', align: 'end' },
 ];
 
@@ -61,9 +61,9 @@ const INSTALLED_COLUMNS: readonly TableColumn[] = [
  */
 const RUNNING_COLUMNS: readonly TableColumn[] = [
   { id: 'name', header: 'Model' },
-  { id: 'processor', header: 'Processor', width: '10rem' },
+  { id: 'processor', header: 'Processor', width: '10rem', hideBelow: 28 },
   { id: 'size', header: 'Size', width: '8rem', align: 'end' },
-  { id: 'expires', header: 'Unloads', width: '11rem' },
+  { id: 'expires', header: 'Unloads', width: '11rem', hideBelow: 39 },
 ];
 
 /**
@@ -71,10 +71,10 @@ const RUNNING_COLUMNS: readonly TableColumn[] = [
  */
 const AVAILABLE_COLUMNS: readonly TableColumn[] = [
   { id: 'name', header: 'Model' },
-  { id: 'source', header: 'Source', width: '8rem' },
-  { id: 'parameters', header: 'Parameters', width: '8rem' },
-  { id: 'size', header: 'Size', width: '8rem', align: 'end' },
-  { id: 'state', header: 'State', width: '10.5rem' },
+  { id: 'source', header: 'Source', width: '8rem', hideBelow: 53 },
+  { id: 'parameters', header: 'Parameters', width: '8rem', hideBelow: 45 },
+  { id: 'size', header: 'Size', width: '8rem', align: 'end', hideBelow: 37 },
+  { id: 'state', header: 'State', width: '10.5rem', hideBelow: 29 },
   { id: 'actions', header: '', width: '8.5rem', align: 'end' },
 ];
 

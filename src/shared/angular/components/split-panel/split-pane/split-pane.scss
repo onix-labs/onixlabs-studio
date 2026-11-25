@@ -1,0 +1,13 @@
+// Its one child fills it, both ways, without having to say so.
+:host {
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  min-inline-size: 0;
+  min-block-size: 0;
+  overflow: hidden;
+
+  // Out of the layout but still mounted, so whatever it holds goes on living.
+  &.split-pane--hidden {
+    display: none;
+  }
+}

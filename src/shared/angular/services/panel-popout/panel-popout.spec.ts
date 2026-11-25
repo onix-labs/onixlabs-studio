@@ -309,6 +309,15 @@ describe('PanelPopout', () => {
       expect(windows.opened).toEqual([]);
     });
 
+    it('popOut_theMainGroupsPanel_opensNothing (#1565)', () => {
+      vi.spyOn(state, 'isMain').mockImplementation((id: string): boolean => id === 'search');
+
+      popout.popOut('search');
+
+      expect(windows.opened).toEqual([]);
+      expect(collectPanelIds(state.layout())).toContain('search');
+    });
+
     it('popOut_windowRefused_leavesThePanelDocked', () => {
       windows.refusing = true;
 

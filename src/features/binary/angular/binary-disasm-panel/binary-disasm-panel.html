@@ -1,23 +1,14 @@
-<app-tool-panel
-  title="Assembly"
-  dragTitle="Disassembly"
-  [icon]="Icon.CODE"
-  closeLabel="Close assembly"
-  [flush]="true"
-  (closed)="onClose()"
->
-  <div class="disasm__body">
-    <div class="disasm__editor">
-      <app-text-editor
-        [content]="content().text"
-        [language]="ASM_LANGUAGE_ID"
-        [readOnly]="true"
-        [options]="editorOptions"
-        (ready)="onReady()"
-      />
-    </div>
-    @if (emptyNote(); as note) {
-      <p class="disasm__empty">{{ note }}</p>
-    }
+<div class="disasm__body">
+  <div class="disasm__editor">
+    <app-text-editor
+      [content]="content().text"
+      [language]="ASM_LANGUAGE_ID"
+      [readOnly]="true"
+      [options]="editorOptions"
+      (ready)="onReady()"
+    />
   </div>
-</app-tool-panel>
+  @if (emptyNote(); as note) {
+    <p class="disasm__empty">{{ note }}</p>
+  }
+</div>

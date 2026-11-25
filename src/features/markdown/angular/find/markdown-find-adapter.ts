@@ -110,8 +110,18 @@ export class MarkdownFindAdapter implements FindAdapter {
    * @param query The query to search for.
    */
   public setQuery(query: FindQuery): void {
+    // A panel the search outlived asks for it again when it comes back: its undo is still to be had.
+    const last: FindQuery | null = this.lastQuery;
+    const again: boolean =
+      last !== null &&
+      last.text === query.text &&
+      last.caseSensitive === query.caseSensitive &&
+      last.wholeWord === query.wholeWord &&
+      last.regexp === query.regexp;
     this.lastQuery = query;
-    this.canUndoState.set(false);
+    if (!again) {
+      this.canUndoState.set(false);
+    }
     this.applyQuery(query, '');
     this.scan();
   }

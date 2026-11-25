@@ -1,4 +1,11 @@
 :host {
+  display: block;
+  block-size: 100%;
+  box-sizing: border-box;
+  padding: 0.75rem;
+  overflow: auto;
+  color: var(--body-foreground-color);
+
   // The stepped connector line: a subtle rule that reads against the panel surface.
   --outline-connector-color: var(--gray-300);
 }

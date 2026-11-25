@@ -5,16 +5,8 @@ import { ModalBackdropView } from '@shared/angular/components/modal-backdrop/mod
 import { ModalBackdrop } from '@shared/angular/services/modal-backdrop/modal-backdrop';
 import { windowScopedCdkProviders } from '@shared/angular/services/window-scope/window-scope';
 import { DOCK_BLUEPRINT, DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
-import { DockAutoHide } from '@shared/angular/services/dock-layout/dock-auto-hide';
-import { DockDrag } from '@shared/angular/services/dock-layout/dock-drag';
-import { DockFloating } from '@shared/angular/services/dock-layout/dock-floating';
-import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
-import { DockGeometry } from '@shared/angular/services/dock-layout/dock-geometry';
-import { DockMinimums } from '@shared/angular/services/dock-layout/dock-minimums';
-import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
-import { DockState } from '@shared/angular/services/dock-layout/dock-state';
+import { dockWindowProviders } from '@shared/angular/services/dock-layout/dock-window-providers';
 import { DockNode, mkStack } from '@shared/angular/services/dock-layout/dock-node';
-import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
 
 /**
  * Configures a pop-out window's dock: the document the dock lives in (the auxiliary window's) and
@@ -60,15 +52,7 @@ export const POPOUT_DOCK_CONFIG: InjectionToken<PopoutDockConfig> =
   styleUrl: './popout-dock-host.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [
-    DockState,
-    DockGeometry,
-    DockMinimums,
-    DockFocus,
-    DockFloating,
-    DockAutoHide,
-    DockDrag,
-    DockReveal,
-    PopoutPanels,
+    ...dockWindowProviders(),
     // The CDK layer is window-scoped so overlays and drags triggered anywhere in this subtree
     // operate in the pop-out's document, not the opener's.
     ...windowScopedCdkProviders(),
@@ -81,9 +65,16 @@ export const POPOUT_DOCK_CONFIG: InjectionToken<PopoutDockConfig> =
       provide: DOCK_BLUEPRINT,
       useFactory: (): DockBlueprint => {
         const panelId: string = inject(POPOUT_DOCK_CONFIG).panelId;
+        // It looks as the dock it came from does.
+        const view: DockBlueprint | null = inject(DOCK_BLUEPRINT, {
+          optional: true,
+          skipSelf: true,
+        });
         return {
           createLayout: (): DockNode => mkStack('tool', [panelId]),
           panels: [],
+          appearance: view?.appearance,
+          buttons: view?.buttons,
         };
       },
     },

@@ -247,6 +247,66 @@ describe('Table', () => {
     expect(component.clicked).toEqual([]);
   });
 
+  describe('columns hidden when narrow', () => {
+    /**
+     * Gets the columns' widths, as stated on them.
+     * @returns Returns the widths.
+     */
+    function widths(): readonly string[] {
+      return [...host.querySelectorAll<HTMLElement>('col')].map(
+        (column: HTMLElement): string => column.style.width,
+      );
+    }
+
+    /**
+     * Gives the table a width, as its observer would report it.
+     * @param rem The width, in rem.
+     */
+    function resizeTo(rem: number): void {
+      (
+        fixture.debugElement.query(By.directive(Table)).componentInstance as unknown as {
+          width: WritableSignal<number | null>;
+        }
+      ).width.set(rem);
+      fixture.detectChanges();
+    }
+
+    beforeEach(() => {
+      component.columns.set([
+        { id: 'name', header: 'Name', width: '38%' },
+        { id: 'kind', header: 'Kind', hideBelow: 40 },
+        { id: 'value', header: 'Value', width: '6rem', hideBelow: 20 },
+        { id: 'action', header: '', width: '4rem' },
+      ]);
+      fixture.detectChanges();
+    });
+
+    it('areHidden_belowTheirWidth_andShownAgainAboveIt', () => {
+      const hidden: () => string | null = (): string | null =>
+        host.querySelector('table')!.getAttribute('data-hidden');
+      const span: () => string | null = (): string | null =>
+        host.querySelector('.table-group__cell')!.getAttribute('colspan');
+      expect(hidden()).toBeNull();
+
+      resizeTo(39);
+      expect(hidden()).toBe('2');
+      expect(span()).toBe('3');
+      resizeTo(19);
+      expect(hidden()).toBe('2 3');
+      expect(span()).toBe('2');
+      resizeTo(40);
+      expect(hidden()).toBeNull();
+      expect(span()).toBe('4');
+    });
+
+    it('leaveTheirRoomToTheColumnStatedAsAShare_onceNoOtherTakesIt', () => {
+      expect(widths()).toEqual(['38%', '', '6rem', '4rem']);
+
+      resizeTo(39);
+      expect(widths()).toEqual(['', '', '6rem', '4rem']);
+    });
+  });
+
   describe('virtual', () => {
     /**
      * Gives the host 500 data rows.
