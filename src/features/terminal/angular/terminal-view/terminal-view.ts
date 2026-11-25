@@ -32,8 +32,10 @@ import {
 } from '@shared/angular/services/agent-hosts/agent-host-registration';
 import { dockProviders } from '@shared/angular/services/dock-layout/dock-providers';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
-import { DockState } from '@shared/angular/services/dock-layout/dock-state';
-import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
+import {
+  createDockTabRegistrar,
+  DockTabRegistrar,
+} from '@shared/angular/services/dock-layout/dock-tab-registration';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -148,19 +150,15 @@ export class TerminalView implements OnInit, OnDestroy {
   private readonly studio: Studio = inject(Studio);
 
   /**
-   * Holds the dock's layout, which knows whether a panel is open.
-   */
-  private readonly dockState: DockState = inject(DockState);
-
-  /**
    * Holds what opens the dock's panels wherever they are.
    */
   private readonly dockReveal: DockReveal = inject(DockReveal);
 
   /**
-   * Holds the dock's tab context, carrying this tab's identity to the panels inside it.
+   * Registers this tab's dock, so the ribbon can open and close its panels. Finalised in
+   * {@link ngOnInit} once the tab id is readable.
    */
-  private readonly tabContext: DockTabContext = inject(DockTabContext);
+  private readonly dockTab: DockTabRegistrar = createDockTabRegistrar();
 
   /**
    * Holds the structured logger for terminal-view actions.
@@ -311,8 +309,11 @@ export class TerminalView implements OnInit, OnDestroy {
     });
 
     // A closed Find forgets its search, however it was closed.
+    let finding: boolean = false;
     effect((): void => {
-      if (!this.dockReveal.isOpen(TERMINAL_FIND_PANEL_ID)) {
+      const wasFinding: boolean = finding;
+      finding = this.dockReveal.isOpen(TERMINAL_FIND_PANEL_ID);
+      if (wasFinding && !finding) {
         untracked((): void => {
           this.findText.set('');
           this.findAdapter.clear();
@@ -332,7 +333,7 @@ export class TerminalView implements OnInit, OnDestroy {
    * agent registries and the dock.
    */
   public ngOnInit(): void {
-    this.tabContext.setTabId(this.tabId());
+    this.dockTab.register(this.tabId());
     this.agentHost.register(this.tabId());
     this.statusHost.register(this.tabId());
   }
@@ -448,7 +449,6 @@ export class TerminalView implements OnInit, OnDestroy {
       },
       goTo: (location: TerminalLocation): void => this.goTo(location),
       find: (): void => this.showFind(),
-      toggleAgent: (): void => this.dockReveal.toggle(TERMINAL_AGENT_PANEL_ID),
     };
     this.terminalCommands.register(this.commandHandler);
     this.registerKeybindings();
@@ -467,7 +467,7 @@ export class TerminalView implements OnInit, OnDestroy {
    * Closes the find panel when it asks to be dismissed.
    */
   protected onFindClosed(): void {
-    void this.dockState.requestClose(TERMINAL_FIND_PANEL_ID);
+    this.dockReveal.close(TERMINAL_FIND_PANEL_ID);
   }
 
   /**

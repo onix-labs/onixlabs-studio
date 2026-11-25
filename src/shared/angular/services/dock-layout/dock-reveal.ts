@@ -71,12 +71,46 @@ export class DockReveal {
   }
 
   /**
+   * Opens and reveals a panel so that it doesn't cover another: sharing a group with it, it moves to one of
+   * its own beneath. For a panel that acts on what the other shows, as Find does.
+   * @param panelId The identifier of the panel to open.
+   * @param otherId The identifier of the panel to keep in sight.
+   */
+  public openClearOf(panelId: string, otherId: string): void {
+    this.open(panelId);
+    const layout: DockNode = this.dockState.layout();
+    const stack: StackNode | null = findStackOfPanel(layout, panelId);
+    if (
+      stack !== null &&
+      stack === findStackOfPanel(layout, otherId) &&
+      this.dockState.isOpen(otherId)
+    ) {
+      this.dockState.splitPanelOut(panelId, 'bottom');
+      this.reveal(otherId);
+      this.reveal(panelId);
+    }
+  }
+
+  /**
    * Determines whether a panel is open anywhere: in the layout, or in a floating or pop-out window.
    * @param panelId The identifier of the panel.
    * @returns Returns true when it is.
    */
   public isOpen(panelId: string): boolean {
     return this.isElsewhere(panelId) || this.dockState.isOpen(panelId);
+  }
+
+  /**
+   * Closes a panel: in its floating window, when it lives in one, or else in the layout. One in a pop-out
+   * window is closed there.
+   * @param panelId The identifier of the panel to close.
+   */
+  public close(panelId: string): void {
+    if (this.floating.floats().some((float: FloatWindow): boolean => float.panelId === panelId)) {
+      void this.floating.requestClose(panelId);
+    } else if (this.dockState.isOpen(panelId)) {
+      void this.dockState.requestClose(panelId);
+    }
   }
 
   /**

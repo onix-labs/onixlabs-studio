@@ -25,7 +25,6 @@ function createHandler(calls: Record<string, boolean | string>): TerminalCommand
     scrollToBottom: (): void => void (calls['scrollToBottom'] = true),
     newSession: (): void => void (calls['newSession'] = true),
     find: (): void => void (calls['find'] = true),
-    toggleAgent: (): void => void (calls['toggleAgent'] = true),
   };
 }
 
@@ -61,16 +60,6 @@ describe('TerminalCommands', () => {
     commands.list('all');
 
     expect(calls['list']).toBe('all');
-  });
-
-  it('toggleAgent_whenHandlerRegistered_forwardsToTheHandler', () => {
-    const commands: TerminalCommands = TestBed.inject(TerminalCommands);
-    const calls: Record<string, boolean | string> = {};
-    commands.register(createHandler(calls));
-
-    commands.toggleAgent();
-
-    expect(calls['toggleAgent']).toBe(true);
   });
 
   it('goTo_whenHandlerRegistered_forwardsTheLocationToTheHandler', () => {

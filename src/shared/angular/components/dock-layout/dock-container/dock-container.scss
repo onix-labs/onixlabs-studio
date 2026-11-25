@@ -12,19 +12,25 @@
 }
 
 // The simple look: square and flat, the groups filling the view. Only values, which everything the dock
-// draws inside this element takes on; nothing is laid out differently.
+// draws inside this element takes on; nothing is laid out differently. Each is one only the dock reads: the
+// panels' own content is drawn inside this element too.
 :host([data-appearance='simple']) {
   --dock-panel-radius: 0;
   --dock-panel-foot-radius: 0;
   --dock-flyout-radius: 0;
   --dock-divider-radius: 0;
-  --dock-title-background-color: var(--panel-surface-color);
-  --dock-title-background-color--focused: var(--panel-surface-color);
+  --dock-pane-background-color: transparent;
+  --dock-group-title-background-color: var(--panel-surface-color);
   --dock-title-font-weight: 500;
   --dock-group-border-color: transparent;
   --dock-group-border-color--focused: transparent;
 
-  background: transparent;
+  background: var(--body-background-color);
+
+  // It has no texture, so nothing to paint one with.
+  &::before {
+    display: none;
+  }
 }
 
 // The optional background texture, tiled behind the docked panes. The pattern arrives as

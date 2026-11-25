@@ -7,7 +7,7 @@ import { AgentConversation } from '@shared/angular/services/agent-conversation/a
 import { AgentHost, AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
-import { TerminalCommands } from '@features/terminal/angular/terminal-commands/terminal-commands';
+import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
 
 import { TerminalView } from './terminal-view';
 
@@ -215,17 +215,19 @@ describe('TerminalView', () => {
     );
   });
 
-  it('theRibbonsCommands_reachTheTerminalOnceItIsReady', async () => {
-    fixture.componentRef.setInput('isActive', true);
-    (component as unknown as { onPaneReady(): void }).onPaneReady();
-    await settle();
+  it('theRibbon_opensAndClosesTheAgent_throughTheTabsDock', async () => {
+    const docks: TabDocks = TestBed.inject(TabDocks);
 
-    TestBed.inject(TerminalCommands).toggleAgent();
+    docks.toggle('tab-1', 'agent');
     await settle();
-    expect(reveal.isOpen('agent')).toBe(true);
+    expect(titles()).toEqual(['Agent']);
+    expect(docks.isOpen('tab-1', 'agent')).toBe(true);
 
-    TestBed.inject(TerminalCommands).toggleAgent();
+    docks.toggle('tab-1', 'agent');
     await settle();
-    expect(reveal.isOpen('agent')).toBe(false);
+    expect(titles()).toEqual([]);
+
+    fixture.destroy();
+    expect(docks.isOpen('tab-1', 'agent')).toBe(false);
   });
 });

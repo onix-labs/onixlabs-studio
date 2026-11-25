@@ -308,6 +308,61 @@ describe("a dock that keeps its closed panels' places (#1568)", () => {
     expect(firstStackOfRole(dock.state.layout(), 'main')).not.toBeNull();
   });
 
+  describe('opening a panel clear of another', () => {
+    it('whenTheyShareAGroup_movesItBeneath_andShowsBoth', () => {
+      const dock: Dock = openDock();
+
+      dock.reveal.openClearOf('find', 'agent');
+
+      const found: StackNode = findStackOfPanel(dock.state.layout(), 'find')!;
+      const agent: StackNode = findStackOfPanel(dock.state.layout(), 'agent')!;
+      expect(found.panels).toEqual(['find']);
+      expect(agent.active).toBe('agent');
+      expect(open(dock)).toEqual(['agent', 'find']);
+    });
+
+    it('whenTheyDoNot_opensItWhereItIs', () => {
+      const dock: Dock = openDock();
+      const before: StackNode = findStackOfPanel(dock.state.layout(), 'terminal')!;
+
+      dock.reveal.openClearOf('terminal', 'agent');
+
+      expect(findStackOfPanel(dock.state.layout(), 'terminal')).toEqual(before);
+      expect(dock.state.isOpen('terminal')).toBe(true);
+    });
+  });
+
+  describe('closing a panel wherever it is', () => {
+    it('closesItInTheLayout_keepingItsPlace', () => {
+      const dock: Dock = openDock();
+
+      dock.reveal.close('agent');
+
+      expect(dock.reveal.isOpen('agent')).toBe(false);
+      dock.reveal.open('agent');
+      expect(open(dock)).toEqual(['agent']);
+    });
+
+    it('closesItsFloatingWindow', async () => {
+      const dock: Dock = openDock();
+      dock.floating.float('agent', { left: 0, top: 0, width: 200, height: 200 });
+
+      dock.reveal.close('agent');
+      await Promise.resolve();
+
+      expect(dock.floating.floats()).toHaveLength(0);
+      expect(dock.reveal.isOpen('agent')).toBe(false);
+    });
+
+    it('doesNothingForOneThatIsNotOpen', () => {
+      const dock: Dock = openDock();
+
+      dock.reveal.close('find');
+
+      expect(open(dock)).toEqual(['agent']);
+    });
+  });
+
   describe('toggling a panel', () => {
     it('whenItIsClosed_opensIt', () => {
       const dock: Dock = openDock();

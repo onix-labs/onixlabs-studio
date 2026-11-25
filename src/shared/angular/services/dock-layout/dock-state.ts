@@ -208,6 +208,28 @@ export class DockState {
   }
 
   /**
+   * Moves a panel out of its group into a new one beside another, as one undoable step. Ignored when that
+   * would leave it where it is, beside the group it is the only panel of.
+   * @param panelId The identifier of the panel to move.
+   * @param stackId The identifier of the stack to dock it beside.
+   * @param side The side of the stack to dock it against.
+   */
+  public movePanelBeside(panelId: string, stackId: string, side: DockSide): void {
+    const stack: StackNode | null = findStackOfPanel(this.tree(), panelId);
+    if (
+      stack === null ||
+      this.isMain(panelId) ||
+      (stack.id === stackId && stack.panels.length === 1)
+    ) {
+      return;
+    }
+    this.log.info('DockState', `Moved panel '${panelId}' to the ${side} of stack '${stackId}'`);
+    this.commit(
+      splitStack(removeFromLayout(this.tree(), panelId), stackId, panelId, side, stack.role),
+    );
+  }
+
+  /**
    * Docks a panel beside the given stack as a new stack of the given role.
    * @param stackId The identifier of the stack to dock beside.
    * @param panelId The identifier of the panel to dock.

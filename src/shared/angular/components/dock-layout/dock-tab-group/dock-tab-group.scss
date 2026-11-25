@@ -24,7 +24,7 @@
   padding-block: 0.25rem;
   padding-inline: 0.5rem 0.25rem;
   color: var(--dock-title-foreground-color);
-  background: var(--dock-title-background-color);
+  background: var(--dock-group-title-background-color, var(--dock-title-background-color));
   // The separator is an inset shadow rather than a bottom border so it sits inside the accent side
   // borders and never miters into (and notches) the panel's accent outline.
   box-shadow: inset 0 -0.0625rem 0 var(--dock-border-color);

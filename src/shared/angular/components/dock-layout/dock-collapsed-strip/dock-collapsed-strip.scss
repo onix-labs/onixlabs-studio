@@ -163,7 +163,7 @@
   padding-block: 0.25rem;
   padding-inline: 0.5rem 0.25rem;
   color: var(--dock-title-foreground-color);
-  background: var(--dock-title-background-color);
+  background: var(--dock-group-title-background-color, var(--dock-title-background-color));
   border-block-end: 0.0625rem solid var(--dock-border-color);
   border-start-start-radius: var(--dock-flyout-radius, 0.375rem);
   border-start-end-radius: var(--dock-flyout-radius, 0.375rem);

@@ -86,11 +86,6 @@ export interface TerminalCommandHandler {
    * Opens the find panel over the terminal to search its buffer.
    */
   find(): void;
-
-  /**
-   * Shows the terminal's agent panel, or closes it when it is showing.
-   */
-  toggleAgent(): void;
 }
 
 /**
@@ -233,12 +228,5 @@ export class TerminalCommands {
    */
   public find(): void {
     this.handler()?.find();
-  }
-
-  /**
-   * Shows the active terminal's agent panel, or closes it when it is showing.
-   */
-  public toggleAgent(): void {
-    this.handler()?.toggleAgent();
   }
 }

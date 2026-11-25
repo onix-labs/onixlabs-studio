@@ -6,6 +6,7 @@ import type {
   FindScope,
 } from '@shared/angular/components/find-panel/find-request';
 import { EditorSearchTarget, OpenEditorsFindAdapter } from './open-editors-find-adapter';
+import { SearchViewState } from './search-view-state';
 
 /**
  * What an {@link EditorSearch} reaches into: the tab's main editor and what to call an editor's text.
@@ -121,6 +122,11 @@ export class EditorSearch {
   );
 
   /**
+   * Gets what the view holds of the search, kept here so it outlives the view.
+   */
+  public readonly view: SearchViewState = new SearchViewState();
+
+  /**
    * Initializes a new instance of the {@link EditorSearch} class.
    * @param sources The tab's main editor, and what to call an editor's text.
    */
@@ -149,6 +155,15 @@ export class EditorSearch {
   }
 
   /**
+   * Determines whether the latest find was over an editor.
+   * @param editor The editor.
+   * @returns Returns true when it was.
+   */
+  public isOver(editor: MonacoApi.editor.ICodeEditor | null): boolean {
+    return editor !== null && untracked(this.editorState) === editor;
+  }
+
+  /**
    * Moves the search to another editor without a request, for a host whose one view follows what is in
    * front. What was found, and the selection the last request snapshotted, belong to the editor left
    * behind. Does nothing when the search is already there.
@@ -169,10 +184,12 @@ export class EditorSearch {
   }
 
   /**
-   * Hides the view; going, it clears its results and highlights.
+   * Hides the view and ends the search, clearing its results and highlights.
    */
   public close(): void {
     this.visibleState.set(false);
+    this.adapter.clear();
+    this.view.reset();
   }
 
   /**

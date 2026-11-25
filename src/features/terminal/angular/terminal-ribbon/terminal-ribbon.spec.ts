@@ -5,6 +5,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { ShellInfo } from '@shared/api/terminal-channels';
 import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
 import { MenuContribution, MenuEntry } from '@shared/angular/services/app-menu/app-menu-model';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
 import { TerminalShells } from '@shared/angular/services/terminal-shells/terminal-shells';
 import { TerminalCommands } from '@features/terminal/angular/terminal-commands/terminal-commands';
 import {
@@ -118,10 +120,14 @@ describe('TerminalRibbon', () => {
       setScrollLock: (value: boolean): void => void calls.push(`scrollLock:${value}`),
       scrollToBottom: (): void => void calls.push('scrollToBottom'),
       find: (): void => void calls.push('find'),
-      toggleAgent: (): void => void calls.push('toggleAgent'),
     };
     const shellsStub: Partial<TerminalShells> = {
       shells: signal<readonly ShellInfo[]>(SHELLS),
+    };
+
+    const docksStub: Partial<TabDocks> = {
+      toggle: (tabId: string | undefined, panelId: string): void =>
+        void calls.push(`toggle:${tabId ?? ''}:${panelId}`),
     };
 
     await TestBed.configureTestingModule({
@@ -129,6 +135,8 @@ describe('TerminalRibbon', () => {
       providers: [
         { provide: TerminalCommands, useValue: commandsStub },
         { provide: TerminalShells, useValue: shellsStub },
+        { provide: Tabs, useValue: { activeTabId: signal<string | undefined>('term-1') } },
+        { provide: TabDocks, useValue: docksStub },
       ],
     }).compileComponents();
 
@@ -266,7 +274,7 @@ describe('TerminalRibbon', () => {
     menu.dispatch('terminal.agent');
     button('Agent').click();
 
-    expect(calls).toEqual(['toggleAgent', 'toggleAgent']);
+    expect(calls).toEqual(['toggle:term-1:agent', 'toggle:term-1:agent']);
   });
 
   it('newShellItems_whenShellsAreInstalled_offerOnePerShell', () => {

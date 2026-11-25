@@ -14,7 +14,6 @@ import {
   OnDestroy,
   output,
   OutputEmitterRef,
-  signal,
   Signal,
   viewChild,
   WritableSignal,
@@ -35,7 +34,7 @@ import { FindOptions } from '@shared/angular/services/find-options/find-options'
 /**
  * Identifies which view the find panel shows.
  */
-type FindMode = 'find' | 'replace';
+export type FindMode = 'find' | 'replace';
 
 /**
  * The most match rows rendered in the results list at once. Beyond this the list adds no
@@ -101,9 +100,9 @@ export class FindPanel implements OnDestroy {
   public readonly findText: ModelSignal<string> = model<string>('');
 
   /**
-   * Holds the current replacement text.
+   * Gets the current replacement text, which a host may keep.
    */
-  protected readonly replaceText: WritableSignal<string> = signal<string>('');
+  public readonly replaceText: ModelSignal<string> = model<string>('');
 
   /**
    * Holds a value indicating whether the search is case-sensitive — remembered for the session, as
@@ -123,9 +122,10 @@ export class FindPanel implements OnDestroy {
   protected readonly regexp: WritableSignal<boolean> = inject(FindOptions).panel.regexp;
 
   /**
-   * Holds the requested view; forced to find when the surface does not support replace.
+   * Gets the requested view, which a host may keep; forced to find when the surface does not support
+   * replace.
    */
-  private readonly requestedMode: WritableSignal<FindMode> = signal<FindMode>('find');
+  public readonly requestedMode: ModelSignal<FindMode> = model<FindMode>('find');
 
   /**
    * Gets the previous-match icon.
