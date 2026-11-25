@@ -1,4 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
+import { TOOL_VIEW_AGENT_PANEL_ID } from '@shared/angular/services/tool-view-dock/tool-view-dock';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
 import { MENU_SEPARATOR, MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
 import { Log } from '@shared/angular/services/log/log';
@@ -13,7 +16,6 @@ import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import { ContainerGroup, ContainersCommands } from '../containers-commands/containers-commands';
 import { ContainersClient } from '../client/containers-client';
-import { ContainersAgentPanelState } from '../containers-agent/containers-agent-panel-state';
 
 /**
  * Describes a kind of container in the Show All and Clear dropdowns.
@@ -190,14 +192,21 @@ export class ContainersRibbon {
   );
 
   /**
-   * Holds whether the docked agent is showing (#969).
+   * Holds the tabs' docks, which the agent is shown and hidden in.
    */
-  private readonly agentPanel: ContainersAgentPanelState = inject(ContainersAgentPanelState);
+  private readonly docks: TabDocks = inject(TabDocks);
+
+  /**
+   * Holds the tab registry, which names this view's tab.
+   */
+  private readonly tabs: Tabs = inject(Tabs);
 
   /**
    * Gets whether the docked agent is showing.
    */
-  protected readonly agentShown: Signal<boolean> = this.agentPanel.visible;
+  protected readonly agentShown: Signal<boolean> = computed((): boolean =>
+    this.docks.isOpen(this.tabs.activeTabId(), TOOL_VIEW_AGENT_PANEL_ID),
+  );
 
   /**
    * Gets whether a shell can be offered at all: it needs the engine's own CLI on this machine, which
@@ -400,6 +409,6 @@ export class ContainersRibbon {
    * Shows or hides the docked agent.
    */
   protected onToggleAgent(): void {
-    this.agentPanel.toggle();
+    this.docks.toggle(this.tabs.activeTabId(), TOOL_VIEW_AGENT_PANEL_ID);
   }
 }

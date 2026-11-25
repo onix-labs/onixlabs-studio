@@ -20,16 +20,12 @@ import { CategoryItem, CategoryList } from '@shared/angular/components/category-
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Chip, ChipTone } from '@shared/angular/components/chip/chip';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
-import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { Panel } from '@shared/angular/components/panel-layout/panel';
-import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { SplitDivider } from '@shared/angular/components/split-panel/split-divider/split-divider';
 import { SplitPane } from '@shared/angular/components/split-panel/split-pane/split-pane';
 import { SplitPanel } from '@shared/angular/components/split-panel/split-panel/split-panel';
-import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
 import { DocumentVisibility } from '@shared/angular/services/document-visibility/document-visibility';
 import { Log } from '@shared/angular/services/log/log';
@@ -52,6 +48,12 @@ import { ContainerPullDialog } from '../container-run/container-pull-dialog';
 import { ContainerRunDialog } from '../container-run/container-run-dialog';
 import { PluginSummary } from '@shared/api/plugin-channels';
 import { ContainerEnginePrompt } from '@shared/angular/services/plugins/container-engine-prompt';
+import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
+import { linkDockPanel } from '@shared/angular/services/dock-layout/link-dock-panel';
+import {
+  CONTAINERS_DOCK_BLUEPRINT,
+  CONTAINERS_OUTPUT_PANEL_ID,
+} from '../containers-dock-blueprint';
 import { ContainerTerminals } from '../container-terminals/container-terminals';
 import {
   ContainerGroup,
@@ -63,10 +65,19 @@ import { ContainersClient } from '../client/containers-client';
 import { ReloadCoalescer } from './reload-coalescer';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
+import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
+import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
+import { DockTemplatePanel } from '@shared/angular/components/dock-layout/dock-template-panel/dock-template-panel';
+import { dockProviders } from '@shared/angular/services/dock-layout/dock-providers';
 import {
+  createDockTabRegistrar,
+  DockTabRegistrar,
+} from '@shared/angular/services/dock-layout/dock-tab-registration';
+import {
+  TOOL_VIEW_AGENT_PANEL_ID,
+  TOOL_VIEW_MAIN_PANEL_ID,
   toolViewConversationContext,
-  ToolViewAgentPanel,
-} from '@shared/angular/components/panels/tool-view-agent-panel/tool-view-agent-panel';
+} from '@shared/angular/services/tool-view-dock/tool-view-dock';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import {
@@ -76,7 +87,6 @@ import {
 import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { ContainersAgentCapabilities } from '../containers-agent/containers-agent-capabilities';
-import { ContainersAgentPanelState } from '../containers-agent/containers-agent-panel-state';
 
 /**
  * What the Containers tab's status strip reports.
@@ -241,21 +251,20 @@ const MENU_RESUME: string = 'resume';
     CdkMenuTrigger,
     Chip,
     Menu,
-    PanelLayout,
     SplitDivider,
     SplitPane,
     SplitPanel,
-    Panel,
     Table,
     TableRowDef,
     Terminal,
-    ToolPanel,
     TooltipTrigger,
     ContainerLogsPane,
     Checkbox,
     ContainerPullDialog,
     ContainerRunDialog,
-    ToolViewAgentPanel,
+    AgentConversationPanel,
+    DockContainer,
+    DockTemplatePanel,
   ],
   templateUrl: './containers-view.html',
   styleUrl: './containers-view.scss',
@@ -267,6 +276,7 @@ const MENU_RESUME: string = 'resume';
     AgentConversation,
     { provide: AGENT_CONVERSATION_KIND, useValue: 'containers' },
     ContainersAgentCapabilities,
+    ...dockProviders(CONTAINERS_DOCK_BLUEPRINT),
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -349,9 +359,20 @@ export class ContainersView implements OnInit, OnDestroy {
   );
 
   /**
-   * Holds whether the docked agent is showing, shared with the ribbon.
+   * Gets the identifier of the panel holding the view's content.
    */
-  protected readonly agentPanel: ContainersAgentPanelState = inject(ContainersAgentPanelState);
+  protected readonly mainPanel: string = TOOL_VIEW_MAIN_PANEL_ID;
+
+  /**
+   * Gets the identifier of the agent panel.
+   */
+  protected readonly agentPanel: string = TOOL_VIEW_AGENT_PANEL_ID;
+
+  /**
+   * Registers this tab's dock, so the ribbon can open and close its agent. Finalised in
+   * {@link ngOnInit} once the tab id is readable.
+   */
+  private readonly dockTab: DockTabRegistrar = createDockTabRegistrar();
 
   /**
    * Gets the context the Containers view's conversations are filed under.
@@ -359,9 +380,14 @@ export class ContainersView implements OnInit, OnDestroy {
   protected readonly agentContext: ConversationContext = toolViewConversationContext('containers');
 
   /**
-   * Gets the edges the terminal panel may dock to — the bottom by default, or a side.
+   * Gets the identifier of the output panel.
    */
-  protected readonly terminalEdges: readonly PanelEdge[] = ['bottom', 'right', 'left'];
+  protected readonly outputPanel: string = CONTAINERS_OUTPUT_PANEL_ID;
+
+  /**
+   * Holds what opens the dock's panels wherever they are.
+   */
+  private readonly dockReveal: DockReveal = inject(DockReveal);
 
   /**
    * Gets the Containers table's columns.
@@ -452,7 +478,7 @@ export class ContainersView implements OnInit, OnDestroy {
     signal<ContainerSummary | null>(null);
 
   /**
-   * Holds whether the user closed the Terminals panel. Opening another session shows it again.
+   * Holds whether the user closed the Output panel. Opening another session shows it again.
    */
   protected readonly terminalsHidden: WritableSignal<boolean> = signal<boolean>(false);
 
@@ -793,6 +819,13 @@ export class ContainersView implements OnInit, OnDestroy {
    * while active, and starts the status-strip running count.
    */
   public constructor() {
+    // The output is open while there are sessions to show, until the user closes it.
+    linkDockPanel(
+      CONTAINERS_OUTPUT_PANEL_ID,
+      (): boolean => this.terminals.sessions().length > 0 && !this.terminalsHidden(),
+      (open: boolean): void => this.terminalsHidden.set(!open),
+    );
+
     // Instantiating the status contribution starts (and keeps) the running-container count in the
     // shared status strip for the session.
     inject(ContainersStatus);
@@ -910,6 +943,7 @@ export class ContainersView implements OnInit, OnDestroy {
    */
   public ngOnInit(): void {
     this.statusHost.register(this.tabId());
+    this.dockTab.register(this.tabId());
     this.agentHost.register(this.tabId());
   }
 
@@ -961,10 +995,11 @@ export class ContainersView implements OnInit, OnDestroy {
   }
 
   /**
-   * Hides the Terminals panel, keeping its sessions; the next session opened shows it again.
+   * Shows the Output panel, whose sessions are kept while it is closed.
    */
-  protected hideTerminals(): void {
-    this.terminalsHidden.set(true);
+  private showOutput(): void {
+    this.terminalsHidden.set(false);
+    this.dockReveal.open(CONTAINERS_OUTPUT_PANEL_ID);
   }
 
   /**
@@ -1409,8 +1444,8 @@ export class ContainersView implements OnInit, OnDestroy {
    */
   protected viewLogs(container: ContainerSummary): void {
     this.log.info('containers.view', 'View logs', this.displayName(container), container.id);
-    this.terminalsHidden.set(false);
     this.terminals.openLogs(`Logs: ${this.displayName(container)}`, container.id);
+    this.showOutput();
   }
 
   /**
@@ -1425,11 +1460,11 @@ export class ContainersView implements OnInit, OnDestroy {
       return;
     }
     this.log.info('containers.view', 'Open shell', this.displayName(container), container.id);
-    this.terminalsHidden.set(false);
     this.terminals.open(
       `${this.displayName(container)} — shell`,
       `"${cli}"${this.engineHostFlag()} exec -it ${container.id} ${this.shellCommand()}`,
     );
+    this.showOutput();
   }
 
   /**
