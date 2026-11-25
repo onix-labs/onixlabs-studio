@@ -23,15 +23,23 @@ import { ModelManagerSummary, ModelManagerView } from '../model-manager-view/mod
 import { PersonaSection } from '../persona/persona';
 import { SkillLibrarySection } from '../skill-library/skill-library';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
-import { Panel } from '@shared/angular/components/panel-layout/panel';
-import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { SplitDivider } from '@shared/angular/components/split-panel/split-divider/split-divider';
 import { SplitPane } from '@shared/angular/components/split-panel/split-pane/split-pane';
 import { SplitPanel } from '@shared/angular/components/split-panel/split-panel/split-panel';
+import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
+import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
+import { DockTemplatePanel } from '@shared/angular/components/dock-layout/dock-template-panel/dock-template-panel';
+import { dockProviders } from '@shared/angular/services/dock-layout/dock-providers';
 import {
+  createDockTabRegistrar,
+  DockTabRegistrar,
+} from '@shared/angular/services/dock-layout/dock-tab-registration';
+import {
+  TOOL_VIEW_AGENT_PANEL_ID,
+  TOOL_VIEW_MAIN_PANEL_ID,
   toolViewConversationContext,
-  ToolViewAgentPanel,
-} from '@shared/angular/components/panels/tool-view-agent-panel/tool-view-agent-panel';
+  toolViewDockBlueprint,
+} from '@shared/angular/services/tool-view-dock/tool-view-dock';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import {
@@ -40,7 +48,6 @@ import {
 } from '@shared/angular/services/agent-hosts/agent-host-registration';
 import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import { AiManagerAgentCapabilities } from '../ai-manager-agent/ai-manager-agent-capabilities';
-import { AiManagerAgentPanelState } from '../ai-manager-agent/ai-manager-agent-panel-state';
 import { AiManagerSidebar } from '../ai-manager-sidebar/ai-manager-sidebar';
 import { AiManagerSidebarState } from '../ai-manager-sidebar/ai-manager-sidebar-state';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -75,12 +82,12 @@ export interface LibraryCounts {
     ModelManagerView,
     PersonaSection,
     SkillLibrarySection,
-    Panel,
-    PanelLayout,
     SplitDivider,
     SplitPane,
     SplitPanel,
-    ToolViewAgentPanel,
+    AgentConversationPanel,
+    DockContainer,
+    DockTemplatePanel,
   ],
   // The agent and its conversation live on the VIEW, not the docked panel (#967), so a run outlives
   // the panel being closed and the sub-view being switched.
@@ -90,6 +97,7 @@ export interface LibraryCounts {
     { provide: AGENT_CONVERSATION_KIND, useValue: 'models' },
     AiManagerAgentCapabilities,
     AiManagerSidebarState,
+    ...dockProviders(toolViewDockBlueprint('ai-manager')),
   ],
   templateUrl: './ai-manager-view.html',
   styleUrl: './ai-manager-view.scss',
@@ -135,9 +143,20 @@ export class AiManagerView implements OnInit {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Holds whether the docked agent is showing, shared with the ribbon.
+   * Gets the identifier of the panel holding the view's content.
    */
-  protected readonly agentPanel: AiManagerAgentPanelState = inject(AiManagerAgentPanelState);
+  protected readonly mainPanel: string = TOOL_VIEW_MAIN_PANEL_ID;
+
+  /**
+   * Gets the identifier of the agent panel.
+   */
+  protected readonly agentPanel: string = TOOL_VIEW_AGENT_PANEL_ID;
+
+  /**
+   * Registers this tab's dock, so the ribbon can open and close its agent. Finalised in
+   * {@link ngOnInit} once the tab id is readable.
+   */
+  private readonly dockTab: DockTabRegistrar = createDockTabRegistrar();
 
   /**
    * Gets the context the AI Manager's conversations are filed under.
@@ -197,6 +216,7 @@ export class AiManagerView implements OnInit {
     // Every showing opens where it was left, unless something opened it at a section.
     this.navigation.begin();
     this.statusHost.register(this.tabId());
+    this.dockTab.register(this.tabId());
     this.agentHost.register(this.tabId());
   }
 }

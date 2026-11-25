@@ -22,8 +22,13 @@
   <app-split-divider />
 
   <app-split-pane>
-    <app-panel-layout>
-      <div main class="plugin-manager__main">
+    <ng-template
+      [appDockPanel]="mainPanel"
+      panelTitle="Plugins"
+      [panelIcon]="Icon.PLUGINS"
+      panelRole="main"
+    >
+      <div class="plugin-manager__main">
         <header class="plugin-manager__header">
           <h2 class="plugin-manager__title section-label">{{ heading() }}</h2>
           <p class="plugin-manager__subtitle">{{ summary() }}</p>
@@ -97,27 +102,24 @@
           </td>
         </ng-template>
       </div>
+    </ng-template>
 
-      <!-- The Plugin Manager's own agent (#968), docked on the right. It mounts on first show and stays
-       mounted, so closing it keeps its conversation. -->
-      @if (agentPanel.mounted()) {
-        <app-panel
-          panelId="agent"
-          defaultEdge="right"
-          [visible]="agentPanel.visible()"
-          [defaultSize]="360"
-          [minSize]="240"
-          [maxSize]="900"
-        >
-          <app-tool-view-agent-panel
-            surface="plugins"
-            [context]="agentContext"
-            [tabId]="tabId()"
-            [isActive]="isActive() && agentPanel.visible()"
-            (closed)="agentPanel.hide()"
-          />
-        </app-panel>
-      }
-    </app-panel-layout>
+    <!-- The Plugin Manager's own agent (#968). -->
+    <ng-template
+      [appDockPanel]="agentPanel"
+      panelTitle="Agent"
+      [panelIcon]="Icon.AGENT"
+      [defaultSize]="360"
+      [maxSize]="900"
+    >
+      <app-agent-conversation-panel
+        surface="plugins"
+        [context]="agentContext"
+        [tabId]="tabId()"
+        [isActive]="isActive()"
+      />
+    </ng-template>
+
+    <app-dock-container />
   </app-split-pane>
 </app-split-panel>
