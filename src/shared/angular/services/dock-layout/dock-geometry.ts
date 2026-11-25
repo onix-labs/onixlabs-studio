@@ -58,7 +58,7 @@ export class DockGeometry {
   private workspace: HTMLElement | null = null;
 
   /**
-   * Counts the interactive resizes in progress (a splitter drag, chiefly), so layout-reading work
+   * Counts the interactive resizes in progress (a divider drag, chiefly), so layout-reading work
    * can wait for the gesture to finish instead of thrashing per frame.
    */
   private readonly interactiveResizes: WritableSignal<number> = signal<number>(0);
@@ -98,9 +98,13 @@ export class DockGeometry {
   /**
    * Removes a tab group from the registry.
    * @param stackId The identifier of the stack to remove.
+   * @param element The element it was registered with, for a caller whose stack may already have been
+   * registered again with another; omitted removes it whatever its element.
    */
-  public unregisterGroup(stackId: string): void {
-    this.groups.delete(stackId);
+  public unregisterGroup(stackId: string, element?: HTMLElement): void {
+    if (element === undefined || this.groups.get(stackId)?.element === element) {
+      this.groups.delete(stackId);
+    }
   }
 
   /**

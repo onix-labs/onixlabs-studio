@@ -55,6 +55,11 @@ export class DockOverlay {
   protected readonly hotEdge: Signal<DockSide | null> = this.drag.hotEdge;
 
   /**
+   * Gets which application edges the drag may be dropped on.
+   */
+  protected readonly legalEdges: Signal<Readonly<Record<DockSide, boolean>>> = this.drag.legalEdges;
+
+  /**
    * Gets the workspace rectangle.
    */
   protected readonly workspace: Signal<Rect | null> = this.drag.workspace;

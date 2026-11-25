@@ -6,6 +6,7 @@
     [class.table--rows]="gridlines() !== 'none'"
     [class.table--grid]="gridlines() === 'full'"
     [class.table--dark-lines]="gridlineTone() === 'dark'"
+    [attr.data-hidden]="hiddenAttribute()"
     [style]="alignStyles()"
     [style.inline-size]="resizedTableWidth()"
     [style.min-inline-size]="sharedMinWidth()"

@@ -8,6 +8,7 @@ import { ExplorerExclusions } from '@shared/angular/services/explorer-filter/exp
 import { SearchFileFilter } from '@shared/api/search-channels';
 import { SearchAdapter, SearchReplaceOutcome } from './search-adapter';
 import { SearchView } from './search-view';
+import { SearchViewState } from './search-view-state';
 
 /**
  * A search adapter that records what the view asks of it and lists whatever it is told to.
@@ -280,12 +281,75 @@ describe('SearchView (#1007)', () => {
     );
   });
 
+  it('aNewRevision_searchesAgain_onlyOnceSomethingHasBeenSearchedFor', async () => {
+    fixture.componentRef.setInput('revision', 1);
+    await fixture.whenStable();
+    expect(adapter.queries).toEqual([]);
+
+    await ask({ mode: 'find', scope: 'file', seed: 'todo' });
+    const before: number = adapter.queries.length;
+    fixture.componentRef.setInput('revision', 2);
+    await fixture.whenStable();
+
+    expect(adapter.queries.length).toBe(before + 1);
+    expect(adapter.queries.at(-1)?.text).toBe('todo');
+  });
+
   it('clearsTheAdapter_whenItGoes', () => {
     adapter.matches.set([{ line: 1, column: 1, before: '', text: 'x', after: '' }]);
 
     fixture.destroy();
 
     expect(adapter.matches()).toEqual([]);
+  });
+
+  describe('with a search its host keeps', () => {
+    let state: SearchViewState;
+
+    beforeEach(async () => {
+      state = new SearchViewState();
+      fixture.componentRef.setInput('state', state);
+      fixture.componentRef.setInput('request', {
+        mode: 'replace',
+        scope: 'file',
+        seed: 'needle',
+        selection: null,
+      });
+      await fixture.whenStable();
+      state.replacement.set('pin');
+    });
+
+    it('theNextView_showsIt_withoutAnsweringTheRequestAgain', async () => {
+      const asked: number = adapter.queries.length;
+      state.draft.set('typed since');
+
+      const next: ComponentFixture<SearchView> = TestBed.createComponent(SearchView);
+      next.componentRef.setInput('adapter', adapter);
+      next.componentRef.setInput('scopes', ['file', 'selection']);
+      next.componentRef.setInput('state', state);
+      next.componentRef.setInput('request', fixture.componentInstance.request());
+      fixture.destroy();
+      await next.whenStable();
+
+      expect(state.draft()).toBe('typed since');
+      expect(state.replacement()).toBe('pin');
+      expect(adapter.queries).toHaveLength(asked);
+    });
+
+    it('theNextView_searchesAgain_whenTheHostMovedTheSearchMeanwhile', async () => {
+      const asked: number = adapter.queries.length;
+      fixture.destroy();
+
+      const next: ComponentFixture<SearchView> = TestBed.createComponent(SearchView);
+      next.componentRef.setInput('adapter', adapter);
+      next.componentRef.setInput('scopes', ['file', 'selection']);
+      next.componentRef.setInput('state', state);
+      next.componentRef.setInput('revision', 1);
+      await next.whenStable();
+
+      expect(adapter.queries).toHaveLength(asked + 1);
+      expect(adapter.queries.at(-1)?.text).toBe('needle');
+    });
   });
 });
 

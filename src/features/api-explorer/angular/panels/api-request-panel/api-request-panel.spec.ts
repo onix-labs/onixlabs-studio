@@ -1,8 +1,10 @@
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import type * as MonacoApi from 'monaco-editor';
 import type { MockInstance } from 'vitest';
 import type { ApiRequest, HttpOutcome, HttpResponse } from '@shared/api/api-client-types';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { ApiFind } from '../../api-find/api-find';
 import { ApiRequestOpener } from '../../api-request-opener/api-request-opener';
 import { ApiWorkspace } from '../../api-workspace/api-workspace';
 import { ApiRequestPanel } from './api-request-panel';
@@ -12,6 +14,7 @@ import { ApiRequestPanel } from './api-request-panel';
  * are Monaco, which jsdom cannot host.
  */
 interface PanelHandlers {
+  onBodyEditor(editor: MonacoApi.editor.ICodeEditor): void;
   request(): ApiRequest | undefined;
   sending(): boolean;
   outcome(): HttpOutcome | null;
@@ -107,16 +110,25 @@ describe('ApiRequestPanel', () => {
 
   let workspace: FakeWorkspace;
   let retitled: string[];
+  let attached: [string, MonacoApi.editor.ICodeEditor][];
   let fixture: ComponentFixture<ApiRequestPanel>;
   let panel: PanelHandlers;
 
   beforeEach(() => {
     workspace = new FakeWorkspace(request);
     retitled = [];
+    attached = [];
     TestBed.overrideComponent(ApiRequestPanel, { set: { template: '', imports: [] } });
     TestBed.configureTestingModule({
       providers: [
         { provide: ApiWorkspace, useValue: workspace },
+        {
+          provide: ApiFind,
+          useValue: {
+            attach: (id: string, editor: MonacoApi.editor.ICodeEditor): void =>
+              void attached.push([id, editor]),
+          },
+        },
         {
           provide: ApiRequestOpener,
           useValue: { retitle: (_id: string, name: string): void => void retitled.push(name) },
@@ -334,26 +346,13 @@ describe('ApiRequestPanel', () => {
     });
   });
 
-  describe('teardown', () => {
-    it('destroy_releasesTheViewportObserver', () => {
-      const disconnect: ReturnType<typeof vi.fn<() => void>> = vi.fn<() => void>();
-      class RecordingObserver {
-        public observe(): void {
-          /* jsdom has no layout to observe */
-        }
+  describe('find', () => {
+    it('onBodyEditor_offersTheBodyToTheExplorersFind', () => {
+      const editor: MonacoApi.editor.ICodeEditor = {} as MonacoApi.editor.ICodeEditor;
 
-        public disconnect(): void {
-          disconnect();
-        }
-      }
-      vi.stubGlobal('ResizeObserver', RecordingObserver);
-      const observed: ComponentFixture<ApiRequestPanel> = TestBed.createComponent(ApiRequestPanel);
-      observed.componentRef.setInput('panel', { id: 'request-1' });
+      panel.onBodyEditor(editor);
 
-      observed.destroy();
-
-      expect(disconnect).toHaveBeenCalledOnce();
-      vi.unstubAllGlobals();
+      expect(attached).toEqual([['request-1', editor]]);
     });
   });
 });

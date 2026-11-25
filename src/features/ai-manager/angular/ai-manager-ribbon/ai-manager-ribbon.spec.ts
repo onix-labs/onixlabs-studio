@@ -1,3 +1,5 @@
+import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { SkillTransfer } from '@shared/angular/services/skills/skill-transfer';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
@@ -16,7 +18,6 @@ import {
   ModelManagerCommandHandler,
   ModelManagerCommands,
 } from '../model-manager-commands/model-manager-commands';
-import { AiManagerAgentPanelState } from '../ai-manager-agent/ai-manager-agent-panel-state';
 import { AiManagerRibbon } from './ai-manager-ribbon';
 
 /**
@@ -201,13 +202,14 @@ describe('AiManagerRibbon (#948)', () => {
   it('agent_isTheLastButton_andTogglesTheDockedAgent', () => {
     // #967: the Agent group goes last on every tool view's ribbon.
     mount('persona');
-    const state: AiManagerAgentPanelState = TestBed.inject(AiManagerAgentPanelState);
+    const toggled: [string | undefined, string][] = [];
+    vi.spyOn(TestBed.inject(TabDocks), 'toggle').mockImplementation(
+      (tabId: string | undefined, panelId: string): void => void toggled.push([tabId, panelId]),
+    );
     expect(labels().at(-1)).toBe('Agent');
-    expect(state.visible()).toBe(false);
 
     press('Agent');
 
-    expect(state.visible()).toBe(true);
-    expect(state.mounted()).toBe(true);
+    expect(toggled).toEqual([[TestBed.inject(Tabs).activeTabId(), 'agent']]);
   });
 });

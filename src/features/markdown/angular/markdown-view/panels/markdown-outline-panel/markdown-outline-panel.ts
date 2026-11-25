@@ -7,14 +7,11 @@ import {
   inject,
   Signal,
 } from '@angular/core';
-import { Icon } from '@shared/angular/icons/icon';
 import { Log } from '@shared/angular/services/log/log';
 import {
   MarkdownCommands,
   OutlineHeading,
 } from '@shared/angular/services/markdown-commands/markdown-commands';
-import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markdown-panels';
-import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 
 /**
  * Fixed height, in pixels, of each outline row. The connector and marker geometry assume uniform rows.
@@ -139,22 +136,11 @@ function buildConnectorPath(rows: readonly OutlineHeading[]): string {
  */
 @Component({
   selector: 'app-markdown-outline-panel',
-  imports: [ToolPanel],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './markdown-outline-panel.html',
   styleUrl: './markdown-outline-panel.scss',
 })
 export class MarkdownOutlinePanel {
-  /**
-   * Gets the icon set, exposed for the template.
-   */
-  protected readonly Icon: typeof Icon = Icon;
-
-  /**
-   * Holds the markdown panel registry the tool panel's close button dismisses this panel through.
-   */
-  protected readonly panels: MarkdownPanels = inject(MarkdownPanels);
-
   /**
    * Holds the markdown command registry publishing the active editor's outline and active heading.
    */

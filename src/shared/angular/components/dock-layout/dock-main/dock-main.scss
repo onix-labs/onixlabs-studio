@@ -1,0 +1,8 @@
+// An empty cell the layout sizes; the container draws the content over it, by this anchor.
+:host {
+  display: block;
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 0;
+  anchor-name: --dock-main;
+}

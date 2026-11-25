@@ -6,8 +6,8 @@ import type { ShellInfo } from '@shared/api/terminal-channels';
 import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
 import { MenuContribution, MenuEntry } from '@shared/angular/services/app-menu/app-menu-model';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
 import { TerminalShells } from '@shared/angular/services/terminal-shells/terminal-shells';
-import { TerminalAgents } from '@features/terminal/angular/terminal-agents/terminal-agents';
 import { TerminalCommands } from '@features/terminal/angular/terminal-commands/terminal-commands';
 import {
   ShellFamily,
@@ -35,8 +35,6 @@ describe('TerminalRibbon', () => {
   let menu: AppMenu;
   let calls: string[];
   let scrollLocked: WritableSignal<boolean>;
-  let activeTabId: WritableSignal<string | undefined>;
-  let toggledAgents: string[];
   let shellFamily: WritableSignal<ShellFamily | null>;
 
   /**
@@ -105,10 +103,8 @@ describe('TerminalRibbon', () => {
 
   beforeEach(async () => {
     calls = [];
-    toggledAgents = [];
     scrollLocked = signal<boolean>(false);
     shellFamily = signal<ShellFamily | null>('posix');
-    activeTabId = signal<string | undefined>('term-1');
     const commandsStub: Partial<TerminalCommands> = {
       scrollLocked,
       shellFamily,
@@ -128,18 +124,19 @@ describe('TerminalRibbon', () => {
     const shellsStub: Partial<TerminalShells> = {
       shells: signal<readonly ShellInfo[]>(SHELLS),
     };
-    const agentsStub: Partial<TerminalAgents> = {
-      toggle: (id: string): void => void toggledAgents.push(id),
+
+    const docksStub: Partial<TabDocks> = {
+      toggle: (tabId: string | undefined, panelId: string): void =>
+        void calls.push(`toggle:${tabId ?? ''}:${panelId}`),
     };
-    const tabsStub: Partial<Tabs> = { activeTabId };
 
     await TestBed.configureTestingModule({
       imports: [TerminalRibbon],
       providers: [
         { provide: TerminalCommands, useValue: commandsStub },
         { provide: TerminalShells, useValue: shellsStub },
-        { provide: TerminalAgents, useValue: agentsStub },
-        { provide: Tabs, useValue: tabsStub },
+        { provide: Tabs, useValue: { activeTabId: signal<string | undefined>('term-1') } },
+        { provide: TabDocks, useValue: docksStub },
       ],
     }).compileComponents();
 
@@ -273,19 +270,11 @@ describe('TerminalRibbon', () => {
     expect(calls).toEqual(['scrollLock:true']);
   });
 
-  it('menu_whenAgentIsChosen_togglesTheActiveTabsPanel', () => {
+  it('agent_fromTheMenuOrTheButton_togglesTheActiveTerminalsPanel', () => {
     menu.dispatch('terminal.agent');
-
-    expect(toggledAgents).toEqual(['term-1']);
-  });
-
-  it('agent_whenNoTabIsActive_doesNothing', () => {
-    activeTabId.set(undefined);
-    fixture.detectChanges();
-
     button('Agent').click();
 
-    expect(toggledAgents).toEqual([]);
+    expect(calls).toEqual(['toggle:term-1:agent', 'toggle:term-1:agent']);
   });
 
   it('newShellItems_whenShellsAreInstalled_offerOnePerShell', () => {

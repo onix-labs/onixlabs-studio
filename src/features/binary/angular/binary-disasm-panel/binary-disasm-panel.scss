@@ -4,8 +4,7 @@
   min-height: 0;
 }
 
-// Fills the shared tool panel's flush body, which is a plain block: the editor inside is absolutely
-// positioned against this element, so it must take the body's full height rather than flex within it.
+// Fills the panel: the editor inside is absolutely positioned against this element.
 .disasm__body {
   position: relative;
   height: 100%;

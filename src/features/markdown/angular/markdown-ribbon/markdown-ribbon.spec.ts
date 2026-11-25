@@ -4,6 +4,7 @@ import {
   MarkdownCommandHandler,
   MarkdownCommands,
 } from '@shared/angular/services/markdown-commands/markdown-commands';
+import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
 import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markdown-panels';
 import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
 import { MenuContribution, MenuEntry } from '@shared/angular/services/app-menu/app-menu-model';
@@ -142,11 +143,17 @@ describe('MarkdownRibbon', () => {
     // The Outline toggle is only enabled when the document has headings to outline.
     TestBed.inject(MarkdownCommands).setOutline([{ id: 'h1', level: 1, text: 'Title', index: 0 }]);
     fixture.detectChanges();
-    expect(panels.active().has('outline')).toBe(false);
+    const toggled: string[] = [];
+    TestBed.inject(TabDocks).register('doc-1', {
+      isOpen: (): boolean => false,
+      open: (): void => undefined,
+      close: (): void => undefined,
+      toggle: (panelId: string): void => void toggled.push(panelId),
+    });
 
     toolButton('Outline').click();
 
-    expect(panels.active().has('outline')).toBe(true);
+    expect(toggled).toEqual(['outline']);
   });
 
   it('outlineButton_whenNoHeadings_isDisabled', () => {

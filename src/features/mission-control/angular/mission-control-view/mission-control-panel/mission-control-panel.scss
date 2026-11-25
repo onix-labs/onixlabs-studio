@@ -1,4 +1,4 @@
-// The Mission Control left column: a header over a scrolling body that hosts the live agent rail. It
+// The Mission Control left column: a scrolling body that hosts the live agent rail, under its dock's title. It
 // paints no surface of its own — the hosting panel supplies it — so it reads as one piece with the rest
 // of the layout.
 :host {
@@ -7,21 +7,6 @@
   block-size: 100%;
   min-block-size: 0;
   color: var(--dock-title-foreground-color);
-}
-
-.panel__header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.9rem 0.85rem 0.6rem;
-}
-
-.panel__title {
-  flex: 1 1 auto;
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--dock-title-foreground-color--focused);
 }
 
 .panel__body {

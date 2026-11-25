@@ -32,6 +32,7 @@ import { Notifications } from '@shared/angular/services/notifications/notificati
 import { ReplaceFailure, ReplaceResponse, SearchFileFilter } from '@shared/api/search-channels';
 import { SearchAdapter, SearchReplaceOutcome } from './search-adapter';
 import { SearchResultsTree } from './search-results-tree';
+import { SearchViewMode, SearchViewState } from './search-view-state';
 import { FindOptions } from '@shared/angular/services/find-options/find-options';
 import { ExplorerExclusions } from '@shared/angular/services/explorer-filter/explorer-exclusions';
 
@@ -82,11 +83,6 @@ interface PendingReplace {
    */
   readonly files: number;
 }
-
-/**
- * Names the view's two forms, chosen by the strip's toggles.
- */
-export type SearchViewMode = 'find' | 'replace';
 
 /**
  * Studio's Find & Replace, as one view wherever it is asked for (#1007): the workspace's Search panel,
@@ -159,6 +155,35 @@ export class SearchView implements OnDestroy {
   public readonly request: InputSignal<FindRequest | null> = input<FindRequest | null>(null);
 
   /**
+   * Gets a number the host changes when what the adapter searches has changed under the view, which
+   * runs the search last asked for again, there.
+   */
+  public readonly revision: InputSignal<number> = input<number>(0);
+
+  /**
+   * Gets what the host keeps of the search for the view, so the search outlives it; null for a view that
+   * keeps its own, whose search ends with it.
+   */
+  public readonly state: InputSignal<SearchViewState | null> = input<SearchViewState | null>(null);
+
+  /**
+   * Holds the view's own state, for a host that keeps none.
+   */
+  private readonly own: SearchViewState = new SearchViewState();
+
+  /**
+   * Gets what is held of the search.
+   */
+  private readonly held: Signal<SearchViewState> = computed(
+    (): SearchViewState => this.state() ?? this.own,
+  );
+
+  /**
+   * Gets whether the find field takes the keyboard when the view is drawn.
+   */
+  public readonly focuses: InputSignal<boolean> = input<boolean>(true);
+
+  /**
    * Gets whether the host's text can be replaced; false hides the Replace toggle and keeps the view
    * to finding (a read-only editor).
    */
@@ -219,9 +244,12 @@ export class SearchView implements OnDestroy {
   );
 
   /**
-   * Holds which form the strip's toggles have chosen. Find, until the user asks to replace.
+   * Gets the form asked for.
+   * @returns Returns the signal holding it.
    */
-  private readonly requestedMode: WritableSignal<SearchViewMode> = signal<SearchViewMode>('find');
+  private get requestedMode(): WritableSignal<SearchViewMode> {
+    return this.held().mode;
+  }
 
   /**
    * Gets the form shown: the one chosen, or Find where nothing can be replaced.
@@ -231,19 +259,28 @@ export class SearchView implements OnDestroy {
   );
 
   /**
-   * Holds the find text in the field, which is not a search until it is asked for.
+   * Gets the text in the find field.
+   * @returns Returns the signal holding it.
    */
-  protected readonly draft: WritableSignal<string> = signal<string>('');
+  protected get draft(): WritableSignal<string> {
+    return this.held().draft;
+  }
 
   /**
-   * Holds the replacement text in the replace form's field.
+   * Gets the replacement text in the replace form's field.
+   * @returns Returns the signal holding it.
    */
-  protected readonly replacement: WritableSignal<string> = signal<string>('');
+  protected get replacement(): WritableSignal<string> {
+    return this.held().replacement;
+  }
 
   /**
-   * Holds the text last searched for, or null before any search — what an option change re-runs.
+   * Gets the text last searched for, or null before any search — what an option change re-runs.
+   * @returns Returns the signal holding it.
    */
-  private readonly searched: WritableSignal<string | null> = signal<string | null>(null);
+  private get searched(): WritableSignal<string | null> {
+    return this.held().searched;
+  }
 
   /**
    * Holds whether the search is case-sensitive — remembered for the session, as the other two
@@ -371,13 +408,28 @@ export class SearchView implements OnDestroy {
    * (the view is opened to be typed into) and answering each find request as it arrives.
    */
   public constructor() {
-    afterNextRender((): void => this.focusFind());
+    afterNextRender((): void => {
+      if (this.focuses()) {
+        this.focusFind();
+      }
+    });
 
     effect((): void => {
       const request: FindRequest | null = this.request();
-      if (request !== null) {
+      const held: SearchViewState = this.held();
+      if (request !== null && request !== held.answered) {
+        held.answered = request;
         untracked((): void => this.answer(request));
       }
+    });
+
+    effect((): void => {
+      const revision: number = this.revision();
+      const held: SearchViewState = this.held();
+      if (held.revision !== null && held.revision !== revision) {
+        untracked((): void => this.optionChanged());
+      }
+      held.revision = revision;
     });
   }
 
@@ -535,7 +587,9 @@ export class SearchView implements OnDestroy {
    * Clears the results when the view goes, so nothing stays highlighted behind it.
    */
   public ngOnDestroy(): void {
-    this.adapter().clear();
+    if (this.state() === null) {
+      this.adapter().clear();
+    }
   }
 
   /**

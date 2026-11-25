@@ -10,9 +10,13 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { By } from '@angular/platform-browser';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type * as MonacoApi from 'monaco-editor';
 import type { MockInstance } from 'vitest';
+import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
+import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
+import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
@@ -31,6 +35,7 @@ import { ChangeMargins } from '../change-margin/change-margins';
 import { CodeDocumentEditor } from '../code-document/code-document';
 import { CodeRunner } from '../code-runner/code-runner';
 import { CodeStatus } from '../code-status/code-status';
+import { CodeGeneratedPanel } from './code-generated-panel/code-generated-panel';
 import { CodeView } from './code-view';
 
 /**
@@ -121,6 +126,27 @@ class StubCodeDocument {
   public getPane(): FakePane {
     return this.pane;
   }
+}
+
+/**
+ * Stands in for the agent's conversation, whose chat needs a runtime the test environment lacks.
+ */
+@Component({ selector: 'app-agent-conversation-panel', template: '' })
+class StubConversationPanel {
+  public readonly tabId: InputSignal<string | undefined> = input<string>();
+  public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+  public readonly context: InputSignal<unknown> = input<unknown>();
+  public readonly language: InputSignal<string | undefined> = input<string>();
+}
+
+/**
+ * Stands in for the generated code, whose listing is Monaco.
+ */
+@Component({ selector: 'app-code-generated-panel', template: '' })
+class StubGeneratedPanel {
+  public readonly sourcePath: InputSignal<string | null> = input<string | null>(null);
+  public readonly caretLine: InputSignal<number | null> = input<number | null>(null);
+  public readonly editorCreated: OutputEmitterRef<unknown> = output<unknown>();
 }
 
 /**
@@ -230,8 +256,8 @@ describe('CodeView, around its document', () => {
     roots = [];
     cleared = [];
     TestBed.overrideComponent(CodeView, {
-      remove: { imports: [CodeDocumentEditor] },
-      add: { imports: [StubCodeDocument] },
+      remove: { imports: [AgentConversationPanel, CodeDocumentEditor, CodeGeneratedPanel] },
+      add: { imports: [StubCodeDocument, StubConversationPanel, StubGeneratedPanel] },
     });
     TestBed.configureTestingModule({
       providers: [
@@ -301,6 +327,88 @@ describe('CodeView, around its document', () => {
       await fixture.whenStable();
 
       expect(margins.attached).toEqual([]);
+    });
+  });
+
+  describe('its dock', () => {
+    let docks: TabDocks;
+
+    /**
+     * Reads what is written on the dock's tabs.
+     * @returns Returns the labels, in order.
+     */
+    function tabs(): readonly string[] {
+      return [...(fixture.nativeElement as HTMLElement).querySelectorAll('.dock-tab__label')].map(
+        (label: Element): string => (label.textContent ?? '').trim(),
+      );
+    }
+
+    beforeEach(async () => {
+      localStorage.clear();
+      await render();
+      docks = TestBed.inject(TabDocks);
+    });
+
+    it('opensWithTheEditorAndNothingElse', () => {
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('.dock-tab-group__title'),
+      ).toBeNull();
+    });
+
+    it('tabsThePanelsTogetherOnTheRight', async () => {
+      docks.open('tab-1', 'agent');
+      docks.open('tab-1', 'generated');
+      await fixture.whenStable();
+
+      expect(tabs()).toEqual(['Agent', 'Generated code']);
+    });
+
+    it('findInTheCode_opensInItsPlace_andEndsWhenClosedFromItsTitleBar', async () => {
+      const view: CodeView = fixture.componentInstance;
+      core().pane.editor = { getRawOptions: (): object => ({}), getModel: (): null => null };
+      docks.open('tab-1', 'agent');
+
+      view.openFind({ mode: 'find', scope: 'file', selection: null } as never, null);
+      await fixture.whenStable();
+      expect(tabs()).toEqual(['Agent', 'Find and Replace']);
+
+      docks.close('tab-1', 'find');
+      await fixture.whenStable();
+      view.openFind({ mode: 'find', scope: 'file', selection: null } as never, null);
+      expect(docks.isOpen('tab-1', 'find')).toBe(true);
+    });
+
+    it('findInTheGeneratedCode_opensBeneathIt_soBothAreInSight', async () => {
+      const view: CodeView = fixture.componentInstance;
+      docks.open('tab-1', 'generated');
+      await fixture.whenStable();
+      const listing: StubGeneratedPanel = fixture.debugElement.query(
+        By.directive(StubGeneratedPanel),
+      ).componentInstance as StubGeneratedPanel;
+      const editor: unknown = {
+        getRawOptions: (): object => ({ readOnly: true }),
+        getModel: (): null => null,
+      };
+      listing.editorCreated.emit(editor);
+
+      view.openFind({ mode: 'find', scope: 'file', selection: null } as never, editor as never);
+      await fixture.whenStable();
+
+      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('app-code-generated-panel')).not.toBeNull();
+      expect(host.querySelector('app-editor-search-panel')).not.toBeNull();
+    });
+
+    it('closing_endsTheRunTerminal', () => {
+      const dispose: MockInstance<TerminalBridge['dispose']> = vi.spyOn(
+        TestBed.inject(TerminalBridge),
+        'dispose',
+      );
+
+      fixture.destroy();
+
+      expect(dispose).toHaveBeenCalledWith('run-tab-1');
+      expect(docks.isOpen('tab-1', 'agent')).toBe(false);
     });
   });
 

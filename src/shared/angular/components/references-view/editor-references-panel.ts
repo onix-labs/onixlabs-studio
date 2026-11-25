@@ -6,8 +6,6 @@ import {
   output,
   OutputEmitterRef,
 } from '@angular/core';
-import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
-import { Icon } from '@shared/angular/icons/icon';
 import type {
   ReferenceItem,
   ReferenceList,
@@ -16,23 +14,18 @@ import { ReferencesView } from './references-view';
 
 /**
  * A tab's own References panel outside a workspace (#1014): the shared {@link ReferencesView} — the
- * same view the workspace's References panel shows — in the tool-panel chrome the tab's Find panel
- * wears. Its header's close button, or Escape inside it, asks the tab to hide it.
+ * same view the workspace's References panel shows —. Escape inside it asks the tab to
+ * hide it.
  */
 @Component({
   selector: 'app-editor-references-panel',
-  imports: [ToolPanel, ReferencesView],
+  imports: [ReferencesView],
   templateUrl: './editor-references-panel.html',
   styleUrl: './editor-references-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '(keydown.escape)': 'closed.emit()' },
 })
 export class EditorReferencesPanel {
-  /**
-   * Gets the icon set, exposed for the template.
-   */
-  protected readonly Icon: typeof Icon = Icon;
-
   /**
    * Gets the list the panel shows.
    */

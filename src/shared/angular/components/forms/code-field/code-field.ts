@@ -204,6 +204,12 @@ export class CodeField {
     output<readonly CodeFieldMarker[]>();
 
   /**
+   * Emits the Monaco editor when it has been created.
+   */
+  public readonly editorCreated: OutputEmitterRef<MonacoApi.editor.ICodeEditor> =
+    output<MonacoApi.editor.ICodeEditor>();
+
+  /**
    * Gets the editor options pinned over the settings-derived defaults: the field's chrome, with the
    * glyph margin on only while the text can be edited, for Studio's fix icon (#1016).
    */
@@ -367,6 +373,7 @@ export class CodeField {
     measure();
     report();
     this.editorReady.set(true);
+    this.editorCreated.emit(editor);
   }
 
   /**

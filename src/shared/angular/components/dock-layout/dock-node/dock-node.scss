@@ -6,26 +6,18 @@
   inline-size: 100%;
 }
 
+// The dock's dividers lie in the gaps between its groups, with pill ends.
 .dock-node__split {
-  display: flex;
-  flex: 1;
-  min-inline-size: 0;
-  min-block-size: 0;
-
-  &--row {
-    flex-direction: row;
-  }
-
-  &--col {
-    flex-direction: column;
-  }
+  --split-divider-radius: var(
+    --dock-divider-radius,
+    calc(0.125rem * var(--border-radius-multiplier))
+  );
 }
 
 .dock-node__pane {
   display: flex;
   min-inline-size: 2.625rem;
   min-block-size: 2rem;
-  overflow: hidden;
 }
 
 // Only leaf panes (those holding a tab group, not a nested split) are framed: a softly rounded cell
@@ -44,17 +36,15 @@
   background: transparent;
 }
 
-// A pane whose slot renders nothing — every panel it holds is unregistered, or waiting on something
-// this workspace does not have — takes no room at all. It keeps its place (and its weight) in the
-// tree so the layout is unchanged and the slot fills out again the moment its panels can be shown;
-// the minimum sizes have to go with the width, or the empty slot would still hold a gutter open.
+// A pane whose slot renders nothing — every panel it holds is unregistered, closed, or waiting on
+// something this workspace does not have — takes no room at all. It keeps its place (and its weight) in
+// the tree so the layout is unchanged and the slot fills out again the moment its panels can be shown.
 .dock-node__pane--empty {
-  min-inline-size: 0;
-  min-block-size: 0;
+  display: none;
 }
 
 // A collapsed pane shrinks to its strip's fixed size and lets the peek flyout escape its bounds to
-// overlay the neighbouring panes, sitting above them and the splitters while it is open.
+// overlay the neighbouring panes, sitting above them and the dividers while it is open.
 .dock-node__pane--collapsed {
   position: relative;
   z-index: 10;

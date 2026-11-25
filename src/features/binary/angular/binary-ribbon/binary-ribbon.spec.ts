@@ -1,13 +1,14 @@
+import { signal, WritableSignal } from '@angular/core';
 import { vi } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { WorkspaceChannel } from '@shared/api/workspace-channels';
+import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { BinaryDocumentEntry, BinaryDocuments } from '../binary-document/binary-document';
 import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
-import { BinaryPanels } from '../binary-panels/binary-panels';
 import { BinaryRibbon, formatBytes } from './binary-ribbon';
 
 /**
@@ -70,7 +71,7 @@ describe('BinaryRibbon', () => {
   let internals: BinaryRibbonInternals;
   let fixture: ComponentFixture<BinaryRibbon>;
   let documents: BinaryDocuments;
-  let panels: BinaryPanels;
+  let panels: Set<string>;
 
   beforeEach(async () => {
     (window as unknown as { bridge: Bridge }).bridge = fakeBridge();
@@ -79,7 +80,7 @@ describe('BinaryRibbon', () => {
     }).compileComponents();
 
     documents = TestBed.inject(BinaryDocuments);
-    panels = TestBed.inject(BinaryPanels);
+    panels = new Set<string>();
     fixture = TestBed.createComponent(BinaryRibbon);
     internals = fixture.componentInstance as unknown as BinaryRibbonInternals;
     await fixture.whenStable();
@@ -95,6 +96,17 @@ describe('BinaryRibbon', () => {
    */
   async function openDocument(): Promise<BinaryDocumentEntry> {
     const tab: Tab = documents.open('/ws/data.bin');
+    const opened: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(panels);
+    const set: (next: ReadonlySet<string>) => void = (next: ReadonlySet<string>): void => {
+      panels = new Set<string>(next);
+      opened.set(panels);
+    };
+    TestBed.inject(TabDocks).register(tab.id, {
+      isOpen: (panelId: string): boolean => opened().has(panelId),
+      open: (panelId: string): void => set(new Set<string>([...opened(), panelId])),
+      close: (): void => undefined,
+      toggle: (panelId: string): void => set(new Set<string>([...opened(), panelId])),
+    });
     await flush();
     return documents.get(tab.id)!;
   }
@@ -116,11 +128,11 @@ describe('BinaryRibbon', () => {
   });
 
   it('onToggleInspector_togglesThePanelForTheActiveTab', async () => {
-    const document: BinaryDocumentEntry = await openDocument();
+    await openDocument();
 
     expect(internals.inspectorShown()).toBe(false);
     internals.onToggleInspector();
-    expect(panels.isVisible(document.tabId, 'inspector')).toBe(true);
+    expect(panels.has('inspector')).toBe(true);
     expect(internals.inspectorShown()).toBe(true);
   });
 
@@ -212,14 +224,14 @@ describe('BinaryRibbon', () => {
   });
 
   it('panelButtons_whenPressed_toggleTheirPanelsForTheActiveTab', async () => {
-    const document: BinaryDocumentEntry = await openDocument();
+    await openDocument();
     fixture.detectChanges();
 
     button('Inspector').click();
     button('Agent').click();
 
-    expect(panels.isVisible(document.tabId, 'inspector')).toBe(true);
-    expect(panels.isVisible(document.tabId, 'agent')).toBe(true);
+    expect(panels.has('inspector')).toBe(true);
+    expect(panels.has('agent')).toBe(true);
   });
 
   it('insertButton_whenPressed_flipsBetweenInsertAndOverwrite', async () => {
@@ -250,9 +262,9 @@ describe('BinaryRibbon', () => {
     menu.dispatch('binary.inspector');
     menu.dispatch('binary.disassembly');
     menu.dispatch('binary.agent');
-    expect(panels.isVisible(document.tabId, 'inspector')).toBe(true);
-    expect(panels.isVisible(document.tabId, 'disassembly')).toBe(true);
-    expect(panels.isVisible(document.tabId, 'agent')).toBe(true);
+    expect(panels.has('inspector')).toBe(true);
+    expect(panels.has('disassembly')).toBe(true);
+    expect(panels.has('agent')).toBe(true);
   });
 
   it('commands_whenNoBinaryTabIsActive_doNothingRatherThanThrow', () => {

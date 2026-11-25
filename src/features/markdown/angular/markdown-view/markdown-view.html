@@ -1,75 +1,84 @@
-<app-panel-layout layoutKey="markdown">
+<ng-template
+  [appDockPanel]="documentPanel"
+  panelTitle="Document"
+  [panelIcon]="Icon.MARKDOWN"
+  panelRole="main"
+>
   <app-markdown-document
-    main
     [documentId]="tabId()"
     [isActive]="isActive()"
     (ready)="onReady()"
     (contentChange)="onContentChange()"
     (selectionChange)="onSelectionChange($event)"
   />
+</ng-template>
 
-  <!-- Each tool is its own panel so several can be open at once, tiling side by side. Each remembers
-       its own dock placement through the shared panel layout; which are open is per document. -->
-  @if (isOpen('outline')) {
-    <app-panel
-      panelId="outline"
-      defaultEdge="right"
-      [defaultSize]="320"
-      [minSize]="220"
-      [maxSize]="720"
-    >
-      <app-markdown-outline-panel />
-    </app-panel>
-  }
+<ng-template
+  appDockPanel="outline"
+  panelTitle="Outline"
+  [panelIcon]="Icon.OUTLINE"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="16"
+  [defaultInlineSize]="320"
+  [maxInlineSize]="720"
+>
+  <app-markdown-outline-panel />
+</ng-template>
 
-  @if (isOpen('review')) {
-    <app-panel
-      panelId="review"
-      defaultEdge="right"
-      [defaultSize]="320"
-      [minSize]="320"
-      [maxSize]="720"
-    >
-      <app-markdown-review-panel />
-    </app-panel>
-  }
+<ng-template
+  appDockPanel="review"
+  panelTitle="Review"
+  [panelIcon]="Icon.REVIEW"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="20"
+  [defaultInlineSize]="320"
+  [maxInlineSize]="720"
+>
+  <app-markdown-review-panel />
+</ng-template>
 
-  @if (isOpen('reader')) {
-    <app-panel
-      panelId="reader"
-      defaultEdge="right"
-      [defaultSize]="320"
-      [minSize]="220"
-      [maxSize]="720"
-    >
-      <app-markdown-reader-panel />
-    </app-panel>
-  }
+<ng-template
+  appDockPanel="reader"
+  panelTitle="Reader"
+  [panelIcon]="Icon.READER"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="16"
+  [defaultInlineSize]="320"
+  [maxInlineSize]="720"
+>
+  <app-markdown-reader-panel />
+</ng-template>
 
-  <!-- The agent panel mounts on first show; Mission Control registration is service-only (the view
-       provides the agent and registers it in ngOnInit), so an unopened panel costs no DOM. -->
-  @if (agentMounted()) {
-    <app-panel
-      panelId="agent"
-      defaultEdge="right"
-      [visible]="isOpen('agent')"
-      [defaultSize]="360"
-      [minSize]="240"
-      [maxSize]="900"
-    >
-      <app-markdown-agent-panel [documentId]="tabId()" />
-    </app-panel>
-  }
+<ng-template
+  appDockPanel="agent"
+  panelTitle="Agent"
+  [panelIcon]="Icon.AGENT"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="22.5"
+  [defaultInlineSize]="360"
+  [maxInlineSize]="900"
+>
+  <app-agent-conversation-panel [tabId]="tabId()" />
+</ng-template>
 
-  @if (isOpen('find')) {
-    <app-panel
-      panelId="find"
-      defaultEdge="right"
-      [defaultSize]="320"
-      [minSize]="260"
-      [maxSize]="520"
-    >
-      <app-find-panel [adapter]="findAdapter" (closed)="onFindClosed()" />
-    </app-panel>
-  }
-</app-panel-layout>
+<ng-template
+  appDockPanel="find"
+  panelTitle="Find and Replace"
+  [panelIcon]="Icon.SEARCH"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="16"
+  [defaultInlineSize]="320"
+  [maxInlineSize]="520"
+>
+  <app-find-panel
+    [focuses]="dockReveal.isInUse('find')"
+    [adapter]="findAdapter"
+    [keepsSearch]="true"
+    [(findText)]="findText"
+    [(replaceText)]="replaceText"
+    [(requestedMode)]="findMode"
+    (closed)="onFindClosed()"
+  />
+</ng-template>
+
+<app-dock-container />

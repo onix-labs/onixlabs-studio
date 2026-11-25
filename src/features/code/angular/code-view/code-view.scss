@@ -1,7 +1,6 @@
-// Monaco paints its own surface from the registered theme; the editor/terminal/agent layout is owned
-// by the shared <app-panel-layout>. This stylesheet only sizes the view's host and the editor in the
-// main slot. The host background matches the editor surface so any brief gap before the editor lays
-// out reads as part of the page.
+// Monaco paints its own surface from the registered theme. This stylesheet only sizes the view's host
+// and the editor in the dock's main group, whose background matches the editor surface so any brief gap
+// before the editor lays out reads as part of the page.
 
 :host {
   --code-view-background: var(--gray-100);
@@ -17,8 +16,9 @@
   --code-view-background: var(--gray-900);
 }
 
-// The editor fills the inner panel layout's centre (main) area.
+// The editor fills the main group.
 .code-layout__editor {
+  background: var(--code-view-background);
   position: relative;
   block-size: 100%;
   min-inline-size: 0;

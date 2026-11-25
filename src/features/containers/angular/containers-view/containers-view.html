@@ -1,27 +1,32 @@
-<app-panel-layout layoutKey="containers">
-  <!-- The kinds of thing the engine holds (#952): search and the running-only switch, then Containers
-       and Images. Part of the view, so it can be resized but not closed or moved. -->
-  <app-panel
-    panelId="containers-kinds"
-    defaultEdge="left"
-    [allowedEdges]="sideEdges"
-    [movable]="false"
-    [defaultSize]="240"
-    [minSize]="240"
-    [maxSize]="480"
-  >
-    <app-category-list
-      title="Containers"
-      [searchable]="true"
-      searchPlaceholder="Search…"
-      [(query)]="query"
-      [items]="kindItems()"
-      [selectedId]="kind()"
-      (selectedIdChange)="showKind($event)"
-    />
-  </app-panel>
+<!-- The kinds of thing the engine holds (#952): search and the running-only switch, then Containers
+     and Images. It can be moved and collapsed, but not closed. -->
+<ng-template
+  [appDockPanel]="listPanel"
+  panelTitle="Containers"
+  [panelIcon]="Icon.CONTAINERS"
+  [sides]="DockSides.Horizontal"
+  [closable]="false"
+  [minInlineSize]="15"
+  [defaultInlineSize]="240"
+  [maxInlineSize]="480"
+>
+  <app-category-list
+    [searchable]="true"
+    searchPlaceholder="Search…"
+    [(query)]="query"
+    [items]="kindItems()"
+    [selectedId]="kind()"
+    (selectedIdChange)="showKind($event)"
+  />
+</ng-template>
 
-  <div main class="containers-main">
+<ng-template
+  [appDockPanel]="mainPanel"
+  panelTitle="Containers"
+  [panelIcon]="Icon.CONTAINERS"
+  panelRole="main"
+>
+  <div class="containers-main">
     @if (available() === null) {
       <div class="containers__empty">
         <app-icon class="containers__empty-icon" [icon]="Icon.CONTAINERS" />
@@ -29,7 +34,7 @@
       </div>
     } @else if (available() === false) {
       <!-- Nothing installed and nothing running are both "no dashboard", and need opposite things said
-           about them: one is fixed by installing something, the other by starting it. -->
+       about them: one is fixed by installing something, the other by starting it. -->
       @if (noEngineInstalled()) {
         <div class="containers__empty">
           <app-icon class="containers__empty-icon" [icon]="Icon.CONTAINERS" />
@@ -39,7 +44,7 @@
               {{ candidate.name }} provides one. Studio talks to whichever engine you install.
             </p>
             <!-- "start" only clears the row's trailing-edge margin; the empty state's column then
-                 centres it like the text above. -->
+             centres it like the text above. -->
             <app-button-row align="start">
               <app-button
                 variant="solid"
@@ -240,108 +245,98 @@
       }
     }
   </div>
+</ng-template>
 
-  <!-- The Containers view's own agent (#969), docked on the right. It mounts on first show and stays
-       mounted, so closing it keeps its conversation. -->
-  @if (agentPanel.mounted()) {
-    <app-panel
-      panelId="agent"
-      defaultEdge="right"
-      [visible]="agentPanel.visible()"
-      [defaultSize]="360"
-      [minSize]="240"
-      [maxSize]="900"
-    >
-      <app-tool-view-agent-panel
-        surface="containers"
-        [context]="agentContext"
-        [tabId]="tabId()"
-        [isActive]="isActive() && agentPanel.visible()"
-        (closed)="agentPanel.hide()"
-      />
-    </app-panel>
-  }
+<!-- The Containers view's own agent (#969). -->
+<ng-template
+  [appDockPanel]="agentPanel"
+  panelTitle="Agent"
+  [panelIcon]="Icon.AGENT"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="22.5"
+  [defaultInlineSize]="360"
+  [maxInlineSize]="900"
+>
+  <app-agent-conversation-panel surface="containers" [tabId]="tabId()" [isActive]="isActive()" />
+</ng-template>
 
-  <!-- A row's further actions, shared by every row: the ⋮ button records which container it opened
-       for before the menu shows. -->
-  <app-menu #rowMenu [items]="rowMenuItems()" placement="down-end" (selected)="onRowMenu($event)" />
-
-  <!-- Pulling an image and running a container (#974). -->
-  <app-container-pull-dialog [open]="pullOpen()" (closed)="onPullClosed($event)" />
-  <app-container-run-dialog
-    [open]="runImage() !== null"
-    [initialImage]="runImage() ?? ''"
-    (closed)="onRunClosed($event)"
-  />
-
-  <!-- The logs/shell terminals opened from container rows dock at the bottom (P5): a titled panel, as a
-       code tab's Terminal is, that can be closed, moved and resized. Closing it hides the sessions;
-       opening another shows it again. Reuses the shared terminal pane: each `run` session's PTY is
-       spawned by ContainerTerminals and this pane attaches to it by id. -->
-  <app-panel
-    panelId="terminal"
-    defaultEdge="bottom"
-    [allowedEdges]="terminalEdges"
-    [visible]="terminals.sessions().length > 0 && !terminalsHidden()"
-    [defaultSize]="260"
-    [minSize]="140"
-    [maxSize]="640"
-  >
-    <app-tool-panel
-      title="Output"
-      [icon]="Icon.TERMINAL"
-      closeLabel="Close output"
-      [flush]="true"
-      (closed)="hideTerminals()"
-    >
-      <div class="containers__terminal">
-        <div class="containers__terminal-tabs" role="tablist">
-          @for (session of terminals.sessions(); track session.id) {
-            <div
-              class="containers__terminal-tab"
-              [class.containers__terminal-tab--active]="session.id === terminals.activeId()"
-            >
-              <button
-                type="button"
-                class="containers__terminal-tab-select"
-                (click)="terminals.activate(session.id)"
-              >
-                {{ session.name }}
-              </button>
-              <button
-                type="button"
-                class="containers__terminal-tab-close"
-                [attr.aria-label]="'Close ' + session.name"
-                [appTooltip]="'Close ' + session.name"
-                (click)="terminals.close(session.id)"
-              >
-                <app-icon [icon]="Icon.CLOSE" />
-              </button>
-            </div>
+<!-- The logs/shell terminals opened from container rows (P5). Closing the panel hides the sessions;
+     opening another shows it again. Reuses the shared terminal pane: each `run` session's PTY is
+     spawned by ContainerTerminals and this pane attaches to it by id, for as long as it is drawn. -->
+<ng-template
+  [appDockPanel]="outputPanel"
+  panelTitle="Output"
+  [panelIcon]="Icon.TERMINAL"
+  [sides]="outputSides"
+  [minInlineSize]="16"
+  [minBlockSize]="8.75"
+  [defaultInlineSize]="360"
+  [defaultBlockSize]="260"
+  [maxInlineSize]="900"
+  [maxBlockSize]="640"
+>
+  <div class="containers__terminal">
+    <div class="containers__terminal-tabs" role="tablist">
+      @for (session of terminals.sessions(); track session.id) {
+        <div
+          class="containers__terminal-tab"
+          [class.containers__terminal-tab--active]="session.id === terminals.activeId()"
+        >
+          <button
+            type="button"
+            class="containers__terminal-tab-select"
+            (click)="terminals.activate(session.id)"
+          >
+            {{ session.name }}
+          </button>
+          <button
+            type="button"
+            class="containers__terminal-tab-close"
+            [attr.aria-label]="'Close ' + session.name"
+            [appTooltip]="'Close ' + session.name"
+            (click)="terminals.close(session.id)"
+          >
+            <app-icon [icon]="Icon.CLOSE" />
+          </button>
+        </div>
+      }
+    </div>
+    <div class="containers__terminal-panes">
+      @for (session of terminals.sessions(); track session.id) {
+        <div
+          class="containers__terminal-pane"
+          [class.containers__terminal-pane--hidden]="session.id !== terminals.activeId()"
+        >
+          @if (session.kind === 'logs') {
+            <app-container-logs
+              [containerId]="session.containerId ?? ''"
+              [isActive]="isActive() && session.id === terminals.activeId()"
+            />
+          } @else {
+            <app-terminal
+              [terminalId]="session.id"
+              kind="run"
+              [persistent]="true"
+              [isActive]="isActive() && session.id === terminals.activeId()"
+              [quietStart]="!dockReveal.isInUse(outputPanel)"
+            />
           }
         </div>
-        <div class="containers__terminal-panes">
-          @for (session of terminals.sessions(); track session.id) {
-            <div
-              class="containers__terminal-pane"
-              [class.containers__terminal-pane--hidden]="session.id !== terminals.activeId()"
-            >
-              @if (session.kind === 'logs') {
-                <app-container-logs
-                  [containerId]="session.containerId ?? ''"
-                  [isActive]="isActive() && session.id === terminals.activeId()"
-                />
-              } @else {
-                <app-terminal
-                  [terminalId]="session.id"
-                  kind="run"
-                  [isActive]="isActive() && session.id === terminals.activeId()"
-                />
-              }
-            </div>
-          }
-        </div>
-      </div>
-    </app-tool-panel>
-  </app-panel>
-</app-panel-layout>
+      }
+    </div>
+  </div>
+</ng-template>
+
+<app-dock-container />
+
+<!-- A row's further actions, shared by every row: the ⋮ button records which container it opened
+ for before the menu shows. -->
+<app-menu #rowMenu [items]="rowMenuItems()" placement="down-end" (selected)="onRowMenu($event)" />
+
+<!-- Pulling an image and running a container (#974). -->
+<app-container-pull-dialog [open]="pullOpen()" (closed)="onPullClosed($event)" />
+<app-container-run-dialog
+  [open]="runImage() !== null"
+  [initialImage]="runImage() ?? ''"
+  (closed)="onRunClosed($event)"
+/>
