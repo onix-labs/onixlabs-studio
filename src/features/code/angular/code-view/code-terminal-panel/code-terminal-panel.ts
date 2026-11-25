@@ -16,7 +16,14 @@ import {
   editorTerminalId,
   EditorTerminals,
 } from '@shared/angular/services/editor-terminals/editor-terminals';
-import { DockNode, isStackNode, StackNode } from '@shared/angular/services/dock-layout/dock-node';
+import { layoutAfterDrop } from '@shared/angular/services/dock-layout/dock-drop';
+import {
+  DockNode,
+  DockSide,
+  isStackNode,
+  StackNode,
+} from '@shared/angular/services/dock-layout/dock-node';
+import { DockRoom } from '@shared/angular/services/dock-layout/dock-room';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { findStackOfPanel, firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
 import { Log } from '@shared/angular/services/log/log';
@@ -24,6 +31,21 @@ import { Icon } from '@shared/angular/icons/icon';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { Button } from '@shared/angular/components/forms/button/button';
+
+/**
+ * Where the terminal would move.
+ */
+interface TerminalMove {
+  /**
+   * Gets the identifier of the editor's group.
+   */
+  readonly stackId: string;
+
+  /**
+   * Gets the side of the editor's group.
+   */
+  readonly side: DockSide;
+}
 
 /**
  * Represents the docked run terminal for a code tab: a tool strip over an embedded terminal whose
@@ -56,6 +78,11 @@ export class CodeTerminalPanel {
    * Holds the dock's layout, which the layout button moves the terminal in.
    */
   private readonly dockState: DockState = inject(DockState);
+
+  /**
+   * Holds where there is room in the dock.
+   */
+  private readonly room: DockRoom = inject(DockRoom);
 
   /**
    * Holds the embedded terminal pane this panel drives, or undefined before the view initialises.
@@ -110,19 +137,50 @@ export class CodeTerminalPanel {
   }
 
   /**
+   * Gets whether there is room where {@link onLayout} would move the terminal.
+   */
+  protected readonly canMove: Signal<boolean> = computed((): boolean => {
+    const move: TerminalMove | null = this.move();
+    return (
+      move !== null &&
+      this.room.admits(
+        layoutAfterDrop(this.dockState.layout(), EDITOR_TERMINAL_PANEL_ID, 'tool', {
+          kind: 'split',
+          ...move,
+        }),
+        [EDITOR_TERMINAL_PANEL_ID],
+      )
+    );
+  });
+
+  /**
    * Moves the terminal between beneath the editor and beside it — a one-click shortcut for the same move
    * dragging its title bar performs.
    */
   protected onLayout(): void {
+    const move: TerminalMove | null = this.move();
+    if (move === null) {
+      return;
+    }
+    this.log.debug('code.view', 'Move run terminal', move.side);
+    this.dockState.movePanelBeside(EDITOR_TERMINAL_PANEL_ID, move.stackId, move.side);
+  }
+
+  /**
+   * Works out where the terminal would move.
+   * @returns Returns the editor's group and the side of it, or null when either is not in the layout.
+   */
+  private move(): TerminalMove | null {
     const layout: DockNode = this.dockState.layout();
     const editor: StackNode | null = firstStackOfRole(layout, 'main');
     const terminal: StackNode | null = findStackOfPanel(layout, EDITOR_TERMINAL_PANEL_ID);
     if (editor === null || terminal === null) {
-      return;
+      return null;
     }
-    const side: 'right' | 'bottom' = isBeneath(layout, editor.id, terminal.id) ? 'right' : 'bottom';
-    this.log.debug('code.view', 'Move run terminal', side);
-    this.dockState.movePanelBeside(EDITOR_TERMINAL_PANEL_ID, editor.id, side);
+    return {
+      stackId: editor.id,
+      side: isBeneath(layout, editor.id, terminal.id) ? 'right' : 'bottom',
+    };
   }
 
   /**

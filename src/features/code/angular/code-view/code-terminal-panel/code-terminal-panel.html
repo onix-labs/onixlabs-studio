@@ -4,6 +4,7 @@
     [icon]="Icon.LAYOUT_SPLIT"
     ariaLabel="Move terminal to side or bottom"
     tooltip="Move terminal to side or bottom"
+    [disabled]="!canMove()"
     (click)="onLayout()"
   />
   <app-button variant="none" [icon]="Icon.CUT" ariaLabel="Cut" tooltip="Cut" (click)="onCut()" />

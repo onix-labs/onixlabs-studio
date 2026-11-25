@@ -1,6 +1,7 @@
 import { DOCUMENT } from '@angular/common';
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+import { layoutAfterDrop, layoutAfterGroupDrop } from './dock-drop';
 import { DockFloating } from './dock-floating';
 import { DockGeometry, DockGroupHit, hitInSnapshot } from './dock-geometry';
 import {
@@ -19,6 +20,7 @@ import { DockPanel } from './dock-panel';
 import { DockPanelAvailability } from './dock-panel-availability';
 import { DockPanelRegistry } from './dock-panel-registry';
 import { DockNode, DockSide, isStackNode, StackNode, StackRole } from './dock-node';
+import { DockRoom } from './dock-room';
 import { DockState } from './dock-state';
 import { findNode, findStackOfPanel, firstStackOfRole } from './dock-tree';
 
@@ -119,6 +121,16 @@ interface DragOffset {
 const DEFAULT_GHOST: { readonly width: number; readonly height: number } = {
   width: 280,
   height: 200,
+};
+
+/**
+ * Every application edge, as one a drag may be dropped on.
+ */
+const ALL_EDGES: Readonly<Record<DockSide, boolean>> = {
+  left: true,
+  right: true,
+  top: true,
+  bottom: true,
 };
 
 /**
@@ -224,6 +236,11 @@ export class DockDrag {
   private readonly dockFocus: DockFocus = inject(DockFocus);
 
   /**
+   * Holds which layouts there is room for.
+   */
+  private readonly room: DockRoom = inject(DockRoom);
+
+  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
@@ -251,6 +268,17 @@ export class DockDrag {
    * Holds the targeted application edge, or null when none is.
    */
   private readonly hotEdgeSide: WritableSignal<DockSide | null> = signal<DockSide | null>(null);
+
+  /**
+   * Holds which application edges the subject may be dropped on, fixed at the start of a drag.
+   */
+  private readonly legalEdgeSides: WritableSignal<Readonly<Record<DockSide, boolean>>> =
+    signal<Readonly<Record<DockSide, boolean>>>(ALL_EDGES);
+
+  /**
+   * Holds each hovered group's guides, by the group's identifier.
+   */
+  private readonly guidesOfGroup: Map<string, GuideLegality> = new Map<string, GuideLegality>();
 
   /**
    * Holds the drop preview rectangle.
@@ -359,6 +387,12 @@ export class DockDrag {
    * Gets the targeted application edge, or null when none is.
    */
   public readonly hotEdge: Signal<DockSide | null> = this.hotEdgeSide.asReadonly();
+
+  /**
+   * Gets which application edges the subject may be dropped on.
+   */
+  public readonly legalEdges: Signal<Readonly<Record<DockSide, boolean>>> =
+    this.legalEdgeSides.asReadonly();
 
   /**
    * Gets the drop preview rectangle.
@@ -512,6 +546,13 @@ export class DockDrag {
     this.groupSnapshot = this.geometry.snapshot();
     this.workspaceRect.set(armed.workspace);
     this.draggedSubject.set(armed.subject);
+    this.guidesOfGroup.clear();
+    this.legalEdgeSides.set({
+      left: this.admits({ kind: 'edge', side: 'left' }),
+      right: this.admits({ kind: 'edge', side: 'right' }),
+      top: this.admits({ kind: 'edge', side: 'top' }),
+      bottom: this.admits({ kind: 'edge', side: 'bottom' }),
+    });
     this.ghostRect.set({
       left: x - armed.offset.x,
       top: y - armed.offset.y,
@@ -582,6 +623,13 @@ export class DockDrag {
         ? (resolveEdgeTarget(x, y, workspace, role) ??
           resolveEdgeGuideTarget(x, y, workspace, role))
         : null;
+    if (edge !== null && edge.target.kind === 'edge' && !this.legalEdgeSides()[edge.target.side]) {
+      this.currentTarget = null;
+      this.previewRect.set(null);
+      this.hotEdgeSide.set(null);
+      this.compassState.set(null);
+      return;
+    }
     if (edge !== null && edge.target.kind === 'edge') {
       this.currentTarget = edge.target;
       this.previewRect.set(edge.preview);
@@ -614,7 +662,11 @@ export class DockDrag {
     const targetEmpty: boolean =
       hovered !== null && isStackNode(hovered) && hovered.panels.length === 0;
     const group: boolean = subject.kind === 'group';
-    const resolution: DockResolution | null =
+    const legality: GuideLegality = this.admittedGuides(
+      hit.stackId,
+      guideLegality(role, hit.role, targetEmpty, group),
+    );
+    const resolved: DockResolution | null =
       resolveCompassTarget(
         x,
         y,
@@ -627,14 +679,69 @@ export class DockDrag {
         targetEmpty,
         group,
       ) ?? resolveGroupTarget(x, y, hit.stackId, hit.role, hit.rect, role, targetEmpty, group);
+    const guide: GuideKey | null = resolved === null ? null : guideKeyOf(resolved.target);
+    const resolution: DockResolution | null = guide !== null && legality[guide] ? resolved : null;
     this.currentTarget = resolution?.target ?? null;
     this.previewRect.set(resolution?.preview ?? null);
     this.compassState.set({
       x: centerX,
       y: centerY,
-      legality: guideLegality(role, hit.role, targetEmpty, group),
-      hot: resolution !== null ? guideKeyOf(resolution.target) : null,
+      legality,
+      hot: resolution === null ? null : guide,
     });
+  }
+
+  /**
+   * Narrows a hovered group's guides to those whose drop the dock could have: there is room for it, and it
+   * is on a side every panel that would be in the group allows. The layout is the same throughout a drag, so
+   * each group's are worked out once.
+   * @param stackId The identifier of the hovered group.
+   * @param legality The guides the roles allow.
+   * @returns Returns the guides allowed.
+   */
+  private admittedGuides(stackId: string, legality: GuideLegality): GuideLegality {
+    if (!this.room.enabled) {
+      return legality;
+    }
+    const known: GuideLegality | undefined = this.guidesOfGroup.get(stackId);
+    if (known !== undefined) {
+      return known;
+    }
+    const splits: (side: DockSide) => boolean = (side: DockSide): boolean =>
+      legality[side] && this.admits({ kind: 'split', stackId, side });
+    const admitted: GuideLegality = {
+      center: legality.center && this.admits({ kind: 'tab', stackId }),
+      left: splits('left'),
+      right: splits('right'),
+      top: splits('top'),
+      bottom: splits('bottom'),
+    };
+    this.guidesOfGroup.set(stackId, admitted);
+    return admitted;
+  }
+
+  /**
+   * Determines whether the dock could have the layout a drop would make.
+   * @param target The drop's target.
+   * @returns Returns true when it could.
+   */
+  private admits(target: DockTarget): boolean {
+    const subject: DragSubject | null = this.draggedSubject();
+    if (subject === null || !this.room.enabled) {
+      return true;
+    }
+    const layout: DockNode = this.dockState.layout();
+    if (subject.kind === 'panel') {
+      return this.room.admits(
+        layoutAfterDrop(layout, subject.panel.id, subject.panel.role, target),
+        [subject.panel.id],
+      );
+    }
+    const stack: DockNode | null = findNode(layout, subject.stackId);
+    return this.room.admits(
+      layoutAfterGroupDrop(layout, subject.stackId, target),
+      stack !== null && isStackNode(stack) ? stack.panels : [],
+    );
   }
 
   /**
