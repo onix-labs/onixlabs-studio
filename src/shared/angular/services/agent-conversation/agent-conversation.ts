@@ -12,6 +12,7 @@ import {
 import type {
   AgentContextRef,
   AgentMode,
+  AiImageRef,
   AiModelInfo,
   AiProviderId,
   AiRemoteControlMode,
@@ -300,6 +301,22 @@ export class AgentConversation implements AgentSessionHandle {
   public readonly draft: WritableSignal<string> = signal<string>('');
 
   /**
+   * Holds the images attached to the draft, kept here for the reason {@link draft} is.
+   */
+  public readonly images: WritableSignal<readonly AiImageRef[]> = signal<readonly AiImageRef[]>([]);
+
+  /**
+   * Holds the message the draft is an edit of, or null when it is a new one; kept here for the reason
+   * {@link draft} is.
+   */
+  public readonly editing: WritableSignal<AgentItem | null> = signal<AgentItem | null>(null);
+
+  /**
+   * Holds the draft there was before the edit, which cancelling it brings back.
+   */
+  public readonly draftBeforeEdit: WritableSignal<string> = signal<string>('');
+
+  /**
    * Holds whether the conversation-history list is shown.
    */
   private readonly historyOpenState: WritableSignal<boolean> = signal<boolean>(false);
@@ -437,6 +454,11 @@ export class AgentConversation implements AgentSessionHandle {
       const items: readonly AgentItem[] = this.agent.items();
       const queue: readonly AgentQueuedMessage[] = this.agent.queued();
       untracked((): void => {
+        // A message no longer in the transcript can't be edited.
+        const editing: AgentItem | null = this.editing();
+        if (editing !== null && !items.some((item: AgentItem): boolean => item.id === editing.id)) {
+          this.editing.set(null);
+        }
         if (items.length === 0) {
           this.currentIdState.set(null);
           this.createdAt = 0;

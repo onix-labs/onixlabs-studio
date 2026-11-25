@@ -341,6 +341,16 @@ export class BinaryDocumentEntry {
   public revealOffset: number | null = null;
 
   /**
+   * Holds what the disassembly panel leaves for the next one, since the dock draws it afresh whenever it
+   * moves or comes back: the last reveal it scrolled to (so each is honoured once rather than fighting the
+   * user's later scrolling), and where it was scrolled to, or null before it has been.
+   */
+  public readonly disasmView: { revealedVersion: number; scrollTop: number | null } = {
+    revealedVersion: -1,
+    scrollTop: null,
+  };
+
+  /**
    * Initializes a new instance of the {@link BinaryDocumentEntry} class.
    * @param tabId The identifier of the owning tab.
    * @param path The absolute path of the file.

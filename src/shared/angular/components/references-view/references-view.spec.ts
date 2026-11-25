@@ -184,7 +184,7 @@ describe('ReferencesView (#1014)', () => {
 });
 
 describe('EditorReferencesPanel (#1014)', () => {
-  it('showsTheList_inAToolPanel_andEscapeAsksToClose', async () => {
+  it('showsTheList_andEscapeAsksToClose', async () => {
     await TestBed.configureTestingModule({ imports: [EditorReferencesPanel] }).compileComponents();
     const fixture: ComponentFixture<EditorReferencesPanel> =
       TestBed.createComponent(EditorReferencesPanel);
@@ -194,7 +194,6 @@ describe('EditorReferencesPanel (#1014)', () => {
     let closed: number = 0;
     fixture.componentInstance.closed.subscribe((): void => void (closed += 1));
 
-    expect(host.querySelector('.tool-panel__title')?.textContent).toBe('References');
     // Outside a workspace, files are named in full.
     expect(host.querySelector('.tree-name')?.textContent).toBe('/root/src/foo.ts');
     host.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));

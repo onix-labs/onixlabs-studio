@@ -3,6 +3,7 @@ import { governedByEditorConfig } from '@shared/angular/services/document-status
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   effect,
   forwardRef,
   inject,
@@ -32,7 +33,6 @@ import {
 import { CodeDocumentEditor } from '@features/code/angular/code-document/code-document';
 import { ChangeMarginController } from '@features/code/angular/change-margin/change-margin-controller';
 import { ChangeMargins } from '@features/code/angular/change-margin/change-margins';
-import { CodeAgents } from '@features/code/angular/code-agents/code-agents';
 import { CodeRunner } from '@features/code/angular/code-runner/code-runner';
 import {
   EditorCommandHandler,
@@ -44,17 +44,41 @@ import {
   createViewInjectorRegistrar,
   ViewInjectorRegistrar,
 } from '@shared/angular/services/view-injectors/view-injector-registration';
-import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
+import {
+  EDITOR_TERMINAL_PANEL_ID,
+  editorTerminalId,
+  EditorTerminals,
+} from '@shared/angular/services/editor-terminals/editor-terminals';
+import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
+import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
+import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
+import { DockTemplatePanel } from '@shared/angular/components/dock-layout/dock-template-panel/dock-template-panel';
+import { dockProviders } from '@shared/angular/services/dock-layout/dock-providers';
+import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
+import {
+  createDockTabRegistrar,
+  DockTabRegistrar,
+} from '@shared/angular/services/dock-layout/dock-tab-registration';
+import { linkDockPanel } from '@shared/angular/services/dock-layout/link-dock-panel';
+import { Icon } from '@shared/angular/icons/icon';
+import { DockSides } from '@shared/angular/services/dock-layout/dock-sides';
+import type { ConversationContext } from '@shared/api/agent-conversation-channels';
+import {
+  CODE_AGENT_PANEL_ID,
+  CODE_DOCK_BLUEPRINT,
+  CODE_EDITOR_PANEL_ID,
+  CODE_FIND_PANEL_ID,
+  CODE_GENERATED_PANEL_ID,
+  CODE_REFERENCES_PANEL_ID,
+} from '@features/code/angular/code-dock-blueprint';
+import { GeneratedCodeState } from '@features/code/angular/generated-code/generated-code-state';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { Editors, RevealRequest } from '@shared/angular/services/editors/editors';
 import { DocumentSorting } from '@shared/angular/services/document-sorting/document-sorting';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
-import { Panel } from '@shared/angular/components/panel-layout/panel';
-import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import type * as MonacoApi from 'monaco-editor';
-import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import type { FindRequest } from '@shared/angular/components/find-panel/find-request';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { FIND_HOST, FindHost } from '@shared/angular/services/find-router/find-host';
@@ -70,9 +94,7 @@ import {
   ReferencesHost,
 } from '@shared/angular/services/references/reference-list';
 import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
-import { CodeAgentPanel } from './code-agent-panel/code-agent-panel';
 import { CodeGeneratedPanel } from './code-generated-panel/code-generated-panel';
-import { CodeGeneratedPanels } from '@features/code/angular/generated-code/code-generated-panels';
 import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
 import { encodingLabel } from '@shared/api/text-encodings';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
@@ -80,33 +102,34 @@ import { codeDocumentActions } from '@shared/angular/services/document-status/do
 
 /**
  * Represents the code editor view: the document-bound {@link CodeDocumentEditor} core (the shared
- * text-editor pane wired to its backing document), with optional docked run-terminal, agent and find
- * panels around it. It owns the code-tab concerns the core does not — the change-margin save gutter,
+ * text-editor pane wired to its backing document) in the main group of a dock, with run-terminal, agent,
+ * generated-code, find and references panels around it. It owns the code-tab concerns the core does not — the change-margin save gutter,
  * the model-URI registration, language-server sync, the ribbon command handler, the status segment,
  * and the docked panels — reading the core's document and driving its pane through its imperative
- * API. Where each panel docks is the user's choice, dragged and persisted through the shared panel
- * layout.
+ * API.
  */
 @Component({
   selector: 'app-code-view',
   imports: [
-    PanelLayout,
-    Panel,
+    AgentConversationPanel,
     CodeDocumentEditor,
-    CodeTerminalPanel,
-    CodeAgentPanel,
     CodeGeneratedPanel,
-    EditorSearchPanel,
+    CodeTerminalPanel,
+    DockContainer,
+    DockTemplatePanel,
     EditorReferencesPanel,
+    EditorSearchPanel,
   ],
-  // The tab's agent and conversation live on the VIEW, not the docked agent panel: the panel now
-  // mounts lazily on first show, and the conversation (and an in-flight run) must span the panel's
-  // whole mounted/unmounted life — and register with Mission Control whether or not the panel was
-  // ever opened.
+  // The tab's agent and conversation live on the VIEW, not the docked agent panel: the dock draws the
+  // panel only while it shows, and the conversation (and an in-flight run) must outlive it — and register
+  // with Mission Control whether or not the panel was ever opened.
   providers: [
     Agent,
     AgentConversation,
     { provide: AGENT_CONVERSATION_KIND, useValue: 'code' },
+    ...dockProviders(CODE_DOCK_BLUEPRINT),
+    // What the generated-code panel shows, which outlives it.
+    GeneratedCodeState,
     // One per code tab: the status strip reads this view's own context through its injector.
     CodeStatus,
     // The tab answers its editors' finds — the code's and the generated code's — with its own Find
@@ -196,11 +219,60 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
   private readonly goToRouter: GoToRouter = inject(GoToRouter);
 
   /**
-   * Holds the edges the integrated terminal panel may dock to. Unlike the other panels — restricted
-   * to the sides — the terminal may also dock to the bottom, its default. A stable reference so the
-   * panel's allowed-edge input does not change identity each check.
+   * Gets the icon set, exposed for the template.
    */
-  protected readonly terminalDockEdges: readonly PanelEdge[] = ['left', 'right', 'bottom'];
+  protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Exposes the sides a panel may dock to to the template.
+   */
+  protected readonly DockSides: typeof DockSides = DockSides;
+
+  /**
+   * Gets the sides the run terminal may dock to: either side of the editor, or beneath it.
+   */
+  protected readonly terminalSides: DockSides = DockSides.Horizontal | DockSides.Bottom;
+
+  /**
+   * Gets the identifier of the editor's panel.
+   */
+  protected readonly editorPanel: string = CODE_EDITOR_PANEL_ID;
+
+  /**
+   * Gets the identifier of the run terminal's panel.
+   */
+  protected readonly terminalPanel: string = EDITOR_TERMINAL_PANEL_ID;
+
+  /**
+   * Gets the identifier of the agent panel.
+   */
+  protected readonly agentPanel: string = CODE_AGENT_PANEL_ID;
+
+  /**
+   * Gets the identifier of the generated-code panel.
+   */
+  protected readonly generatedPanel: string = CODE_GENERATED_PANEL_ID;
+
+  /**
+   * Gets the identifier of the Find panel.
+   */
+  protected readonly findPanel: string = CODE_FIND_PANEL_ID;
+
+  /**
+   * Gets the identifier of the References panel.
+   */
+  protected readonly referencesPanel: string = CODE_REFERENCES_PANEL_ID;
+
+  /**
+   * Holds what opens the dock's panels wherever they are.
+   */
+  protected readonly dockReveal: DockReveal = inject(DockReveal);
+
+  /**
+   * Holds the generated code's editor, or null before it is first drawn. The dock draws its panel afresh
+   * whenever it moves or comes back, so its editor changes.
+   */
+  private generatedEditor: MonacoApi.editor.ICodeEditor | null = null;
 
   /**
    * Holds this tab's Find & Replace, over the editor the latest find came from: the code's own, or the
@@ -232,19 +304,14 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
   private referencesEditor: MonacoApi.editor.ICodeEditor | null = null;
 
   /**
-   * Holds the docked run-terminal panel state.
+   * Holds the commands queued for tabs' run terminals.
    */
   private readonly editorTerminals: EditorTerminals = inject(EditorTerminals);
 
   /**
-   * Holds the docked agent-panel state.
+   * Holds the terminal bridge, which ends the tab's run terminal with it.
    */
-  private readonly codeAgents: CodeAgents = inject(CodeAgents);
-
-  /**
-   * Holds the docked generated-code panel's per-tab state.
-   */
-  private readonly generatedPanels: CodeGeneratedPanels = inject(CodeGeneratedPanels);
+  private readonly terminalBridge: TerminalBridge = inject(TerminalBridge);
 
   /**
    * Holds the change-margin registry that draws the editor's save-state gutter bars.
@@ -307,8 +374,16 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
    */
   private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
     isActive: this.isActive,
+    context: (): ConversationContext | undefined => this.fileContext(),
+    language: (): string | undefined => this.language(),
     surface: 'editor',
   });
+
+  /**
+   * Registers this tab's dock, so the ribbon can open and close its panels. Finalised in
+   * {@link ngOnInit} once the tab id is readable.
+   */
+  private readonly dockTab: DockTabRegistrar = createDockTabRegistrar();
 
   /**
    * Publishes this view's injector so the shell's status strip can mount the code status component
@@ -344,6 +419,25 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
    * and pane.
    */
   public constructor() {
+    linkDockPanel(
+      CODE_FIND_PANEL_ID,
+      (): boolean => this.editorSearch.visible(),
+      (open: boolean): void => {
+        if (!open) {
+          this.editorSearch.close();
+        }
+      },
+    );
+    linkDockPanel(
+      CODE_REFERENCES_PANEL_ID,
+      (): boolean => this.references() !== null,
+      (open: boolean): void => {
+        if (!open) {
+          this.onReferencesClosed();
+        }
+      },
+    );
+
     // Keep the change-margin's overview-ruler colours current for the active theme (the gutter bars
     // themselves follow CSS automatically, but the ruler is a canvas colour).
     effect((): void => {
@@ -477,6 +571,7 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
    */
   public ngOnInit(): void {
     this.log.info('code.view', 'Code view opened', this.tabId());
+    this.dockTab.register(this.tabId());
     this.agentHost.register(this.tabId());
     this.statusHost.register(this.tabId());
   }
@@ -501,14 +596,14 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
       this.editors.unregister(this.modelUri);
       this.modelUri = null;
     }
-    // Only release the language-server, workspace root, run terminal and agent when this view owns
+    // Only release the language-server, workspace root and run terminal when this view owns
     // their lifecycle (standalone tabs). In the dock well a destroy is a re-parent, not a close, so
     // the workspace handles it.
     if (this.removeOnDestroy()) {
       this.activeWorkspace.clearRoot(this.tabId());
       this.lsp.closeDocument(this.tabId());
       this.editorTerminals.remove(this.tabId());
-      this.codeAgents.remove(this.tabId());
+      void this.terminalBridge.dispose(editorTerminalId(this.tabId()));
     }
   }
 
@@ -545,6 +640,7 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
   public openFind(request: FindRequest, editor: MonacoApi.editor.ICodeEditor | null): void {
     this.log.debug('code.view', 'Open find panel', this.tabId(), request.mode);
     this.editorSearch.open(request, editor);
+    this.openFor(CODE_FIND_PANEL_ID, editor);
   }
 
   /**
@@ -556,6 +652,36 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
     this.log.debug('code.view', 'Open references panel', this.tabId(), list.kind, list.status);
     this.referencesEditor = editor;
     this.references.set(list);
+    this.openFor(CODE_REFERENCES_PANEL_ID, editor);
+  }
+
+  /**
+   * Opens a panel for something asked for in an editor. The generated code stays in sight of what acts on
+   * it.
+   * @param panelId The identifier of the panel.
+   * @param editor The editor it was asked for in, or null for the code's.
+   */
+  private openFor(panelId: string, editor: MonacoApi.editor.ICodeEditor | null): void {
+    if (editor !== null && editor === this.generatedEditor) {
+      this.dockReveal.openClearOf(panelId, CODE_GENERATED_PANEL_ID);
+    } else {
+      this.dockReveal.open(panelId);
+    }
+  }
+
+  /**
+   * Records the generated code's editor, moving what was searched for or listed in the one before to it.
+   * @param editor The editor.
+   */
+  protected onGeneratedEditor(editor: MonacoApi.editor.ICodeEditor): void {
+    const before: MonacoApi.editor.ICodeEditor | null = this.generatedEditor;
+    this.generatedEditor = editor;
+    if (this.editorSearch.isOver(before)) {
+      this.editorSearch.retarget(editor);
+    }
+    if (before !== null && this.referencesEditor === before) {
+      this.referencesEditor = editor;
+    }
   }
 
   /**
@@ -631,54 +757,6 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
   }
 
   /**
-   * Gets a value indicating whether the docked terminal panel is mounted.
-   * @returns Returns true when the panel has been shown at least once.
-   */
-  protected terminalMounted(): boolean {
-    return this.editorTerminals.isMounted(this.tabId());
-  }
-
-  /**
-   * Gets a value indicating whether the docked terminal panel is currently visible.
-   * @returns Returns true when the panel is shown.
-   */
-  protected terminalVisible(): boolean {
-    return this.editorTerminals.isVisible(this.tabId());
-  }
-
-  /**
-   * Gets a value indicating whether the docked agent panel is mounted.
-   * @returns Returns true when the panel has been shown at least once.
-   */
-  protected agentMounted(): boolean {
-    return this.codeAgents.isMounted(this.tabId());
-  }
-
-  /**
-   * Gets a value indicating whether the docked agent panel is currently visible.
-   * @returns Returns true when the panel is shown.
-   */
-  protected agentVisible(): boolean {
-    return this.codeAgents.isVisible(this.tabId());
-  }
-
-  /**
-   * Gets a value indicating whether the docked generated-code panel is mounted.
-   * @returns Returns true when the panel has been shown at least once.
-   */
-  protected generatedMounted(): boolean {
-    return this.generatedPanels.isMounted(this.tabId());
-  }
-
-  /**
-   * Gets a value indicating whether the docked generated-code panel is currently visible.
-   * @returns Returns true when the panel is shown.
-   */
-  protected generatedVisible(): boolean {
-    return this.generatedPanels.isVisible(this.tabId());
-  }
-
-  /**
    * Gets the open file's path, for the generated-code panel to resolve its build output from.
    * @returns Returns the path, or null when the document has never been saved.
    */
@@ -695,11 +773,23 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
   }
 
   /**
-   * Hides the generated-code panel when it asks to be dismissed.
+   * Gets the agent's conversation context: the code file's path when it is saved, else undefined so the
+   * conversation falls back to its workspace or global context.
    */
-  protected onGeneratedClosed(): void {
-    this.generatedPanels.hide(this.tabId());
-  }
+  private readonly fileContext: Signal<ConversationContext | undefined> = computed(
+    (): ConversationContext | undefined => {
+      const path: string | null = this.documents.get(this.tabId())?.filePath() ?? null;
+      return path === null ? undefined : { kind: 'file', key: path };
+    },
+  );
+
+  /**
+   * Gets the language of this tab's document, so the agent's standing prompts and skills are scoped
+   * to it (#300, #301).
+   */
+  private readonly language: Signal<string | undefined> = computed((): string | undefined =>
+    this.documents.get(this.tabId())?.language(),
+  );
 
   /**
    * Gets the backing document from the editor core, for the view's feature effects.

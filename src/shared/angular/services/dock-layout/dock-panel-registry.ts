@@ -56,6 +56,19 @@ export class DockPanelRegistry {
   }
 
   /**
+   * Removes a panel, unless another has since been registered with its identifier.
+   * @param panel The panel, as it was registered.
+   */
+  public unregister(panel: DockPanel): void {
+    if (this.panels.get(panel.id) !== panel) {
+      return;
+    }
+    this.log.debug('DockPanelRegistry', `Unregistered panel '${panel.id}'`);
+    this.panels.delete(panel.id);
+    this.version.update((current: number): number => current + 1);
+  }
+
+  /**
    * Changes what a registered panel's tab shows — its title, icon or tool-strip ownership — leaving
    * the component and close handling as registered. Unknown identifiers are a no-op, so a caller
    * that follows a file (a document model retitling its well tab) need not know whether the file

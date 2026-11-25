@@ -1,42 +1,50 @@
 <ng-template #render let-node let-side="side">
   @if (isCollapsed(node)) {
     <app-dock-collapsed-strip [stack]="asStack(node)" [side]="side" />
+  } @else if (isMain(node)) {
+    <app-dock-main [stack]="asStack(node)" />
   } @else if (isStack(node)) {
     <app-dock-tab-group [stack]="node" [side]="side" />
   } @else {
-    <div
+    <app-split-panel
       class="dock-node__split"
       [class.dock-node__split--row]="node.dir === 'row'"
       [class.dock-node__split--col]="node.dir === 'col'"
+      [dir]="node.dir"
+      (resizeStart)="geometry.beginInteractiveResize()"
+      (resizeEnd)="geometry.endInteractiveResize()"
+      (sharesChange)="dockState.setSizes(node.id, $event)"
     >
       @for (child of node.children; track child.id; let i = $index, last = $last) {
-        <div
+        @let size = sizeOf(child, node);
+        <app-split-pane
           class="dock-node__pane"
           [class.dock-node__pane--leaf]="isStack(child)"
-          [class.dock-node__pane--collapsed]="isCollapsed(child)"
+          [class.dock-node__pane--collapsed]="isStrip(child)"
           [class.dock-node__pane--peeking]="isPeeking(child)"
           [class.dock-node__pane--end]="isEndAnchored(node, i)"
           [class.dock-node__pane--empty]="isEmptyPane(child)"
-          [style.flex]="slotFlex(child, node.sizes[i])"
+          [share]="node.sizes[i]"
+          [minSize]="minimumAlong(child, node.dir)"
+          [visible]="!isEmptyPane(child)"
+          [resizable]="!isStrip(child)"
+          [lockedSize]="lockedSize(child, node)"
+          [hostSize]="size?.size ?? null"
+          [maxSize]="size?.max ?? Infinity"
+          (sizeChange)="dockState.setNodeSize(child.id, $event)"
           [style.min-inline-size.px]="paneMinimum(child)?.inline ?? null"
           [style.min-block-size.px]="paneMinimum(child)?.block ?? null"
         >
           <ng-container
             [ngTemplateOutlet]="render"
-            [ngTemplateOutletContext]="{ $implicit: child, side: sideOf(child, node.dir, i) }"
+            [ngTemplateOutletContext]="{ $implicit: child, side: edgeOf(child, node, i, side) }"
           />
-        </div>
-        @if (!last && hasSplitter(node, i)) {
-          <app-dock-splitter
-            [splitId]="node.id"
-            [index]="i"
-            [dir]="node.dir"
-            [sizes]="node.sizes"
-            [disabled]="isCollapsed(child) || isCollapsed(childAt(node, i + 1))"
-          />
+        </app-split-pane>
+        @if (!last) {
+          <app-split-divider />
         }
       }
-    </div>
+    </app-split-panel>
   }
 </ng-template>
 

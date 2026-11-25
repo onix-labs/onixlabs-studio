@@ -1,3 +1,13 @@
+// Fills the panel it is docked in, scrolling within it.
+:host {
+  display: block;
+  block-size: 100%;
+  box-sizing: border-box;
+  padding: 0.75rem;
+  overflow: auto;
+  color: var(--body-foreground-color);
+}
+
 // Per-kind accent colour, set on the element that also carries a paint class.
 .kind-spelling {
   --rv-color: var(--accent-coral);

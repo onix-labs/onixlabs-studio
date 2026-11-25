@@ -134,4 +134,48 @@ describe('EditorSearch (#1007)', () => {
     expect(main.revealed).toEqual(main.selection);
     expect(main.focused).toBe(true);
   });
+
+  it('retarget_movesTheSearch_leavingWhatWasFoundBehind', () => {
+    const main: FakeCodeEditor = new FakeCodeEditor(new FakeTextModel(['todo', 'todo todo']));
+    const other: FakeCodeEditor = new FakeCodeEditor(new FakeTextModel(['todo']));
+    const search: EditorSearch = searchOver(main);
+    search.open({ mode: 'find', scope: 'file' }, null);
+    search.adapter.setQuery(query('todo'));
+
+    search.retarget(other.asEditor());
+
+    expect(search.adapter.matches()).toEqual([]);
+    search.adapter.setQuery(query('todo'));
+    expect(search.adapter.matches().map((item: FindResultItem): string => item.file!)).toEqual([
+      'other',
+    ]);
+  });
+
+  it('retarget_saysSoOnlyWhenTheEditorChanges', () => {
+    const main: FakeCodeEditor = new FakeCodeEditor(new FakeTextModel(['todo']));
+    const search: EditorSearch = searchOver(main);
+    search.open({ mode: 'find', scope: 'file' }, null);
+    const before: number = search.revision();
+
+    search.retarget(main.asEditor());
+    expect(search.revision()).toBe(before);
+
+    search.retarget(null);
+    expect(search.revision()).not.toBe(before);
+    expect(search.adapter.matches()).toEqual([]);
+  });
+
+  it('retarget_dropsTheSelectionTheLastRequestSnapshotted', () => {
+    const main: FakeCodeEditor = new FakeCodeEditor(new FakeTextModel(['todo', 'todo todo']));
+    const other: FakeCodeEditor = new FakeCodeEditor(new FakeTextModel(['todo']));
+    const search: EditorSearch = searchOver(main);
+    search.open({ mode: 'find', scope: 'selection', selection }, null);
+    search.adapter.setScope('selection');
+
+    search.retarget(other.asEditor());
+
+    expect([...search.disabledScopes()]).toEqual<FindScope[]>(['selection']);
+    expect(search.adapter.scope()).toBe('file');
+    expect(search.request()).toBeNull();
+  });
 });

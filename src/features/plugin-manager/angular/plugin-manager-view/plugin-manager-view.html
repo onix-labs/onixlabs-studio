@@ -1,27 +1,32 @@
-<app-panel-layout class="plugin-manager">
-  <!-- The filters (#950): search, then every plugin, the installed or available ones, then each
-       category. Part of the view rather than a helper, so it can be resized but not closed or moved. -->
-  <app-panel
-    panelId="plugin-categories"
-    defaultEdge="left"
-    [allowedEdges]="sideEdges"
-    [movable]="false"
-    [defaultSize]="240"
-    [minSize]="240"
-    [maxSize]="480"
-  >
-    <app-category-list
-      title="Plugins"
-      [searchable]="true"
-      searchPlaceholder="Search plugins…"
-      [(query)]="browse.query"
-      [items]="filterItems()"
-      [selectedId]="browse.filter()"
-      (selectedIdChange)="browse.filter.set($event)"
-    />
-  </app-panel>
+<!-- The filters (#950): search, then every plugin, the installed or available ones, then each
+     category. It can be moved and collapsed, but not closed. -->
+<ng-template
+  [appDockPanel]="listPanel"
+  panelTitle="Plugins"
+  [panelIcon]="Icon.PLUGINS"
+  [sides]="DockSides.Horizontal"
+  [closable]="false"
+  [minInlineSize]="15"
+  [defaultInlineSize]="240"
+  [maxInlineSize]="480"
+>
+  <app-category-list
+    [searchable]="true"
+    searchPlaceholder="Search plugins…"
+    [(query)]="browse.query"
+    [items]="filterItems()"
+    [selectedId]="browse.filter()"
+    (selectedIdChange)="browse.filter.set($event)"
+  />
+</ng-template>
 
-  <div main class="plugin-manager__main">
+<ng-template
+  [appDockPanel]="mainPanel"
+  panelTitle="Plugins"
+  [panelIcon]="Icon.PLUGINS"
+  panelRole="main"
+>
+  <div class="plugin-manager__main">
     <header class="plugin-manager__header">
       <h2 class="plugin-manager__title section-label">{{ heading() }}</h2>
       <p class="plugin-manager__subtitle">{{ summary() }}</p>
@@ -30,7 +35,7 @@
     <app-plugin-install-error class="plugin-manager__error" />
 
     <!-- One list, filling the rest of the view, its header in view while its rows scroll. Sorted by
-         clicking a column's header. -->
+     clicking a column's header. -->
     <app-table
       class="plugin-manager__table"
       [columns]="columns"
@@ -92,25 +97,19 @@
       </td>
     </ng-template>
   </div>
+</ng-template>
 
-  <!-- The Plugin Manager's own agent (#968), docked on the right. It mounts on first show and stays
-       mounted, so closing it keeps its conversation. -->
-  @if (agentPanel.mounted()) {
-    <app-panel
-      panelId="agent"
-      defaultEdge="right"
-      [visible]="agentPanel.visible()"
-      [defaultSize]="360"
-      [minSize]="240"
-      [maxSize]="900"
-    >
-      <app-tool-view-agent-panel
-        surface="plugins"
-        [context]="agentContext"
-        [tabId]="tabId()"
-        [isActive]="isActive() && agentPanel.visible()"
-        (closed)="agentPanel.hide()"
-      />
-    </app-panel>
-  }
-</app-panel-layout>
+<!-- The Plugin Manager's own agent (#968). -->
+<ng-template
+  [appDockPanel]="agentPanel"
+  panelTitle="Agent"
+  [panelIcon]="Icon.AGENT"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="22.5"
+  [defaultInlineSize]="360"
+  [maxInlineSize]="900"
+>
+  <app-agent-conversation-panel surface="plugins" [tabId]="tabId()" [isActive]="isActive()" />
+</ng-template>
+
+<app-dock-container />

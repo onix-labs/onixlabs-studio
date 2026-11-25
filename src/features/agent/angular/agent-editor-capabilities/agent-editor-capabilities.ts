@@ -20,7 +20,12 @@ import { MarkdownCommands } from '@shared/angular/services/markdown-commands/mar
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import { Log } from '@shared/angular/services/log/log';
 import { Documents, CodeDocument } from '@shared/angular/services/documents/documents';
-import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
+import {
+  editorTerminalId,
+  EditorTerminals,
+} from '@shared/angular/services/editor-terminals/editor-terminals';
+import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
+import { readTerminalScrollback } from '@shared/angular/services/terminal-bridge/terminal-scrollback';
 import { Terminals } from '@shared/angular/services/terminals/terminals';
 import { RunFileTaskProvider } from '@shared/angular/services/tasks/providers/run-file-task-provider';
 import { Task } from '@shared/angular/services/tasks/task';
@@ -38,12 +43,6 @@ import { parseRunOutput, RunOutputParse } from './run-output';
  * that no document is open instead of reaching the app-wide focused editor.
  */
 const NO_DOCUMENT: string = '';
-
-/**
- * The prefix the code view derives a tab's run-terminal session id from (mirrors
- * `CodeTerminalPanel`). The run terminal registers with {@link Terminals} under `run-<tabId>`.
- */
-const RUN_TERMINAL_PREFIX: string = 'run-';
 
 /**
  * The maximum number of output lines the run capability returns, so a chatty program does not flood
@@ -279,6 +278,11 @@ export class AgentEditorCapabilities {
   private readonly editorTerminals: EditorTerminals = inject(EditorTerminals);
 
   /**
+   * Holds the terminal bridge, which keeps a run's output while no pane shows it.
+   */
+  private readonly bridge: TerminalBridge = inject(TerminalBridge);
+
+  /**
    * Holds the registry that reads a terminal's on-screen output by id, used to capture the run's
    * output and detect completion.
    */
@@ -460,7 +464,7 @@ export class AgentEditorCapabilities {
       command,
     });
     this.editorTerminals.queueCommand(tabId, sentinelCommand);
-    const terminalId: string = `${RUN_TERMINAL_PREFIX}${tabId}`;
+    const terminalId: string = editorTerminalId(tabId);
     const completion: { exitCode: number | null; output: string; timedOut: boolean } =
       await this.awaitRunCompletion(terminalId, markerPrefix, this.resolveRunTimeoutMs(input));
     this.log.info('agent.editor-capabilities', 'Run completed', {
@@ -479,6 +483,18 @@ export class AgentEditorCapabilities {
   }
 
   /**
+   * Reads what a run's terminal has printed: from its pane while one shows it, and otherwise from its
+   * session, which outlives the pane when the user hides or moves its panel.
+   * @param terminalId The terminal identifier.
+   * @returns Returns the text, or null before there is any.
+   */
+  private async readRunText(terminalId: string): Promise<string | null> {
+    return (
+      this.terminals.readText(terminalId) ?? (await readTerminalScrollback(this.bridge, terminalId))
+    );
+  }
+
+  /**
    * Polls the run terminal's buffer until the completion sentinel appears or the timeout elapses,
    * returning the parsed exit code and the captured output.
    * @param terminalId The run terminal's session id.
@@ -494,7 +510,7 @@ export class AgentEditorCapabilities {
   ): Promise<{ exitCode: number | null; output: string; timedOut: boolean }> {
     const deadline: number = Date.now() + timeoutMs;
     for (;;) {
-      const text: string | null = this.terminals.readText(terminalId);
+      const text: string | null = await this.readRunText(terminalId);
       if (text !== null) {
         const parsed: RunOutputParse = parseRunOutput(text, markerPrefix, RUN_MAX_OUTPUT_LINES);
         if (parsed.found) {
@@ -502,7 +518,7 @@ export class AgentEditorCapabilities {
         }
       }
       if (Date.now() >= deadline) {
-        const last: string | null = this.terminals.readText(terminalId);
+        const last: string | null = await this.readRunText(terminalId);
         const output: string =
           last === null ? '' : parseRunOutput(last, markerPrefix, RUN_MAX_OUTPUT_LINES).output;
         return { exitCode: null, output, timedOut: true };

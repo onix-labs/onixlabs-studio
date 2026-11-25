@@ -1,4 +1,3 @@
-import { Settings } from '@shared/angular/services/settings/settings';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -7,19 +6,15 @@ import {
   inject,
   input,
   InputSignal,
-  output,
-  OutputEmitterRef,
-  signal,
+  model,
+  ModelSignal,
   Signal,
-  WritableSignal,
 } from '@angular/core';
-import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 import {
   ButtonGroup,
   ButtonGroupOption,
 } from '@shared/angular/components/forms/button-group/button-group';
 import { Log } from '@shared/angular/services/log/log';
-import { Icon } from '@shared/angular/icons/icon';
 import { BinaryDocumentEntry } from '../binary-document/binary-document';
 import { inspectBytes, InspectorRow } from './binary-inspector-values';
 
@@ -35,7 +30,7 @@ const INSPECT_WIDTH: number = 8;
  */
 @Component({
   selector: 'app-binary-inspector',
-  imports: [ToolPanel, ButtonGroup],
+  imports: [ButtonGroup],
   templateUrl: './binary-inspector.html',
   styleUrl: './binary-inspector.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -45,11 +40,6 @@ export class BinaryInspector {
    * Holds the structured logger for inspector interactions.
    */
   private readonly log: Log = inject(Log);
-
-  /**
-   * Holds the settings the Inspector's switches start from.
-   */
-  private readonly settings: Settings = inject(Settings);
 
   /**
    * Gets the byte-order options.
@@ -68,11 +58,6 @@ export class BinaryInspector {
   ];
 
   /**
-   * Gets the icon set, exposed for the template.
-   */
-  protected readonly Icon: typeof Icon = Icon;
-
-  /**
    * Gets the document whose cursor bytes are inspected, or undefined when none is bound.
    */
   public readonly document: InputSignal<BinaryDocumentEntry | undefined> = input<
@@ -80,23 +65,14 @@ export class BinaryInspector {
   >(undefined);
 
   /**
-   * Emits when the panel's close button is pressed.
+   * Gets whether multi-byte values are decoded little-endian.
    */
-  public readonly closed: OutputEmitterRef<void> = output<void>();
+  public readonly littleEndian: ModelSignal<boolean> = model<boolean>(true);
 
   /**
-   * Holds whether multi-byte values are decoded little-endian.
+   * Gets whether the integer interpretations are signed.
    */
-  protected readonly littleEndian: WritableSignal<boolean> = signal<boolean>(
-    this.settings.get('binaryEditor.inspectorEndian') === 'little',
-  );
-
-  /**
-   * Holds whether the integer interpretations are signed.
-   */
-  protected readonly signed: WritableSignal<boolean> = signal<boolean>(
-    this.settings.get('binaryEditor.inspectorSign') === 'signed',
-  );
+  public readonly signed: ModelSignal<boolean> = model<boolean>(true);
 
   /**
    * Holds the decoded rows for the bytes at the cursor, or an empty list when there is no cursor.
@@ -132,14 +108,6 @@ export class BinaryInspector {
         document.ensureRange(cursor, INSPECT_WIDTH);
       }
     });
-  }
-
-  /**
-   * Emits the close request so the host hides the panel.
-   */
-  protected onClose(): void {
-    this.log.info('binary.inspector', 'Inspector panel closed');
-    this.closed.emit();
   }
 
   /**

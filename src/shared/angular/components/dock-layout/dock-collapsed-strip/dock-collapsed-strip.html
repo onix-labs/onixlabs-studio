@@ -26,32 +26,38 @@
     <div class="dock-collapsed-strip__flyout-title">
       <span class="dock-collapsed-strip__flyout-title-text">{{ activePanel()?.title }}</span>
       <span class="dock-collapsed-strip__flyout-title-buttons">
+        <!-- Always shown: however a group came to be hidden, it can be brought back. -->
         <app-button
           variant="none"
           size="small"
           [icon]="collapseIcon()"
           [iconRotation]="collapseRotation()"
           ariaLabel="Dock"
-          tooltip="Dock"
+          [tooltip]="canDock() ? 'Dock' : 'Dock (no room)'"
+          [disabled]="!canDock()"
           (click)="dock()"
         />
         @if (activePanel(); as active) {
-          <app-button
-            variant="none"
-            size="small"
-            [icon]="Icon.FLOAT"
-            ariaLabel="Float"
-            tooltip="Float"
-            (click)="float(active.id)"
-          />
-          <app-button
-            variant="none"
-            size="small"
-            [icon]="Icon.CLOSE"
-            ariaLabel="Close"
-            tooltip="Close"
-            (click)="close(active.id)"
-          />
+          @if (shows('float')) {
+            <app-button
+              variant="none"
+              size="small"
+              [icon]="Icon.FLOAT"
+              ariaLabel="Float"
+              tooltip="Float"
+              (click)="float(active.id)"
+            />
+          }
+          @if (shows('close') && active.closable !== false) {
+            <app-button
+              variant="none"
+              size="small"
+              [icon]="Icon.CLOSE"
+              ariaLabel="Close"
+              tooltip="Close"
+              (click)="close(active.id)"
+            />
+          }
         }
       </span>
     </div>

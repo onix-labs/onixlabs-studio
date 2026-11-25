@@ -46,9 +46,9 @@ import { DatabaseConnection, DatabaseQuery } from '@shared/api/database-document
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { Panel } from '@shared/angular/components/panel-layout/panel';
-import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
-import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
+import { SplitDivider } from '@shared/angular/components/split-panel/split-divider/split-divider';
+import { SplitPane } from '@shared/angular/components/split-panel/split-pane/split-pane';
+import { SplitPanel } from '@shared/angular/components/split-panel/split-panel/split-panel';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import {
   Table,
@@ -101,14 +101,9 @@ import { GraphPick, GraphView } from '../../graph-view/graph-view';
 import { PlanPick, PlanView, PlanViewMode } from '../../plan-view/plan-view';
 
 /**
- * The edges the results pane may sit on: beneath the editor only.
+ * The fraction of the panel the results pane opens at.
  */
-const RESULTS_EDGES: readonly PanelEdge[] = ['bottom'];
-
-/**
- * The share of the panel the results pane opens at.
- */
-const RESULTS_SHARE: number = 0.45;
+const RESULTS_FRACTION: number = 0.45;
 
 /**
  * The marker owner the query's error squiggles are filed under.
@@ -247,14 +242,15 @@ interface GridRow {
   selector: 'app-query-panel',
   imports: [
     AppIcon,
+    SplitDivider,
+    SplitPane,
+    SplitPanel,
     TabList,
     Button,
     CdkMenuTrigger,
     Menu,
     Dropdown,
     GraphView,
-    Panel,
-    PanelLayout,
     PanelToolbar,
     PlanView,
     Table,
@@ -327,20 +323,13 @@ export class QueryPanel {
    */
   private readonly cursor: WritableSignal<TextEditorCursor | null> =
     signal<TextEditorCursor | null>(null);
-  private readonly elementRef: ElementRef<HTMLElement> =
-    inject<ElementRef<HTMLElement>>(ElementRef);
   protected readonly Icon: typeof Icon = Icon;
-  protected readonly resultsEdges: readonly PanelEdge[] = RESULTS_EDGES;
+  protected readonly resultsFraction: number = RESULTS_FRACTION;
 
   /**
    * Holds the editor, once it has rendered.
    */
   private readonly editor: Signal<TextEditor | undefined> = viewChild<TextEditor>(TextEditor);
-
-  /**
-   * Holds the panel's height, for the results pane's default share of it.
-   */
-  private readonly hostHeight: WritableSignal<number | null> = signal<number | null>(null);
 
   /**
    * Gets the result area's tabs: Results with how many sets came back, Messages with how many errors,
@@ -875,14 +864,6 @@ export class QueryPanel {
   );
 
   /**
-   * Gets the results pane's default height: a share of the panel.
-   */
-  protected readonly resultsDefaultSize: Signal<number | null> = computed((): number | null => {
-    const height: number | null = this.hostHeight();
-    return height === null ? null : Math.max(140, Math.round(height * RESULTS_SHARE));
-  });
-
-  /**
    * Holds the editor's ⌘↵ command, so it is added once.
    */
   private commandAdded: boolean = false;
@@ -962,15 +943,6 @@ export class QueryPanel {
       observer.observe(grid);
       onCleanup((): void => observer.disconnect());
     });
-    if (typeof ResizeObserver !== 'undefined') {
-      const host: HTMLElement = this.elementRef.nativeElement;
-      const observer: ResizeObserver = new ResizeObserver((): void => {
-        this.hostHeight.set(host.clientHeight > 0 ? host.clientHeight : null);
-      });
-      observer.observe(host);
-      destroyRef.onDestroy((): void => observer.disconnect());
-    }
-
     // A new outcome: show its first result, open on Messages when it failed with nothing to show, and
     // mark its errors in the editor.
     // Keyed on the execution's id, so fetching more rows into the same outcome changes nothing here.

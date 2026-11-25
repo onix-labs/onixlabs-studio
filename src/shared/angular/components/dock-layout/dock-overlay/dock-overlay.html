@@ -29,6 +29,7 @@
         <span
           class="dock-overlay__edge"
           [class.dock-overlay__edge--hot]="hotEdge() === edge"
+          [class.dock-overlay__edge--disabled]="!legalEdges()[edge]"
           [style.left.px]="edgePosition(edge, ws).left"
           [style.top.px]="edgePosition(edge, ws).top"
         >

@@ -241,7 +241,7 @@ export class PanelPopout implements OnDestroy {
       existing.reveal.reveal(panelId);
       return;
     }
-    if (this.registry.get(panelId) === undefined) {
+    if (this.registry.get(panelId) === undefined || this.dockState.isMain(panelId)) {
       return;
     }
     const origin: PanelOrigin = this.originOf(panelId);

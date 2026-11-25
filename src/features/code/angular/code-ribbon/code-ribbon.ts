@@ -8,12 +8,15 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
-import { CodeAgents } from '@features/code/angular/code-agents/code-agents';
-import { CodeGeneratedPanels } from '@features/code/angular/generated-code/code-generated-panels';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { DocumentSorting } from '@shared/angular/services/document-sorting/document-sorting';
+import {
+  CODE_AGENT_PANEL_ID,
+  CODE_GENERATED_PANEL_ID,
+} from '@features/code/angular/code-dock-blueprint';
 import { CodeRunner } from '@features/code/angular/code-runner/code-runner';
-import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
+import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
+import { EDITOR_TERMINAL_PANEL_ID } from '@shared/angular/services/editor-terminals/editor-terminals';
 import {
   CodeDocument,
   CodeViewToggles,
@@ -137,19 +140,9 @@ export class CodeRibbon {
   private readonly runner: CodeRunner = inject(CodeRunner);
 
   /**
-   * Holds the docked-terminal panel state backing the Terminal toggle.
+   * Holds the tabs' docks, which the Terminal, Agent and Generated Code toggles show and hide panels in.
    */
-  private readonly editorTerminals: EditorTerminals = inject(EditorTerminals);
-
-  /**
-   * Holds the docked agent-panel state backing the Agent toggle.
-   */
-  private readonly codeAgents: CodeAgents = inject(CodeAgents);
-
-  /**
-   * Holds the docked generated-code panel's per-tab state.
-   */
-  private readonly generatedPanels: CodeGeneratedPanels = inject(CodeGeneratedPanels);
+  private readonly docks: TabDocks = inject(TabDocks);
 
   /**
    * Holds the settings service backing the view toggles.
@@ -649,10 +642,8 @@ export class CodeRibbon {
    */
   protected onTerminal(): void {
     const id: string | undefined = this.tabs.activeTabId();
-    if (id !== undefined) {
-      this.log.debug('code.ribbon', 'Toggle docked terminal', id);
-      this.editorTerminals.toggle(id);
-    }
+    this.log.debug('code.ribbon', 'Toggle docked terminal', id);
+    this.docks.toggle(id, EDITOR_TERMINAL_PANEL_ID);
   }
 
   /**
@@ -660,10 +651,8 @@ export class CodeRibbon {
    */
   protected onAgent(): void {
     const id: string | undefined = this.tabs.activeTabId();
-    if (id !== undefined) {
-      this.log.debug('code.ribbon', 'Toggle docked agent panel', id);
-      this.codeAgents.toggle(id);
-    }
+    this.log.debug('code.ribbon', 'Toggle docked agent panel', id);
+    this.docks.toggle(id, CODE_AGENT_PANEL_ID);
   }
 
   /**
@@ -671,10 +660,8 @@ export class CodeRibbon {
    */
   protected onGeneratedCode(): void {
     const id: string | undefined = this.tabs.activeTabId();
-    if (id !== undefined) {
-      this.log.debug('code.ribbon', 'Toggle docked generated-code panel', id);
-      this.generatedPanels.toggle(id);
-    }
+    this.log.debug('code.ribbon', 'Toggle docked generated-code panel', id);
+    this.docks.toggle(id, CODE_GENERATED_PANEL_ID);
   }
 
   /**

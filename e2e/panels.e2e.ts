@@ -3,7 +3,7 @@ import { expect, test } from './fixtures';
 import { openTabFromWelcome, ribbonButton } from './helpers';
 
 /**
- * Panel-layout flows: the ribbon Tools toggles open and close side panels around the editor.
+ * Panel flows: the ribbon Tools toggles open and close panels around the editor.
  * (Arrangements persist to localStorage only when a panel is dragged to a new dock position, so
  * persistence is not asserted here.)
  */

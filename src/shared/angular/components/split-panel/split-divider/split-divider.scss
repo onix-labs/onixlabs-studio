@@ -1,0 +1,46 @@
+:host {
+  // The divider is 4px, square unless its split rounds it, but a 2px transparent margin on each side
+  // along the resize axis keeps the inter-pane gap at its original 8px footprint.
+  flex: 0 0 0.25rem;
+  align-self: stretch;
+  background: var(--split-divider-color);
+  border-radius: var(--split-divider-radius);
+  transition: var(--hover-transition);
+  z-index: 5;
+
+  &.split-divider--row {
+    cursor: col-resize;
+    margin-inline: 0.125rem;
+  }
+
+  &.split-divider--col {
+    cursor: row-resize;
+    margin-block: 0.125rem;
+  }
+
+  &:hover {
+    background: var(--split-divider-color--hover);
+  }
+
+  &.split-divider--dragging {
+    background: var(--split-divider-color--active);
+  }
+
+  // Inert handle beside a pane that keeps its size: keeps the gap but cannot be hovered or dragged.
+  &.split-divider--disabled {
+    pointer-events: none;
+    background: var(--split-divider-color);
+    cursor: default;
+  }
+
+  // Nothing to divide, so not even the gap.
+  &.split-divider--hidden {
+    display: none;
+  }
+}
+
+.split-divider__grip {
+  display: block;
+  block-size: 100%;
+  inline-size: 100%;
+}

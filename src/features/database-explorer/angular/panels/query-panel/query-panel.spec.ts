@@ -461,7 +461,6 @@ describe('QueryPanel', () => {
     onRowSelect(select: { row: TableRow; toggle: boolean; range: boolean }): void;
     readonly resultTabs: () => readonly { value: string; badge?: number }[];
     readonly resultView: () => string;
-    readonly resultsDefaultSize: () => number | null;
     readonly selectedRows: () => ReadonlySet<string>;
     readonly executeTooltip: () => string;
     chooseView(view: string): void;
@@ -1690,12 +1689,6 @@ describe('QueryPanel', () => {
       build(workspace.addQuery(postgres().id, undefined, 'select 1'));
 
       expect(panel().executeTooltip()).toContain('Run the selection, or the whole query');
-    });
-
-    it('resultsDefaultSize_beforeThePanelIsMeasured_isUnset', () => {
-      build(workspace.addQuery(postgres().id, undefined, 'select 1'));
-
-      expect(panel().resultsDefaultSize()).toBeNull();
     });
   });
 

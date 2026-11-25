@@ -1,24 +1,27 @@
-import { NgComponentOutlet } from '@angular/common';
+import { NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
   computed,
   inject,
+  Injector,
   input,
   InputSignal,
   Signal,
+  TemplateRef,
   Type,
 } from '@angular/core';
 import { DockPanel } from '../../../services/dock-layout/dock-panel';
 import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 
 /**
- * Projects a registered dock panel's component into the tab body, resolving it by identifier from
- * the {@link DockPanelRegistry} and passing the panel through as the component's `panel` input.
+ * Projects a registered dock panel's content into the tab body, resolving it by identifier from the
+ * {@link DockPanelRegistry}: a component, with the panel passed through as its `panel` input, or a
+ * template a view wrote.
  */
 @Component({
   selector: 'app-dock-panel-outlet',
-  imports: [NgComponentOutlet],
+  imports: [NgComponentOutlet, NgTemplateOutlet],
   templateUrl: './dock-panel-outlet.html',
   styleUrl: './dock-panel-outlet.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -30,6 +33,13 @@ export class DockPanelOutlet {
   private readonly registry: DockPanelRegistry = inject(DockPanelRegistry);
 
   /**
+   * Holds the injector a template's content resolves through, which a component's does already. A
+   * template keeps the injector it was written under, the view's in the main window, so in a pop-out its
+   * menus would open in the main window and its drags track that document.
+   */
+  protected readonly injector: Injector = inject(Injector);
+
+  /**
    * Gets the identifier of the panel to project.
    */
   public readonly panelId: InputSignal<string> = input.required<string>();
@@ -39,6 +49,13 @@ export class DockPanelOutlet {
    */
   protected readonly panel: Signal<DockPanel | undefined> = computed((): DockPanel | undefined =>
     this.registry.get(this.panelId()),
+  );
+
+  /**
+   * Gets the template to draw, or null when the panel is not one written in a template.
+   */
+  protected readonly template: Signal<TemplateRef<void> | null> = computed(
+    (): TemplateRef<void> | null => this.panel()?.template ?? null,
   );
 
   /**

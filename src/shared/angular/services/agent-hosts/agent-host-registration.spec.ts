@@ -1,4 +1,5 @@
-import { signal, WritableSignal } from '@angular/core';
+import { ConversationContext } from '@shared/api/agent-conversation-channels';
+import { signal, Signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import type { AgentSurface } from '@shared/api/ai-types';
@@ -133,6 +134,35 @@ describe('createAgentHostRegistrar', () => {
     // ...and a detached head (or a folder that is not a repository) reads null.
     branch.set(null);
     expect(hostPayload?.branch?.()).toBeNull();
+  });
+
+  it('context_andLanguage_areBoundForTheViewsLife', () => {
+    let context: Signal<ConversationContext | undefined> | null = null;
+    let language: (() => string | undefined) | null = null;
+    Object.assign(conversationStub, {
+      bindContext: (source: Signal<ConversationContext | undefined>): void =>
+        void (context = source),
+    });
+    Object.assign(agentStub, {
+      bindLanguage: (source: () => string | undefined): void => void (language = source),
+    });
+    const path: WritableSignal<string | null> = signal<string | null>(null);
+    TestBed.runInInjectionContext(() =>
+      createAgentHostRegistrar({
+        isActive: isActive.asReadonly(),
+        surface: 'editor',
+        context: (): ConversationContext | undefined => {
+          const key: string | null = path();
+          return key === null ? undefined : { kind: 'file', key };
+        },
+        language: (): string => 'markdown',
+      }),
+    ).register('tab-1');
+
+    expect(context!()).toBeUndefined();
+    path.set('/repo/a.md');
+    expect(context!()).toEqual({ kind: 'file', key: '/repo/a.md' });
+    expect(language!()).toBe('markdown');
   });
 
   it('destroy_unregistersFromBothRegistries', () => {

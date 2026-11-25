@@ -4,9 +4,9 @@ import {
   READ_TERMINAL_OUTPUT,
   WRITE_TERMINAL_INPUT,
 } from '@shared/api/ai-types';
-import { TerminalReplay } from '@shared/api/terminal-channels';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import { Log } from '@shared/angular/services/log/log';
+import { readTerminalScrollback } from '@shared/angular/services/terminal-bridge/terminal-scrollback';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import { Terminals } from '@shared/angular/services/terminals/terminals';
 import {
@@ -19,17 +19,6 @@ import {
  * the model's context. Only the most recent lines are kept.
  */
 const MAX_OUTPUT_LINES: number = 200;
-
-/**
- * Matches the terminal control sequences a raw pty stream carries (OSC titles, CSI styling and
- * cursor movement, and two-character escapes), so scrollback read through the replay fallback comes
- * back as plain text. Composed from character codes because a literal escape in a regex trips the
- * no-control-regex lint rule.
- */
-const CONTROL_SEQUENCE_PATTERN: RegExp = new RegExp(
-  `${String.fromCharCode(27)}(?:\\][^${String.fromCharCode(7)}${String.fromCharCode(27)}]*(?:${String.fromCharCode(7)}|${String.fromCharCode(27)}\\\\)?|\\[[0-9;?]*[0-9A-Za-z]|.)`,
-  'g',
-);
 
 /**
  * Holds how long (ms) to wait after sending input before reading the terminal back, so the shell has
@@ -166,14 +155,7 @@ export class AgentTerminalCapabilities {
     if (rendered !== null) {
       return rendered;
     }
-    const replay: TerminalReplay = await this.bridge.replay(tabId);
-    if (replay.data.length === 0 && replay.exitCode === null) {
-      return null;
-    }
-    return replay.data
-      .replace(CONTROL_SEQUENCE_PATTERN, '')
-      .replace(/\r\n/g, '\n')
-      .replace(/\r/g, '\n');
+    return readTerminalScrollback(this.bridge, tabId);
   }
 
   /**

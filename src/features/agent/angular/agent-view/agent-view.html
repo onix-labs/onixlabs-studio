@@ -1,28 +1,27 @@
-<app-panel-layout layoutKey="agent">
+<ng-template
+  [appDockPanel]="chatPanel"
+  panelTitle="Agent"
+  [panelIcon]="Icon.AGENT"
+  panelRole="main"
+>
   <app-agent-chat
-    main
     [tabId]="tabId()"
     [isActive]="isActive()"
     [promptFocus]="isActive()"
     surface="project"
   />
+</ng-template>
 
-  @if (conversation.historyOpen()) {
-    <app-panel
-      panelId="history"
-      defaultEdge="right"
-      [defaultSize]="320"
-      [minSize]="240"
-      [maxSize]="600"
-    >
-      <app-tool-panel
-        title="Conversation History"
-        [icon]="Icon.RECENT"
-        [flush]="true"
-        (closed)="conversation.toggleHistory()"
-      >
-        <app-agent-conversation-list />
-      </app-tool-panel>
-    </app-panel>
-  }
-</app-panel-layout>
+<ng-template
+  [appDockPanel]="historyPanel"
+  panelTitle="Conversation History"
+  [panelIcon]="Icon.RECENT"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="16"
+  [defaultInlineSize]="320"
+  [maxInlineSize]="600"
+>
+  <app-agent-conversation-list />
+</ng-template>
+
+<app-dock-container />

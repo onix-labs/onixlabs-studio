@@ -15,14 +15,18 @@ import { DockMinimum, DockMinimums } from '../../../services/dock-layout/dock-mi
 import { Display } from '@shared/angular/services/display/display';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings, WorkspaceTexture } from '@shared/angular/services/settings/settings';
+import { DockAppearance } from '../../../services/dock-layout/dock-appearance';
+import { DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-blueprint';
 import { DockFocus } from '../../../services/dock-layout/dock-focus';
 import { DockGeometry } from '../../../services/dock-layout/dock-geometry';
 import { DockNode as DockTreeNode, StackNode } from '../../../services/dock-layout/dock-node';
+import { DockRoom } from '../../../services/dock-layout/dock-room';
 import { DockState } from '../../../services/dock-layout/dock-state';
 import { firstStackOfRole } from '../../../services/dock-layout/dock-tree';
 import { DockFloatingLayer } from '../dock-floating-layer/dock-floating-layer';
 import { DockNode } from '../dock-node/dock-node';
 import { DockOverlay } from '../dock-overlay/dock-overlay';
+import { DockPanelOutlet } from '../dock-panel-outlet/dock-panel-outlet';
 
 /**
  * The dock-area padding, in rem. Matches the splitter thickness so the gap is uniform around the
@@ -38,7 +42,7 @@ const BASE_INSET: string = '0.5rem';
  */
 @Component({
   selector: 'app-dock-container',
-  imports: [DockNode, DockOverlay, DockFloatingLayer, CdkDropListGroup],
+  imports: [DockNode, DockOverlay, DockFloatingLayer, DockPanelOutlet, CdkDropListGroup],
   templateUrl: './dock-container.html',
   styleUrl: './dock-container.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -46,6 +50,7 @@ const BASE_INSET: string = '0.5rem';
     // The chosen texture rides on the element itself rather than on the document root: the dock
     // container also renders in pop-out windows, and an attribute on the host follows it there.
     '[attr.data-texture]': 'texture()',
+    '[attr.data-appearance]': 'appearance',
   },
 })
 export class DockContainer {
@@ -93,6 +98,11 @@ export class DockContainer {
   private readonly minimums: DockMinimums = inject(DockMinimums);
 
   /**
+   * Holds what fits the layout to the window, in a dock that does.
+   */
+  private readonly room: DockRoom = inject(DockRoom);
+
+  /**
    * Holds the shell bridge the window's minimum size is asked for through.
    */
   private readonly studio: Studio = inject(Studio);
@@ -110,28 +120,50 @@ export class DockContainer {
   );
 
   /**
+   * Gets how the dock looks, whose style values its groups, strips and windows take on.
+   */
+  protected readonly appearance: DockAppearance =
+    inject(DOCK_BLUEPRINT, { optional: true })?.appearance ?? 'full';
+
+  /**
    * Gets the root of the layout tree to render.
    */
   protected readonly layout: Signal<DockTreeNode> = this.dockState.layout;
 
   /**
+   * Gets the main group, or null when the layout has none.
+   */
+  private readonly mainStack: Signal<StackNode | null> = computed((): StackNode | null =>
+    firstStackOfRole(this.layout(), 'main'),
+  );
+
+  /**
+   * Gets the identifier of the main group's panel, or null when the layout has none.
+   */
+  protected readonly mainPanelId: Signal<string | null> = computed(
+    (): string | null => this.mainStack()?.panels[0] ?? null,
+  );
+
+  /**
    * Gets the background texture to paint behind the docked panes, or null when the user has chosen
-   * none — the attribute is then absent, and the texture layer resolves to nothing.
+   * none — the attribute is then absent, and the texture layer resolves to nothing. The simple look has
+   * none.
    *
    * Anything below the full graphics-acceleration level also resolves to null: the texture is a
    * full-workspace masked layer repainted with everything behind it, which is among the costliest
    * things to draw. The choice itself is preserved and returns at the full level.
    */
   protected readonly texture: Signal<string | null> = computed((): string | null => {
+    if (this.appearance === 'simple') return null;
     if (this.display.resolvedGraphicsAcceleration() !== 'full') return null;
     const texture: WorkspaceTexture = this.settings.workspaceTexture();
     return texture === 'none' ? null : texture;
   });
 
   /**
-   * Gets the uniform dock-area padding.
+   * Gets the dock-area padding: uniform around the groups, or none in the simple look.
    */
-  protected readonly padding: string = BASE_INSET;
+  protected readonly padding: string = this.appearance === 'simple' ? '0' : BASE_INSET;
 
   /**
    * Gets a value indicating whether an earlier layout can be restored.
@@ -162,8 +194,13 @@ export class DockContainer {
       if (typeof ResizeObserver === 'undefined') {
         return;
       }
-      const observer: ResizeObserver = new ResizeObserver((): void => this.applyWindowMinimum());
-      observer.observe(this.hostElement.nativeElement);
+      const host: HTMLElement = this.hostElement.nativeElement;
+      this.minimums.measureSpace(host.clientWidth, host.clientHeight);
+      const observer: ResizeObserver = new ResizeObserver((): void => {
+        this.minimums.measureSpace(host.clientWidth, host.clientHeight);
+        this.applyWindowMinimum();
+      });
+      observer.observe(host);
       destroyRef.onDestroy((): void => observer.disconnect());
     });
   }
@@ -188,8 +225,13 @@ export class DockContainer {
       return;
     }
     const minimum: DockMinimum = this.layoutMinimum();
-    const width: number = Math.ceil(minimum.inline + (window.innerWidth - box.width));
-    const height: number = Math.ceil(minimum.block + (window.innerHeight - box.height));
+    // A dock that fits itself to the window asks only for the window's own floor.
+    const width: number = this.room.enabled
+      ? 0
+      : Math.ceil(minimum.inline + (window.innerWidth - box.width));
+    const height: number = this.room.enabled
+      ? 0
+      : Math.ceil(minimum.block + (window.innerHeight - box.height));
     const key: string = `${width}x${height}`;
     if (key === this.lastMinimum) {
       return;
@@ -228,10 +270,22 @@ export class DockContainer {
   }
 
   /**
-   * Focuses the first document well so the editor starts (and resets) accented.
+   * Focuses the main group when its content, which lies outside the group, is pressed.
+   */
+  protected focusMain(): void {
+    const main: StackNode | null = this.mainStack();
+    if (main !== null) {
+      this.dockFocus.focus(main.id);
+    }
+  }
+
+  /**
+   * Focuses the first document well, or the main group, so the editor starts (and resets) accented.
    */
   private focusDocumentWell(): void {
-    const well: StackNode | null = firstStackOfRole(this.dockState.layout(), 'document');
+    const layout: DockTreeNode = this.dockState.layout();
+    const well: StackNode | null =
+      firstStackOfRole(layout, 'document') ?? firstStackOfRole(layout, 'main');
     if (well !== null) {
       this.dockFocus.focus(well.id);
     }

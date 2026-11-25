@@ -6,6 +6,7 @@ import type {
   FindScope,
 } from '@shared/angular/components/find-panel/find-request';
 import { EditorSearchTarget, OpenEditorsFindAdapter } from './open-editors-find-adapter';
+import { SearchViewState } from './search-view-state';
 
 /**
  * What an {@link EditorSearch} reaches into: the tab's main editor and what to call an editor's text.
@@ -40,8 +41,8 @@ const NOTHING_DISABLED: ReadonlySet<FindScope> = new Set<FindScope>();
 
 /**
  * Holds the state of a tab's own Find & Replace outside a workspace (#1007): a standalone code tab
- * (its code or its generated code), a binary tab's disassembly, or an API Explorer request's bodies.
- * The tab keeps one, opens it from its {@link import('@shared/angular/services/find-router/find-host').FindHost},
+ * (its code or its generated code), a binary tab's disassembly, or the API Explorer's request and
+ * response bodies. The tab keeps one, opens it from its {@link import('@shared/angular/services/find-router/find-host').FindHost},
  * and shows it as the shared search view — the same view the workspace's Search panel is — through
  * {@link import('./editor-search-panel').EditorSearchPanel}.
  *
@@ -79,6 +80,17 @@ export class EditorSearch {
   private readonly readOnlyState: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Holds how many times the editor searched has changed other than by a request.
+   */
+  private readonly revisionState: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Gets a number that changes whenever {@link retarget} moves the search to another editor, so the
+   * view can search again there.
+   */
+  public readonly revision: Signal<number> = this.revisionState.asReadonly();
+
+  /**
    * Gets whether the view is shown.
    */
   public readonly visible: Signal<boolean> = this.visibleState.asReadonly();
@@ -110,6 +122,11 @@ export class EditorSearch {
   );
 
   /**
+   * Gets what the view holds of the search, kept here so it outlives the view.
+   */
+  public readonly view: SearchViewState = new SearchViewState();
+
+  /**
    * Initializes a new instance of the {@link EditorSearch} class.
    * @param sources The tab's main editor, and what to call an editor's text.
    */
@@ -138,10 +155,41 @@ export class EditorSearch {
   }
 
   /**
-   * Hides the view; going, it clears its results and highlights.
+   * Determines whether the latest find was over an editor.
+   * @param editor The editor.
+   * @returns Returns true when it was.
+   */
+  public isOver(editor: MonacoApi.editor.ICodeEditor | null): boolean {
+    return editor !== null && untracked(this.editorState) === editor;
+  }
+
+  /**
+   * Moves the search to another editor without a request, for a host whose one view follows what is in
+   * front. What was found, and the selection the last request snapshotted, belong to the editor left
+   * behind. Does nothing when the search is already there.
+   * @param editor The editor to search, or null when there is none.
+   */
+  public retarget(editor: MonacoApi.editor.ICodeEditor | null): void {
+    if (untracked(this.editorState) === editor) {
+      return;
+    }
+    this.adapter.clear();
+    this.editorState.set(editor);
+    this.readOnlyState.set(editor?.getRawOptions().readOnly === true);
+    this.requestState.set(null);
+    if (untracked(this.adapter.scope) === 'selection') {
+      this.adapter.setScope('file');
+    }
+    this.revisionState.update((revision: number): number => revision + 1);
+  }
+
+  /**
+   * Hides the view and ends the search, clearing its results and highlights.
    */
   public close(): void {
     this.visibleState.set(false);
+    this.adapter.clear();
+    this.view.reset();
   }
 
   /**

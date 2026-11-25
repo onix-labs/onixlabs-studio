@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Signal, signal, WritableSignal } from '@angular/core';
+import { ContainersClient } from '../client/containers-client';
+import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { MenuItem } from '@shared/angular/components/menu/menu';
 import { TableRow } from '@shared/angular/components/table/table';
 import { Bridge } from '@shared/api/bridge';
@@ -580,26 +582,29 @@ describe('ContainersView', () => {
     });
 
     it('terminals_closingThePanelHidesIt_andTheNextSessionShowsItAgain', async () => {
-      // Driven through the view rather than the rendered panel: a rendered session mounts a real
-      // terminal, which needs browser APIs the test environment does not have.
       stubBridge({ available: true });
       const fixture: ComponentFixture<ContainersView> = await createView();
       const view: {
         terminalsHidden: WritableSignal<boolean>;
-        hideTerminals(): void;
         viewLogs(container: ContainerSummary): void;
-      } = fixture.componentInstance as unknown as {
-        terminalsHidden: WritableSignal<boolean>;
-        hideTerminals(): void;
-        viewLogs(container: ContainerSummary): void;
-      };
+      } = fixture.componentInstance as never;
+      const reveal: DockReveal = fixture.debugElement.injector.get(DockReveal);
 
+      vi.spyOn(fixture.debugElement.injector.get(ContainersClient), 'logs').mockResolvedValue({
+        lines: [],
+      } as never);
       view.viewLogs(CONTAINER);
-      view.hideTerminals();
+      await fixture.whenStable();
+      expect(reveal.isOpen('output')).toBe(true);
+
+      reveal.close('output');
+      await fixture.whenStable();
       expect(view.terminalsHidden()).toBe(true);
 
       view.viewLogs(STOPPED);
+      await fixture.whenStable();
       expect(view.terminalsHidden()).toBe(false);
+      expect(reveal.isOpen('output')).toBe(true);
     });
   });
 
