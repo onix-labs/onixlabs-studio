@@ -1,6 +1,6 @@
 import { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
-import { modalWindow, ribbonButton } from './helpers';
+import { modalWindow, openTabFromWelcome, ribbonButton } from './helpers';
 
 /**
  * Describes how a recorded terminal ended.
@@ -196,5 +196,29 @@ test.describe('terminal', () => {
     await expect.poll(columns).toBe(alone);
     await run(page, 'echo $((kept + 1))kept');
     await expect.poll((): Promise<string> => output(page)).toContain('42kept');
+  });
+
+  test('aCodeTabsRunTerminal_keepsItsShell_asItsPanelIsMovedClosedAndReopened', async ({
+    app,
+    page,
+  }) => {
+    await recordTerminals(page);
+    await openTabFromWelcome(app, page, 'New Code File', 'app-code-view');
+    await (await ribbonButton(page, 'Terminal')).click();
+    await expect(page.locator('app-terminal .terminal.xterm')).toBeVisible();
+    await run(page, 'kept=41; echo started$((kept))');
+    await expect.poll((): Promise<string> => output(page)).toContain('started41');
+
+    await page.getByRole('button', { name: 'Move terminal to side or bottom' }).click();
+    await run(page, 'echo $((kept + 1))moved');
+    await expect.poll((): Promise<string> => output(page)).toContain('42moved');
+
+    const group: Locator = page.locator('app-dock-tab-group');
+    await group.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(page.locator('app-terminal')).toHaveCount(0);
+    await (await ribbonButton(page, 'Terminal')).click();
+    await expect(page.locator('app-terminal .terminal.xterm')).toBeVisible();
+    await run(page, 'echo $((kept + 2))reopened');
+    await expect.poll((): Promise<string> => output(page)).toContain('43reopened');
   });
 });
