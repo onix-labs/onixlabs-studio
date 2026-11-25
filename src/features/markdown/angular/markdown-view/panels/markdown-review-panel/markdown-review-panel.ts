@@ -10,7 +10,6 @@ import {
 import { Icon } from '@shared/angular/icons/icon';
 import { Review, ReviewFilter } from '@features/markdown/angular/markdown-review/markdown-review';
 import { ReviewCounts, ReviewIssue } from '@features/markdown/angular/markdown-review/review-types';
-import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markdown-panels';
 import { ListRow, ListView } from '@shared/angular/components/list-view/list-view';
 import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 import { Button } from '@shared/angular/components/forms/button/button';
@@ -56,11 +55,6 @@ export class MarkdownReviewPanel {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
-
-  /**
-   * Holds the markdown panel registry the tool panel's close button dismisses this panel through.
-   */
-  protected readonly panels: MarkdownPanels = inject(MarkdownPanels);
 
   /**
    * Holds the review service supplying findings and actions.

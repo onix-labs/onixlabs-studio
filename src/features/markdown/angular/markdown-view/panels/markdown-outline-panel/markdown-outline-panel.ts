@@ -13,7 +13,6 @@ import {
   MarkdownCommands,
   OutlineHeading,
 } from '@shared/angular/services/markdown-commands/markdown-commands';
-import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markdown-panels';
 import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 
 /**
@@ -149,11 +148,6 @@ export class MarkdownOutlinePanel {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
-
-  /**
-   * Holds the markdown panel registry the tool panel's close button dismisses this panel through.
-   */
-  protected readonly panels: MarkdownPanels = inject(MarkdownPanels);
 
   /**
    * Holds the markdown command registry publishing the active editor's outline and active heading.

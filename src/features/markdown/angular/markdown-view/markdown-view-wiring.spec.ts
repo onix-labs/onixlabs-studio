@@ -6,6 +6,7 @@ import {
   InputSignal,
   output,
   OutputEmitterRef,
+  WritableSignal,
 } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { history, undoDepth } from '@milkdown/kit/prose/history';
@@ -20,6 +21,8 @@ import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markd
 import { Review } from '@features/markdown/angular/markdown-review/markdown-review';
 import { MarkdownStatus } from '@features/markdown/angular/markdown-status/markdown-status';
 import { Documents } from '@shared/angular/services/documents/documents';
+import { AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
+import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { MarkdownCommands } from '@shared/angular/services/markdown-commands/markdown-commands';
 import { MarkdownView } from './markdown-view';
@@ -80,6 +83,8 @@ class StubMarkdownDocument {
 
 describe('MarkdownView, around its document', () => {
   let fixture: ComponentFixture<MarkdownView>;
+
+  beforeEach(() => localStorage.clear());
 
   /**
    * Gets the stub document.
@@ -288,17 +293,16 @@ describe('MarkdownView, around its document', () => {
   });
 
   describe('going away', () => {
-    it('destroy_forgetsTheCommandsAndThePanelState', async () => {
+    it('destroy_forgetsTheCommandsAndTheDock', async () => {
       await render();
-      const remove: MockInstance<MarkdownPanels['remove']> = vi.spyOn(
-        TestBed.inject(MarkdownPanels),
-        'remove',
-      );
+      const docks: TabDocks = TestBed.inject(TabDocks);
+      docks.open('tab-1', 'outline');
+      expect(docks.isOpen('tab-1', 'outline')).toBe(true);
 
       fixture.destroy();
 
       expect(TestBed.inject(MarkdownCommands).hasActiveEditor()).toBe(false);
-      expect(remove).toHaveBeenCalledWith('tab-1');
+      expect(docks.isOpen('tab-1', 'outline')).toBe(false);
     });
 
     it('destroy_beforeThePaneWasReady_doesNotThrow', async () => {
@@ -310,20 +314,58 @@ describe('MarkdownView, around its document', () => {
     });
   });
 
-  describe('agent panel', () => {
-    it('agentPanel_staysMountedOnceOpened', async () => {
+  describe('the panels', () => {
+    /**
+     * Reads what is written on the dock's tabs.
+     * @returns Returns the labels, in order.
+     */
+    function tabs(): readonly string[] {
+      return [...(fixture.nativeElement as HTMLElement).querySelectorAll('.dock-tab__label')].map(
+        (label: Element): string => (label.textContent ?? '').trim(),
+      );
+    }
+
+    it('areTabbedTogether_asTheRibbonOpensThem', async () => {
+      await render();
+      const panels: MarkdownPanels = TestBed.inject(MarkdownPanels);
+
+      panels.toggle('reader');
+      panels.toggle('outline');
+      await fixture.whenStable();
+
+      expect(tabs()).toEqual(['Outline', 'Reader']);
+      expect([...panels.active()]).toEqual(['outline', 'reader']);
+    });
+
+    it('theAgent_isRegistered_whetherOrNotItsPanelIsOpen', async () => {
+      await render();
+
+      expect(TestBed.inject(AgentHosts).hosts()[0]?.tabId).toBe('tab-1');
+    });
+
+    it('find_keepsWhatWasTyped_behindAnotherTab_andForgetsItOnceClosed', async () => {
       await render();
       const panels: MarkdownPanels = TestBed.inject(MarkdownPanels);
       const host: HTMLElement = fixture.nativeElement as HTMLElement;
-
-      panels.toggle('agent');
+      core().view = null;
+      const parts: { findText: WritableSignal<string> } = fixture.componentInstance as never;
+      panels.open('find');
       await fixture.whenStable();
-      expect(host.querySelector('app-markdown-agent-panel')).not.toBeNull();
-
-      panels.toggle('agent');
+      parts.findText.set('needle');
       await fixture.whenStable();
 
-      expect(host.querySelector('app-markdown-agent-panel')).not.toBeNull();
+      panels.open('outline');
+      await fixture.whenStable();
+      expect(host.querySelector('app-find-panel')).toBeNull();
+      panels.open('find');
+      await fixture.whenStable();
+      expect(
+        host.querySelector<HTMLInputElement>('app-find-panel .find-panel__input input')?.value,
+      ).toBe('needle');
+
+      panels.close('find');
+      await fixture.whenStable();
+      expect(parts.findText()).toBe('');
     });
   });
 });
