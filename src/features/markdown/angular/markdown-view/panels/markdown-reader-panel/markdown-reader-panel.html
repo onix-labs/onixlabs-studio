@@ -1,84 +1,82 @@
-<app-tool-panel title="Reader" [icon]="Icon.READER">
-  @if (canRead()) {
-    <div class="ra-body">
-      <div class="ra-control">
-        <span class="ra-control-label" id="ra-speed-label">Speed</span>
-        <app-button-group
-          ariaLabel="Speed"
+@if (canRead()) {
+  <div class="ra-body">
+    <div class="ra-control">
+      <span class="ra-control-label" id="ra-speed-label">Speed</span>
+      <app-button-group
+        ariaLabel="Speed"
+        [fullWidth]="true"
+        [options]="speedOptions()"
+        [value]="String(rate())"
+        (valueChange)="onSpeed(Number($event))"
+      />
+    </div>
+
+    <div class="ra-control">
+      <span class="ra-control-label" id="ra-highlight-label">Highlight</span>
+      <app-button-group
+        ariaLabel="Highlight"
+        [fullWidth]="true"
+        [options]="highlightOptions"
+        [value]="highlightMode()"
+        (valueChange)="onHighlight($any($event))"
+      />
+    </div>
+
+    <div class="ra-control">
+      <span class="ra-control-label" id="ra-voice-label">Voice</span>
+      @if (voiceOptions().length > 0) {
+        <app-dropdown
+          [options]="voiceOptions()"
+          [value]="selectedVoiceUri()"
           [fullWidth]="true"
-          [options]="speedOptions()"
-          [value]="String(rate())"
-          (valueChange)="onSpeed(Number($event))"
+          ariaLabel="Voice"
+          (valueChange)="onVoice($event)"
         />
-      </div>
+      } @else {
+        <p class="ra-empty">No voices available.</p>
+      }
+    </div>
 
-      <div class="ra-control">
-        <span class="ra-control-label" id="ra-highlight-label">Highlight</span>
-        <app-button-group
-          ariaLabel="Highlight"
-          [fullWidth]="true"
-          [options]="highlightOptions"
-          [value]="highlightMode()"
-          (valueChange)="onHighlight($any($event))"
-        />
-      </div>
+    <div class="ra-transport">
+      <app-button
+        variant="none"
+        size="small"
+        [icon]="Icon.SKIP_BACK"
+        ariaLabel="Previous paragraph"
+        (click)="onSkipBack()"
+      />
+      <app-button
+        variant="none"
+        [icon]="isPlaying() ? Icon.PAUSE : Icon.PLAY_FILL"
+        [ariaLabel]="isPlaying() ? 'Pause' : 'Play'"
+        (click)="onToggle()"
+      />
+      <app-button
+        variant="none"
+        size="small"
+        [icon]="Icon.SKIP_FORWARD"
+        ariaLabel="Next paragraph"
+        (click)="onSkipForward()"
+      />
+    </div>
 
-      <div class="ra-control">
-        <span class="ra-control-label" id="ra-voice-label">Voice</span>
-        @if (voiceOptions().length > 0) {
-          <app-dropdown
-            [options]="voiceOptions()"
-            [value]="selectedVoiceUri()"
-            [fullWidth]="true"
-            ariaLabel="Voice"
-            (valueChange)="onVoice($event)"
-          />
-        } @else {
-          <p class="ra-empty">No voices available.</p>
-        }
-      </div>
-
-      <div class="ra-transport">
-        <app-button
-          variant="none"
-          size="small"
-          [icon]="Icon.SKIP_BACK"
-          ariaLabel="Previous paragraph"
-          (click)="onSkipBack()"
-        />
-        <app-button
-          variant="none"
-          [icon]="isPlaying() ? Icon.PAUSE : Icon.PLAY_FILL"
-          [ariaLabel]="isPlaying() ? 'Pause' : 'Play'"
-          (click)="onToggle()"
-        />
-        <app-button
-          variant="none"
-          size="small"
-          [icon]="Icon.SKIP_FORWARD"
-          ariaLabel="Next paragraph"
-          (click)="onSkipForward()"
-        />
-      </div>
-
-      <div class="ra-scrub">
-        <input
-          type="range"
-          class="ra-scrubber"
-          min="0"
-          [max]="scrubMax"
-          [value]="progress() * scrubMax"
-          [style.--ra-fill]="fillPercent()"
-          aria-label="Seek"
-          (input)="onSeek($event)"
-        />
-        <div class="ra-times">
-          <span>{{ elapsedLabel() }}</span>
-          <span>{{ totalLabel() }}</span>
-        </div>
+    <div class="ra-scrub">
+      <input
+        type="range"
+        class="ra-scrubber"
+        min="0"
+        [max]="scrubMax"
+        [value]="progress() * scrubMax"
+        [style.--ra-fill]="fillPercent()"
+        aria-label="Seek"
+        (input)="onSeek($event)"
+      />
+      <div class="ra-times">
+        <span>{{ elapsedLabel() }}</span>
+        <span>{{ totalLabel() }}</span>
       </div>
     </div>
-  } @else {
-    <p class="ra-empty">No document to read.</p>
-  }
-</app-tool-panel>
+  </div>
+} @else {
+  <p class="ra-empty">No document to read.</p>
+}

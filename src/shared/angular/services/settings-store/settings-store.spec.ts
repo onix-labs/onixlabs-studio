@@ -32,6 +32,16 @@ describe('SettingsStore', () => {
     expect(service.get('object', null)).toEqual(value);
   });
 
+  it('removeAll_removesWhatTheKeysPrefixed_andNothingElse', () => {
+    service.set('old.code', { terminal: { edge: 'right' } });
+    service.set('old.markdown', {});
+    service.set('dock.layout.code', { kind: 'split' });
+
+    service.removeAll('old.');
+
+    expect(Object.keys(localStorage)).toEqual(['dock.layout.code']);
+  });
+
   it('get_whenStoredValueIsMalformed_returnsTheFallback', () => {
     localStorage.setItem('broken', '{ not json');
 

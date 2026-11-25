@@ -125,8 +125,8 @@
   // A settled prompt card's outcome ("Allowed"): the accent, muted toward the card (#856).
   --agent-card-state-color: color-mix(in srgb, var(--accent-color) 70%, transparent);
 
-  // The shared surface for every docked panel's chrome. The panel-layout panel container paints this;
-  // panel content draws over it transparent (inheriting it) or overrides with its own colour. Kept in
+  // The shared surface for every docked panel's chrome. A dock's groups paint this; panel
+  // content draws over it transparent (inheriting it) or overrides with its own colour. Kept in
   // step across the agent, terminal, find, inspector, disasm, and markdown tool panels.
   --panel-surface-color: color-mix(in srgb, var(--gray-900), var(--gray-800));
 
@@ -182,7 +182,7 @@
   --dock-title-foreground-color--focused: var(--gray-100);
 
   // The dock panel surface: the body the panel content sits on, and the active tab that merges into
-  // it. Shares --panel-surface-color so a docked panel reads identically to a panel-layout panel.
+  // it, in both of a dock's looks.
   --dock-tab-background-color--active: var(--panel-surface-color);
   --dock-tab-foreground-color: var(--gray-500);
   --dock-tab-foreground-color--active: var(--gray-200);

@@ -223,7 +223,7 @@ button.tile__name {
   transition: background 150ms ease-in-out;
 
   &:hover {
-    background: var(--panel-grip-hover-color);
+    background: var(--split-divider-color--hover);
   }
 
   &:active {

@@ -139,14 +139,12 @@ describe('FindPanel', () => {
     expect(selections).toEqual([1]);
   });
 
-  it('title_andReplaceAffordances_followTheAdapterSupportsReplaceFlag', async () => {
-    expect(host.querySelector('.tool-panel__title')?.textContent).toContain('Find and Replace');
+  it('replaceAffordances_followTheAdapterSupportsReplaceFlag', async () => {
     expect(host.querySelector('app-button-group')).not.toBeNull();
 
     fixture.componentRef.setInput('adapter', createAdapter(false));
     await fixture.whenStable();
 
-    expect(host.querySelector('.tool-panel__title')?.textContent?.trim()).toBe('Find');
     expect(host.querySelector('app-button-group')).toBeNull();
   });
 
@@ -179,7 +177,9 @@ describe('FindPanel', () => {
     component.closed.subscribe((): void => void (closed += 1));
     await fixture.whenStable();
 
-    host.querySelector<HTMLButtonElement>('button[aria-label="Close find"]')?.click();
+    host
+      .querySelector('.find-panel__input')
+      ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
 
     expect(clearCalls).toBe(1);
     expect(closed).toBe(1);

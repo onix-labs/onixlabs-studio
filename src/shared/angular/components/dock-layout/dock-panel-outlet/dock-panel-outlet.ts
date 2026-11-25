@@ -12,7 +12,6 @@ import {
   Type,
 } from '@angular/core';
 import { DockPanel } from '../../../services/dock-layout/dock-panel';
-import { DOCK_PANEL_HOST } from '../../../services/dock-layout/dock-panel-host';
 import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 
 /**
@@ -26,7 +25,6 @@ import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-regi
   templateUrl: './dock-panel-outlet.html',
   styleUrl: './dock-panel-outlet.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [{ provide: DOCK_PANEL_HOST, useValue: true }],
 })
 export class DockPanelOutlet {
   /**

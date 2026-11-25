@@ -16,22 +16,13 @@ export class SplitSizes {
   private readonly store: SettingsStore = inject(SettingsStore);
 
   /**
-   * Gets the size last set for a pane: under its split, or else by the panel layout the split replaced,
-   * whose size is taken over.
+   * Gets the size last set for a pane.
    * @param key The split's key.
    * @param paneId The pane's id.
    * @returns Returns the size in pixels, or null when none was set.
    */
   public get(key: string, paneId: string): number | null {
-    const size: number | undefined = this.read(key)[paneId];
-    if (size !== undefined) {
-      return size;
-    }
-    const inherited: number | null = this.inherited(key, paneId);
-    if (inherited !== null) {
-      this.set(key, paneId, inherited);
-    }
-    return inherited;
+    return this.read(key)[paneId] ?? null;
   }
 
   /**
@@ -55,22 +46,6 @@ export class SplitSizes {
         (entry: [string, unknown]): entry is [string, number] => isSize(entry[1]),
       ),
     );
-  }
-
-  /**
-   * Reads the size a panel of the same name had in the panel layout the split replaced (#1564), which
-   * kept each panel's placement, size and all, under a key of its own.
-   * @param key The split's key, which is the layout's.
-   * @param paneId The pane's id, which is the panel's.
-   * @returns Returns the size in pixels, or null when there is none.
-   */
-  private inherited(key: string, paneId: string): number | null {
-    const placement: unknown = this.readObject(`panel-layout.${key}`)[paneId];
-    if (placement === null || typeof placement !== 'object') {
-      return null;
-    }
-    const size: unknown = (placement as Record<string, unknown>)['size'];
-    return isSize(size) ? size : null;
   }
 
   /**

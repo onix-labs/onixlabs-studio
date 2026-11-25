@@ -6,7 +6,6 @@ import {
   HighlightMode,
   VoiceOption,
 } from '@features/markdown/angular/markdown-reader/reader-types';
-import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 import { Button } from '@shared/angular/components/forms/button/button';
 import {
   ButtonGroup,
@@ -55,7 +54,7 @@ const SPEEDS: readonly number[] = [SPEED_SLOW, SPEED_NORMAL, SPEED_FAST, SPEED_F
  */
 @Component({
   selector: 'app-markdown-reader-panel',
-  imports: [ButtonGroup, Button, ToolPanel, Dropdown],
+  imports: [ButtonGroup, Button, Dropdown],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './markdown-reader-panel.html',
   styleUrl: './markdown-reader-panel.scss',

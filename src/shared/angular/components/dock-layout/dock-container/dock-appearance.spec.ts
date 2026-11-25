@@ -12,7 +12,6 @@ import {
   POPOUT_DOCK_CONFIG,
   PopoutDockHost,
 } from '@shared/angular/components/popout-dock-host/popout-dock-host';
-import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 import { Icon } from '@shared/angular/icons/icon';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { DockAutoHide } from '../../../services/dock-layout/dock-auto-hide';
@@ -25,13 +24,10 @@ import { findStackOfPanel } from '../../../services/dock-layout/dock-tree';
 import { DockContainer } from './dock-container';
 
 /**
- * A panel that draws a header of its own anywhere but in a dock.
+ * A panel's content.
  */
-@Component({
-  imports: [ToolPanel],
-  template: '<app-tool-panel title="Own title"><p class="body">body</p></app-tool-panel>',
-})
-class HeadedPanel {
+@Component({ template: '<p class="body">body</p>' })
+class TestPanel {
   public readonly panel: InputSignal<DockPanel | undefined> = input<DockPanel | undefined>();
 }
 
@@ -45,9 +41,9 @@ function blueprint(more: Partial<DockBlueprint> = {}): DockBlueprint {
     createLayout: (): DockNode =>
       mkSplit('row', [mkStack('main', ['editor']), mkStack('tool', ['agent', 'find'])]),
     panels: [
-      { id: 'editor', title: 'Editor', icon: Icon.CODE, role: 'main', component: HeadedPanel },
-      { id: 'agent', title: 'Agent', icon: Icon.AGENT, role: 'tool', component: HeadedPanel },
-      { id: 'find', title: 'Find', icon: Icon.SEARCH, role: 'tool', component: HeadedPanel },
+      { id: 'editor', title: 'Editor', icon: Icon.CODE, role: 'main', component: TestPanel },
+      { id: 'agent', title: 'Agent', icon: Icon.AGENT, role: 'tool', component: TestPanel },
+      { id: 'find', title: 'Find', icon: Icon.SEARCH, role: 'tool', component: TestPanel },
     ],
     ...more,
   };
@@ -157,20 +153,6 @@ describe("a dock's appearance and buttons (#1569)", () => {
     fixture.detectChanges();
 
     expect(buttons('.dock-collapsed-strip__flyout-title-buttons')).toEqual(['Dock', 'Close']);
-  });
-
-  it('aPanelWithAHeaderOfItsOwn_drawsNone', () => {
-    draw(blueprint());
-
-    expect(host.querySelectorAll('.body').length).toBe(2);
-    expect(host.querySelector('.tool-panel__header')).toBeNull();
-  });
-
-  it('aPanelWithAHeaderOfItsOwn_stillDrawsItElsewhere', () => {
-    const alone: ComponentFixture<HeadedPanel> = TestBed.createComponent(HeadedPanel);
-    alone.detectChanges();
-
-    expect((alone.nativeElement as HTMLElement).querySelector('h2')?.textContent).toBe('Own title');
   });
 
   it('aPopOut_looksAsTheDockItCameFrom', () => {

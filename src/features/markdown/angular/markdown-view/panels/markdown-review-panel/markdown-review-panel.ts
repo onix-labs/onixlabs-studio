@@ -11,7 +11,6 @@ import { Icon } from '@shared/angular/icons/icon';
 import { Review, ReviewFilter } from '@features/markdown/angular/markdown-review/markdown-review';
 import { ReviewCounts, ReviewIssue } from '@features/markdown/angular/markdown-review/review-types';
 import { ListRow, ListView } from '@shared/angular/components/list-view/list-view';
-import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 import { Button } from '@shared/angular/components/forms/button/button';
 
 /**
@@ -45,7 +44,7 @@ const KIND_CHIPS: readonly FilterChip[] = [
  */
 @Component({
   selector: 'app-markdown-review-panel',
-  imports: [Button, ListView, ToolPanel],
+  imports: [Button, ListView],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './markdown-review-panel.html',
   styleUrl: './markdown-review-panel.scss',

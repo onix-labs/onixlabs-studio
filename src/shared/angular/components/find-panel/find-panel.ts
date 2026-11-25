@@ -26,7 +26,6 @@ import {
   ButtonGroupOption,
 } from '@shared/angular/components/forms/button-group/button-group';
 import { Icon } from '@shared/angular/icons/icon';
-import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 import { Log } from '@shared/angular/services/log/log';
 import { FindAdapter, FindQuery, FindResultItem } from './find-adapter';
 import { FindOptions } from '@shared/angular/services/find-options/find-options';
@@ -52,17 +51,12 @@ const MAX_RENDERED_MATCHES: number = 1000;
  */
 @Component({
   selector: 'app-find-panel',
-  imports: [ToolPanel, ButtonGroup, Button, TextField, Checkbox],
+  imports: [ButtonGroup, Button, TextField, Checkbox],
   templateUrl: './find-panel.html',
   styleUrl: './find-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FindPanel implements OnDestroy {
-  /**
-   * Gets the icon set, exposed for the template.
-   */
-  protected readonly Icon: typeof Icon = Icon;
-
   /**
    * Gets the two find modes, offered as one segmented control.
    */
@@ -75,13 +69,6 @@ export class FindPanel implements OnDestroy {
    * Gets the adapter the panel drives, or null before the host binds one.
    */
   public readonly adapter: InputSignal<FindAdapter | null> = input<FindAdapter | null>(null);
-
-  /**
-   * Gets a value indicating whether the panel shows its own title-and-close header. Hosts that supply
-   * their own chrome (for example a dock panel with a tab and close control) set this false to avoid
-   * doubling it.
-   */
-  public readonly showHeader: InputSignal<boolean> = input<boolean>(true);
 
   /**
    * Gets a value indicating whether the search outlives the panel: the host keeps it while the panel is
@@ -158,13 +145,6 @@ export class FindPanel implements OnDestroy {
    */
   protected readonly supportsReplace: Signal<boolean> = computed(
     (): boolean => this.adapter()?.supportsReplace ?? false,
-  );
-
-  /**
-   * Gets the panel's header title, reflecting whether the bound surface offers replace.
-   */
-  protected readonly title: Signal<string> = computed((): string =>
-    this.supportsReplace() ? 'Find and Replace' : 'Find',
   );
 
   /**

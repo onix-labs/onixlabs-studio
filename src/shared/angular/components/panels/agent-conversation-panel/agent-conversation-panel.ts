@@ -15,11 +15,9 @@ import { AgentConversationList } from '@shared/angular/components/agent-conversa
  * instances provided by the HOST — deliberately not by this panel. The panel itself is disposable: a
  * dock tool stack destroys it whenever another panel in the stack activates, and a conversation
  * scoped here would lose its transcript and in-flight run on every switch. Each host provides the
- * pair at the level that owns the conversation's lifetime: the IDE views (workspace, source control)
- * for dock-hosted panels, and the feature agent panels for the side-panel system (which keeps them
- * mounted while hidden). It carries no title chrome of its own — the host frames it. The standalone
+ * pair at the level that owns the conversation's lifetime, its view. It carries no title chrome of its own — the host frames it. The standalone
  * agent tab does not use this panel: it drives the conversation through the ribbon and shows history
- * in a side panel.
+ * in a panel of its own.
  */
 @Component({
   selector: 'app-agent-conversation-panel',
