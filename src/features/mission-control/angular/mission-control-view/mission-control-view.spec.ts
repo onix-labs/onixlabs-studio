@@ -52,7 +52,13 @@ describe('MissionControlView', () => {
       imports: [MissionControlView],
       providers: [
         { provide: AgentHosts, useValue: { hosts } },
-        { provide: Settings, useValue: { missionControlTileScrollMode: scrollMode } },
+        {
+          provide: Settings,
+          useValue: {
+            missionControlTileScrollMode: scrollMode,
+            value: (): Signal<unknown> => signal<unknown>(undefined),
+          },
+        },
       ],
     });
     // Created but never change-detected: the constructor's logic runs without mounting the tile tree

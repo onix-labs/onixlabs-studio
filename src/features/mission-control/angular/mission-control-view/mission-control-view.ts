@@ -28,10 +28,21 @@ import {
   AgentHosts,
 } from '@shared/angular/services/agent-hosts/agent-hosts';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
-import { Panel } from '@shared/angular/components/panel-layout/panel';
-import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { MissionControlPanel } from './mission-control-panel/mission-control-panel';
 import { MissionControlAgentTile } from './mission-control-agent-tile/mission-control-agent-tile';
+import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
+import { DockTemplatePanel } from '@shared/angular/components/dock-layout/dock-template-panel/dock-template-panel';
+import { dockProviders } from '@shared/angular/services/dock-layout/dock-providers';
+import {
+  createDockTabRegistrar,
+  DockTabRegistrar,
+} from '@shared/angular/services/dock-layout/dock-tab-registration';
+import { Icon } from '@shared/angular/icons/icon';
+import {
+  MISSION_CONTROL_AGENTS_PANEL_ID,
+  MISSION_CONTROL_COLUMNS_PANEL_ID,
+  MISSION_CONTROL_DOCK_BLUEPRINT,
+} from '../mission-control-dock-blueprint';
 import { MissionControlTiles } from './mission-control-tiles';
 
 /**
@@ -47,11 +58,11 @@ import { MissionControlTiles } from './mission-control-tiles';
  */
 @Component({
   selector: 'app-mission-control-view',
-  imports: [NgComponentOutlet, PanelLayout, Panel, MissionControlPanel],
+  imports: [DockContainer, DockTemplatePanel, MissionControlPanel, NgComponentOutlet],
   templateUrl: './mission-control-view.html',
   styleUrl: './mission-control-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [MissionControlTiles],
+  providers: [MissionControlTiles, ...dockProviders(MISSION_CONTROL_DOCK_BLUEPRINT)],
 })
 export class MissionControlView implements OnInit {
   /**
@@ -113,6 +124,26 @@ export class MissionControlView implements OnInit {
    * Weakly keyed so an unregistered host's injector is collected with it.
    */
   private readonly injectors: WeakMap<AgentHost, Injector> = new WeakMap<AgentHost, Injector>();
+
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Gets the identifier of the panel holding the agents' columns.
+   */
+  protected readonly columnsPanel: string = MISSION_CONTROL_COLUMNS_PANEL_ID;
+
+  /**
+   * Gets the identifier of the panel listing the agents.
+   */
+  protected readonly agentsPanel: string = MISSION_CONTROL_AGENTS_PANEL_ID;
+
+  /**
+   * Registers this tab's dock. Finalised in {@link ngOnInit} once the tab id is readable.
+   */
+  private readonly dockTab: DockTabRegistrar = createDockTabRegistrar();
 
   /**
    * Gets the tile component the outlet mounts per host, exposed for the template.
@@ -186,6 +217,7 @@ export class MissionControlView implements OnInit {
    * Publishes this view's injector to the status strip, now that the tab id is readable.
    */
   public ngOnInit(): void {
+    this.dockTab.register(this.tabId());
     this.statusHost.register(this.tabId());
   }
 
