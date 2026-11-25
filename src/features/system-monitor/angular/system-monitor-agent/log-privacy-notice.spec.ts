@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentItem } from '@shared/angular/services/agent/agent';
-import { LOG_PRIVACY_NOTICE, needsPrivacyNotice } from './system-monitor-agent-panel';
+import { LOG_PRIVACY_NOTICE, needsPrivacyNotice } from './log-privacy-notice';
 
 /**
  * Builds a transcript item.

@@ -1,5 +1,10 @@
-<app-panel-layout class="system-monitor">
-  <div main class="system-monitor__main">
+<ng-template
+  [appDockPanel]="mainPanel"
+  panelTitle="System Monitor"
+  [panelIcon]="Icon.SYSTEM_MONITOR"
+  panelRole="main"
+>
+  <div class="system-monitor__main">
     <!-- The monitor has views, which the ribbon's View group switches between: Overview at a glance,
          a view per resource in full, System, and the logs on their own. One view is in front at a
          time, and only its feeds run beyond the samples every view shares (processes are listed only
@@ -150,23 +155,22 @@
       }
     </div>
   </div>
+</ng-template>
 
-  <!-- The view's own agent (#966), docked on the right. It mounts on first show and stays mounted, so
-       closing it keeps its conversation; Mission Control registration lives on the view. -->
-  @if (agentMounted()) {
-    <app-panel
-      panelId="agent"
-      defaultEdge="right"
-      [visible]="agentVisible()"
-      [defaultSize]="360"
-      [minSize]="240"
-      [maxSize]="900"
-    >
-      <app-system-monitor-agent-panel
-        [tabId]="tabId()"
-        [isActive]="isActive() && agentVisible()"
-        (closed)="agentVisible.set(false)"
-      />
-    </app-panel>
-  }
-</app-panel-layout>
+<!-- The view's own agent (#966); Mission Control registration lives on the view. -->
+<ng-template
+  [appDockPanel]="agentPanel"
+  panelTitle="Agent"
+  [panelIcon]="Icon.AGENT"
+  [defaultSize]="360"
+  [maxSize]="900"
+>
+  <app-agent-conversation-panel
+    surface="monitor"
+    [context]="agentContext"
+    [tabId]="tabId()"
+    [isActive]="isActive()"
+  />
+</ng-template>
+
+<app-dock-container />
