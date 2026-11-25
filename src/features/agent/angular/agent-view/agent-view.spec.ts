@@ -2,6 +2,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { AgentChat } from '@shared/angular/components/agent-chat/agent-chat';
 import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { Workspaces } from '@shared/angular/services/workspaces/workspaces';
 import { AgentView } from './agent-view';
 
@@ -10,6 +12,7 @@ describe('AgentView', () => {
   let fixture: ComponentFixture<AgentView>;
 
   beforeEach(async () => {
+    localStorage.clear();
     await TestBed.configureTestingModule({
       imports: [AgentView],
     }).compileComponents();
@@ -57,5 +60,35 @@ describe('AgentView', () => {
 
   it('anOrdinaryTab_startsEmpty', () => {
     expect(fixture.debugElement.injector.get(Agent).items()).toEqual([]);
+  });
+
+  describe('its conversation history', () => {
+    let conversation: AgentConversation;
+    let reveal: DockReveal;
+
+    beforeEach(() => {
+      conversation = fixture.debugElement.injector.get(AgentConversation);
+      reveal = fixture.debugElement.injector.get(DockReveal);
+    });
+
+    it('opensAndClosesInTheDock_asTheRibbonTogglesIt', async () => {
+      conversation.toggleHistory();
+      await fixture.whenStable();
+      expect(reveal.isOpen('history')).toBe(true);
+
+      conversation.toggleHistory();
+      await fixture.whenStable();
+      expect(reveal.isOpen('history')).toBe(false);
+    });
+
+    it('isClosedForTheRibbonToo_whenClosedFromItsTitleBar', async () => {
+      conversation.toggleHistory();
+      await fixture.whenStable();
+
+      reveal.close('history');
+      await fixture.whenStable();
+
+      expect(conversation.historyOpen()).toBe(false);
+    });
   });
 });
