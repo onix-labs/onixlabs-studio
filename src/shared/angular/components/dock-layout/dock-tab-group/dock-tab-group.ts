@@ -688,20 +688,31 @@ export class DockTabGroup {
   };
 
   /**
-   * Commits a tab drop, reordering within this group or moving the tab in from another group.
+   * Commits a tab drop, reordering within this group or moving the tab in from another group. The drop's
+   * indices count the tabs shown; the group also holds the places of panels that aren't.
    * @param event The CDK drop event.
    */
   protected onDrop(event: CdkDragDrop<StackNode>): void {
     const panelId: string = event.item.data as string;
+    const held: readonly string[] = this.stack().panels;
+    const displaced: string | undefined = this.panels()[event.currentIndex]?.id;
     if (event.previousContainer === event.container) {
       this.log.debug(
         'DockTabGroup',
         `Reordered tab '${panelId}' within stack '${this.stack().id}'`,
       );
-      this.dockState.reorderTab(this.stack().id, event.previousIndex, event.currentIndex);
+      this.dockState.reorderTab(
+        this.stack().id,
+        held.indexOf(panelId),
+        displaced === undefined ? -1 : held.indexOf(displaced),
+      );
     } else {
       this.log.info('DockTabGroup', `Moved tab '${panelId}' into stack '${this.stack().id}'`);
-      this.dockState.movePanel(panelId, this.stack().id, event.currentIndex);
+      this.dockState.movePanel(
+        panelId,
+        this.stack().id,
+        displaced === undefined ? held.length : held.indexOf(displaced),
+      );
     }
   }
 
