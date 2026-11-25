@@ -1,5 +1,6 @@
 import { DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
 import { DockNode, mkSplit, mkStack } from '@shared/angular/services/dock-layout/dock-node';
+import { SIMPLE_DOCK } from '@shared/angular/services/dock-layout/dock-simple';
 
 /**
  * The identifier of the main group's panel: the conversation.
@@ -26,6 +27,5 @@ export const AGENT_DOCK_BLUEPRINT: DockBlueprint = {
   panels: [],
   templatePanels: [AGENT_CHAT_PANEL_ID, AGENT_HISTORY_PANEL_ID],
   startsOpen: [],
-  appearance: 'simple',
-  buttons: ['close'],
+  ...SIMPLE_DOCK,
 };

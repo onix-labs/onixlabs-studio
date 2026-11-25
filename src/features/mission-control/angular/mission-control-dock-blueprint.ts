@@ -1,5 +1,6 @@
 import { DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
 import { DockNode, mkSplit, mkStack } from '@shared/angular/services/dock-layout/dock-node';
+import { SIMPLE_DOCK } from '@shared/angular/services/dock-layout/dock-simple';
 
 /**
  * The identifier of the main group's panel: the agents' columns.
@@ -13,7 +14,7 @@ export const MISSION_CONTROL_AGENTS_PANEL_ID: string = 'agents';
 
 /**
  * The blueprint specialising a dock as Mission Control's (#1572): the agents' columns in the centre, with
- * their list on the left. The list is always open, so its title bar shows no buttons.
+ * their list on the left. The list can be collapsed, but not closed.
  */
 export const MISSION_CONTROL_DOCK_BLUEPRINT: DockBlueprint = {
   key: 'mission-control',
@@ -26,6 +27,5 @@ export const MISSION_CONTROL_DOCK_BLUEPRINT: DockBlueprint = {
   panels: [],
   templatePanels: [MISSION_CONTROL_AGENTS_PANEL_ID, MISSION_CONTROL_COLUMNS_PANEL_ID],
   startsOpen: [MISSION_CONTROL_AGENTS_PANEL_ID],
-  appearance: 'simple',
-  buttons: [],
+  ...SIMPLE_DOCK,
 };

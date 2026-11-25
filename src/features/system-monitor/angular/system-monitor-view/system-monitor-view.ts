@@ -28,6 +28,7 @@ import { CdkMenuTrigger } from '@angular/cdk/menu';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { Icon } from '@shared/angular/icons/icon';
+import { DockSides } from '@shared/angular/services/dock-layout/dock-sides';
 import { LogContextCard } from '../tabs/logs-tab/log-context-card/log-context-card';
 import { SummaryItem, ViewSummary } from '../tabs/view-summary/view-summary';
 import { LogDetailsCard } from '../tabs/logs-tab/log-details-card/log-details-card';
@@ -275,6 +276,11 @@ export class SystemMonitorView implements OnInit {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Exposes the sides a panel may dock to to the template.
+   */
+  protected readonly DockSides: typeof DockSides = DockSides;
 
   /**
    * Gets the severities in display order, exposed for the filter chips.

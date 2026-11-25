@@ -32,6 +32,8 @@ import { DockPanel } from '../../../services/dock-layout/dock-panel';
 import { DockPanelAvailability } from '../../../services/dock-layout/dock-panel-availability';
 import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 import { DockSide, StackNode } from '../../../services/dock-layout/dock-node';
+import { layoutAfterDrop } from '../../../services/dock-layout/dock-drop';
+import { DockRoom } from '../../../services/dock-layout/dock-room';
 import { DockState } from '../../../services/dock-layout/dock-state';
 import { DockMinimums } from '../../../services/dock-layout/dock-minimums';
 import { PopoutPanels } from '../../../services/dock-layout/popout-panels';
@@ -116,6 +118,11 @@ export class DockTabGroup {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Holds which layouts there is room for.
+   */
+  private readonly room: DockRoom = inject(DockRoom);
 
   /**
    * Holds the layout state activation, closing and tab moves drive.
@@ -632,7 +639,10 @@ export class DockTabGroup {
    * Gets the panel the title bar's close button closes, or undefined when it shows none.
    */
   protected readonly closable: Signal<DockPanel | undefined> = computed(
-    (): DockPanel | undefined => (this.shows('close') ? this.activePanel() : undefined),
+    (): DockPanel | undefined =>
+      this.shows('close') && this.activePanel()?.closable !== false
+        ? this.activePanel()
+        : undefined,
   );
 
   /**
@@ -656,7 +666,8 @@ export class DockTabGroup {
    * ever holds panels of its own role — documents into document wells, tools into tool stacks. This
    * is literal tab-strip membership, distinct from the compass's occupy rule: a tool taking over an
    * empty centre well replaces the well (a compass drop through {@link DockDrag}), it never becomes a
-   * tab in a documents-only strip, so that case must not enter here.
+   * tab in a documents-only strip, so that case must not enter here. Nor does a tab the group has no room
+   * for, or that may not be on the group's side.
    * @param drag The tab being dragged, whose data is the panel identifier.
    * @returns Returns true when the tab may drop here; otherwise, false.
    */
@@ -664,7 +675,16 @@ export class DockTabGroup {
     drag: CdkDrag<string>,
   ): boolean => {
     const panel: DockPanel | undefined = this.registry.get(drag.data);
-    return panel?.role === this.stack().role;
+    return (
+      panel?.role === this.stack().role &&
+      this.room.admits(
+        layoutAfterDrop(this.dockState.layout(), panel.id, panel.role, {
+          kind: 'tab',
+          stackId: this.stack().id,
+        }),
+        [panel.id],
+      )
+    );
   };
 
   /**

@@ -794,9 +794,42 @@ export function placeAsIn(tree: DockNode, from: DockNode, panelId: string): Dock
 }
 
 /**
+ * Places a panel on the side of the main group another layout has it on: with a neighbour it has there that
+ * is on that side here too, or in a group of its own. Unlike {@link placeAsIn}, which follows the panel's
+ * neighbours wherever they are.
+ * @param tree The root of the tree to transform.
+ * @param from The layout that has the panel.
+ * @param panelId The identifier of the panel.
+ * @returns Returns the transformed tree, or the original tree when it holds the panel already or the other
+ * layout does not.
+ */
+export function placeAtStart(tree: DockNode, from: DockNode, panelId: string): DockNode {
+  const home: StackNode | null = findStackOfPanel(from, panelId);
+  const place: MainSide | null = home === null ? null : sideOfMain(from, home.id);
+  const main: StackNode | null = firstStackOfRole(tree, 'main');
+  if (
+    home === null ||
+    place === null ||
+    main === null ||
+    findStackOfPanel(tree, panelId) !== null
+  ) {
+    return placeAsIn(tree, from, panelId);
+  }
+  for (const neighbour of home.panels) {
+    const stack: StackNode | null = findStackOfPanel(tree, neighbour);
+    if (stack?.role === 'tool' && sideOfMain(tree, stack.id)?.side === place.side) {
+      return tabInto(tree, stack.id, panelId);
+    }
+  }
+  return place.wholeEdge
+    ? dockEdge(tree, panelId, place.side)
+    : splitStack(tree, main.id, panelId, place.side, 'tool');
+}
+
+/**
  * Where a group is from the main group.
  */
-interface MainSide {
+export interface MainSide {
   /**
    * Gets the side of the main group it is on.
    */
@@ -814,7 +847,7 @@ interface MainSide {
  * @param stackId The identifier of the group.
  * @returns Returns the side, or null when the tree lacks either.
  */
-function sideOfMain(tree: DockNode, stackId: string): MainSide | null {
+export function sideOfMain(tree: DockNode, stackId: string): MainSide | null {
   let node: DockNode = tree;
   while (isSplitNode(node)) {
     const main: number = node.children.findIndex(

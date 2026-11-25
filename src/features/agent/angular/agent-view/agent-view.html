@@ -16,8 +16,10 @@
   [appDockPanel]="historyPanel"
   panelTitle="Conversation History"
   [panelIcon]="Icon.RECENT"
-  [defaultSize]="320"
-  [maxSize]="600"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="16"
+  [defaultInlineSize]="320"
+  [maxInlineSize]="600"
 >
   <app-agent-conversation-list />
 </ng-template>

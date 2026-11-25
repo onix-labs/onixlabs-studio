@@ -5,6 +5,7 @@ import { DockFloating, FloatWindow } from './dock-floating';
 import { DockFocus } from './dock-focus';
 import { DockNode, StackNode } from './dock-node';
 import { DockPanelAvailability } from './dock-panel-availability';
+import { DockRoom } from './dock-room';
 import { DockState } from './dock-state';
 import { findStackOfPanel } from './dock-tree';
 import { PopoutPanels } from './popout-panels';
@@ -26,6 +27,11 @@ export class DockReveal {
    * Holds the layout state activation is driven through.
    */
   private readonly dockState: DockState = inject(DockState);
+
+  /**
+   * Holds which groups are collapsed, by the user or for want of room.
+   */
+  private readonly room: DockRoom = inject(DockRoom);
 
   /**
    * Holds which panels can be shown, which decides the one a group shows.
@@ -147,7 +153,7 @@ export class DockReveal {
     const stack: StackNode | null = findStackOfPanel(this.dockState.layout(), panelId);
     if (
       stack === null ||
-      (stack.collapsed === true && this.autoHide.flyoutStackId() !== stack.id)
+      (this.room.isCollapsed(stack) && this.autoHide.flyoutStackId() !== stack.id)
     ) {
       return false;
     }
@@ -185,7 +191,7 @@ export class DockReveal {
       return;
     }
 
-    if (stack.collapsed === true) {
+    if (this.room.isCollapsed(stack)) {
       if (this.autoHide.flyoutStackId() === stack.id) {
         // The stack is already peeking: just switch its active panel. Going through showFlyout here
         // would toggle the peek closed when the panel is already the active one.

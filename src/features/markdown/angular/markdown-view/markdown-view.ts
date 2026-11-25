@@ -38,6 +38,7 @@ import {
   DockTabRegistrar,
 } from '@shared/angular/services/dock-layout/dock-tab-registration';
 import { Icon } from '@shared/angular/icons/icon';
+import { DockSides } from '@shared/angular/services/dock-layout/dock-sides';
 import type { ConversationContext } from '@shared/api/agent-conversation-channels';
 import { FindMode, FindPanel } from '@shared/angular/components/find-panel/find-panel';
 import { MarkdownFindAdapter } from '@features/markdown/angular/find/markdown-find-adapter';
@@ -112,6 +113,11 @@ export class MarkdownView implements OnInit, OnDestroy {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Exposes the sides a panel may dock to to the template.
+   */
+  protected readonly DockSides: typeof DockSides = DockSides;
 
   /**
    * Gets the identifier of the document's panel.

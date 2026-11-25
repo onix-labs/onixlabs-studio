@@ -38,6 +38,7 @@ import {
   DockTabRegistrar,
 } from '@shared/angular/services/dock-layout/dock-tab-registration';
 import { Icon } from '@shared/angular/icons/icon';
+import { DockSides } from '@shared/angular/services/dock-layout/dock-sides';
 import {
   MISSION_CONTROL_AGENTS_PANEL_ID,
   MISSION_CONTROL_COLUMNS_PANEL_ID,
@@ -129,6 +130,11 @@ export class MissionControlView implements OnInit {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Exposes the sides a panel may dock to to the template.
+   */
+  protected readonly DockSides: typeof DockSides = DockSides;
 
   /**
    * Gets the identifier of the panel holding the agents' columns.

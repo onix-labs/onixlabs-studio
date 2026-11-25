@@ -1,6 +1,7 @@
 import { Signal, TemplateRef, Type } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { StackRole } from './dock-node';
+import { DockSides } from './dock-sides';
 
 /**
  * Describes a dockable panel: the metadata the dock chrome renders (title, icon, role) and the content
@@ -85,17 +86,40 @@ export interface DockPanel {
   readonly minBlockSize?: number;
 
   /**
-   * Gets the size, in pixels, the panel prefers its group to open at beside a main group: a width at its
-   * sides, a height above or below it. The group keeps that size as the window resizes, where one whose
-   * panels prefer none takes a share of the room. Absent when the panel prefers none.
+   * Gets the width, in pixels, the panel prefers its group to open at on a side of a main group. The group
+   * keeps that size as the window resizes, where one whose panels prefer none takes a share of the room.
+   * Absent when the panel prefers none.
    */
-  readonly defaultSize?: number;
+  readonly defaultInlineSize?: number;
 
   /**
-   * Gets the greatest size, in pixels, the panel's group may be dragged to beside a main group, for a
-   * panel with a {@link defaultSize}. Absent when nothing limits it but the window.
+   * Gets the height, in pixels, the panel prefers its group to open at above or below a main group, kept as
+   * its width is. Absent when the panel prefers none.
    */
-  readonly maxSize?: number;
+  readonly defaultBlockSize?: number;
+
+  /**
+   * Gets the greatest width, in pixels, the panel's group may be dragged to on a side of a main group, for
+   * a panel with a {@link defaultInlineSize}. Absent when nothing limits it but the window.
+   */
+  readonly maxInlineSize?: number;
+
+  /**
+   * Gets the greatest height, in pixels, the panel's group may be dragged to above or below a main group,
+   * for a panel with a {@link defaultBlockSize}. Absent when nothing limits it but the window.
+   */
+  readonly maxBlockSize?: number;
+
+  /**
+   * Gets the sides of a main group the panel may dock to. Absent means all of them.
+   */
+  readonly sides?: DockSides;
+
+  /**
+   * Gets whether the panel's group may be closed from its title bar while the panel is in front. Absent
+   * means it may.
+   */
+  readonly closable?: boolean;
 }
 
 /**

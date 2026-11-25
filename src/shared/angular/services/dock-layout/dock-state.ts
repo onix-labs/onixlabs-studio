@@ -22,6 +22,7 @@ import {
   movePanel,
   occupyWell,
   placeAsIn,
+  placeAtStart,
   occupyWellWithStack,
   removeFromLayout,
   removeNode,
@@ -32,6 +33,7 @@ import {
   setNodeSize,
   setSizes,
   splitPanelOut,
+  sideOfMain,
   splitStack,
   splitStackBeside,
   splitWellBeside,
@@ -357,6 +359,26 @@ export class DockState {
    */
   public isOpen(panelId: string): boolean {
     return findStackOfPanel(this.tree(), panelId) !== null && !this.availability.isClosed(panelId);
+  }
+
+  /**
+   * Gets the side of the main group a panel starts on.
+   * @param panelId The identifier of the panel.
+   * @returns Returns the side, or null when the dock's own layout lacks the panel or a main group.
+   */
+  public startingSideOf(panelId: string): DockSide | null {
+    const own: DockNode = this.createLayout();
+    const home: StackNode | null = findStackOfPanel(own, panelId);
+    return home === null ? null : (sideOfMain(own, home.id)?.side ?? null);
+  }
+
+  /**
+   * Moves a panel to where the dock's own layout has it, beside its neighbours there where they are.
+   * @param panelId The identifier of the panel.
+   */
+  public returnToStart(panelId: string): void {
+    this.log.info('DockState', `Returning panel '${panelId}' to its starting place`);
+    this.commit(placeAtStart(removeFromLayout(this.tree(), panelId), this.createLayout(), panelId));
   }
 
   /**

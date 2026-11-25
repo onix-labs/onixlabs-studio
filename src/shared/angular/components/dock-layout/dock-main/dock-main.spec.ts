@@ -147,7 +147,7 @@ describe('a dock with a main group (#1565)', () => {
 
   it('a_groupBesideIt_keepsThePixelsItsPanelPrefers_andADividerSetsThem', () => {
     const registry: DockPanelRegistry = TestBed.inject(DockPanelRegistry);
-    registry.register({ ...registry.get('agent')!, defaultSize: 360, maxSize: 400 });
+    registry.register({ ...registry.get('agent')!, defaultInlineSize: 360, maxInlineSize: 400 });
     fixture.detectChanges();
     const panes: HTMLElement[] = [...host.querySelectorAll<HTMLElement>('.dock-node__pane')];
     expect(panes.map((pane: HTMLElement): string => pane.style.flexBasis)).toEqual([

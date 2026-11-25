@@ -14,6 +14,7 @@ import {
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '../../../services/dock-layout/dock-panel';
 import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
+import { DockSides } from '../../../services/dock-layout/dock-sides';
 import { StackRole } from '../../../services/dock-layout/dock-node';
 
 /**
@@ -77,34 +78,66 @@ export class DockTemplatePanel implements OnInit, OnDestroy {
   public readonly minBlockSize: InputSignal<number | undefined> = input<number | undefined>();
 
   /**
-   * Gets the size, in pixels, the panel prefers its group to open at beside a main group; undefined for a
-   * share of the room.
+   * Gets the width, in pixels, the panel prefers its group to open at on a side of a main group; undefined
+   * for a share of the room.
    */
-  public readonly defaultSize: InputSignal<number | undefined> = input<number | undefined>();
+  public readonly defaultInlineSize: InputSignal<number | undefined> = input<number | undefined>();
 
   /**
-   * Gets the greatest size, in pixels, the panel's group may be dragged to; undefined for no limit.
+   * Gets the height, in pixels, the panel prefers its group to open at above or below a main group;
+   * undefined for a share of the room.
    */
-  public readonly maxSize: InputSignal<number | undefined> = input<number | undefined>();
+  public readonly defaultBlockSize: InputSignal<number | undefined> = input<number | undefined>();
+
+  /**
+   * Gets the greatest width, in pixels, the panel's group may be dragged to; undefined for no limit.
+   */
+  public readonly maxInlineSize: InputSignal<number | undefined> = input<number | undefined>();
+
+  /**
+   * Gets the greatest height, in pixels, the panel's group may be dragged to; undefined for no limit.
+   */
+  public readonly maxBlockSize: InputSignal<number | undefined> = input<number | undefined>();
+
+  /**
+   * Gets the sides of a main group the panel may dock to.
+   */
+  public readonly sides: InputSignal<DockSides> = input<DockSides>(DockSides.All);
+
+  /**
+   * Gets whether the panel's group may be closed from its title bar while the panel is in front.
+   */
+  public readonly closable: InputSignal<boolean> = input<boolean>(true);
 
   /**
    * Gets the panel as the dock knows it.
    */
   private readonly panel: Signal<DockPanel> = computed((): DockPanel => {
-    const minInlineSize: number | undefined = this.minInlineSize();
-    const minBlockSize: number | undefined = this.minBlockSize();
-    const defaultSize: number | undefined = this.defaultSize();
-    const maxSize: number | undefined = this.maxSize();
+    const sizes: Pick<
+      DockPanel,
+      | 'minInlineSize'
+      | 'minBlockSize'
+      | 'defaultInlineSize'
+      | 'defaultBlockSize'
+      | 'maxInlineSize'
+      | 'maxBlockSize'
+    > = {
+      minInlineSize: this.minInlineSize(),
+      minBlockSize: this.minBlockSize(),
+      defaultInlineSize: this.defaultInlineSize(),
+      defaultBlockSize: this.defaultBlockSize(),
+      maxInlineSize: this.maxInlineSize(),
+      maxBlockSize: this.maxBlockSize(),
+    };
     return {
       id: this.appDockPanel(),
       title: this.panelTitle(),
       icon: this.panelIcon(),
       role: this.panelRole(),
       template: this.template,
-      ...(minInlineSize === undefined ? {} : { minInlineSize }),
-      ...(minBlockSize === undefined ? {} : { minBlockSize }),
-      ...(defaultSize === undefined ? {} : { defaultSize }),
-      ...(maxSize === undefined ? {} : { maxSize }),
+      sides: this.sides(),
+      closable: this.closable(),
+      ...sizes,
     };
   });
 

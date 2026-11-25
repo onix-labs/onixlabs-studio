@@ -7,6 +7,7 @@ import { DockGeometry } from './dock-geometry';
 import { DockGroupSizes } from './dock-group-sizes';
 import { DockMinimums } from './dock-minimums';
 import { DockReveal } from './dock-reveal';
+import { DockRoom } from './dock-room';
 import { DockState } from './dock-state';
 import { PopoutPanels } from './popout-panels';
 
@@ -29,6 +30,7 @@ export function dockWindowProviders(): Provider[] {
     DockAutoHide,
     DockDrag,
     DockReveal,
+    DockRoom,
     PopoutPanels,
   ];
 }

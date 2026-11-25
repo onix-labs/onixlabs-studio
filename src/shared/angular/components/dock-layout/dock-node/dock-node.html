@@ -20,15 +20,15 @@
         <app-split-pane
           class="dock-node__pane"
           [class.dock-node__pane--leaf]="isStack(child)"
-          [class.dock-node__pane--collapsed]="isCollapsed(child)"
+          [class.dock-node__pane--collapsed]="isStrip(child)"
           [class.dock-node__pane--peeking]="isPeeking(child)"
           [class.dock-node__pane--end]="isEndAnchored(node, i)"
           [class.dock-node__pane--empty]="isEmptyPane(child)"
           [share]="node.sizes[i]"
           [minSize]="minimumAlong(child, node.dir)"
           [visible]="!isEmptyPane(child)"
-          [resizable]="!isCollapsed(child)"
-          [lockedSize]="lockedSize(child)"
+          [resizable]="!isStrip(child)"
+          [lockedSize]="lockedSize(child, node)"
           [hostSize]="size?.size ?? null"
           [maxSize]="size?.max ?? Infinity"
           (sizeChange)="dockState.setNodeSize(child.id, $event)"
@@ -37,7 +37,7 @@
         >
           <ng-container
             [ngTemplateOutlet]="render"
-            [ngTemplateOutletContext]="{ $implicit: child, side: sideOf(child, node.dir, i) }"
+            [ngTemplateOutletContext]="{ $implicit: child, side: edgeOf(child, node, i, side) }"
           />
         </app-split-pane>
         @if (!last) {

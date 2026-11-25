@@ -61,6 +61,7 @@ import {
 } from '@shared/angular/services/dock-layout/dock-tab-registration';
 import { linkDockPanel } from '@shared/angular/services/dock-layout/link-dock-panel';
 import { Icon } from '@shared/angular/icons/icon';
+import { DockSides } from '@shared/angular/services/dock-layout/dock-sides';
 import type { ConversationContext } from '@shared/api/agent-conversation-channels';
 import {
   CODE_AGENT_PANEL_ID,
@@ -221,6 +222,16 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Exposes the sides a panel may dock to to the template.
+   */
+  protected readonly DockSides: typeof DockSides = DockSides;
+
+  /**
+   * Gets the sides the run terminal may dock to: either side of the editor, or beneath it.
+   */
+  protected readonly terminalSides: DockSides = DockSides.Horizontal | DockSides.Bottom;
 
   /**
    * Gets the identifier of the editor's panel.

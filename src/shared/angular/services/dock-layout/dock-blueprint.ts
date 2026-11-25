@@ -63,6 +63,14 @@ export interface DockBlueprint {
    * be done. Absent means all of them.
    */
   readonly buttons?: readonly DockButton[];
+
+  /**
+   * Gets the least part of the dock's space, from 0 to 1, its main group has across and down (#1575). The
+   * panels share the rest, and what doesn't fit in it collapses: see
+   * {@link import('./dock-room').DockRoom}. Absent for a dock that only shrinks to its minimums, and asks
+   * the window to be no smaller than them.
+   */
+  readonly mainShare?: number;
 }
 
 /**

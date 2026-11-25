@@ -36,6 +36,7 @@ import {
 } from '@shared/angular/services/view-injectors/view-injector-registration';
 import { WorkspaceAgentStart, Workspaces } from '@shared/angular/services/workspaces/workspaces';
 import { Icon } from '@shared/angular/icons/icon';
+import { DockSides } from '@shared/angular/services/dock-layout/dock-sides';
 import { WorkspaceProposals } from '@shared/angular/services/workspace-proposals/workspace-proposals';
 
 /**
@@ -65,6 +66,11 @@ export class AgentView implements OnInit, OnDestroy {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Exposes the sides a panel may dock to to the template.
+   */
+  protected readonly DockSides: typeof DockSides = DockSides;
 
   /**
    * Gets the identifier of the conversation's panel.

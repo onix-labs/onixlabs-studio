@@ -1,8 +1,10 @@
-import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
 import { DockGeometry } from './dock-geometry';
 import { Rect } from './dock-legality';
 import { DockNode, DockSide, isStackNode } from './dock-node';
+import { DockPanelAvailability } from './dock-panel-availability';
+import { DockRoom } from './dock-room';
 import { DockState } from './dock-state';
 import { findNode } from './dock-tree';
 
@@ -36,6 +38,16 @@ export class DockAutoHide {
   private readonly dockState: DockState = inject(DockState);
 
   /**
+   * Holds which groups are collapsed for want of room.
+   */
+  private readonly room: DockRoom = inject(DockRoom);
+
+  /**
+   * Holds whether closing a panel keeps its place.
+   */
+  private readonly availability: DockPanelAvailability = inject(DockPanelAvailability);
+
+  /**
    * Holds the geometry registry the docked size is measured from at collapse time.
    */
   private readonly geometry: DockGeometry = inject(DockGeometry);
@@ -60,6 +72,27 @@ export class DockAutoHide {
    * Gets the identifier of the stack currently flown out as a peek.
    */
   public readonly flyoutStackId: Signal<string | null> = this.flyout.asReadonly();
+
+  public constructor() {
+    if (this.room.enabled) {
+      // There is nothing to peek at once the stack is docked, as it is of itself when there is room, or has
+      // nothing open.
+      effect((): void => {
+        const stackId: string | null = this.flyout();
+        const node: DockNode | null =
+          stackId === null ? null : findNode(this.dockState.layout(), stackId);
+        if (
+          node !== null &&
+          isStackNode(node) &&
+          this.room.isCollapsed(node) &&
+          node.panels.some((id: string): boolean => this.availability.isAvailable(id))
+        ) {
+          return;
+        }
+        this.flyout.set(null);
+      });
+    }
+  }
 
   /**
    * Collapses a tool stack to a strip in its slot, remembering the edge it was hugging so the strip
@@ -93,7 +126,10 @@ export class DockAutoHide {
     this.log.info('DockAutoHide', `Expanded auto-hidden stack '${stackId}'`);
     this.sizes.delete(stackId);
     this.flyout.set(null);
-    this.dockState.setCollapsed(stackId, false);
+    this.room.release(stackId);
+    if (this.isCollapsedInLayout(stackId)) {
+      this.dockState.setCollapsed(stackId, false);
+    }
   }
 
   /**
@@ -136,10 +172,24 @@ export class DockAutoHide {
    */
   public closePanel(stackId: string, panelId: string): void {
     this.log.debug('DockAutoHide', `Closing panel '${panelId}' in collapsed stack '${stackId}'`);
-    this.dockState.removeFromLayout(panelId);
+    if (this.availability.keepsPlaces) {
+      void this.dockState.requestClose(panelId);
+    } else {
+      this.dockState.removeFromLayout(panelId);
+    }
     if (findNode(this.dockState.layout(), stackId) === null) {
       this.flyout.set(null);
     }
+  }
+
+  /**
+   * Determines whether a stack is collapsed in the layout, rather than only for want of room.
+   * @param stackId The identifier of the stack.
+   * @returns Returns true when it is.
+   */
+  private isCollapsedInLayout(stackId: string): boolean {
+    const node: DockNode | null = findNode(this.dockState.layout(), stackId);
+    return node !== null && isStackNode(node) && node.collapsed === true;
   }
 
   /**

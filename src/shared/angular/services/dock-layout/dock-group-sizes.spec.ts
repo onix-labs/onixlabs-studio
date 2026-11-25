@@ -20,8 +20,10 @@ describe('DockGroupSizes (#1567)', () => {
       title: id,
       icon: Icon.CODE,
       role: 'tool',
-      ...(defaultSize === undefined ? {} : { defaultSize }),
-      ...(maxSize === undefined ? {} : { maxSize }),
+      ...(defaultSize === undefined
+        ? {}
+        : { defaultInlineSize: defaultSize, defaultBlockSize: defaultSize }),
+      ...(maxSize === undefined ? {} : { maxInlineSize: maxSize, maxBlockSize: maxSize }),
     });
   }
 
@@ -94,5 +96,22 @@ describe('DockGroupSizes (#1567)', () => {
     ]);
 
     expect(sizes.sizeOf(root.children[1], root)).toBeNull();
+  });
+
+  it('aPanelPreferring_aWidthAndAHeight_hasTheOneOfTheSideItIsOn', () => {
+    TestBed.inject(DockPanelRegistry).register({
+      id: 'output',
+      title: 'output',
+      icon: Icon.CODE,
+      role: 'tool',
+      defaultInlineSize: 360,
+      defaultBlockSize: 260,
+    });
+    const group: DockNode = mkStack('tool', ['output']);
+
+    expect(besideMain(group)).toBe(360);
+    expect(sizes.sizeOf(group, mkSplit('col', [mkStack('main', ['editor']), group]))?.size).toBe(
+      260,
+    );
   });
 });

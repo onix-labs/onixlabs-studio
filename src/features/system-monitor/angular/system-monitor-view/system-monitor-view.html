@@ -162,8 +162,10 @@
   [appDockPanel]="agentPanel"
   panelTitle="Agent"
   [panelIcon]="Icon.AGENT"
-  [defaultSize]="360"
-  [maxSize]="900"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="22.5"
+  [defaultInlineSize]="360"
+  [maxInlineSize]="900"
 >
   <app-agent-conversation-panel
     surface="monitor"

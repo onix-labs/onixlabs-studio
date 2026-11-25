@@ -1,5 +1,6 @@
 import { DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
 import { DockNode, mkSplit, mkStack } from '@shared/angular/services/dock-layout/dock-node';
+import { SIMPLE_DOCK } from '@shared/angular/services/dock-layout/dock-simple';
 
 /**
  * The identifier of the main group's panel: the terminal itself.
@@ -32,6 +33,5 @@ export const TERMINAL_DOCK_BLUEPRINT: DockBlueprint = {
   panels: [],
   templatePanels: [TERMINAL_PANEL_ID, TERMINAL_AGENT_PANEL_ID, TERMINAL_FIND_PANEL_ID],
   startsOpen: [],
-  appearance: 'simple',
-  buttons: ['close'],
+  ...SIMPLE_DOCK,
 };

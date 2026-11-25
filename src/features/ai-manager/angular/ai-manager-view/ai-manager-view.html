@@ -1,66 +1,65 @@
-<app-split-panel class="ai-manager" dir="row">
-  <!-- One sidebar for every sub-view: the search, then Local Models, Persona and Skills as
-       accordions, one open at a time. The open one is the sub-view shown beside it. -->
-  <app-split-pane
-    class="ai-manager__side"
-    paneId="ai-manager-sidebar"
-    [defaultSize]="260"
-    [minSize]="240"
-    [maxSize]="480"
-  >
-    <app-ai-manager-sidebar />
-  </app-split-pane>
+<!-- One sidebar for every sub-view: the search, then Local Models, Persona and Skills as
+     accordions, one open at a time. The open one is the sub-view shown beside it. -->
+<ng-template
+  [appDockPanel]="listPanel"
+  panelTitle="AI Library"
+  [panelIcon]="Icon.AI_MODELS"
+  [sides]="DockSides.Horizontal"
+  [closable]="false"
+  [minInlineSize]="15"
+  [defaultInlineSize]="260"
+  [maxInlineSize]="480"
+>
+  <app-ai-manager-sidebar />
+</ng-template>
 
-  <app-split-divider />
+<ng-template
+  [appDockPanel]="mainPanel"
+  panelTitle="AI Manager"
+  [panelIcon]="Icon.AI_MODELS"
+  panelRole="main"
+>
+  <div class="ai-manager__section">
+    @switch (section()) {
+      @case ('models') {
+        <app-model-manager-view [isActive]="isActive()" />
+      }
+      @case ('persona') {
+        <app-persona />
+      }
+      @case ('skills') {
+        <app-skill-library />
+      }
+      @default {
+        <!-- Nothing open: the sidebar's sections are all closed. -->
+        <div class="ai-manager__overview">
+          <app-icon class="ai-manager__overview-icon" [icon]="Icon.AI_MODELS" />
+          <p class="ai-manager__overview-title">AI Manager</p>
+          <p class="ai-manager__overview-hint">
+            Open Local Models, Persona or Skills in the sidebar.
+          </p>
+        </div>
+      }
+    }
+  </div>
+</ng-template>
 
-  <app-split-pane>
-    <ng-template
-      [appDockPanel]="mainPanel"
-      panelTitle="AI Manager"
-      [panelIcon]="Icon.AI_MODELS"
-      panelRole="main"
-    >
-      <div class="ai-manager__section">
-        @switch (section()) {
-          @case ('models') {
-            <app-model-manager-view [isActive]="isActive()" />
-          }
-          @case ('persona') {
-            <app-persona />
-          }
-          @case ('skills') {
-            <app-skill-library />
-          }
-          @default {
-            <!-- Nothing open: the sidebar's sections are all closed. -->
-            <div class="ai-manager__overview">
-              <app-icon class="ai-manager__overview-icon" [icon]="Icon.AI_MODELS" />
-              <p class="ai-manager__overview-title">AI Manager</p>
-              <p class="ai-manager__overview-hint">
-                Open Local Models, Persona or Skills in the sidebar.
-              </p>
-            </div>
-          }
-        }
-      </div>
-    </ng-template>
+<!-- The AI Manager's own agent (#967), across every sub-view. -->
+<ng-template
+  [appDockPanel]="agentPanel"
+  panelTitle="Agent"
+  [panelIcon]="Icon.AGENT"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="22.5"
+  [defaultInlineSize]="360"
+  [maxInlineSize]="900"
+>
+  <app-agent-conversation-panel
+    surface="models"
+    [context]="agentContext"
+    [tabId]="tabId()"
+    [isActive]="isActive()"
+  />
+</ng-template>
 
-    <!-- The AI Manager's own agent (#967), across every sub-view. -->
-    <ng-template
-      [appDockPanel]="agentPanel"
-      panelTitle="Agent"
-      [panelIcon]="Icon.AGENT"
-      [defaultSize]="360"
-      [maxSize]="900"
-    >
-      <app-agent-conversation-panel
-        surface="models"
-        [context]="agentContext"
-        [tabId]="tabId()"
-        [isActive]="isActive()"
-      />
-    </ng-template>
-
-    <app-dock-container />
-  </app-split-pane>
-</app-split-panel>
+<app-dock-container />

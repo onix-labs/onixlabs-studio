@@ -39,6 +39,7 @@ import {
 } from '@shared/angular/services/dock-layout/dock-tab-registration';
 import { linkDockPanel } from '@shared/angular/services/dock-layout/link-dock-panel';
 import { Icon } from '@shared/angular/icons/icon';
+import { DockSides } from '@shared/angular/services/dock-layout/dock-sides';
 import type { ConversationContext } from '@shared/api/agent-conversation-channels';
 import { Log } from '@shared/angular/services/log/log';
 import type * as MonacoApi from 'monaco-editor';
@@ -150,6 +151,11 @@ export class BinaryView implements OnInit, OnDestroy, FindHost {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Exposes the sides a panel may dock to to the template.
+   */
+  protected readonly DockSides: typeof DockSides = DockSides;
 
   /**
    * Gets the identifier of the bytes' panel.

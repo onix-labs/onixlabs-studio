@@ -1,125 +1,120 @@
-<app-split-panel class="plugin-manager" dir="row">
-  <!-- The filters (#950): search, then every plugin, the installed or available ones, then each
-       category. Part of the view rather than a helper, so it can be resized but not closed or moved. -->
-  <app-split-pane
-    class="plugin-manager__side"
-    paneId="plugin-categories"
-    [defaultSize]="240"
-    [minSize]="240"
-    [maxSize]="480"
-  >
-    <app-category-list
-      title="Plugins"
-      [searchable]="true"
-      searchPlaceholder="Search plugins…"
-      [(query)]="browse.query"
-      [items]="filterItems()"
-      [selectedId]="browse.filter()"
-      (selectedIdChange)="browse.filter.set($event)"
-    />
-  </app-split-pane>
+<!-- The filters (#950): search, then every plugin, the installed or available ones, then each
+     category. It can be moved and collapsed, but not closed. -->
+<ng-template
+  [appDockPanel]="listPanel"
+  panelTitle="Plugins"
+  [panelIcon]="Icon.PLUGINS"
+  [sides]="DockSides.Horizontal"
+  [closable]="false"
+  [minInlineSize]="15"
+  [defaultInlineSize]="240"
+  [maxInlineSize]="480"
+>
+  <app-category-list
+    [searchable]="true"
+    searchPlaceholder="Search plugins…"
+    [(query)]="browse.query"
+    [items]="filterItems()"
+    [selectedId]="browse.filter()"
+    (selectedIdChange)="browse.filter.set($event)"
+  />
+</ng-template>
 
-  <app-split-divider />
+<ng-template
+  [appDockPanel]="mainPanel"
+  panelTitle="Plugins"
+  [panelIcon]="Icon.PLUGINS"
+  panelRole="main"
+>
+  <div class="plugin-manager__main">
+    <header class="plugin-manager__header">
+      <h2 class="plugin-manager__title section-label">{{ heading() }}</h2>
+      <p class="plugin-manager__subtitle">{{ summary() }}</p>
+    </header>
 
-  <app-split-pane>
-    <ng-template
-      [appDockPanel]="mainPanel"
-      panelTitle="Plugins"
-      [panelIcon]="Icon.PLUGINS"
-      panelRole="main"
+    <app-plugin-install-error class="plugin-manager__error" />
+
+    <!-- One list, filling the rest of the view, its header in view while its rows scroll. Sorted by
+     clicking a column's header. -->
+    <app-table
+      class="plugin-manager__table"
+      [columns]="columns"
+      [rows]="rows()"
+      [striped]="true"
+      rowSize="comfortable"
+      [emptyText]="
+        browse.narrowed() ? 'No plugins match these filters.' : 'No plugins are available.'
+      "
+      (sortChange)="browse.sort.set($event)"
     >
-      <div class="plugin-manager__main">
-        <header class="plugin-manager__header">
-          <h2 class="plugin-manager__title section-label">{{ heading() }}</h2>
-          <p class="plugin-manager__subtitle">{{ summary() }}</p>
-        </header>
+      <ng-template appTableRow let-row>
+        <ng-container [ngTemplateOutlet]="cells" [ngTemplateOutletContext]="{ $implicit: row }" />
+      </ng-template>
+    </app-table>
 
-        <app-plugin-install-error class="plugin-manager__error" />
-
-        <!-- One list, filling the rest of the view, its header in view while its rows scroll. Sorted by
-         clicking a column's header. -->
-        <app-table
-          class="plugin-manager__table"
-          [columns]="columns"
-          [rows]="rows()"
-          [striped]="true"
-          rowSize="comfortable"
-          [emptyText]="
-            browse.narrowed() ? 'No plugins match these filters.' : 'No plugins are available.'
-          "
-          (sortChange)="browse.sort.set($event)"
+    <!-- One plugin's cells, shared by both groups' tables. -->
+    <ng-template #cells let-row>
+      @let item = plugin(row);
+      <td class="plugin-cell">
+        <span class="plugin-row__plugin">
+          <app-icon class="plugin-row__icon" [icon]="iconFor(item)" [size]="2.5" />
+          <span class="plugin-row__identity">
+            <span class="plugin-row__name">{{ item.name }}</span>
+            <span class="plugin-row__description">{{ item.description }}</span>
+          </span>
+        </span>
+      </td>
+      <td class="plugin-cell plugin-row__muted plugin-row__category">{{ categories(item) }}</td>
+      <td class="plugin-cell">
+        <span class="plugin-row__chips">
+          @for (name of languages(item); track name) {
+            <app-chip [title]="name">{{ name }}</app-chip>
+          }
+        </span>
+      </td>
+      <td class="plugin-cell">
+        <app-chip class="plugin-row__version" [tone]="canUpdate(item) ? 'info' : 'neutral'">
+          @if (canUpdate(item)) {
+            {{ item.installedVersion }} → {{ item.version }}
+          } @else {
+            {{ item.version }}
+          }
+        </app-chip>
+      </td>
+      <td class="plugin-cell">
+        <app-chip
+          class="plugin-row__state"
+          [class.plugin-row__state--busy]="item.state === 'busy'"
+          [tone]="stateTone(item)"
+          [icon]="stateIcon(item)"
+          >{{ stateLabel(item) }}</app-chip
         >
-          <ng-template appTableRow let-row>
-            <ng-container
-              [ngTemplateOutlet]="cells"
-              [ngTemplateOutletContext]="{ $implicit: row }"
-            />
-          </ng-template>
-        </app-table>
-
-        <!-- One plugin's cells, shared by both groups' tables. -->
-        <ng-template #cells let-row>
-          @let item = plugin(row);
-          <td class="plugin-cell">
-            <span class="plugin-row__plugin">
-              <app-icon class="plugin-row__icon" [icon]="iconFor(item)" [size]="2.5" />
-              <span class="plugin-row__identity">
-                <span class="plugin-row__name">{{ item.name }}</span>
-                <span class="plugin-row__description">{{ item.description }}</span>
-              </span>
-            </span>
-          </td>
-          <td class="plugin-cell plugin-row__muted plugin-row__category">{{ categories(item) }}</td>
-          <td class="plugin-cell">
-            <span class="plugin-row__chips">
-              @for (name of languages(item); track name) {
-                <app-chip [title]="name">{{ name }}</app-chip>
-              }
-            </span>
-          </td>
-          <td class="plugin-cell">
-            <app-chip class="plugin-row__version" [tone]="canUpdate(item) ? 'info' : 'neutral'">
-              @if (canUpdate(item)) {
-                {{ item.installedVersion }} → {{ item.version }}
-              } @else {
-                {{ item.version }}
-              }
-            </app-chip>
-          </td>
-          <td class="plugin-cell">
-            <app-chip
-              class="plugin-row__state"
-              [class.plugin-row__state--busy]="item.state === 'busy'"
-              [tone]="stateTone(item)"
-              [icon]="stateIcon(item)"
-              >{{ stateLabel(item) }}</app-chip
-            >
-          </td>
-          <td class="plugin-cell">
-            <span class="plugin-row__action">
-              <app-plugin-action [plugin]="item" />
-            </span>
-          </td>
-        </ng-template>
-      </div>
+      </td>
+      <td class="plugin-cell">
+        <span class="plugin-row__action">
+          <app-plugin-action [plugin]="item" />
+        </span>
+      </td>
     </ng-template>
+  </div>
+</ng-template>
 
-    <!-- The Plugin Manager's own agent (#968). -->
-    <ng-template
-      [appDockPanel]="agentPanel"
-      panelTitle="Agent"
-      [panelIcon]="Icon.AGENT"
-      [defaultSize]="360"
-      [maxSize]="900"
-    >
-      <app-agent-conversation-panel
-        surface="plugins"
-        [context]="agentContext"
-        [tabId]="tabId()"
-        [isActive]="isActive()"
-      />
-    </ng-template>
+<!-- The Plugin Manager's own agent (#968). -->
+<ng-template
+  [appDockPanel]="agentPanel"
+  panelTitle="Agent"
+  [panelIcon]="Icon.AGENT"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="22.5"
+  [defaultInlineSize]="360"
+  [maxInlineSize]="900"
+>
+  <app-agent-conversation-panel
+    surface="plugins"
+    [context]="agentContext"
+    [tabId]="tabId()"
+    [isActive]="isActive()"
+  />
+</ng-template>
 
-    <app-dock-container />
-  </app-split-pane>
-</app-split-panel>
+<app-dock-container />

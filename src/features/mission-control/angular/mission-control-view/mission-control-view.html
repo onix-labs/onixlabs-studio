@@ -32,8 +32,11 @@
   [appDockPanel]="agentsPanel"
   panelTitle="Agents"
   [panelIcon]="Icon.AGENT"
-  [defaultSize]="300"
-  [maxSize]="480"
+  [sides]="DockSides.Horizontal"
+  [closable]="false"
+  [minInlineSize]="16"
+  [defaultInlineSize]="300"
+  [maxInlineSize]="480"
 >
   <app-mission-control-panel />
 </ng-template>

@@ -23,9 +23,6 @@ import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { SplitDivider } from '@shared/angular/components/split-panel/split-divider/split-divider';
-import { SplitPane } from '@shared/angular/components/split-panel/split-pane/split-pane';
-import { SplitPanel } from '@shared/angular/components/split-panel/split-panel/split-panel';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
 import { DocumentVisibility } from '@shared/angular/services/document-visibility/document-visibility';
 import { Log } from '@shared/angular/services/log/log';
@@ -69,12 +66,14 @@ import { AgentConversationPanel } from '@shared/angular/components/panels/agent-
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
 import { DockTemplatePanel } from '@shared/angular/components/dock-layout/dock-template-panel/dock-template-panel';
 import { dockProviders } from '@shared/angular/services/dock-layout/dock-providers';
+import { DockSides } from '@shared/angular/services/dock-layout/dock-sides';
 import {
   createDockTabRegistrar,
   DockTabRegistrar,
 } from '@shared/angular/services/dock-layout/dock-tab-registration';
 import {
   TOOL_VIEW_AGENT_PANEL_ID,
+  TOOL_VIEW_LIST_PANEL_ID,
   TOOL_VIEW_MAIN_PANEL_ID,
   toolViewConversationContext,
 } from '@shared/angular/services/tool-view-dock/tool-view-dock';
@@ -251,9 +250,6 @@ const MENU_RESUME: string = 'resume';
     CdkMenuTrigger,
     Chip,
     Menu,
-    SplitDivider,
-    SplitPane,
-    SplitPanel,
     Table,
     TableRowDef,
     Terminal,
@@ -292,6 +288,16 @@ export class ContainersView implements OnInit, OnDestroy {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Exposes the sides a panel may dock to to the template.
+   */
+  protected readonly DockSides: typeof DockSides = DockSides;
+
+  /**
+   * Gets the sides the output may dock to: either side of the list, or beneath it.
+   */
+  protected readonly outputSides: DockSides = DockSides.Horizontal | DockSides.Bottom;
 
   /**
    * Gets the identifier of the tab hosting this view.
@@ -362,6 +368,11 @@ export class ContainersView implements OnInit, OnDestroy {
    * Gets the identifier of the panel holding the view's content.
    */
   protected readonly mainPanel: string = TOOL_VIEW_MAIN_PANEL_ID;
+
+  /**
+   * Gets the identifier of the panel holding the view's list.
+   */
+  protected readonly listPanel: string = TOOL_VIEW_LIST_PANEL_ID;
 
   /**
    * Gets the identifier of the agent panel.

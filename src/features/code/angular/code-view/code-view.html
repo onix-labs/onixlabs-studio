@@ -22,9 +22,13 @@
   [appDockPanel]="terminalPanel"
   panelTitle="Terminal"
   [panelIcon]="Icon.TERMINAL"
-  [minBlockSize]="5"
-  [defaultSize]="260"
-  [maxSize]="1600"
+  [sides]="terminalSides"
+  [minInlineSize]="16"
+  [minBlockSize]="7.5"
+  [defaultInlineSize]="360"
+  [defaultBlockSize]="260"
+  [maxInlineSize]="1600"
+  [maxBlockSize]="1600"
 >
   <app-code-terminal-panel [tabId]="tabId()" [isActive]="isActive()" />
 </ng-template>
@@ -33,8 +37,10 @@
   [appDockPanel]="agentPanel"
   panelTitle="Agent"
   [panelIcon]="Icon.AGENT"
-  [defaultSize]="360"
-  [maxSize]="900"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="22.5"
+  [defaultInlineSize]="360"
+  [maxInlineSize]="900"
 >
   <app-agent-conversation-panel
     [tabId]="tabId()"
@@ -49,9 +55,10 @@
   [appDockPanel]="generatedPanel"
   panelTitle="Generated code"
   [panelIcon]="Icon.CODE"
+  [sides]="DockSides.Horizontal"
   [minInlineSize]="17.5"
-  [defaultSize]="420"
-  [maxSize]="900"
+  [defaultInlineSize]="420"
+  [maxInlineSize]="900"
 >
   <app-code-generated-panel
     [sourcePath]="generatedSourcePath()"
@@ -64,8 +71,10 @@
   [appDockPanel]="findPanel"
   [panelTitle]="editorSearch.replaceable() ? 'Find and Replace' : 'Find'"
   [panelIcon]="Icon.SEARCH"
-  [defaultSize]="320"
-  [maxSize]="520"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="16"
+  [defaultInlineSize]="320"
+  [maxInlineSize]="520"
 >
   <app-editor-search-panel [search]="editorSearch" (closed)="onFindClosed()" />
 </ng-template>
@@ -75,8 +84,10 @@
   [appDockPanel]="referencesPanel"
   panelTitle="References"
   [panelIcon]="Icon.REFERENCES"
-  [defaultSize]="320"
-  [maxSize]="520"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="16"
+  [defaultInlineSize]="320"
+  [maxInlineSize]="520"
 >
   <app-editor-references-panel
     [list]="references()"

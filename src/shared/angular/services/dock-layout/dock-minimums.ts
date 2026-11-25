@@ -1,4 +1,5 @@
-import { inject, Service, signal, WritableSignal } from '@angular/core';
+import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { DOCK_BLUEPRINT } from './dock-blueprint';
 import { DockPanel } from './dock-panel';
 import { DockPanelAvailability } from './dock-panel-availability';
 import { DockPanelRegistry } from './dock-panel-registry';
@@ -66,6 +67,18 @@ export interface DockMinimum {
 }
 
 /**
+ * Determines whether a group is collapsed to its strip.
+ * @param stack The group.
+ * @returns Returns true when it is.
+ */
+export type IsCollapsed = (stack: StackNode) => boolean;
+
+/**
+ * Determines whether a group's layout has it collapsed.
+ */
+const collapsedInLayout: IsCollapsed = (stack: StackNode): boolean => stack.collapsed === true;
+
+/**
  * The size that takes no room at all.
  */
 const NOTHING: DockMinimum = { inline: 0, block: 0 };
@@ -82,6 +95,10 @@ const NOTHING: DockMinimum = { inline: 0, block: 0 };
  *
  * The divider clamps a drag to these, the panes carry them as CSS so a window resize cannot crush
  * them either, and the window's own minimum size follows the root's.
+ *
+ * In a dock whose main group keeps a share of the space (#1575) the **main group**'s minimum is that share,
+ * a group's counts only its open panels and not their names, which shorten, and the window is left alone:
+ * what doesn't fit collapses instead (see {@link import('./dock-room').DockRoom}).
  *
  * Exempt, taking only their fixed or zero size: auto-hidden groups (their strip), groups whose every
  * panel is unavailable here (they take no room), and an empty document well.
@@ -101,6 +118,28 @@ export class DockMinimums {
   private readonly availability: DockPanelAvailability = inject(DockPanelAvailability);
 
   /**
+   * Holds the least part of the dock's space its main group has, or null for a dock that gives it none.
+   */
+  private readonly mainShare: number | null =
+    inject(DOCK_BLUEPRINT, { optional: true })?.mainShare ?? null;
+
+  /**
+   * Holds the dock's space, or null before it has any.
+   */
+  private readonly measuredSpace: WritableSignal<DockMinimum | null> = signal<DockMinimum | null>(
+    null,
+    {
+      equal: (before: DockMinimum | null, after: DockMinimum | null): boolean =>
+        before?.inline === after?.inline && before?.block === after?.block,
+    },
+  );
+
+  /**
+   * Gets the dock's space, or null before it has any.
+   */
+  public readonly space: Signal<DockMinimum | null> = this.measuredSpace.asReadonly();
+
+  /**
    * Holds each tab group's measured chrome, keyed by its stack's id.
    */
   private readonly measures: WritableSignal<ReadonlyMap<string, DockGroupMeasure>> = signal<
@@ -112,6 +151,17 @@ export class DockMinimums {
    * the root font size moves only with the interface's zoom, and a measurement follows any such move.
    */
   private rem: number = remPx();
+
+  /**
+   * Records the dock's space. A dock behind another tab has none, and keeps what it had.
+   * @param inline The width, in pixels.
+   * @param block The height, in pixels.
+   */
+  public measureSpace(inline: number, block: number): void {
+    if (inline > 0 && block > 0) {
+      this.measuredSpace.set({ inline, block });
+    }
+  }
 
   /**
    * Records what a tab group measured of its own chrome. Unchanged measurements are not written, so a
@@ -136,11 +186,12 @@ export class DockMinimums {
   }
 
   /**
-   * Forgets a tab group's measurement, when it is destroyed.
+   * Forgets a tab group's measurement, when it is destroyed. A dock that fits itself to the window keeps it:
+   * the group collapsed because of what it measured, and would come back for want of it.
    * @param stackId The group's stack id.
    */
   public forget(stackId: string): void {
-    if (!this.measures().has(stackId)) {
+    if (this.mainShare !== null || !this.measures().has(stackId)) {
       return;
     }
     this.measures.update(
@@ -156,16 +207,24 @@ export class DockMinimums {
    * Gets the least size a node of the layout may be given — a group, or a split and everything in it.
    * Reads signals, so a computed or a template using it follows every change.
    * @param node The node.
+   * @param isCollapsed Determines which groups are collapsed; the ones the layout has so when absent.
    * @returns Returns the minimum, in pixels.
    */
-  public minimumOf(node: DockTreeNode | undefined): DockMinimum {
+  public minimumOf(
+    node: DockTreeNode | undefined,
+    isCollapsed: IsCollapsed = collapsedInLayout,
+  ): DockMinimum {
     if (node === undefined || this.isEmpty(node)) {
       return NOTHING;
     }
-    if (isStackNode(node)) {
-      return node.collapsed === true ? this.collapsedMinimum() : this.groupMinimum(node);
+    if (!isStackNode(node)) {
+      return this.splitMinimum(node, isCollapsed);
     }
-    return this.splitMinimum(node);
+    const space: DockMinimum | null = this.measuredSpace();
+    if (this.mainShare !== null && node.role === 'main' && space !== null) {
+      return { inline: space.inline * this.mainShare, block: space.block * this.mainShare };
+    }
+    return isCollapsed(node) ? this.collapsedMinimum() : this.groupMinimum(node);
   }
 
   /**
@@ -200,6 +259,9 @@ export class DockMinimums {
     let panelInline: number = 0;
     let panelBlock: number = 0;
     for (const id of stack.panels) {
+      if (this.mainShare !== null && !this.availability.isAvailable(id)) {
+        continue;
+      }
       const panel: DockPanel | undefined = this.registry.get(id);
       panelInline = Math.max(
         panelInline,
@@ -207,8 +269,9 @@ export class DockMinimums {
       );
       panelBlock = Math.max(panelBlock, (panel?.minBlockSize ?? DEFAULT_PANEL_MIN_BLOCK_REM) * rem);
     }
+    const named: number = Math.max(measure?.tabs ?? 0, measure?.title ?? 0);
     return {
-      inline: Math.ceil(Math.max(panelInline, measure?.tabs ?? 0, measure?.title ?? 0)),
+      inline: Math.ceil(this.mainShare === null ? Math.max(panelInline, named) : panelInline),
       block: Math.ceil(panelBlock + (measure?.chrome ?? 0)),
     };
   }
@@ -226,14 +289,15 @@ export class DockMinimums {
    * Gets a split's minimum: along its axis, its children's minimums and the dividers between the ones
    * that take room; across it, the largest child's.
    * @param split The split.
+   * @param isCollapsed Determines which groups are collapsed.
    * @returns Returns the minimum, in pixels.
    */
-  private splitMinimum(split: SplitNode): DockMinimum {
+  private splitMinimum(split: SplitNode, isCollapsed: IsCollapsed): DockMinimum {
     const shown: readonly DockTreeNode[] = split.children.filter(
       (child: DockTreeNode): boolean => !this.isEmpty(child),
     );
     const minimums: readonly DockMinimum[] = shown.map((child: DockTreeNode): DockMinimum =>
-      this.minimumOf(child),
+      this.minimumOf(child, isCollapsed),
     );
     const dividers: number = Math.max(0, shown.length - 1) * DIVIDER_REM * this.rem;
     const along: (minimum: DockMinimum) => number = (minimum: DockMinimum): number =>

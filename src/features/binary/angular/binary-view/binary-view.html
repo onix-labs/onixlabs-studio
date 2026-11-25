@@ -28,8 +28,10 @@
     [appDockPanel]="disassemblyPanel"
     panelTitle="Assembly"
     [panelIcon]="Icon.CODE"
-    [defaultSize]="320"
-    [maxSize]="900"
+    [sides]="DockSides.Horizontal"
+    [minInlineSize]="16"
+    [defaultInlineSize]="320"
+    [maxInlineSize]="900"
   >
     <app-binary-disasm-panel [document]="document" (editorCreated)="onDisassemblyEditor($event)" />
   </ng-template>
@@ -38,8 +40,10 @@
     [appDockPanel]="inspectorPanel"
     panelTitle="Inspector"
     [panelIcon]="Icon.SEARCH"
-    [defaultSize]="260"
-    [maxSize]="600"
+    [sides]="DockSides.Horizontal"
+    [minInlineSize]="16"
+    [defaultInlineSize]="260"
+    [maxInlineSize]="600"
   >
     <app-binary-inspector
       [document]="document"
@@ -52,8 +56,10 @@
     [appDockPanel]="agentPanel"
     panelTitle="Agent"
     [panelIcon]="Icon.AGENT"
-    [defaultSize]="360"
-    [maxSize]="900"
+    [sides]="DockSides.Horizontal"
+    [minInlineSize]="22.5"
+    [defaultInlineSize]="360"
+    [maxInlineSize]="900"
   >
     <app-agent-conversation-panel
       [tabId]="tabId()"
@@ -67,8 +73,10 @@
     [appDockPanel]="findPanel"
     panelTitle="Find"
     [panelIcon]="Icon.SEARCH"
-    [defaultSize]="320"
-    [maxSize]="520"
+    [sides]="DockSides.Horizontal"
+    [minInlineSize]="16"
+    [defaultInlineSize]="320"
+    [maxInlineSize]="520"
   >
     <app-editor-search-panel [search]="editorSearch" (closed)="onFindClosed()" />
   </ng-template>

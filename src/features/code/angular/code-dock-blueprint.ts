@@ -1,5 +1,6 @@
 import { DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
 import { DockNode, mkSplit, mkStack } from '@shared/angular/services/dock-layout/dock-node';
+import { SIMPLE_DOCK } from '@shared/angular/services/dock-layout/dock-simple';
 import { EDITOR_TERMINAL_PANEL_ID } from '@shared/angular/services/editor-terminals/editor-terminals';
 
 /**
@@ -58,6 +59,5 @@ export const CODE_DOCK_BLUEPRINT: DockBlueprint = {
     CODE_REFERENCES_PANEL_ID,
   ],
   startsOpen: [],
-  appearance: 'simple',
-  buttons: ['close'],
+  ...SIMPLE_DOCK,
 };

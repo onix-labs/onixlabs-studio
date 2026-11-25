@@ -17,6 +17,8 @@ import { DockGroupSize, DockGroupSizes } from '../../../services/dock-layout/doc
 import { DockGeometry } from '../../../services/dock-layout/dock-geometry';
 import { DockPanelAvailability } from '../../../services/dock-layout/dock-panel-availability';
 import { DockMinimum, DockMinimums } from '../../../services/dock-layout/dock-minimums';
+import { DockRoom } from '../../../services/dock-layout/dock-room';
+import { findNode } from '../../../services/dock-layout/dock-tree';
 import { DockState } from '../../../services/dock-layout/dock-state';
 import { DockCollapsedStrip } from '../dock-collapsed-strip/dock-collapsed-strip';
 import { DockMain } from '../dock-main/dock-main';
@@ -69,6 +71,11 @@ export class DockNode {
   private readonly minimums: DockMinimums = inject(DockMinimums);
 
   /**
+   * Holds which groups are collapsed, by the user or for want of room.
+   */
+  private readonly room: DockRoom = inject(DockRoom);
+
+  /**
    * Holds the layout state a resize commits to.
    */
   protected readonly dockState: DockState = inject(DockState);
@@ -118,7 +125,17 @@ export class DockNode {
    * @returns Returns true when the node is a collapsed stack; otherwise, false.
    */
   protected isCollapsed(node: DockTreeNode | undefined): boolean {
-    return node !== undefined && isStackNode(node) && node.collapsed === true;
+    return node !== undefined && isStackNode(node) && this.room.isCollapsed(node);
+  }
+
+  /**
+   * Determines whether all a pane holds is collapsed, which leaves it a strip: a collapsed stack, or a split
+   * of nothing else.
+   * @param node The pane's node.
+   * @returns Returns true when it is.
+   */
+  protected isStrip(node: DockTreeNode): boolean {
+    return this.room.isStrip(node);
   }
 
   /**
@@ -147,6 +164,20 @@ export class DockNode {
       return child.side;
     }
     return dir === 'row' ? (index === 0 ? 'left' : 'right') : index === 0 ? 'top' : 'bottom';
+  }
+
+  /**
+   * Resolves the edge a child of a split hugs. The strips of a split that is all strips hug the edge the
+   * split does, laid along it: ones stacked in a column at the right are at the right, not its top and
+   * bottom.
+   * @param child The child whose edge is being resolved.
+   * @param split The split.
+   * @param index The index of the child within the split.
+   * @param side The edge the split hugs.
+   * @returns Returns the edge the child hugs.
+   */
+  protected edgeOf(child: DockTreeNode, split: SplitNode, index: number, side: DockSide): DockSide {
+    return this.isStrip(split) ? side : this.sideOf(child, split.dir, index);
   }
 
   /**
@@ -180,7 +211,8 @@ export class DockNode {
    * @returns Returns true when the node is the peeking stack; otherwise, false.
    */
   protected isPeeking(node: DockTreeNode): boolean {
-    return isStackNode(node) && this.autoHide.flyoutStackId() === node.id;
+    const flyout: string | null = this.autoHide.flyoutStackId();
+    return flyout !== null && findNode(node, flyout) !== null && this.isStrip(node);
   }
 
   /**
@@ -213,10 +245,11 @@ export class DockNode {
   /**
    * Gets the size a pane keeps whatever its weight: its strip's, for a collapsed one.
    * @param node The node the pane holds.
+   * @param split The split the pane is in, whose strips share its length when it is all strips.
    * @returns Returns the CSS length, or null when the pane's weight sizes it.
    */
-  protected lockedSize(node: DockTreeNode): string | null {
-    return this.isCollapsed(node) ? COLLAPSED_SIZE : null;
+  protected lockedSize(node: DockTreeNode, split: SplitNode): string | null {
+    return this.isStrip(node) && !this.isStrip(split) ? COLLAPSED_SIZE : null;
   }
 
   /**
@@ -237,10 +270,12 @@ export class DockNode {
    * @returns Returns the minimum in pixels, or null to leave it to the pane's rules.
    */
   protected paneMinimum(node: DockTreeNode): DockMinimum | null {
-    if (this.isCollapsed(node) || this.isEmptyPane(node)) {
+    if (this.isStrip(node) || this.isEmptyPane(node)) {
       return null;
     }
-    return this.minimums.minimumOf(node);
+    return this.minimums.minimumOf(node, (stack: StackNode): boolean =>
+      this.room.isCollapsed(stack),
+    );
   }
 
   /**

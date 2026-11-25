@@ -135,7 +135,7 @@ describe('TerminalView', () => {
     );
   });
 
-  it('agentAndFind_areTabbedTogether_andOnlyCloseIsOnTheirTitleBar', async () => {
+  it('agentAndFind_areTabbedTogether_andCollapseAndCloseAreOnTheirTitleBar', async () => {
     reveal.open('agent');
     reveal.open('find');
     await settle();
@@ -150,7 +150,7 @@ describe('TerminalView', () => {
       [...element.querySelectorAll('.dock-tab-group__title-buttons button')].map(
         (button: Element): string | null => button.getAttribute('aria-label'),
       ),
-    ).toEqual(['Close']);
+    ).toEqual(['Auto Hide', 'Close']);
   });
 
   it('find_whenBehindTheAgent_keepsItsText', async () => {

@@ -1,5 +1,6 @@
 import { DOCUMENT } from '@angular/common';
 import {
+  afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -23,6 +24,8 @@ import {
   CoalescedPointerMoves,
   coalescePointerMoves,
 } from '../../../services/dock-layout/pointer-coalesce';
+import { DockMinimum, DockMinimums } from '../../../services/dock-layout/dock-minimums';
+import { DockRoom } from '../../../services/dock-layout/dock-room';
 import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -110,6 +113,16 @@ export class DockCollapsedStrip {
    */
   private readonly buttons: readonly DockButton[] =
     inject(DOCK_BLUEPRINT, { optional: true })?.buttons ?? ALL_DOCK_BUTTONS;
+
+  /**
+   * Holds whether there is room to dock the stack.
+   */
+  private readonly dockRoom: DockRoom = inject(DockRoom);
+
+  /**
+   * Holds the least sizes of the dock's groups, and the space it has.
+   */
+  private readonly minimums: DockMinimums = inject(DockMinimums);
 
   /**
    * Holds the floating layer the float button detaches the active panel into.
@@ -215,6 +228,18 @@ export class DockCollapsedStrip {
   );
 
   /**
+   * Gets the least extent of the flyout in pixels: what the stack needs docked, in a dock that collapses it
+   * for want of room.
+   */
+  private readonly leastSize: Signal<number> = computed((): number => {
+    if (!this.dockRoom.enabled) {
+      return MINIMUM_FLYOUT_SIZE;
+    }
+    const docked: DockMinimum = this.minimums.minimumOf(this.stack(), (): boolean => false);
+    return Math.max(MINIMUM_FLYOUT_SIZE, this.isVertical() ? docked.inline : docked.block);
+  });
+
+  /**
    * Gets the flyout's preferred resizable extent in pixels: the size the user resized it to, otherwise
    * half the room it opens into (never below the resize floor). Only when the room cannot be measured
    * does it fall back to the captured docked size, then to a default.
@@ -226,7 +251,7 @@ export class DockCollapsedStrip {
     }
     const room: number | null = this.room();
     if (room !== null) {
-      return Math.max(MINIMUM_FLYOUT_SIZE, Math.round(room * FLYOUT_SHARE_OF_ROOM));
+      return Math.max(this.leastSize(), Math.round(room * FLYOUT_SHARE_OF_ROOM));
     }
     const docked: PeekSize | null = this.autoHide.peekSize(this.stack().id);
     if (docked !== null) {
@@ -245,6 +270,26 @@ export class DockCollapsedStrip {
     const room: number | null = this.room();
     return room === null ? this.preferredSize() : Math.min(this.preferredSize(), room);
   });
+
+  /**
+   * Gets whether there is room to dock the stack.
+   */
+  protected readonly canDock: Signal<boolean> = computed((): boolean =>
+    this.dockRoom.canDock(this.stack().id),
+  );
+
+  public constructor() {
+    if (this.dockRoom.enabled) {
+      // A stack opened for want of room peeks without its strip being clicked, and the room changes as the
+      // window does.
+      afterRenderEffect((): void => {
+        this.minimums.space();
+        if (this.isPeeking()) {
+          this.room.set(this.measureRoom());
+        }
+      });
+    }
+  }
 
   /**
    * Determines whether the peek's title bar shows a button.
@@ -356,7 +401,7 @@ export class DockCollapsedStrip {
     // pass), and only the frame's last position can ever be seen (see coalescePointerMoves).
     const coalesced: CoalescedPointerMoves = coalescePointerMoves((move: MouseEvent): void => {
       const delta: number = (vertical ? move.clientX : move.clientY) - start;
-      this.resized.set(Math.max(MINIMUM_FLYOUT_SIZE, startSize + sign * delta));
+      this.resized.set(Math.max(this.leastSize(), startSize + sign * delta));
     });
 
     const onRelease: () => void = (): void => {

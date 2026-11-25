@@ -23,19 +23,18 @@ import { ModelManagerSummary, ModelManagerView } from '../model-manager-view/mod
 import { PersonaSection } from '../persona/persona';
 import { SkillLibrarySection } from '../skill-library/skill-library';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
-import { SplitDivider } from '@shared/angular/components/split-panel/split-divider/split-divider';
-import { SplitPane } from '@shared/angular/components/split-panel/split-pane/split-pane';
-import { SplitPanel } from '@shared/angular/components/split-panel/split-panel/split-panel';
 import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
 import { DockTemplatePanel } from '@shared/angular/components/dock-layout/dock-template-panel/dock-template-panel';
 import { dockProviders } from '@shared/angular/services/dock-layout/dock-providers';
+import { DockSides } from '@shared/angular/services/dock-layout/dock-sides';
 import {
   createDockTabRegistrar,
   DockTabRegistrar,
 } from '@shared/angular/services/dock-layout/dock-tab-registration';
 import {
   TOOL_VIEW_AGENT_PANEL_ID,
+  TOOL_VIEW_LIST_PANEL_ID,
   TOOL_VIEW_MAIN_PANEL_ID,
   toolViewConversationContext,
   toolViewDockBlueprint,
@@ -82,9 +81,6 @@ export interface LibraryCounts {
     ModelManagerView,
     PersonaSection,
     SkillLibrarySection,
-    SplitDivider,
-    SplitPane,
-    SplitPanel,
     AgentConversationPanel,
     DockContainer,
     DockTemplatePanel,
@@ -97,7 +93,7 @@ export interface LibraryCounts {
     { provide: AGENT_CONVERSATION_KIND, useValue: 'models' },
     AiManagerAgentCapabilities,
     AiManagerSidebarState,
-    ...dockProviders(toolViewDockBlueprint('ai-manager')),
+    ...dockProviders(toolViewDockBlueprint('ai-manager', { list: true })),
   ],
   templateUrl: './ai-manager-view.html',
   styleUrl: './ai-manager-view.scss',
@@ -143,9 +139,19 @@ export class AiManagerView implements OnInit {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
+   * Exposes the sides a panel may dock to to the template.
+   */
+  protected readonly DockSides: typeof DockSides = DockSides;
+
+  /**
    * Gets the identifier of the panel holding the view's content.
    */
   protected readonly mainPanel: string = TOOL_VIEW_MAIN_PANEL_ID;
+
+  /**
+   * Gets the identifier of the panel holding the view's list.
+   */
+  protected readonly listPanel: string = TOOL_VIEW_LIST_PANEL_ID;
 
   /**
    * Gets the identifier of the agent panel.

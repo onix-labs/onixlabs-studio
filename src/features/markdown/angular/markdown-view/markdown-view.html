@@ -17,8 +17,10 @@
   appDockPanel="outline"
   panelTitle="Outline"
   [panelIcon]="Icon.OUTLINE"
-  [defaultSize]="320"
-  [maxSize]="720"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="16"
+  [defaultInlineSize]="320"
+  [maxInlineSize]="720"
 >
   <app-markdown-outline-panel />
 </ng-template>
@@ -27,9 +29,10 @@
   appDockPanel="review"
   panelTitle="Review"
   [panelIcon]="Icon.REVIEW"
+  [sides]="DockSides.Horizontal"
   [minInlineSize]="20"
-  [defaultSize]="320"
-  [maxSize]="720"
+  [defaultInlineSize]="320"
+  [maxInlineSize]="720"
 >
   <app-markdown-review-panel />
 </ng-template>
@@ -38,8 +41,10 @@
   appDockPanel="reader"
   panelTitle="Reader"
   [panelIcon]="Icon.READER"
-  [defaultSize]="320"
-  [maxSize]="720"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="16"
+  [defaultInlineSize]="320"
+  [maxInlineSize]="720"
 >
   <app-markdown-reader-panel />
 </ng-template>
@@ -48,8 +53,10 @@
   appDockPanel="agent"
   panelTitle="Agent"
   [panelIcon]="Icon.AGENT"
-  [defaultSize]="360"
-  [maxSize]="900"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="22.5"
+  [defaultInlineSize]="360"
+  [maxInlineSize]="900"
 >
   <app-agent-conversation-panel [tabId]="tabId()" [context]="fileContext()" language="markdown" />
 </ng-template>
@@ -58,8 +65,10 @@
   appDockPanel="find"
   panelTitle="Find and Replace"
   [panelIcon]="Icon.SEARCH"
-  [defaultSize]="320"
-  [maxSize]="520"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="16"
+  [defaultInlineSize]="320"
+  [maxInlineSize]="520"
 >
   <app-find-panel
     [adapter]="findAdapter"

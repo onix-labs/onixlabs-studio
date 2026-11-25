@@ -1,5 +1,6 @@
 import { DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
 import { DockNode, mkSplit, mkStack } from '@shared/angular/services/dock-layout/dock-node';
+import { SIMPLE_DOCK } from '@shared/angular/services/dock-layout/dock-simple';
 import { OPENABLE_MARKDOWN_PANELS } from './markdown-panels/markdown-panels';
 
 /**
@@ -22,6 +23,5 @@ export const MARKDOWN_DOCK_BLUEPRINT: DockBlueprint = {
   panels: [],
   templatePanels: [MARKDOWN_DOCUMENT_PANEL_ID, ...OPENABLE_MARKDOWN_PANELS],
   startsOpen: [],
-  appearance: 'simple',
-  buttons: ['close'],
+  ...SIMPLE_DOCK,
 };

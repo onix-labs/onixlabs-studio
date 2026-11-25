@@ -20,6 +20,7 @@ import { DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-blueprint';
 import { DockFocus } from '../../../services/dock-layout/dock-focus';
 import { DockGeometry } from '../../../services/dock-layout/dock-geometry';
 import { DockNode as DockTreeNode, StackNode } from '../../../services/dock-layout/dock-node';
+import { DockRoom } from '../../../services/dock-layout/dock-room';
 import { DockState } from '../../../services/dock-layout/dock-state';
 import { firstStackOfRole } from '../../../services/dock-layout/dock-tree';
 import { DockFloatingLayer } from '../dock-floating-layer/dock-floating-layer';
@@ -95,6 +96,11 @@ export class DockContainer {
    * Holds the dock's minimum sizes, whose root sets the window's own minimum (#1064).
    */
   private readonly minimums: DockMinimums = inject(DockMinimums);
+
+  /**
+   * Holds what fits the layout to the window, in a dock that does.
+   */
+  private readonly room: DockRoom = inject(DockRoom);
 
   /**
    * Holds the shell bridge the window's minimum size is asked for through.
@@ -188,8 +194,13 @@ export class DockContainer {
       if (typeof ResizeObserver === 'undefined') {
         return;
       }
-      const observer: ResizeObserver = new ResizeObserver((): void => this.applyWindowMinimum());
-      observer.observe(this.hostElement.nativeElement);
+      const host: HTMLElement = this.hostElement.nativeElement;
+      this.minimums.measureSpace(host.clientWidth, host.clientHeight);
+      const observer: ResizeObserver = new ResizeObserver((): void => {
+        this.minimums.measureSpace(host.clientWidth, host.clientHeight);
+        this.applyWindowMinimum();
+      });
+      observer.observe(host);
       destroyRef.onDestroy((): void => observer.disconnect());
     });
   }
@@ -214,8 +225,13 @@ export class DockContainer {
       return;
     }
     const minimum: DockMinimum = this.layoutMinimum();
-    const width: number = Math.ceil(minimum.inline + (window.innerWidth - box.width));
-    const height: number = Math.ceil(minimum.block + (window.innerHeight - box.height));
+    // A dock that fits itself to the window asks only for the window's own floor.
+    const width: number = this.room.enabled
+      ? 0
+      : Math.ceil(minimum.inline + (window.innerWidth - box.width));
+    const height: number = this.room.enabled
+      ? 0
+      : Math.ceil(minimum.block + (window.innerHeight - box.height));
     const key: string = `${width}x${height}`;
     if (key === this.lastMinimum) {
       return;
