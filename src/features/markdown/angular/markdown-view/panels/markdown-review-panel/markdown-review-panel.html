@@ -1,127 +1,115 @@
-<app-tool-panel title="Review" [icon]="Icon.REVIEW" (closed)="panels.close('review')">
-  @if (hasSession() && ready()) {
-    <div class="rv-toolbar">
-      <div class="rv-chips" role="group" aria-label="Filter issues">
+@if (hasSession() && ready()) {
+  <div class="rv-toolbar">
+    <div class="rv-chips" role="group" aria-label="Filter issues">
+      <button
+        type="button"
+        class="rv-chip"
+        [class.active]="filter() === 'all'"
+        [attr.aria-pressed]="filter() === 'all'"
+        (click)="onFilter('all')"
+      >
+        All <span class="rv-chip-count">{{ countFor('all') }}</span>
+      </button>
+      @for (chip of kindChips; track chip.value) {
         <button
           type="button"
           class="rv-chip"
-          [class.active]="filter() === 'all'"
-          [attr.aria-pressed]="filter() === 'all'"
-          (click)="onFilter('all')"
+          [class.active]="filter() === chip.value"
+          [attr.aria-pressed]="filter() === chip.value"
+          (click)="onFilter(chip.value)"
         >
-          All <span class="rv-chip-count">{{ countFor('all') }}</span>
+          <span class="rv-dot" [class]="'kind-' + chip.value" aria-hidden="true"></span>
+          {{ chip.label }} <span class="rv-chip-count">{{ countFor(chip.value) }}</span>
         </button>
-        @for (chip of kindChips; track chip.value) {
-          <button
-            type="button"
-            class="rv-chip"
-            [class.active]="filter() === chip.value"
-            [attr.aria-pressed]="filter() === chip.value"
-            (click)="onFilter(chip.value)"
-          >
-            <span class="rv-dot" [class]="'kind-' + chip.value" aria-hidden="true"></span>
-            {{ chip.label }} <span class="rv-chip-count">{{ countFor(chip.value) }}</span>
-          </button>
-        }
-      </div>
+      }
+    </div>
+    <app-button
+      variant="none"
+      size="small"
+      [icon]="Icon.REFRESH"
+      ariaLabel="Re-check document"
+      (click)="onRefresh()"
+    />
+  </div>
+
+  @if (current(); as issue) {
+    <div class="rv-heading">
+      <span class="rv-dot" [class]="'kind-' + issue.kind" aria-hidden="true"></span>
+      <span class="rv-rule">{{ issue.ruleName }}</span>
+      <span class="rv-position" data-testid="review-position"
+        >{{ position() }} of {{ issues().length }}</span
+      >
       <app-button
         variant="none"
         size="small"
-        [icon]="Icon.REFRESH"
-        ariaLabel="Re-check document"
-        (click)="onRefresh()"
+        [icon]="Icon.CARET_LEFT"
+        ariaLabel="Previous issue"
+        [disabled]="position() <= 1"
+        (click)="onPrevious()"
       />
-    </div>
-
-    @if (current(); as issue) {
-      <div class="rv-heading">
-        <span class="rv-dot" [class]="'kind-' + issue.kind" aria-hidden="true"></span>
-        <span class="rv-rule">{{ issue.ruleName }}</span>
-        <span class="rv-position" data-testid="review-position"
-          >{{ position() }} of {{ issues().length }}</span
-        >
-        <app-button
-          variant="none"
-          size="small"
-          [icon]="Icon.CARET_LEFT"
-          ariaLabel="Previous issue"
-          [disabled]="position() <= 1"
-          (click)="onPrevious()"
-        />
-        <app-button
-          variant="none"
-          size="small"
-          [icon]="Icon.CARET_RIGHT"
-          ariaLabel="Next issue"
-          [disabled]="position() >= issues().length"
-          (click)="onNext()"
-        />
-      </div>
-
-      <button
-        type="button"
-        class="rv-context"
-        data-testid="review-context"
-        (click)="onReveal(issue)"
-      >
-        <span>{{ issue.before }}</span>
-        <span class="rv-flag" [class]="'kind-' + issue.kind">{{ issue.word }}</span>
-        <span>{{ issue.after }}</span>
-      </button>
-    } @else {
-      <p class="rv-empty">No issues found.</p>
-    }
-
-    <div class="rv-actions">
-      @if (current(); as issue) {
-        <app-button
-          [variant]="suggestionRows().length > 0 ? 'ghost' : 'solid'"
-          size="small"
-          label="Ignore Once"
-          (click)="onIgnoreOnce(issue)"
-        />
-        <app-button variant="ghost" size="small" label="Ignore All" (click)="onIgnoreAll(issue)" />
-        @if (canAddToDictionary(issue)) {
-          <app-button variant="ghost" size="small" label="Add" (click)="onDictionary(issue)" />
-        }
-      }
       <app-button
-        class="rv-undo"
-        variant="ghost"
+        variant="none"
         size="small"
-        label="Undo"
-        [disabled]="!canUndo()"
-        (click)="onUndo()"
+        [icon]="Icon.CARET_RIGHT"
+        ariaLabel="Next issue"
+        [disabled]="position() >= issues().length"
+        (click)="onNext()"
       />
     </div>
 
+    <button type="button" class="rv-context" data-testid="review-context" (click)="onReveal(issue)">
+      <span>{{ issue.before }}</span>
+      <span class="rv-flag" [class]="'kind-' + issue.kind">{{ issue.word }}</span>
+      <span>{{ issue.after }}</span>
+    </button>
+  } @else {
+    <p class="rv-empty">No issues found.</p>
+  }
+
+  <div class="rv-actions">
     @if (current(); as issue) {
-      @if (suggestionRows().length > 0) {
-        <span class="rv-label" id="rv-suggestions-label">Suggestions</span>
-        <app-list-view
-          class="rv-suggestions"
-          role="group"
-          aria-labelledby="rv-suggestions-label"
-          [rows]="suggestionRows()"
-          [selectedId]="selectedSuggestion()"
-          (rowClick)="onSuggestion($event)"
-        >
-          <ng-template let-row>{{ row.id }}</ng-template>
-        </app-list-view>
-        <div class="rv-actions">
-          <app-button variant="solid" size="small" label="Change" (click)="onChange(issue)" />
-          <app-button
-            variant="ghost"
-            size="small"
-            label="Change All"
-            (click)="onChangeAll(issue)"
-          />
-        </div>
+      <app-button
+        [variant]="suggestionRows().length > 0 ? 'ghost' : 'solid'"
+        size="small"
+        label="Ignore Once"
+        (click)="onIgnoreOnce(issue)"
+      />
+      <app-button variant="ghost" size="small" label="Ignore All" (click)="onIgnoreAll(issue)" />
+      @if (canAddToDictionary(issue)) {
+        <app-button variant="ghost" size="small" label="Add" (click)="onDictionary(issue)" />
       }
     }
-  } @else if (hasSession() && !ready()) {
-    <p class="rv-empty">Checking the document…</p>
-  } @else {
-    <p class="rv-empty">Open a markdown document to review.</p>
+    <app-button
+      class="rv-undo"
+      variant="ghost"
+      size="small"
+      label="Undo"
+      [disabled]="!canUndo()"
+      (click)="onUndo()"
+    />
+  </div>
+
+  @if (current(); as issue) {
+    @if (suggestionRows().length > 0) {
+      <span class="rv-label" id="rv-suggestions-label">Suggestions</span>
+      <app-list-view
+        class="rv-suggestions"
+        role="group"
+        aria-labelledby="rv-suggestions-label"
+        [rows]="suggestionRows()"
+        [selectedId]="selectedSuggestion()"
+        (rowClick)="onSuggestion($event)"
+      >
+        <ng-template let-row>{{ row.id }}</ng-template>
+      </app-list-view>
+      <div class="rv-actions">
+        <app-button variant="solid" size="small" label="Change" (click)="onChange(issue)" />
+        <app-button variant="ghost" size="small" label="Change All" (click)="onChangeAll(issue)" />
+      </div>
+    }
   }
-</app-tool-panel>
+} @else if (hasSession() && !ready()) {
+  <p class="rv-empty">Checking the document…</p>
+} @else {
+  <p class="rv-empty">Open a markdown document to review.</p>
+}

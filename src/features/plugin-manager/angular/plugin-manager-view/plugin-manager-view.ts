@@ -20,19 +20,28 @@ import {
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Chip, ChipTone } from '@shared/angular/components/chip/chip';
-import { Panel } from '@shared/angular/components/panel-layout/panel';
-import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { CategoryItem, CategoryList } from '@shared/angular/components/category-list/category-list';
-import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { PluginAction } from '@shared/angular/components/plugin-action/plugin-action';
 import { PluginInstallError } from '@shared/angular/components/plugin-install-error/plugin-install-error';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { canUpdate } from '@shared/angular/components/plugin-action/plugin-action-rules';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
+import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
+import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
+import { DockTemplatePanel } from '@shared/angular/components/dock-layout/dock-template-panel/dock-template-panel';
+import { dockProviders } from '@shared/angular/services/dock-layout/dock-providers';
+import { DockSides } from '@shared/angular/services/dock-layout/dock-sides';
 import {
+  createDockTabRegistrar,
+  DockTabRegistrar,
+} from '@shared/angular/services/dock-layout/dock-tab-registration';
+import {
+  TOOL_VIEW_AGENT_PANEL_ID,
+  TOOL_VIEW_LIST_PANEL_ID,
+  TOOL_VIEW_MAIN_PANEL_ID,
   toolViewConversationContext,
-  ToolViewAgentPanel,
-} from '@shared/angular/components/panels/tool-view-agent-panel/tool-view-agent-panel';
+  toolViewDockBlueprint,
+} from '@shared/angular/services/tool-view-dock/tool-view-dock';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import {
@@ -41,7 +50,6 @@ import {
 } from '@shared/angular/services/agent-hosts/agent-host-registration';
 import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import { PluginManagerAgentCapabilities } from '../plugin-manager-agent/plugin-manager-agent-capabilities';
-import { PluginManagerAgentPanelState } from '../plugin-manager-agent/plugin-manager-agent-panel-state';
 import {
   ALL_PLUGINS,
   AVAILABLE_PLUGINS,
@@ -84,10 +92,10 @@ const SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
  */
 const COLUMNS: readonly TableColumn[] = [
   { id: 'plugin', header: 'Plugin', width: '38%', sortable: true },
-  { id: 'category', header: 'Category', sortable: true },
-  { id: 'languages', header: 'Languages' },
-  { id: 'version', header: 'Version', width: '8.5rem' },
-  { id: 'state', header: 'State', width: '10.5rem', sortable: true },
+  { id: 'category', header: 'Category', sortable: true, hideBelow: 56 },
+  { id: 'languages', header: 'Languages', hideBelow: 64 },
+  { id: 'version', header: 'Version', width: '8.5rem', hideBelow: 40 },
+  { id: 'state', header: 'State', width: '10.5rem', sortable: true, hideBelow: 32 },
   { id: 'action', header: '', width: '8.5rem', align: 'end' },
 ];
 
@@ -108,13 +116,13 @@ const COLUMNS: readonly TableColumn[] = [
     CategoryList,
     Chip,
     NgTemplateOutlet,
-    PanelLayout,
-    Panel,
     PluginAction,
     PluginInstallError,
     Table,
     TableRowDef,
-    ToolViewAgentPanel,
+    AgentConversationPanel,
+    DockContainer,
+    DockTemplatePanel,
   ],
   // The agent and its conversation live on the VIEW, not the docked panel (#968), so a run outlives
   // the panel being closed.
@@ -123,6 +131,7 @@ const COLUMNS: readonly TableColumn[] = [
     AgentConversation,
     { provide: AGENT_CONVERSATION_KIND, useValue: 'plugins' },
     PluginManagerAgentCapabilities,
+    ...dockProviders(toolViewDockBlueprint('plugin-manager', { list: true })),
   ],
   templateUrl: './plugin-manager-view.html',
   styleUrl: './plugin-manager-view.scss',
@@ -133,6 +142,11 @@ export class PluginManagerView implements OnInit {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Exposes the sides a panel may dock to to the template.
+   */
+  protected readonly DockSides: typeof DockSides = DockSides;
 
   /**
    * Gets the table's columns.
@@ -160,6 +174,7 @@ export class PluginManagerView implements OnInit {
    */
   private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
     isActive: this.isActive,
+    context: (): ConversationContext => this.agentContext,
     surface: 'plugins',
   });
 
@@ -171,16 +186,30 @@ export class PluginManagerView implements OnInit {
   );
 
   /**
-   * Holds whether the docked agent is showing, shared with the ribbon.
+   * Gets the identifier of the panel holding the view's content.
    */
-  protected readonly agentPanel: PluginManagerAgentPanelState = inject(
-    PluginManagerAgentPanelState,
-  );
+  protected readonly mainPanel: string = TOOL_VIEW_MAIN_PANEL_ID;
+
+  /**
+   * Gets the identifier of the panel holding the view's list.
+   */
+  protected readonly listPanel: string = TOOL_VIEW_LIST_PANEL_ID;
+
+  /**
+   * Gets the identifier of the agent panel.
+   */
+  protected readonly agentPanel: string = TOOL_VIEW_AGENT_PANEL_ID;
+
+  /**
+   * Registers this tab's dock, so the ribbon can open and close its agent. Finalised in
+   * {@link ngOnInit} once the tab id is readable.
+   */
+  private readonly dockTab: DockTabRegistrar = createDockTabRegistrar();
 
   /**
    * Gets the context the Plugin Manager's conversations are filed under.
    */
-  protected readonly agentContext: ConversationContext = toolViewConversationContext('plugins');
+  private readonly agentContext: ConversationContext = toolViewConversationContext('plugins');
 
   /**
    * Publishes this view's injector to the status strip and its agent to Mission Control, now that the
@@ -188,6 +217,7 @@ export class PluginManagerView implements OnInit {
    */
   public ngOnInit(): void {
     this.statusHost.register(this.tabId());
+    this.dockTab.register(this.tabId());
     this.agentHost.register(this.tabId());
   }
 
@@ -210,11 +240,6 @@ export class PluginManagerView implements OnInit {
    * Gets the table's columns.
    */
   protected readonly columns: readonly TableColumn[] = COLUMNS;
-
-  /**
-   * Gets the edges the side panel may sit on: only its own, since it is part of the view.
-   */
-  protected readonly sideEdges: readonly PanelEdge[] = ['left'];
 
   /**
    * Gets the table's rows, one per plugin the filter and search leave, in the chosen order.

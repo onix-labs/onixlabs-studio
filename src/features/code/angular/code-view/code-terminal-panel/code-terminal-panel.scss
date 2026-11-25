@@ -1,9 +1,9 @@
 :host {
-  // The shared tool-panel chrome draws the header; the body sits a shade below it as a distinct
-  // terminal surface.
+  // The body sits a shade below the tool strip as a distinct terminal surface.
   --code-terminal-body-background: var(--gray-100);
 
-  display: block;
+  display: flex;
+  flex-direction: column;
   inline-size: 100%;
   block-size: 100%;
 }
@@ -12,14 +12,8 @@
   --code-terminal-body-background: var(--gray-900);
 }
 
-// Fills the shared tool panel's flush body, which is a plain block rather than a flex track.
 .code-terminal__body {
-  block-size: 100%;
+  flex: 1 1 auto;
   min-block-size: 0;
   background: var(--code-terminal-body-background);
-
-  app-terminal-view {
-    display: block;
-    block-size: 100%;
-  }
 }

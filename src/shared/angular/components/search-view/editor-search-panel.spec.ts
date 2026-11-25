@@ -36,23 +36,21 @@ describe('EditorSearchPanel (#1007)', () => {
     );
   }
 
-  it('showsTheWorkspacesSearchView_inAToolPanel_seededAndSearchedByTheRequest', async () => {
+  it('showsTheWorkspacesSearchView_seededAndSearchedByTheRequest', async () => {
     // Matthew, #1007: a code tab's find works as the workspace's does — the same strip, form and tree.
     search.open({ mode: 'replace', scope: 'file', seed: 'todo' }, null);
     await fixture.whenStable();
 
-    expect(host.querySelector('.tool-panel__title')?.textContent).toBe('Find and Replace');
     expect(toggles()).toEqual(['Find', 'Replace']);
     expect(host.querySelector('.search-view__form app-dropdown')).not.toBeNull();
     expect(host.querySelectorAll('.search-view__results .tree-row').length).toBe(2);
   });
 
-  it('overAReadOnlyEditor_isTitledFind_andOffersNoReplace', async () => {
+  it('overAReadOnlyEditor_offersNoReplace', async () => {
     editor.readOnly = true;
     search.open({ mode: 'replace', scope: 'file' }, null);
     await fixture.whenStable();
 
-    expect(host.querySelector('.tool-panel__title')?.textContent).toBe('Find');
     expect(toggles()).toEqual(['Find']);
   });
 

@@ -6,36 +6,42 @@
            controls are one control at two call sites. `mousedown` is stopped on each so pressing one
            does not start the title bar's drag. -->
       <span class="dock-tab-group__title-buttons">
-        <app-button
-          variant="none"
-          size="small"
-          [icon]="collapseIcon()"
-          [iconRotation]="collapseRotation()"
-          ariaLabel="Auto Hide"
-          tooltip="Auto Hide"
-          (mousedown)="$event.stopPropagation()"
-          (click)="requestPin()"
-        />
-        <app-button
-          variant="none"
-          size="small"
-          [icon]="Icon.FLOAT"
-          ariaLabel="Float"
-          tooltip="Float"
-          (mousedown)="$event.stopPropagation()"
-          (click)="requestFloat()"
-        />
-        <app-button
-          variant="none"
-          size="small"
-          [icon]="Icon.POP_OUT"
-          ariaLabel="Open in New Window"
-          [tooltip]="popOutTitle()"
-          [disabled]="!canPopOutActive()"
-          (mousedown)="$event.stopPropagation()"
-          (click)="popOutActive()"
-        />
-        @if (activePanel(); as panel) {
+        @if (shows('auto-hide')) {
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="collapseIcon()"
+            [iconRotation]="collapseRotation()"
+            ariaLabel="Auto Hide"
+            tooltip="Auto Hide"
+            (mousedown)="$event.stopPropagation()"
+            (click)="requestPin()"
+          />
+        }
+        @if (shows('float')) {
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.FLOAT"
+            ariaLabel="Float"
+            tooltip="Float"
+            (mousedown)="$event.stopPropagation()"
+            (click)="requestFloat()"
+          />
+        }
+        @if (shows('pop-out')) {
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.POP_OUT"
+            ariaLabel="Open in New Window"
+            [tooltip]="popOutTitle()"
+            [disabled]="!canPopOutActive()"
+            (mousedown)="$event.stopPropagation()"
+            (click)="popOutActive()"
+          />
+        }
+        @if (closable(); as panel) {
           <app-button
             variant="none"
             size="small"
@@ -51,106 +57,112 @@
   }
 
   <!-- Pressing the rail itself (never a tab, which carries its own drag) docks the whole group. -->
-  <div
-    #tabstrip
-    class="dock-tab-group__tabstrip"
-    role="tablist"
-    cdkDropList
-    cdkDropListOrientation="horizontal"
-    [cdkDropListData]="stack()"
-    [cdkDropListEnterPredicate]="canEnter"
-    (cdkDropListDropped)="onDrop($event)"
-    (mousedown)="startGroupDrag($event)"
-  >
-    @for (panel of panels(); track panel.id) {
-      <div
-        class="dock-tab"
-        role="tab"
-        tabindex="0"
-        cdkDrag
-        [cdkDragData]="panel.id"
-        [class.dock-tab--active]="panel.id === activePanel()?.id"
-        [attr.aria-selected]="panel.id === activePanel()?.id"
-        [cdkContextMenuTriggerFor]="isDocuments() ? (tabMenu.panel() ?? null) : null"
-        [appMenuSubject]="panel.id"
-        (click)="activate(panel.id)"
-        (keydown.enter)="activate(panel.id)"
-        (keydown.space)="activate(panel.id)"
-      >
-        <app-icon class="dock-tab__icon" [icon]="panel.icon" />
-        <span class="dock-tab__label">{{ panel.title }}</span>
-        <!-- A document with unsaved changes shows a dirty dot; the close button reveals over it on hover. -->
-        @if (panel.dirty?.()) {
-          <span class="dock-tab__dirty" title="Unsaved changes" aria-label="Unsaved changes"></span>
-        }
-        <!-- Tool tabs are closed from the panel title bar, so only document tabs carry a close button. -->
-        @if (isDocuments()) {
+  @if (showsTabs()) {
+    <div
+      #tabstrip
+      class="dock-tab-group__tabstrip"
+      role="tablist"
+      cdkDropList
+      cdkDropListOrientation="horizontal"
+      [cdkDropListData]="stack()"
+      [cdkDropListEnterPredicate]="canEnter"
+      (cdkDropListDropped)="onDrop($event)"
+      (mousedown)="startGroupDrag($event)"
+    >
+      @for (panel of panels(); track panel.id) {
+        <div
+          class="dock-tab"
+          role="tab"
+          tabindex="0"
+          cdkDrag
+          [cdkDragData]="panel.id"
+          [class.dock-tab--active]="panel.id === activePanel()?.id"
+          [attr.aria-selected]="panel.id === activePanel()?.id"
+          [cdkContextMenuTriggerFor]="isDocuments() ? (tabMenu.panel() ?? null) : null"
+          [appMenuSubject]="panel.id"
+          (click)="activate(panel.id)"
+          (keydown.enter)="activate(panel.id)"
+          (keydown.space)="activate(panel.id)"
+        >
+          <app-icon class="dock-tab__icon" [icon]="panel.icon" />
+          <span class="dock-tab__label">{{ panel.title }}</span>
+          <!-- A document with unsaved changes shows a dirty dot; the close button reveals over it on hover. -->
+          @if (panel.dirty?.()) {
+            <span
+              class="dock-tab__dirty"
+              title="Unsaved changes"
+              aria-label="Unsaved changes"
+            ></span>
+          }
+          <!-- Tool tabs are closed from the panel title bar, so only document tabs carry a close button. -->
+          @if (isDocuments()) {
+            <button
+              type="button"
+              class="dock-tab__close"
+              title="Close"
+              aria-label="Close"
+              [appTooltip]="'Close'"
+              (mousedown)="$event.stopPropagation()"
+              (click)="close(panel.id); $event.stopPropagation()"
+            >
+              <app-icon [icon]="Icon.CLOSE" />
+            </button>
+          }
+        </div>
+      }
+
+      @if (isDocuments()) {
+        <!-- Document wells have no title bar; these right-aligned controls are the compass drag
+             handle, the document picker, and close-all. -->
+        <div class="dock-tab-group__strip-controls">
+          <span class="dock-tab-group__strut" aria-hidden="true">
+            <app-icon class="dock-tab__icon" [icon]="Icon.CODE" />
+            <span class="dock-tab__label">&nbsp;</span>
+            <span class="dock-tab__close"></span>
+          </span>
+          <div
+            class="dock-tab-group__handle"
+            [class.dock-tab-group__handle--disabled]="!canDetachActive()"
+            title="Drag to dock"
+            aria-label="Drag to dock"
+            (mousedown)="startDrag($event)"
+          >
+            <app-icon [icon]="Icon.GRIP_BOLD" />
+          </div>
           <button
             type="button"
-            class="dock-tab__close"
-            title="Close"
-            aria-label="Close"
-            [appTooltip]="'Close'"
-            (mousedown)="$event.stopPropagation()"
-            (click)="close(panel.id); $event.stopPropagation()"
+            class="dock-tab-group__menu-button"
+            title="Documents"
+            aria-label="Documents"
+            [appTooltip]="'Documents'"
+            [cdkMenuTriggerFor]="documentMenu.panel() ?? null"
+            [cdkMenuPosition]="documentMenu.position()"
           >
-            <app-icon [icon]="Icon.CLOSE" />
+            <app-icon [icon]="Icon.CARET_DOWN_BOLD" />
           </button>
-        }
-      </div>
-    }
-
-    @if (isDocuments()) {
-      <!-- Document wells have no title bar; these right-aligned controls are the compass drag
-           handle, the document picker, and close-all. -->
-      <div class="dock-tab-group__strip-controls">
-        <span class="dock-tab-group__strut" aria-hidden="true">
-          <app-icon class="dock-tab__icon" [icon]="Icon.CODE" />
-          <span class="dock-tab__label">&nbsp;</span>
-          <span class="dock-tab__close"></span>
-        </span>
-        <div
-          class="dock-tab-group__handle"
-          [class.dock-tab-group__handle--disabled]="!canDetachActive()"
-          title="Drag to dock"
-          aria-label="Drag to dock"
-          (mousedown)="startDrag($event)"
-        >
-          <app-icon [icon]="Icon.GRIP_BOLD" />
+          <button
+            type="button"
+            class="dock-tab-group__close-all-button"
+            title="Close All"
+            aria-label="Close All"
+            [appTooltip]="'Close All'"
+            (mousedown)="$event.stopPropagation()"
+            (click)="closeAll()"
+          >
+            <app-icon [icon]="Icon.CLOSE_BOLD" />
+          </button>
         </div>
-        <button
-          type="button"
-          class="dock-tab-group__menu-button"
-          title="Documents"
-          aria-label="Documents"
-          [appTooltip]="'Documents'"
-          [cdkMenuTriggerFor]="documentMenu.panel() ?? null"
-          [cdkMenuPosition]="documentMenu.position()"
-        >
-          <app-icon [icon]="Icon.CARET_DOWN_BOLD" />
-        </button>
-        <button
-          type="button"
-          class="dock-tab-group__close-all-button"
-          title="Close All"
-          aria-label="Close All"
-          [appTooltip]="'Close All'"
-          (mousedown)="$event.stopPropagation()"
-          (click)="closeAll()"
-        >
-          <app-icon [icon]="Icon.CLOSE_BOLD" />
-        </button>
-      </div>
 
-      <app-menu
-        #documentMenu
-        [items]="documentItems()"
-        placement="down-end"
-        (selected)="activate($event)"
-        (actioned)="close($event.id)"
-      />
-    }
-  </div>
+        <app-menu
+          #documentMenu
+          [items]="documentItems()"
+          placement="down-end"
+          (selected)="activate($event)"
+          (actioned)="close($event.id)"
+        />
+      }
+    </div>
+  }
 
   <!-- A document tab's own menu, on right-click: close it or its neighbours, or split it out. -->
   <app-menu #tabMenu [itemsFor]="tabItemsFor" (chosen)="onTabMenu($event)" />

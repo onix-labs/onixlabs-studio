@@ -7,6 +7,30 @@
   block-size: 100%;
   inline-size: 100%;
   background: var(--dock-container-background-color);
+  // Every open tab's dock is mounted at once, so each keeps its main slot's anchor to itself.
+  anchor-scope: --dock-main;
+}
+
+// The simple look: square and flat, the groups filling the view. Only values, which everything the dock
+// draws inside this element takes on; nothing is laid out differently. Each is one only the dock reads: the
+// panels' own content is drawn inside this element too.
+:host([data-appearance='simple']) {
+  --dock-panel-radius: 0;
+  --dock-panel-foot-radius: 0;
+  --dock-flyout-radius: 0;
+  --dock-divider-radius: 0;
+  --dock-pane-background-color: transparent;
+  --dock-group-title-background-color: var(--panel-surface-color);
+  --dock-title-font-weight: 500;
+  --dock-group-border-color: transparent;
+  --dock-group-border-color--focused: transparent;
+
+  background: var(--body-background-color);
+
+  // It has no texture, so nothing to paint one with.
+  &::before {
+    display: none;
+  }
 }
 
 // The optional background texture, tiled behind the docked panes. The pattern arrives as
@@ -37,4 +61,14 @@
   block-size: 100%;
   inline-size: 100%;
   gap: 0;
+}
+
+// Laid over the main group's slot, following it through every resize without being measured. Above the
+// panes' own level and beneath what is meant to cover them: dividers, collapsed strips and their peeks.
+.dock-container__main {
+  position: absolute;
+  inset-block: anchor(--dock-main top) anchor(--dock-main bottom);
+  inset-inline: anchor(--dock-main left) anchor(--dock-main right);
+  z-index: 1;
+  overflow: hidden;
 }

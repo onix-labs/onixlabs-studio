@@ -1,4 +1,5 @@
 import { InjectionToken } from '@angular/core';
+import { DockAppearance, DockButton } from './dock-appearance';
 import { DockNode } from './dock-node';
 import { DockPanel } from './dock-panel';
 
@@ -33,6 +34,43 @@ export interface DockBlueprint {
    * open files or diffs) are still registered dynamically as they open.
    */
   readonly panels: readonly DockPanel[];
+
+  /**
+   * Gets the identifiers of the panels the view declares in its own template (see
+   * {@link import('../../components/dock-layout/dock-template-panel/dock-template-panel').DockTemplatePanel}),
+   * so a layout may hold them before they are declared. Absent when it declares none.
+   */
+  readonly templatePanels?: readonly string[];
+
+  /**
+   * Gets the identifiers of the tool panels open when the dock opens, for a dock that keeps its closed
+   * panels' places (#1568). Its layout holds every panel where it goes, open or not: closing one hides it
+   * there, and opening it shows it there again. What is saved is then where panels go and not which are
+   * open, and only rearranging saves it, so a dock opens as the one last rearranged was arranged, with
+   * these panels open.
+   *
+   * Absent for a dock whose layout holds only the panels that are open, where closing one removes it.
+   */
+  readonly startsOpen?: readonly string[];
+
+  /**
+   * Gets how the dock looks. Absent means `full`.
+   */
+  readonly appearance?: DockAppearance;
+
+  /**
+   * Gets the buttons its groups' title bars show. One left out is only not shown: what it does can still
+   * be done. Absent means all of them.
+   */
+  readonly buttons?: readonly DockButton[];
+
+  /**
+   * Gets the least part of the dock's space, from 0 to 1, its main group has across and down (#1575). The
+   * panels share the rest, and what doesn't fit in it collapses: see
+   * {@link import('./dock-room').DockRoom}. Absent for a dock that only shrinks to its minimums, and asks
+   * the window to be no smaller than them.
+   */
+  readonly mainShare?: number;
 }
 
 /**

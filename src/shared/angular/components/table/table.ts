@@ -125,6 +125,12 @@ export interface TableColumn {
    * Defaults to false.
    */
   readonly sortable?: boolean;
+
+  /**
+   * Gets the width of the table, in rem, below which the column is hidden, leaving its room to the others;
+   * absent for one always shown. Not for a {@link Table.resizable} table, whose columns the user sizes.
+   */
+  readonly hideBelow?: number;
 }
 
 /**
@@ -377,11 +383,43 @@ export class Table {
   public readonly followEnd: InputSignal<boolean> = input<boolean>(false);
 
   /**
-   * Gets how many cells a full-width row spans: every column, and the filler a resizable table ends
+   * Holds the table's width in rem, or null until it has one.
+   */
+  private readonly width: WritableSignal<number | null> = signal<number | null>(null);
+
+  /**
+   * Gets the positions, from one, of the columns hidden for want of width, as the stylesheet matches them.
+   */
+  private readonly hiddenColumns: Signal<readonly number[]> = computed((): readonly number[] => {
+    const width: number | null = this.width();
+    return this.columns().flatMap((column: TableColumn, index: number): readonly number[] =>
+      width !== null && column.hideBelow !== undefined && width < column.hideBelow
+        ? [index + 1]
+        : [],
+    );
+  });
+
+  /**
+   * Gets the hidden columns' positions as the table's attribute has them, or null when none is.
+   */
+  protected readonly hiddenAttribute: Signal<string | null> = computed((): string | null => {
+    const hidden: readonly number[] = this.hiddenColumns();
+    return hidden.length === 0 ? null : hidden.join(' ');
+  });
+
+  /**
+   * Gets whether any column is hidden when the table is narrow, so its width is worth watching.
+   */
+  private readonly hidesColumns: Signal<boolean> = computed((): boolean =>
+    this.columns().some((column: TableColumn): boolean => column.hideBelow !== undefined),
+  );
+
+  /**
+   * Gets how many cells a full-width row spans: every column shown, and the filler a resizable table ends
    * with.
    */
   protected readonly spanCount: Signal<number> = computed(
-    (): number => this.columns().length + (this.resizable() ? 1 : 0),
+    (): number => this.columns().length - this.hiddenColumns().length + (this.resizable() ? 1 : 0),
   );
 
   /**
@@ -394,14 +432,25 @@ export class Table {
 
   /**
    * Gets each column's width as rendered: the resized width once there is one, otherwise the stated
-   * width.
+   * width. Once every column without a stated width is hidden, those stated as a share of the table take
+   * what the others leave, rather than all of them growing.
    */
   protected readonly columnWidths: Signal<readonly (string | null)[]> = computed(
     (): readonly (string | null)[] => {
       const resized: ReadonlyMap<string, number> = this.resizedWidths();
+      const hidden: readonly number[] = this.hiddenColumns();
+      const takesRest: boolean =
+        hidden.length > 0 &&
+        this.columns().every(
+          (column: TableColumn, index: number): boolean =>
+            column.width !== undefined || hidden.includes(index + 1),
+        );
       return this.columns().map((column: TableColumn): string | null => {
         const px: number | undefined = resized.get(column.id);
-        return px === undefined ? (column.width ?? null) : `${px}px`;
+        if (px !== undefined) {
+          return `${px}px`;
+        }
+        return takesRest && column.width?.endsWith('%') === true ? null : (column.width ?? null);
       });
     },
   );
@@ -832,6 +881,28 @@ export class Table {
         element.removeEventListener('scroll', read);
         resize?.disconnect();
       });
+    });
+
+    // The width decides which columns are hidden. A table behind another tab has none, and keeps what it
+    // had.
+    effect((onCleanup: (cleanup: () => void) => void): void => {
+      const element: HTMLElement | undefined = this.scroller()?.nativeElement;
+      const view: (Window & typeof globalThis) | null = element?.ownerDocument.defaultView ?? null;
+      if (!this.hidesColumns() || element === undefined || view?.ResizeObserver === undefined) {
+        return;
+      }
+      const read: () => void = (): void => {
+        const rem: number = Number.parseFloat(
+          view.getComputedStyle(element.ownerDocument.documentElement).fontSize,
+        );
+        if (element.clientWidth > 0) {
+          this.width.set(element.clientWidth / (rem > 0 ? rem : 16));
+        }
+      };
+      read();
+      const resize: ResizeObserver = new view.ResizeObserver(read);
+      resize.observe(element);
+      onCleanup((): void => resize.disconnect());
     });
 
     // Following the end (a log's newest rows): note whether the user is at the end as they scroll, and

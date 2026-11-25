@@ -1,6 +1,6 @@
 // The editor itself — its scroll container, document-width wrapper, and Milkdown theming — lives in
-// the shared <app-markdown-editor> pane, and the editor/tool-panel layout is owned by the shared
-// <app-panel-layout>. This stylesheet only sizes the view's host and the editor in the main slot.
+// the shared <app-markdown-editor> pane. This stylesheet only sizes the view's host and the editor in
+// the dock's main group.
 
 :host {
   // The host is forced to `display: block` by the content host.
@@ -8,7 +8,7 @@
   overflow: hidden;
 }
 
-// The document core (and the editor pane inside it) fills the panel layout's centre (main) area.
+// The document core (and the editor pane inside it) fills the main group.
 app-markdown-document {
   display: block;
   block-size: 100%;

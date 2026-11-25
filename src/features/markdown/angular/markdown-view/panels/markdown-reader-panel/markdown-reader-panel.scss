@@ -1,3 +1,13 @@
+// Fills the panel it is docked in, scrolling within it.
+:host {
+  display: block;
+  block-size: 100%;
+  box-sizing: border-box;
+  padding: 0.75rem;
+  overflow: auto;
+  color: var(--body-foreground-color);
+}
+
 .ra-body {
   display: flex;
   flex-direction: column;

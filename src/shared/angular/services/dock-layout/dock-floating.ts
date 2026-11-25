@@ -101,7 +101,7 @@ export class DockFloating {
       this.bringToFront(panelId);
       return;
     }
-    if (!this.registry.has(panelId)) {
+    if (!this.registry.has(panelId) || this.dockState.isMain(panelId)) {
       return;
     }
     this.log.info('DockFloating', `Floated panel '${panelId}'`);

@@ -1,52 +1,37 @@
-<app-tool-panel
-  title="Terminal"
-  [icon]="Icon.TERMINAL"
-  closeLabel="Close terminal"
-  [flush]="true"
-  (closed)="onClose()"
->
-  <!-- The terminal's own controls sit in the shared header's action slot, so this panel's chrome is
-       the same chrome every other docked panel wears. -->
+<app-panel-toolbar>
   <app-button
-    panelActions
     variant="none"
-    size="small"
     [icon]="Icon.LAYOUT_SPLIT"
     ariaLabel="Move terminal to side or bottom"
     tooltip="Move terminal to side or bottom"
+    [disabled]="!canMove()"
     (click)="onLayout()"
   />
+  <app-button variant="none" [icon]="Icon.CUT" ariaLabel="Cut" tooltip="Cut" (click)="onCut()" />
   <app-button
-    panelActions
     variant="none"
-    size="small"
-    [icon]="Icon.CUT"
-    ariaLabel="Cut"
-    tooltip="Cut"
-    (click)="onCut()"
-  />
-  <app-button
-    panelActions
-    variant="none"
-    size="small"
     [icon]="Icon.COPY"
     ariaLabel="Copy"
     tooltip="Copy"
     (click)="onCopy()"
   />
   <app-button
-    panelActions
     variant="none"
-    size="small"
     [icon]="Icon.CLEAR"
     ariaLabel="Clear"
     tooltip="Clear"
     (click)="onClear()"
   />
+</app-panel-toolbar>
 
-  <div class="code-terminal__body">
-    @if (tabId()) {
-      <app-terminal [terminalId]="runTerminalId()" [isActive]="isActive()" (ready)="onReady()" />
-    }
-  </div>
-</app-tool-panel>
+<div class="code-terminal__body">
+  @if (tabId()) {
+    <app-terminal
+      [terminalId]="runTerminalId()"
+      [persistent]="true"
+      [isActive]="isActive()"
+      [quietStart]="!inUse()"
+      (ready)="onReady()"
+    />
+  }
+</div>

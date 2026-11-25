@@ -1,4 +1,5 @@
 import { computed, DestroyRef, inject, Signal } from '@angular/core';
+import { ConversationContext } from '@shared/api/agent-conversation-channels';
 import type { AgentSurface } from '@shared/api/ai-types';
 import type { RunConfiguration } from '@shared/api/studio';
 import { Agent } from '@shared/angular/services/agent/agent';
@@ -47,6 +48,18 @@ export function createAgentHostRegistrar(options: {
    */
   readonly branch?: () => string | null;
   /**
+   * Resolves what the conversation is about (a file's path), which its saving and history are scoped to,
+   * or undefined for a host that relies on the injected resolver or the global bucket. Read lazily, as
+   * {@link branch} is.
+   */
+  readonly context?: () => ConversationContext | undefined;
+  /**
+   * Resolves the language of the document the host owns (a Monaco identifier), which scopes the user's
+   * standing prompts and skills for its runs (#300, #301), or undefined for a host with no document. Read
+   * lazily, as {@link branch} is.
+   */
+  readonly language?: () => string | undefined;
+  /**
    * Provides the host's ability to Run its workspace's default configuration, or undefined for a view
    * with no workspace behind it. Both members are read lazily, for the same field-initializer reason
    * as {@link branch}: the workspace's run-configuration reader and build runner are constructed after
@@ -77,8 +90,19 @@ export function createAgentHostRegistrar(options: {
       }
     | undefined = options.run;
 
+  const resolveContext: (() => ConversationContext | undefined) | undefined = options.context;
+  const resolveLanguage: (() => string | undefined) | undefined = options.language;
+
   return {
     register(tabId: string): void {
+      // Bound for the view's life rather than by the panel, which comes and goes: the conversation goes on
+      // following the file however the panel is arranged.
+      if (resolveContext !== undefined) {
+        conversation.bindContext(computed((): ConversationContext | undefined => resolveContext()));
+      }
+      if (resolveLanguage !== undefined) {
+        agent.bindLanguage(resolveLanguage);
+      }
       const label: Signal<string> = computed(
         (): string => tabs.tabs().find((tab: Tab): boolean => tab.id === tabId)?.title ?? 'Agent',
       );

@@ -159,6 +159,9 @@ export function nearestEdge(rect: Rect, workspace: Rect): DockSide {
  * A whole document well, dragged by its tab rail, is the exception to "documents only split wells":
  * it splits beside any stack, because it lands as a well — the documents stay in one. It still tabs
  * only into another well, since a tool stack cannot hold documents.
+ *
+ * Nothing tabs into a main group, so its centre is always dead; a tool splits any side of it, and so
+ * does a whole document well. A main group is never itself dragged.
  * @param panelRole The role of the panel being dragged.
  * @param targetRole The role of the stack being hovered.
  * @param targetEmpty Whether the hovered stack currently holds no panels; only consulted for a tool
@@ -172,10 +175,16 @@ export function guideLegality(
   targetEmpty: boolean = false,
   group: boolean = false,
 ): GuideLegality {
+  if (panelRole === 'main') {
+    return { center: false, left: false, right: false, top: false, bottom: false };
+  }
   if (panelRole === 'document') {
     const ok: boolean = targetRole === 'document';
     const split: boolean = ok || group;
     return { center: ok, left: split, right: split, top: split, bottom: split };
+  }
+  if (targetRole === 'main') {
+    return { center: false, left: true, right: true, top: true, bottom: true };
   }
   if (targetRole === 'document') {
     return { center: targetEmpty, left: true, right: true, top: true, bottom: true };
