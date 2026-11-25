@@ -259,6 +259,15 @@ test.describe('the main view keeps half the room', () => {
     await page.mouse.up();
     await toggle(page, 'Agent');
     const view: Locator = page.locator('app-markdown-view');
+    const groups: Locator = view.locator('app-dock-tab-group:visible');
+    await expect(groups).toHaveCount(2);
+    // The agent opens on the right, so the main content ends where it starts.
+    await expect
+      .poll(async (): Promise<number> => {
+        const box: Box = await mainBox(view);
+        return box.x + box.width;
+      })
+      .toBeLessThan(1300);
     const main: Box = await mainBox(view);
     await dragTo(page, 'Agent', main.x + main.width / 2 - 37, main.y + main.height / 2);
     await page.mouse.up();
@@ -266,6 +275,7 @@ test.describe('the main view keeps half the room', () => {
 
     // With the outline closed the agent is the first group drawn, though not the first in the layout.
     await view.getByRole('button', { name: 'Close', exact: true }).first().click();
+    await expect(groups).toHaveCount(1);
     await view.getByRole('button', { name: 'Auto Hide' }).click();
     const strip: Locator = view.locator('app-dock-collapsed-strip:visible');
     expect(await strip.boundingBox()).toMatchObject({ x: 0 });
