@@ -30,6 +30,7 @@
       [terminalId]="runTerminalId()"
       [persistent]="true"
       [isActive]="isActive()"
+      [quietStart]="!inUse()"
       (ready)="onReady()"
     />
   }

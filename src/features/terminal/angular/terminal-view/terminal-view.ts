@@ -158,7 +158,7 @@ export class TerminalView implements OnInit, OnDestroy {
   /**
    * Holds what opens the dock's panels wherever they are.
    */
-  private readonly dockReveal: DockReveal = inject(DockReveal);
+  protected readonly dockReveal: DockReveal = inject(DockReveal);
 
   /**
    * Registers this tab's dock, so the ribbon can open and close its panels. Finalised in

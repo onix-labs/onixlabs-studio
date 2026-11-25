@@ -167,12 +167,7 @@
   [defaultInlineSize]="360"
   [maxInlineSize]="900"
 >
-  <app-agent-conversation-panel
-    surface="monitor"
-    [context]="agentContext"
-    [tabId]="tabId()"
-    [isActive]="isActive()"
-  />
+  <app-agent-conversation-panel surface="monitor" [tabId]="tabId()" [isActive]="isActive()" />
 </ng-template>
 
 <app-dock-container />

@@ -41,6 +41,7 @@
   [maxInlineSize]="520"
 >
   <app-find-panel
+    [focuses]="dockReveal.isInUse(findPanel)"
     [adapter]="findAdapter"
     [keepsSearch]="true"
     [(findText)]="findText"

@@ -23,6 +23,7 @@ import {
   isStackNode,
   StackNode,
 } from '@shared/angular/services/dock-layout/dock-node';
+import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { DockRoom } from '@shared/angular/services/dock-layout/dock-room';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { findStackOfPanel, firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
@@ -80,6 +81,11 @@ export class CodeTerminalPanel {
   private readonly dockState: DockState = inject(DockState);
 
   /**
+   * Holds which panel the user is at.
+   */
+  private readonly reveal: DockReveal = inject(DockReveal);
+
+  /**
    * Holds where there is room in the dock.
    */
   private readonly room: DockRoom = inject(DockRoom);
@@ -135,6 +141,13 @@ export class CodeTerminalPanel {
   protected onReady(): void {
     this.ready.set(true);
   }
+
+  /**
+   * Gets whether the user is at the panel, and so whether a pane drawn afresh takes the keyboard.
+   */
+  protected readonly inUse: Signal<boolean> = computed((): boolean =>
+    this.reveal.isInUse(EDITOR_TERMINAL_PANEL_ID),
+  );
 
   /**
    * Gets whether there is room where {@link onLayout} would move the terminal.

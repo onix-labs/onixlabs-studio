@@ -127,7 +127,7 @@ export class MarkdownView implements OnInit, OnDestroy {
   /**
    * Holds what opens the dock's panels wherever they are.
    */
-  private readonly dockReveal: DockReveal = inject(DockReveal);
+  protected readonly dockReveal: DockReveal = inject(DockReveal);
 
   /**
    * Registers this tab's dock, so the ribbon can open and close its panels. Finalised in
@@ -278,7 +278,7 @@ export class MarkdownView implements OnInit, OnDestroy {
    * Gets the agent's conversation context: the markdown file's path when it is saved, else undefined so
    * the conversation falls back to its workspace or global context.
    */
-  protected readonly fileContext: Signal<ConversationContext | undefined> = computed(
+  private readonly fileContext: Signal<ConversationContext | undefined> = computed(
     (): ConversationContext | undefined => {
       const path: string | null = this.documents.get(this.tabId())?.filePath() ?? null;
       return path === null ? undefined : { kind: 'file', key: path };
@@ -313,6 +313,8 @@ export class MarkdownView implements OnInit, OnDestroy {
    */
   private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
     isActive: this.isActive,
+    context: (): ConversationContext | undefined => this.fileContext(),
+    language: (): string => 'markdown',
     surface: 'editor',
   });
 

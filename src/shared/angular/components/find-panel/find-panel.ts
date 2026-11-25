@@ -71,6 +71,11 @@ export class FindPanel implements OnDestroy {
   public readonly adapter: InputSignal<FindAdapter | null> = input<FindAdapter | null>(null);
 
   /**
+   * Gets whether the find field takes the keyboard when the panel is drawn.
+   */
+  public readonly focuses: InputSignal<boolean> = input<boolean>(true);
+
+  /**
    * Gets a value indicating whether the search outlives the panel: the host keeps it while the panel is
    * out of sight (behind another tab of its dock group, say), and clears it when Find is closed.
    */
@@ -267,7 +272,9 @@ export class FindPanel implements OnDestroy {
 
     afterNextRender((): void => {
       this.log.info('FindPanel', 'Find panel opened');
-      this.findField()?.nativeElement.querySelector('input')?.focus();
+      if (this.focuses()) {
+        this.findField()?.nativeElement.querySelector('input')?.focus();
+      }
     });
 
     // Keep the active row visible as the selection moves through the list; runs after render so the

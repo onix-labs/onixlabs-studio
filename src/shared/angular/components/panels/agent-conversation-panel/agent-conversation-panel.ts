@@ -1,7 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
 import type { AgentSurface } from '@shared/api/ai-types';
-import { ConversationContext } from '@shared/api/agent-conversation-channels';
-import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { Log } from '@shared/angular/services/log/log';
 import { AgentChat } from '@shared/angular/components/agent-chat/agent-chat';
@@ -15,7 +13,8 @@ import { AgentConversationList } from '@shared/angular/components/agent-conversa
  * instances provided by the HOST — deliberately not by this panel. The panel itself is disposable: a
  * dock tool stack destroys it whenever another panel in the stack activates, and a conversation
  * scoped here would lose its transcript and in-flight run on every switch. Each host provides the
- * pair at the level that owns the conversation's lifetime, its view. It carries no title chrome of its own — the host frames it. The standalone
+ * pair at the level that owns the conversation's lifetime, its view, which also says what the conversation
+ * is about (see {@link import('@shared/angular/services/agent-hosts/agent-host-registration').createAgentHostRegistrar}). It carries no title chrome of its own — the host frames it. The standalone
  * agent tab does not use this panel: it drives the conversation through the ribbon and shows history
  * in a panel of its own.
  */
@@ -31,11 +30,6 @@ export class AgentConversationPanel {
    * Holds the host-provided conversation this panel's strip/chat/history drive.
    */
   protected readonly conversation: AgentConversation = inject(AgentConversation);
-
-  /**
-   * Holds the host's live agent session, which this panel binds the owning document's language to.
-   */
-  private readonly agent: Agent = inject(Agent);
 
   /**
    * Holds the structured logger.
@@ -63,33 +57,7 @@ export class AgentConversationPanel {
    */
   public readonly surface: InputSignal<AgentSurface> = input<AgentSurface>('editor');
 
-  /**
-   * Gets the explicit conversation context for this host (a file's path), bound to the conversation so
-   * its persistence and history are scoped to it. Omitted for hosts that rely on the injected IDE
-   * resolver or the global bucket.
-   */
-  public readonly context: InputSignal<ConversationContext | undefined> = input<
-    ConversationContext | undefined
-  >(undefined);
-
-  /**
-   * Gets the language of the document this host owns (a Monaco identifier), which scopes the user's
-   * standing prompts and skills for its runs (#300, #301). Undefined for a host with no document — the
-   * terminal, the API Explorer — whose runs carry no language.
-   */
-  public readonly language: InputSignal<string | undefined> = input<string | undefined>(undefined);
-
-  /**
-   * Initializes a new instance of the {@link AgentConversationPanel} class, binding this host's context
-   * signal into the conversation so the binding stays reactive (a file panel's context follows the
-   * file as it is saved).
-   */
   public constructor() {
     this.log.info('AgentConversationPanel', 'Mounted agent conversation panel');
-    this.conversation.bindContext(this.context);
-    // Bound here rather than on the chat leaf: a Mission Control tile mounts the same chat against the
-    // same agent and knows nothing about documents, and a leaf that bound "no language" there would
-    // unbind what the host set.
-    this.agent.bindLanguage((): string | undefined => this.language());
   }
 }

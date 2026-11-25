@@ -4,7 +4,7 @@
 <!-- The main group's content, drawn over its slot rather than in it, so rearranging the layout never
      creates it afresh (see DockMain). -->
 @if (mainPanelId(); as panelId) {
-  <div class="dock-container__main" (mousedown)="focusMain()">
+  <div class="dock-container__main" (mousedown)="focusMain()" (focusin)="focusMain()">
     <app-dock-panel-outlet [panelId]="panelId" />
   </div>
 }

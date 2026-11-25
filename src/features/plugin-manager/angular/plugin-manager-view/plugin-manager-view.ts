@@ -92,10 +92,10 @@ const SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
  */
 const COLUMNS: readonly TableColumn[] = [
   { id: 'plugin', header: 'Plugin', width: '38%', sortable: true },
-  { id: 'category', header: 'Category', sortable: true },
-  { id: 'languages', header: 'Languages' },
-  { id: 'version', header: 'Version', width: '8.5rem' },
-  { id: 'state', header: 'State', width: '10.5rem', sortable: true },
+  { id: 'category', header: 'Category', sortable: true, hideBelow: 56 },
+  { id: 'languages', header: 'Languages', hideBelow: 64 },
+  { id: 'version', header: 'Version', width: '8.5rem', hideBelow: 40 },
+  { id: 'state', header: 'State', width: '10.5rem', sortable: true, hideBelow: 32 },
   { id: 'action', header: '', width: '8.5rem', align: 'end' },
 ];
 
@@ -174,6 +174,7 @@ export class PluginManagerView implements OnInit {
    */
   private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
     isActive: this.isActive,
+    context: (): ConversationContext => this.agentContext,
     surface: 'plugins',
   });
 
@@ -208,7 +209,7 @@ export class PluginManagerView implements OnInit {
   /**
    * Gets the context the Plugin Manager's conversations are filed under.
    */
-  protected readonly agentContext: ConversationContext = toolViewConversationContext('plugins');
+  private readonly agentContext: ConversationContext = toolViewConversationContext('plugins');
 
   /**
    * Publishes this view's injector to the status strip and its agent to Mission Control, now that the

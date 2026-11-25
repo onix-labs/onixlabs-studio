@@ -16,6 +16,7 @@ import { ALL_DOCK_BUTTONS, DockButton } from '../../../services/dock-layout/dock
 import { DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-blueprint';
 import { DockAutoHide, PeekSize } from '../../../services/dock-layout/dock-auto-hide';
 import { DockFloating } from '../../../services/dock-layout/dock-floating';
+import { DockFocus } from '../../../services/dock-layout/dock-focus';
 import { Rect } from '../../../services/dock-layout/dock-legality';
 import { DockSide, StackNode } from '../../../services/dock-layout/dock-node';
 import { DockPanel } from '../../../services/dock-layout/dock-panel';
@@ -123,6 +124,11 @@ export class DockCollapsedStrip {
    * Holds the least sizes of the dock's groups, and the space it has.
    */
   private readonly minimums: DockMinimums = inject(DockMinimums);
+
+  /**
+   * Holds the focused group, which peeking makes this one.
+   */
+  private readonly dockFocus: DockFocus = inject(DockFocus);
 
   /**
    * Holds the floating layer the float button detaches the active panel into.
@@ -307,6 +313,9 @@ export class DockCollapsedStrip {
    */
   protected peek(panelId: string): void {
     this.room.set(this.measureRoom());
+    if (this.dockRoom.enabled) {
+      this.dockFocus.focus(this.stack().id);
+    }
     this.autoHide.showFlyout(this.stack().id, panelId);
   }
 

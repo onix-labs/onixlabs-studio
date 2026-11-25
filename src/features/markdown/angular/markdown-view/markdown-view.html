@@ -58,7 +58,7 @@
   [defaultInlineSize]="360"
   [maxInlineSize]="900"
 >
-  <app-agent-conversation-panel [tabId]="tabId()" [context]="fileContext()" language="markdown" />
+  <app-agent-conversation-panel [tabId]="tabId()" />
 </ng-template>
 
 <ng-template
@@ -71,6 +71,7 @@
   [maxInlineSize]="520"
 >
   <app-find-panel
+    [focuses]="dockReveal.isInUse('find')"
     [adapter]="findAdapter"
     [keepsSearch]="true"
     [(findText)]="findText"

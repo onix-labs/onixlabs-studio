@@ -166,11 +166,11 @@ const CONTAINER_COLUMNS: readonly TableColumn[] = [
   { id: 'select', header: '', width: '2.75rem' },
   { id: 'state', header: '', width: '2.25rem' },
   { id: 'name', header: 'Name' },
-  { id: 'image', header: 'Image' },
-  { id: 'ports', header: 'Ports', width: '9rem' },
-  { id: 'cpu', header: 'CPU', width: '5rem', align: 'end' },
-  { id: 'memory', header: 'Memory', width: '6.5rem', align: 'end' },
-  { id: 'status', header: 'Status', width: '12rem' },
+  { id: 'image', header: 'Image', hideBelow: 36.5 },
+  { id: 'ports', header: 'Ports', width: '9rem', hideBelow: 57 },
+  { id: 'cpu', header: 'CPU', width: '5rem', align: 'end', hideBelow: 41.5 },
+  { id: 'memory', header: 'Memory', width: '6.5rem', align: 'end', hideBelow: 48 },
+  { id: 'status', header: 'Status', width: '12rem', hideBelow: 28.5 },
   { id: 'actions', header: '', width: '3.5rem', align: 'end' },
 ];
 
@@ -179,8 +179,8 @@ const CONTAINER_COLUMNS: readonly TableColumn[] = [
  */
 const IMAGE_COLUMNS: readonly TableColumn[] = [
   { id: 'tag', header: 'Image' },
-  { id: 'size', header: 'Size', width: '8rem', align: 'end' },
-  { id: 'used', header: 'Containers', width: '8rem', align: 'end' },
+  { id: 'size', header: 'Size', width: '8rem', align: 'end', hideBelow: 24.5 },
+  { id: 'used', header: 'Containers', width: '8rem', align: 'end', hideBelow: 32.5 },
   { id: 'actions', header: '', width: '6.5rem', align: 'end' },
 ];
 
@@ -189,8 +189,8 @@ const IMAGE_COLUMNS: readonly TableColumn[] = [
  */
 const VOLUME_COLUMNS: readonly TableColumn[] = [
   { id: 'name', header: 'Volume' },
-  { id: 'driver', header: 'Driver', width: '8rem' },
-  { id: 'used', header: 'Containers', width: '8rem', align: 'end' },
+  { id: 'driver', header: 'Driver', width: '8rem', hideBelow: 22 },
+  { id: 'used', header: 'Containers', width: '8rem', align: 'end', hideBelow: 30 },
   { id: 'actions', header: '', width: '4rem', align: 'end' },
 ];
 
@@ -388,7 +388,7 @@ export class ContainersView implements OnInit, OnDestroy {
   /**
    * Gets the context the Containers view's conversations are filed under.
    */
-  protected readonly agentContext: ConversationContext = toolViewConversationContext('containers');
+  private readonly agentContext: ConversationContext = toolViewConversationContext('containers');
 
   /**
    * Gets the identifier of the output panel.
@@ -398,7 +398,7 @@ export class ContainersView implements OnInit, OnDestroy {
   /**
    * Holds what opens the dock's panels wherever they are.
    */
-  private readonly dockReveal: DockReveal = inject(DockReveal);
+  protected readonly dockReveal: DockReveal = inject(DockReveal);
 
   /**
    * Gets the Containers table's columns.
@@ -706,6 +706,7 @@ export class ContainersView implements OnInit, OnDestroy {
    */
   private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
     isActive: this.isActive,
+    context: (): ConversationContext => this.agentContext,
     surface: 'containers',
   });
 

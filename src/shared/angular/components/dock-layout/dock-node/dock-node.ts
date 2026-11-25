@@ -18,7 +18,7 @@ import { DockGeometry } from '../../../services/dock-layout/dock-geometry';
 import { DockPanelAvailability } from '../../../services/dock-layout/dock-panel-availability';
 import { DockMinimum, DockMinimums } from '../../../services/dock-layout/dock-minimums';
 import { DockRoom } from '../../../services/dock-layout/dock-room';
-import { findNode } from '../../../services/dock-layout/dock-tree';
+import { findNode, sideOfMain } from '../../../services/dock-layout/dock-tree';
 import { DockState } from '../../../services/dock-layout/dock-state';
 import { DockCollapsedStrip } from '../dock-collapsed-strip/dock-collapsed-strip';
 import { DockMain } from '../dock-main/dock-main';
@@ -154,12 +154,27 @@ export class DockNode {
    * still runs along this split's axis, because a remembered `right` means nothing in a column. The
    * fallback is positional: row splits hug the left edge for the first child and the right for the
    * rest; column splits hug the top for the first child and the bottom for the rest.
+   *
+   * In a dock that fits itself to the window a strip is on its own side of the main group, whatever lies
+   * between it and the edge. One stacked beside it hugs the end it is at, counting only the groups drawn:
+   * such a dock keeps its closed panels' places.
    * @param child The child whose edge is being resolved.
-   * @param dir The orientation of the parent split.
+   * @param split The parent split.
    * @param index The index of the child within the split.
    * @returns Returns the edge the child hugs.
    */
-  protected sideOf(child: DockTreeNode, dir: SplitDirection, index: number): DockSide {
+  protected sideOf(child: DockTreeNode, split: SplitNode, index: number): DockSide {
+    const dir: SplitDirection = split.dir;
+    if (this.room.enabled) {
+      const side: DockSide | null = sideOfMain(this.dockState.layout(), child.id)?.side ?? null;
+      if (side !== null && axisOf(side) === dir) {
+        return side;
+      }
+      const first: boolean = split.children
+        .slice(0, index)
+        .every((other: DockTreeNode): boolean => this.isEmptyPane(other));
+      return dir === 'row' ? (first ? 'left' : 'right') : first ? 'top' : 'bottom';
+    }
     if (isStackNode(child) && child.side !== undefined && axisOf(child.side) === dir) {
       return child.side;
     }
@@ -177,7 +192,7 @@ export class DockNode {
    * @returns Returns the edge the child hugs.
    */
   protected edgeOf(child: DockTreeNode, split: SplitNode, index: number, side: DockSide): DockSide {
-    return this.isStrip(split) ? side : this.sideOf(child, split.dir, index);
+    return this.isStrip(split) ? side : this.sideOf(child, split, index);
   }
 
   /**
@@ -200,7 +215,7 @@ export class DockNode {
     }
     const endSide: DockSide = split.dir === 'row' ? 'right' : 'bottom';
     const first: number = split.children.findIndex(
-      (child: DockTreeNode, at: number): boolean => this.sideOf(child, split.dir, at) === endSide,
+      (child: DockTreeNode, at: number): boolean => this.sideOf(child, split, at) === endSide,
     );
     return first === index;
   }

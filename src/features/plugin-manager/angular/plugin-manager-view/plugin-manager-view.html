@@ -109,12 +109,7 @@
   [defaultInlineSize]="360"
   [maxInlineSize]="900"
 >
-  <app-agent-conversation-panel
-    surface="plugins"
-    [context]="agentContext"
-    [tabId]="tabId()"
-    [isActive]="isActive()"
-  />
+  <app-agent-conversation-panel surface="plugins" [tabId]="tabId()" [isActive]="isActive()" />
 </ng-template>
 
 <app-dock-container />

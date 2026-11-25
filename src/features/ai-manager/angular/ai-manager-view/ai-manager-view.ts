@@ -123,6 +123,7 @@ export class AiManagerView implements OnInit {
    */
   private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
     isActive: this.isActive,
+    context: (): ConversationContext => this.agentContext,
     surface: 'models',
   });
 
@@ -167,7 +168,7 @@ export class AiManagerView implements OnInit {
   /**
    * Gets the context the AI Manager's conversations are filed under.
    */
-  protected readonly agentContext: ConversationContext = toolViewConversationContext('models');
+  private readonly agentContext: ConversationContext = toolViewConversationContext('models');
 
   /**
    * Holds the section state shared with the ribbon and deep links.

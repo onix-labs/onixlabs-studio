@@ -29,6 +29,11 @@ export class EditorSearchPanel {
   public readonly search: InputSignal<EditorSearch> = input.required<EditorSearch>();
 
   /**
+   * Gets whether the find field takes the keyboard when the panel is drawn.
+   */
+  public readonly focuses: InputSignal<boolean> = input<boolean>(true);
+
+  /**
    * Emits when the user dismisses the panel, so the tab can hide it.
    */
   public readonly closed: OutputEmitterRef<void> = output<void>();

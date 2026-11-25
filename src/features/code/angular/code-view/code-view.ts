@@ -266,7 +266,7 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
   /**
    * Holds what opens the dock's panels wherever they are.
    */
-  private readonly dockReveal: DockReveal = inject(DockReveal);
+  protected readonly dockReveal: DockReveal = inject(DockReveal);
 
   /**
    * Holds the generated code's editor, or null before it is first drawn. The dock draws its panel afresh
@@ -374,6 +374,8 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
    */
   private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
     isActive: this.isActive,
+    context: (): ConversationContext | undefined => this.fileContext(),
+    language: (): string | undefined => this.language(),
     surface: 'editor',
   });
 
@@ -774,7 +776,7 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
    * Gets the agent's conversation context: the code file's path when it is saved, else undefined so the
    * conversation falls back to its workspace or global context.
    */
-  protected readonly fileContext: Signal<ConversationContext | undefined> = computed(
+  private readonly fileContext: Signal<ConversationContext | undefined> = computed(
     (): ConversationContext | undefined => {
       const path: string | null = this.documents.get(this.tabId())?.filePath() ?? null;
       return path === null ? undefined : { kind: 'file', key: path };
@@ -785,7 +787,7 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
    * Gets the language of this tab's document, so the agent's standing prompts and skills are scoped
    * to it (#300, #301).
    */
-  protected readonly language: Signal<string | undefined> = computed((): string | undefined =>
+  private readonly language: Signal<string | undefined> = computed((): string | undefined =>
     this.documents.get(this.tabId())?.language(),
   );
 

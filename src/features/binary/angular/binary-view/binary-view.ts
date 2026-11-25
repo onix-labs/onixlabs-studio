@@ -145,7 +145,7 @@ export class BinaryView implements OnInit, OnDestroy, FindHost {
   /**
    * Holds what opens the dock's panels wherever they are.
    */
-  private readonly dockReveal: DockReveal = inject(DockReveal);
+  protected readonly dockReveal: DockReveal = inject(DockReveal);
 
   /**
    * Gets the icon set, exposed for the template.
@@ -248,6 +248,7 @@ export class BinaryView implements OnInit, OnDestroy, FindHost {
    */
   private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
     isActive: this.isActive,
+    context: (): ConversationContext | undefined => this.fileContext(),
     surface: 'binary',
   });
 
@@ -268,7 +269,7 @@ export class BinaryView implements OnInit, OnDestroy, FindHost {
    * Gets the agent's conversation context: the binary file's path when known, else undefined so the
    * conversation falls back to its workspace or global context.
    */
-  protected readonly fileContext: Signal<ConversationContext | undefined> = computed(
+  private readonly fileContext: Signal<ConversationContext | undefined> = computed(
     (): ConversationContext | undefined => {
       const path: string | undefined = this.document()?.path;
       return path === undefined ? undefined : { kind: 'file', key: path };

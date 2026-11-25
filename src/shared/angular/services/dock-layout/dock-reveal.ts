@@ -133,6 +133,20 @@ export class DockReveal {
   }
 
   /**
+   * Determines whether the user is at a panel: its group is the one last used, or it is in a window of its
+   * own. A panel drawn afresh takes the keyboard only then, rather than whenever its group comes back of
+   * itself. Reads signals.
+   * @param panelId The identifier of the panel.
+   * @returns Returns true when they are.
+   */
+  public isInUse(panelId: string): boolean {
+    return (
+      this.isElsewhere(panelId) ||
+      findStackOfPanel(this.dockState.layout(), panelId)?.id === this.dockFocus.focusedStackId()
+    );
+  }
+
+  /**
    * Determines whether a panel lives in a floating or pop-out window.
    * @param panelId The identifier of the panel.
    * @returns Returns true when it does.
@@ -198,6 +212,9 @@ export class DockReveal {
         this.dockState.setActive(stack.id, panelId);
       } else {
         this.autoHide.showFlyout(stack.id, panelId);
+      }
+      if (this.room.enabled) {
+        this.dockFocus.focus(stack.id);
       }
       return;
     }

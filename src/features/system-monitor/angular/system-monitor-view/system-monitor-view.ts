@@ -537,6 +537,7 @@ export class SystemMonitorView implements OnInit {
    */
   private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
     isActive: this.isActive,
+    context: (): ConversationContext => this.agentContext,
     surface: 'monitor',
   });
 
@@ -566,7 +567,7 @@ export class SystemMonitorView implements OnInit {
   /**
    * Gets the context every System Monitor conversation is filed under.
    */
-  protected readonly agentContext: ConversationContext = toolViewConversationContext('monitor');
+  private readonly agentContext: ConversationContext = toolViewConversationContext('monitor');
 
   /**
    * Holds what opens the dock's panels wherever they are.

@@ -61,12 +61,7 @@
     [defaultInlineSize]="360"
     [maxInlineSize]="900"
   >
-    <app-agent-conversation-panel
-      [tabId]="tabId()"
-      [isActive]="isActive()"
-      surface="binary"
-      [context]="fileContext()"
-    />
+    <app-agent-conversation-panel [tabId]="tabId()" [isActive]="isActive()" surface="binary" />
   </ng-template>
 
   <ng-template
@@ -78,7 +73,11 @@
     [defaultInlineSize]="320"
     [maxInlineSize]="520"
   >
-    <app-editor-search-panel [search]="editorSearch" (closed)="onFindClosed()" />
+    <app-editor-search-panel
+      [focuses]="dockReveal.isInUse(findPanel)"
+      [search]="editorSearch"
+      (closed)="onFindClosed()"
+    />
   </ng-template>
 
   <app-dock-container />

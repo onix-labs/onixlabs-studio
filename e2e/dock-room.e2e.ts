@@ -1,6 +1,11 @@
 import { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
-import { modalWindow, openTabFromWelcome, ribbonButton } from './helpers';
+import { MOD, modalWindow, openTabFromWelcome, ribbonButton } from './helpers';
+
+/**
+ * Where an element is on the page.
+ */
+type Box = NonNullable<Awaited<ReturnType<Locator['boundingBox']>>>;
 
 /**
  * Sizes the main window.
@@ -49,6 +54,15 @@ async function openTool(app: ElectronApplication, tool: string): Promise<void> {
  */
 async function widthOf(element: Locator): Promise<number> {
   return (await element.boundingBox())?.width ?? 0;
+}
+
+/**
+ * Gets where a view's main content is.
+ * @param view The view.
+ * @returns Returns its box.
+ */
+async function mainBox(view: Locator): Promise<Box> {
+  return (await view.locator('.dock-container__main').boundingBox())!;
 }
 
 /**
@@ -229,5 +243,61 @@ test.describe('the main view keeps half the room', () => {
 
     await setWidth(app, page, 1280);
     await expect(strips).toHaveCount(0);
+  });
+
+  test('aPanelOnTheLeft_slidesOutOverTheMainView_whateverIsBetweenItAndTheEdge', async ({
+    app,
+    page,
+  }) => {
+    await openTabFromWelcome(app, page, 'New Markdown File', 'app-markdown-view');
+    await page.locator('app-markdown-view .ProseMirror').click();
+    await page.keyboard.type('# Overview');
+    await setWidth(app, page, 1280);
+    await toggle(page, 'Outline');
+    await setWidth(app, page, 1600);
+    await dragTo(page, 'Outline', 34, 455);
+    await page.mouse.up();
+    await toggle(page, 'Agent');
+    const view: Locator = page.locator('app-markdown-view');
+    const main: Box = await mainBox(view);
+    await dragTo(page, 'Agent', main.x + main.width / 2 - 37, main.y + main.height / 2);
+    await page.mouse.up();
+    await expect.poll(async (): Promise<number> => (await mainBox(view)).x).toBeGreaterThan(600);
+
+    // With the outline closed the agent is the first group drawn, though not the first in the layout.
+    await view.getByRole('button', { name: 'Close', exact: true }).first().click();
+    await view.getByRole('button', { name: 'Auto Hide' }).click();
+    const strip: Locator = view.locator('app-dock-collapsed-strip:visible');
+    expect(await strip.boundingBox()).toMatchObject({ x: 0 });
+    await strip.getByRole('tab', { name: 'Agent' }).click();
+    const flyout: Locator = view.locator('.dock-collapsed-strip__flyout');
+    expect(await widthOf(flyout)).toBeGreaterThanOrEqual(360);
+    expect((await flyout.boundingBox())!.x).toBeGreaterThanOrEqual(30);
+    await view.getByRole('button', { name: 'Dock', exact: true }).click();
+    await expect(strip).toHaveCount(0);
+  });
+
+  test('aPanelThatComesBackOfItself_leavesTheKeyboardWhereItWas', async ({ app, page }) => {
+    await openTabFromWelcome(app, page, 'New Markdown File', 'app-markdown-view');
+    await setWidth(app, page, 1280);
+    const editor: Locator = page.locator('app-markdown-view .ProseMirror');
+    await editor.click();
+    await page.keyboard.press(`${MOD}+f`);
+    const find: Locator = page.locator('app-find-panel input').first();
+    await expect(find).toBeFocused();
+    await editor.click();
+    await page.keyboard.type('one');
+    await setWidth(app, page, 440);
+    await expect(page.locator('app-markdown-view app-dock-collapsed-strip:visible')).toHaveCount(1);
+    await setWidth(app, page, 1280);
+    await expect(find).toBeVisible();
+    await page.keyboard.type(' two');
+    await expect(editor).toHaveText('one two');
+
+    // Opened on purpose, it takes the keyboard. The first press closes it.
+    await page.keyboard.press(`${MOD}+f`);
+    await expect(find).toBeHidden();
+    await page.keyboard.press(`${MOD}+f`);
+    await expect(find).toBeFocused();
   });
 });

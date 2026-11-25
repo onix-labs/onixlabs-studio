@@ -179,6 +179,11 @@ export class SearchView implements OnDestroy {
   );
 
   /**
+   * Gets whether the find field takes the keyboard when the view is drawn.
+   */
+  public readonly focuses: InputSignal<boolean> = input<boolean>(true);
+
+  /**
    * Gets whether the host's text can be replaced; false hides the Replace toggle and keeps the view
    * to finding (a read-only editor).
    */
@@ -403,7 +408,11 @@ export class SearchView implements OnDestroy {
    * (the view is opened to be typed into) and answering each find request as it arrives.
    */
   public constructor() {
-    afterNextRender((): void => this.focusFind());
+    afterNextRender((): void => {
+      if (this.focuses()) {
+        this.focusFind();
+      }
+    });
 
     effect((): void => {
       const request: FindRequest | null = this.request();
