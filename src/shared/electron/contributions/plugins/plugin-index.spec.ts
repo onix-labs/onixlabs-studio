@@ -824,6 +824,38 @@ describe('first-party releases listed under an entry', () => {
   }
 
   /**
+   * Gives a release's plugin.json at its tag as an entry must list it.
+   *
+   * A release cut before #1465 names its lockfile at `main`, which serves whatever main holds today:
+   * listed as it stands, it would hand an older build the newest release's lockfile, under a hash that
+   * no longer matches. Listed, it names its own tag instead, as the index already did for it before it
+   * was superseded. The path and every other field are unchanged.
+   * @param atTag The release's plugin.json at its tag.
+   * @param directory The plugin's directory under `plugins/`.
+   * @param version The release.
+   * @returns Returns the document an entry must list.
+   */
+  function pinnedAtItsTag(atTag: unknown, directory: string, version: string): unknown {
+    const document: { provision?: { lockfileUrl?: unknown } } = atTag as {
+      provision?: { lockfileUrl?: unknown };
+    };
+    const url: unknown = document.provision?.lockfileUrl;
+    const main: string = 'https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/';
+    if (typeof url !== 'string' || !url.startsWith(main)) {
+      return atTag;
+    }
+    return {
+      ...document,
+      provision: {
+        ...document.provision,
+        lockfileUrl:
+          `https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-${directory}-v${version}/` +
+          url.slice(main.length),
+      },
+    };
+  }
+
+  /**
    * Holds every first-party release an entry lists to its plugin.json at its tag.
    *
    * A missing tag is skipped locally (a shallow clone has none) but fails on CI, whose unit-test job
@@ -856,7 +888,7 @@ describe('first-party releases listed under an entry', () => {
       }
 
       expect(candidate.value, `${candidate.path} against plugin-${directory}-v${version}`).toEqual(
-        atTag,
+        pinnedAtItsTag(atTag, directory, version),
       );
       result.checked += 1;
     }
@@ -897,10 +929,26 @@ describe('first-party releases listed under an entry', () => {
         context.skip();
         return;
       }
-      const { id, ...whole }: Record<string, unknown> = atTag as Record<string, unknown>;
+      const { id, ...whole }: Record<string, unknown> = pinnedAtItsTag(
+        atTag,
+        'github',
+        '0.6.0',
+      ) as Record<string, unknown>;
       void id;
 
       expect(holdReleasesToTheirTags(listing(whole), 0)).toEqual({ checked: 1, skipped: [] });
+    });
+
+    // GitHub 0.6.0 predates #1465, so its plugin.json names its lockfile at `main`.
+    it('refusesTheReleaseThatStillNamesMain', (context: { skip: () => void }) => {
+      if (atTag === undefined) {
+        context.skip();
+        return;
+      }
+      const { id, ...asTagged }: Record<string, unknown> = atTag as Record<string, unknown>;
+      void id;
+
+      expect(() => holdReleasesToTheirTags(listing(asTagged), 0)).toThrow(/plugin-github-v0\.6\.0/);
     });
 
     it('refusesTheReleaseThatInheritsTheNewestContributions', (context: { skip: () => void }) => {

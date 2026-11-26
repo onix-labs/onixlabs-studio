@@ -3,12 +3,12 @@
   "name": "Podman",
   "description": "Talk to a Podman container engine over its local socket.",
   "detail": "Speaks to the engine over its local socket; it does not install or run a container engine itself. Open Shell uses the podman command-line tool when one is installed.",
-  "version": "7.3.0",
+  "version": "7.4.0",
   "apiVersion": "1.19.0",
   "provision": {
     "kind": "npm",
-    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-podman-engine-v7.3.0/src/shared/electron/contributions/plugins/lockfiles/podman-engine.lock.json",
-    "sha256": "ebfed83beababbccef030deedf64b93e7eb0cfeeec795af07f4ffafc9c1aeb4a",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-podman-engine-v7.4.0/src/shared/electron/contributions/plugins/lockfiles/podman-engine.lock.json",
+    "sha256": "3b7a9119676ec82397b73178568bd511e10461390f3b707dd18dd4261474367a",
     "executablePath": "node_modules/@onixlabs/podman-engine/main.js"
   },
   "contributes": {
