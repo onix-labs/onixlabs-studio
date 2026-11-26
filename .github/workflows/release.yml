@@ -184,12 +184,15 @@ jobs:
           [ "$missing" -eq 0 ] || exit 1
           printf '%s' "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
           printf '%s\n' "$API_KEY" > "$RUNNER_TEMP/notary-key.p8"
+          # The password in the multi-line form, so no character it may contain can end the value early.
+          # The IDs lose any whitespace a paste brought with them.
+          delimiter="PASSWORD_$(uuidgen)"
           {
             echo "CSC_LINK=$RUNNER_TEMP/developer-id.p12"
-            echo "CSC_KEY_PASSWORD=$CERTIFICATE_PASSWORD"
+            printf 'CSC_KEY_PASSWORD<<%s\n%s\n%s\n' "$delimiter" "$CERTIFICATE_PASSWORD" "$delimiter"
             echo "APPLE_API_KEY=$RUNNER_TEMP/notary-key.p8"
-            echo "APPLE_API_KEY_ID=$API_KEY_ID"
-            echo "APPLE_API_ISSUER=$API_ISSUER"
+            echo "APPLE_API_KEY_ID=${API_KEY_ID//[[:space:]]/}"
+            echo "APPLE_API_ISSUER=${API_ISSUER//[[:space:]]/}"
             echo "CSC_FOR_PULL_REQUEST=true"
           } >> "$GITHUB_ENV"
 
@@ -251,7 +254,12 @@ jobs:
       # electron-builder signs with whatever identity it is given and skips notarisation with only a
       # warning, so its success says nothing about whether a Mac will open the app without a warning.
       # Check the app as it ships, inside each disk image and each zip: signed by ONIXLabs' team,
-      # intact, notarised with the ticket stapled (so it opens offline), and accepted by Gatekeeper.
+      # intact, and notarised with the ticket stapled (so it opens offline). Every command in `check`
+      # carries its own `|| return 1`: a function called on the left of `||` runs with `set -e` off, so
+      # without them a failure inside it would be ignored.
+      #
+      # Gatekeeper's own verdict is asked for too, but only counts when Gatekeeper is on: a runner image
+      # may switch it off, and then `spctl` accepts anything. The stapled ticket is the proof either way.
       - name: Verify the app is signed and notarised
         if: matrix.platform == 'darwin'
         shell: bash
@@ -259,41 +267,55 @@ jobs:
           TEAM_ID: 66F8GTCBT9
         run: |
           shopt -s nullglob
+          gatekeeper=off
+          if spctl --status 2>&1 | grep -q 'assessments enabled'; then gatekeeper=on; fi
+          echo "Gatekeeper on this runner: $gatekeeper"
           check() {
-            local app="$1"
+            local app="$1" team verdict
             echo "checking $app"
-            codesign --verify --deep --strict --verbose=2 "$app"
-            local team
+            codesign --verify --deep --strict --verbose=2 "$app" || return 1
             team="$(codesign --display --verbose=2 "$app" 2>&1 | sed -n 's/^TeamIdentifier=//p')"
             if [ "$team" != "$TEAM_ID" ]; then
               echo "::error::$app is signed by team '${team:-none}', not $TEAM_ID."
               return 1
             fi
-            xcrun stapler validate "$app"
-            spctl --assess --type execute --verbose=2 "$app"
+            xcrun stapler validate "$app" || return 1
+            verdict="$(spctl --assess --type execute --verbose=2 "$app" 2>&1)" || { echo "$verdict"; return 1; }
+            echo "$verdict"
+            if [ "$gatekeeper" = on ] && [[ "$verdict" != *"source=Notarized Developer ID"* ]]; then
+              echo "::error::Gatekeeper did not accept $app as notarised."
+              return 1
+            fi
           }
-          checked=0
+          # Each archive must hold exactly one app, and every archive is checked: one good zip must not
+          # stand in for an empty disk image, which is what users install.
+          one_app() {
+            local apps=("$1"/*.app)
+            if [ "${#apps[@]}" -ne 1 ]; then
+              echo "::error::$2 holds ${#apps[@]} apps, not 1."
+              return 1
+            fi
+            check "${apps[0]}"
+          }
+          dmgs=(release/*.dmg)
+          zips=(release/*.zip)
+          if [ "${#dmgs[@]}" -eq 0 ] || [ "${#zips[@]}" -eq 0 ]; then
+            echo "::error::Expected a disk image and a zip; found ${#dmgs[@]} and ${#zips[@]}."
+            exit 1
+          fi
+          status=0
           for dmg in release/*.dmg; do
             mount="$(mktemp -d)"
             hdiutil attach "$dmg" -readonly -nobrowse -noverify -mountpoint "$mount" >/dev/null
-            for app in "$mount"/*.app; do
-              check "$app" || { hdiutil detach "$mount" >/dev/null; exit 1; }
-              checked=$((checked + 1))
-            done
+            one_app "$mount" "$dmg" || status=1
             hdiutil detach "$mount" >/dev/null
           done
           for zip in release/*.zip; do
             dir="$(mktemp -d)"
             ditto -x -k "$zip" "$dir"
-            for app in "$dir"/*.app; do
-              check "$app"
-              checked=$((checked + 1))
-            done
+            one_app "$dir" "$zip" || status=1
           done
-          if [ "$checked" -eq 0 ]; then
-            echo "::error::No app was found inside the disk images or zips to check."
-            exit 1
-          fi
+          exit $status
 
       # Hashes recorded at the source, checked again after the release job downloads them. This is the
       # only guard that covers the journey itself — beta.4 was corrupted in transit, between a build
