@@ -36,6 +36,7 @@ import {
   toHostingDescriptors,
   toPackageManagerDescriptors,
   toTestAdapterDescriptors,
+  toLiveServerDescriptors,
   validManifests,
 } from './plugin-loader';
 import {
@@ -45,6 +46,7 @@ import {
 import { HostingDescriptor } from '../../hosting/hosting-descriptor';
 import { PackageManagerDescriptor } from '../../package-managers/package-manager-descriptor';
 import { TestAdapterDescriptor } from '../../test-adapters/test-adapter-descriptor';
+import { LiveServerDescriptor } from '../../live-server/live-server-descriptor';
 import { ContainerEngineDescriptor } from '../containers/container-engine';
 import { DatabaseEngineDescriptor } from '../database/database-engine-descriptor';
 import { HandPlacedPluginError, PluginDescriptor } from './plugin-catalogue';
@@ -340,6 +342,7 @@ describe('plugin loader', () => {
       );
       const resolveContext: Parameters<LanguageServerDescriptor['resolve']>[0] = {
         rootPath: '/w',
+        trusted: true,
         settings: { get: (): never => ({ serverPaths: {} }) as never } as never,
         provisioner: stubProvisioner('/tree'),
         nodePackageServer: (entry: string) => ({
@@ -477,6 +480,7 @@ describe('plugin loader', () => {
     ): Parameters<LanguageServerDescriptor['resolve']>[0] {
       return {
         rootPath: '/w',
+        trusted: true,
         settings: { get: (): never => ({ serverPaths }) as never } as never,
         provisioner: stubProvisioner(installedPath),
         nodePackageServer: (entry: string) => ({
@@ -1208,6 +1212,77 @@ describe('a sideloaded plugin carrying its own payload', () => {
   it('toContributions_listsATestAdapterInItsSlot', () => {
     expect(toContributions(testAdapterManifest())).toEqual([
       { slot: 'test-adapter', id: 'local.tests', displayName: 'Local Tests', priority: 100 },
+    ]);
+  });
+
+  /**
+   * A sideloaded manifest contributing a live server (#1062).
+   * @returns Returns the manifest.
+   */
+  function liveServerManifest(): PluginManifest {
+    return {
+      ...decoderManifest(),
+      id: 'local.live-server',
+      contributes: {
+        liveServers: [
+          {
+            id: 'local.live-server',
+            displayName: 'Local Live Server',
+            priority: 100,
+            command: { kind: 'node' },
+          },
+        ],
+      },
+    };
+  }
+
+  it('toLiveServerDescriptors_runsTheSideloadedPayloadUnderTheRuntime', () => {
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const descriptors: readonly LiveServerDescriptor[] = toLiveServerDescriptors(
+      liveServerManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({
+        command: '/runtime',
+        args: [entryPoint],
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+      }),
+      root,
+    );
+
+    expect(descriptors[0]).toMatchObject({ id: 'local.live-server', priority: 100 });
+    expect(descriptors[0].resolve()).toEqual({
+      available: true,
+      spec: {
+        command: '/runtime',
+        args: [path.join(root, 'payload', 'main.js')],
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+      },
+    });
+  });
+
+  it('toLiveServerDescriptors_isUnavailableWithNeitherPayloadNorDownload', () => {
+    const descriptors: readonly LiveServerDescriptor[] = toLiveServerDescriptors(
+      liveServerManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({ command: '/runtime', args: [entryPoint] }),
+      root,
+    );
+
+    expect(descriptors[0].resolve()).toEqual({
+      available: false,
+      reason: 'Local Live Server is not installed — install it in Plugins.',
+    });
+  });
+
+  it('toContributions_listsALiveServerInItsSlot', () => {
+    expect(toContributions(liveServerManifest())).toEqual([
+      {
+        slot: 'live-server',
+        id: 'local.live-server',
+        displayName: 'Local Live Server',
+        priority: 100,
+      },
     ]);
   });
 

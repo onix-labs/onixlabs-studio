@@ -1,8 +1,9 @@
-import { execFile, ExecFileException } from 'node:child_process';
+import type { ExecFileException } from 'node:child_process';
 import { CodeListing, ListingRow, ListingSection } from '@shared/api/code-listing';
 import { JitCaptureResult, JitTier } from '@shared/api/jit-capture';
 import { logger } from '../logger';
 
+import { launchFor, RunToken } from '../process/launch';
 /**
  * Specifies how long a captured program may run before it is stopped.
  *
@@ -30,12 +31,14 @@ export class JitCapture {
    * @param assemblyPath The assembly to run.
    * @param methodPattern The `DOTNET_JitDisasm` pattern, such as `*` or a method name.
    * @param tier The optimisation tier to ask for.
+   * @param token The folder's run token: the assembly is a program the workspace built.
    * @returns Returns the listing, or the reason the run produced none.
    */
   public async capture(
     assemblyPath: string,
     methodPattern: string,
     tier: JitTier,
+    token: RunToken,
   ): Promise<JitCaptureResult> {
     const environment: NodeJS.ProcessEnv = {
       ...process.env,
@@ -54,6 +57,7 @@ export class JitCapture {
     logger.debug('JitCapture', `Running ${command}`);
 
     const outcome: { stdout: string; stopped: boolean; error: string | null } = await this.run(
+      token,
       assemblyPath,
       environment,
     );
@@ -74,17 +78,20 @@ export class JitCapture {
   }
 
   /**
-   * Runs the assembly, capturing stdout and reporting whether it had to be stopped.
+   * Runs the assembly, capturing stdout and reporting whether it had to be stopped. It is a program the
+   * workspace built, so it runs only with the folder's run token (#1504).
+   * @param token The folder's run token.
    * @param assemblyPath The assembly to run.
    * @param environment The environment to run it under.
    * @returns Returns the captured output and how the run ended.
    */
   private run(
+    token: RunToken,
     assemblyPath: string,
     environment: NodeJS.ProcessEnv,
   ): Promise<{ stdout: string; stopped: boolean; error: string | null }> {
     return new Promise((resolve): void => {
-      execFile(
+      launchFor(token).execFile(
         'dotnet',
         [assemblyPath],
         {

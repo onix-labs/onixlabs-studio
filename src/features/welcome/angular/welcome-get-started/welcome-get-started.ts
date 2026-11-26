@@ -1,3 +1,4 @@
+import { formatTimeAgo } from '@shared/angular/services/locale/format-time-ago';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -96,6 +97,21 @@ export class WelcomeGetStarted {
   protected readonly openInFileSystemLabel: string = OPEN_IN_FILE_SYSTEM_LABEL;
 
   /**
+   * Gets the tooltip of an action that is not available yet.
+   */
+  protected readonly comingSoon: string = $localize`:Tooltip of a feature that is not available yet:Coming soon`;
+
+  /**
+   * Gets the accessible name of a recent item's star while it is starred.
+   */
+  protected readonly unstarLabel: string = $localize`:Removes a recent item's star:Unstar item`;
+
+  /**
+   * Gets the accessible name of a recent item's star while it is not starred.
+   */
+  protected readonly starLabel: string = $localize`:Stars a recent item, keeping it at the top of the list:Star item`;
+
+  /**
    * Emits the kind of tab an action asks for; the welcome screen opens it and steps aside.
    */
   public readonly openTab: OutputEmitterRef<TabType> = output<TabType>();
@@ -135,27 +151,55 @@ export class WelcomeGetStarted {
    * Gets the Get Started actions, in order.
    */
   protected readonly actions: readonly StartAction[] = [
-    { label: 'Open Directory or File', icon: Icon.WELCOME_DIRECTORY, run: 'open' },
-    { label: 'New Code File', icon: Icon.WELCOME_CODE, run: 'code' },
-    { label: 'New Markdown File', icon: Icon.WELCOME_MARKDOWN, run: 'markdown' },
-    { label: 'New Terminal', icon: Icon.WELCOME_TERMINAL, run: 'terminal' },
-    { label: 'New Agent', icon: Icon.WELCOME_AGENT, run: 'agent' },
-    { label: 'New API Explorer', icon: Icon.WELCOME_API_EXPLORER, run: 'api-explorer' },
-    { label: 'New Database Explorer', icon: Icon.WELCOME_DATABASE, run: 'database-explorer' },
+    {
+      label: $localize`:Welcome action:Open Directory or File`,
+      icon: Icon.WELCOME_DIRECTORY,
+      run: 'open',
+    },
+    { label: $localize`:Welcome action:New Code File`, icon: Icon.WELCOME_CODE, run: 'code' },
+    {
+      label: $localize`:Welcome action:New Markdown File`,
+      icon: Icon.WELCOME_MARKDOWN,
+      run: 'markdown',
+    },
+    {
+      label: $localize`:Welcome action:New Terminal`,
+      icon: Icon.WELCOME_TERMINAL,
+      run: 'terminal',
+    },
+    {
+      label: $localize`:Welcome action, for a new AI agent conversation:New Agent`,
+      icon: Icon.WELCOME_AGENT,
+      run: 'agent',
+    },
+    {
+      label: $localize`:Welcome action:New API Explorer`,
+      icon: Icon.WELCOME_API_EXPLORER,
+      run: 'api-explorer',
+    },
+    {
+      label: $localize`:Welcome action:New Database Explorer`,
+      icon: Icon.WELCOME_DATABASE,
+      run: 'database-explorer',
+    },
   ];
 
   /**
    * Gets the recent-items filters.
    */
   protected readonly filters: readonly RecentFilter[] = [
-    { id: 'all', label: 'Everything', kind: null },
-    { id: 'directories', label: 'Workspaces', kind: 'directory' },
-    { id: 'markdown', label: 'Markdown', kind: 'markdown' },
-    { id: 'code', label: 'Code', kind: 'code' },
-    { id: 'images', label: 'Images', kind: 'image' },
-    { id: 'binary', label: 'Binary', kind: 'binary' },
-    { id: 'api', label: 'APIs', kind: 'api' },
-    { id: 'database', label: 'Databases', kind: 'database' },
+    { id: 'all', label: $localize`:Recent items filter:Everything`, kind: null },
+    { id: 'directories', label: $localize`:Recent items filter:Workspaces`, kind: 'directory' },
+    { id: 'markdown', label: $localize`:Recent items filter:Markdown`, kind: 'markdown' },
+    { id: 'code', label: $localize`:Recent items filter:Code`, kind: 'code' },
+    { id: 'images', label: $localize`:Recent items filter:Images`, kind: 'image' },
+    {
+      id: 'binary',
+      label: $localize`:Recent items filter, for binary files:Binary`,
+      kind: 'binary',
+    },
+    { id: 'api', label: $localize`:Recent items filter:APIs`, kind: 'api' },
+    { id: 'database', label: $localize`:Recent items filter:Databases`, kind: 'database' },
   ];
 
   /**
@@ -295,36 +339,10 @@ export class WelcomeGetStarted {
   /**
    * Formats how long ago an item was opened as a short, human-readable label.
    * @param openedAt The epoch-millisecond timestamp the item was opened at.
-   * @returns Returns a relative-time label such as "Just now", "2h ago", or "3 days ago".
+   * @returns Returns a relative-time label such as "Now", "2 hr ago", or "3 days ago".
    */
   protected relativeTime(openedAt: number): string {
-    const minute: number = 60_000;
-    const hour: number = 60 * minute;
-    const day: number = 24 * hour;
-    const diff: number = Math.max(0, Date.now() - openedAt);
-    if (diff < minute) {
-      return 'Just now';
-    }
-    if (diff < hour) {
-      return `${Math.floor(diff / minute)}m ago`;
-    }
-    if (diff < day) {
-      return `${Math.floor(diff / hour)}h ago`;
-    }
-    const days: number = Math.floor(diff / day);
-    if (days === 1) {
-      return 'Yesterday';
-    }
-    if (days < 7) {
-      return `${days} days ago`;
-    }
-    if (days < 30) {
-      return `${Math.floor(days / 7)}w ago`;
-    }
-    if (days < 365) {
-      return `${Math.floor(days / 30)}mo ago`;
-    }
-    return `${Math.floor(days / 365)}y ago`;
+    return formatTimeAgo(Date.now() - openedAt);
   }
 
   /**
@@ -363,35 +381,31 @@ export class WelcomeGetStarted {
   }
 
   /**
-   * Lets the user point the missing recent item at its new location: a file picker (matching the item's
-   * kind) is shown, and the chosen path — now trusted because the user picked it through the dialog — is
-   * re-opened. On success the stale entry is dropped (the freshly opened path records its own entry)
-   * and its pinned state is carried across. Cancelling the picker or failing to open leaves the prompt
-   * up so the user can choose again, remove, or cancel.
+   * Lets the user point the missing recent item at its new location: a dialog matching the item's kind
+   * is shown and the chosen path opened. On success the stale entry is dropped (the opened path records
+   * its own) and its star carried across. The path may be the one it already had, when what was missing
+   * was only Studio's record that the user chose it; the entry is then kept. Cancelling or failing to
+   * open leaves the prompt up so the user can choose again, remove, or cancel.
    */
   protected async locateMissing(): Promise<void> {
     const item: RecentItem | null = this.missingItem();
     if (item === null) {
       return;
     }
-    const located: string | null = await this.fileSystem.pickPath(
-      item.kind === 'directory' ? 'folder' : 'file',
-    );
+    const located: string | null = await this.openLocated(item);
     if (located === null) {
       return;
     }
-    this.log.info('welcome', 'Relocating missing recent item', item.path, located);
-    const opened: boolean =
-      item.kind === 'directory'
-        ? await this.fileOpener.reopenDirectory(located)
-        : await this.fileOpener.reopenFile(located);
-    if (!opened) {
-      return;
+    this.log.info('welcome', 'Located missing recent item', item.path, located);
+    if (located !== item.path) {
+      const alreadyPinned: boolean = this.recentItems
+        .items()
+        .some((entry: RecentItem): boolean => entry.path === located && entry.pinned);
+      if (item.pinned && !alreadyPinned) {
+        this.recentItems.togglePin(located);
+      }
+      this.recentItems.remove(item.path);
     }
-    if (item.pinned && located !== item.path) {
-      this.recentItems.togglePin(located);
-    }
-    this.recentItems.remove(item.path);
     this.missingItem.set(null);
     this.opened.emit();
   }
@@ -465,6 +479,22 @@ export class WelcomeGetStarted {
     if (await this.fileOpener.openInteractive()) {
       this.opened.emit();
     }
+  }
+
+  /**
+   * Asks the user for a missing recent item and opens what they choose.
+   *
+   * A folder is chosen through the dialog that opens it, never by picking a path and re-opening that:
+   * only an opened folder is one the main process will re-open.
+   * @param item The missing item.
+   * @returns Returns the opened path, or null when cancelled or it could not be opened.
+   */
+  private async openLocated(item: RecentItem): Promise<string | null> {
+    if (item.kind === 'directory') {
+      return this.fileOpener.openFolderInteractive();
+    }
+    const located: string | null = await this.fileSystem.pickPath('file');
+    return located !== null && (await this.fileOpener.reopenFile(located)) ? located : null;
   }
 
   /**

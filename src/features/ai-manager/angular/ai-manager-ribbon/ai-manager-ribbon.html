@@ -33,26 +33,32 @@
         />
       </app-ribbon-strip-group>
     }
-    @case ('profiles') {
-      <app-ribbon-strip-group title="Library">
+    @case ('persona') {
+      <app-ribbon-strip-group title="Persona">
         <app-ribbon-strip-button
-          [icon]="Icon.PLUS_CIRCLE"
-          label="New Profile"
-          [disabled]="!registered().has('profiles')"
-          (action)="onAdd('profiles')"
+          [icon]="Icon.PERSONA_MEMORY"
+          label="New Memory"
+          [disabled]="!registered().has('persona')"
+          (action)="onAdd('persona')"
+        />
+        <app-ribbon-strip-button
+          [icon]="Icon.PERSONA_CORE"
+          label="New Core Entry"
+          [disabled]="!registered().has('persona')"
+          (action)="onAddCore()"
         />
         <app-ribbon-strip-button
           [icon]="Icon.REFRESH_DUOTONE"
           label="Refresh"
           [disabled]="false"
-          (action)="onRefreshProfiles()"
+          (action)="onRefreshPersona()"
         />
         <app-ribbon-strip-column>
           <app-ribbon-strip-button-small
             [icon]="Icon.DOWNLOAD"
             label="Import"
-            [disabled]="!registered().has('profiles') || !canTransfer"
-            (action)="onImportProfiles()"
+            [disabled]="!registered().has('persona') || !canTransfer"
+            (action)="onImportPersona()"
           />
           <app-ribbon-strip-button-small
             [icon]="Icon.UPLOAD_SIMPLE"
@@ -63,7 +69,7 @@
           <app-ribbon-strip-button-small
             [icon]="Icon.FOLDER_OPEN"
             label="Open Folder"
-            (action)="onOpenProfileFolder()"
+            (action)="onOpenPersonaFolder()"
           />
         </app-ribbon-strip-column>
       </app-ribbon-strip-group>

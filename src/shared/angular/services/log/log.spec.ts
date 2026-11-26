@@ -113,11 +113,11 @@ describe('Log', () => {
     expect(sent.map((entry): string => entry.input.severity)).toEqual(['trace', 'debug', 'error']);
   });
 
-  it('emit_appendsSerialisedDetailsAndKeepsErrorStacks', () => {
+  it('emit_keepsSerialisedDetailsApartFromTheMessage_andErrorStacks', () => {
     setup().info('Src', 'context', { a: 1 }, new Error('boom'));
-    expect(sent[0].input.message).toContain('context');
-    expect(sent[0].input.message).toContain('{"a":1}');
-    expect(sent[0].input.message).toContain('boom');
+    expect(sent[0].input.message).toBe('context');
+    expect(sent[0].input.details?.[0]).toBe('{"a":1}');
+    expect(sent[0].input.details?.[1]).toContain('boom');
   });
 
   it('query_invokesTheQueryChannelWithTheFilter', () => {

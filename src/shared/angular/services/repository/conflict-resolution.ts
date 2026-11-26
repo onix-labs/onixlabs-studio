@@ -58,7 +58,9 @@ export type ConflictChoice = 'top' | 'bottom' | 'both';
  * a `>>>>>>>`, every marker at the start of its line. A whole block is required, so prose that merely
  * contains one of the markers — a `=======` under a heading, a document about git — is none. A diff3
  * file's `|||||||` base section sits between the opener and the divider. An opener met inside an
- * unfinished block starts over, as git never nests them.
+ * unfinished block starts over, as git never nests them. Markers are seven characters long unless a
+ * `conflict-marker-size` attribute makes them longer, so any length from seven up is read, the same
+ * length throughout one block.
  * @param text The file's content.
  * @returns Returns the conflicts, in the file's order.
  */
@@ -67,19 +69,29 @@ export function parseConflicts(text: string): readonly ConflictBlock[] {
   let start: number | null = null;
   let base: number | null = null;
   let divider: number | null = null;
+  // How long the open block's markers are. Seven unless `.gitattributes` sets a longer
+  // `conflict-marker-size`; every marker of one block is the same length.
+  let size: number = 0;
   const lines: readonly string[] = text.split(/\r?\n/);
   for (let index: number = 0; index < lines.length; index += 1) {
     const line: string = lines[index];
     const number: number = index + 1;
-    if (/^<{7}( |$)/.test(line)) {
+    const opener: number = markerLength(line, '<', true);
+    if (opener > 0) {
       start = number;
       base = null;
       divider = null;
-    } else if (start !== null && divider === null && base === null && /^\|{7}( |$)/.test(line)) {
+      size = opener;
+    } else if (
+      start !== null &&
+      divider === null &&
+      base === null &&
+      markerLength(line, '|', true) === size
+    ) {
       base = number;
-    } else if (start !== null && divider === null && /^={7}$/.test(line)) {
+    } else if (start !== null && divider === null && markerLength(line, '=', false) === size) {
       divider = number;
-    } else if (start !== null && divider !== null && /^>{7}( |$)/.test(line)) {
+    } else if (start !== null && divider !== null && markerLength(line, '>', true) === size) {
       blocks.push({ start, base, divider, end: number });
       start = null;
       base = null;
@@ -87,6 +99,26 @@ export function parseConflicts(text: string): readonly ConflictBlock[] {
     }
   }
   return blocks;
+}
+
+/**
+ * Measures a conflict marker at the start of a line: a run of at least seven of one character — git's
+ * default length, which `conflict-marker-size` can only raise — that is the whole line, or for a marker
+ * that names its side (`<<<<<<< HEAD`), is followed by a space.
+ * @param line The line.
+ * @param character The marker's character.
+ * @param named Whether the marker may be followed by a space and a name.
+ * @returns Returns the marker's length, or 0 when the line is not one.
+ */
+function markerLength(line: string, character: string, named: boolean): number {
+  let length: number = 0;
+  while (line[length] === character) {
+    length += 1;
+  }
+  if (length < 7) {
+    return 0;
+  }
+  return length === line.length || (named && line[length] === ' ') ? length : 0;
 }
 
 /**
@@ -230,4 +262,177 @@ export function resolvedProgress(resolved: number, total: number): string | null
  */
 export function conflictsLeftMessage(name: string, count: number): string {
   return `${name} still has ${count} ${count === 1 ? 'conflict' : 'conflicts'}. Resolve ${count === 1 ? 'it' : 'them'}, or choose Mark Resolved Anyway to stage it as it is.`;
+}
+
+/**
+ * Names one of the merge tool's panes (#1321): the file as it stands, with its markers; the user's own
+ * work; the other side's; and a diff3 file's common ancestor.
+ */
+export type ConflictPane = 'result' | 'yours' | 'theirs' | 'base';
+
+/**
+ * Locates a run of lines in one pane, 1-based. An empty run (a side that removed the lines) has a count
+ * of 0 and starts on the line that follows where it would be.
+ */
+export interface ConflictLineSpan {
+  /**
+   * Gets the first line of the run, or for an empty run the line after where it would be.
+   */
+  readonly start: number;
+
+  /**
+   * Gets how many lines the run holds.
+   */
+  readonly count: number;
+}
+
+/**
+ * Locates one conflict in every pane of the merge tool: the whole block, markers and all, in the file,
+ * and the section each side wrote in the side panes.
+ */
+export interface ConflictRegion {
+  /**
+   * Gets the conflict's lines in the file, from its opener to its closer.
+   */
+  readonly result: ConflictLineSpan;
+
+  /**
+   * Gets the user's own section in the Yours pane.
+   */
+  readonly yours: ConflictLineSpan;
+
+  /**
+   * Gets the other side's section in the Theirs pane.
+   */
+  readonly theirs: ConflictLineSpan;
+
+  /**
+   * Gets the common ancestor's section in the Base pane, or null when the file has no base pane.
+   */
+  readonly base: ConflictLineSpan | null;
+}
+
+/**
+ * Holds what the merge tool shows beside a conflicted file: the file as each side would have it, and
+ * where each conflict sits in each.
+ */
+export interface ConflictVersions {
+  /**
+   * Gets the file with every conflict settled the user's way.
+   */
+  readonly yours: string;
+
+  /**
+   * Gets the file with every conflict settled the other side's way.
+   */
+  readonly theirs: string;
+
+  /**
+   * Gets the file with every conflict put back as the common ancestor had it, or null unless every
+   * conflict carries a diff3 base section.
+   */
+  readonly base: string | null;
+
+  /**
+   * Gets the conflicts, in the file's order.
+   */
+  readonly regions: readonly ConflictRegion[];
+}
+
+/**
+ * Works out the merge tool's side panes from the file's own markers (#1321): the file as the user's
+ * side would have it, as the other side's would, and — where git wrote diff3 base sections — as the
+ * common ancestor had it, with where each conflict lands in each.
+ *
+ * Read from the markers rather than from git's index stages, so the panes follow the file as it is
+ * edited: a conflict settled in the result disappears from the sides with it, and every line outside
+ * the conflicts — already merged by git — is the same in all three panes, which is what lets them be
+ * lined up conflict by conflict.
+ * @param text The file's content, markers and all.
+ * @param swapped Whether git wrote the user's own work below the divider (a rebase).
+ * @returns Returns the side panes' text and the conflicts' places.
+ */
+export function conflictVersions(text: string, swapped: boolean): ConflictVersions {
+  const eol: string = text.includes('\r\n') ? '\r\n' : '\n';
+  const lines: readonly string[] = text.split(/\r?\n/);
+  const blocks: readonly ConflictBlock[] = parseConflicts(text);
+  const hasBase: boolean =
+    blocks.length > 0 && blocks.every((block: ConflictBlock): boolean => block.base !== null);
+  const yours: string[] = [];
+  const theirs: string[] = [];
+  const base: string[] = [];
+  const regions: ConflictRegion[] = [];
+  let next: number = 1;
+  const copyUpTo: (line: number) => void = (line: number): void => {
+    const shared: readonly string[] = lines.slice(next - 1, line - 1);
+    yours.push(...shared);
+    theirs.push(...shared);
+    base.push(...shared);
+  };
+  const append: (pane: string[], section: readonly string[]) => ConflictLineSpan = (
+    pane: string[],
+    section: readonly string[],
+  ): ConflictLineSpan => {
+    const start: number = pane.length + 1;
+    pane.push(...section);
+    return { start, count: section.length };
+  };
+  for (const block of blocks) {
+    copyUpTo(block.start);
+    const top: readonly string[] = resolveConflictLines(lines, block, 'top');
+    const bottom: readonly string[] = resolveConflictLines(lines, block, 'bottom');
+    const ancestor: readonly string[] =
+      block.base === null ? [] : lines.slice(block.base, block.divider - 1);
+    regions.push({
+      result: { start: block.start, count: block.end - block.start + 1 },
+      yours: append(yours, swapped ? bottom : top),
+      theirs: append(theirs, swapped ? top : bottom),
+      base: hasBase ? append(base, ancestor) : null,
+    });
+    next = block.end + 1;
+  }
+  copyUpTo(lines.length + 1);
+  return {
+    yours: yours.join(eol),
+    theirs: theirs.join(eol),
+    base: hasBase ? base.join(eol) : null,
+    regions,
+  };
+}
+
+/**
+ * Finds the line in one merge-tool pane that stands beside a line in another, so the panes can scroll
+ * together. Outside the conflicts the panes hold the same lines, shifted by however much longer or
+ * shorter the conflicts above are in each; inside a conflict, a line maps to the same distance into the
+ * other side's section, or that section's last line when it is shorter.
+ * @param line The line, 1-based, in the pane it was read from.
+ * @param regions The conflicts.
+ * @param from The pane the line is in.
+ * @param to The pane to find its partner in.
+ * @returns Returns the partner line, 1-based and never below 1; the line itself when either pane is
+ * a base pane the file does not have.
+ */
+export function mapConflictLine(
+  line: number,
+  regions: readonly ConflictRegion[],
+  from: ConflictPane,
+  to: ConflictPane,
+): number {
+  let shift: number = 0;
+  for (const region of regions) {
+    const source: ConflictLineSpan | null = region[from];
+    const target: ConflictLineSpan | null = region[to];
+    if (source === null || target === null) {
+      return line;
+    }
+    if (line < source.start) {
+      return Math.max(1, line + target.start - source.start);
+    }
+    if (line < source.start + source.count) {
+      const into: number = line - source.start;
+      return Math.max(1, target.start + Math.min(into, Math.max(target.count - 1, 0)));
+    }
+    shift = target.start + target.count - (source.start + source.count);
+  }
+  return Math.max(1, line + shift);
 }

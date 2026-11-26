@@ -51,7 +51,6 @@ import { LayoutInfo, Layouts } from '@shared/angular/services/layouts/layouts';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
@@ -109,7 +108,6 @@ const COMMIT_STASH: string = 'stash';
     TextField,
     Button,
     ButtonRow,
-    AppIcon,
     Dropdown,
     RibbonStripOverflow,
     RibbonStripGroup,

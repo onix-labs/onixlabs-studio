@@ -1,0 +1,35 @@
+<app-system-monitor-dashboard-card
+  [icon]="Icon.MONITOR_STATISTICS"
+  heading="GPU Utilisation History"
+>
+  <div cardBadges class="gpu-history__ranges" role="group" aria-label="Span">
+    @for (option of ranges; track option.label) {
+      <app-button
+        variant="none"
+        size="small"
+        [label]="option.label"
+        [pressed]="range() === option"
+        (click)="select(option)"
+      />
+    }
+  </div>
+
+  @if (empty()) {
+    <p class="gpu-history__empty">
+      @if (live()) {
+        The history appears after the next reading.
+      } @else {
+        Studio keeps the GPU's history while GPU Monitoring is on; this span fills as it does.
+      }
+    </p>
+  } @else {
+    <app-system-monitor-line-chart
+      class="gpu-history__chart"
+      ariaLabel="GPU utilisation and video memory over time"
+      [series]="series()"
+      [max]="100"
+      [format]="percent"
+      [intervalMs]="intervalMs()"
+    />
+  }
+</app-system-monitor-dashboard-card>

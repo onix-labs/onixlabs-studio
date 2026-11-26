@@ -20,6 +20,7 @@ import {
 } from '@shared/angular/services/workspace/workspace';
 import { FileOperationResult } from '@shared/api/workspace-channels';
 import {
+  ExplorerScmState,
   isChangedState,
   scmRowFields,
   WorkspaceGit,
@@ -34,6 +35,8 @@ import { WorkspaceProblems } from '@features/workspace/angular/workspace-problem
 import { EntryRename } from '@shared/angular/services/rename/entry-rename';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Shell } from '@shared/angular/services/shell/shell';
+import { LiveServerSession } from '@features/workspace/angular/live-server/live-server-session';
+import { OPEN_WITH_LIVE_SERVER } from '@features/workspace/angular/live-server/live-server-labels';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { Icon } from '@shared/angular/icons/icon';
 import { fileIconFor } from '@shared/angular/icons/file-icon';
@@ -71,6 +74,7 @@ import {
  */
 const ACTION_OPEN: string = 'open';
 const ACTION_OPEN_AS_CODE: string = 'open-as-code';
+const ACTION_LIVE_SERVER: string = 'open-with-live-server';
 const ACTION_NEW_FILE: string = 'new-file';
 const ACTION_NEW_FOLDER: string = 'new-folder';
 const ACTION_COPY_PATH: string = 'copy-path';
@@ -89,6 +93,7 @@ const ACTION_OPTIONS: string = 'options';
 const ACTION_FOLLOW: string = 'follow-active';
 const ACTION_GIT_STATUS: string = 'git-status';
 const ACTION_COLLAPSE_EMPTY_FOLDERS: string = 'collapse-empty-folders';
+const ACTION_NEST_FILES: string = 'nest-files';
 const ACTION_SHOW_HIDDEN: string = 'show-hidden';
 const ACTION_OPEN_ROOT: string = 'open-root';
 const ACTION_COPY_ROOT: string = 'copy-workspace-path';
@@ -236,6 +241,11 @@ export class TreePanel {
   private readonly shell: Shell = inject(Shell);
 
   /**
+   * Holds this tab's live server, which serves a page the user opens with it (#1062).
+   */
+  private readonly liveServer: LiveServerSession = inject(LiveServerSession);
+
+  /**
    * Holds the notification service used to report a write that did not go as its confirmation said.
    */
   private readonly notifications: Notifications = inject(Notifications);
@@ -280,15 +290,18 @@ export class TreePanel {
     const rows: TreeRow[] = this.shownRows().map((row: WorkspaceTreeRow): TreeRow => ({
       id: row.node.path,
       depth: row.depth,
-      expandable: row.node.type === 'directory',
+      expandable: row.node.type === 'directory' || row.nested !== undefined,
       expanded: row.expanded,
+      // A file with others nested beneath it opens as well as expands.
+      ...(row.nested !== undefined ? { opens: true } : {}),
       // How version control sees the path, in colour (#860) — unless the colours are switched off.
-      ...(this.workspace.showsGitStatus() ? scmRowFields(this.git.stateFor(row.node.path)) : {}),
+      ...(this.workspace.showsGitStatus() ? scmRowFields(this.scmStateFor(row)) : {}),
       // An excluded entry shows only while hidden things do, greyed so it can be included again.
       ...(this.exclusions.isExcluded(row.node.path) ? EXCLUDED_ROW_FIELDS : {}),
-      // An error in the file, or beneath the folder, squiggles its name as an editor would.
+      // An error in the file, or beneath the folder, squiggles its name as an editor would — and so
+      // does one in a file nested beneath it.
       ...(this.settings.value('workspaces.showErrorSquiggles')() &&
-      this.problems.has(row.node.path, 'error')
+      pathsOf(row).some((path: string): boolean => this.problems.has(path, 'error'))
         ? { squiggle: true }
         : {}),
       data: row.node,
@@ -299,6 +312,24 @@ export class TreePanel {
     }
     return this.withPlaceholder(rows, edit);
   });
+
+  /**
+   * Resolves how version control sees a row: its own state, and failing that — for a file with others
+   * nested beneath it — `contains`, as a folder reads, when any of them is changed.
+   * @param row The row.
+   * @returns Returns the state, or null when unchanged.
+   */
+  private scmStateFor(row: WorkspaceTreeRow): ExplorerScmState | null {
+    const own: ExplorerScmState | null = this.git.stateFor(row.node.path);
+    if (own !== null || row.nested === undefined) {
+      return own;
+    }
+    return row.nested.some((child: WorkspaceTreeNode): boolean =>
+      isChangedState(this.git.stateFor(child.path)),
+    )
+      ? 'contains'
+      : null;
+  }
 
   /**
    * Gets the kinds the tree is narrowed to that can narrow it here (#1182 follow-up): those ticked,
@@ -389,7 +420,8 @@ export class TreePanel {
         return (
           (showsHidden || (!this.exclusions.isHidden(path) && !this.exclusions.isExcluded(path))) &&
           (!hidesIgnored || this.git.stateFor(path) !== 'ignored') &&
-          (kinds.size === 0 || this.matches(path, kinds))
+          (kinds.size === 0 ||
+            pathsOf(row).some((candidate: string): boolean => this.matches(candidate, kinds)))
         );
       });
     },
@@ -528,6 +560,11 @@ export class TreePanel {
           checked: this.workspace.collapsesEmptyFolders(),
         },
         {
+          id: ACTION_NEST_FILES,
+          label: 'Nest Related Files',
+          checked: this.workspace.nestsFiles(),
+        },
+        {
           id: ACTION_SHOW_HIDDEN,
           label: 'Show Hidden Files',
           checked: this.exclusions.showsHidden(),
@@ -558,6 +595,9 @@ export class TreePanel {
         return;
       case ACTION_COLLAPSE_EMPTY_FOLDERS:
         this.workspace.toggleCollapseEmptyFolders();
+        return;
+      case ACTION_NEST_FILES:
+        this.workspace.toggleNestFiles();
         return;
       case ACTION_SHOW_HIDDEN:
         this.exclusions.toggleShowHidden();
@@ -632,12 +672,26 @@ export class TreePanel {
    */
   public onRowClick(row: TreeRow): void {
     const node: WorkspaceTreeNode = this.nodeOf(row);
+    const opensOnClick: boolean = this.settings.get('workspaces.openFilesWith') === 'single';
     if (node.type === 'directory') {
       this.log.debug('workspace.tree', 'Toggle directory', node.path);
       void this.workspace.toggleDirectory(node.path);
-    } else if (this.settings.get('workspaces.openFilesWith') === 'single') {
+    } else if (opensOnClick) {
       this.onRowOpen(row);
+    } else if (row.expandable) {
+      // A file with others nested beneath it toggles as a folder does, unless a click opens files —
+      // then its chevron is what toggles it (see onRowToggle).
+      this.workspace.toggleNested(node.path);
     }
+  }
+
+  /**
+   * Toggles a file with others nested beneath it, from its chevron.
+   * @param row The tree row whose chevron was clicked.
+   */
+  public onRowToggle(row: TreeRow): void {
+    this.log.debug('workspace.tree', 'Toggle nested files', row.id);
+    this.workspace.toggleNested(this.nodeOf(row).path);
   }
 
   /**
@@ -746,6 +800,13 @@ export class TreePanel {
       if (node.path.toLowerCase().endsWith('.svg')) {
         items.push({ id: ACTION_OPEN_AS_CODE, label: 'Open as Code', icon: Icon.CODE });
       }
+      if (this.liveServer.opens(node.path)) {
+        items.push({
+          id: ACTION_LIVE_SERVER,
+          label: OPEN_WITH_LIVE_SERVER,
+          icon: Icon.LIVE_SERVER,
+        });
+      }
     }
     items.push(
       { id: ACTION_NEW_FILE, label: 'New File', icon: Icon.FILE },
@@ -853,6 +914,9 @@ export class TreePanel {
       case ACTION_OPEN_AS_CODE:
         this.workspace.select(node.path);
         void this.fileOpener.openAsText(node.path);
+        return;
+      case ACTION_LIVE_SERVER:
+        void this.liveServer.open(node.path);
         return;
       case ACTION_NEW_FILE:
         void this.beginCreate('new-file', this.directoryFor(node));
@@ -1020,9 +1084,13 @@ export class TreePanel {
     }
     this.editing.set(null);
     const name: string = commit.value;
+    // A file with others nested beneath it takes them along, and the type they share.
+    const nested: readonly string[] = this.nestedPathsOf(edit.target);
     const result: FileOperationResult =
       edit.kind === 'rename'
-        ? await this.entryRename.rename(edit.target, name)
+        ? nested.length > 0
+          ? await this.entryRename.renameGroup(edit.target, name, nested)
+          : await this.entryRename.rename(edit.target, name)
         : edit.kind === 'new-folder'
           ? await this.workspace.createFolder(edit.target, name)
           : await this.workspace.createFile(edit.target, name);
@@ -1058,22 +1126,90 @@ export class TreePanel {
   }
 
   /**
-   * Gets the delete confirmation's heading: the entry by name, or how many there are.
+   * Gets the paths of the files File Nesting gathered beneath an entry's row.
+   * @param path The entry's absolute path.
+   * @returns Returns the paths; none for an entry that gathers none.
+   */
+  private nestedPathsOf(path: string): readonly string[] {
+    return (
+      this.workspace
+        .rows()
+        .find((row: WorkspaceTreeRow): boolean => row.node.path === path)
+        ?.nested?.map((node: WorkspaceTreeNode): string => node.path) ?? []
+    );
+  }
+
+  /**
+   * Gets the files nested beneath the entries awaiting deletion that are not among them, which the
+   * confirmation asks about: deleted with them, or left as files of their own.
+   */
+  protected readonly deleteNested: Signal<readonly WorkspaceTreeNode[]> = computed(
+    (): readonly WorkspaceTreeNode[] => {
+      const targets: readonly WorkspaceTreeNode[] = this.deleteTargets() ?? [];
+      const named: ReadonlySet<string> = new Set<string>(
+        targets.map((node: WorkspaceTreeNode): string => node.path),
+      );
+      const nested: Map<string, WorkspaceTreeNode> = new Map<string, WorkspaceTreeNode>();
+      for (const row of this.workspace.rows()) {
+        if (named.has(row.node.path)) {
+          for (const child of row.nested ?? []) {
+            if (!named.has(child.path)) {
+              nested.set(child.path, child);
+            }
+          }
+        }
+      }
+      return [...nested.values()];
+    },
+  );
+
+  /**
+   * Gets the delete confirmation's heading: the entry by name, or how many there are — and how many
+   * files are nested beneath them.
    */
   protected readonly deleteTitle: Signal<string> = computed((): string => {
     const targets: readonly WorkspaceTreeNode[] = this.deleteTargets() ?? [];
+    const nested: number = this.deleteNested().length;
     const named: string = targets.length === 1 ? targets[0].name : `${targets.length} items`;
-    return this.deletesPermanently() ? `Delete ${named} Permanently?` : `Delete ${named}?`;
+    const all: string =
+      nested === 0 ? named : `${named} and ${nested} Nested File${nested === 1 ? '' : 's'}`;
+    return this.deletesPermanently() ? `Delete ${all} Permanently?` : `Delete ${all}?`;
+  });
+
+  /**
+   * Gets the names of the files nested beneath the entries awaiting deletion, for the confirmation.
+   */
+  protected readonly deleteNestedNames: Signal<string> = computed((): string => {
+    const names: readonly string[] = this.deleteNested().map(
+      (node: WorkspaceTreeNode): string => node.name,
+    );
+    return names.length < 2
+      ? (names[0] ?? '')
+      : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  });
+
+  /**
+   * Gets the label of the confirmation's button that deletes what was chosen and keeps the files
+   * nested beneath it.
+   */
+  protected readonly deleteOnlyLabel: Signal<string> = computed((): string => {
+    const targets: readonly WorkspaceTreeNode[] = this.deleteTargets() ?? [];
+    return targets.length === 1 ? `Only ${targets[0].name}` : 'Only the Selected';
   });
 
   /**
    * Asks to delete entries: with the confirmation, unless Confirm Before Deleting is off and they are
-   * only going to the Trash. A permanent delete always asks.
+   * only going to the Trash. A permanent delete always asks, and so does one of a file with others
+   * nested beneath it: whether they go too is a question only the user can answer.
    * @param targets The entries.
    */
   private requestDelete(targets: readonly WorkspaceTreeNode[]): void {
     this.deleteTargets.set(targets);
-    if (!this.deletesPermanently() && !this.settings.get('workspaces.confirmBeforeDeleting')) {
+    if (
+      !this.deletesPermanently() &&
+      !this.settings.get('workspaces.confirmBeforeDeleting') &&
+      this.deleteNested().length === 0
+    ) {
       void this.confirmDelete();
     }
   }
@@ -1088,13 +1224,18 @@ export class TreePanel {
   /**
    * Deletes the confirmed entries, one after another, saying afterwards what did not go to the Trash
    * and what could not be deleted — once for them all, rather than a notification per entry.
+   * @param withNested Whether the files nested beneath them go too; left out, they stay as files of
+   * their own.
    * @returns Returns a promise that settles once every entry has been tried.
    */
-  public async confirmDelete(): Promise<void> {
-    const targets: readonly WorkspaceTreeNode[] | null = this.deleteTargets();
-    if (targets === null || targets.length === 0) {
+  public async confirmDelete(withNested: boolean = false): Promise<void> {
+    const chosen: readonly WorkspaceTreeNode[] | null = this.deleteTargets();
+    if (chosen === null || chosen.length === 0) {
       return;
     }
+    const targets: readonly WorkspaceTreeNode[] = withNested
+      ? [...chosen, ...this.deleteNested()]
+      : chosen;
     this.deleteTargets.set(null);
     const failed: { node: WorkspaceTreeNode; error: string | undefined }[] = [];
     const permanent: WorkspaceTreeNode[] = [];
@@ -1180,6 +1321,15 @@ export class TreePanel {
     }
     return fileIconFor(node.name);
   }
+}
+
+/**
+ * Gets the paths a row stands for: its own, and those of the files nested beneath it.
+ * @param row The row.
+ * @returns Returns the paths.
+ */
+function pathsOf(row: WorkspaceTreeRow): readonly string[] {
+  return [row.node.path, ...(row.nested ?? []).map((node: WorkspaceTreeNode): string => node.path)];
 }
 
 /**

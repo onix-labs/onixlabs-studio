@@ -1,4 +1,5 @@
-import { ChildProcess, spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import { Launcher, launchStudioOwned } from '../process/launch';
 import {
   isCompatibleVersionControlProtocol,
   isVersionControlCapability,
@@ -11,11 +12,17 @@ import {
   VcsParams,
 } from '@shared/api/version-control-protocol';
 import { logger } from '../logger';
+import { folderOf, RunToken } from '../process/launch';
 import { LineSplitter, MAX_LINE_LENGTH } from '../line-splitter';
 import { pluginEnvironment } from '../plugin-environment';
 import { pidJournal } from '../pid-journal';
 import { VersionControlSpec } from './version-control-descriptor';
 import { VersionControlEndpoint } from './version-control-endpoint';
+
+/**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('plugin-process');
 
 /**
  * Specifies how long the initialize handshake may take. A plugin that cannot say what it is promptly
@@ -123,7 +130,7 @@ export class VersionControlClient implements VersionControlEndpoint {
       return this.description;
     }
     try {
-      this.process = spawn(this.spec.command, [...this.spec.args], {
+      this.process = launch.spawn(this.spec.command, [...this.spec.args], {
         stdio: ['pipe', 'pipe', 'pipe'],
         // Only what a program needs to run, never the user's whole shell (audit S6).
         env: pluginEnvironment(this.spec.env),
@@ -189,21 +196,22 @@ export class VersionControlClient implements VersionControlEndpoint {
   /**
    * Asks the plugin to perform an operation.
    * @param op The operation.
-   * @param root The absolute repository root it acts on, or undefined for a global operation.
+   * @param token The folder's run token, or undefined for work that names no folder.
    * @param params The operation's parameters.
    * @param timeoutMs How long to wait before abandoning it.
    * @returns Returns the plugin's answer, or a failure saying why there was none.
    */
   public request<Op extends VersionControlOp>(
     op: Op,
-    root: string | undefined,
+    token: RunToken | undefined,
     params: VcsParams<Op>,
     timeoutMs: number,
   ): Promise<VersionControlResponse<Op>> {
     if (this.description === null) {
       return Promise.resolve({ id: 0, ok: false, error: `${this.id} is not running.` });
     }
-    return this.send(op, root, params, timeoutMs);
+    // Work in a repository needs its run token; work that names none (a clone) needs none (#1504).
+    return this.send(op, token === undefined ? undefined : folderOf(token), params, timeoutMs);
   }
 
   /**

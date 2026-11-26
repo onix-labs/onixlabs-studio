@@ -1,0 +1,49 @@
+<app-system-monitor-dashboard-card [icon]="Icon.MONITOR_RANKED" heading="Processes Using the GPU">
+  @if (rows().length > 0) {
+    @let shown = columns();
+    <div class="gpu-processes__scroll">
+      <table class="gpu-processes" data-testid="gpu-processes">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th class="gpu-processes__number">PID</th>
+            @if (shown.gpu) {
+              <th class="gpu-processes__number" aria-sort="descending">GPU %</th>
+            }
+            @if (shown.memory) {
+              <th class="gpu-processes__number">GPU Memory</th>
+            }
+            @if (shown.codec) {
+              <th class="gpu-processes__number">Encoder</th>
+              <th class="gpu-processes__number">Decoder</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of rows(); track row.pid) {
+            <tr>
+              <td [title]="row.name">{{ row.name }}</td>
+              <td class="gpu-processes__number">{{ row.pid }}</td>
+              @if (shown.gpu) {
+                <td class="gpu-processes__number">{{ row.gpu }}</td>
+              }
+              @if (shown.memory) {
+                <td class="gpu-processes__number">{{ row.memory }}</td>
+              }
+              @if (shown.codec) {
+                <td class="gpu-processes__number">{{ row.encoder }}</td>
+                <td class="gpu-processes__number">{{ row.decoder }}</td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  } @else if (read()) {
+    <p class="gpu-processes__empty">
+      No process is using the GPU right now, or this GPU does not say.
+    </p>
+  } @else {
+    <p class="gpu-processes__empty">The processes appear after the next reading.</p>
+  }
+</app-system-monitor-dashboard-card>

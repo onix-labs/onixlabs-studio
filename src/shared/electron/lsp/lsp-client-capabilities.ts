@@ -1,12 +1,20 @@
-import type { ClientCapabilities, SymbolKind } from 'vscode-languageserver-protocol';
+import type {
+  ClientCapabilities,
+  ResourceOperationKind,
+  SymbolKind,
+} from 'vscode-languageserver-protocol';
 import { SEMANTIC_TOKEN_MODIFIERS, SEMANTIC_TOKEN_TYPES } from '@shared/api/lsp-channels';
 
 /**
- * The servers told an edit may create a file (#1210). Told so, a server answers differently, and sends
- * what it would otherwise have left out, so each joins once its edits have been tried: rust-analyzer's
- * Create Module and Extract Module to File have.
+ * The file operations each server is told an edit may make. Told so, a server answers differently, and
+ * sends what it would otherwise have left out, so each joins once its edits have been tried:
+ * rust-analyzer's Create Module and Extract Module to File create a file (#1210), and gopls renames a
+ * package's folder when the package is renamed (#1211), which it otherwise refuses to do at all.
  */
-const FILE_CREATING_SERVERS: ReadonlySet<string> = new Set<string>(['rust']);
+const FILE_OPERATIONS: Readonly<Record<string, readonly ResourceOperationKind[]>> = {
+  rust: ['create'],
+  go: ['rename'],
+};
 
 /**
  * clangd's extension to the text-document capabilities (#1213), kept apart because the protocol's type
@@ -207,13 +215,13 @@ export function clientCapabilities(serverId?: string): ClientCapabilities {
       // narrows that to its own globs through a dynamic registration.
       didChangeWatchedFiles: { dynamicRegistration: true, relativePatternSupport: true },
       // A server's `workspace/applyEdit` is applied by the renderer (#1015), and a rename's answer may
-      // come either as per-file `changes` or as versioned `documentChanges`. Renaming and deleting
-      // files is not supported yet, and any a server sends anyway are refused and named rather than
-      // half-applied.
+      // come either as per-file `changes` or as versioned `documentChanges`. Deleting files, and moving
+      // one out of its folder, is not supported yet, and any a server sends anyway are refused and
+      // named rather than half-applied.
       applyEdit: true,
       workspaceEdit: {
         documentChanges: true,
-        resourceOperations: FILE_CREATING_SERVERS.has(serverId ?? '') ? ['create'] : [],
+        resourceOperations: [...(FILE_OPERATIONS[serverId ?? ''] ?? [])],
       },
       // A file or folder renamed in an explorer asks the server what else has to change: the imports
       // of it, for one (#1207). The edit is applied once the rename has worked.

@@ -8,6 +8,8 @@ import {
 import { watchChildWindowClosed } from '@shared/angular/services/child-window-close/child-window-close';
 import { ChildWindowStyling } from '@shared/angular/services/child-window-styling/child-window-styling';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { interfaceZoomFactor } from '@shared/api/interface-zoom';
 
 /**
  * Describes the window a modal asks for: how it is sized and chromed, and whether it hangs off the
@@ -193,7 +195,7 @@ const MODAL_STYLES: string = `
 const DRAG_STRIP_HEIGHT: number = 44;
 
 /**
- * Holds the largest chrome, in CSS pixels, a modal window is believed to draw around its content in
+ * Holds the largest chrome, in screen pixels, a modal window is believed to draw around its content in
  * either direction. A measurement beyond this is not chrome but a window part-way through a resize,
  * and is discarded.
  */
@@ -208,6 +210,10 @@ const MAX_FRAME: number = 200;
  * application it was raised from. The service owns the window itself: the request that opens it,
  * the styling mirror, the fit-to-content sizing, and the closed notification. What renders inside is
  * the modal's business.
+ *
+ * Sizes arrive in CSS pixels, and windows are sized in screen pixels. The two differ by the Interface
+ * Zoom, so every size is multiplied by it on the way out. When the zoom changes, the main process
+ * rescales the open modal windows itself (see `WindowManager`), bounds and all.
  */
 @Service()
 export class ModalWindows implements OnDestroy {
@@ -233,6 +239,21 @@ export class ModalWindows implements OnDestroy {
     Window,
     ModalWindowSize
   >();
+
+  /**
+   * Holds the settings, for the Interface Zoom that turns CSS pixels into screen ones. Read only as a
+   * window is sized, never as the service is built.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Gets the zoom factor the interface is drawn at (1 for 100%), from Interface Zoom: how many screen
+   * pixels each CSS pixel takes, in every window.
+   * @returns Returns the zoom factor.
+   */
+  public zoomFactor(): number {
+    return interfaceZoomFactor(this.settings.value('accessibility.interfaceZoom')());
+  }
 
   /**
    * Opens a modal window.
@@ -300,7 +321,7 @@ export class ModalWindows implements OnDestroy {
       contentHost,
       document: doc,
       view: child,
-      fit: (width: number, height: number): void => this.fit(child, owner, width, height),
+      fit: (width: number, height: number): void => this.fit(child, width, height),
       focus: (): void => child.focus(),
       close: (): void => child.close(),
       onClosed: (listener: () => void): void => {
@@ -317,11 +338,16 @@ export class ModalWindows implements OnDestroy {
    * @returns Returns the features string.
    */
   private features(request: ModalWindowRequest, owner: Window): string {
+    // The window is sized in screen pixels, which the Interface Zoom makes larger or smaller than the
+    // CSS pixels the request is measured in.
+    const zoom: number = this.zoomFactor();
+    const width: number = request.width * zoom;
+    const height: number = request.height * zoom;
     const position: ModalWindowPosition =
-      request.position ?? this.centred(request, owner, request.width, request.height);
+      request.position ?? this.centred(request, owner, width, height);
     return [
-      `width=${Math.round(request.width)}`,
-      `height=${Math.round(request.height)}`,
+      `width=${Math.round(width)}`,
+      `height=${Math.round(height)}`,
       `left=${Math.round(position.x)}`,
       `top=${Math.round(position.y)}`,
       `resizable=${request.resizable ? 1 : 0}`,
@@ -332,35 +358,46 @@ export class ModalWindows implements OnDestroy {
       ...(request.minimum === null
         ? []
         : [
-            `minwidth=${Math.round(request.minimum.width)}`,
-            `minheight=${Math.round(request.minimum.height)}`,
+            `minwidth=${Math.round(request.minimum.width * zoom)}`,
+            `minheight=${Math.round(request.minimum.height * zoom)}`,
           ]),
       ...(request.maximum === null
         ? []
         : [
-            `maxwidth=${Math.round(request.maximum.width)}`,
-            `maxheight=${Math.round(request.maximum.height)}`,
+            `maxwidth=${Math.round(request.maximum.width * zoom)}`,
+            `maxheight=${Math.round(request.maximum.height * zoom)}`,
           ]),
     ].join(',');
   }
 
   /**
-   * Resizes a modal window to hold the given content size and re-centres it over its owner. The
-   * window's frame is measured rather than assumed, so the content lands at exactly the requested
+   * Resizes a modal window to hold the given content size, keeping it centred where it already is.
+   * The window's frame is measured rather than assumed, so the content lands at exactly the requested
    * size whatever chrome the platform draws around it.
+   *
+   * It grows and shrinks about its own centre (and a third of the way down, as it was first placed)
+   * rather than being centred over its owner again. Opened where it asked, that is the same place;
+   * but the main process may have placed it elsewhere — over the welcome screen, when the window
+   * that raised it is hidden behind it (#1504) — and the user may have moved it since. Centring over
+   * the owner again would throw it back over a window that may not be on screen at all.
    * @param child The modal window.
-   * @param owner The window it was raised from.
    * @param width The content width, in CSS pixels.
    * @param height The content height, in CSS pixels.
    */
-  private fit(child: Window, owner: Window, width: number, height: number): void {
+  private fit(child: Window, width: number, height: number): void {
     if (child.closed) {
       return;
     }
-    const frame: ModalWindowSize = this.frame(child);
-    const outerWidth: number = Math.round(width + frame.width);
-    const outerHeight: number = Math.round(height + frame.height);
-    const position: ModalWindowPosition = this.centredOver(owner, outerWidth, outerHeight);
+    const zoom: number = this.zoomFactor();
+    const frame: ModalWindowSize = this.frame(child, zoom);
+    // The window is sized in screen pixels; the content is measured in CSS pixels, which the
+    // Interface Zoom scales.
+    const outerWidth: number = Math.round(width * zoom + frame.width);
+    const outerHeight: number = Math.round(height * zoom + frame.height);
+    const position: ModalWindowPosition = {
+      x: child.screenX + (child.outerWidth - outerWidth) / 2,
+      y: child.screenY + (child.outerHeight - outerHeight) / 3,
+    };
     child.resizeTo(outerWidth, outerHeight);
     child.moveTo(Math.round(position.x), Math.round(position.y));
   }
@@ -374,16 +411,18 @@ export class ModalWindows implements OnDestroy {
    * lands) would shrink by it. The chrome does not change over a window's life, so the first sane
    * reading stands; an unusable one is treated as none and re-read next time.
    * @param child The modal window.
-   * @returns Returns the chrome width and height, in CSS pixels.
+   * @param zoom The zoom factor the window's content is drawn at.
+   * @returns Returns the chrome width and height, in screen pixels.
    */
-  private frame(child: Window): ModalWindowSize {
+  private frame(child: Window, zoom: number): ModalWindowSize {
     const known: ModalWindowSize | undefined = this.frames.get(child);
     if (known !== undefined) {
       return known;
     }
+    // The outer size is in screen pixels and the inner one in CSS pixels, which the zoom scales.
     const measured: ModalWindowSize = {
-      width: child.outerWidth - child.innerWidth,
-      height: child.outerHeight - child.innerHeight,
+      width: Math.round(child.outerWidth - child.innerWidth * zoom),
+      height: Math.round(child.outerHeight - child.innerHeight * zoom),
     };
     const sane: boolean = [measured.width, measured.height].every(
       (value: number): boolean => value >= 0 && value <= MAX_FRAME,

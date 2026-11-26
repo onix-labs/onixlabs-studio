@@ -16,7 +16,7 @@ import type {
 } from '@shared/api/ai-types';
 import { AgentEngine } from '../agent-engine/agent-engine';
 import { AiRuntime, AiRunOptions } from '../ai-runtime/ai-runtime';
-import { PromptProfile, PromptProfiles } from '../prompt-profiles/prompt-profiles';
+import { Persona, PersonaEntry } from '../persona/persona';
 import { Notification, Notifications } from '@shared/angular/services/notifications/notifications';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Tab } from '@shared/angular/services/tabs/tab';
@@ -259,14 +259,14 @@ describe('Agent', () => {
   });
 
   it('send_carriesTheBoundLanguageAndTheStandingInstructionsThatMatchIt', () => {
-    // #300. The instructions are resolved here — the renderer owns the profiles and the host knows the
+    // #300, #1514. The core is resolved here — the renderer owns the persona and the host knows the
     // owning document's language — and travel as a string the transcript never shows. The message
     // itself goes as typed (#948 dropped the layer that was added beneath it).
-    const profiles: PromptProfiles = TestBed.inject(PromptProfiles);
-    const profile: PromptProfile = profiles.create('C#');
-    profiles.update(profile.id, {
+    const persona: Persona = TestBed.inject(Persona);
+    const entry: PersonaEntry = persona.create({ name: 'C#' });
+    persona.update(entry.id, {
       scope: { surfaces: [], languages: ['csharp'] },
-      instructions: 'Explicit types.',
+      text: 'Explicit types.',
     });
     agent.bindLanguage((): string => 'csharp');
 
@@ -302,8 +302,8 @@ describe('Agent', () => {
 
   it('send_carriesTheConversationsBrief_afterTheStandingPrompts_untilANewChat', () => {
     // #806. A new project's conversation is briefed on the project and its starter skill.
-    const profiles: PromptProfiles = TestBed.inject(PromptProfiles);
-    profiles.update(profiles.create('Everywhere').id, { instructions: 'Be brief.' });
+    const persona: Persona = TestBed.inject(Persona);
+    persona.update(persona.create({ name: 'Everywhere' }).id, { text: 'Be brief.' });
     agent.setBrief('A new project.');
 
     agent.send('hello');
@@ -314,12 +314,12 @@ describe('Agent', () => {
     expect(runCalls[1].systemPromptExtra).toBe('### Everywhere\nBe brief.');
   });
 
-  it('send_whenNoLanguageIsBound_carriesNoneAndOnlyUnscopedProfilesApply', () => {
-    const profiles: PromptProfiles = TestBed.inject(PromptProfiles);
-    profiles.update(profiles.create('Everywhere').id, { instructions: 'Be brief.' });
-    profiles.update(profiles.create('C#').id, {
+  it('send_whenNoLanguageIsBound_carriesNoneAndOnlyUnscopedCoreEntriesApply', () => {
+    const persona: Persona = TestBed.inject(Persona);
+    persona.update(persona.create({ name: 'Everywhere' }).id, { text: 'Be brief.' });
+    persona.update(persona.create({ name: 'C#' }).id, {
       scope: { surfaces: [], languages: ['csharp'] },
-      instructions: 'Explicit types.',
+      text: 'Explicit types.',
     });
 
     agent.send('hello');

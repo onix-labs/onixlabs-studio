@@ -372,6 +372,27 @@ export class ActiveWorkspace {
   }
 
   /**
+   * Finds the well a path belongs to, by the workspace roots open: the innermost root holding it, as a
+   * worktree's checkout sits inside its repository's. Unlike {@link activeWell}, it does not follow the
+   * user's focus, so an edit to one workspace's files is never carried out in another (#1211).
+   * @param path The absolute path.
+   * @returns Returns the well, or null when no open workspace holds the path.
+   */
+  public wellContaining(path: string): WorkspaceWell | null {
+    let found: [string, PublishedWell, string] | null = null;
+    for (const [scope, well] of this.wells()) {
+      const root: string | null = well.handlers.rootPath();
+      if (root === null || !isWithinRoot(path, root)) {
+        continue;
+      }
+      if (found === null || root.length > found[2].length) {
+        found = [scope, well, root];
+      }
+    }
+    return found === null ? null : this.project(found[0], found[1]);
+  }
+
+  /**
    * Finds the well whose dock holds a terminal, so a terminal tool can refuse a terminal that belongs
    * to another workspace.
    * @param terminalId The terminal's id.
@@ -465,4 +486,15 @@ export class ActiveWorkspace {
     this.roots.set(next);
     this.log.debug('ActiveWorkspace', `Tab '${tabId}' root cleared`);
   }
+}
+
+/**
+ * Determines whether a path is a workspace root or lies within it, on either separator.
+ * @param path The path.
+ * @param root The root.
+ * @returns Returns true when it does.
+ */
+function isWithinRoot(path: string, root: string): boolean {
+  const trimmed: string = root.replace(/[\\/]+$/, '');
+  return path === trimmed || path.startsWith(`${trimmed}/`) || path.startsWith(`${trimmed}\\`);
 }

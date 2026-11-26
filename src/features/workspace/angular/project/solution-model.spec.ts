@@ -25,6 +25,7 @@ class FakeProject implements Bridge {
   public readonly itemRequests: string[] = [];
   public modelLoads: number = 0;
   public deferItems: boolean = false;
+  public readonly failingItems: Set<string> = new Set<string>();
   public readonly renames: { root: string; folderPath: string; name: string }[] = [];
   public renameResult: ProjectOperationResult = { success: true };
   private resolvers: (() => void)[] = [];
@@ -66,6 +67,9 @@ class FakeProject implements Bridge {
 
   private loadItems(projectPath: string): Promise<ProjectItems | null> {
     this.itemRequests.push(projectPath);
+    if (this.failingItems.has(projectPath)) {
+      return Promise.reject(new Error(`Cannot evaluate ${projectPath}`));
+    }
     const value: ProjectItems | null = this.itemsByPath.get(projectPath) ?? null;
     if (this.deferItems) {
       return new Promise<ProjectItems | null>(
@@ -341,6 +345,131 @@ describe('SolutionModel', () => {
     localStorage.removeItem('workspace.solution.collapseEmptyFolders');
   });
 
+  describe('file nesting', () => {
+    /**
+     * Opens a lone project in the workspace root whose files are a partial class, a group of
+     * extension files with no parent, and a file of its own.
+     * @returns Returns the service, opened.
+     */
+    async function openPartials(): Promise<SolutionModel> {
+      localStorage.removeItem('workspace.solution.nestFiles');
+      project.model = {
+        kind: 'dotnet',
+        root: '/root',
+        solution: null,
+        projects: [{ name: 'root', path: '/root/Core.csproj' }],
+        tree: [{ type: 'project', name: 'root', path: '/root/Core.csproj' }],
+        capabilities: sampleCapabilities(),
+      };
+      project.itemsByPath.set('/root/Core.csproj', {
+        projectPath: '/root/Core.csproj',
+        tree: [
+          {
+            type: 'file',
+            name: 'Enumeration.Comparable.cs',
+            path: '/root/Enumeration.Comparable.cs',
+          },
+          { type: 'file', name: 'Enumeration.cs', path: '/root/Enumeration.cs' },
+          { type: 'file', name: 'Enumeration.From.cs', path: '/root/Enumeration.From.cs' },
+          { type: 'file', name: 'Extensions.Array.cs', path: '/root/Extensions.Array.cs' },
+          { type: 'file', name: 'Extensions.String.cs', path: '/root/Extensions.String.cs' },
+          { type: 'file', name: 'Program.cs', path: '/root/Program.cs' },
+        ],
+      });
+      const model: SolutionModel = build();
+      await open(model);
+      return model;
+    }
+
+    afterEach((): void => {
+      localStorage.removeItem('workspace.solution.nestFiles');
+    });
+
+    it('gathersAPartialClassUnderItsOwnFile_andLeavesFilesWithNoParent', async () => {
+      const model: SolutionModel = await openPartials();
+
+      expect(labels(model)).toEqual([
+        'root',
+        'Enumeration.cs',
+        'Extensions.Array.cs',
+        'Extensions.String.cs',
+        'Program.cs',
+      ]);
+      expect(rowFor(model, 'Enumeration.cs')?.expandable).toBe(true);
+      expect(rowFor(model, 'Enumeration.cs')?.expanded).toBe(false);
+      expect(rowFor(model, 'Enumeration.cs')?.nestedPaths).toEqual([
+        '/root/Enumeration.Comparable.cs',
+        '/root/Enumeration.From.cs',
+      ]);
+      expect(rowFor(model, 'Program.cs')?.expandable).toBe(false);
+    });
+
+    it('toggle_showsTheNestedFilesOneLevelDeeper', async () => {
+      const model: SolutionModel = await openPartials();
+
+      model.toggle(rowFor(model, 'Enumeration.cs')!);
+
+      expect(labels(model)).toEqual([
+        'root',
+        'Enumeration.cs',
+        'Enumeration.Comparable.cs',
+        'Enumeration.From.cs',
+        'Extensions.Array.cs',
+        'Extensions.String.cs',
+        'Program.cs',
+      ]);
+      expect(rowFor(model, 'Enumeration.From.cs')?.depth).toBe(2);
+      expect(rowFor(model, 'Enumeration.From.cs')?.expandable).toBe(false);
+    });
+
+    it('toggleNestFiles_off_listsEveryFileInTheFolder', async () => {
+      const model: SolutionModel = await openPartials();
+
+      model.toggleNestFiles();
+
+      expect(model.nestsFiles()).toBe(false);
+      expect(labels(model)).toEqual([
+        'root',
+        'Enumeration.Comparable.cs',
+        'Enumeration.cs',
+        'Enumeration.From.cs',
+        'Extensions.Array.cs',
+        'Extensions.String.cs',
+        'Program.cs',
+      ]);
+      expect(rowFor(model, 'Enumeration.cs')?.expandable).toBe(false);
+    });
+
+    it('search_aMatchingNestedFile_showsBeneathItsParent', async () => {
+      const model: SolutionModel = await openPartials();
+
+      model.setQuery('comparable');
+      await new Promise<void>((resolve: () => void): void => {
+        setTimeout(resolve, 200);
+      });
+
+      expect(labels(model)).toEqual(['root', 'Enumeration.cs', 'Enumeration.Comparable.cs']);
+      expect(rowFor(model, 'Enumeration.cs')?.expanded).toBe(true);
+    });
+
+    it('revealPath_aNestedFile_opensItsParent', async () => {
+      const model: SolutionModel = await openPartials();
+
+      expect(model.revealPath('/root/Enumeration.From.cs')).toBe(true);
+
+      expect(rowFor(model, 'Enumeration.cs')?.expanded).toBe(true);
+      expect(model.selectedKey()).toBe('file:/root/Enumeration.From.cs');
+    });
+
+    it('expandAll_opensTheFilesWithOthersNestedBeneathThem', async () => {
+      const model: SolutionModel = await openPartials();
+
+      model.expandAll();
+
+      expect(rowFor(model, 'Enumeration.cs')?.expanded).toBe(true);
+    });
+  });
+
   it('rows_withASingleProjectInASubdirectory_keepsItsRow', async () => {
     project.model = {
       kind: 'node',
@@ -528,6 +657,94 @@ describe('SolutionModel', () => {
     expect(project.modelLoads).toBe(loadsAfterOpen + 1);
     expect(project.itemRequests.slice(requestsAfterOpen)).toEqual(['/root/A/A.csproj']);
     void model;
+  });
+
+  it('treeChange_whileAProjectEvaluates_clearsItsSpinner_reEvaluatesIt_andDrainsTheRest', async () => {
+    project.model = sampleModel();
+    project.deferItems = true;
+    project.itemsByPath.set('/root/A/A.csproj', {
+      projectPath: '/root/A/A.csproj',
+      tree: [{ type: 'file', name: 'a.cs', path: '/root/A/a.cs' }],
+    });
+    project.itemsByPath.set('/root/B/B.csproj', {
+      projectPath: '/root/B/B.csproj',
+      tree: [{ type: 'file', name: 'b.cs', path: '/root/B/b.cs' }],
+    });
+    const model: SolutionModel = build();
+    await open(model);
+    expect(project.itemRequests).toEqual(['/root/A/A.csproj']);
+
+    // An agent edits A while its evaluation is in flight: the reload supersedes that evaluation.
+    treeChanged!({ root: '/root', directories: ['/root/A'], overflow: false });
+    await waitForReloadDebounce();
+    project.resolveAll();
+    await flush();
+
+    // A's superseded answer is discarded, but its spinner goes with it, and the reload's queue drains
+    // (B starts) rather than stalling behind the worker of the older load.
+    expect(rowFor(model, 'Group')?.loading).toBe(false);
+    expect(project.itemRequests).toEqual(['/root/A/A.csproj', '/root/B/B.csproj']);
+
+    project.resolveAll();
+    await flush();
+    // A is evaluated again for the newer load, since the change may have altered its contents.
+    expect(project.itemRequests).toEqual([
+      '/root/A/A.csproj',
+      '/root/B/B.csproj',
+      '/root/A/A.csproj',
+    ]);
+
+    project.resolveAll();
+    await flush();
+    expect(rowFor(model, 'root')?.loading).toBe(false);
+    expect(rowFor(model, 'root')?.pending).toBe(false);
+    expect(rowFor(model, 'B')?.pending).toBe(false);
+  });
+
+  it('treeChange_removingAProjectMidEvaluation_dropsItsSpinnerAndDoesNotEvaluateItAgain', async () => {
+    project.model = sampleModel();
+    project.deferItems = true;
+    const model: SolutionModel = build();
+    await open(model);
+    expect(rowFor(model, 'root')?.loading).toBe(true);
+
+    // A is renamed away (or removed from the solution) while it evaluates.
+    project.model = {
+      ...sampleModel(),
+      projects: [{ name: 'B', path: '/root/B/B.csproj' }],
+      tree: [{ type: 'project', name: 'B', path: '/root/B/B.csproj' }],
+    };
+    treeChanged!({ root: '/root', directories: ['/root/A'], overflow: false });
+    await waitForReloadDebounce();
+
+    // B waits its turn behind A's evaluation, so nothing in the new model is in flight.
+    expect(rowFor(model, 'root')?.loading).toBe(false);
+
+    project.resolveAll();
+    await flush();
+    project.resolveAll();
+    await flush();
+    expect(project.itemRequests).toEqual(['/root/A/A.csproj', '/root/B/B.csproj']);
+    expect(rowFor(model, 'root')?.loading).toBe(false);
+  });
+
+  it('fetch_anEvaluationThatFails_clearsItsSpinner_andLetsItBeEvaluatedAgain', async () => {
+    project.model = sampleModel();
+    project.failingItems.add('/root/A/A.csproj');
+    const model: SolutionModel = build();
+    await open(model);
+    expect(rowFor(model, 'root')?.loading).toBe(false);
+
+    project.failingItems.clear();
+    project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+    treeChanged!({ root: '/root', directories: ['/root/A'], overflow: false });
+    await waitForReloadDebounce();
+    await flush();
+
+    expect(
+      project.itemRequests.filter((path: string): boolean => path === '/root/A/A.csproj'),
+    ).toHaveLength(2);
+    expect(rowFor(model, 'root')?.loading).toBe(false);
   });
 
   it('setActive_whileHidden_defersTheWatchDrivenReloadAndRunsItOnceOnReactivation', async () => {

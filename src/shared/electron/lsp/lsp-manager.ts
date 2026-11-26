@@ -1,5 +1,5 @@
 import { BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent, WebContents } from 'electron';
-import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { statSync } from 'node:fs';
 import { logger } from '../logger';
 import { answerConfiguration } from './lsp-server-settings';
@@ -46,6 +46,8 @@ import {
   LspSettingsChange,
 } from './lsp-server-registry';
 import { FileEvent, LspFileWatcher } from './lsp-file-watcher';
+import { SolutionReopener } from './lsp-solution-reopen';
+import type { LspPostInitialize } from './language-server-descriptor';
 import {
   createsCompilationDatabase,
   hasCompilationDatabase,
@@ -57,8 +59,15 @@ import {
   writeGeneratedView,
 } from './lsp-generated-views';
 import { LspServerTail } from './lsp-server-tail';
+import { launchFor, RunToken, RunTokens } from '../process/launch';
 import { ApplyEditResult, LspApplyEditForwarder } from './lsp-apply-edit';
 import { clientCapabilities } from './lsp-client-capabilities';
+import { WatchModes } from '../watching/watch-modes';
+
+/**
+ * The reason a server start is held for a folder the user has not trusted.
+ */
+const UNTRUSTED_ERROR: string = 'This folder is not trusted, so no language server runs in it.';
 
 /**
  * Specifies how long, in milliseconds, to wait for a server's `initialize` response before giving up
@@ -261,6 +270,11 @@ export class LspManager {
   private readonly registry: LspServerRegistry;
 
   /**
+   * Issues the run tokens every server start needs (#1504): one only for a folder the user trusts.
+   */
+  private readonly tokens: RunTokens;
+
+  /**
    * Holds the running sessions, keyed by session identifier.
    */
   private readonly sessions: Map<string, LspSession> = new Map<string, LspSession>();
@@ -302,31 +316,42 @@ export class LspManager {
   private readonly indentation: LspIndentationForwarder;
 
   /**
+   * Holds the policy deciding which sessions' roots are polled rather than watched natively (#1254).
+   */
+  private readonly watchModes: WatchModes;
+
+  /**
    * Initializes a new instance of the {@link LspManager} class.
    * @param windowGetter A function that returns the window server notifications are sent to.
    * @param workspaceContext The open-workspace tracker used to confine sessions to opened roots.
    * @param registry The registry that resolves server identifiers into spawn specifications.
+   * @param tokens Issues the run tokens a server start needs: none starts in an untrusted folder.
    * @param applyEdits The forwarder that hands a server's edits to the renderer.
    * @param attaches The forwarder that asks the renderer to attach the debugger (#1150).
    * @param questions The forwarder that puts a server's questions to the user (#1154).
    * @param indentation The forwarder that asks the renderer how a document is indented (#1208).
+   * @param watchModes Decides which roots are polled (#1254); none by default.
    */
   public constructor(
     windowGetter: () => BrowserWindow | null,
     workspaceContext: WorkspaceContext,
     registry: LspServerRegistry,
+    tokens: RunTokens,
     applyEdits: LspApplyEditForwarder = new LspApplyEditForwarder(),
     attaches: LspAttachDebuggerForwarder = new LspAttachDebuggerForwarder(),
     questions: LspShowMessageForwarder = new LspShowMessageForwarder(),
     indentation: LspIndentationForwarder = new LspIndentationForwarder(),
+    watchModes: WatchModes = new WatchModes(),
   ) {
     this.windowGetter = windowGetter;
     this.workspaceContext = workspaceContext;
     this.registry = registry;
+    this.tokens = tokens;
     this.applyEdits = applyEdits;
     this.attaches = attaches;
     this.questions = questions;
     this.indentation = indentation;
+    this.watchModes = watchModes;
   }
 
   /**
@@ -593,6 +618,14 @@ export class LspManager {
       logger.warn('LspManager', `LSP start denied for non-open root ${parsed.rootPath}`);
       return { success: false, error: 'Workspace root is not open' };
     }
+    // ⛔ A language server reads the folder's own configuration and, for many, runs its code: build
+    // scripts, project imports, interpreters. None starts in a folder the user has not trusted, and the
+    // check comes before resolving, so an untrusted folder does not even download one (#1504).
+    const token: RunToken | null = this.tokens.issue(parsed.rootPath);
+    if (token === null) {
+      logger.info('LspManager', `LSP start held for untrusted root ${parsed.rootPath}`);
+      return { success: false, error: UNTRUSTED_ERROR, untrusted: true };
+    }
     const disposals: number = this.disposals;
     const resolution: LspResolution = await this.registry.resolve(
       parsed.serverId,
@@ -632,7 +665,7 @@ export class LspManager {
     try {
       // Own process group, so tearing down reaches the server's children too (Roslyn's MSBuild
       // BuildHost workers, jdtls's forked JVMs) — not just the server itself.
-      child = spawn(spec.command, [...spec.args], {
+      child = launchFor(token).spawn(spec.command, [...spec.args], {
         cwd: parsed.rootPath,
         env: { ...process.env, ...spec.env },
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -699,6 +732,9 @@ export class LspManager {
     // first appears once it is running, so the CMake configure that writes one restarts it, once.
     let awaitingDatabase: boolean =
       readsCompilationDatabase(parsed.serverId) && !hasCompilationDatabase(parsed.rootPath);
+    // And Roslyn does not watch its solution: a project added to it, removed or renamed is loaded
+    // only once the solution is opened again.
+    const solution: SolutionReopener = new SolutionReopener(spec.postInitialize);
     const watcher: LspFileWatcher = new LspFileWatcher(
       parsed.rootPath,
       (events: readonly FileEvent[]): void => {
@@ -718,6 +754,19 @@ export class LspManager {
           }
         }
       },
+      (relativePaths: readonly string[]): void => {
+        const reopen: readonly LspPostInitialize[] = solution.reopenFor(
+          parsed.rootPath,
+          relativePaths,
+        );
+        if (reopen.length > 0 && this.sessions.get(parsed.sessionId)?.child === child) {
+          logger.info('LspManager', `The solution changed; ${parsed.sessionId} opens it again`);
+          for (const message of reopen) {
+            this.tell(connection, message.method, message.params);
+          }
+        }
+      },
+      this.watchModes,
     );
     const session: LspSession = {
       connection,
@@ -1190,14 +1239,13 @@ export class LspManager {
     );
     connection.onRequest('window/workDoneProgress/create', (): null => null);
     // The server's diagnostics changed in a way an open workspace pull will not report (a project
-    // finished loading, the analysis scope changed): pull afresh (#1144). A server with no workspace
-    // pull has its open documents pulled again by the renderer (#1210).
+    // finished loading, the analysis scope changed): pull afresh (#1144). Its open documents are
+    // pulled again by the renderer (#1210) whether or not there is a workspace pull: Roslyn's leaves
+    // open documents out, so a file an agent fixed on disk left the error it caused in an open
+    // document standing until that document was itself edited.
     connection.onRequest('workspace/diagnostic/refresh', (): null => {
-      if (session.workspaceDiagnostics) {
-        session.workspaceDiagnostics.refresh();
-      } else {
-        this.forwardNotification(sessionId, 'workspace/diagnostic/refresh', undefined);
-      }
+      session.workspaceDiagnostics?.refresh();
+      this.forwardNotification(sessionId, 'workspace/diagnostic/refresh', undefined);
       return null;
     });
     // A server sends this when its semantic classification has improved (a project finished loading)

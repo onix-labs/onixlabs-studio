@@ -13,6 +13,7 @@ import { ToastCard } from '@shared/angular/components/toast-card/toast-card';
 import { MENU_POSITIONS } from '@shared/angular/components/menu/menu-position';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
+import { NotificationSilencer } from '@shared/angular/services/notifications/notification-silencer';
 import {
   Notification,
   NotificationAction,
@@ -51,6 +52,11 @@ export class StatusStripNotificationsMenu {
    * Holds the application-wide notification store the centre renders.
    */
   private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Holds the Don't Show Again and Notification Settings service the entries offer (#1487).
+   */
+  protected readonly silencer: NotificationSilencer = inject(NotificationSilencer);
 
   /**
    * Gets the recent notifications, newest first.

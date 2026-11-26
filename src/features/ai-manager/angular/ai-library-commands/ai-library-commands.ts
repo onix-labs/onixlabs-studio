@@ -3,7 +3,7 @@ import { computed, Service, signal, Signal, WritableSignal } from '@angular/core
 /**
  * The AI Manager's library sections: the ones listing things the user writes.
  */
-export type AiLibrarySection = 'profiles' | 'skills';
+export type AiLibrarySection = 'persona' | 'skills';
 
 /**
  * What a library section does for the ribbon. Mirrors the Model Manager's handler: the section
@@ -15,6 +15,11 @@ export interface AiLibraryCommandHandler {
    * Starts a new entry and selects it.
    */
   add(): void;
+
+  /**
+   * Starts a new core entry and selects it, in a section that has a core (the persona).
+   */
+  addCore?(): void;
 
   /**
    * Imports an entry from disk, when the section supports it.
@@ -84,6 +89,14 @@ export class AiLibraryCommands {
    */
   public add(section: AiLibrarySection): void {
     this.handlers().get(section)?.add();
+  }
+
+  /**
+   * Starts a new core entry in a section that has a core.
+   * @param section The section.
+   */
+  public addCore(section: AiLibrarySection): void {
+    this.handlers().get(section)?.addCore?.();
   }
 
   /**

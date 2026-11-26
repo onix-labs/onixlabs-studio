@@ -1,8 +1,13 @@
-import { execFile } from 'node:child_process';
+import { Launcher, launchStudioOwned } from '../process/launch';
 import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
 import { logger } from '../logger';
+
+/**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('tool-probe');
 
 /**
  * Runs a child process and resolves with its output, used for interpreter probes.
@@ -11,7 +16,7 @@ const execFileAsync: (
   file: string,
   args: readonly string[],
   options?: { cwd?: string; maxBuffer?: number },
-) => Promise<{ stdout: string; stderr: string }> = promisify(execFile);
+) => Promise<{ stdout: string; stderr: string }> = promisify(launch.execFile);
 
 /**
  * Matches the version reported by `python --version`, capturing major and minor.

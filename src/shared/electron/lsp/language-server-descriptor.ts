@@ -180,6 +180,13 @@ export interface LanguageServerContext {
   readonly rootPath: string;
 
   /**
+   * Gets whether the user trusts the workspace (#1504). A server only starts in a trusted one, so this
+   * is true wherever a descriptor resolves today; a descriptor that would run something the workspace
+   * ships (its own compiler, its own interpreter) still checks it, so that stays true if the gate moves.
+   */
+  readonly trusted: boolean;
+
+  /**
    * Gets the brace style the user's settings give the language the session was started for (#1177),
    * for a server that can only be told it at launch — or undefined, leaving the server its default.
    */

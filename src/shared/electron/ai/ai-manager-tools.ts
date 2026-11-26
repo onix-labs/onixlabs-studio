@@ -1,23 +1,23 @@
 import * as os from 'node:os';
 import {
   DELETE_MODEL,
-  DELETE_PROMPT_PROFILE,
+  DELETE_PERSONA_ENTRY,
   DELETE_SKILL,
   DOWNLOAD_MODEL,
   LIST_LOCAL_MODELS,
-  LIST_PROMPT_PROFILES,
+  LIST_PERSONA,
   LIST_SKILL_TAGS,
   LIST_SKILLS,
   READ_MACHINE_FACTS,
   READ_SKILL,
-  SAVE_PROMPT_PROFILE,
+  SAVE_PERSONA_ENTRY,
   SAVE_SKILL,
   SEARCH_MODEL_CATALOG,
 } from '@shared/api/ai-types';
 import { logger } from '@shared/electron/logger';
 import type { AgentRunContext } from './agent-provider';
 
-// The AI Manager agent's tools (#967): local models, prompt profiles and skills. Every handler but the
+// The AI Manager agent's tools (#967): local models, the persona (#1514) and skills. Every handler but the
 // machine facts asks the renderer, which acts through the same services the view's own controls use,
 // so the view shows what the agent did the moment it does it. The answers are rendered as JSON: they
 // are structured lists the model reads back field by field.
@@ -28,13 +28,14 @@ import type { AgentRunContext } from './agent-provider';
  */
 export const AI_MANAGER_PROMPT_APPENDIX: string = [
   'You are running inside ONIXLabs Studio, docked to the AI Manager: the local models the user runs',
-  'on this machine, their prompt profiles (standing instructions for agents) and their skill library',
-  '(instructions an agent loads when a task needs them). You can:',
+  'on this machine, their persona (what Studio knows about the user: a short core every agent is',
+  'given, and memories an agent looks up when relevant) and their skill library (instructions an',
+  'agent loads when a task needs them). You can:',
   `- "${LIST_LOCAL_MODELS}" lists the local runtime, its installed and running models and disk use.`,
   `- "${SEARCH_MODEL_CATALOG}" searches the catalogue of models that can be downloaded.`,
   `- "${READ_MACHINE_FACTS}" reports the machine's memory, processor and architecture.`,
   `- "${DOWNLOAD_MODEL}" starts a download; "${DELETE_MODEL}" deletes an installed model.`,
-  `- "${LIST_PROMPT_PROFILES}", "${SAVE_PROMPT_PROFILE}" and "${DELETE_PROMPT_PROFILE}" manage profiles.`,
+  `- "${LIST_PERSONA}", "${SAVE_PERSONA_ENTRY}" and "${DELETE_PERSONA_ENTRY}" manage the persona.`,
   `- "${LIST_SKILLS}", "${READ_SKILL}", "${SAVE_SKILL}" and "${DELETE_SKILL}" manage skills.`,
   `- "${LIST_SKILL_TAGS}" lists what a skill can be scoped to and tagged with.`,
   'Choosing a model: read the machine facts first, then suggest models that fit — a model needs',
@@ -159,41 +160,41 @@ export function deleteModel(context: AgentRunContext, name: string): Promise<str
 }
 
 /**
- * Lists the prompt profiles.
+ * Lists the persona's entries.
  * @param context The agent run context.
- * @returns Returns the profiles.
+ * @returns Returns the entries.
  */
-export function listPromptProfiles(context: AgentRunContext): Promise<string> {
-  return ask(context, LIST_PROMPT_PROFILES, {});
+export function listPersona(context: AgentRunContext): Promise<string> {
+  return ask(context, LIST_PERSONA, {});
 }
 
 /**
- * Creates or changes a prompt profile.
+ * Creates or changes a persona entry.
  * @param context The agent run context.
- * @param profile The profile's fields.
+ * @param entry The entry's fields.
  * @returns Returns a confirmation, or why it was refused.
  */
-export function savePromptProfile(
+export function savePersonaEntry(
   context: AgentRunContext,
-  profile: Record<string, unknown>,
+  entry: Record<string, unknown>,
 ): Promise<string> {
   return ask(
     context,
-    SAVE_PROMPT_PROFILE,
-    profile,
+    SAVE_PERSONA_ENTRY,
+    entry,
     (answer: Record<string, unknown>): string =>
-      `${answer['created'] === true ? 'Created' : 'Updated'} the profile "${String(answer['name'])}" (id ${String(answer['id'])}).`,
+      `${answer['created'] === true ? 'Created' : 'Updated'} the persona entry "${String(answer['name'])}" (id ${String(answer['id'])}).`,
   );
 }
 
 /**
- * Deletes a prompt profile.
+ * Deletes a persona entry.
  * @param context The agent run context.
- * @param id The profile's id.
+ * @param id The entry's id.
  * @returns Returns a confirmation, or why it was not deleted.
  */
-export function deletePromptProfile(context: AgentRunContext, id: string): Promise<string> {
-  return ask(context, DELETE_PROMPT_PROFILE, { id }, (): string => `Deleted profile ${id}.`);
+export function deletePersonaEntry(context: AgentRunContext, id: string): Promise<string> {
+  return ask(context, DELETE_PERSONA_ENTRY, { id }, (): string => `Deleted persona entry ${id}.`);
 }
 
 /**

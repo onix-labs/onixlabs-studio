@@ -1,0 +1,48 @@
+<app-system-monitor-dashboard-card
+  [icon]="Icon.MONITOR_GPU"
+  heading="GPU"
+  subtitle="Graphics processor utilisation"
+>
+  <!-- The badge has an @if of its own: a node projected into a named slot must be its block's only
+       root. There is no Studio badge, as CPU and Memory have: no OS reports a process's own GPU use
+       portably (Electron's process metrics carry CPU and memory only). -->
+  @if (readings.gpuMonitoring()) {
+    <app-system-monitor-dashboard-badge cardBadges [value]="readings.gpuValue()" caption="System" />
+  }
+
+  @if (readings.gpuMonitoring()) {
+    <app-system-monitor-line-chart
+      class="gpu-card__chart"
+      ariaLabel="GPU utilisation over time"
+      [series]="series()"
+      [max]="100"
+      [format]="percent"
+      [intervalMs]="readings.intervalMs()"
+    />
+
+    <div class="gpu-card__summary">
+      <app-system-monitor-radial-meter
+        class="gpu-card__meter"
+        [percent]="vramUsed()"
+        label="VRAM"
+      />
+      <dl class="gpu-card__entries" data-testid="gpu-card-vram">
+        @for (entry of entries(); track entry.label) {
+          <div class="gpu-card__entry">
+            <dt>
+              <span
+                class="gpu-card__key"
+                [class.gpu-card__key--used]="entry.key === 'used'"
+                [class.gpu-card__key--free]="entry.key === 'free'"
+              ></span>
+              {{ entry.label }}
+            </dt>
+            <dd>{{ entry.value }}</dd>
+          </div>
+        }
+      </dl>
+    </div>
+  } @else {
+    <p class="gpu-card__off">GPU Monitoring is off. Turn it on in Settings to read the GPU.</p>
+  }
+</app-system-monitor-dashboard-card>

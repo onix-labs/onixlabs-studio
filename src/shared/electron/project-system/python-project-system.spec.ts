@@ -11,6 +11,7 @@ import {
   parseSetupPyName,
   PythonProjectSystem,
 } from './python-project-system';
+import { trustedToken } from '../process/run-token.fixture';
 
 describe('parsePyprojectName', () => {
   it('readsThePep621ProjectName', () => {
@@ -396,7 +397,12 @@ describe('PythonProjectSystem.loadProjectItems (#899)', () => {
 describe('PythonProjectSystem.formatDocument', () => {
   it('leavesAFileThatIsNotPythonToOthers', async () => {
     expect(
-      await new PythonProjectSystem().formatDocument('/w/notes.md', '# notes', '/w'),
+      await new PythonProjectSystem().formatDocument(
+        '/w/notes.md',
+        '# notes',
+        '/w',
+        trustedToken('/w'),
+      ),
     ).toBeNull();
   });
 });

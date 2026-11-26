@@ -10,8 +10,9 @@ import {
 import { Log } from '@shared/angular/services/log/log';
 import { RememberedState } from '@shared/angular/services/remembered-state/remembered-state';
 import { Settings } from '@shared/angular/services/settings/settings';
-import type { FinishNotifications } from '@shared/angular/services/settings/settings-registry';
+import type { NotificationChoice } from '@shared/angular/services/settings/settings-registry';
 import { DesktopNotifications } from './desktop-notifications';
+import { NotificationTypes } from './notification-types';
 
 /**
  * The maximum number of notifications the history keeps. The history backs the status-strip
@@ -33,22 +34,6 @@ export type NotificationSeverity = 'info' | 'success' | 'warning' | 'error';
  * would be stale as a record, such as an agent ask that retracts once answered).
  */
 export type NotificationRoute = 'default' | 'history-only' | 'toast-only';
-
-/**
- * Describes the end of a piece of work a notification reports, so the Notify When … Finishes settings
- * can decide whether it interrupts: an agent's turn or background task, or a run or build.
- */
-export interface FinishedWork {
-  /**
-   * Gets what finished.
-   */
-  readonly kind: 'agent' | 'run';
-
-  /**
-   * Gets whether it failed.
-   */
-  readonly failed: boolean;
-}
 
 /**
  * Defines an action offered on a notification, rendered as a button on its toast.
@@ -83,6 +68,18 @@ export interface NotificationRequest {
    * Gets the supporting detail shown under the title, or undefined when the title stands alone.
    */
   readonly detail?: string;
+
+  /**
+   * Gets commands the detail suggests running, each shown as code with its own Copy button (#1255),
+   * or undefined when it suggests none.
+   */
+  readonly commands?: readonly string[];
+
+  /**
+   * Gets a tool's own output behind the detail, shown under Show Details, or undefined when the
+   * detail is the whole story. Kept for a detail that rewords what the tool said.
+   */
+  readonly output?: string;
 
   /**
    * Gets the actions offered on the toast, or undefined when it offers none.
@@ -128,10 +125,12 @@ export interface NotificationRequest {
   readonly onDismiss?: () => void;
 
   /**
-   * Gets the work whose end this notification reports, if it reports one. When the matching Notify
-   * When … Finishes setting does not want it, the notification is recorded in the tray only.
+   * Gets the notification's type (#1486), one of the identifiers in the {@link NotificationTypes}
+   * list, for a notification about something that happened in the background. The user's choice for
+   * the type decides whether it pops up, goes to the history only, or is dropped. Undefined for
+   * feedback on something the user just did, which always shows.
    */
-  readonly finished?: FinishedWork;
+  readonly type?: string;
 }
 
 /**
@@ -159,6 +158,17 @@ export interface Notification {
   readonly detail?: string;
 
   /**
+   * Gets the commands the detail suggests running, each copyable, or undefined when it suggests none.
+   */
+  readonly commands?: readonly string[];
+
+  /**
+   * Gets the tool's own output behind the detail, shown under Show Details, or undefined when there
+   * is none.
+   */
+  readonly output?: string;
+
+  /**
    * Gets the actions offered on the toast.
    */
   readonly actions: readonly NotificationAction[];
@@ -177,6 +187,12 @@ export interface Notification {
    * Gets when the notification was raised, as an epoch millisecond timestamp.
    */
   readonly timestamp: number;
+
+  /**
+   * Gets the notification's type (#1486), which a toast's Don't Show Again switches off (#1487), or
+   * undefined for feedback on something the user just did.
+   */
+  readonly type?: string;
 }
 
 /**
@@ -199,6 +215,11 @@ export class Notifications {
    * Holds the settings, read for what still pops up while muted.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the notification types and the user's choice for each.
+   */
+  private readonly types: NotificationTypes = inject(NotificationTypes);
 
   /**
    * Holds the bridge to the operating system's notification centre.
@@ -286,20 +307,35 @@ export class Notifications {
    * @param request The notification to raise.
    */
   public notify(request: NotificationRequest): void {
-    // Work whose end the user does not want to hear about is recorded, not announced.
-    const announced: boolean = request.finished === undefined || this.announces(request.finished);
+    // A kind the user switched off is not recorded at all; one they want in the history only is
+    // recorded without announcing it, here or on the desktop.
+    const choice: NotificationChoice =
+      request.type === undefined ? 'popup' : this.types.choice(request.type);
+    if (choice === 'off') {
+      request.onDismiss?.();
+      this.log.debug('Notifications', `Dropped ${request.type} notification: ${request.title}`);
+      return;
+    }
+    const announced: boolean = choice === 'popup';
     const route: NotificationRoute = announced ? (request.route ?? 'default') : 'history-only';
     const notification: Notification = {
       id: this.nextId++,
       severity: request.severity,
       title: request.title,
       detail: request.detail,
+      ...(request.commands === undefined || request.commands.length === 0
+        ? {}
+        : { commands: request.commands }),
+      ...(request.output === undefined || request.output.trim() === ''
+        ? {}
+        : { output: request.output }),
       actions: request.actions ?? [],
       key: request.key,
       sticky:
         request.sticky ??
         (request.severity === 'error' && this.settings.get('notifications.errorsStay')),
       timestamp: Date.now(),
+      ...(request.type === undefined ? {} : { type: request.type }),
     };
     if (route !== 'history-only' && !this.silenced(notification.severity)) {
       if (request.onDismiss !== undefined) {
@@ -346,19 +382,6 @@ export class Notifications {
         ),
       );
     }
-  }
-
-  /**
-   * Gets whether the end of some work is announced, as the matching Notify When … Finishes setting
-   * says: always, for failures only, or never.
-   * @param finished The work that finished.
-   * @returns Returns true when the notification should interrupt.
-   */
-  private announces(finished: FinishedWork): boolean {
-    const choice: FinishNotifications = this.settings.get(
-      finished.kind === 'agent' ? 'notifications.agentFinished' : 'notifications.runFinished',
-    );
-    return choice === 'always' || (choice === 'failures' && finished.failed);
   }
 
   /**

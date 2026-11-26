@@ -1,4 +1,5 @@
-import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { Launcher, launchStudioOwned } from './process/launch';
 import { promises as fs } from 'node:fs';
 import * as nodePath from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
@@ -20,6 +21,11 @@ import { isReplaceRequest, replaceInFiles } from './search-replace-files';
 import { WorkspaceContext } from './workspace-context';
 import { LineSplitter } from './line-splitter';
 import { logger } from './logger';
+
+/**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('search');
 
 /**
  * Caps the number of matches ripgrep is asked to return per file, bounding the work for pathological
@@ -167,7 +173,9 @@ export class SearchManager {
     }
     logger.debug('SearchManager.listFiles', `Listing files under ${root}`);
     return new Promise<readonly string[]>((resolve: (value: readonly string[]) => void): void => {
-      const child: ChildProcessWithoutNullStreams = spawn(rgPath, ['--files'], { cwd: root });
+      const child: ChildProcessWithoutNullStreams = launch.spawn(rgPath, ['--files'], {
+        cwd: root,
+      });
       const paths: string[] = [];
       let settled: boolean = false;
 
@@ -390,7 +398,7 @@ export class SearchManager {
     const maxResults: number = request.limits?.maxResults ?? MAX_TOTAL_MATCHES;
     const timeout: number = (request.limits?.timeoutSeconds ?? RG_TIMEOUT_MS / 1000) * 1000;
     return new Promise<SearchResponse>((resolve: (value: SearchResponse) => void): void => {
-      const child: ChildProcessWithoutNullStreams = spawn(
+      const child: ChildProcessWithoutNullStreams = launch.spawn(
         rgPath,
         this.buildArgs(request, targets),
         {

@@ -1,6 +1,7 @@
 import { DestroyRef, effect, inject, Injector, OnDestroy, Service, untracked } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Bridge } from '@shared/api/bridge';
+import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
 import { Log } from '@shared/angular/services/log/log';
 import {
   LspApplyEditReply,
@@ -24,6 +25,7 @@ import {
 } from '@shared/api/lsp-channels';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { Diagnostic, Diagnostics } from '../diagnostics/diagnostics';
+import type { Severity } from '@shared/api/log-channels';
 import { Output, OutputChannel } from '../output/output';
 import { Icon } from '@shared/angular/icons/icon';
 import { Editors } from '@shared/angular/services/editors/editors';
@@ -66,7 +68,7 @@ import {
   toDiagnostic,
   toMarkerData,
 } from './lsp-diagnostic-mapper';
-import { LspContentEdit, minimalReplaceEdit } from './lsp-text-sync';
+import { LspContentEdit, LspWholeDocumentEdit, minimalReplaceEdit } from './lsp-text-sync';
 import {
   codeActionSupportOf,
   fileRenameFiltersOf,
@@ -81,6 +83,7 @@ import {
   saveIncludesText,
   semanticLegendOf,
   supportsPullDiagnostics,
+  syncsWholeDocument,
 } from './lsp-capabilities';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { EditorConfigs } from '@shared/angular/services/editor-config/editor-configs';
@@ -787,12 +790,26 @@ const MAX_START_ATTEMPTS: number = 3;
 const FROZEN_TOKEN_SERVERS: ReadonlySet<string> = new Set<string>(['csharp']);
 
 /**
+ * The servers that sort a document's keys on request, for Sort Document (#1214): the JSON server's
+ * `json/sort`. Known by the server, since none advertises it.
+ */
+const DOCUMENT_SORTING_SERVERS: ReadonlySet<string> = new Set<string>([
+  'vscode-json-language-server',
+]);
+
+/**
  * The servers whose pushed diagnostics reach the Error List for files that are not open as well
  * (#1210): `cargo check` reports whole crates, so an error a change causes in another file would
  * otherwise show nowhere. So does typescript-language-server once the main process has tsserver check
- * the open documents' projects (#1207). The other servers' pushes are left to their open documents.
+ * the open documents' projects (#1207), and gopls, which type-checks every package in the workspace
+ * and reports each one's errors whether its files are open or not (#1211). The other servers' pushes
+ * are left to their open documents.
  */
-const WHOLE_WORKSPACE_PUSH_SERVERS: ReadonlySet<string> = new Set<string>(['rust', 'typescript']);
+const WHOLE_WORKSPACE_PUSH_SERVERS: ReadonlySet<string> = new Set<string>([
+  'rust',
+  'typescript',
+  'go',
+]);
 
 /**
  * How long a session's refresh signals must stay quiet before its recolour pass runs. A loading
@@ -995,6 +1012,17 @@ export class LspClient implements OnDestroy {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the trust question's client, asked about the folder of a file opened on its own (#1504).
+   */
+  private readonly repositoryTrust: RepositoryTrust = inject(RepositoryTrust);
+
+  /**
+   * Holds the folders of files opened on their own that have been asked about this session, so a
+   * folder the user declined is not asked about again with every file opened from it.
+   */
+  private readonly askedLoneFolders: Set<string> = new Set<string>();
+
+  /**
    * Holds the disposer that withdraws this client's document resolver, or null when not registered.
    */
   private featuresDisposer: (() => void) | null = null;
@@ -1146,6 +1174,11 @@ export class LspClient implements OnDestroy {
    * Holds the sessions whose server asked for the document text to accompany `didSave`.
    */
   private readonly saveWithText: Set<string> = new Set<string>();
+
+  /**
+   * Holds the sessions whose server takes each change as the whole document (full sync, #1206).
+   */
+  private readonly wholeDocumentSync: Set<string> = new Set<string>();
 
   /**
    * Holds the pending debounced diagnostic-pull timers, keyed by document id.
@@ -1758,6 +1791,8 @@ export class LspClient implements OnDestroy {
       codeLens: this.codeLensSupport.get(sessionId),
       runTests: (lens: unknown): void => void this.runTests(sessionId, tracked, lens),
       navigation: this.navigationSupport.get(sessionId),
+      sortsDocument: DOCUMENT_SORTING_SERVERS.has(tracked.serverId),
+      version: tracked.version,
       completion: this.assistSupport.get(sessionId)?.completion ?? null,
       signatureHelp: this.assistSupport.get(sessionId)?.signatureHelp ?? null,
       diagnostics: this.serverDiagnostics.get(tracked.documentId) ?? [],
@@ -2289,6 +2324,35 @@ export class LspClient implements OnDestroy {
     }
   }
 
+  /**
+   * Asks, once a session, whether the user trusts the folder of a file opened on its own, and opens
+   * its documents against their servers if they do (#1504).
+   * @param folder The file's folder.
+   */
+  private async askAboutLoneFolder(folder: string): Promise<void> {
+    if (this.askedLoneFolders.has(folder)) {
+      return;
+    }
+    this.askedLoneFolders.add(folder);
+    if ((await this.repositoryTrust.ensureAsked(folder)) === 'trusted') {
+      this.retryTrusted(folder);
+    }
+  }
+
+  /**
+   * Opens, against their servers, the documents that waited on a folder the user has just trusted
+   * (#1504): their servers were held while it was not, so they were never opened. Documents already
+   * open are left alone, so a second call sends nothing twice.
+   * @param folder The folder now trusted; it covers every document beneath it.
+   */
+  public retryTrusted(folder: string): void {
+    for (const tracked of this.tracked.values()) {
+      if (!tracked.opened && isWithinFolder(tracked.rootPath, folder)) {
+        this.enqueue(tracked, (): Promise<void> => this.reopen(tracked));
+      }
+    }
+  }
+
   public prestartServer(serverId: string, rootPath: string): void {
     if (this.bridge === undefined || this.lspSettings.isDisabled(serverId)) {
       return;
@@ -2511,8 +2575,12 @@ export class LspClient implements OnDestroy {
     // Send the smallest single ranged edit that turns the previous text into the new one. The
     // explicit range is what servers advertising incremental sync require (a range-less full-text
     // change crashes them), and trimming to the changed span keeps a keystroke in a large file from
-    // shipping — and forcing the server to re-process — the whole document.
-    const edit: LspContentEdit | null = minimalReplaceEdit(tracked.text, content);
+    // shipping — and forcing the server to re-process — the whole document. A server that asked for
+    // full sync reads a change's text as the whole document, range or not, so it gets the whole text
+    // (#1206).
+    const edit: LspContentEdit | LspWholeDocumentEdit | null = this.wholeDocumentSync.has(sessionId)
+      ? { text: content }
+      : minimalReplaceEdit(tracked.text, content);
     if (edit === null) {
       return;
     }
@@ -2678,6 +2746,19 @@ export class LspClient implements OnDestroy {
         ...(braceStyle === undefined ? {} : { braceStyle }),
       })
       .then((result: LspStartResult): boolean => {
+        if (result.untrusted === true) {
+          // Held, not failed (#1504): the folder is not trusted yet. It counts towards no cooldown or
+          // attempt cap, so trusting the folder later can start it straight away.
+          this.status.setState(sessionId, 'unavailable', result.error);
+          this.log.info('LspClient', `Server '${serverId}' held: the folder is not trusted`);
+          this.sessions.delete(sessionId);
+          // A workspace asks about its folder as it opens; a file opened on its own has nothing that
+          // does, so its server asks about the file's folder here.
+          if (standaloneFile !== undefined) {
+            void this.askAboutLoneFolder(rootPath);
+          }
+          return false;
+        }
         if (!result.success) {
           this.reportFailedStart(sessionId, result);
           this.log.error('LspClient', `Server '${serverId}' failed to start`, result.error);
@@ -2735,6 +2816,11 @@ export class LspClient implements OnDestroy {
             this.saveWithText.add(sessionId);
           } else {
             this.saveWithText.delete(sessionId);
+          }
+          if (syncsWholeDocument(result.capabilities)) {
+            this.wholeDocumentSync.add(sessionId);
+          } else {
+            this.wholeDocumentSync.delete(sessionId);
           }
           this.log.info(
             'LspClient',
@@ -2884,8 +2970,9 @@ export class LspClient implements OnDestroy {
     }
     // The server's hints are stale (a setting changed, a project finished loading): every editor
     // showing them asks again (#1145).
-    // The server's diagnostics are stale and it has no workspace pull to report them through: its open
-    // documents are pulled again (#1210), once a burst of refreshes has settled.
+    // The server's diagnostics are stale: its open documents are pulled again (#1210), once a burst of
+    // refreshes has settled. A workspace pull, where there is one, is refreshed by the main process,
+    // but does not cover them — Roslyn's leaves open documents to their own pulls.
     if (message.method === 'workspace/diagnostic/refresh') {
       if (this.pullCapable.has(message.sessionId)) {
         for (const tracked of this.tracked.values()) {
@@ -3524,7 +3611,8 @@ export class LspClient implements OnDestroy {
    * labelled by the server identifier. The channel is created on first use, so a server that never logs
    * adds no channel.
    * @param sessionId The session the message belongs to.
-   * @param params The notification parameters, whose `message` field carries the log text.
+   * @param params The notification parameters, whose `message` field carries the log text and whose
+   * `type` says how severe it is.
    */
   private appendServerLog(sessionId: string, params: unknown): void {
     const serverId: string | undefined = this.sessionInfo.get(sessionId)?.serverId;
@@ -3535,7 +3623,10 @@ export class LspClient implements OnDestroy {
     if (typeof message !== 'string' || message.length === 0) {
       return;
     }
-    this.output.channel(`lsp:${serverId}`, `LSP: ${serverId}`).appendLine(message);
+    const type: unknown = (params as { type?: unknown } | undefined)?.type;
+    this.output
+      .channel(`lsp:${serverId}`, `LSP: ${serverId}`)
+      .appendLine(message, lspMessageSeverity(type));
   }
 
   /**
@@ -4000,5 +4091,36 @@ export class LspClient implements OnDestroy {
       return null;
     }
     return { root: parentDir(filePath), standalone: true };
+  }
+}
+
+/**
+ * Determines whether a path is a folder or lies beneath it, on either separator.
+ * @param target The path.
+ * @param folder The folder.
+ * @returns Returns true when it does.
+ */
+function isWithinFolder(target: string, folder: string): boolean {
+  const base: string = folder.replace(/[\\/]+$/, '');
+  return target === base || target.startsWith(`${base}/`) || target.startsWith(`${base}\\`);
+}
+
+/**
+ * Reads how severe a server's message is from its LSP `MessageType`: 1 error, 2 warning, 3 info, 4 log
+ * and (LSP 3.18) 5 debug. A server that sends none, or something else, is taken to mean info.
+ * @param type The message's `type`.
+ * @returns Returns the severity.
+ */
+export function lspMessageSeverity(type: unknown): Severity {
+  switch (type) {
+    case 1:
+      return 'error';
+    case 2:
+      return 'warning';
+    case 4:
+    case 5:
+      return 'debug';
+    default:
+      return 'info';
   }
 }

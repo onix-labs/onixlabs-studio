@@ -1,6 +1,5 @@
-// Fills the Output dock panel body with the channel tool-strip above the read-only terminal. The
-// background tracks the resolved theme (the xterm theme paints the same colour, so the gutter around
-// the canvas matches).
+// Fills the Logs dock panel body with the filter tool-strip above a table of log lines, laid out as the
+// System Monitor's log table is so the two read alike.
 :host {
   display: flex;
   flex-direction: column;
@@ -8,17 +7,55 @@
   background: var(--dock-tab-background-color--active);
 }
 
-// Keep the channel selector compact rather than stretching across the strip.
-app-dropdown {
+// Keep the selectors compact rather than stretching across the strip.
+.logs__channel {
   flex: 0 0 auto;
   min-inline-size: 9rem;
 }
 
-.output-host {
-  box-sizing: border-box;
+.logs__level {
+  flex: 0 0 auto;
+  min-inline-size: 8rem;
+}
+
+// The filter fills the room the selectors and the Clear button leave.
+.logs__search {
+  flex: 1 1 auto;
+  min-inline-size: 8rem;
+}
+
+.logs__list {
+  display: flex;
   flex: 1 1 auto;
   min-block-size: 0;
-  inline-size: 100%;
-  padding: 0.5rem;
-  background: transparent;
+  overflow: hidden;
+}
+
+.logs__table {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.logs__time {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--body-foreground-color);
+}
+
+.logs__badge {
+  letter-spacing: 0.03em;
+}
+
+.logs__source,
+.logs__message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--body-foreground-color);
+}
+
+// A message is code-like output (paths, versions, stack lines), so it reads in the code font.
+.logs__message {
+  font-family: 'JetBrains Mono', Menlo, Consolas, monospace;
+  font-size: 0.8rem;
 }

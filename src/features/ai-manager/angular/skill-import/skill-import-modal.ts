@@ -28,7 +28,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { SkillReview } from '../skill-review/skill-review';
 import {
   FileChoice,
-  ImportAcceptedProfile,
+  ImportAcceptedPersonaEntry,
   ImportAcceptedSkill,
   ImportLeftOut,
   ImportPrompt,
@@ -36,11 +36,11 @@ import {
 } from './skill-import-session';
 
 /**
- * One row of the summary's table: a skill or profile to import, or a file left out.
+ * One row of the summary's table: a skill or persona entry to import, or a file left out.
  */
 type SummaryEntry =
   | { readonly kind: 'skill'; readonly skill: ImportAcceptedSkill }
-  | { readonly kind: 'profile'; readonly item: ImportAcceptedProfile }
+  | { readonly kind: 'persona'; readonly item: ImportAcceptedPersonaEntry }
   | { readonly kind: 'left-out'; readonly item: ImportLeftOut };
 
 /**
@@ -175,29 +175,30 @@ export class SkillImportModal {
   );
 
   /**
-   * Gets the summary's opening line: how many skills are selected, and the profiles coming with them.
+   * Gets the summary's opening line: how many skills are selected, and the persona entries coming with
+   * them.
    */
   protected readonly selectionLine: Signal<string> = computed((): string => {
     const parts: string[] = [];
     if (this.session.accepted().length > 0) {
       parts.push(`${this.included()} of ${this.session.accepted().length} skills`);
     }
-    if (this.session.acceptedProfiles().length > 0) {
+    if (this.session.acceptedPersona().length > 0) {
       parts.push(
-        `${this.includedProfiles()} of ${this.session.acceptedProfiles().length} prompt profiles`,
+        `${this.includedPersona()} of ${this.session.acceptedPersona().length} persona entries`,
       );
     }
     return `${parts.join(' and ')} selected.`;
   });
 
   /**
-   * Gets the accepted profiles still included.
+   * Gets the accepted persona entries still included.
    */
-  protected readonly includedProfiles: Signal<number> = computed(
+  protected readonly includedPersona: Signal<number> = computed(
     (): number =>
       this.session
-        .acceptedProfiles()
-        .filter((item: ImportAcceptedProfile): boolean => item.included).length,
+        .acceptedPersona()
+        .filter((item: ImportAcceptedPersonaEntry): boolean => item.included).length,
   );
 
   /**
@@ -205,12 +206,12 @@ export class SkillImportModal {
    */
   protected readonly importLabel: Signal<string> = computed((): string => {
     const skills: number = this.included();
-    const profiles: number = this.includedProfiles();
-    if (skills > 0 && profiles > 0) {
+    const entries: number = this.includedPersona();
+    if (skills > 0 && entries > 0) {
       return 'Import';
     }
-    return profiles > 0
-      ? `Import ${profiles} ${profiles === 1 ? 'Profile' : 'Profiles'}`
+    return entries > 0
+      ? `Import ${entries} ${entries === 1 ? 'Entry' : 'Entries'}`
       : `Import ${skills} ${skills === 1 ? 'Skill' : 'Skills'}`;
   });
 
@@ -247,9 +248,9 @@ export class SkillImportModal {
         id: `skill:${skill.source}`,
         data: { kind: 'skill', skill } satisfies SummaryEntry,
       })),
-      ...this.session.acceptedProfiles().map((item: ImportAcceptedProfile): TableRow => ({
-        id: `profile:${item.profile.id}`,
-        data: { kind: 'profile', item } satisfies SummaryEntry,
+      ...this.session.acceptedPersona().map((item: ImportAcceptedPersonaEntry): TableRow => ({
+        id: `persona:${item.entry.id}`,
+        data: { kind: 'persona', item } satisfies SummaryEntry,
       })),
       ...this.session.leftOut().map((item: ImportLeftOut, index: number): TableRow => ({
         id: `left-out:${index}`,

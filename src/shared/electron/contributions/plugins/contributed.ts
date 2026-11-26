@@ -22,6 +22,7 @@ import {
   toHostingDescriptors,
   toPackageManagerDescriptors,
   toTestAdapterDescriptors,
+  toLiveServerDescriptors,
 } from './plugin-loader';
 import { sideloadedDirectories, sideloadedManifests } from './sideloaded';
 import { DecoderDescriptor } from '../../decoders/decoder-descriptor';
@@ -31,6 +32,7 @@ import { VersionControlDescriptor } from '../../version-control/version-control-
 import { HostingDescriptor } from '../../hosting/hosting-descriptor';
 import { PackageManagerDescriptor } from '../../package-managers/package-manager-descriptor';
 import { TestAdapterDescriptor } from '../../test-adapters/test-adapter-descriptor';
+import { LiveServerDescriptor } from '../../live-server/live-server-descriptor';
 
 // Everything Studio did not compile in: the plugins dropped into the sideload directory and the plugins
 // the curated index offers. They arrive by different routes and are the same kind of thing once they
@@ -254,6 +256,27 @@ export function contributedTestAdapters(
   const local: ReadonlyMap<string, string> = sideloadedDirectories();
   return contributedManifests().flatMap((manifest): readonly TestAdapterDescriptor[] =>
     toTestAdapterDescriptors(
+      manifest,
+      payloadProvisioner,
+      nodeRuntime,
+      local.get(manifest.id),
+      installedVersion,
+    ),
+  );
+}
+
+/**
+ * Gets the live servers the contributed plugins provide, for the live-server host to start (#1062).
+ * Every one is listed, installed or not; an uninstalled one resolves to unavailable.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @returns Returns the descriptors.
+ */
+export function contributedLiveServers(
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+): readonly LiveServerDescriptor[] {
+  const local: ReadonlyMap<string, string> = sideloadedDirectories();
+  return contributedManifests().flatMap((manifest): readonly LiveServerDescriptor[] =>
+    toLiveServerDescriptors(
       manifest,
       payloadProvisioner,
       nodeRuntime,

@@ -3,7 +3,7 @@ import type { AgentRunContext } from './agent-provider';
 
 vi.mock('electron', () => ({ app: { isPackaged: false } }));
 
-const { downloadModel, listSkills, readMachineFacts, savePromptProfile, saveSkill } =
+const { downloadModel, listSkills, readMachineFacts, savePersonaEntry, saveSkill } =
   await import('./ai-manager-tools');
 
 /**
@@ -42,11 +42,11 @@ describe('AI Manager tools', () => {
       JSON.parse(await listSkills(contextAnswering({ available: true, result: [{ name: 'a' }] }))),
     ).toEqual([{ name: 'a' }]);
     expect(
-      await savePromptProfile(
+      await savePersonaEntry(
         contextAnswering({ available: true, created: true, id: 'p1', name: 'Terse' }),
         {},
       ),
-    ).toBe('Created the profile "Terse" (id p1).');
+    ).toBe('Created the persona entry "Terse" (id p1).');
     expect(await downloadModel(contextAnswering({ available: true }), 'qwen3:8b')).toContain(
       'Started downloading qwen3:8b',
     );

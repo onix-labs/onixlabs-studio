@@ -1,6 +1,5 @@
-import { tmpdir } from 'node:os';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PromptProfileChannel } from '@shared/api/prompt-profile-channels';
+import { PersonaChannel } from '@shared/api/persona-channels';
 import { SkillImportChannel } from '@shared/api/skill-import-channels';
 import type { BrowserWindow } from 'electron';
 import type { Mock } from 'vitest';
@@ -67,9 +66,9 @@ vi.mock('electron', () => ({
 const { LibraryTransferHandlers } = await import('./library-transfer-handlers');
 
 /**
- * Holds a well-formed prompt profile.
+ * Holds a well-formed persona entry.
  */
-const PROFILE: object = { id: 'p', name: 'Terse', instructions: 'Be terse.' };
+const ENTRY: object = { id: 'p', name: 'Terse', text: 'Be terse.' };
 
 /**
  * Builds an accepted skill.
@@ -81,7 +80,6 @@ function acceptedSkill(overrides: Record<string, unknown> = {}): object {
 }
 
 describe('LibraryTransferHandlers', () => {
-  let profiles: Record<string, unknown>;
   let transfer: Record<string, Mock>;
   let sender: FakeWindow;
   let other: FakeWindow;
@@ -118,81 +116,20 @@ describe('LibraryTransferHandlers', () => {
     sender = fakeWindow(1);
     other = fakeWindow(2);
     electron.windows = [sender, other];
-    profiles = {
-      directory: '/profiles',
-      list: vi.fn().mockResolvedValue({ profiles: [] }),
-      save: vi.fn().mockResolvedValue(null),
-      delete: vi.fn().mockResolvedValue(undefined),
-    };
     transfer = {
       scan: vi.fn().mockResolvedValue({ id: 'plan' }),
-      scanForProfiles: vi.fn().mockResolvedValue({ id: 'plan' }),
+      scanForPersona: vi.fn().mockResolvedValue({ id: 'plan' }),
       discard: vi.fn(),
-      commit: vi.fn().mockResolvedValue({ skills: 1, profiles: 0, linksRewritten: 0, error: null }),
+      commit: vi.fn().mockResolvedValue({ skills: 1, persona: 0, linksRewritten: 0, error: null }),
       export: vi.fn().mockResolvedValue({ folder: '/out/export', error: null }),
     };
-    new LibraryTransferHandlers(
-      profiles as never,
-      transfer as never,
-      (): BrowserWindow | null => null,
-    ).register();
-  });
-
-  describe('profiles', () => {
-    it('save_tellsEveryOtherWindow_butNotTheSender', async () => {
-      expect(await invoke(PromptProfileChannel.Save, PROFILE)).toBeNull();
-
-      expect(other.webContents.send).toHaveBeenCalledWith(PromptProfileChannel.Changed);
-      expect(sender.webContents.send).not.toHaveBeenCalled();
-    });
-
-    it('save_thatFails_announcesNothing', async () => {
-      Reflect.set(profiles, 'save', vi.fn().mockResolvedValue('Disk full.'));
-      new LibraryTransferHandlers(
-        profiles as never,
-        transfer as never,
-        (): BrowserWindow | null => null,
-      ).register();
-
-      expect(await invoke(PromptProfileChannel.Save, PROFILE)).toBe('Disk full.');
-
-      expect(other.webContents.send).not.toHaveBeenCalled();
-    });
-
-    it.each([[null], ['x'], [{ id: 'p', name: 'n' }], [{ id: 7, name: 'n', instructions: 'i' }]])(
-      'save_ofAMalformedProfile_isRefused %#',
-      async (value: unknown) => {
-        expect(await invoke(PromptProfileChannel.Save, value)).toBe('The profile was malformed.');
-      },
-    );
-
-    it('announce_skipsADestroyedWindow', async () => {
-      other.isDestroyed = (): boolean => true;
-
-      await invoke(PromptProfileChannel.Save, PROFILE);
-
-      expect(other.webContents.send).not.toHaveBeenCalled();
-    });
-
-    it('delete_withANonString_deletesNothing', async () => {
-      await invoke(PromptProfileChannel.Delete, 7);
-
-      expect(profiles['delete']).not.toHaveBeenCalled();
-      expect(other.webContents.send).not.toHaveBeenCalled();
-    });
-
-    it('delete_announces', async () => {
-      await invoke(PromptProfileChannel.Delete, 'p');
-
-      expect(profiles['delete']).toHaveBeenCalledWith('p');
-      expect(other.webContents.send).toHaveBeenCalled();
-    });
+    new LibraryTransferHandlers(transfer as never, (): BrowserWindow | null => null).register();
   });
 
   describe('choosing', () => {
     it.each([
       [SkillImportChannel.Choose, 'scan'],
-      [SkillImportChannel.ChooseProfiles, 'scanForProfiles'],
+      [SkillImportChannel.ChoosePersona, 'scanForPersona'],
     ])('%s_whenCancelled_scansNothing', async (channel: string, method: string) => {
       expect(await invoke(channel)).toBeNull();
 
@@ -201,7 +138,7 @@ describe('LibraryTransferHandlers', () => {
 
     it.each([
       [SkillImportChannel.Choose, 'scan'],
-      [SkillImportChannel.ChooseProfiles, 'scanForProfiles'],
+      [SkillImportChannel.ChoosePersona, 'scanForPersona'],
     ])('%s_scansEveryChoice', async (channel: string, method: string) => {
       electron.chosen = ['/a', '/b'];
 
@@ -222,7 +159,7 @@ describe('LibraryTransferHandlers', () => {
   describe('commit', () => {
     const MALFORMED: object = {
       skills: 0,
-      profiles: 0,
+      persona: 0,
       linksRewritten: 0,
       error: 'The import was malformed.',
     };
@@ -231,15 +168,15 @@ describe('LibraryTransferHandlers', () => {
       [undefined],
       [null],
       ['commit'],
-      [{ planId: 7, skills: [], profiles: [] }],
-      [{ planId: 'p', skills: 'x', profiles: [] }],
-      [{ planId: 'p', skills: [], profiles: {} }],
-      [{ planId: 'p', skills: [null], profiles: [] }],
-      [{ planId: 'p', skills: [{ source: 7, draft: {} }], profiles: [] }],
-      [{ planId: 'p', skills: [{ source: '/a', draft: null }], profiles: [] }],
-      [{ planId: 'p', skills: [{ source: '/a', draft: { name: 7 } }], profiles: [] }],
-      [{ planId: 'p', skills: [], profiles: [null] }],
-      [{ planId: 'p', skills: [], profiles: [{ profile: { id: 'p' } }] }],
+      [{ planId: 7, skills: [], persona: [] }],
+      [{ planId: 'p', skills: 'x', persona: [] }],
+      [{ planId: 'p', skills: [], persona: {} }],
+      [{ planId: 'p', skills: [null], persona: [] }],
+      [{ planId: 'p', skills: [{ source: 7, draft: {} }], persona: [] }],
+      [{ planId: 'p', skills: [{ source: '/a', draft: null }], persona: [] }],
+      [{ planId: 'p', skills: [{ source: '/a', draft: { name: 7 } }], persona: [] }],
+      [{ planId: 'p', skills: [], persona: [null] }],
+      [{ planId: 'p', skills: [], persona: [{ entry: { id: 'p' } }] }],
     ])('commit_ofAMalformedPayload_commitsNothing %#', async (value: unknown) => {
       expect(await invoke(SkillImportChannel.Commit, value)).toEqual(MALFORMED);
 
@@ -250,7 +187,7 @@ describe('LibraryTransferHandlers', () => {
       await invoke(SkillImportChannel.Commit, {
         planId: 'p',
         skills: new Array<unknown>(2000).fill(acceptedSkill()),
-        profiles: [],
+        persona: [],
       });
 
       expect(transfer['commit']).toHaveBeenCalledOnce();
@@ -261,7 +198,7 @@ describe('LibraryTransferHandlers', () => {
         await invoke(SkillImportChannel.Commit, {
           planId: 'p',
           skills: new Array<unknown>(2001).fill(acceptedSkill()),
-          profiles: [],
+          persona: [],
         }),
       ).toEqual(MALFORMED);
     });
@@ -271,7 +208,7 @@ describe('LibraryTransferHandlers', () => {
         await invoke(SkillImportChannel.Commit, {
           planId: 'p',
           skills: [acceptedSkill({ body: 'x'.repeat(256 * 1024 + 1) })],
-          profiles: [],
+          persona: [],
         }),
       ).toEqual(MALFORMED);
     });
@@ -287,7 +224,7 @@ describe('LibraryTransferHandlers', () => {
             draft: { name: '  MiXeD  ', description: '  d  ', body: 'b', enabled: 'no' },
           },
         ],
-        profiles: [{ profile: PROFILE, replace: true }],
+        persona: [{ entry: ENTRY, replace: true }],
       });
 
       expect(transfer['commit']?.mock.calls[0]?.[0]).toMatchObject({
@@ -299,31 +236,31 @@ describe('LibraryTransferHandlers', () => {
             draft: { name: 'mixed', description: 'd', enabled: true },
           },
         ],
-        profiles: [{ replace: true }],
+        persona: [{ replace: true }],
       });
     });
 
-    it('commit_thatChangedProfiles_tellsEveryWindow_senderIncluded', async () => {
+    it('commit_thatChangedThePersona_tellsEveryWindow_senderIncluded', async () => {
       transfer['commit']?.mockResolvedValue({
         skills: 0,
-        profiles: 2,
+        persona: 2,
         linksRewritten: 0,
         error: null,
       });
 
-      await invoke(SkillImportChannel.Commit, { planId: 'p', skills: [], profiles: [] });
+      await invoke(SkillImportChannel.Commit, { planId: 'p', skills: [], persona: [] });
 
-      expect(sender.webContents.send).toHaveBeenCalledWith(PromptProfileChannel.Changed);
-      expect(other.webContents.send).toHaveBeenCalledWith(PromptProfileChannel.Changed);
+      expect(sender.webContents.send).toHaveBeenCalledWith(PersonaChannel.Changed);
+      expect(other.webContents.send).toHaveBeenCalledWith(PersonaChannel.Changed);
     });
 
     it.each([
-      [{ skills: 1, profiles: 0, linksRewritten: 0, error: null }],
-      [{ skills: 0, profiles: 2, linksRewritten: 0, error: 'Failed part way.' }],
-    ])('commit_withoutAChangeToProfiles_announcesNothing %#', async (result: object) => {
+      [{ skills: 1, persona: 0, linksRewritten: 0, error: null }],
+      [{ skills: 0, persona: 2, linksRewritten: 0, error: 'Failed part way.' }],
+    ])('commit_withoutAChangeToThePersona_announcesNothing %#', async (result: object) => {
       transfer['commit']?.mockResolvedValue(result);
 
-      await invoke(SkillImportChannel.Commit, { planId: 'p', skills: [], profiles: [] });
+      await invoke(SkillImportChannel.Commit, { planId: 'p', skills: [], persona: [] });
 
       expect(other.webContents.send).not.toHaveBeenCalled();
     });
@@ -354,13 +291,5 @@ describe('LibraryTransferHandlers', () => {
       expect(electron.revealed).toEqual([]);
       expect(electron.messages).toEqual([expect.objectContaining({ detail: 'Disk full.' })]);
     });
-  });
-
-  it('openFolder_opensTheProfilesFolder', async () => {
-    Reflect.set(profiles, 'directory', tmpdir());
-
-    await invoke(PromptProfileChannel.OpenFolder);
-
-    expect(electron.opened).toEqual([tmpdir()]);
   });
 });

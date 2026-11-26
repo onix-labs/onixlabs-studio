@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   effect,
   inject,
   input,
@@ -27,10 +28,20 @@ import type { EditorView } from '@milkdown/kit/prose/view';
 import { redoDepth, undoDepth } from '@milkdown/kit/prose/history';
 import { applyBlockType, blockTypeAt } from '@shared/angular/milkdown/markdown-block-type';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
-import { FindPanel } from '@shared/angular/components/find-panel/find-panel';
+import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
+import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
+import { DockTemplatePanel } from '@shared/angular/components/dock-layout/dock-template-panel/dock-template-panel';
+import { dockProviders } from '@shared/angular/services/dock-layout/dock-providers';
+import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
+import {
+  createDockTabRegistrar,
+  DockTabRegistrar,
+} from '@shared/angular/services/dock-layout/dock-tab-registration';
+import { Icon } from '@shared/angular/icons/icon';
+import { DockSides } from '@shared/angular/services/dock-layout/dock-sides';
+import type { ConversationContext } from '@shared/api/agent-conversation-channels';
+import { FindMode, FindPanel } from '@shared/angular/components/find-panel/find-panel';
 import { MarkdownFindAdapter } from '@features/markdown/angular/find/markdown-find-adapter';
-import { Panel } from '@shared/angular/components/panel-layout/panel';
-import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { MarkdownDocument } from '@features/markdown/angular/markdown-document/markdown-document';
 import {
   MarkdownBlockType,
@@ -46,15 +57,15 @@ import { CodeDocument, Documents } from '@shared/angular/services/documents/docu
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markdown-panels';
 import {
-  MarkdownPanels,
-  OpenableMarkdownPanel,
-} from '@features/markdown/angular/markdown-panels/markdown-panels';
+  MARKDOWN_DOCK_BLUEPRINT,
+  MARKDOWN_DOCUMENT_PANEL_ID,
+} from '@features/markdown/angular/markdown-dock-blueprint';
 import { Review } from '@features/markdown/angular/markdown-review/markdown-review';
 import { Reader } from '@features/markdown/angular/markdown-reader/markdown-reader';
 import { MarkdownOutlinePanel } from './panels/markdown-outline-panel/markdown-outline-panel';
 import { MarkdownReviewPanel } from './panels/markdown-review-panel/markdown-review-panel';
-import { MarkdownAgentPanel } from './panels/markdown-agent-panel/markdown-agent-panel';
 import { MarkdownReaderPanel } from './panels/markdown-reader-panel/markdown-reader-panel';
 import { MarkdownClipboard } from '@shared/angular/components/markdown-editor/markdown-clipboard';
 import { ReadAlongHighlighter } from './read-along-highlighter';
@@ -64,31 +75,32 @@ import { buildMarkdownCommandHandler } from './build-command-handler';
 
 /**
  * Represents the markdown editor view: the shared {@link MarkdownEditor} pane bound to the owning
- * document, with optional Outline/Review/Agent/Reader tool panels beside it. It owns the markdown-tab
+ * document, in the main group of a dock, with Outline, Review, Reader, Agent and Find panels
+ * around it. It owns the markdown-tab
  * concerns the bare pane does not — the backing document and save target, the ribbon command handler,
  * the outline scroll-spy, the review and read sessions, and the docked tool panels — driving the pane
- * through its imperative API. Where the tool panel docks is the user's choice, dragged and persisted
- * through the shared panel layout.
+ * through its imperative API.
  */
 @Component({
   selector: 'app-markdown-view',
   imports: [
-    PanelLayout,
-    Panel,
+    AgentConversationPanel,
+    DockContainer,
+    DockTemplatePanel,
+    FindPanel,
     MarkdownDocument,
     MarkdownOutlinePanel,
-    MarkdownReviewPanel,
-    MarkdownAgentPanel,
     MarkdownReaderPanel,
-    FindPanel,
+    MarkdownReviewPanel,
   ],
-  // The tab's agent and conversation live on the VIEW, not the docked agent panel: the panel mounts
-  // lazily on first show, and the conversation (and an in-flight run) must span the panel's whole
-  // mounted/unmounted life — and register with Mission Control whether or not the panel was opened.
+  // The tab's agent and conversation live on the VIEW, not the docked agent panel: the dock draws the
+  // panel only while it shows, and the conversation (and an in-flight run) must outlive it — and register
+  // with Mission Control whether or not the panel was opened.
   providers: [
     Agent,
     AgentConversation,
     { provide: AGENT_CONVERSATION_KIND, useValue: 'code' },
+    ...dockProviders(MARKDOWN_DOCK_BLUEPRINT),
     // One per markdown tab: the status strip reads this view's own content through its injector.
     MarkdownStatus,
   ],
@@ -97,6 +109,32 @@ import { buildMarkdownCommandHandler } from './build-command-handler';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MarkdownView implements OnInit, OnDestroy {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Exposes the sides a panel may dock to to the template.
+   */
+  protected readonly DockSides: typeof DockSides = DockSides;
+
+  /**
+   * Gets the identifier of the document's panel.
+   */
+  protected readonly documentPanel: string = MARKDOWN_DOCUMENT_PANEL_ID;
+
+  /**
+   * Holds what opens the dock's panels wherever they are.
+   */
+  protected readonly dockReveal: DockReveal = inject(DockReveal);
+
+  /**
+   * Registers this tab's dock, so the ribbon can open and close its panels. Finalised in
+   * {@link ngOnInit} once the tab id is readable.
+   */
+  private readonly dockTab: DockTabRegistrar = createDockTabRegistrar();
+
   /**
    * Holds the settings service supplying the markdown editor preferences.
    */
@@ -123,7 +161,7 @@ export class MarkdownView implements OnInit, OnDestroy {
   private readonly keybindings: Keybindings = inject(Keybindings);
 
   /**
-   * Holds the tool-panel registry tracking which side panel (if any) is open.
+   * Holds the tool panels of the focused document, which this view becomes while it is active.
    */
   private readonly panels: MarkdownPanels = inject(MarkdownPanels);
 
@@ -205,28 +243,10 @@ export class MarkdownView implements OnInit, OnDestroy {
   );
 
   /**
-   * Gets whether a tool panel is open beside this document's editor. Read per document so each
-   * markdown tab keeps its own open panels (and its live Agent panel) regardless of which tab is
-   * active; several may be open at once and tile side by side.
-   * @param panel The tool panel to test.
-   * @returns Returns true when the panel is open for this document.
-   */
-  protected isOpen(panel: OpenableMarkdownPanel): boolean {
-    return this.panels.openFor(this.tabId()).has(panel);
-  }
-
-  /**
-   * Gets whether the agent panel is mounted (has been opened at least once for this tab).
-   * @returns Returns true when the panel should have DOM, shown or hidden.
-   */
-  protected agentMounted(): boolean {
-    return this.agentEverOpened();
-  }
-
-  /**
    * Finalises the agent-host registration once the required tab-id input is readable.
    */
   public ngOnInit(): void {
+    this.dockTab.register(this.tabId());
     this.agentHost.register(this.tabId());
     this.statusHost.register(this.tabId());
     this.log.info('markdown.view', 'Markdown view initialised', { tabId: this.tabId() });
@@ -237,6 +257,32 @@ export class MarkdownView implements OnInit, OnDestroy {
    */
   protected readonly findAdapter: MarkdownFindAdapter = new MarkdownFindAdapter(
     (): EditorView | null => this.pane()?.getEditorView() ?? null,
+  );
+
+  /**
+   * Holds the text searched for, for as long as Find is open.
+   */
+  protected readonly findText: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds the replacement text, for as long as Find is open.
+   */
+  protected readonly replaceText: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds whether Find is replacing too, for as long as it is open.
+   */
+  protected readonly findMode: WritableSignal<FindMode> = signal<FindMode>('find');
+
+  /**
+   * Gets the agent's conversation context: the markdown file's path when it is saved, else undefined so
+   * the conversation falls back to its workspace or global context.
+   */
+  private readonly fileContext: Signal<ConversationContext | undefined> = computed(
+    (): ConversationContext | undefined => {
+      const path: string | null = this.documents.get(this.tabId())?.filePath() ?? null;
+      return path === null ? undefined : { kind: 'file', key: path };
+    },
   );
 
   /**
@@ -267,14 +313,10 @@ export class MarkdownView implements OnInit, OnDestroy {
    */
   private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
     isActive: this.isActive,
+    context: (): ConversationContext | undefined => this.fileContext(),
+    language: (): string => 'markdown',
     surface: 'editor',
   });
-
-  /**
-   * Holds whether the agent panel has ever been opened for this tab, latching the panel mounted so
-   * closing it hides rather than destroys it (the open-state registry tracks only what is open now).
-   */
-  private readonly agentEverOpened: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
    * Holds the editor's scroll container, captured once here and shared with the outline scroll-spy and
@@ -302,11 +344,18 @@ export class MarkdownView implements OnInit, OnDestroy {
    * review/read sessions as the view's active state changes.
    */
   public constructor() {
-    // Latch the agent panel mounted the first time it opens, so a later close hides it (keeping the
-    // conversation panel alive) instead of destroying it.
+    // A closed Find forgets its search, however it was closed.
+    let finding: boolean = false;
     effect((): void => {
-      if (this.panels.openFor(this.tabId()).has('agent')) {
-        this.agentEverOpened.set(true);
+      const wasFinding: boolean = finding;
+      finding = this.dockReveal.isOpen('find');
+      if (wasFinding && !finding) {
+        untracked((): void => {
+          this.findText.set('');
+          this.replaceText.set('');
+          this.findMode.set('find');
+          this.findAdapter.clear();
+        });
       }
     });
 
@@ -359,8 +408,7 @@ export class MarkdownView implements OnInit, OnDestroy {
   }
 
   /**
-   * Releases the ribbon command handler and review/read sessions, detaches the scroll-spy, and drops
-   * this document's tool-panel state. The document core releases the backing document and the pane
+   * Releases the ribbon command handler and review/read sessions, and detaches the scroll-spy. The document core releases the backing document and the pane
    * destroys the Crepe editor themselves.
    */
   public ngOnDestroy(): void {
@@ -374,7 +422,6 @@ export class MarkdownView implements OnInit, OnDestroy {
     }
     this.reviewReveal.unregister();
     this.readAlong.unregister();
-    this.panels.remove(this.tabId());
   }
 
   /**
@@ -497,7 +544,7 @@ export class MarkdownView implements OnInit, OnDestroy {
    * Closes the find panel when the shared panel asks to be dismissed.
    */
   protected onFindClosed(): void {
-    this.panels.close('find');
+    this.dockReveal.close('find');
   }
 
   /**

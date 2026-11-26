@@ -8,13 +8,13 @@
       "name": "go-tests",
       "version": "1.0.0",
       "dependencies": {
-        "@onixlabs/go-tests": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-go-tests-v0.1.0/onixlabs-go-tests-0.1.0.tgz"
+        "@onixlabs/go-tests": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-go-tests-v0.2.0/onixlabs-go-tests-0.2.0.tgz"
       }
     },
     "node_modules/@onixlabs/go-tests": {
-      "version": "0.1.0",
-      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-go-tests-v0.1.0/onixlabs-go-tests-0.1.0.tgz",
-      "integrity": "sha512-yvyd2HLGt8Wf3E514+CdUrjAccc4ElTmUjFmk4ESze9p3f8WUWOsOc97VWtfOxInsjr+iAHI/4bUeerSZJb+ZA=="
+      "version": "0.2.0",
+      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-go-tests-v0.2.0/onixlabs-go-tests-0.2.0.tgz",
+      "integrity": "sha512-ufdJNR+/6XxvGa5nyHIj+t9C1BM+LmkYRPCnzO2JkB96pvH+MC+rWxVF+jGsS2RLFo3+Enh8BbglHvU/X3evdw=="
     }
   }
 }

@@ -33,6 +33,8 @@ import {
 } from '@shared/angular/services/workspace/active-workspace';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { Workspaces } from '@shared/angular/services/workspaces/workspaces';
+import { MergeTools } from '@shared/angular/services/merge-tool/merge-tools';
+import { MergeToolOpener } from '@shared/angular/services/merge-tool/merge-tool-opener';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { Diffs } from '@shared/angular/services/diffs/diffs';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
@@ -901,6 +903,8 @@ describe('DirectoryView', () => {
   const perTabServices: readonly [string, unknown][] = [
     ['Diffs', Diffs],
     ['DiffOpener', DiffOpener],
+    ['MergeTools', MergeTools],
+    ['MergeToolOpener', MergeToolOpener],
     ['IssueStore', IssueStore],
     ['IssueOpener', IssueOpener],
     ['DockState', DockState],

@@ -1,0 +1,70 @@
+<div class="associations">
+  <app-setting-row [label]="title" [description]="description" />
+
+  <div class="associations__add">
+    <app-text-field
+      class="associations__pattern-field"
+      placeholder="*.foo"
+      ariaLabel="File name or pattern"
+      i18n-ariaLabel="Accessible label of the field a new file association's pattern is typed in"
+      data-testid="association-pattern"
+      [(value)]="patternDraft"
+      (enter)="add()"
+    />
+    <app-dropdown
+      class="associations__language"
+      ariaLabel="Language"
+      i18n-ariaLabel="programming-language|Picker of a new file association's language"
+      placeholder="Language"
+      i18n-placeholder="programming-language|Picker of a new file association's language"
+      data-testid="association-language"
+      [options]="languages()"
+      [value]="languageDraft()"
+      (valueChange)="languageDraft.set($event)"
+    />
+    <app-button
+      variant="ghost"
+      label="Add"
+      i18n-label="Adds the typed file association to the list"
+      [icon]="Icon.PLUS"
+      [disabled]="!canAdd()"
+      data-testid="association-add"
+      (click)="add()"
+    />
+  </div>
+
+  @if (rows().length) {
+    <ul class="associations__list">
+      @for (row of rows(); track row.association.pattern) {
+        <li class="associations__item" data-testid="association-row">
+          <code
+            class="associations__pattern"
+            data-testid="association-row-pattern"
+            [title]="row.association.pattern"
+            >{{ row.association.pattern }}</code
+          >
+          <app-dropdown
+            class="associations__language"
+            [ariaLabel]="row.languageLabel"
+            data-testid="association-row-language"
+            [options]="languages()"
+            [value]="row.association.language"
+            (valueChange)="changeLanguage(row.association, $event)"
+          />
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.CLOSE"
+            [ariaLabel]="row.removeLabel"
+            data-testid="association-remove"
+            (click)="remove(row.association)"
+          />
+        </li>
+      }
+    </ul>
+  } @else {
+    <p class="associations__empty" i18n="Shown when the user has no file associations of their own">
+      None yet, so files open by Studio's own rules.
+    </p>
+  }
+</div>

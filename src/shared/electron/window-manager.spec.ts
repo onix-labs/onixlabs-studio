@@ -40,8 +40,8 @@ class FakeContents extends FakeEmitter {
   public zoom: number | undefined;
   public readonly sent: unknown[][] = [];
 
-  public setZoomLevel(level: number): void {
-    this.zoom = level;
+  public setZoomFactor(factor: number): void {
+    this.zoom = factor;
   }
 
   public send(...message: unknown[]): void {
@@ -62,6 +62,14 @@ class FakeWindow extends FakeEmitter {
   public maximized: boolean = false;
   public fullScreen: boolean = false;
   public minimumSize: [number, number] = [800, 600];
+  public maximumSize: [number, number] = [0, 0];
+  public bounds: { x: number; y: number; width: number; height: number } = {
+    x: 0,
+    y: 0,
+    width: 1000,
+    height: 800,
+  };
+  public buttonPosition: unknown = null;
   public size: [number, number] = [1000, 800];
   public contentSize: [number, number] = [1000, 760];
   public parent: unknown = null;
@@ -94,7 +102,25 @@ class FakeWindow extends FakeEmitter {
   }
 
   public getBounds(): object {
-    return { x: 0, y: 0, width: 1000, height: 800 };
+    return this.bounds;
+  }
+
+  public setBounds(bounds: { x: number; y: number; width: number; height: number }): void {
+    this.bounds = bounds;
+    this.size = [bounds.width, bounds.height];
+    this.contentSize = [bounds.width, bounds.height - 40];
+  }
+
+  public getMaximumSize(): [number, number] {
+    return this.maximumSize;
+  }
+
+  public setMaximumSize(width: number, height: number): void {
+    this.maximumSize = [width, height];
+  }
+
+  public setWindowButtonPosition(position: unknown): void {
+    this.buttonPosition = position;
   }
 
   public getNormalBounds(): object {
@@ -176,10 +202,12 @@ const electron: {
   appListeners: Map<string, () => void>;
   userData: string;
   ownerOf: unknown;
+  workArea: { x: number; y: number; width: number; height: number };
 } = vi.hoisted(() => ({
   appListeners: new Map<string, () => void>(),
   userData: '',
   ownerOf: null,
+  workArea: { x: 0, y: 0, width: 1920, height: 1080 },
 }));
 
 vi.mock('electron', () => ({
@@ -189,8 +217,11 @@ vi.mock('electron', () => ({
       void electron.appListeners.set(event, listener),
   },
   screen: {
-    getAllDisplays: (): object[] => [{ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }],
-    getDisplayMatching: (): object => ({ workAreaSize: { width: 1920, height: 1080 } }),
+    getAllDisplays: (): object[] => [{ workArea: electron.workArea }],
+    getDisplayMatching: (): object => ({
+      workArea: electron.workArea,
+      workAreaSize: { width: electron.workArea.width, height: electron.workArea.height },
+    }),
   },
   // A getter, because the class is declared after this factory is hoisted.
   get BrowserWindow(): object {
@@ -228,6 +259,7 @@ describe('WindowManager', () => {
   let secured: unknown[];
   let windowSizeOnLaunch: string;
   let restoreFullScreen: boolean;
+  let interfaceZoom: number;
 
   /**
    * Builds a manager.
@@ -248,7 +280,8 @@ describe('WindowManager', () => {
       onMainDidStartLoad: (): void => {
         loads += 1;
       },
-      startupSettings: (): never => ({ windowSizeOnLaunch, restoreFullScreen }) as never,
+      startupSettings: (): never =>
+        ({ windowSizeOnLaunch, restoreFullScreen, interfaceZoom }) as never,
       ...overrides,
     });
   }
@@ -274,12 +307,14 @@ describe('WindowManager', () => {
     electron.userData = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'window-manager-')));
     electron.appListeners.clear();
     electron.ownerOf = null;
+    electron.workArea = { x: 0, y: 0, width: 1920, height: 1080 };
     FakeWindow.created = [];
     closed = 0;
     loads = 0;
     secured = [];
     windowSizeOnLaunch = 'remember';
     restoreFullScreen = true;
+    interfaceZoom = 100;
     onPlatform('darwin');
     manager = build();
   });
@@ -300,6 +335,7 @@ describe('WindowManager', () => {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        zoomFactor: 1,
       });
       expect(secured).toEqual([window.webContents]);
     });
@@ -482,13 +518,24 @@ describe('WindowManager', () => {
       expect(WindowStateStore.read('main')).toBeNull();
     });
 
-    it('load_resetsZoom_andReportsFullScreen', () => {
+    it('create_drawsTheFirstPaintAtTheInterfaceZoom', () => {
+      interfaceZoom = 125;
+
+      const window: FakeWindow = createMain();
+
+      expect(window.options['webPreferences']).toMatchObject({ zoomFactor: 1.25 });
+      expect(window.options['trafficLightPosition']).toEqual({ x: 14, y: 19 });
+    });
+
+    it('load_appliesTheInterfaceZoom_andReportsFullScreen', () => {
+      interfaceZoom = 150;
       const window: FakeWindow = createMain();
       window.fullScreen = true;
 
       window.webContents.emit('did-finish-load');
 
-      expect(window.webContents.zoom).toBe(0);
+      expect(window.webContents.zoom).toBe(1.5);
+      expect(window.buttonPosition).toEqual({ x: 14, y: 24 });
       expect(window.webContents.sent).toEqual([[WindowChannel.FullScreenChanged, true]]);
     });
 
@@ -642,6 +689,41 @@ describe('WindowManager', () => {
       manager.adoptModalWindow(real(second), 'modal-2');
 
       expect(second.parent).toBeNull();
+    });
+
+    it('aModalRaisedFromAHiddenWindow_belongsToTheModalInFront_centredOverIt', () => {
+      // The trust question is raised from the main window while the welcome screen stands in for it
+      // (#1504): it is shown over the welcome screen and moves with it, not over a window not shown.
+      const hidden: FakeWindow = new FakeWindow();
+      const welcome: FakeWindow = new FakeWindow();
+      welcome.visible = true;
+      welcome.getBounds = (): object => ({ x: 400, y: 200, width: 1000, height: 700 });
+      manager.adoptModalWindow(real(welcome), 'welcome');
+      const question: FakeWindow = new FakeWindow();
+
+      const options: Electron.BrowserWindowConstructorOptions = manager.modalWindowOptions(
+        'width=500,height=400,left=0,top=0',
+        real(hidden),
+      );
+      manager.adoptModalWindow(real(question), 'question');
+
+      expect(options).toMatchObject({ x: 650, y: 300 });
+      expect(question.parent).toBe(welcome);
+    });
+
+    it('aModalRaisedFromAVisibleWindow_keepsThePlaceItAskedFor', () => {
+      const opener: FakeWindow = new FakeWindow();
+      opener.visible = true;
+      const welcome: FakeWindow = new FakeWindow();
+      welcome.visible = true;
+      manager.adoptModalWindow(real(welcome), 'welcome');
+
+      const options: Electron.BrowserWindowConstructorOptions = manager.modalWindowOptions(
+        'width=500,height=400,left=10,top=20',
+        real(opener),
+      );
+
+      expect(options).toMatchObject({ x: 10, y: 20 });
     });
 
     it('adopt_hardensTheWindow', () => {
@@ -798,6 +880,179 @@ describe('WindowManager', () => {
       manager.setLayoutMinimumSize(real(window), 1500, 900);
 
       expect(window.calls).toEqual([]);
+    });
+  });
+
+  describe('interface zoom', () => {
+    it('apply_drawsEveryOpenWindowAtTheNewZoom', () => {
+      const main: FakeWindow = createMain();
+      const popout: FakeWindow = new FakeWindow();
+      manager.adoptAuxiliaryWindow(real(popout), CHILD_NAME);
+
+      interfaceZoom = 200;
+      manager.applyInterfaceZoom();
+
+      expect(main.webContents.zoom).toBe(2);
+      expect(popout.webContents.zoom).toBe(2);
+      expect(main.buttonPosition).toEqual({ x: 14, y: 34 });
+    });
+
+    it('adopt_drawsAChildWindowAtTheZoomStraightAway', () => {
+      interfaceZoom = 75;
+      const modal: FakeWindow = new FakeWindow();
+
+      manager.adoptModalWindow(real(modal), CHILD_NAME);
+
+      expect(modal.webContents.zoom).toBe(0.75);
+    });
+
+    it('apply_onWindows_resizesTheCaptionButtonsToTheStrip', () => {
+      onPlatform('win32');
+      const window: FakeWindow = createMain();
+
+      interfaceZoom = 150;
+      manager.applyInterfaceZoom();
+
+      expect(window.overlay).toMatchObject({ height: 60 });
+      expect(window.buttonPosition).toBeNull();
+    });
+
+    it('apply_onWindows_toleratesAWindowWithNoOverlay', () => {
+      onPlatform('win32');
+      const window: FakeWindow = createMain();
+      window.setTitleBarOverlay = (): void => {
+        throw new Error('Titlebar overlay is not enabled');
+      };
+
+      interfaceZoom = 150;
+
+      expect(() => manager.applyInterfaceZoom()).not.toThrow();
+      expect(window.webContents.zoom).toBe(1.5);
+    });
+
+    it('layoutMinimum_isScaledByTheZoom_andWorkedOutAgainWhenItChanges', () => {
+      const window: FakeWindow = createMain();
+      manager.setLayoutMinimumSize(real(window), 900, 700);
+      expect(window.minimumSize).toEqual([900, 740]);
+
+      interfaceZoom = 125;
+      manager.applyInterfaceZoom();
+
+      expect(window.minimumSize).toEqual([1125, 915]);
+    });
+
+    /**
+     * Opens a modal the way Electron does: options built from the features, then a window created
+     * with them (its frame none, as on macOS), then adopted.
+     * @param features The window-open features string.
+     * @returns Returns the modal's fake.
+     */
+    function openModal(features: string): FakeWindow {
+      const options: Electron.BrowserWindowConstructorOptions = manager.modalWindowOptions(
+        features,
+        null,
+      );
+      const modal: FakeWindow = new FakeWindow(options as Record<string, unknown>);
+      const width: number = options.width ?? 0;
+      const height: number = options.height ?? 0;
+      modal.bounds = { x: options.x ?? 0, y: options.y ?? 0, width, height };
+      modal.size = [width, height];
+      modal.contentSize = [width, height];
+      modal.minimumSize = [options.minWidth ?? 0, options.minHeight ?? 0];
+      modal.maximumSize = [options.maxWidth ?? 0, options.maxHeight ?? 0];
+      manager.adoptModalWindow(real(modal), CHILD_NAME);
+      return modal;
+    }
+
+    it('modal_isRescaledAboutItsCentre_withItsLimits', () => {
+      const modal: FakeWindow = openModal(
+        'width=400,height=300,left=500,top=200,minwidth=300,minheight=200,maxwidth=600,maxheight=500,resizable=1',
+      );
+
+      interfaceZoom = 150;
+      manager.applyInterfaceZoom();
+
+      expect(modal.minimumSize).toEqual([450, 300]);
+      expect(modal.maximumSize).toEqual([900, 750]);
+      expect(modal.bounds).toEqual({ x: 400, y: 150, width: 600, height: 450 });
+      expect(modal.webContents.zoom).toBe(1.5);
+    });
+
+    it('modal_isNeverRescaledPastTheDisplay', () => {
+      const modal: FakeWindow = openModal(
+        'width=1500,height=900,minwidth=1400,minheight=800,resizable=1',
+      );
+
+      interfaceZoom = 200;
+      manager.applyInterfaceZoom();
+
+      expect(modal.bounds).toEqual({ x: 0, y: 0, width: 1920, height: 1080 });
+      expect(modal.minimumSize).toEqual([1920, 1080]);
+    });
+
+    it('modal_heldToTheDisplayAtAHighZoom_getsItsOwnSizeBack (round trip)', () => {
+      // The welcome screen on a 1440×900 display: 1024×720 at 100% would be 2048×1440 at 200%.
+      electron.workArea = { x: 0, y: 0, width: 1440, height: 900 };
+      const modal: FakeWindow = openModal(
+        'width=1024,height=720,minwidth=960,minheight=600,maxwidth=1024,maxheight=720,resizable=1',
+      );
+
+      interfaceZoom = 200;
+      manager.applyInterfaceZoom();
+      expect(modal.bounds).toMatchObject({ width: 1440, height: 900 });
+      expect(modal.minimumSize).toEqual([1440, 900]);
+
+      interfaceZoom = 100;
+      manager.applyInterfaceZoom();
+
+      expect(modal.bounds).toMatchObject({ width: 1024, height: 720 });
+      expect(modal.minimumSize).toEqual([960, 600]);
+      expect(modal.maximumSize).toEqual([1024, 720]);
+    });
+
+    it('modal_openedAtAHighZoomAndHeldToTheDisplay_getsItsOwnSizeAtALowerOne', () => {
+      electron.workArea = { x: 0, y: 0, width: 1440, height: 900 };
+      interfaceZoom = 200;
+      const modal: FakeWindow = openModal(
+        'width=2048,height=1440,minwidth=1920,minheight=1200,maxwidth=2048,maxheight=1440,resizable=1',
+      );
+      expect(modal.bounds).toMatchObject({ width: 1440, height: 900 });
+
+      interfaceZoom = 100;
+      manager.applyInterfaceZoom();
+
+      expect(modal.bounds).toMatchObject({ width: 1024, height: 720 });
+      expect(modal.minimumSize).toEqual([960, 600]);
+    });
+
+    it('modal_resizedByItsOpener_isRescaledFromItsNewSize', () => {
+      const modal: FakeWindow = openModal('width=400,height=300');
+      // The opener fits the dialog to its content; the window reports the resize.
+      modal.setBounds({ x: 0, y: 0, width: 400, height: 240 });
+      modal.emit('resize');
+
+      interfaceZoom = 200;
+      manager.applyInterfaceZoom();
+
+      expect(modal.bounds).toMatchObject({ width: 800, height: 480 });
+    });
+
+    it('modal_isLeftAsItIs_whenTheZoomItWasSizedForHasNotChanged', () => {
+      const modal: FakeWindow = openModal('width=400,height=300');
+
+      modal.webContents.emit('did-finish-load');
+
+      expect(modal.calls).toEqual(['show']);
+      expect(modal.bounds).toMatchObject({ width: 400, height: 300 });
+    });
+
+    it('modalOptions_holdAStatedMinimumToTheDisplay', () => {
+      const options: Electron.BrowserWindowConstructorOptions = manager.modalWindowOptions(
+        'width=2048,height=1440,minwidth=1920,minheight=1200,resizable=1',
+        null,
+      );
+
+      expect(options).toMatchObject({ minWidth: 1920, minHeight: 1080, height: 1080 });
     });
   });
 

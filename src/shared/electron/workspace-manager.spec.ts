@@ -1,3 +1,5 @@
+import { RunTokens } from './process/launch';
+import type { RepositoryTrustDecision } from '@shared/api/source-control-channels';
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -82,6 +84,7 @@ describe('WorkspaceManager', () => {
   let secret: string;
   let workspace: InstanceType<typeof WorkspaceContext>;
   let trusted: InstanceType<typeof TrustedPaths>;
+  let decision: RepositoryTrustDecision;
   let temporaryDirectory: string | undefined;
 
   /**
@@ -132,7 +135,13 @@ describe('WorkspaceManager', () => {
     workspace = new WorkspaceContext();
     workspace.addRoot(workspaceRoot);
     trusted = new TrustedPaths(path.join(sandbox, 'trusted.json'));
-    new WorkspaceManager((): BrowserWindow | null => null, workspace, trusted).register();
+    decision = 'trusted';
+    new WorkspaceManager(
+      (): BrowserWindow | null => null,
+      workspace,
+      trusted,
+      new RunTokens({ decisionFor: (): RepositoryTrustDecision => decision }),
+    ).register();
   });
 
   afterEach(() => {
@@ -358,6 +367,66 @@ describe('WorkspaceManager', () => {
 
       expect(listing.entries.map((entry) => entry.name)).toEqual(['secret.txt']);
       expect(workspace.isRoot(outside)).toBe(true);
+    });
+
+    it('reopenFolder_ofATrustedPath_makesItTheNewestRemembered', async () => {
+      trusted.remember(outside);
+      trusted.remember(path.join(sandbox, 'opened-since'));
+
+      await invoke(WorkspaceChannel.ReopenFolder, outside);
+
+      expect(trusted.list()[0]).toBe(outside);
+    });
+
+    it('reopenFile_ofATrustedPath_makesItTheNewestRemembered', async () => {
+      trusted.remember(secret);
+      trusted.remember(path.join(sandbox, 'opened-since'));
+
+      await invoke(WorkspaceChannel.ReopenFile, secret);
+
+      expect(trusted.list()[0]).toBe(secret);
+    });
+
+    it('reopenFolder_forgottenWhileItIsListed_staysForgotten', async () => {
+      trusted.remember(outside);
+
+      const reopening: Promise<unknown> = invoke(WorkspaceChannel.ReopenFolder, outside);
+      trusted.forget(outside);
+      await reopening;
+
+      expect(trusted.has(outside)).toBe(false);
+    });
+
+    it('reopenFile_merelyWithinTheWorkspace_isNotRemembered', async () => {
+      const file: string = inWorkspace('a.txt');
+
+      expect(await invoke(WorkspaceChannel.ReopenFile, file)).toMatchObject({ kind: 'file' });
+
+      expect(trusted.has(file)).toBe(false);
+    });
+
+    it('openFile_howeverMany_neverForgetsTheFolderTheyCameFrom', async () => {
+      // Two of each origin, so a handful of files is more than the store holds.
+      const small: InstanceType<typeof TrustedPaths> = new TrustedPaths(
+        path.join(sandbox, 'small.json'),
+        2,
+      );
+      small.remember(workspaceRoot);
+      new WorkspaceManager(
+        (): BrowserWindow | null => null,
+        workspace,
+        small,
+        new RunTokens({ decisionFor: (): RepositoryTrustDecision => decision }),
+      ).register();
+
+      for (const name of ['one.txt', 'two.txt', 'three.txt']) {
+        fs.writeFileSync(inWorkspace(name), 'x');
+        await invoke(WorkspaceChannel.OpenFile, inWorkspace(name));
+      }
+
+      expect(small.has(workspaceRoot)).toBe(true);
+      expect(small.has(inWorkspace('one.txt'))).toBe(false);
+      expect(small.has(inWorkspace('three.txt'))).toBe(true);
     });
 
     it('reopenFolder_ofATrustedFolderThatIsGone_leavesNoRootBehind', async () => {
@@ -1270,8 +1339,60 @@ describe('WorkspaceManager', () => {
 
       expect(await invoke(ProjectChannel.ArtifactResolve, file, 7)).toBe(artifact);
 
-      expect(declines).toHaveBeenCalledWith(file, undefined);
-      expect(answers).toHaveBeenCalledWith(file, undefined);
+      expect(declines).toHaveBeenCalledWith(file, undefined, expect.anything());
+      expect(answers).toHaveBeenCalledWith(file, undefined, expect.anything());
+    });
+
+    describe('in a folder that is not trusted (#1504)', () => {
+      beforeEach(() => {
+        decision = 'unknown';
+      });
+
+      it('itemsLoad_tellsTheSystemNotToRunItsTool', async () => {
+        const loads: Mock = vi.fn().mockResolvedValue(null);
+        vi.spyOn(projectSystems, 'matchProject').mockReturnValue({
+          loadProjectItems: loads,
+        } as never);
+        const project: string = inWorkspace('app.csproj');
+
+        await invoke(ProjectChannel.ItemsLoad, project);
+
+        expect(loads).toHaveBeenCalledWith(project, { token: null });
+      });
+
+      it('resolveArtifact_asksNoSystem', async () => {
+        const resolves: Mock = vi.fn().mockResolvedValue({ path: '/bin/a' });
+        vi.spyOn(projectSystems, 'all').mockReturnValue([{ resolveArtifact: resolves }] as never);
+
+        expect(
+          await invoke(ProjectChannel.ArtifactResolve, inWorkspace('a.cs'), 'Debug'),
+        ).toBeNull();
+        expect(resolves).not.toHaveBeenCalled();
+      });
+
+      it('formatDocument_runsNoFormatter', async () => {
+        const formats: Mock = vi
+          .fn()
+          .mockResolvedValue({ text: '', error: null, formatter: 'ruff' });
+        vi.spyOn(projectSystems, 'all').mockReturnValue([{ formatDocument: formats }] as never);
+
+        expect(await invoke(ProjectChannel.DocumentFormat, inWorkspace('a.py'), 'x=1')).toBeNull();
+        expect(formats).not.toHaveBeenCalled();
+      });
+    });
+
+    it('itemsLoad_inATrustedFolder_letsTheSystemRunItsTool', async () => {
+      const loads: Mock = vi.fn().mockResolvedValue(null);
+      vi.spyOn(projectSystems, 'matchProject').mockReturnValue({
+        loadProjectItems: loads,
+      } as never);
+      const project: string = inWorkspace('app.csproj');
+
+      await invoke(ProjectChannel.ItemsLoad, project);
+
+      expect(loads).toHaveBeenCalledWith(project, {
+        token: expect.objectContaining({ folder: project }) as unknown,
+      });
     });
 
     it('formatDocument_asksEachSystemInTurn_withTheFilesRoot', async () => {
@@ -1287,8 +1408,8 @@ describe('WorkspaceManager', () => {
 
       expect(await invoke(ProjectChannel.DocumentFormat, file, 'x=1')).toBe(formatted);
 
-      expect(declines).toHaveBeenCalledWith(file, 'x=1', workspaceRoot);
-      expect(answers).toHaveBeenCalledWith(file, 'x=1', workspaceRoot);
+      expect(declines).toHaveBeenCalledWith(file, 'x=1', workspaceRoot, expect.anything());
+      expect(answers).toHaveBeenCalledWith(file, 'x=1', workspaceRoot, expect.anything());
     });
 
     it('formatDocument_refusesAFileOutsideTheWorkspaceAndATextThatIsNotOne', async () => {

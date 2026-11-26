@@ -1,0 +1,22 @@
+<app-system-monitor-dashboard-card [icon]="Icon.MONITOR_SYSTEM" heading="Log Details">
+  @if (facts(); as chosen) {
+    <dl class="log-details" data-testid="log-details">
+      <dt>Timestamp</dt>
+      <dd>{{ chosen.timestamp }}</dd>
+      <dt>Level</dt>
+      <dd>
+        <app-chip [tone]="chosen.tone">{{ chosen.level }}</app-chip>
+      </dd>
+      <dt>Component</dt>
+      <dd [title]="chosen.record.source">{{ chosen.record.source }}</dd>
+      <dt>Origin</dt>
+      <dd>{{ chosen.origin }}</dd>
+      <dt>Session</dt>
+      <dd>{{ session() }}</dd>
+      <dt>Message</dt>
+      <dd class="log-details__message">{{ chosen.record.message }}</dd>
+    </dl>
+  } @else {
+    <p class="log-details__empty">Choose a record to see its details.</p>
+  }
+</app-system-monitor-dashboard-card>

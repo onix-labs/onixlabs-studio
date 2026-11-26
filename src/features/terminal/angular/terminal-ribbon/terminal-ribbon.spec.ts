@@ -1,13 +1,23 @@
-import { signal, WritableSignal } from '@angular/core';
+import { DebugElement, signal, WritableSignal } from '@angular/core';
+import { By } from '@angular/platform-browser';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import type { ShellInfo } from '@shared/api/terminal-channels';
 import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
 import { MenuContribution, MenuEntry } from '@shared/angular/services/app-menu/app-menu-model';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
 import { TerminalShells } from '@shared/angular/services/terminal-shells/terminal-shells';
-import { TerminalAgents } from '@features/terminal/angular/terminal-agents/terminal-agents';
 import { TerminalCommands } from '@features/terminal/angular/terminal-commands/terminal-commands';
+import {
+  ShellFamily,
+  TerminalListing,
+  TerminalLocation,
+} from '@features/terminal/angular/terminal-commands/shell-commands';
+import {
+  RibbonMenuItem,
+  RibbonStripMenuButton,
+} from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
 import { TerminalRibbon } from './terminal-ribbon';
 
 /**
@@ -25,8 +35,7 @@ describe('TerminalRibbon', () => {
   let menu: AppMenu;
   let calls: string[];
   let scrollLocked: WritableSignal<boolean>;
-  let activeTabId: WritableSignal<string | undefined>;
-  let toggledAgents: string[];
+  let shellFamily: WritableSignal<ShellFamily | null>;
 
   /**
    * Finds a ribbon button by its visible label.
@@ -54,24 +63,60 @@ describe('TerminalRibbon', () => {
     );
   }
 
+  /**
+   * Finds a menu entry by id, searching submenus too.
+   * @param entries The entries to search.
+   * @param id The entry id.
+   * @returns Returns the entry, or undefined when there is none.
+   */
+  function findEntry(entries: readonly MenuEntry[], id: string): MenuEntry | undefined {
+    for (const entry of entries) {
+      if (entry.id === id) {
+        return entry;
+      }
+      const nested: MenuEntry | undefined =
+        entry.items === undefined ? undefined : findEntry(entry.items, id);
+      if (nested !== undefined) {
+        return nested;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Gets a ribbon menu button's component by its label.
+   * @param label The button label.
+   * @returns Returns the matching component.
+   */
+  function menuButton(label: string): RibbonStripMenuButton {
+    const match: DebugElement | undefined = fixture.debugElement
+      .queryAll(By.directive(RibbonStripMenuButton))
+      .find(
+        (element: DebugElement): boolean =>
+          (element.componentInstance as RibbonStripMenuButton).label() === label,
+      );
+    if (match === undefined) {
+      throw new Error(`No menu button labelled "${label}"`);
+    }
+    return match.componentInstance as RibbonStripMenuButton;
+  }
+
   beforeEach(async () => {
     calls = [];
-    toggledAgents = [];
     scrollLocked = signal<boolean>(false);
-    activeTabId = signal<string | undefined>('term-1');
+    shellFamily = signal<ShellFamily | null>('posix');
     const commandsStub: Partial<TerminalCommands> = {
       scrollLocked,
+      shellFamily,
       clear: (): void => void calls.push('clear'),
       restart: (): void => void calls.push('restart'),
       newSession: (shell?: string): void => void calls.push(`newSession:${shell ?? 'default'}`),
       cut: (): void => void calls.push('cut'),
       copy: (): void => void calls.push('copy'),
       paste: (): void => void calls.push('paste'),
-      list: (): void => void calls.push('list'),
-      listAll: (): void => void calls.push('listAll'),
+      list: (listing: TerminalListing): void => void calls.push(`list:${listing}`),
       open: (): void => void calls.push('open'),
-      home: (): void => void calls.push('home'),
-      root: (): void => void calls.push('root'),
+      goTo: (location: TerminalLocation): void => void calls.push(`goTo:${location}`),
       setScrollLock: (value: boolean): void => void calls.push(`scrollLock:${value}`),
       scrollToBottom: (): void => void calls.push('scrollToBottom'),
       find: (): void => void calls.push('find'),
@@ -79,18 +124,19 @@ describe('TerminalRibbon', () => {
     const shellsStub: Partial<TerminalShells> = {
       shells: signal<readonly ShellInfo[]>(SHELLS),
     };
-    const agentsStub: Partial<TerminalAgents> = {
-      toggle: (id: string): void => void toggledAgents.push(id),
+
+    const docksStub: Partial<TabDocks> = {
+      toggle: (tabId: string | undefined, panelId: string): void =>
+        void calls.push(`toggle:${tabId ?? ''}:${panelId}`),
     };
-    const tabsStub: Partial<Tabs> = { activeTabId };
 
     await TestBed.configureTestingModule({
       imports: [TerminalRibbon],
       providers: [
         { provide: TerminalCommands, useValue: commandsStub },
         { provide: TerminalShells, useValue: shellsStub },
-        { provide: TerminalAgents, useValue: agentsStub },
-        { provide: Tabs, useValue: tabsStub },
+        { provide: Tabs, useValue: { activeTabId: signal<string | undefined>('term-1') } },
+        { provide: TabDocks, useValue: docksStub },
       ],
     }).compileComponents();
 
@@ -112,10 +158,8 @@ describe('TerminalRibbon', () => {
     button('Copy').click();
     button('Paste').click();
     button('List').click();
-    button('List All').click();
-    button('Open').click();
     button('Home').click();
-    button('Root').click();
+    button('Open').click();
     button('Scroll').click();
     button('Find').click();
 
@@ -123,14 +167,62 @@ describe('TerminalRibbon', () => {
       'cut',
       'copy',
       'paste',
-      'list',
-      'listAll',
+      'list:names',
+      'goTo:home',
       'open',
-      'home',
-      'root',
       'scrollToBottom',
       'find',
     ]);
+  });
+
+  it('listDropdown_whenAListingIsChosen_listsThatWay', () => {
+    const list: RibbonStripMenuButton = menuButton('List');
+    expect(list.items().map((item: RibbonMenuItem): string => item.id)).toEqual([
+      'all',
+      'byTime',
+      'bySize',
+      'folders',
+    ]);
+
+    list.selected.emit('all');
+    list.selected.emit('byTime');
+
+    expect(calls).toEqual(['list:all', 'list:byTime']);
+  });
+
+  it('homeDropdown_whenALocationIsChosen_goesThere', () => {
+    const home: RibbonStripMenuButton = menuButton('Home');
+    expect(home.items().map((item: RibbonMenuItem): string => item.id)).toEqual([
+      'root',
+      'up',
+      'previous',
+      'desktop',
+      'documents',
+      'downloads',
+    ]);
+
+    home.selected.emit('root');
+    home.selected.emit('downloads');
+
+    expect(calls).toEqual(['goTo:root', 'goTo:downloads']);
+  });
+
+  it('homeDropdown_whenTheShellKeepsNoPreviousFolder_disablesIt', () => {
+    shellFamily.set('cmd');
+    fixture.detectChanges();
+    TestBed.tick();
+
+    const previous: RibbonMenuItem | undefined = menuButton('Home')
+      .items()
+      .find((item: RibbonMenuItem): boolean => item.id === 'previous');
+    expect(previous?.disabled).toBe(true);
+    expect(findEntry(menuItems('terminal'), 'terminal.goTo.previous')?.enabled).toBe(false);
+
+    shellFamily.set('pwsh');
+    fixture.detectChanges();
+    TestBed.tick();
+
+    expect(findEntry(menuItems('terminal'), 'terminal.goTo.previous')?.enabled).toBe(true);
   });
 
   it('scrollLock_whenPressed_togglesAndDisablesScroll', () => {
@@ -153,9 +245,9 @@ describe('TerminalRibbon', () => {
     menu.dispatch('terminal.find');
     menu.dispatch('terminal.clear');
     menu.dispatch('terminal.list');
-    menu.dispatch('terminal.listAll');
+    menu.dispatch('terminal.list.all');
     menu.dispatch('terminal.home');
-    menu.dispatch('terminal.root');
+    menu.dispatch('terminal.goTo.root');
     menu.dispatch('terminal.open');
     menu.dispatch('terminal.scrollToBottom');
 
@@ -163,10 +255,10 @@ describe('TerminalRibbon', () => {
       'newSession:default',
       'find',
       'clear',
-      'list',
-      'listAll',
-      'home',
-      'root',
+      'list:names',
+      'list:all',
+      'goTo:home',
+      'goTo:root',
       'open',
       'scrollToBottom',
     ]);
@@ -178,19 +270,11 @@ describe('TerminalRibbon', () => {
     expect(calls).toEqual(['scrollLock:true']);
   });
 
-  it('menu_whenAgentIsChosen_togglesTheActiveTabsPanel', () => {
+  it('agent_fromTheMenuOrTheButton_togglesTheActiveTerminalsPanel', () => {
     menu.dispatch('terminal.agent');
-
-    expect(toggledAgents).toEqual(['term-1']);
-  });
-
-  it('agent_whenNoTabIsActive_doesNothing', () => {
-    activeTabId.set(undefined);
-    fixture.detectChanges();
-
     button('Agent').click();
 
-    expect(toggledAgents).toEqual([]);
+    expect(calls).toEqual(['toggle:term-1:agent', 'toggle:term-1:agent']);
   });
 
   it('newShellItems_whenShellsAreInstalled_offerOnePerShell', () => {
@@ -207,9 +291,7 @@ describe('TerminalRibbon', () => {
     fixture.detectChanges();
     TestBed.tick();
 
-    const entry: MenuEntry | undefined = menuItems('terminal').find(
-      (candidate: MenuEntry): boolean => candidate.id === 'terminal.scrollLock',
-    );
+    const entry: MenuEntry | undefined = findEntry(menuItems('terminal'), 'terminal.scrollLock');
 
     expect(entry?.checked).toBe(true);
   });

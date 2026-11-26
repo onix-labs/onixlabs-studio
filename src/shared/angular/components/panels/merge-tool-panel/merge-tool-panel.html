@@ -1,0 +1,126 @@
+<app-panel-toolbar>
+  <app-button
+    variant="none"
+    [icon]="Icon.ARROW_UP"
+    ariaLabel="Previous Conflict"
+    i18n-ariaLabel="The merge tool's button moving to the conflict above"
+    data-testid="merge-tool-previous"
+    [tooltip]="tooltips.previous"
+    [disabled]="conflictCount() === 0"
+    (click)="goTo('previous')"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.ARROW_DOWN"
+    ariaLabel="Next Conflict"
+    i18n-ariaLabel="The merge tool's button moving to the conflict below"
+    data-testid="merge-tool-next"
+    [tooltip]="tooltips.next"
+    [disabled]="conflictCount() === 0"
+    (click)="goTo('next')"
+  />
+  <span class="merge-tool__count" data-testid="merge-tool-count" aria-live="polite">{{
+    countText()
+  }}</span>
+  <span class="panel-toolbar__spacer"></span>
+  @if (hasBase()) {
+    <app-button
+      variant="none"
+      [icon]="Icon.LAYOUT_SPLIT"
+      ariaLabel="Common Ancestor"
+      i18n-ariaLabel="The merge tool's button showing or hiding the common ancestor's pane"
+      data-testid="merge-tool-base"
+      [tooltip]="tooltips.base"
+      [pressed]="showingBase()"
+      (click)="toggleBase()"
+    />
+  }
+  @if (canMarkResolved()) {
+    @if (refused() && conflictCount() > 0) {
+      <app-button
+        variant="none"
+        label="Mark Resolved Anyway"
+        i18n-label="Stages a file that still holds conflict markers"
+        data-testid="merge-tool-mark-resolved-anyway"
+        [tooltip]="tooltips.anyway"
+        [disabled]="marking()"
+        (click)="markResolved(true)"
+      />
+    }
+    <app-button
+      variant="none"
+      [icon]="Icon.CHECK"
+      label="Mark Resolved"
+      i18n-label="Stages a file whose conflicts are settled"
+      data-testid="merge-tool-mark-resolved"
+      [tooltip]="tooltips.markResolved"
+      [disabled]="marking()"
+      (click)="markResolved(false)"
+    />
+  }
+</app-panel-toolbar>
+
+@if (document(); as file) {
+  <div class="merge-tool__sides" [class.merge-tool__sides--three]="showingBase()">
+    <section class="merge-tool__pane" data-testid="merge-tool-yours">
+      <header class="merge-tool__heading merge-tool__heading--yours">{{ yoursTitle() }}</header>
+      <app-text-editor
+        #yours
+        class="merge-tool__editor"
+        [content]="versions().yours"
+        [language]="file.language()"
+        [readOnly]="true"
+        [options]="sideOptions"
+        (ready)="onPaneReady('yours')"
+      />
+    </section>
+    @if (showingBase()) {
+      <section class="merge-tool__pane" data-testid="merge-tool-base-pane">
+        <header class="merge-tool__heading merge-tool__heading--base">{{ baseTitle }}</header>
+        <app-text-editor
+          #base
+          class="merge-tool__editor"
+          [content]="versions().base ?? ''"
+          [language]="file.language()"
+          [readOnly]="true"
+          [options]="sideOptions"
+          (ready)="onPaneReady('base')"
+        />
+      </section>
+    }
+    <section class="merge-tool__pane" data-testid="merge-tool-theirs">
+      <header class="merge-tool__heading merge-tool__heading--theirs">{{ theirsTitle() }}</header>
+      <app-text-editor
+        #theirs
+        class="merge-tool__editor"
+        [content]="versions().theirs"
+        [language]="file.language()"
+        [readOnly]="true"
+        [options]="sideOptions"
+        (ready)="onPaneReady('theirs')"
+      />
+    </section>
+  </div>
+  <section class="merge-tool__result" data-testid="merge-tool-result">
+    <header class="merge-tool__heading">{{ resultTitle() }}</header>
+    <app-text-editor
+      #result
+      class="merge-tool__editor"
+      [content]="file.content()"
+      [language]="file.language()"
+      [readOnly]="file.readOnly()"
+      [editorConfig]="file.editorConfig()"
+      (ready)="onPaneReady('result')"
+      (contentChange)="onResultChange($event)"
+    />
+  </section>
+} @else {
+  <p
+    class="merge-tool__empty"
+    data-testid="merge-tool-empty"
+    i18n="Shown in a merge tool whose file's tab was closed"
+  >
+    The file this merge tool shows is no longer open. Open it in the merge tool again from the
+    Commit panel.
+  </p>
+}

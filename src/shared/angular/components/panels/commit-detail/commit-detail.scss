@@ -290,36 +290,6 @@
   overflow-wrap: anywhere;
 }
 
-// The mid-operation banner (#1321): the shared warning alert, flush under the tool strip, with the
-// three ways out beneath it. The repository stays stuck until the user acts, which is what warning is
-// for; the alert holds the text, so the buttons sit under it.
-.detail__operation {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 0 8px 8px;
-  font-size: 12px;
-
-  app-alert {
-    font-size: 12px;
-  }
-}
-
-.detail__operation-title {
-  display: block;
-  font-weight: 600;
-}
-
-.detail__operation-progress {
-  display: block;
-  font-variant-numeric: tabular-nums;
-}
-
-.detail__operation-message {
-  display: block;
-  overflow-wrap: anywhere;
-}
-
 // How many conflicts a file Mark Resolved refused still holds (#1321).
 .detail__conflicts-left {
   margin-inline-start: 0.4rem;

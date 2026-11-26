@@ -36,13 +36,12 @@
     />
   </app-panel-toolbar>
 
-  <!-- The request above its response, split by the shared panel layout so the divider between them
-       drags and the split is remembered across requests. Each half fills its pane; the body editor
-       and the response body take whatever height their pane has. The split waits for the panel to
-       have a height, so the response pane's default is a share of it. -->
-  @if (responseDefaultSize(); as responseSize) {
-    <app-panel-layout class="request" layoutKey="api-request">
-      <div main class="request__editor">
+  <!-- The request above its response, with a divider between them that drags and is remembered across
+       requests. Each half fills its pane; the body editor and the response body take whatever height
+       their pane has. -->
+  <app-split-panel class="request" dir="col" sizesKey="api-request">
+    <app-split-pane [minSize]="120">
+      <div class="request__editor">
         @if (resolvedUrl(); as resolved) {
           <p class="request__resolved" title="The URL after variable substitution">
             → {{ resolved }}
@@ -162,6 +161,7 @@
                        filling the rest of the pane. The problems Monaco marks in it are counted in the
                        well's status strip. -->
                     <app-code-field
+                      (editorCreated)="onBodyEditor($event)"
                       [value]="request.body.text"
                       [language]="bodyLanguage(request.body.kind)"
                       [fill]="true"
@@ -230,99 +230,88 @@
           }
         </div>
       </div>
+    </app-split-pane>
 
-      <!-- The response, in a pane of its own beneath the request. Collapsed until the request has
-         been sent at least once, so the request has the whole panel until there is a response. -->
-      <app-panel
-        panelId="response"
-        defaultEdge="bottom"
-        [allowedEdges]="responseEdges"
-        [visible]="responseVisible()"
-        [defaultSize]="responseSize"
-        [minSize]="120"
-        [maxSize]="900"
-      >
-        <div class="request__response" role="region" aria-label="Response">
-          @if (sending()) {
-            <p class="request__hint">
-              <app-icon [icon]="Icon.SPINNER" />
-              Sending…
+    <app-split-divider />
+
+    <!-- The response, in a pane of its own beneath the request. Collapsed until the request has been
+         sent at least once, so the request has the whole panel until there is a response. -->
+    <app-split-pane
+      class="request__response-pane"
+      paneId="response"
+      [visible]="responseVisible()"
+      [defaultFraction]="responseFraction"
+      [minSize]="120"
+      [maxSize]="900"
+    >
+      <div class="request__response" role="region" aria-label="Response">
+        @if (sending()) {
+          <p class="request__hint">
+            <app-icon [icon]="Icon.SPINNER" />
+            Sending…
+          </p>
+        } @else if (outcome(); as outcome) {
+          @if (outcome.kind === 'failure') {
+            <p class="request__failure">
+              <app-icon [icon]="outcome.cancelled ? Icon.STOP : Icon.WARNING" />
+              {{ outcome.cancelled ? 'Cancelled' : outcome.message }}
             </p>
-          } @else if (outcome(); as outcome) {
-            @if (outcome.kind === 'failure') {
-              <p class="request__failure">
-                <app-icon [icon]="outcome.cancelled ? Icon.STOP : Icon.WARNING" />
-                {{ outcome.cancelled ? 'Cancelled' : outcome.message }}
-              </p>
-            } @else if (response(); as response) {
-              <div class="request__summary">
-                <span class="request__status" [attr.data-tone]="statusTone(response.status)">
-                  {{ response.status }} {{ response.statusText }}
-                </span>
-                <span class="request__metric">
-                  {{ response.timings.totalMs | number: '1.0-0' }} ms
-                </span>
-                <span class="request__metric">{{ formatSize(response.sizeBytes) }}</span>
-                @if (response.redirected) {
-                  <span class="request__metric" [title]="response.finalUrl">redirected</span>
-                }
-                @if (response.truncated) {
-                  <span
-                    class="request__metric"
-                    title="The body is over the Maximum Response Size in Settings"
-                    >cut at the size limit</span
-                  >
-                }
-                <button
-                  type="button"
-                  class="request__toggle"
-                  (click)="showResponseHeaders.set(!showResponseHeaders())"
-                >
-                  {{ showResponseHeaders() ? 'Body' : 'Headers' }}
-                </button>
-              </div>
-
-              @if (showResponseHeaders()) {
-                <dl class="request__headers">
-                  @for (entry of headerEntries(response); track entry[0]) {
-                    <dt>{{ entry[0] }}</dt>
-                    <dd>{{ entry[1] }}</dd>
-                  }
-                </dl>
-              } @else {
-                <!-- The body, coloured as the content type the server declared, read-only, filling the
-                   rest of the pane. -->
-                <app-code-field
-                  class="request__payload"
-                  [value]="prettyBody(response)"
-                  [language]="responseLanguage(response)"
-                  [readOnly]="true"
-                  [fill]="true"
-                  [wordWrap]="wrapResponse()"
-                  ariaLabel="Response body"
-                />
+          } @else if (response(); as response) {
+            <div class="request__summary">
+              <span class="request__status" [attr.data-tone]="statusTone(response.status)">
+                {{ response.status }} {{ response.statusText }}
+              </span>
+              <span class="request__metric">
+                {{ response.timings.totalMs | number: '1.0-0' }} ms
+              </span>
+              <span class="request__metric">{{ formatSize(response.sizeBytes) }}</span>
+              @if (response.redirected) {
+                <span class="request__metric" [title]="response.finalUrl">redirected</span>
               }
-            }
-          } @else {
-            <p class="request__hint">Send the request to see its response.</p>
-          }
-        </div>
-      </app-panel>
+              @if (response.truncated) {
+                <span
+                  class="request__metric"
+                  title="The body is over the Maximum Response Size in Settings"
+                  >cut at the size limit</span
+                >
+              }
+              <button
+                type="button"
+                class="request__toggle"
+                (click)="showResponseHeaders.set(!showResponseHeaders())"
+              >
+                {{ showResponseHeaders() ? 'Body' : 'Headers' }}
+              </button>
+            </div>
 
-      <!-- Mounts while shown: ⌘F in either body opens it over that body (#1007). -->
-      @if (editorSearch.visible()) {
-        <app-panel
-          panelId="find"
-          defaultEdge="right"
-          [defaultSize]="320"
-          [minSize]="260"
-          [maxSize]="520"
-        >
-          <app-editor-search-panel [search]="editorSearch" (closed)="onFindClosed()" />
-        </app-panel>
-      }
-    </app-panel-layout>
-  }
+            @if (showResponseHeaders()) {
+              <dl class="request__headers">
+                @for (entry of headerEntries(response); track entry[0]) {
+                  <dt>{{ entry[0] }}</dt>
+                  <dd>{{ entry[1] }}</dd>
+                }
+              </dl>
+            } @else {
+              <!-- The body, coloured as the content type the server declared, read-only, filling the
+                   rest of the pane. -->
+              <app-code-field
+                (editorCreated)="onBodyEditor($event)"
+                class="request__payload"
+                [value]="prettyBody(response)"
+                [language]="responseLanguage(response)"
+                [readOnly]="true"
+                [fill]="true"
+                [wordWrap]="wrapResponse()"
+                ariaLabel="Response body"
+              />
+            }
+          }
+        } @else {
+          <p class="request__hint">Send the request to see its response.</p>
+        }
+      </div>
+    </app-split-pane>
+  </app-split-panel>
 
   <!-- The form and url-encoded bodies are the same name/value list, so they share one grid. -->
   <ng-template #bodyFields>

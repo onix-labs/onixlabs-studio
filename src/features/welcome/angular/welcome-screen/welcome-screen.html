@@ -23,13 +23,18 @@
       <img class="welcome__logo" src="icon.svg" alt="" draggable="false" />
       <div class="welcome__intro">
         <h1 class="welcome__title" id="welcome-title">ONIXLabs Studio</h1>
-        <p class="welcome__instruction">Create or open something to get started</p>
+        <p class="welcome__instruction" i18n>Create or open something to get started</p>
       </div>
     </header>
 
     <!-- The sections share one tab strip, drawn like the document tabs: the active tab is outlined in
          the accent and flares into the panel beneath it, so tab and panel read as one shape. -->
-    <div class="welcome__tabs" role="tablist" aria-label="Welcome">
+    <div
+      class="welcome__tabs"
+      role="tablist"
+      aria-label="Welcome"
+      i18n-aria-label="Accessible name of the Welcome screen's tabs"
+    >
       @for (tab of shownSections; track tab.id; let index = $index) {
         <button
           type="button"

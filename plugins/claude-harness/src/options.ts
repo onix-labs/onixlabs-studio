@@ -770,6 +770,10 @@ export function buildOptions(
     // arrived, so it is not gated on the model.
     thinking: { type: 'adaptive', display: 'summarized' },
     cwd: open.workspaceRoot ?? homedir(),
+    // ⛔ A folder the user has not trusted (#1504): only their own settings load, never the folder's.
+    // Its hooks would be commands, its MCP servers programs, and its CLAUDE.md instructions the user
+    // never vetted. Fixed when the session opens, like every other source.
+    ...(open.projectSettings === false ? { settingSources: ['user' as const] } : {}),
     ...(open.allowedWritePaths.length > 0
       ? { additionalDirectories: [...open.allowedWritePaths] }
       : {}),

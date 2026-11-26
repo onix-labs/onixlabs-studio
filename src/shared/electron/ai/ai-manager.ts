@@ -55,6 +55,7 @@ import type {
   AgentSession,
   EditDecisionOutcome,
   OfferedSkill,
+  PersonaAccess,
   ProviderAvailability,
 } from './agent-provider';
 import { AiAuthManager } from './ai-auth-manager';
@@ -98,7 +99,11 @@ import { checkRunRoot, type OpenRoots, type RunRootCheck } from './run-root-guar
 import { ExcludedCommandStore } from './excluded-command-store';
 import { sanitizeExcludedCommands } from '@shared/api/excluded-commands';
 import type { SkillOfferer } from './skills/skill-library';
+import { bindPersona, type PersonaQuestionSource } from './persona/persona-access';
+import { announcePersonaChange } from './persona/persona-handlers';
+import type { PersonaLibrary } from './persona/persona-library';
 
+import { FolderTrustSource, mayRunIn } from '../repository-trust';
 /**
  * A pending permission prompt: the resolver, plus the tool and workspace the request was for so a
  * remembered grant can be recorded when the reply arrives.
@@ -379,9 +384,26 @@ export class AiManager {
   private readonly hosting: HostingAgentAccess | null;
 
   /**
+   * Holds the user's persona (#1515), searched by a run's agent; null in a test or a build without one.
+   */
+  private readonly persona: PersonaLibrary | null;
+
+  /**
+   * Gets the open questions about the user (#1519); read when a run starts, because the service that
+   * holds them is made after this one.
+   */
+  private readonly personaQuestions: () => PersonaQuestionSource | null;
+
+  /**
    * Holds the open workspace roots, which a run's root must be or lie inside (#810).
    */
   private readonly openRoots: OpenRoots;
+
+  /**
+   * Holds the trust store a run's workspace is read from (#1504): an agent in an untrusted one loads
+   * none of the workspace's own configuration.
+   */
+  private readonly trust: FolderTrustSource;
 
   /**
    * Holds the sign-in driver, which asks a connection's provider to sign its user in and streams the
@@ -481,18 +503,25 @@ export class AiManager {
    * @param windowGetter A function that returns the window agent events are sent to.
    * @param skills The skill library runs draw their in-scope skills from.
    * @param openRoots The open workspace roots, which a run's root must be or lie inside.
+   * @param trust The trust store a run's workspace is read from.
    * @param hosting The agents' way to the installed hosting plugins, or null for none.
    */
   public constructor(
     windowGetter: () => BrowserWindow | null,
     skills: SkillOfferer,
     openRoots: OpenRoots,
+    trust: FolderTrustSource,
     hosting: HostingAgentAccess | null = null,
+    persona: PersonaLibrary | null = null,
+    personaQuestions: () => PersonaQuestionSource | null = (): null => null,
   ) {
     this.windowGetter = windowGetter;
     this.skills = skills;
     this.hosting = hosting;
+    this.persona = persona;
+    this.personaQuestions = personaQuestions;
     this.openRoots = openRoots;
+    this.trust = trust;
     this.bridge = new RendererBridge(windowGetter);
 
     // Contributed harnesses, and nothing else. `coreAgentProviders()` is empty — every provider is a
@@ -879,6 +908,7 @@ export class AiManager {
         supportsImages: provider.supportsImages,
         supportedEfforts: provider.supportedEfforts,
         supportsRemoteControl: provider.supportsRemoteControl,
+        ...(provider.ignoresUntrustedSettings === false ? { ignoresUntrustedSettings: false } : {}),
         // ⚠️ A key-based connection has nothing to sign in to, whatever its plugin can do.
         supportsSignIn:
           provider.offersSignIn === true &&
@@ -1191,6 +1221,19 @@ export class AiManager {
     const controller: AbortController = new AbortController();
     this.runs.set(request.requestId, controller);
     const skills: readonly OfferedSkill[] = await this.skills.offer(surface, language);
+    // The persona's memories in the run's scope (#1515). A failure costs the run its persona, never
+    // the run.
+    const persona: PersonaAccess | null =
+      this.persona === null
+        ? null
+        : await bindPersona(
+            this.persona,
+            surface,
+            language,
+            (): void => announcePersonaChange(),
+            this.personaQuestions(),
+            request.agentSessionId ?? request.requestId,
+          );
     if (skills.length > 0) {
       logger.debug(
         'AiManager.run',
@@ -1232,6 +1275,8 @@ export class AiManager {
       requestId: request.requestId,
       prompt: request.prompt,
       workspaceRoot: request.workspaceRoot,
+      workspaceTrusted:
+        request.workspaceRoot !== null && mayRunIn(this.trust, request.workspaceRoot),
       model,
       agentSessionId: request.agentSessionId ?? null,
       effort,
@@ -1256,6 +1301,7 @@ export class AiManager {
       language,
       systemPromptExtra,
       skills,
+      persona,
       blockedCommands:
         request.blockHostCommandLine === true && runHosting !== null
           ? runHosting.commandLineTools

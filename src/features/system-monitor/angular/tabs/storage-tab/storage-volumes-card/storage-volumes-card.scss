@@ -1,0 +1,73 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+// The table scrolls within the card when there are more volumes than fit.
+.storage-volumes__scroll {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+.storage-volumes {
+  @include table;
+}
+
+.storage-volumes__name-column {
+  inline-size: 22%;
+}
+
+.storage-volumes__usage-column {
+  inline-size: 24%;
+}
+
+.storage-volumes__number {
+  @include number;
+}
+
+// A volume on the drive described beside the table is marked with an accent edge.
+.storage-volumes__row--selected td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent-color);
+}
+
+.storage-volumes__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.storage-volumes__icon {
+  flex: none;
+  color: var(--form-muted-foreground-color);
+}
+
+.storage-volumes__usage {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.storage-volumes__share {
+  @include number;
+
+  flex: none;
+  inline-size: 3rem;
+}
+
+.storage-volumes__track {
+  @include usage-track;
+
+  flex: 1 1 auto;
+}
+
+.storage-volumes__fill {
+  @include usage-fill;
+
+  display: block;
+}
+
+.storage-volumes__empty {
+  @include empty;
+}

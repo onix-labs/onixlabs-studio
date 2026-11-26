@@ -24,6 +24,7 @@ import {
 } from '@shared/angular/services/repository/conflict-context';
 import { ConflictSides } from '@shared/angular/services/repository/conflict-resolution';
 import { BreakpointGutter } from '../breakpoints/breakpoint-gutter';
+import { MergeToolOpener } from '@shared/angular/services/merge-tool/merge-tool-opener';
 import { CodeDocumentEditor } from './code-document';
 
 /**
@@ -153,6 +154,7 @@ describe('CodeDocumentEditor, wired to a pane', () => {
   let swapped: WritableSignal<boolean>;
   let conflicted: WritableSignal<boolean>;
   let markedResolved: string[][];
+  let compared: [string, number | undefined][];
   let documents: Documents;
   let breakpoints: Breakpoints;
   let documentId: string;
@@ -219,6 +221,7 @@ describe('CodeDocumentEditor, wired to a pane', () => {
     swapped = signal<boolean>(false);
     conflicted = signal<boolean>(false);
     markedResolved = [];
+    compared = [];
     const conflictContext: ConflictContext = {
       conflictSides: sides,
       conflictMarkersSwapped: swapped,
@@ -237,6 +240,15 @@ describe('CodeDocumentEditor, wired to a pane', () => {
         { provide: BreakpointGutter, useValue: gutter },
         { provide: Debugger, useValue: { stoppedLocation: stopped } },
         { provide: CONFLICT_CONTEXT, useValue: conflictContext },
+        {
+          provide: MergeToolOpener,
+          useValue: {
+            open: (target: string, index?: number): Promise<boolean> => {
+              compared.push([target, index]);
+              return Promise.resolve(true);
+            },
+          },
+        },
       ],
     });
     documents = TestBed.inject(Documents);
@@ -266,20 +278,30 @@ describe('CodeDocumentEditor, wired to a pane', () => {
       sides.set({ yours: 'main', theirs: 'feature' });
 
       expect(await readyWithConflict()).toEqual([
-        'Keep main (Yours)·Keep feature (Theirs)·Keep Both',
+        'Keep main (Yours)·Keep feature (Theirs)·Keep Both·Compare',
       ]);
       expect(fixture.componentInstance.conflictCount()).toBe(1);
     });
 
+    it('compare_opensThisConflictInTheMergeTool', async () => {
+      await readyWithConflict();
+
+      Array.from(pane().zones[0].querySelectorAll('button'))
+        .find((button: HTMLButtonElement): boolean => button.textContent === 'Compare')
+        ?.click();
+
+      expect(compared).toEqual([[path, 0]]);
+    });
+
     it('redrawsTheRows_whenTheRepositoryNamesTheSidesLater', async () => {
-      expect(await readyWithConflict()).toEqual(['Keep Yours·Keep Theirs·Keep Both']);
+      expect(await readyWithConflict()).toEqual(['Keep Yours·Keep Theirs·Keep Both·Compare']);
 
       sides.set({ yours: 'feature', theirs: 'main' });
       swapped.set(true);
       await fixture.whenStable();
 
       expect(pane().zones.map((zone: HTMLElement): string => zone.textContent ?? '')).toEqual([
-        'Keep feature (Yours)·Keep main (Theirs)·Keep Both',
+        'Keep feature (Yours)·Keep main (Theirs)·Keep Both·Compare',
       ]);
     });
 

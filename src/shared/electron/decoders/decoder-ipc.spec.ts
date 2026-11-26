@@ -13,6 +13,9 @@ import {
   vi,
 } from 'vitest';
 import { BinaryChannel } from '@shared/api/binary-channels';
+import { RunTokens } from '../process/launch';
+import { UNTRUSTED_FOLDER_REASON } from '../repository-trust';
+import type { RepositoryTrustDecision } from '@shared/api/source-control-channels';
 
 /**
  * What the fake Electron answers: the temp directory standing in for userData, and what was registered
@@ -58,6 +61,7 @@ describe('DecoderHost', () => {
   let decode: MockInstance<InstanceType<typeof Decoders>['decode']>;
   let info: MockInstance<InstanceType<typeof Decoders>['info']>;
   let capture: MockInstance<InstanceType<typeof JitCapture>['capture']>;
+  let refusal: string | null;
 
   /**
    * Calls a channel as the renderer would.
@@ -92,7 +96,13 @@ describe('DecoderHost', () => {
     capture = vi
       .spyOn(JitCapture.prototype, 'capture')
       .mockResolvedValue({ ok: false, error: 'not run' });
-    host = new DecoderHost();
+    refusal = null;
+    host = new DecoderHost(
+      { isWithin: (target: unknown): boolean => String(target).startsWith('/fixture/') },
+      new RunTokens({
+        decisionFor: (): RepositoryTrustDecision => (refusal === null ? 'trusted' : 'unknown'),
+      }),
+    );
     host.register();
   });
 
@@ -187,20 +197,43 @@ describe('DecoderHost', () => {
       expect(capture).not.toHaveBeenCalled();
     });
 
+    it('refusesAProgramOutsideTheOpenWorkspace (#1504)', async () => {
+      expect(await call(BinaryChannel.JitCapture, '/usr/bin/evil.dll', '*', 'tier0')).toEqual({
+        ok: false,
+        error: 'That program is not in the open workspace.',
+      });
+      expect(capture).not.toHaveBeenCalled();
+    });
+
+    it('refusesAProgramInAWorkspaceNotTrusted (#1504)', async () => {
+      refusal = 'This folder is not trusted, so nothing runs from it.';
+
+      expect(await call(BinaryChannel.JitCapture, '/fixture/a.dll', '*', 'tier0')).toEqual({
+        ok: false,
+        error: UNTRUSTED_FOLDER_REASON,
+      });
+      expect(capture).not.toHaveBeenCalled();
+    });
+
     it('defaultsThePattern_andTheOptimisedTier', async () => {
       await call(BinaryChannel.JitCapture, '/fixture/a.dll', '', 'anything');
       await call(BinaryChannel.JitCapture, '/fixture/a.dll', 7, undefined);
 
       expect(capture.mock.calls).toEqual([
-        ['/fixture/a.dll', '*', 'full-opts'],
-        ['/fixture/a.dll', '*', 'full-opts'],
+        ['/fixture/a.dll', '*', 'full-opts', expect.objectContaining({ folder: '/fixture/a.dll' })],
+        ['/fixture/a.dll', '*', 'full-opts', expect.objectContaining({ folder: '/fixture/a.dll' })],
       ]);
     });
 
     it('honoursAWellFormedRequest', async () => {
       await call(BinaryChannel.JitCapture, '/fixture/a.dll', 'Main', 'tier0');
 
-      expect(capture).toHaveBeenCalledWith('/fixture/a.dll', 'Main', 'tier0');
+      expect(capture).toHaveBeenCalledWith(
+        '/fixture/a.dll',
+        'Main',
+        'tier0',
+        expect.objectContaining({ folder: '/fixture/a.dll' }),
+      );
     });
   });
 });

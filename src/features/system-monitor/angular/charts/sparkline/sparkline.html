@@ -1,0 +1,14 @@
+@if (paths(); as drawn) {
+  <svg
+    class="sparkline"
+    viewBox="0 0 100 24"
+    preserveAspectRatio="none"
+    focusable="false"
+    role="img"
+    [attr.aria-label]="ariaLabel() ?? null"
+    [attr.aria-hidden]="ariaLabel() === undefined ? 'true' : null"
+  >
+    <path class="sparkline__area" [attr.d]="drawn.area" />
+    <path class="sparkline__line" [attr.d]="drawn.line" vector-effect="non-scaling-stroke" />
+  </svg>
+}

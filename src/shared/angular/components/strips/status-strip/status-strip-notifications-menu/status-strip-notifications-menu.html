@@ -49,7 +49,11 @@
         closeVerb="Remove"
         [notification]="entry"
         (closed)="remove(entry)"
+        [silenceable]="silencer.canSilence(entry)"
+        [configurable]="silencer.canConfigure(entry)"
         (acted)="act(entry, $event)"
+        (silenced)="silencer.silence(entry)"
+        (configured)="silencer.configure(entry)"
       />
     }
   </div>

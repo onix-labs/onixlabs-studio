@@ -21,6 +21,8 @@ import {
 } from './debug-adapter-registry';
 import { JsDebugSession } from './js-debug-session';
 
+import { Launcher, launchFor, RunToken, RunTokens } from '../process/launch';
+import { UNTRUSTED_FOLDER_REASON } from '../repository-trust';
 /**
  * Specifies how long, in milliseconds, to wait for an adapter to answer `disconnect` when a session is
  * stopped. The adapter is killed regardless, so this only bounds how long a wedged one can hold up the
@@ -63,6 +65,11 @@ export class DebugManager {
   private readonly workspaceContext: WorkspaceContext;
 
   /**
+   * Issues the run tokens a debug session needs (#1504): one only for a folder the user trusts.
+   */
+  private readonly tokens: RunTokens;
+
+  /**
    * Holds the registry that resolves an adapter identifier into a spawn specification.
    */
   private readonly registry: DebugAdapterRegistry;
@@ -84,15 +91,18 @@ export class DebugManager {
    * @param windowGetter A function that returns the window adapter events are sent to.
    * @param workspaceContext The open-workspace tracker used to confine sessions to opened roots.
    * @param registry The registry that resolves adapter identifiers into spawn specifications.
+   * @param tokens Issues the run tokens a debug session needs.
    */
   public constructor(
     windowGetter: () => BrowserWindow | null,
     workspaceContext: WorkspaceContext,
     registry: DebugAdapterRegistry,
+    tokens: RunTokens,
   ) {
     this.windowGetter = windowGetter;
     this.workspaceContext = workspaceContext;
     this.registry = registry;
+    this.tokens = tokens;
   }
 
   /**
@@ -166,6 +176,12 @@ export class DebugManager {
       logger.warn('DebugManager', `Debug start denied for non-open root ${parsed.rootPath}`);
       return { success: false, error: 'Workspace root is not open' };
     }
+    // A debug adapter runs the program, and may come from the workspace itself (#1504).
+    const token: RunToken | null = this.tokens.issue(parsed.rootPath);
+    if (token === null) {
+      logger.info('DebugManager', `Debug start held for untrusted root ${parsed.rootPath}`);
+      return { success: false, error: UNTRUSTED_FOLDER_REASON };
+    }
     const disposals: number = this.disposals;
     const resolution: DebugAdapterResolution = await this.registry.resolve(
       parsed.adapterId,
@@ -191,7 +207,11 @@ export class DebugManager {
       };
     }
 
-    const client: DebugAdapterConnection = this.connect(resolution.spec, parsed.rootPath);
+    const client: DebugAdapterConnection = this.connect(
+      resolution.spec,
+      parsed.rootPath,
+      launchFor(token),
+    );
     client.onEvent((event: DebugProtocol.Event): void =>
       this.forwardEvent(parsed.sessionId, event),
     );
@@ -227,20 +247,27 @@ export class DebugManager {
    * or a plain stdio client otherwise.
    * @param spec The resolved adapter specification.
    * @param rootPath The workspace root the session is rooted at (the adapter's working directory).
+   * @param launch Starts the adapter: made from the folder's run token.
    * @returns Returns the connection.
    */
-  private connect(spec: DebugAdapterSpec, rootPath: string): DebugAdapterConnection {
+  private connect(
+    spec: DebugAdapterSpec,
+    rootPath: string,
+    launch: Launcher,
+  ): DebugAdapterConnection {
     if (spec.transport === 'tcp-server') {
       logger.debug('DebugManager', `Using compound js-debug session for ${spec.command}`);
-      return new JsDebugSession(spec, rootPath);
+      return new JsDebugSession(spec, rootPath, launch);
     }
     if (spec.transport === 'tcp-session') {
       // One ordinary session over the port the server announces (Delve's `dlv dap`, #1211).
       logger.debug('DebugManager', `Using TCP session adapter connection for ${spec.command}`);
-      return new DapClient(new TcpServerTransport(spec.command, spec.args, spec.env, rootPath));
+      return new DapClient(
+        new TcpServerTransport(spec.command, spec.args, spec.env, rootPath, launch),
+      );
     }
     logger.debug('DebugManager', `Using stdio adapter connection for ${spec.command}`);
-    return new DapClient(new StdioTransport(spec.command, spec.args, spec.env, rootPath));
+    return new DapClient(new StdioTransport(spec.command, spec.args, spec.env, rootPath, launch));
   }
 
   /**

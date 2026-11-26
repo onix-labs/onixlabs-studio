@@ -1,10 +1,22 @@
-import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  signal,
+  Signal,
+  WritableSignal,
+} from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
-import { CodeAgents } from '@features/code/angular/code-agents/code-agents';
-import { CodeGeneratedPanels } from '@features/code/angular/generated-code/code-generated-panels';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
+import { DocumentSorting } from '@shared/angular/services/document-sorting/document-sorting';
+import {
+  CODE_AGENT_PANEL_ID,
+  CODE_GENERATED_PANEL_ID,
+} from '@features/code/angular/code-dock-blueprint';
 import { CodeRunner } from '@features/code/angular/code-runner/code-runner';
-import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
+import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
+import { EDITOR_TERMINAL_PANEL_ID } from '@shared/angular/services/editor-terminals/editor-terminals';
 import {
   CodeDocument,
   CodeViewToggles,
@@ -31,12 +43,27 @@ import {
   RibbonMenuItem,
 } from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
 import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-strip-row/ribbon-strip-row';
+import {
+  extensionPattern,
+  FileAssociation,
+  fileAssociations,
+  withFileAssociation,
+  withoutFileAssociation,
+} from '@shared/angular/services/monaco/file-associations';
+import { RememberLanguageModal } from './remember-language-modal/remember-language-modal';
+import { RememberLanguageChoice } from './remember-language-modal/remember-language-choice';
+import type { RememberLanguageOffer } from './remember-language-modal/remember-language-offer';
 
 /**
  * Identifies the Monaco plain-text language, used as the syntax field's fallback when the active
  * document's language is unknown or its entry has not been created yet.
  */
 const PLAIN_TEXT_LANGUAGE_ID: string = 'plaintext';
+
+/**
+ * Identifies the JSON language, whose documents the Edit menu offers Sort Document for (#1214).
+ */
+const JSON_LANGUAGE_ID: string = 'json';
 
 /**
  * Identifies the Save-As item in the Save menu button's dropdown.
@@ -65,6 +92,7 @@ const VARIANT_EXPORT_PDF: string = 'export-pdf';
     RibbonStripMenuButton,
     RibbonStripCheck,
     RibbonStripField,
+    RememberLanguageModal,
   ],
   templateUrl: './code-ribbon.html',
   hostDirectives: [RibbonHost],
@@ -112,19 +140,9 @@ export class CodeRibbon {
   private readonly runner: CodeRunner = inject(CodeRunner);
 
   /**
-   * Holds the docked-terminal panel state backing the Terminal toggle.
+   * Holds the tabs' docks, which the Terminal, Agent and Generated Code toggles show and hide panels in.
    */
-  private readonly editorTerminals: EditorTerminals = inject(EditorTerminals);
-
-  /**
-   * Holds the docked agent-panel state backing the Agent toggle.
-   */
-  private readonly codeAgents: CodeAgents = inject(CodeAgents);
-
-  /**
-   * Holds the docked generated-code panel's per-tab state.
-   */
-  private readonly generatedPanels: CodeGeneratedPanels = inject(CodeGeneratedPanels);
+  private readonly docks: TabDocks = inject(TabDocks);
 
   /**
    * Holds the settings service backing the view toggles.
@@ -132,30 +150,60 @@ export class CodeRibbon {
   private readonly settings: Settings = inject(Settings);
 
   /**
-   * Holds the language list, in display order.
+   * Holds Sort Document, whose name the Edit menu shows (#1214).
    */
-  private readonly languages: readonly LanguageInfo[] = this.monaco.getSupportedLanguages();
+  private readonly sorting: DocumentSorting = inject(DocumentSorting);
+
+  /**
+   * Gets the language list, in display order: every language a file can be associated with (#1068),
+   * so a file a user association gives a language only Monaco knows (`*.cls` as Apex) is named rightly
+   * rather than read as Plain Text. A document in a language the list lacks altogether — one an agent
+   * set by id — is offered under that id, so the field never misnames it.
+   */
+  private readonly languages: Signal<readonly LanguageInfo[]> = computed(
+    (): readonly LanguageInfo[] => {
+      const known: readonly LanguageInfo[] = this.monaco.associableLanguages();
+      const current: string | undefined = this.activeDocument()?.language();
+      return current === undefined ||
+        known.some((info: LanguageInfo): boolean => info.id === current)
+        ? known
+        : [...known, { id: current, name: current }];
+    },
+  );
 
   /**
    * Maps a language display name to its identifier.
    */
-  private readonly idByName: ReadonlyMap<string, string> = new Map<string, string>(
-    this.languages.map((info: LanguageInfo): [string, string] => [info.name, info.id]),
+  private readonly idByName: Signal<ReadonlyMap<string, string>> = computed(
+    (): ReadonlyMap<string, string> =>
+      new Map<string, string>(
+        this.languages().map((info: LanguageInfo): [string, string] => [info.name, info.id]),
+      ),
   );
 
   /**
    * Maps a language identifier to its display name.
    */
-  private readonly nameById: ReadonlyMap<string, string> = new Map<string, string>(
-    this.languages.map((info: LanguageInfo): [string, string] => [info.id, info.name]),
+  private readonly nameById: Signal<ReadonlyMap<string, string>> = computed(
+    (): ReadonlyMap<string, string> =>
+      new Map<string, string>(
+        this.languages().map((info: LanguageInfo): [string, string] => [info.id, info.name]),
+      ),
   );
 
   /**
    * Gets the language display names offered by the syntax field.
    */
-  protected readonly languageOptions: readonly string[] = this.languages.map(
-    (info: LanguageInfo): string => info.name,
+  protected readonly languageOptions: Signal<readonly string[]> = computed((): readonly string[] =>
+    this.languages().map((info: LanguageInfo): string => info.name),
   );
+
+  /**
+   * Holds the open offer to remember a language chosen by hand, or undefined while none is open.
+   */
+  protected readonly rememberOffer: WritableSignal<RememberLanguageOffer | undefined> = signal<
+    RememberLanguageOffer | undefined
+  >(undefined);
 
   /**
    * Gets the active document, or undefined when no code document is active.
@@ -172,7 +220,8 @@ export class CodeRibbon {
    */
   protected readonly languageName: Signal<string> = computed((): string => {
     const language: string = this.activeDocument()?.language() ?? PLAIN_TEXT_LANGUAGE_ID;
-    return this.nameById.get(language) ?? this.nameById.get(PLAIN_TEXT_LANGUAGE_ID) ?? '';
+    const names: ReadonlyMap<string, string> = this.nameById();
+    return names.get(language) ?? names.get(PLAIN_TEXT_LANGUAGE_ID) ?? '';
   });
 
   /**
@@ -182,6 +231,16 @@ export class CodeRibbon {
   protected readonly hasSymbols: Signal<boolean> = computed(
     (): boolean =>
       (this.activeDocument()?.language() ?? PLAIN_TEXT_LANGUAGE_ID) !== PLAIN_TEXT_LANGUAGE_ID,
+  );
+
+  /**
+   * Gets a value indicating whether the active document can be sorted (#1214): it is JSON, and the
+   * JSON server serves it, as the editor's right-click menu asks. Only then does the Edit menu offer
+   * Sort Document.
+   */
+  protected readonly canSort: Signal<boolean> = computed(
+    (): boolean =>
+      this.activeDocument()?.language() === JSON_LANGUAGE_ID && this.commands.canSortDocument(),
   );
 
   /**
@@ -288,6 +347,16 @@ export class CodeRibbon {
           accelerator: 'Alt+Shift+F',
           run: (): void => this.onFormat(),
         },
+        // Only for a JSON file its server serves (#1214). No accelerator: VS Code gives it none.
+        ...(this.canSort()
+          ? [
+              {
+                id: 'code.sortDocument',
+                label: this.sorting.label,
+                run: (): void => this.onSortDocument(),
+              },
+            ]
+          : []),
       ],
     },
     {
@@ -417,6 +486,14 @@ export class CodeRibbon {
   }
 
   /**
+   * Sorts the active document's keys, through its language server (#1214).
+   */
+  protected onSortDocument(): void {
+    this.log.info('code.ribbon', 'Sort document requested');
+    void this.commands.sortDocument();
+  }
+
+  /**
    * Cuts the selection to the clipboard.
    */
   protected onCut(): void {
@@ -481,11 +558,71 @@ export class CodeRibbon {
    */
   protected onLanguageChange(name: string): void {
     const id: string | undefined = this.tabs.activeTabId();
-    const language: string | undefined = this.idByName.get(name);
+    const language: string | undefined = this.idByName().get(name);
     if (id !== undefined && language !== undefined) {
       this.log.info('code.ribbon', 'Language changed', language);
       this.documents.setLanguage(id, language);
+      this.offerToRemember(id, language, name);
     }
+  }
+
+  /**
+   * Offers to remember a language chosen by hand (#1068), for a file on disk whose language its
+   * associations and Studio's rules would not give it. An untitled document has nothing to remember it
+   * by, and a choice the resolver already makes needs no remembering.
+   * @param id The document's identifier.
+   * @param language The language chosen.
+   * @param languageName Its display name.
+   */
+  private offerToRemember(id: string, language: string, languageName: string): void {
+    const document: CodeDocument | undefined = this.documents.get(id);
+    const path: string | null | undefined = document?.filePath();
+    if (document === undefined || path === null || path === undefined) {
+      return;
+    }
+    if (this.monaco.getLanguageForFileName(path, document.content()) === language) {
+      return;
+    }
+    this.rememberOffer.set({
+      documentId: id,
+      path,
+      fileName: document.fileName(),
+      language,
+      languageName,
+      extensionPattern: extensionPattern(path),
+    });
+  }
+
+  /**
+   * Acts on the answer to the Remember Language modal: writes the association it asks for, or
+   * nothing. Remembering for every file with the ending drops an entry for this one file's path, so
+   * the newer answer is the one that holds for it.
+   * @param choice The user's answer.
+   */
+  protected onRememberChosen(choice: RememberLanguageChoice): void {
+    const offer: RememberLanguageOffer | undefined = this.rememberOffer();
+    this.rememberOffer.set(undefined);
+    if (offer === undefined || choice === RememberLanguageChoice.None) {
+      this.log.info('code.ribbon', 'Language not remembered');
+      return;
+    }
+    const current: readonly FileAssociation[] = fileAssociations(
+      this.settings.get('textEditor.fileAssociations'),
+    );
+    const pattern: string | undefined =
+      choice === RememberLanguageChoice.ThisFile ? offer.path : offer.extensionPattern;
+    if (pattern === undefined) {
+      return;
+    }
+    const others: readonly FileAssociation[] =
+      choice === RememberLanguageChoice.Extension
+        ? withoutFileAssociation(current, offer.path)
+        : current;
+    this.settings.set(
+      'textEditor.fileAssociations',
+      withFileAssociation(others, { pattern, language: offer.language }),
+    );
+    this.log.info('code.ribbon', 'Language remembered', pattern, offer.language);
   }
 
   /**
@@ -505,10 +642,8 @@ export class CodeRibbon {
    */
   protected onTerminal(): void {
     const id: string | undefined = this.tabs.activeTabId();
-    if (id !== undefined) {
-      this.log.debug('code.ribbon', 'Toggle docked terminal', id);
-      this.editorTerminals.toggle(id);
-    }
+    this.log.debug('code.ribbon', 'Toggle docked terminal', id);
+    this.docks.toggle(id, EDITOR_TERMINAL_PANEL_ID);
   }
 
   /**
@@ -516,10 +651,8 @@ export class CodeRibbon {
    */
   protected onAgent(): void {
     const id: string | undefined = this.tabs.activeTabId();
-    if (id !== undefined) {
-      this.log.debug('code.ribbon', 'Toggle docked agent panel', id);
-      this.codeAgents.toggle(id);
-    }
+    this.log.debug('code.ribbon', 'Toggle docked agent panel', id);
+    this.docks.toggle(id, CODE_AGENT_PANEL_ID);
   }
 
   /**
@@ -527,10 +660,8 @@ export class CodeRibbon {
    */
   protected onGeneratedCode(): void {
     const id: string | undefined = this.tabs.activeTabId();
-    if (id !== undefined) {
-      this.log.debug('code.ribbon', 'Toggle docked generated-code panel', id);
-      this.generatedPanels.toggle(id);
-    }
+    this.log.debug('code.ribbon', 'Toggle docked generated-code panel', id);
+    this.docks.toggle(id, CODE_GENERATED_PANEL_ID);
   }
 
   /**

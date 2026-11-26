@@ -7,11 +7,12 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import { uniqueName, type PromptProfile } from '@shared/api/prompt-profile-channels';
+import type { PersonaEntry } from '@shared/api/persona-channels';
+import { uniqueName } from '@shared/api/library-names';
 import { SKILL_NAME_PATTERN } from '@shared/api/skill-channels';
 import { skillProblem } from '@shared/api/skill-file';
 import type {
-  SkillImportAcceptedProfile,
+  SkillImportAcceptedPersonaEntry,
   SkillImportAcceptedSkill,
   SkillImportDraft,
   SkillImportEntry,
@@ -70,9 +71,9 @@ export interface ImportAcceptedSkill {
 }
 
 /**
- * A prompt profile the user accepted during the run.
+ * A persona entry the user accepted during the run.
  */
-export interface ImportAcceptedProfile extends SkillImportAcceptedProfile {
+export interface ImportAcceptedPersonaEntry extends SkillImportAcceptedPersonaEntry {
   /**
    * Gets whether the summary still includes it.
    */
@@ -80,11 +81,11 @@ export interface ImportAcceptedProfile extends SkillImportAcceptedProfile {
 }
 
 /**
- * A file or profile that will not be imported, and why.
+ * A file or persona entry that will not be imported, and why.
  */
 export interface ImportLeftOut {
   /**
-   * Gets what was left out: a source path, or a profile's name.
+   * Gets what was left out: a source path, or a persona entry's name.
    */
   readonly label: string;
 
@@ -164,7 +165,7 @@ export type ImportPrompt =
     }
   | {
       readonly kind: 'clash';
-      readonly subject: 'skill' | 'profile';
+      readonly subject: 'skill' | 'persona';
       readonly label: string;
       readonly name: string;
       readonly suggested: string;
@@ -250,11 +251,10 @@ export class SkillImportSession {
   >([]);
 
   /**
-   * Holds the profiles accepted so far.
+   * Holds the persona entries accepted so far.
    */
-  private readonly acceptedProfilesState: WritableSignal<readonly ImportAcceptedProfile[]> = signal<
-    readonly ImportAcceptedProfile[]
-  >([]);
+  private readonly acceptedPersonaState: WritableSignal<readonly ImportAcceptedPersonaEntry[]> =
+    signal<readonly ImportAcceptedPersonaEntry[]>([]);
 
   /**
    * Holds what was left out so far.
@@ -310,10 +310,10 @@ export class SkillImportSession {
     this.acceptedState.asReadonly();
 
   /**
-   * Gets the profiles accepted so far.
+   * Gets the persona entries accepted so far.
    */
-  public readonly acceptedProfiles: Signal<readonly ImportAcceptedProfile[]> =
-    this.acceptedProfilesState.asReadonly();
+  public readonly acceptedPersona: Signal<readonly ImportAcceptedPersonaEntry[]> =
+    this.acceptedPersonaState.asReadonly();
 
   /**
    * Gets what was left out so far.
@@ -371,15 +371,15 @@ export class SkillImportSession {
   }
 
   /**
-   * Includes or leaves out an accepted profile, from the summary.
-   * @param id The profile's id.
+   * Includes or leaves out an accepted persona entry, from the summary.
+   * @param id The entry's id.
    * @param included Whether it is imported.
    */
-  public includeProfile(id: string, included: boolean): void {
-    this.acceptedProfilesState.update(
-      (accepted: readonly ImportAcceptedProfile[]): readonly ImportAcceptedProfile[] =>
-        accepted.map((item: ImportAcceptedProfile): ImportAcceptedProfile =>
-          item.profile.id === id ? { ...item, included } : item,
+  public includePersonaEntry(id: string, included: boolean): void {
+    this.acceptedPersonaState.update(
+      (accepted: readonly ImportAcceptedPersonaEntry[]): readonly ImportAcceptedPersonaEntry[] =>
+        accepted.map((item: ImportAcceptedPersonaEntry): ImportAcceptedPersonaEntry =>
+          item.entry.id === id ? { ...item, included } : item,
         ),
     );
   }
@@ -387,12 +387,12 @@ export class SkillImportSession {
   /**
    * Asks what to import and walks the user through importing it.
    * @param model Where AI help runs, or null when no AI is to be offered.
-   * @param what Whether skills or prompt profiles are being imported.
+   * @param what Whether skills or persona entries are being imported.
    * @returns Returns a line saying what was imported, or null when the user cancelled.
    */
   public async start(
     model: SkillAssistModel | null,
-    what: 'skills' | 'profiles' = 'skills',
+    what: 'skills' | 'persona' = 'skills',
   ): Promise<string | null> {
     // One import at a time: a second press while the dialog is up or a run is going does nothing.
     if (this.planState() !== null || this.choosing) {
@@ -401,19 +401,18 @@ export class SkillImportSession {
     this.choosing = true;
     let plan: SkillImportPlan | null;
     try {
-      plan =
-        what === 'skills' ? await this.transfer.choose() : await this.transfer.chooseProfiles();
+      plan = what === 'skills' ? await this.transfer.choose() : await this.transfer.choosePersona();
     } finally {
       this.choosing = false;
     }
     if (plan === null) {
       return null;
     }
-    if (plan.entries.length === 0 && plan.profiles.length === 0) {
+    if (plan.entries.length === 0 && plan.persona.length === 0) {
       await this.transfer.discard(plan.id);
       return what === 'skills'
         ? 'No Markdown files or skills were found there.'
-        : 'No prompt profiles were found there.';
+        : 'Nothing to import into the persona was found there.';
     }
     this.reset(plan);
     try {
@@ -540,30 +539,32 @@ export class SkillImportSession {
         ],
       );
     }
-    let profileClashAll: 'replace' | 'skip' | 'rename' | null = null;
-    for (const profile of plan.profiles) {
+    let entryClashAll: 'replace' | 'skip' | 'rename' | null = null;
+    for (const entry of plan.persona) {
       const settled: { name: string; replace: boolean } | null = await this.settleName(
-        profile.name,
-        profile.id,
-        'profile',
-        profileClashAll,
+        entry.name,
+        entry.id,
+        'persona',
+        entryClashAll,
         (all: 'replace' | 'skip' | 'rename'): void => {
-          profileClashAll = all;
+          entryClashAll = all;
         },
       );
       if (settled === null) {
-        this.leaveOut(profile.name, 'name-taken', 'A profile with that name already exists.');
+        this.leaveOut(entry.name, 'name-taken', 'A persona entry with that name already exists.');
         continue;
       }
-      const filed: PromptProfile = { ...profile, id: settled.name };
-      this.acceptedProfilesState.update(
-        (accepted: readonly ImportAcceptedProfile[]): readonly ImportAcceptedProfile[] => [
+      const filed: PersonaEntry = { ...entry, id: settled.name };
+      this.acceptedPersonaState.update(
+        (
+          accepted: readonly ImportAcceptedPersonaEntry[],
+        ): readonly ImportAcceptedPersonaEntry[] => [
           ...accepted.filter(
-            (item: ImportAcceptedProfile): boolean => item.profile.id !== filed.id,
+            (item: ImportAcceptedPersonaEntry): boolean => item.entry.id !== filed.id,
           ),
           {
-            profile: filed,
-            replace: settled.replace && plan.existingProfiles.includes(filed.id),
+            entry: filed,
+            replace: settled.replace && plan.existingPersona.includes(filed.id),
             included: true,
           },
         ],
@@ -584,12 +585,14 @@ export class SkillImportSession {
       const result: SkillImportResult = await this.transfer.commit({
         planId: plan.id,
         skills,
-        profiles: this.acceptedProfilesState()
-          .filter((item: ImportAcceptedProfile): boolean => item.included)
-          .map(({ profile, replace }: ImportAcceptedProfile): SkillImportAcceptedProfile => ({
-            profile,
-            replace,
-          })),
+        persona: this.acceptedPersonaState()
+          .filter((item: ImportAcceptedPersonaEntry): boolean => item.included)
+          .map(
+            ({ entry, replace }: ImportAcceptedPersonaEntry): SkillImportAcceptedPersonaEntry => ({
+              entry,
+              replace,
+            }),
+          ),
       });
       if (result.error === null) {
         return describe(result, this.leftOutState().length);
@@ -697,11 +700,11 @@ export class SkillImportSession {
   }
 
   /**
-   * Settles the name a skill or profile is filed under, asking when it clashes with the library or
+   * Settles the name a skill or persona entry is filed under, asking when it clashes with the library or
    * with something already accepted in this run.
    * @param label What is being named, for the question.
    * @param name The name it would take.
-   * @param subject Whether it is a skill or a profile.
+   * @param subject Whether it is a skill or a persona entry.
    * @param all The answer given for all remaining clashes, or null.
    * @param remember Records an answer given for all remaining clashes.
    * @returns Returns the name and whether it replaces what holds it, or null to skip it.
@@ -709,18 +712,18 @@ export class SkillImportSession {
   private async settleName(
     label: string,
     name: string,
-    subject: 'skill' | 'profile',
+    subject: 'skill' | 'persona',
     all: 'replace' | 'skip' | 'rename' | null,
     remember: (all: 'replace' | 'skip' | 'rename') => void,
   ): Promise<{ name: string; replace: boolean } | null> {
     const plan: SkillImportPlan = this.planState()!;
     const library: readonly string[] =
-      subject === 'skill' ? plan.existingSkills : plan.existingProfiles;
+      subject === 'skill' ? plan.existingSkills : plan.existingPersona;
     const batch: readonly string[] =
       subject === 'skill'
         ? this.acceptedState().map((skill: ImportAcceptedSkill): string => skill.draft.name)
-        : this.acceptedProfilesState().map(
-            (item: ImportAcceptedProfile): string => item.profile.id,
+        : this.acceptedPersonaState().map(
+            (item: ImportAcceptedPersonaEntry): string => item.entry.id,
           );
     const taken: (candidate: string) => boolean = (candidate: string): boolean =>
       library.includes(candidate) || batch.includes(candidate);
@@ -867,7 +870,7 @@ export class SkillImportSession {
     this.planState.set(plan);
     this.positionState.set(0);
     this.acceptedState.set([]);
-    this.acceptedProfilesState.set([]);
+    this.acceptedPersonaState.set([]);
     this.leftOutState.set([]);
     this.errorState.set(null);
   }
@@ -881,11 +884,11 @@ export class SkillImportSession {
  */
 function describe(result: SkillImportResult, leftOut: number): string {
   const parts: string[] = [];
-  if (result.skills > 0 || result.profiles === 0) {
+  if (result.skills > 0 || result.persona === 0) {
     parts.push(`${result.skills} skill${result.skills === 1 ? '' : 's'}`);
   }
-  if (result.profiles > 0) {
-    parts.push(`${result.profiles} prompt profile${result.profiles === 1 ? '' : 's'}`);
+  if (result.persona > 0) {
+    parts.push(`${result.persona} persona ${result.persona === 1 ? 'entry' : 'entries'}`);
   }
   let line: string = `Imported ${parts.join(' and ')}`;
   if (result.linksRewritten > 0) {

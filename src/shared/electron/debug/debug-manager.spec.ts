@@ -9,6 +9,10 @@ import type {
   DebugRunInTerminalRequest,
   DebugStartResult,
 } from '@shared/api/debug-channels';
+import { RunTokens } from '../process/launch';
+import { TRUSTED_TOKENS } from '../process/run-token.fixture';
+import { UNTRUSTED_FOLDER_REASON } from '../repository-trust';
+import type { RepositoryTrustDecision } from '@shared/api/source-control-channels';
 
 /**
  * A handler the manager registered on the IPC bus.
@@ -127,6 +131,7 @@ describe.skipIf(process.platform === 'win32')('DebugManager', () => {
   let mode: string = 'normal';
   let command: string = process.execPath;
   let gate: Promise<void> = Promise.resolve();
+  let refusal: string | null = null;
   let manager: InstanceType<typeof DebugManager>;
   let sent: { channel: string; payload: unknown }[] = [];
 
@@ -222,6 +227,7 @@ describe.skipIf(process.platform === 'win32')('DebugManager', () => {
     script = path.join(scratch, 'adapter.cjs');
     writeFileSync(script, ADAPTER);
     mode = 'normal';
+    refusal = null;
     command = process.execPath;
     gate = Promise.resolve();
     sent = [];
@@ -257,6 +263,9 @@ describe.skipIf(process.platform === 'win32')('DebugManager', () => {
       (): BrowserWindow | null => window as BrowserWindow,
       workspace,
       registry as DebugAdapterRegistry,
+      new RunTokens({
+        decisionFor: (): RepositoryTrustDecision => (refusal === null ? 'trusted' : 'unknown'),
+      }),
     );
     manager.register();
   });
@@ -376,6 +385,19 @@ describe.skipIf(process.platform === 'win32')('DebugManager', () => {
       await expect(invoke(DebugChannel.Request, 'session', 'threads')).rejects.toThrow(
         'No such session',
       );
+    });
+
+    it('startsNoAdapter_inAWorkspaceTheUserHasNotTrusted (#1504)', async () => {
+      refusal = 'This folder is not trusted, so nothing runs from it.';
+
+      const result: unknown = await invoke(DebugChannel.Start, {
+        sessionId: 's',
+        adapterId: 'fake',
+        rootPath: root,
+      });
+
+      expect(result).toEqual({ success: false, error: UNTRUSTED_FOLDER_REASON });
+      expect(started()).toHaveLength(0);
     });
 
     it('refusesARootThatIsNotOpen', async () => {
@@ -622,6 +644,7 @@ describe.skipIf(process.platform === 'win32')('DebugManager', () => {
       (): BrowserWindow | null => null,
       new WorkspaceContext(),
       {} as DebugAdapterRegistry,
+      TRUSTED_TOKENS,
     );
 
     expect((): void => quiet.disposeAll()).not.toThrow();

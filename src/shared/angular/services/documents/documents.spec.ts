@@ -60,6 +60,62 @@ describe('Documents', () => {
     expect(document.dirty()).toBe(false);
   });
 
+  describe('file associations (#1068)', () => {
+    const FOO_FILE: FileInfo = {
+      path: '/ws/data.foo',
+      name: 'data.foo',
+      extension: '.foo',
+      content: '{}',
+    };
+
+    beforeEach((): void => {
+      localStorage.clear();
+      TestBed.inject(Settings).set('textEditor.fileAssociations', []);
+      TestBed.tick();
+    });
+
+    afterEach((): void => {
+      localStorage.clear();
+    });
+
+    it('openFileInfo_resolvesThroughTheUsersAssociations_byPath', () => {
+      TestBed.inject(Settings).set('textEditor.fileAssociations', [
+        { pattern: '/ws/data.foo', language: 'json' },
+      ]);
+
+      const tab: Tab = documents.openFileInfo(FOO_FILE, 'code');
+
+      expect(documents.get(tab.id)?.language()).toBe('json');
+    });
+
+    it('changingTheAssociations_carriesTheNewLanguageIntoOpenFiles', () => {
+      const tab: Tab = documents.openFileInfo(FOO_FILE, 'code');
+      expect(documents.get(tab.id)?.language()).toBe('plaintext');
+
+      TestBed.inject(Settings).set('textEditor.fileAssociations', [
+        { pattern: '*.foo', language: 'json' },
+      ]);
+      TestBed.tick();
+      expect(documents.get(tab.id)?.language()).toBe('json');
+
+      TestBed.inject(Settings).set('textEditor.fileAssociations', []);
+      TestBed.tick();
+      expect(documents.get(tab.id)?.language()).toBe('plaintext');
+    });
+
+    it('changingTheAssociations_leavesALanguageChosenByHand', () => {
+      const tab: Tab = documents.openFileInfo(FOO_FILE, 'code');
+      documents.setLanguage(tab.id, 'yaml');
+
+      TestBed.inject(Settings).set('textEditor.fileAssociations', [
+        { pattern: '*.foo', language: 'json' },
+      ]);
+      TestBed.tick();
+
+      expect(documents.get(tab.id)?.language()).toBe('yaml');
+    });
+  });
+
   it('ensure_whenCalledTwice_returnsSameDocument', () => {
     const tab: Tab = tabs.open('code');
     expect(documents.ensure(tab.id)).toBe(documents.ensure(tab.id));

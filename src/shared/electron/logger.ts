@@ -15,7 +15,7 @@ import {
   Severity,
   StructuredLogInput,
 } from '@shared/api/log-channels';
-import { appendDetails } from '@shared/api/log-format';
+import { fullMessage, sanitizeDetails, serializeDetails } from '@shared/api/log-format';
 import { LogArchive } from '@shared/electron/log-archive';
 import { LogInput, LogStore } from '@shared/electron/log-store';
 
@@ -203,6 +203,7 @@ export class Logger {
         severity: candidate.severity!,
         source: candidate.source,
         message: candidate.message,
+        details: sanitizeDetails(candidate.details),
         window: this.windowLabel(event.sender),
       });
     });
@@ -332,7 +333,7 @@ export class Logger {
    * Records a trace-severity main-process log.
    * @param source The source of the record — the "Where".
    * @param message The message text.
-   * @param details Extra values appended to the message; an `Error` keeps its stack.
+   * @param details Extra values kept with the record; an `Error` keeps its stack.
    */
   public trace(source: string, message: string, ...details: unknown[]): void {
     if (!this.enabled('trace')) {
@@ -342,7 +343,8 @@ export class Logger {
       origin: 'main',
       severity: 'trace',
       source,
-      message: appendDetails(message, details),
+      message,
+      details: serializeDetails(details),
     });
   }
 
@@ -350,7 +352,7 @@ export class Logger {
    * Records a debug-severity main-process log.
    * @param source The source of the record — the "Where".
    * @param message The message text.
-   * @param details Extra values appended to the message; an `Error` keeps its stack.
+   * @param details Extra values kept with the record; an `Error` keeps its stack.
    */
   public debug(source: string, message: string, ...details: unknown[]): void {
     if (!this.enabled('debug')) {
@@ -360,7 +362,8 @@ export class Logger {
       origin: 'main',
       severity: 'debug',
       source,
-      message: appendDetails(message, details),
+      message,
+      details: serializeDetails(details),
     });
   }
 
@@ -368,7 +371,7 @@ export class Logger {
    * Records an info-severity main-process log.
    * @param source The source of the record — the "Where".
    * @param message The message text.
-   * @param details Extra values appended to the message; an `Error` keeps its stack.
+   * @param details Extra values kept with the record; an `Error` keeps its stack.
    */
   public info(source: string, message: string, ...details: unknown[]): void {
     if (!this.enabled('info')) {
@@ -378,7 +381,8 @@ export class Logger {
       origin: 'main',
       severity: 'info',
       source,
-      message: appendDetails(message, details),
+      message,
+      details: serializeDetails(details),
     });
   }
 
@@ -386,7 +390,7 @@ export class Logger {
    * Records a warning-severity main-process log.
    * @param source The source of the record — the "Where".
    * @param message The message text.
-   * @param details Extra values appended to the message; an `Error` keeps its stack.
+   * @param details Extra values kept with the record; an `Error` keeps its stack.
    */
   public warn(source: string, message: string, ...details: unknown[]): void {
     if (!this.enabled('warning')) {
@@ -396,7 +400,8 @@ export class Logger {
       origin: 'main',
       severity: 'warning',
       source,
-      message: appendDetails(message, details),
+      message,
+      details: serializeDetails(details),
     });
   }
 
@@ -405,14 +410,15 @@ export class Logger {
    * `logger.error(source, 'what failed', err)`.
    * @param source The source of the record — the "Where".
    * @param message The message text.
-   * @param details Extra values appended to the message; an `Error` keeps its stack.
+   * @param details Extra values kept with the record; an `Error` keeps its stack.
    */
   public error(source: string, message: string, ...details: unknown[]): void {
     this.log({
       origin: 'main',
       severity: 'error',
       source,
-      message: appendDetails(message, details),
+      message,
+      details: serializeDetails(details),
     });
   }
 
@@ -545,7 +551,7 @@ export class Logger {
   private emitHuman(record: LogRecord): void {
     try {
       const where: string = record.window ? `${record.origin}/${record.window}` : record.origin;
-      const line: string = `${record.timestamp} [${where}:${record.severity}] ${record.source}: ${record.message}\n`;
+      const line: string = `${record.timestamp} [${where}:${record.severity}] ${record.source}: ${fullMessage(record)}\n`;
       if (app.isPackaged) {
         this.archive.enqueueHuman(line);
       } else {

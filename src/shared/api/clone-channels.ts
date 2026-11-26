@@ -5,6 +5,8 @@
 // process's own folder dialog, which the renderer cannot answer for it — and remembered there, so the
 // renderer can read it and ask to change it, but never name it.
 
+import type { VcsErrorCode, VcsSshHost } from './version-control-protocol';
+
 /**
  * The cloning IPC channels.
  */
@@ -91,6 +93,28 @@ export type CloneOutcome =
        * Gets why, worded for the user.
        */
       readonly error: string;
+
+      /**
+       * Gets whether the user chose not to clone, closing the trust question asked before it (#1504):
+       * nothing went wrong, and nothing was downloaded. Undefined otherwise.
+       */
+      readonly cancelled?: true;
+
+      /**
+       * Gets the version-control plugin's code for the failure, when it gave one: `ssh-key-rejected`
+       * or `ssh-host-unknown` (#1255), which the renderer words itself.
+       */
+      readonly code?: VcsErrorCode;
+
+      /**
+       * Gets the SSH server an SSH failure names, untrusted until checked.
+       */
+      readonly sshHost?: VcsSshHost;
+
+      /**
+       * Gets the tool's own output, when the error rewords it.
+       */
+      readonly output?: string;
     };
 
 /**

@@ -1,0 +1,18 @@
+<span
+  class="dashboard-badge"
+  [class.dashboard-badge--neutral]="tone() === 'neutral'"
+  [class.dashboard-badge--success]="tone() === 'success'"
+  [class.dashboard-badge--warning]="tone() === 'warning'"
+  [class.dashboard-badge--danger]="tone() === 'danger'"
+  [class.dashboard-badge--info]="tone() === 'info'"
+>
+  @if (icon(); as glyph) {
+    <app-icon class="dashboard-badge__icon" [icon]="glyph" [size]="0.95" />
+  }
+  <span class="dashboard-badge__text">
+    <span class="dashboard-badge__value">{{ value() }}</span>
+    @if (caption()) {
+      <span class="dashboard-badge__caption">{{ caption() }}</span>
+    }
+  </span>
+</span>

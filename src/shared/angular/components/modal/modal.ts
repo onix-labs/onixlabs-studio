@@ -22,6 +22,8 @@ import {
 } from '@angular/core';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { interfaceZoomFactor } from '@shared/api/interface-zoom';
 import {
   MODAL_WINDOW_CONFIG,
   ModalWindowHost,
@@ -129,6 +131,12 @@ export class Modal implements OnDestroy {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the settings, for the Interface Zoom the display's size is divided by. Read only as the
+   * modal is sized, never as it is built.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Gets a value indicating whether the modal is shown.
@@ -504,13 +512,16 @@ export class Modal implements OnDestroy {
   /**
    * Gets the space a modal window may occupy. A parented modal is held within the window it was
    * raised over; a free-standing one has no window behind it, so it is held within the display
-   * instead (its opener is hidden, and may be far smaller than the modal standing in for it).
+   * instead (its opener is hidden, and may be far smaller than the modal standing in for it). The
+   * display is measured in screen pixels, so it is divided by the Interface Zoom to say how many CSS
+   * pixels fit on it.
    * @param owner The window the modal is raised from.
    * @returns Returns the available width and height in CSS pixels.
    */
   private available(owner: Window): { width: number; height: number } {
+    const zoom: number = interfaceZoomFactor(this.settings.value('accessibility.interfaceZoom')());
     return this.freestanding()
-      ? { width: owner.screen.availWidth, height: owner.screen.availHeight }
+      ? { width: owner.screen.availWidth / zoom, height: owner.screen.availHeight / zoom }
       : { width: owner.innerWidth, height: owner.innerHeight };
   }
 

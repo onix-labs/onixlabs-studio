@@ -190,4 +190,43 @@ describe('WatchRegistrations', () => {
     expect(matchesAny('A/X.cs', patterns)).toBe(false);
     expect(matchesAny('A/X.razor', patterns)).toBe(true);
   });
+
+  it('matches_isFalseWithNothingRegistered_andAnswersTheUnionOnceThereIs', () => {
+    const registrations: WatchRegistrations = new WatchRegistrations(root);
+    expect(registrations.matches('A/obj/project.assets.json')).toBe(false);
+
+    registrations.register('a', [watcher('A', '{**/*.cs,**/*.json}')]);
+    expect(registrations.matches('A/obj/project.assets.json')).toBe(true);
+    expect(registrations.matches('B/obj/project.assets.json')).toBe(false);
+
+    // The union is rebuilt as registrations come and go.
+    registrations.register('b', [watcher('B', '**/*.json')]);
+    expect(registrations.matches('B/obj/project.assets.json')).toBe(true);
+    registrations.unregister('b');
+    expect(registrations.matches('B/obj/project.assets.json')).toBe(false);
+  });
+
+  it('couldMatchBeneath_aFolderWhereARegistrationLooks_andNotElsewhere (#1254)', () => {
+    const registrations: WatchRegistrations = new WatchRegistrations(root);
+    registrations.register('restore', [watcher('B/obj', 'project.assets.json')]);
+    registrations.register('json', [{ globPattern: 'src/*/config/*.json' }]);
+
+    expect(registrations.couldMatchBeneath('B')).toBe(true);
+    expect(registrations.couldMatchBeneath('B/obj')).toBe(true);
+    expect(registrations.couldMatchBeneath('A/obj')).toBe(false);
+    expect(registrations.couldMatchBeneath('B/obj/Debug')).toBe(false);
+    expect(registrations.couldMatchBeneath('src/app/config')).toBe(true);
+    expect(registrations.couldMatchBeneath('src/app/bin')).toBe(false);
+  });
+
+  it('couldMatchBeneath_anywhere_forADoubleStar', () => {
+    const registrations: WatchRegistrations = new WatchRegistrations(root);
+    registrations.register('all', [watcher('', '**/*.json')]);
+
+    expect(registrations.couldMatchBeneath('A/obj/Debug')).toBe(true);
+  });
+
+  it('couldMatchBeneath_nothing_withNoRegistrations', () => {
+    expect(new WatchRegistrations(root).couldMatchBeneath('obj')).toBe(false);
+  });
 });

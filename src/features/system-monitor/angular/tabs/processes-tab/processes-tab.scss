@@ -1,0 +1,204 @@
+@use '../tabs' as *;
+
+// The Processes view fills its tab: a header holding the filters and summary, the list (which scrolls
+// its own rows) and the pager, fitting a full-screen 1080p display and scrolling below that.
+:host {
+  @include host;
+}
+
+.processes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  box-sizing: border-box;
+  block-size: 100%;
+  min-block-size: 30rem;
+  padding: 0.5rem;
+}
+
+// The title, the filter, the scopes and the column and row choices, then the summary against the
+// right edge, wrapping onto a second line when the view is narrow.
+.processes__header {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  min-inline-size: 0;
+}
+
+.processes__icon {
+  flex: none;
+  color: var(--body-foreground-color);
+}
+
+.processes__title {
+  flex: none;
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.processes__search {
+  flex: 0 1 24rem;
+  min-inline-size: 12rem;
+}
+
+// The buttons beside the filter stand as tall as it: a button's height is the control height, which
+// these groups set to the floating field's.
+.processes__scopes,
+.processes__density,
+.processes__columns {
+  --control-height: 2.75rem;
+}
+
+.processes__scopes,
+.processes__density {
+  display: flex;
+  flex: none;
+  gap: 0.3rem;
+}
+
+// The column and row choices sit against the summary at the right edge, the space falling between
+// them and the scopes.
+.processes__columns {
+  flex: none;
+  margin-inline-start: auto;
+}
+
+.processes__summary {
+  margin-inline-start: 0;
+}
+
+// The list sits in a well like the other views' cards, its rows scrolling within it.
+.processes__list {
+  display: flex;
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow: hidden;
+  border: 1px solid var(--dock-border-color);
+  border-radius: calc(1rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
+}
+
+.processes__table {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.processes__name {
+  overflow: hidden;
+}
+
+.processes__name-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-inline-size: 0;
+}
+
+// An app's own icon, or a generic one on a quiet tile of the same size.
+.processes__app-icon {
+  flex: none;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+}
+
+.processes__app-icon--generic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border-radius: calc(0.3rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background-color: color-mix(in srgb, var(--accent-color) 18%, transparent);
+  color: var(--accent-color);
+}
+
+.processes__name-text {
+  min-inline-size: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--body-foreground-color);
+}
+
+.processes__role {
+  flex: none;
+}
+
+.processes__number {
+  @include number;
+
+  font-variant-numeric: tabular-nums;
+}
+
+.processes__strong {
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.processes__muted {
+  @include muted;
+
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.processes__graph-cell {
+  padding-inline: 0.75rem;
+}
+
+.processes__graph {
+  block-size: 1.4rem;
+}
+
+.processes__table--compact .processes__graph {
+  block-size: 0.9rem;
+}
+
+.processes__table--compact .processes__app-icon {
+  inline-size: 1rem;
+  block-size: 1rem;
+}
+
+// The pages centred, the page size against the right edge.
+.processes__pager {
+  display: grid;
+  flex: none;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+}
+
+.processes__pages {
+  display: flex;
+  grid-column: 2;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.processes__page {
+  min-inline-size: 2rem;
+}
+
+.processes__gap {
+  padding-inline: 0.4rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.processes__page-size {
+  display: flex;
+  grid-column: 3;
+  align-items: center;
+  justify-self: end;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.processes__page-size-field {
+  inline-size: 5.5rem;
+}

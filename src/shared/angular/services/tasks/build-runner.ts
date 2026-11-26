@@ -25,6 +25,7 @@ import {
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Log } from '@shared/angular/services/log/log';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
+import { CoreNotificationType } from '@shared/angular/services/notifications/core-notification-types';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import {
   DISPOSED_EXIT_CODE,
@@ -483,6 +484,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     let launch: TerminalLaunch;
     try {
       launch = await this.sessions.launch({
+        reportsItsOwnOutcome: true,
         sessionId,
         name: `Run: ${task.label}`,
         kind: 'run',
@@ -535,7 +537,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
         severity: 'success',
         title: `Run finished — ${task.label}`,
         key: `run:${sessionId}`,
-        finished: { kind: 'run', failed: false },
+        type: CoreNotificationType.RunFinished,
         desktop: true,
         reveal: (): void => this.sessions.activateAndReveal(sessionId),
       });
@@ -549,7 +551,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
         { label: 'Show terminal', run: (): void => this.sessions.activateAndReveal(sessionId) },
       ],
       key: `run:${sessionId}`,
-      finished: { kind: 'run', failed: true },
+      type: CoreNotificationType.RunFailed,
       reveal: (): void => this.sessions.activateAndReveal(sessionId),
     });
   }
@@ -567,6 +569,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       `Set a program (with its arguments), or point its target at a real project, script, or crate.`;
     this.log.warn('BuildRunner', `Run configuration not runnable`, configuration.id);
     void this.sessions.launch({
+      reportsItsOwnOutcome: true,
       sessionId: this.runSessionId(configuration.id),
       name: `Run: ${configuration.name}`,
       kind: 'run',
@@ -731,6 +734,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    */
   private async runBuildSession(task: BuildTask, token: symbol): Promise<void> {
     const launch: TerminalLaunch = await this.sessions.launch({
+      reportsItsOwnOutcome: true,
       sessionId: this.buildSessionId,
       name: 'Build',
       kind: 'task',
@@ -770,7 +774,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
         title: 'Build succeeded',
         detail: task.label,
         key: `build:${this.buildSessionId}`,
-        finished: { kind: 'run', failed: false },
+        type: CoreNotificationType.BuildFinished,
         desktop: true,
         reveal: (): void => this.sessions.activateAndReveal(this.buildSessionId),
       });
@@ -788,7 +792,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
         },
       ],
       key: `build:${this.buildSessionId}`,
-      finished: { kind: 'run', failed: true },
+      type: CoreNotificationType.BuildFailed,
       reveal: (): void => this.sessions.activateAndReveal(this.buildSessionId),
     });
   }

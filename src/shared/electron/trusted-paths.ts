@@ -4,9 +4,28 @@ import { realPathOf } from './ai/write-confinement';
 import { logger } from './logger';
 
 /**
- * The most paths remembered; older entries are evicted so the store stays bounded.
+ * The most paths remembered of each {@link Origin}; older entries are evicted so the store stays bounded.
  */
 const MAX_TRUSTED: number = 500;
+
+/**
+ * Names how a path came to be remembered: the user chose it, or it was opened from a workspace.
+ *
+ * Each is bounded on its own. A few days' work opens hundreds of files, and under one bound they pushed
+ * out the folders they were opened from, whose recent items were then refused as missing.
+ */
+type Origin = 'chosen' | 'opened';
+
+/**
+ * Describes a path opened from a workspace, as it is persisted. A chosen path is persisted as a plain
+ * string, as every path was before the two were told apart.
+ */
+interface PersistedOpened {
+  /**
+   * Gets the path.
+   */
+  readonly opened: string;
+}
 
 /**
  * Remembers the file-system paths the user has explicitly opened through an operating-system dialog,
@@ -25,31 +44,25 @@ export class TrustedPaths {
   private readonly file: string;
 
   /**
-   * Holds the maximum number of paths retained.
+   * Holds the maximum number of paths retained of each origin.
    */
   private readonly max: number;
 
   /**
-   * Holds the remembered paths, oldest first.
+   * Holds the remembered paths and how each came to be, oldest first.
    */
-  private entries: string[];
-
-  /**
-   * Holds the remembered paths as a set for constant-time membership tests.
-   */
-  private index: Set<string>;
+  private readonly entries: Map<string, Origin>;
 
   /**
    * Initializes a new instance of the {@link TrustedPaths} class.
    * @param file The file to persist the trusted paths to.
-   * @param max The maximum number of paths to retain.
+   * @param max The maximum number of paths to retain of each origin.
    */
   public constructor(file: string, max: number = MAX_TRUSTED) {
     this.file = file;
     this.max = max;
     this.entries = load(file);
-    this.index = new Set<string>(this.entries);
-    logger.debug('TrustedPaths', `Loaded ${this.entries.length} trusted path(s)`);
+    logger.debug('TrustedPaths', `Loaded ${this.entries.size} trusted path(s)`);
   }
 
   /**
@@ -58,25 +71,37 @@ export class TrustedPaths {
    * @param target The absolute path to remember.
    */
   public remember(target: string): void {
-    if (target.length === 0) {
-      return;
+    this.add(target, 'chosen');
+  }
+
+  /**
+   * Remembers a file opened from a workspace, as {@link remember} does but within a bound of its own,
+   * so that no number of them evicts a path the user chose. One they chose stays as it is.
+   * @param target The absolute path of the file.
+   */
+  public rememberOpened(target: string): void {
+    if (target.length > 0 && this.entries.get(path.resolve(target)) !== 'chosen') {
+      this.add(target, 'opened');
     }
-    const resolved: string = path.resolve(target);
-    logger.debug('TrustedPaths', `Remembering trusted path ${resolved}`);
-    this.entries = this.entries.filter((entry: string): boolean => entry !== resolved);
-    this.entries.push(resolved);
-    if (this.entries.length > this.max) {
-      this.entries = this.entries.slice(this.entries.length - this.max);
+  }
+
+  /**
+   * Moves a path to the most-recent position, so that one in regular use is never the oldest. Grants
+   * nothing: a path that is not remembered, or no longer is, stays that way.
+   * @param target The absolute path.
+   */
+  public refresh(target: string): void {
+    const origin: Origin | undefined = this.entries.get(path.resolve(target));
+    if (origin !== undefined) {
+      this.add(target, origin);
     }
-    this.index = new Set<string>(this.entries);
-    save(this.file, this.entries);
   }
 
   /**
    * Remembers a path the user chose themselves, by the operating system's dialog or by opening it from
    * outside the app, under the name they chose and under where it really is. The second is what lets
    * a link they picked keep working where the file channels follow links before they check (#1174).
-   * Never for a path the renderer named: {@link remember} is the one for those, because a link planted
+   * Never for a path the renderer named: {@link rememberOpened} is the one for those, because a link planted
    * in a workspace must not turn the file it points at into a trusted one.
    * @param target The absolute path chosen.
    */
@@ -93,7 +118,9 @@ export class TrustedPaths {
    * @returns Returns true when the path is trusted.
    */
   public has(target: unknown): boolean {
-    return typeof target === 'string' && target.length > 0 && this.index.has(path.resolve(target));
+    return (
+      typeof target === 'string' && target.length > 0 && this.entries.has(path.resolve(target))
+    );
   }
 
   /**
@@ -101,7 +128,7 @@ export class TrustedPaths {
    * @returns Returns the paths.
    */
   public list(): readonly string[] {
-    return [...this.entries].reverse();
+    return [...this.entries.keys()].reverse();
   }
 
   /**
@@ -114,8 +141,7 @@ export class TrustedPaths {
     }
     const resolved: string = path.resolve(target as string);
     logger.info('TrustedPaths', `Forgetting trusted path ${resolved}`);
-    this.entries = this.entries.filter((entry: string): boolean => entry !== resolved);
-    this.index = new Set<string>(this.entries);
+    this.entries.delete(resolved);
     save(this.file, this.entries);
   }
 
@@ -123,30 +149,91 @@ export class TrustedPaths {
    * Forgets every remembered path.
    */
   public clear(): void {
-    logger.info('TrustedPaths', `Forgetting all ${this.entries.length} trusted path(s)`);
-    this.entries = [];
-    this.index = new Set<string>();
+    logger.info('TrustedPaths', `Forgetting all ${this.entries.size} trusted path(s)`);
+    this.entries.clear();
+    save(this.file, this.entries);
+  }
+
+  /**
+   * Adds a path at the most-recent position, evicting the oldest of its origin beyond the limit.
+   * @param target The absolute path.
+   * @param origin How it came to be remembered.
+   */
+  private add(target: string, origin: Origin): void {
+    if (target.length === 0) {
+      return;
+    }
+    const resolved: string = path.resolve(target);
+    logger.debug('TrustedPaths', `Remembering trusted path ${resolved} (${origin})`);
+    this.entries.delete(resolved);
+    this.entries.set(resolved, origin);
+    const alike: readonly string[] = [...this.entries.keys()].filter(
+      (entry: string): boolean => this.entries.get(entry) === origin,
+    );
+    for (const oldest of alike.slice(0, Math.max(alike.length - this.max, 0))) {
+      this.entries.delete(oldest);
+    }
     save(this.file, this.entries);
   }
 }
 
 /**
- * Loads the persisted trusted paths, returning an empty list when the file is absent or malformed.
+ * Loads the persisted trusted paths, returning none when the file is absent or malformed. A list
+ * written before origins were recorded has them inferred (see {@link inferOrigins}).
  * @param file The file to read.
- * @returns Returns the validated list of paths.
+ * @returns Returns the validated paths, oldest first.
  */
-function load(file: string): string[] {
+function load(file: string): Map<string, Origin> {
+  const entries: Map<string, Origin> = new Map<string, Origin>();
   try {
     const raw: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (!Array.isArray(raw)) {
-      return [];
+    for (const entry of Array.isArray(raw) ? (raw as readonly unknown[]) : []) {
+      const opened: unknown = (entry as Partial<PersistedOpened> | null)?.opened;
+      if (typeof entry === 'string' && entry.length > 0) {
+        entries.set(entry, 'chosen');
+      } else if (typeof opened === 'string' && opened.length > 0) {
+        entries.set(opened, 'opened');
+      }
     }
-    return raw.filter(
-      (entry: unknown): entry is string => typeof entry === 'string' && entry.length > 0,
-    );
   } catch {
-    return [];
+    // Absent or malformed: nothing is remembered.
   }
+  return inferOrigins(entries);
+}
+
+/**
+ * Infers the origins of a list written before they were recorded, where every path reads as chosen: one
+ * with an extension, inside another remembered path and with none inside it, is taken for a file opened
+ * from that folder. Without this such a list fills the chosen paths' bound with files, and the next
+ * folder chosen evicts another. A wrong inference costs little: the path stays trusted, in the other
+ * bound.
+ * @param entries The loaded paths, oldest first.
+ * @returns Returns the same paths, in the same order.
+ */
+function inferOrigins(entries: ReadonlyMap<string, Origin>): Map<string, Origin> {
+  const recorded: boolean = [...entries.values()].includes('opened');
+  const holders: Set<string> = new Set<string>();
+  const within: Set<string> = new Set<string>();
+  for (const entry of entries.keys()) {
+    let child: string = entry;
+    let parent: string = path.dirname(child);
+    while (parent !== child) {
+      if (entries.has(parent)) {
+        holders.add(parent);
+        within.add(entry);
+      }
+      child = parent;
+      parent = path.dirname(child);
+    }
+  }
+  return new Map<string, Origin>(
+    [...entries].map(([entry, origin]: [string, Origin]): [string, Origin] => [
+      entry,
+      !recorded && within.has(entry) && !holders.has(entry) && path.extname(entry).length > 0
+        ? 'opened'
+        : origin,
+    ]),
+  );
 }
 
 /**
@@ -154,9 +241,13 @@ function load(file: string): string[] {
  * @param file The file to write.
  * @param entries The paths to persist.
  */
-function save(file: string, entries: readonly string[]): void {
+function save(file: string, entries: ReadonlyMap<string, Origin>): void {
   try {
-    fs.writeFileSync(file, JSON.stringify(entries));
+    const persisted: readonly (string | PersistedOpened)[] = [...entries].map(
+      ([entry, origin]: [string, Origin]): string | PersistedOpened =>
+        origin === 'chosen' ? entry : { opened: entry },
+    );
+    fs.writeFileSync(file, JSON.stringify(persisted));
   } catch {
     // Persistence is best-effort; a failed write must not break opening files.
   }

@@ -6,6 +6,10 @@ import {
 } from '@angular/core';
 import { FeatureDescriptor, provideFeature } from '@shared/angular/services/feature-registry';
 import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
+import { provideNotificationTypes } from '@shared/angular/services/notifications/notification-types';
+import { TEST_NOTIFICATION_TYPES } from './tests/test-notification-types';
+import { DEBUG_NOTIFICATION_TYPES } from './debug/debug-notification-types';
+import { PACKAGE_NOTIFICATION_TYPES } from './project/package-notification-types';
 import { WORKSPACE_KEYBINDINGS } from './workspace-keybindings';
 import { DirectoryHost } from './directory-host/directory-host';
 import { DirectoryRibbon } from './directory-ribbon/directory-ribbon';
@@ -47,6 +51,9 @@ export function provideWorkspaceFeature(): EnvironmentProviders {
   return makeEnvironmentProviders([
     provideFeature(workspaceFeature),
     provideKeybindingCatalogue(WORKSPACE_KEYBINDINGS),
+    provideNotificationTypes(TEST_NOTIFICATION_TYPES),
+    provideNotificationTypes(PACKAGE_NOTIFICATION_TYPES),
+    provideNotificationTypes(DEBUG_NOTIFICATION_TYPES),
     provideAppInitializer((): void => {
       inject(AgentRunConfigurationCapabilities);
       inject(FindRouter).useWorkspace(inject(WorkspaceFind));

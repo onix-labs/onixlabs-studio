@@ -88,7 +88,7 @@ export interface SkillRow {
  * under Studio's user-data path, listed to agents by name and description and loaded on demand —
  * listed in its side panel, with the one selected edited at full width in the main area.
  *
- * Like the prompt profiles, a skill saves as it is edited (#954) — a moment after the last keystroke,
+ * Like the persona's entries, a skill saves as it is edited (#954) — a moment after the last keystroke,
  * since a skill is a file and each one would otherwise rewrite or rename it. A save can be refused —
  * a name that is not a valid folder name, a description the model could not act on — so the draft is
  * kept and the reason shown until it is put right, and a new skill waits for a name and a description. The disk stays the truth:

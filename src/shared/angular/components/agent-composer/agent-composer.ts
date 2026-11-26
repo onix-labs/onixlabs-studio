@@ -53,6 +53,7 @@ import { AgentPerf } from '@shared/angular/services/agent-perf/agent-perf';
 import { Settings } from '@shared/angular/services/settings/settings';
 import type { SendMessageWith } from '@shared/angular/services/settings/settings-registry';
 import { formatElapsed } from '@shared/angular/services/time/time-format';
+import { isComposing } from '@shared/angular/services/keybindings/is-composing';
 
 /**
  * Holds the bytes in a megabyte, for the Size per Image setting.
@@ -447,7 +448,8 @@ export class AgentComposer {
    * Holds the prior user message being edited for resend (the composer's edit mode), or null when
    * composing normally. Sending in edit mode rewinds the conversation to that message.
    */
-  protected readonly editing: WritableSignal<AgentItem | null> = signal<AgentItem | null>(null);
+  protected readonly editing: WritableSignal<AgentItem | null> =
+    this.conversation?.editing ?? signal<AgentItem | null>(null);
 
   /**
    * Gets a value indicating whether to offer compaction: Auto-Compact's threshold is reached and At
@@ -475,9 +477,8 @@ export class AgentComposer {
    * Holds the images attached to the draft (pasted or dropped), shown as thumbnail chips and sent
    * with the next message.
    */
-  protected readonly pendingImages: WritableSignal<readonly AiImageRef[]> = signal<
-    readonly AiImageRef[]
-  >([]);
+  protected readonly pendingImages: WritableSignal<readonly AiImageRef[]> =
+    this.conversation?.images ?? signal<readonly AiImageRef[]>([]);
 
   /**
    * Holds the transient image-input hint (unsupported provider, oversize file, …), or null.
@@ -679,7 +680,8 @@ export class AgentComposer {
   /**
    * Holds the draft that was in the composer when edit mode began, restored on cancel.
    */
-  private stashedBeforeEdit: string = '';
+  private readonly stashedBeforeEdit: WritableSignal<string> =
+    this.conversation?.draftBeforeEdit ?? signal<string>('');
 
   /**
    * Holds the position in the sent-prompt history while the user arrows through it from the composer
@@ -754,6 +756,10 @@ export class AgentComposer {
     inject(DestroyRef).onDestroy((): void => {
       if (this.elapsedTimer !== null) {
         clearInterval(this.elapsedTimer);
+      }
+      // What the markdown editor holds goes back to the draft, which outlives the composer.
+      if (this.markdownOpen()) {
+        this.cancelMarkdown();
       }
     });
   }
@@ -833,7 +839,7 @@ export class AgentComposer {
       this.agent.respondInput(pending, text.trim());
     } else if (editing !== null) {
       this.editing.set(null);
-      this.stashedBeforeEdit = '';
+      this.stashedBeforeEdit.set('');
       this.agent.rewind(editing, text, this.tabId(), this.surface());
     } else {
       this.agent.send(text, this.tabId(), this.surface(), this.pendingImages());
@@ -1430,7 +1436,7 @@ export class AgentComposer {
    * @param item The user item to edit and resend.
    */
   public beginEdit(item: AgentItem): void {
-    this.stashedBeforeEdit = this.draftText();
+    this.stashedBeforeEdit.set(this.draftText());
     this.editing.set(item);
     this.draftText.set(item.text);
     const area: HTMLTextAreaElement | undefined = this.inputRef()?.nativeElement;
@@ -1448,12 +1454,12 @@ export class AgentComposer {
       return;
     }
     this.editing.set(null);
-    this.draftText.set(this.stashedBeforeEdit);
+    this.draftText.set(this.stashedBeforeEdit());
     const area: HTMLTextAreaElement | undefined = this.inputRef()?.nativeElement;
     if (area !== undefined) {
-      area.value = this.stashedBeforeEdit;
+      area.value = this.stashedBeforeEdit();
     }
-    this.stashedBeforeEdit = '';
+    this.stashedBeforeEdit.set('');
   }
 
   /**
@@ -1495,6 +1501,11 @@ export class AgentComposer {
    * @param event The keyboard event.
    */
   public onKeydown(event: KeyboardEvent): void {
+    // While an input method composes (typing Chinese), Enter picks a candidate and Escape abandons
+    // it: neither sends, accepts a suggestion or cancels an edit.
+    if (isComposing(event)) {
+      return;
+    }
     // The suggestion popup owns the navigation keys while it is open.
     const options: readonly ComposerSuggestion[] = this.suggestions();
     if (options.length > 0) {

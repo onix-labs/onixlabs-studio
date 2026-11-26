@@ -57,7 +57,7 @@ export interface CategoryItem {
   readonly disabled?: boolean;
 
   /**
-   * Gets whether the entry is shown dimmed, such as a prompt profile that is switched off.
+   * Gets whether the entry is shown dimmed, such as a persona entry that is switched off.
    */
   readonly muted?: boolean;
 

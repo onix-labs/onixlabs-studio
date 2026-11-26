@@ -3,17 +3,24 @@ import { TestBed } from '@angular/core/testing';
 import { describe, expect, it, beforeEach } from 'vitest';
 import {
   LIST_LOG_SESSIONS,
+  LIST_PROCESSES,
   QUERY_LOGS,
+  READ_RESOURCE,
   READ_SYSTEM_METRICS,
   SET_LOG_LEVEL,
   type AiBridgeScope,
 } from '@shared/api/ai-types';
 import type { LogQuery, LogRecord, LogSession } from '@shared/api/log-channels';
-import type { MetricsSample } from '@shared/api/system-monitor-channels';
+import type {
+  MetricsSample,
+  ProcessesSnapshot,
+  StorageSnapshot,
+} from '@shared/api/system-monitor-channels';
 import { AiCapability, AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { SystemMonitorMetrics } from '../metrics/system-monitor-metrics';
+import { SystemMonitorReadings } from '../readings/system-monitor-readings';
 import {
   statsOf,
   SystemMonitorAgentCapabilities,
@@ -38,6 +45,89 @@ function record(id: number, timestamp: string, message: string): LogRecord {
     message,
   };
 }
+
+/**
+ * A listing of four processes: Studio's main process, a shell it started, the window server, and a
+ * busy build.
+ */
+const SNAPSHOT: ProcessesSnapshot = {
+  timestamp: '2026-11-15T10:00:00Z',
+  total: 600,
+  user: 'me',
+  processes: [
+    {
+      pid: 100,
+      parentPid: 1,
+      name: 'Studio',
+      command: '/Applications/Studio',
+      user: 'me',
+      cpuPercent: 4,
+      memoryBytes: 900,
+      memoryPercent: 3,
+      studio: 'main',
+    },
+    {
+      pid: 200,
+      parentPid: 100,
+      name: 'zsh',
+      command: '/bin/zsh',
+      user: 'me',
+      cpuPercent: 0,
+      memoryBytes: 10,
+      memoryPercent: 0,
+      studio: 'child',
+    },
+    {
+      pid: 300,
+      parentPid: 1,
+      name: 'WindowServer',
+      command: '/System/WindowServer',
+      user: '_windowserver',
+      cpuPercent: 12,
+      memoryBytes: 700,
+      memoryPercent: 2,
+    },
+    {
+      pid: 400,
+      parentPid: 1,
+      name: 'esbuild',
+      command: 'esbuild --watch',
+      user: 'me',
+      cpuPercent: 60,
+      memoryBytes: 300,
+      memoryPercent: 1,
+      threads: 18,
+      startedAt: Date.parse('2026-11-15T09:59:00Z'),
+    },
+  ],
+};
+
+/**
+ * One drive with a volume on it, and a network share on none.
+ */
+const STORAGE: StorageSnapshot = {
+  info: {
+    devices: [{ id: 'disk1', name: 'SSD', kind: 'nvme', sizeBytes: 2000, health: 'ok' }],
+    volumes: [{ mount: '/', deviceId: 'disk1', name: 'Macintosh HD' }, { mount: '/Volumes/Share' }],
+  },
+  reading: {
+    timestamp: 't',
+    devices: [
+      {
+        id: 'disk1',
+        readBytesPerSecond: 5,
+        writeBytesPerSecond: 6,
+        readOpsPerSecond: 1,
+        writeOpsPerSecond: 2,
+        utilisationPercent: 3,
+        totalReadBytes: 100,
+        totalWriteBytes: 200,
+        totalReadOps: 10,
+        totalWriteOps: 20,
+      },
+    ],
+  },
+};
 
 const MONITOR: AiBridgeScope = { owningTabId: 'tab', surface: 'monitor', workspaceRoot: null };
 const EDITOR: AiBridgeScope = { owningTabId: 'tab', surface: 'editor', workspaceRoot: null };
@@ -130,6 +220,31 @@ describe('SystemMonitorAgentCapabilities', () => {
               sampleListener = listener;
               return (): void => undefined;
             },
+            readProcessesNow: (): Promise<ProcessesSnapshot> => Promise.resolve(SNAPSHOT),
+            readGpuNow: (): Promise<null> => Promise.resolve(null),
+            readStorageNow: (): Promise<StorageSnapshot> => Promise.resolve(STORAGE),
+            readNetworkNow: (): Promise<null> => Promise.resolve(null),
+          },
+        },
+        {
+          provide: SystemMonitorReadings,
+          useValue: {
+            info: signal(null),
+            latest: signal(null),
+            intervalMs: signal(1000),
+            cpuHistory: signal([10, 30]),
+            appCpuHistory: signal([1, 2]),
+            memoryHistory: signal([40]),
+            swapHistory: signal([]),
+            appMemoryHistory: signal([]),
+            gpuHistory: signal([]),
+            cores: signal([20, 40]),
+            memoryDetail: signal(null),
+            volumes: signal([
+              { mount: '/', type: 'apfs', sizeBytes: 1000, usedBytes: 250 },
+              { mount: '/Volumes/Share', type: 'smbfs', sizeBytes: 4000, usedBytes: 1000 },
+            ]),
+            health: signal({ healthy: true, label: 'Healthy', reasons: [] }),
           },
         },
       ],
@@ -208,5 +323,103 @@ describe('SystemMonitorAgentCapabilities', () => {
       ok: false,
       error: '"loud" is not a log level.',
     });
+  });
+
+  it('listsTheBusiestProcesses_inScope_andOrdered', async () => {
+    const all: { result: { processes: { pid: number }[]; runningOnMachine: number } } = (await call(
+      LIST_PROCESSES,
+      {},
+    )) as {
+      result: { processes: { pid: number }[]; runningOnMachine: number };
+    };
+    expect(all.result.processes.map((process: { pid: number }): number => process.pid)).toEqual([
+      400, 300, 100, 200,
+    ]);
+    expect(all.result.runningOnMachine).toBe(600);
+
+    const studio: { result: { processes: { pid: number; studio?: string }[] } } = (await call(
+      LIST_PROCESSES,
+      { scope: 'studio', sort: 'memory' },
+    )) as { result: { processes: { pid: number; studio?: string }[] } };
+    expect(studio.result.processes.map((process: { pid: number }): number => process.pid)).toEqual([
+      100, 200,
+    ]);
+    expect(studio.result.processes[0].studio).toBe('main');
+
+    const system: { result: { processes: { pid: number }[] } } = (await call(LIST_PROCESSES, {
+      scope: 'system',
+    })) as { result: { processes: { pid: number }[] } };
+    expect(system.result.processes.map((process: { pid: number }): number => process.pid)).toEqual([
+      300,
+    ]);
+
+    const found: { result: { processes: { uptimeSeconds?: number; threads?: number }[] } } =
+      (await call(LIST_PROCESSES, { text: 'watch', limit: 1 })) as {
+        result: { processes: { uptimeSeconds?: number; threads?: number }[] };
+      };
+    expect(found.result.processes).toEqual([
+      expect.objectContaining({ threads: 18, uptimeSeconds: 60 }),
+    ]);
+  });
+
+  it('readsTheCpu_withItsHistoryCoresAndBusiestProcesses', async () => {
+    const answer: { result: Record<string, unknown> } = (await call(READ_RESOURCE, {
+      resource: 'cpu',
+    })) as { result: Record<string, unknown> };
+
+    expect(answer.result['utilisationPercent']).toEqual({
+      latest: 30,
+      low: 10,
+      average: 20,
+      high: 30,
+    });
+    expect(answer.result['perCorePercentNow']).toEqual([20, 40]);
+    expect(
+      (answer.result['busiestProcesses'] as { processes: { pid: number }[] }).processes[0].pid,
+    ).toBe(400);
+  });
+
+  it('readsTheStorage_eachDriveWithItsVolumes_andSharesApart', async () => {
+    const answer: {
+      result: {
+        devices: {
+          id: string;
+          activity: unknown;
+          volumes: { mount: string; usedPercent: number }[];
+        }[];
+        otherVolumes: { mount: string }[];
+      };
+    } = (await call(READ_RESOURCE, { resource: 'storage' })) as {
+      result: {
+        devices: {
+          id: string;
+          activity: unknown;
+          volumes: { mount: string; usedPercent: number }[];
+        }[];
+        otherVolumes: { mount: string }[];
+      };
+    };
+
+    expect(answer.result.devices[0].volumes).toEqual([
+      expect.objectContaining({ mount: '/', name: 'Macintosh HD', usedPercent: 25 }),
+    ]);
+    expect(answer.result.devices[0].activity).toEqual(
+      expect.objectContaining({ utilisationPercent: 3 }),
+    );
+    expect(
+      answer.result.otherVolumes.map((volume: { mount: string }): string => volume.mount),
+    ).toEqual(['/Volumes/Share']);
+  });
+
+  it('saysWhichResourcesThereAre_whenAskedForAnother', async () => {
+    const answer: { error: string } = (await call(READ_RESOURCE, { resource: 'printer' })) as {
+      error: string;
+    };
+    expect(answer.error).toContain('system, cpu, memory, gpu, storage, network');
+  });
+
+  it('answersTheNewToolsOnlyForTheSystemMonitorsOwnAgent', async () => {
+    expect(await call(LIST_PROCESSES, {}, EDITOR)).toEqual({ available: false });
+    expect(await call(READ_RESOURCE, { resource: 'cpu' }, EDITOR)).toEqual({ available: false });
   });
 });

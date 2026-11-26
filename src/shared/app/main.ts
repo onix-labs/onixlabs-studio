@@ -1,4 +1,3 @@
-import { bootstrapApplication } from '@angular/platform-browser';
 import { LogChannel } from '@shared/api/log-channels';
 import type { DisplayStartup } from '@shared/api/host';
 import {
@@ -8,10 +7,9 @@ import {
   startupGraphicsAcceleration,
 } from '@shared/angular/services/display/display-policy';
 import { trackDevicePixel } from '@shared/angular/services/display/device-pixel';
-import { openDesignCanvas } from './canvas/canvas-entry';
-import { config } from './config';
+import { launchLanguage } from '@shared/angular/services/locale/language-choice';
 import { warmIconFonts } from './icon-fonts';
-import { Root } from './root/root';
+import { loadLanguage } from './locale/load-language';
 
 /**
  * Resolves the graphics level for the first paint, mirroring the Display service so the document is
@@ -67,25 +65,25 @@ trackDevicePixel(window);
 warmIconFonts();
 
 /**
- * Starts Studio.
+ * Starts Studio in the interface's language.
+ *
+ * Only what has no text is imported above. Studio's text is translated as its modules are first read,
+ * so the language is loaded first and the rest of Studio is imported after it, from `start-studio.ts`.
+ * @returns Returns a promise that settles once Studio has started.
  */
-function bootstrapStudio(): void {
-  bootstrapApplication(Root, config).catch((error: unknown): void => {
-    // The forwarder may not have installed if bootstrap failed this early, so send the record straight
-    // over the bridge as well as to the console (for DevTools).
+async function start(): Promise<void> {
+  try {
+    await loadLanguage(launchLanguage(window.host), navigator.languages);
+  } catch (error: unknown) {
+    // A missing or broken translation is no reason not to start: the interface reads in English.
     window.bridge?.send(LogChannel.Append, {
       severity: 'error',
       source: 'bootstrap',
-      message: `Application failed to bootstrap: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
+      message: `The interface language failed to load: ${error instanceof Error ? error.message : String(error)}`,
     });
-    console.error(error);
-  });
+  }
+  const { startStudio }: typeof import('./start-studio') = await import('./start-studio');
+  await startStudio();
 }
 
-// The conversation canvas (#855) takes the page instead when it is loaded with `?canvas`, in development
-// builds only; a production build never starts it.
-void openDesignCanvas().then((opened: boolean): void => {
-  if (!opened) {
-    bootstrapStudio();
-  }
-});
+void start();

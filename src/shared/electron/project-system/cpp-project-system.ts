@@ -1,4 +1,3 @@
-import { execFile } from 'node:child_process';
 import { Dirent } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
@@ -21,7 +20,8 @@ import {
 } from './cmake-file-api';
 import { buildItemTree, EvaluatedItem } from './item-tree';
 import { listProjectFiles } from './project-listing';
-import { ProjectSystem } from './project-system';
+import { ProjectLoadOptions, ProjectSystem } from './project-system';
+import { launchFor, RunToken } from '../process/launch';
 import { logger } from '../logger';
 
 /**
@@ -72,6 +72,28 @@ const BUILD_DIR: string = 'build';
  * it looks in each folder above a file, and in the `build` folder of each.
  */
 const COMPILE_COMMANDS: string = 'compile_commands.json';
+
+/**
+ * Bounds how long configuring a CMake build tree may take, so a configure that hangs cannot hold the
+ * Solution Explorer forever.
+ */
+const CONFIGURE_TIMEOUT_MS: number = 120_000;
+
+/**
+ * Runs a trusted folder's CMake, resolving with its outcome rather than throwing; only with the
+ * folder's run token (#1504).
+ * @param token The folder's run token.
+ * @returns Returns the runner.
+ */
+function execFileFor(
+  token: RunToken,
+): (
+  file: string,
+  args: readonly string[],
+  options: { timeout: number; killSignal: NodeJS.Signals },
+) => Promise<unknown> {
+  return promisify(launchFor(token).execFile);
+}
 
 /**
  * The directories skipped when listing a project's files: build outputs, CMake's own metadata, and
@@ -126,12 +148,6 @@ const SOURCE_EXTENSIONS: ReadonlySet<string> = new Set<string>([
 ]);
 
 /**
- * Bounds how long configuring a CMake build tree may take, so a configure that hangs cannot hold the
- * Solution Explorer forever.
- */
-const CONFIGURE_TIMEOUT_MS: number = 120_000;
-
-/**
  * The words each kind of CMake target is described in.
  */
 const TARGET_KINDS: Readonly<Record<string, string>> = {
@@ -141,15 +157,6 @@ const TARGET_KINDS: Readonly<Record<string, string>> = {
   MODULE_LIBRARY: 'module library',
   OBJECT_LIBRARY: 'object library',
 };
-
-/**
- * Runs a process, resolving with its outcome rather than throwing.
- */
-const execFileAsync: (
-  file: string,
-  args: readonly string[],
-  options: { timeout: number; killSignal: NodeJS.Signals },
-) => Promise<unknown> = promisify(execFile);
 
 /**
  * Builds a CMake project's contents from its build model: one group per target that compiles anything
@@ -275,10 +282,16 @@ export class CppProjectSystem implements ProjectSystem {
    * @param projectPath The absolute path of the project manifest.
    * @returns Returns the contents, or null when the directory cannot be read.
    */
-  public async loadProjectItems(projectPath: string): Promise<ProjectItems | null> {
+  public async loadProjectItems(
+    projectPath: string,
+    options?: ProjectLoadOptions,
+  ): Promise<ProjectItems | null> {
     const directory: string = path.dirname(projectPath);
     if (path.basename(projectPath) === CMAKE_MANIFEST) {
-      const targets: readonly CmakeTarget[] | null = await this.cmakeTargets(directory);
+      const targets: readonly CmakeTarget[] | null = await this.cmakeTargets(
+        directory,
+        options?.token ?? null,
+      );
       if (targets?.some((target: CmakeTarget): boolean => target.sources.length > 0) === true) {
         logger.debug(
           'CppProjectSystem',
@@ -301,15 +314,23 @@ export class CppProjectSystem implements ProjectSystem {
   /**
    * Reads a CMake project's targets from its build tree's File API reply. The tree must already be
    * configured — Studio never creates one — and Studio's code-model query is put in place on first
-   * read; when no configure has answered it yet, or the tree does not write `compile_commands.json` and
-   * nobody has said it should not, the tree is reconfigured once (which regenerates the build files and
-   * builds nothing). After that, CMake answers on every configure, including the ones a build runs when
-   * a `CMakeLists.txt` changes, so the reply stays current without Studio's help.
+   * read.
+   *
+   * ⛔ Only in a trusted folder does Studio configure the tree itself (#1504): when no configure has
+   * answered the query yet, or the tree does not write `compile_commands.json` and nobody has said it
+   * should not, it is reconfigured once, which regenerates the build files and builds nothing.
+   * Configuring runs the project's `CMakeLists.txt`, and the CMake it runs is the one the tree's cache
+   * names, so in a folder not yet trusted the targets come only from a reply already there.
    * @param root The project's top-level source directory.
-   * @returns Returns the targets, or null when the project has no configured build tree, or CMake
-   * cannot be run to answer.
+   * @param token The folder's run token, which running CMake needs, or null for a folder the user has
+   * not trusted.
+   * @returns Returns the targets, or null when the project has no configured build tree or none could
+   * be read.
    */
-  private async cmakeTargets(root: string): Promise<readonly CmakeTarget[] | null> {
+  private async cmakeTargets(
+    root: string,
+    token: RunToken | null,
+  ): Promise<readonly CmakeTarget[] | null> {
     const buildDir: string = path.join(root, BUILD_DIR);
     const cache: string | null = await this.readFile(path.join(buildDir, 'CMakeCache.txt'));
     if (cache === null) {
@@ -317,6 +338,13 @@ export class CppProjectSystem implements ProjectSystem {
       return null;
     }
     const existing: readonly CmakeTarget[] | null = await readTargets(buildDir);
+    if (token === null) {
+      if (existing === null) {
+        // A query file is data CMake reads; writing one runs nothing.
+        await writeCodeModelQuery(buildDir);
+      }
+      return existing;
+    }
     const needsExport: boolean =
       compileCommandsUndecided(cache) &&
       (await this.readFile(path.join(buildDir, COMPILE_COMMANDS))) === null;
@@ -329,7 +357,7 @@ export class CppProjectSystem implements ProjectSystem {
     const cmake: string = cmakeFromCache(cache) ?? 'cmake';
     logger.info('CppProjectSystem', `Configuring '${buildDir}' to read its CMake targets.`);
     try {
-      await execFileAsync(cmake, ['-S', root, '-B', buildDir, EXPORT_COMPILE_COMMANDS], {
+      await execFileFor(token)(cmake, ['-S', root, '-B', buildDir, EXPORT_COMPILE_COMMANDS], {
         timeout: CONFIGURE_TIMEOUT_MS,
         killSignal: 'SIGKILL',
       });

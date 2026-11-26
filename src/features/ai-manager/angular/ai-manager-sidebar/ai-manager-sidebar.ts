@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import { personaEntryMatches as matchesEntry } from '@shared/api/persona-channels';
 import type { Skill } from '@shared/api/skill-channels';
 import { CategoryList } from '@shared/angular/components/category-list/category-list';
 import { Accordion } from '@shared/angular/components/forms/accordion/accordion';
@@ -8,10 +9,7 @@ import {
   AiManagerNavigation,
   AiManagerSection,
 } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
-import {
-  PromptProfile,
-  PromptProfiles,
-} from '@shared/angular/services/prompt-profiles/prompt-profiles';
+import { Persona, PersonaEntry } from '@shared/angular/services/persona/persona';
 import { Skills } from '@shared/angular/services/skills/skills';
 import { AiManagerSidebarList, AiManagerSidebarState } from './ai-manager-sidebar-state';
 
@@ -41,7 +39,7 @@ interface SidebarSection {
 }
 
 /**
- * The AI Manager's sidebar: one search over everything, then Local Models, Prompt Profiles and Skills
+ * The AI Manager's sidebar: one search over everything, then Local Models, Persona and Skills
  * as accordions, one open at a time. Opening a section shows it in the main area and gives the ribbon
  * its groups — the job the ribbon's View group used to do. While searching, a library section with no
  * matches steps aside.
@@ -65,9 +63,9 @@ export class AiManagerSidebar {
   private readonly navigation: AiManagerNavigation = inject(AiManagerNavigation);
 
   /**
-   * Holds the prompt profiles, counted on their heading.
+   * Holds the persona, counted on its heading.
    */
-  private readonly profiles: PromptProfiles = inject(PromptProfiles);
+  private readonly persona: Persona = inject(Persona);
 
   /**
    * Holds the skills, counted on their heading.
@@ -89,15 +87,15 @@ export class AiManagerSidebar {
       const query: string = this.state.query().trim().toLowerCase();
       const matches: (name: string) => boolean = (name: string): boolean =>
         query.length === 0 || name.toLowerCase().includes(query);
-      const profiles: number = this.profiles
-        .profiles()
-        .filter((profile: PromptProfile): boolean => matches(profile.name)).length;
+      const persona: number = this.persona
+        .entries()
+        .filter((entry: PersonaEntry): boolean => matchesEntry(entry, query)).length;
       const skills: number = this.skills
         .skills()
         .filter((skill: Skill): boolean => matches(skill.name)).length;
       const all: readonly SidebarSection[] = [
         { id: 'models', label: 'Local Models', icon: Icon.AI_MODELS, count: null },
-        { id: 'profiles', label: 'Prompt Profiles', icon: Icon.AI_PROFILES, count: profiles },
+        { id: 'persona', label: 'Persona', icon: Icon.AI_PERSONA, count: persona },
         { id: 'skills', label: 'Skills', icon: Icon.AI_SKILLS, count: skills },
       ];
       return all.filter(

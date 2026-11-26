@@ -4,9 +4,13 @@ import {
   provideAppInitializer,
   provideBrowserGlobalErrorListeners,
   provideZonelessChangeDetection,
+  Injector,
 } from '@angular/core';
 import { AgentRequestToasts } from '@shared/angular/services/notifications/agent-request-toasts';
 import { NarrowedGrantNotice } from '@shared/angular/services/notifications/narrowed-grant-notice';
+import { PersonaConversionNotice } from '@shared/angular/services/persona/persona-conversion-notice';
+import { PersonaLearning } from '@shared/angular/services/persona/persona-learning';
+import { PersonaReviewNotice } from '@shared/angular/services/persona/persona-review-notice';
 import { AgentTabAttention } from '@shared/angular/services/agent-requests/agent-tab-attention';
 import { ModelUpdates } from '@shared/angular/services/ai-connections/model-updates';
 import { PluginUpdates } from '@shared/angular/services/plugins/plugin-updates';
@@ -22,9 +26,11 @@ import { OpenWith } from '@shared/angular/services/open-with/open-with';
 import { Printing } from '@shared/angular/services/printing/printing';
 import { SetupWizard } from '@shared/angular/services/setup-wizard/setup-wizard';
 import { StartupSettingsMirror } from '@shared/angular/services/settings/startup-settings-mirror';
+import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { FeatureDescriptor, FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
+import { NotificationTypes } from '@shared/angular/services/notifications/notification-types';
 import {
   featureContributions,
   registerFeatureContribution,
@@ -55,6 +61,10 @@ export const config: ApplicationConfig = {
     // initializers') reach the main-process logger. No-op outside Electron.
     provideAppInitializer((): void => {
       inject(ConsoleForwarder);
+    }),
+    // Forget the panel arrangements of versions before the one dock (#1573), which nothing reads.
+    provideAppInitializer((): void => {
+      inject(SettingsStore).removeAll('panel-layout.');
     }),
     // Instantiate the Theme service at start-up so the persisted mode and accent are applied to the
     // document before the first view renders.
@@ -107,6 +117,17 @@ export const config: ApplicationConfig = {
     provideAppInitializer((): void => {
       inject(NarrowedGrantNotice);
     }),
+    // Instantiate the persona's conversion notice at start-up: the first launch with personas turns
+    // prompt profiles into the persona's core (#1514), and the user is told where they went.
+    provideAppInitializer((): void => {
+      inject(PersonaConversionNotice);
+    }),
+    // Start the learning timer at start-up (#1516): it learns the persona in the background, from whichever
+    // window is open, and does nothing until a connection is chosen for it.
+    provideAppInitializer((): void => {
+      inject(PersonaLearning).start();
+      inject(PersonaReviewNotice);
+    }),
     // Instantiate the agent tab-attention bridge at start-up, for the same reason: a tab's dot has to
     // light while its conversation waits regardless of which panels are mounted, and no single chat
     // is alive for long enough — or knows enough — to do it for every surface.
@@ -158,16 +179,24 @@ export const config: ApplicationConfig = {
     provideSettingsFeature(),
     // The one-time renderer lazy-load driver (the analog of the main process's contribution registry):
     // resolve every lazily-contributed feature and register its descriptor (and any keybinding
-    // catalogue entry it carries) with the shell. A feature
+    // catalogue entry and notification types it carries) with the shell. A feature
     // added this way touches no shell component — only its own slice and the featureContributions
     // manifest. Registration is fire-and-forget: the FeatureRegistry is signal-backed, so the shell
     // lights the feature up when its chunk resolves, even after first paint.
     provideAppInitializer((): void => {
       const registry: FeatureRegistry = inject(FeatureRegistry);
       const keybindings: Keybindings = inject(Keybindings);
+      const notificationTypes: NotificationTypes = inject(NotificationTypes);
+      const injector: Injector = inject(Injector);
       for (const load of featureContributions) {
         void load().then((module: { descriptor: FeatureDescriptor }): void =>
-          registerFeatureContribution(module.descriptor, registry, keybindings),
+          registerFeatureContribution(
+            module.descriptor,
+            registry,
+            keybindings,
+            notificationTypes,
+            injector,
+          ),
         );
       }
     }),

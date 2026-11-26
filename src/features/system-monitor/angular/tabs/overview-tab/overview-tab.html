@@ -1,0 +1,10 @@
+<div class="overview" data-testid="overview">
+  <app-system-monitor-cpu-card />
+  <app-system-monitor-memory-card />
+  <app-system-monitor-gpu-card />
+  <app-system-monitor-network-card />
+  <app-system-monitor-storage-card />
+  <app-system-monitor-processes-card />
+  <app-system-monitor-system-card [sessionStartedAt]="sessionStartedAt()" />
+  <app-system-monitor-logs-card [logs]="logs()" />
+</div>

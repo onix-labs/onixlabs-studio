@@ -22,6 +22,7 @@ import {
 import { SourceControlProviders } from '../source-control/source-control-providers';
 import { Repository, WORKING_NODE_ID } from './repository';
 import { GitBranch, GitCommit, GitFileChange, GitStash, GraphNode } from './repository-data';
+import type { MergedBranchesDeletion } from './merged-branches-deletion';
 
 /**
  * Builds a file change with a working-tree target.
@@ -120,15 +121,44 @@ class FakeProvider implements SourceControlProvider {
    */
   public remoteNames: readonly string[] = [];
 
+  /**
+   * Holds how many commits the current branch has that its upstream lacks.
+   */
+  public ahead: number = 1;
+
+  /**
+   * Holds how many commits its upstream has that the branch lacks.
+   */
+  public behind: number = 0;
+
   public getRefs(): Promise<ParsedRefs> {
     return Promise.resolve({
       branches: [
-        { name: 'main', current: true, upstream: this.upstream, ahead: 1, behind: 0, tip: 'c2' },
+        {
+          name: 'main',
+          current: true,
+          upstream: this.upstream,
+          ahead: this.ahead,
+          behind: this.behind,
+          tip: 'c2',
+        },
+        ...this.extraBranches,
       ],
       remotes: this.remoteNames.map((name: string) => ({ name, url: '', branches: [] })),
       tags: [],
+      ...(this.defaultBranch === undefined ? {} : { defaultBranch: this.defaultBranch }),
     });
   }
+
+  /**
+   * Holds further local branches a test adds beside `main`.
+   */
+  public extraBranches: readonly GitBranch[] = [];
+
+  /**
+   * Holds the default branch returned by {@link getRefs}; undefined is a plugin that does not say.
+   */
+  public defaultBranch: string | undefined = undefined;
 
   public getStashes(): Promise<GitStash[]> {
     return Promise.resolve([]);
@@ -254,10 +284,20 @@ class FakeProvider implements SourceControlProvider {
    */
   public failNextPushWith: string | null = null;
 
+  /**
+   * Makes the next push fail with this whole outcome, code and all.
+   */
+  public nextPushResult: MutationResult | null = null;
+
   public push(target?: PushTarget): Promise<MutationResult> {
     this.calls.push(
       `push:${target?.remote ?? ''}/${target?.branch ?? ''}:${String(target?.setUpstream ?? '')}`,
     );
+    if (this.nextPushResult !== null) {
+      const result: MutationResult = this.nextPushResult;
+      this.nextPushResult = null;
+      return Promise.resolve(result);
+    }
     if (this.failNextPushWith !== null) {
       const error: string = this.failNextPushWith;
       this.failNextPushWith = null;
@@ -294,6 +334,21 @@ class FakeProvider implements SourceControlProvider {
       return Promise.resolve({ success: false, error });
     }
     return Promise.resolve({ success: true });
+  }
+
+  /**
+   * Holds the remote branches whose delete fails, by name, with the failure's message.
+   */
+  public failingRemoteBranches: ReadonlyMap<string, string> = new Map<string, string>();
+
+  public deleteRemoteBranch(
+    remote: string,
+    name: string,
+    expected: string,
+  ): Promise<MutationResult> {
+    this.calls.push(`deleteRemoteBranch:${remote}:${name}@${expected}`);
+    const error: string | undefined = this.failingRemoteBranches.get(name);
+    return Promise.resolve(error === undefined ? { success: true } : { success: false, error });
   }
 
   public pushTag(remote: string, name: string): Promise<MutationResult> {
@@ -485,6 +540,61 @@ describe('Repository', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe('what a background fetch brought (#1494)', () => {
+    /**
+     * Runs one background fetch, as the auto-fetch clock would, after the branch was read.
+     * @param ahead The branch's commits its upstream lacks, after the fetch.
+     * @param behind The upstream's commits the branch lacks, after the fetch.
+     */
+    async function fetchBringing(ahead: number, behind: number): Promise<void> {
+      vi.useFakeTimers();
+      try {
+        TestBed.inject(Settings).set('versionControl.fetchOnLoad', false);
+        TestBed.inject(Settings).set('versionControl.autoFetchMinutes', 5);
+        await repository.close();
+        repository.bind({ root: '/repo', name: 'repo', trust: 'trusted' });
+        // Binding makes a new provider: the branch it starts with tracks origin/main, level with it.
+        provider.upstream = 'origin/main';
+        provider.ahead = 0;
+        provider.behind = 0;
+        await repository.refresh();
+        provider.ahead = ahead;
+        provider.behind = behind;
+        await vi.advanceTimersByTimeAsync(5 * 60_000);
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+
+    it('newCommitsUpstream_areRecorded_withPull', async () => {
+      await fetchBringing(0, 3);
+
+      const entry: Notification | undefined = notifications
+        .history()
+        .find((notification: Notification): boolean => notification.type === 'git.incoming');
+      expect(entry?.title).toBe('3 commits to pull on origin/main');
+      expect(entry?.actions.map((action) => action.label)).toEqual(['Pull']);
+      // History only by default: nothing pops up for it.
+      expect(notifications.toasts().some((toast) => toast.type === 'git.incoming')).toBe(false);
+    });
+
+    it('aBranchThatHasDiverged_popsUp', async () => {
+      await fetchBringing(2, 1);
+
+      expect(notifications.toasts().find((toast) => toast.type === 'git.diverged')?.title).toBe(
+        'main and origin/main have diverged',
+      );
+    });
+
+    it('aFetchThatBroughtNothingNew_saysNothing', async () => {
+      await fetchBringing(0, 0);
+
+      expect(
+        notifications.history().some((notification) => notification.type?.startsWith('git.')),
+      ).toBe(false);
+    });
   });
 
   it('bind_thenRefresh_loadsBranchesCommitsStatusAndName', () => {
@@ -772,6 +882,19 @@ describe('Repository', () => {
     expect(repository.changeCount()).toBe(0);
   });
 
+  it('push_thatGoesThrough_isRecordedForWhatFollowsIt (#1495)', async () => {
+    provider.upstream = 'origin/main';
+    await repository.refresh();
+    expect(repository.lastPush()).toBeNull();
+
+    provider.failNextPushWith = 'rejected';
+    await repository.push();
+    expect(repository.lastPush()).toBeNull();
+
+    await repository.push();
+    expect(repository.lastPush()).toMatchObject({ root: '/repo', branch: 'main' });
+  });
+
   it('push_whenCurrentBranchHasUpstream_pushesWithoutSettingUpstream', async () => {
     provider.upstream = 'origin/main';
     await repository.refresh();
@@ -972,6 +1095,27 @@ describe('Repository', () => {
     expect(toast.sticky).toBe(true);
     expect(toast.title).toBe('Push failed — repo');
     expect(toast.detail).toBe('Authentication required.');
+  });
+
+  it('push_whenTheSshKeyIsRejected_explainsIt_withTheCommand_andGitsOwnWords (#1255)', async () => {
+    provider.nextPushResult = {
+      success: false,
+      error: "github.com didn't accept your SSH key. (the plugin's English)",
+      code: 'ssh-key-rejected',
+      sshHost: { host: 'github.com' },
+      output: 'git@github.com: Permission denied (publickey).',
+    };
+
+    await repository.push();
+
+    const toast: Notification = notifications.toasts()[0];
+    expect(toast.title).toBe('Push failed — repo');
+    expect(toast.detail).toContain(
+      "github.com didn't accept your SSH key. If the key has a passphrase",
+    );
+    expect(toast.commands?.length).toBe(1);
+    expect(toast.commands?.[0]).toMatch(/^ssh-add/);
+    expect(toast.output).toBe('git@github.com: Permission denied (publickey).');
   });
 
   it('push_whenRetriedAfterAFailure_replacesTheFailureToast', async () => {
@@ -1354,6 +1498,119 @@ describe('Repository', () => {
       await repository.deleteTagEverywhere('v0.9.0');
 
       expect(provider.calls).toContain('deleteRemoteTag:origin:v0.9.0');
+    });
+
+    it('defaultBranch_isWhatThePluginNamed (#887)', async () => {
+      provider.defaultBranch = 'trunk';
+
+      await repository.refresh();
+
+      expect(repository.defaultBranch()).toBe('trunk');
+    });
+
+    it('deleteMergedBranches_forcesEachLocalDelete_andLeavesTheRemoteAloneUnlessAsked (#887)', async () => {
+      const deletion: MergedBranchesDeletion = await repository.deleteMergedBranches(
+        [
+          {
+            name: 'squashed',
+            merge: { kind: 'pull-request', number: 7 },
+            remoteBranch: { remote: 'origin', name: 'squashed', expected: 's1' },
+          },
+          { name: 'done', merge: { kind: 'local', into: 'main' } },
+        ],
+        false,
+      );
+
+      // Git cannot see a squash merge, so an unforced delete would refuse the branch Studio knows is merged.
+      expect(provider.calls.filter((call: string): boolean => call.includes('Branch'))).toEqual([
+        'deleteBranch:squashed:true',
+        'deleteBranch:done:true',
+      ]);
+      expect(deletion).toEqual({ deleted: ['squashed', 'done'], deletedOnRemote: [], failed: [] });
+      expect(notifications.toasts()[0]).toMatchObject({
+        severity: 'success',
+        title: 'Deleted merged branches',
+        detail: 'squashed, done',
+      });
+    });
+
+    it('deleteMergedBranches_withRemotes_deletesEachOnTheRemoteFirst (#887)', async () => {
+      const deletion: MergedBranchesDeletion = await repository.deleteMergedBranches(
+        [
+          {
+            name: 'feature',
+            merge: { kind: 'local', into: 'main' },
+            remoteBranch: { remote: 'origin', name: 'feature', expected: 'f1' },
+          },
+          { name: 'local-only', merge: { kind: 'local', into: 'main' } },
+        ],
+        true,
+      );
+
+      expect(provider.calls.filter((call: string): boolean => call.includes('Branch'))).toEqual([
+        'deleteRemoteBranch:origin:feature@f1',
+        'deleteBranch:feature:true',
+        'deleteBranch:local-only:true',
+      ]);
+      expect(deletion.deletedOnRemote).toEqual(['origin/feature']);
+      expect(notifications.toasts()[0].title).toBe(
+        'Deleted merged branches here and on the remote',
+      );
+    });
+
+    it('deleteMergedBranches_whenTheRemoteRefusesTheLease_keepsThatLocalBranch_andSaysWhy (#887)', async () => {
+      // The remote's branch moved since it was found merged, so the leased delete is refused.
+      provider.failingRemoteBranches = new Map<string, string>([['locked', 'stale info']]);
+
+      const deletion: MergedBranchesDeletion = await repository.deleteMergedBranches(
+        [
+          {
+            name: 'locked',
+            merge: { kind: 'local', into: 'main' },
+            remoteBranch: { remote: 'origin', name: 'locked', expected: 'l1' },
+          },
+          { name: 'done', merge: { kind: 'local', into: 'main' } },
+        ],
+        true,
+      );
+
+      expect(provider.calls).not.toContain('deleteBranch:locked:true');
+      expect(deletion.deleted).toEqual(['done']);
+      expect(deletion.failed).toEqual([{ name: 'locked', error: 'stale info' }]);
+      expect(notifications.toasts()[0]).toMatchObject({
+        severity: 'error',
+        detail: 'locked: stale info',
+      });
+    });
+
+    it('deleteMergedBranches_skipsABranchCheckedOutInAnotherWorktree_beforeTouchingTheRemote (#887)', async () => {
+      provider.extraBranches = [
+        {
+          name: 'elsewhere',
+          current: false,
+          ahead: 0,
+          behind: 0,
+          tip: 'e1',
+          otherWorktree: '/work/other',
+        },
+      ];
+      await repository.refresh();
+
+      const deletion: MergedBranchesDeletion = await repository.deleteMergedBranches(
+        [
+          {
+            name: 'elsewhere',
+            merge: { kind: 'local', into: 'main' },
+            remoteBranch: { remote: 'origin', name: 'elsewhere', expected: 'e1' },
+          },
+        ],
+        true,
+      );
+
+      expect(provider.calls.filter((call: string): boolean => call.includes('Branch'))).toEqual([]);
+      expect(deletion.failed).toEqual([
+        { name: 'elsewhere', error: 'It is checked out in /work/other.' },
+      ]);
     });
 
     it('pushTag_whenNoRemoteIsNamed_usesTheDefaultRemote', async () => {

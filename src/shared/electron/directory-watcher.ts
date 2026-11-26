@@ -1,9 +1,10 @@
 import { BrowserWindow, ipcMain, IpcMainInvokeEvent, WebContents } from 'electron';
-import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { DirectoryChangeEvent, FileChannel } from '@shared/api/file-channels';
 import { MetadataPolicies, shouldForwardTreeEvent } from './directory-watch-filter';
 import { logger } from './logger';
+import { AdaptiveTreeWatch } from './watching/adaptive-tree-watch';
+import { WatchModes } from './watching/watch-modes';
 
 /**
  * Specifies how long, in milliseconds, changes under a root are coalesced before notifying. The timer
@@ -22,13 +23,13 @@ const COALESCE_MS: number = 200;
 const MAX_DIRECTORIES: number = 512;
 
 /**
- * Tracks a watched root: its native recursive watcher and the renderer subscriptions holding it open.
+ * Tracks a watched root: its recursive watcher and the renderer subscriptions holding it open.
  */
 interface WatchedRoot {
   /**
-   * Gets the native recursive watcher.
+   * Gets the recursive watcher, native or polling (#1254).
    */
-  readonly watcher: fs.FSWatcher;
+  readonly watcher: AdaptiveTreeWatch;
 
   /**
    * Gets the number of subscriptions holding this watch open, keyed by the id of the renderer
@@ -96,16 +97,24 @@ export class DirectoryWatcher {
   private readonly metadata: () => MetadataPolicies;
 
   /**
+   * Holds the policy deciding which roots are polled rather than watched natively.
+   */
+  private readonly modes: WatchModes;
+
+  /**
    * Initializes a new instance of the {@link DirectoryWatcher} class.
    * @param windowGetter A function that returns the window change notifications are sent to.
    * @param metadata Gets the version-control metadata policies; none by default.
+   * @param modes Decides which roots are polled; none by default.
    */
   public constructor(
     windowGetter: () => BrowserWindow | null,
     metadata: () => MetadataPolicies = (): MetadataPolicies => new Map<string, readonly string[]>(),
+    modes: WatchModes = new WatchModes(metadata),
   ) {
     this.windowGetter = windowGetter;
     this.metadata = metadata;
+    this.modes = modes;
   }
 
   /**
@@ -166,23 +175,24 @@ export class DirectoryWatcher {
       return;
     }
     try {
-      const watcher: fs.FSWatcher = fs.watch(
-        root,
-        { recursive: true },
-        (_eventType: fs.WatchEventType, filename: string | Buffer | null): void =>
-          this.onEvent(root, filename),
-      );
       // A vanished root (deleted, unmounted) errors rather than events; report it as an overflow so
       // subscribers re-read what they show and discover the root is gone, then drop the dead watcher.
-      watcher.on('error', (): void => {
-        logger.warn(
-          'DirectoryWatcher',
-          `Watcher errored for ${root}; dropping and reporting overflow`,
-        );
-        watcher.close();
-        this.roots.delete(root);
-        this.recordOverflow(root);
-      });
+      const watcher: AdaptiveTreeWatch = new AdaptiveTreeWatch(
+        root,
+        { recursive: true, modes: this.modes },
+        (_eventType: string, filename: string | null): void => this.onEvent(root, filename),
+        (): void => {
+          logger.warn(
+            'DirectoryWatcher',
+            `Watcher errored for ${root}; dropping and reporting overflow`,
+          );
+          watcher.close();
+          if (this.roots.get(root)?.watcher === watcher) {
+            this.roots.delete(root);
+          }
+          this.recordOverflow(root);
+        },
+      );
       this.roots.set(root, { watcher, holders: new Map<number, number>([[sender.id, 1]]) });
       logger.info('DirectoryWatcher', `Started recursive watch on ${root} (renderer ${sender.id})`);
     } catch (error: unknown) {
@@ -245,14 +255,14 @@ export class DirectoryWatcher {
   }
 
   /**
-   * Handles a native recursive event, recording the changed entry's parent directory (whose listing
+   * Handles a recursive watcher's event, recording the changed entry's parent directory (whose listing
    * is what changed) into the root's coalescing window. Churn from build outputs, dependency caches,
    * and git's internal bookkeeping is dropped here, before it can open a coalescing window or count
    * toward the overflow cap — a build must not become a refresh storm for every subscriber.
    * @param root The watched root the event occurred under.
    * @param filename The changed entry's path relative to the root, or null when withheld.
    */
-  private onEvent(root: string, filename: string | Buffer | null): void {
+  private onEvent(root: string, filename: string | null): void {
     if (typeof filename !== 'string' || filename.length === 0) {
       this.recordOverflow(root);
       return;

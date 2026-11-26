@@ -20,6 +20,7 @@ import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropd
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 import { Icon } from '@shared/angular/icons/icon';
+import { isComposing } from '@shared/angular/services/keybindings/is-composing';
 import type { Technology } from '@shared/api/technology/technology-catalogue';
 
 /**
@@ -194,6 +195,18 @@ export class CreateTechnology {
    */
   protected setSort(value: string): void {
     this.sort.set(value === 'name' ? 'name' : 'category');
+  }
+
+  /**
+   * Adds the typed technology on plain Enter, as `(keydown.enter)` did: not with a modifier held, and
+   * not while Enter is picking an input method's candidate (typing a name in Chinese).
+   * @param event The key event raised by the field.
+   */
+  protected onAdditionKeydown(event: KeyboardEvent): void {
+    const modified: boolean = event.shiftKey || event.ctrlKey || event.metaKey || event.altKey;
+    if (event.key === 'Enter' && !modified && !isComposing(event)) {
+      this.add();
+    }
   }
 
   /**

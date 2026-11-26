@@ -18,6 +18,8 @@ interface Answer {
   readonly result?: unknown;
   readonly error?: string;
   readonly code?: string;
+  readonly sshHost?: { readonly host: string; readonly port?: number };
+  readonly output?: string;
 }
 
 /**
@@ -385,6 +387,8 @@ describe('GitVersionControl operations', () => {
       ['createTag', 'message', { name: 'x', commit: 'HEAD', message: '' }],
       ['deleteTag', 'name', { name: '-l' }],
       ['deleteRemoteTag', 'name', { remote: 'origin', name: 'x:y' }],
+      ['deleteRemoteBranch', 'name', { remote: 'origin', name: 'x:y', expected: 'abc1234' }],
+      ['deleteRemoteBranch', 'remote', { remote: '--mirror', name: 'x', expected: 'abc1234' }],
       ['pushTag', 'remote', { remote: '--mirror', name: 'x' }],
       ['pushAllTags', 'remote', { remote: '--mirror' }],
       ['fetchRemote', 'remote', { remote: '--all' }],
@@ -579,6 +583,93 @@ describe('GitVersionControl operations', () => {
       });
     });
 
+    describe('SSH failures (#1255)', () => {
+      /**
+       * Points git at an ssh that prints what a real one printed when it gave up, and fails as ssh
+       * does, so git's own handling of the failure is the real thing.
+       * @param stderr What the ssh prints.
+       */
+      async function failingSsh(stderr: string): Promise<void> {
+        const script: string = path.join(base, 'fake-ssh');
+        await fs.writeFile(script, `#!/bin/sh\nprintf '%s\\n' '${stderr}' >&2\nexit 255\n`);
+        await fs.chmod(script, 0o755);
+        process.env['GIT_SSH_COMMAND'] = script;
+        // Git only passes a port to an ssh it recognises by name; this one it would not.
+        process.env['GIT_SSH_VARIANT'] = 'ssh';
+      }
+
+      it('anUnknownHost_isCodedAndNamesTheRemotesServer', SLOW, async () => {
+        await git(repo, 'remote', 'add', 'origin', 'ssh://git@git.example.test:2299/x.git');
+        // OpenSSH 10.5 under BatchMode names no host, so the server comes from the remote's URL.
+        await failingSsh('Host key verification failed.');
+
+        const answer: Answer = await ask('fetch');
+
+        expect(answer).toMatchObject({
+          ok: false,
+          code: 'ssh-host-unknown',
+          sshHost: { host: 'git.example.test', port: 2299 },
+        });
+        expect(answer.error).toContain('ssh -T -p 2299 git@git.example.test');
+        expect(answer.output).toContain('Host key verification failed.');
+        expect(answer.output).toContain('Could not read from remote repository');
+      });
+
+      it('aRejectedKey_isCodedAndNamesTheServerSshNamed', SLOW, async () => {
+        await git(repo, 'remote', 'add', 'origin', 'git@github.com:org/repo.git');
+        await failingSsh('git@github.com: Permission denied (publickey).');
+
+        const answer: Answer = await ask('push', {
+          target: { remote: 'origin', branch: 'main', setUpstream: false },
+        });
+
+        expect(answer).toMatchObject({
+          ok: false,
+          code: 'ssh-key-rejected',
+          sshHost: { host: 'github.com' },
+        });
+        expect(answer.error).toContain('ssh-agent');
+      });
+
+      it('remotesOnSeveralServers_nameNone_ratherThanGuess', SLOW, async () => {
+        await git(repo, 'remote', 'add', 'origin', 'git@github.com:org/repo.git');
+        await git(repo, 'remote', 'add', 'mirror', 'git@gitlab.com:org/repo.git');
+        await failingSsh('Host key verification failed.');
+
+        const answer: Answer = await ask('fetch');
+
+        expect(answer).toMatchObject({ ok: false, code: 'ssh-host-unknown' });
+        expect(answer.sshHost).toBeUndefined();
+      });
+
+      it('aCloneOfAnUnknownHost_namesTheServerFromItsUrl', SLOW, async () => {
+        await failingSsh('Host key verification failed.');
+
+        const answer: Answer = await ask(
+          'clone',
+          { url: 'git@clone.example.test:org/repo.git', directory: path.join(base, 'cloned') },
+          null,
+        );
+
+        expect(answer).toMatchObject({
+          ok: false,
+          code: 'ssh-host-unknown',
+          sshHost: { host: 'clone.example.test' },
+        });
+      });
+
+      it('aConnectionRefused_isLeftAsGitSaidIt', SLOW, async () => {
+        await git(repo, 'remote', 'add', 'origin', 'ssh://git@127.0.0.1:1/x.git');
+        await failingSsh('ssh: connect to host 127.0.0.1 port 1: Connection refused');
+
+        const answer: Answer = await ask('fetch');
+
+        expect(answer.ok).toBe(false);
+        expect(answer.code).toBeUndefined();
+        expect(answer.error).toContain('Connection refused');
+      });
+    });
+
     it('anOperationThatOverrunsItsTimeout_failsRatherThanHangs', SLOW, async () => {
       await remote();
       const slow: string = path.join(base, 'slow-git');
@@ -618,6 +709,159 @@ describe('GitVersionControl operations', () => {
       expect((await ask('deleteRemoteTag', { remote: 'origin', name: 'v1' })).ok).toBe(true);
       expect((await ask('deleteTag', { name: 'v1' })).ok).toBe(true);
       expect((await ask('deleteTag', { name: 'v1' })).ok).toBe(false);
+    });
+  });
+
+  describe('remote branches (#887)', () => {
+    /**
+     * Reads the commit a ref points at.
+     * @param cwd The repository.
+     * @param ref The ref.
+     * @returns Returns the commit.
+     */
+    async function tip(cwd: string, ref: string): Promise<string> {
+      return (await git(cwd, 'rev-parse', ref)).trim();
+    }
+
+    it('deleteRemoteBranch_deletesTheBranchOnTheRemoteAndItsTrackingBranch', SLOW, async () => {
+      const bare: string = await remote();
+      await git(repo, 'push', 'origin', 'main:done');
+      await git(repo, 'fetch', 'origin');
+
+      expect(
+        (
+          await ask('deleteRemoteBranch', {
+            remote: 'origin',
+            name: 'done',
+            expected: await tip(repo, 'main'),
+          })
+        ).ok,
+      ).toBe(true);
+      expect((await git(bare, 'branch', '--list', 'done')).trim()).toBe('');
+      expect((await git(repo, 'branch', '-r', '--list', 'origin/done')).trim()).toBe('');
+    });
+
+    it('deleteRemoteBranch_refusesABranchPushedToSince_andKeepsItsCommits', SLOW, async () => {
+      // ⛔ The data-loss case: someone pushed to the branch after the commit Studio found merged.
+      const bare: string = await remote();
+      const merged: string = await tip(repo, 'main');
+      await git(repo, 'push', 'origin', 'main:shared');
+      await write('later.txt', 'later\n');
+      await commit('pushed later');
+      await git(repo, 'push', 'origin', 'HEAD:shared');
+      const later: string = await tip(repo, 'HEAD');
+
+      const answer: Answer = await ask('deleteRemoteBranch', {
+        remote: 'origin',
+        name: 'shared',
+        expected: merged,
+      });
+
+      expect(answer.ok).toBe(false);
+      expect(await tip(bare, 'refs/heads/shared')).toBe(later);
+    });
+
+    it('deleteRemoteBranch_leavesATagOfTheSameNameAlone', SLOW, async () => {
+      const bare: string = await remote();
+      await git(repo, 'tag', 'done');
+      await git(repo, 'push', 'origin', 'tag', 'done');
+      await git(repo, 'push', 'origin', 'main:done');
+
+      expect(
+        (
+          await ask('deleteRemoteBranch', {
+            remote: 'origin',
+            name: 'done',
+            expected: await tip(repo, 'main'),
+          })
+        ).ok,
+      ).toBe(true);
+      expect((await git(bare, 'tag', '--list', 'done')).trim()).toBe('done');
+    });
+
+    it('deleteRemoteBranch_countsABranchTheRemoteNoLongerHasAsDeleted', SLOW, async () => {
+      const bare: string = await remote();
+      await git(repo, 'push', 'origin', 'main:gone');
+      await git(repo, 'fetch', 'origin');
+      // Deleted on the host, as when a pull request merges, and not fetched since.
+      await git(bare, 'branch', '-D', 'gone');
+
+      expect(
+        (
+          await ask('deleteRemoteBranch', {
+            remote: 'origin',
+            name: 'gone',
+            expected: await tip(repo, 'main'),
+          })
+        ).ok,
+      ).toBe(true);
+      expect((await git(repo, 'branch', '-r', '--list', 'origin/gone')).trim()).toBe('');
+    });
+
+    it('deleteRemoteBranch_refusesAnExpectedCommitThatIsNotAHash', SLOW, async () => {
+      await remote();
+
+      expect(
+        (await ask('deleteRemoteBranch', { remote: 'origin', name: 'x', expected: 'HEAD' })).ok,
+      ).toBe(false);
+    });
+
+    it('refs_namesEachRemotesOwnDefaultBranch', SLOW, async () => {
+      // A fork: origin's default is main, upstream's is develop.
+      await remote();
+      const upstream: string = path.join(base, 'upstream.git');
+      await git(base, 'init', '--bare', '-b', 'develop', upstream);
+      await git(repo, 'remote', 'add', 'upstream', upstream);
+      await git(repo, 'push', 'upstream', 'main:develop');
+      await git(repo, 'fetch', 'upstream');
+      await git(repo, 'remote', 'set-head', 'origin', 'main');
+      await git(repo, 'remote', 'set-head', 'upstream', 'develop');
+
+      const refs: { remotes: { name: string; defaultBranch?: string }[] } = (await ask('refs'))
+        .result as { remotes: { name: string; defaultBranch?: string }[] };
+
+      expect(
+        Object.fromEntries(refs.remotes.map((entry) => [entry.name, entry.defaultBranch])),
+      ).toEqual({ origin: 'main', upstream: 'develop' });
+    });
+
+    it('refs_marksTheRemoteBranchesMainAlreadyContains_andNotOnesAhead', SLOW, async () => {
+      await remote();
+      await git(repo, 'push', 'origin', 'main:done');
+      await git(repo, 'checkout', '-b', 'ahead');
+      await write('ahead.txt', 'ahead\n');
+      await commit('ahead');
+      await git(repo, 'push', 'origin', 'ahead');
+      await git(repo, 'checkout', 'main');
+      await git(repo, 'fetch', 'origin');
+      await git(repo, 'remote', 'set-head', 'origin', 'main');
+
+      const refs: { remotes: { branches: { name: string; mergedInto?: string }[] }[] } = (
+        await ask('refs')
+      ).result as { remotes: { branches: { name: string; mergedInto?: string }[] }[] };
+
+      expect(
+        Object.fromEntries(
+          (refs.remotes[0]?.branches ?? []).map((entry) => [entry.name, entry.mergedInto]),
+        ),
+      ).toMatchObject({
+        'origin/done': 'main',
+        'origin/ahead': undefined,
+        'origin/main': undefined,
+      });
+    });
+
+    it('refs_namesTheOtherWorktreeABranchIsCheckedOutIn', SLOW, async () => {
+      await git(repo, 'branch', 'elsewhere');
+      const other: string = path.join(base, 'other');
+      await git(repo, 'worktree', 'add', other, 'elsewhere');
+
+      const refs: { branches: { name: string; otherWorktree?: string }[] } = (await ask('refs'))
+        .result as { branches: { name: string; otherWorktree?: string }[] };
+
+      expect(
+        Object.fromEntries(refs.branches.map((entry) => [entry.name, entry.otherWorktree])),
+      ).toEqual({ elsewhere: other, main: undefined });
     });
   });
 

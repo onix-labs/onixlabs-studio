@@ -191,6 +191,11 @@ export interface StructuredLogInput {
    * Gets the already-serialised, length-capped message text.
    */
   readonly message: string;
+
+  /**
+   * Gets the values logged with the message, each serialised, where there were any.
+   */
+  readonly details?: readonly string[];
 }
 
 /**
@@ -240,6 +245,13 @@ export interface LogRecord {
    * Gets the record's message text.
    */
   readonly message: string;
+
+  /**
+   * Gets the values logged with the message (an object's JSON, an error's stack), each serialised, or
+   * undefined when there were none. Kept apart from the message so each can be shown whole; records
+   * written before details were kept carry them appended to the message instead.
+   */
+  readonly details?: readonly string[];
 }
 
 /**

@@ -1,46 +1,52 @@
 @if (root(); as root) {
   <div class="terminal-panel">
-    <app-panel-toolbar class="terminal-panel__tabs" role="tablist">
-      @for (session of sessions(); track session.id) {
-        @if (editingId() === session.id) {
-          <app-text-field
-            #renameField
-            class="terminal-panel__rename"
-            ariaLabel="Rename terminal"
-            [value]="session.name"
-            (blurred)="commitRenameValue(session.id, renameField.value())"
-            (enter)="commitRenameValue(session.id, renameField.value())"
-            (escape)="cancelRename()"
-          />
-        } @else {
-          <button
-            class="panel-toolbar__button terminal-panel__tab"
-            [class.panel-toolbar__button--active]="session.id === activeId()"
-            (click)="activate(session.id)"
-            (dblclick)="startRename(session)"
-            role="tab"
-            [attr.aria-selected]="session.id === activeId()"
-          >
-            <app-icon class="terminal-panel__tab-icon" [icon]="Icon.TERMINAL" />
-            <span class="terminal-panel__tab-name">{{ session.name }}</span>
-            <span
-              class="terminal-panel__tab-close"
-              role="button"
-              tabindex="0"
-              aria-label="Close terminal"
-              (click)="close(session.id, $event)"
-            >
-              <app-icon [icon]="Icon.CLOSE" />
-            </span>
-          </button>
-        }
+    <!-- The terminals are chosen from a dropdown rather than laid out as tabs: a row of tabs ran out
+         of room with a few terminals open, and piled on top of one another past the point where any
+         could be read or closed. The buttons act on the terminal shown. -->
+    <app-panel-toolbar class="terminal-panel__tabs">
+      @if (editingSession(); as editing) {
+        <app-text-field
+          #renameField
+          class="terminal-panel__rename"
+          ariaLabel="Rename terminal"
+          [value]="editing.name"
+          (blurred)="commitRenameValue(editing.id, renameField.value())"
+          (enter)="commitRenameValue(editing.id, renameField.value())"
+          (escape)="cancelRename()"
+        />
+      } @else {
+        <app-dropdown
+          class="terminal-panel__picker"
+          [fullWidth]="true"
+          [options]="terminalOptions()"
+          [value]="activeId() ?? ''"
+          ariaLabel="Terminal"
+          data-testid="terminal-picker"
+          (valueChange)="activate($event)"
+        />
       }
+      <app-button
+        variant="none"
+        [icon]="Icon.PENCIL"
+        ariaLabel="Rename Terminal"
+        tooltip="Rename Terminal"
+        [disabled]="activeSession() === null"
+        (click)="renameActive()"
+      />
       <app-button
         variant="none"
         [icon]="Icon.PLUS"
         ariaLabel="New Terminal"
         tooltip="New Terminal"
         (click)="create()"
+      />
+      <app-button
+        variant="none"
+        [icon]="Icon.CLOSE"
+        ariaLabel="Close Terminal"
+        tooltip="Close Terminal"
+        [disabled]="activeSession() === null"
+        (click)="closeActive()"
       />
     </app-panel-toolbar>
     <div class="terminal-panel__bodies">

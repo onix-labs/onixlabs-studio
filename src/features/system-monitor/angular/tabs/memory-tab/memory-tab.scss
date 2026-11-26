@@ -1,0 +1,117 @@
+@use '../tabs' as *;
+
+// The Memory view fills its tab: a header naming the memory, then its cards in a grid that shares the
+// view's height, scrolling once the view is too short for them.
+:host {
+  @include host;
+}
+
+// The colours of the parts of memory, set once here so the breakdown bar, the composition graph and
+// their legends always agree: what apps and the kernel hold in the accent, darkest first; cached files
+// in grey (the system gives them up on demand); free as the empty track.
+.memory {
+  --memory-app: var(--accent-color);
+  --memory-wired: color-mix(in srgb, var(--accent-color) 60%, var(--panel-surface-color));
+  --memory-compressed: color-mix(in srgb, var(--accent-color) 30%, var(--panel-surface-color));
+  --memory-cached: color-mix(
+    in srgb,
+    var(--form-muted-foreground-color) 45%,
+    var(--panel-surface-color)
+  );
+  --memory-free: color-mix(in srgb, var(--dock-border-color) 60%, transparent);
+
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  box-sizing: border-box;
+  block-size: 100%;
+  min-block-size: 53rem;
+  padding: 0.5rem;
+}
+
+.memory__header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.75rem;
+  min-inline-size: 0;
+}
+
+.memory__icon {
+  color: var(--body-foreground-color);
+}
+
+.memory__title {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.memory__description {
+  min-inline-size: 0;
+  overflow: hidden;
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
+}
+
+// Six columns, so the rows can split them in halves or thirds as the sketch does. Each card is a size
+// container whose height never comes from what it holds, so every row's height is stated: the least
+// of each is what its fixed content needs (the composition's legend, the statistics), the lists of
+// processes and modules scrolling within their cards, so the whole fits a full-screen 1080p display
+// without scrolling.
+.memory__grid {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-rows:
+    minmax(11rem, 1fr)
+    minmax(8.5rem, 0.7fr)
+    minmax(12.5rem, 1fr)
+    minmax(14rem, 1fr);
+  grid-template-areas:
+    'usage usage history history history history'
+    'pressure pressure breakdown breakdown swap swap'
+    'processes processes processes composition composition composition'
+    'modules modules modules statistics statistics statistics';
+  gap: 0.5rem;
+  min-block-size: 0;
+}
+
+.memory__usage {
+  grid-area: usage;
+}
+
+.memory__history {
+  grid-area: history;
+}
+
+.memory__pressure {
+  grid-area: pressure;
+}
+
+.memory__breakdown {
+  grid-area: breakdown;
+}
+
+.memory__swap {
+  grid-area: swap;
+}
+
+.memory__processes {
+  grid-area: processes;
+}
+
+.memory__composition {
+  grid-area: composition;
+}
+
+.memory__modules {
+  grid-area: modules;
+}
+
+.memory__statistics {
+  grid-area: statistics;
+}

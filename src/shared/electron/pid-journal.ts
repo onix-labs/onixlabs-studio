@@ -1,9 +1,14 @@
-import { execFile } from 'node:child_process';
+import { Launcher, launchStudioOwned } from './process/launch';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
 import { logger } from './logger';
 import { signalProcessTree } from './process-tree';
+
+/**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('process-control');
 
 /**
  * A durable journal of the long-lived child processes the application has spawned (language servers,
@@ -21,7 +26,7 @@ import { signalProcessTree } from './process-tree';
 const execFileAsync: (
   file: string,
   args: readonly string[],
-) => Promise<{ stdout: string; stderr: string }> = promisify(execFile);
+) => Promise<{ stdout: string; stderr: string }> = promisify(launch.execFile);
 
 /**
  * How far apart, in milliseconds, a recorded spawn time and a probed process start time may lie and

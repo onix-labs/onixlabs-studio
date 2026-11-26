@@ -1,0 +1,50 @@
+@use '../../../cards' as *;
+
+:host {
+  @include host;
+}
+
+.cpu-card__chart {
+  @include leading-chart;
+}
+
+// The core graphs take the card's spare height, so a taller view gives each core a taller graph, and
+// they give it up first on a short view, shrinking toward a sliver before anything spills.
+.cpu-card__cores-section {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-block-size: 0;
+}
+
+.cpu-card__heading {
+  @include heading;
+}
+
+// The per-core graphs, a core's load in each small well, 8 or 6 to a row so every row is full.
+.cpu-card__cores {
+  display: grid;
+  flex: 1 1 0;
+  grid-template-columns: repeat(var(--cores-per-row, 8), minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 0.2rem;
+  min-block-size: 0;
+}
+
+// A well clips its graph, so it shrinks with its row rather than holding the graph's natural height.
+.cpu-card__core {
+  min-block-size: 0;
+  overflow: hidden;
+  padding: 1px;
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background-color: color-mix(in srgb, var(--accent-color) 6%, transparent);
+}
+
+.cpu-card__empty {
+  @include empty;
+
+  margin: 0;
+  text-align: start;
+}

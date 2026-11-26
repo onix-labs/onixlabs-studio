@@ -1,12 +1,13 @@
 import { BrowserWindow, ipcMain, IpcMainInvokeEvent } from 'electron';
-import { execFile } from 'node:child_process';
 import { accessSync, constants as fsConstants } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import * as pty from 'node-pty';
+import type * as pty from 'node-pty';
 import { readFileSync } from 'node:fs';
 import { logger } from './logger';
+import { Launcher, launchStudioOwned } from './process/launch';
+import { UNTRUSTED_FOLDER_REASON } from './repository-trust';
 import { pidJournal } from './pid-journal';
 import { killProcessTree, signalProcessTree } from './process-tree';
 import {
@@ -25,6 +26,11 @@ import {
   sameProgram,
   SpawnSpec,
 } from './terminal-spawn';
+
+/**
+ * Lists and stops the processes a terminal started: Studio's own, acting on no repository (#1504).
+ */
+const processControl: Launcher = launchStudioOwned('process-control');
 
 /**
  * Specifies the default terminal column count when none is provided.
@@ -115,11 +121,23 @@ export class TerminalManager {
   private readonly flow: TerminalFlowControl = new TerminalFlowControl();
 
   /**
+   * Gets the launcher for a terminal's working folder (#1504): from the workspace's run token when the
+   * folder is in one, or the user's own outside every workspace; null for an untrusted workspace.
+   */
+  private readonly launcherFor: (folder: string) => Launcher | null;
+
+  /**
    * Initializes a new instance of the {@link TerminalManager} class.
    * @param windowGetter A function that returns the window terminal output is sent to.
+   * @param launcherFor Gets the launcher for a terminal's working folder, or null when it is in a
+   * workspace the user has not trusted.
    */
-  public constructor(windowGetter: () => BrowserWindow | null) {
+  public constructor(
+    windowGetter: () => BrowserWindow | null,
+    launcherFor: (folder: string) => Launcher | null,
+  ) {
     this.windowGetter = windowGetter;
+    this.launcherFor = launcherFor;
   }
 
   /**
@@ -285,6 +303,16 @@ export class TerminalManager {
     const rows: number = this.isDimension(candidate.rows) ? candidate.rows : DEFAULT_ROWS;
     const cwd: string =
       typeof candidate.cwd === 'string' && candidate.cwd.length > 0 ? candidate.cwd : os.homedir();
+    // ⛔ A shell, a run or a task started in a workspace the user has not trusted would run its code,
+    // or let the user's own shell hooks act on it (direnv, version managers): none starts there (#1504).
+    const launch: Launcher | null = this.launcherFor(cwd);
+    if (launch === null) {
+      logger.info(
+        'TerminalManager.create',
+        `Held a ${kind} terminal in an untrusted folder ${cwd}`,
+      );
+      return { success: false, error: UNTRUSTED_FOLDER_REASON };
+    }
     const shellArgs: readonly string[] | null = interactiveShellArgs(
       process.platform,
       typeof candidate.shellArguments === 'string' ? candidate.shellArguments : undefined,
@@ -303,7 +331,7 @@ export class TerminalManager {
     );
 
     try {
-      const terminal: pty.IPty = pty.spawn(spec.file, [...spec.args], {
+      const terminal: pty.IPty = launch.pty(spec.file, [...spec.args], {
         name: 'xterm-256color',
         cols,
         rows,
@@ -454,7 +482,7 @@ export class TerminalManager {
     const pid: number = terminal.pid;
     logger.info('TerminalManager', `Terminating terminal ${id} (pid ${pid})`);
     if (process.platform === 'win32') {
-      execFile('taskkill', ['/pid', String(pid), '/T', '/F'], (): void => undefined);
+      processControl.execFile('taskkill', ['/pid', String(pid), '/T', '/F'], (): void => undefined);
       return true;
     }
     signalProcessTree(pid, 'SIGTERM');
@@ -587,7 +615,7 @@ export class TerminalManager {
    */
   private getCwdViaLsof(pid: number): Promise<string | null> {
     return new Promise<string | null>((resolve: (value: string | null) => void): void => {
-      execFile(
+      processControl.execFile(
         'lsof',
         ['-a', '-p', String(pid), '-d', 'cwd', '-Fn'],
         { timeout: LSOF_TIMEOUT_MS },

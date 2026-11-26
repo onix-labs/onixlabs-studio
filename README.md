@@ -204,7 +204,8 @@ just reporting on them.
 ```bash
 npm test                 # unit tests (Vitest)
 npm run test:coverage    # unit tests with coverage
-npm run e2e              # end-to-end tests (Playwright)
+npm run e2e              # end-to-end tests (Playwright), in real windows on this screen
+npm run e2e:docker       # the same, in a Linux container with no window on screen (needs Docker)
 npm run lint             # ESLint
 npm run format           # Prettier (write)
 ```

@@ -18,7 +18,16 @@ import {
 } from '@shared/api/worktree';
 import { TrustedPaths } from '../trusted-paths';
 import { GitVersionControl } from '../../../../plugins/git/src/git';
+import type {
+  VersionControlDescription,
+  VersionControlExecutableChoice,
+  VersionControlOp,
+  VersionControlResponse,
+  VcsParams,
+} from '@shared/api/version-control-protocol';
+import type { RunToken } from '../process/launch';
 import { VersionControlDescriptor } from '../version-control/version-control-descriptor';
+import { VersionControlEndpoint } from '../version-control/version-control-endpoint';
 
 /**
  * The Git plugin, run in-process: the worktree mechanics are tested against real git through the real
@@ -44,8 +53,33 @@ const GIT_PLUGIN: VersionControlDescriptor = {
     'identity',
   ],
   executableModes: ['installed', 'custom'],
-  resolve: () => ({ available: true, create: () => new GitVersionControl() }),
+  resolve: () => ({ available: true, create: () => inProcess(new GitVersionControl()) }),
 };
+
+/**
+ * Wraps the in-process Git plugin as an endpoint: the host sends a folder's work with its run token
+ * (#1504), and across the process boundary the client hands the plugin the folder it names.
+ * @param git The plugin.
+ * @returns Returns the endpoint.
+ */
+function inProcess(git: GitVersionControl): VersionControlEndpoint {
+  return {
+    get running(): boolean {
+      return git.running;
+    },
+    start: (
+      executable: VersionControlExecutableChoice | null,
+    ): Promise<VersionControlDescription | null> => git.start(executable),
+    request: <Op extends VersionControlOp>(
+      op: Op,
+      token: RunToken | undefined,
+      params: VcsParams<Op>,
+    ): Promise<VersionControlResponse<Op>> => git.request(op, token?.folder, params),
+    dispose: (): void => {
+      git.dispose();
+    },
+  };
+}
 import { VersionControlHost } from '../version-control/version-control-host';
 import { WorkspaceContext } from '../workspace-context';
 import { WorktreeOperations } from './worktree-operations';

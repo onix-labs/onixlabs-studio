@@ -1,0 +1,41 @@
+<app-modal
+  [open]="true"
+  [width]="32"
+  [frameless]="true"
+  [ariaLabel]="title"
+  (dismiss)="choose(Choice.None)"
+>
+  <ng-template appModalContent>
+    <div class="remember">
+      <h2 class="remember__title">{{ title }}</h2>
+      <p class="remember__body" data-testid="remember-language-question">{{ question() }}</p>
+      <p class="remember__hint" i18n="Says where remembered languages can be changed later">
+        Remembered languages are listed in Settings › Code › General, under File Associations.
+      </p>
+      <app-button-row>
+        <app-button
+          variant="solid"
+          label="This File"
+          i18n-label="Button remembering a language for the one file it was chosen for"
+          data-testid="remember-language-file"
+          (click)="choose(Choice.ThisFile)"
+        />
+        @if (extensionLabel(); as label) {
+          <app-button
+            variant="ghost"
+            [label]="label"
+            data-testid="remember-language-extension"
+            (click)="choose(Choice.Extension)"
+          />
+        }
+        <app-button
+          variant="none"
+          label="Don't Remember"
+          i18n-label="Button declining to remember a language chosen by hand"
+          data-testid="remember-language-none"
+          (click)="choose(Choice.None)"
+        />
+      </app-button-row>
+    </div>
+  </ng-template>
+</app-modal>

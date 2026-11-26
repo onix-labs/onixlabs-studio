@@ -1,3 +1,4 @@
+import { fullMessage } from '@shared/api/log-format';
 import {
   LogOrigin,
   LogQuery,
@@ -40,6 +41,11 @@ export interface LogInput {
    * Gets a label for the renderer window the record came from, or undefined for main-process records.
    */
   readonly window?: string;
+
+  /**
+   * Gets the values logged with the message, each serialised, where there were any.
+   */
+  readonly details?: readonly string[];
 }
 
 /**
@@ -94,6 +100,9 @@ export class LogStore {
       window: input.window,
       source: input.source.slice(0, MAX_SOURCE_LENGTH),
       message: input.message.slice(0, MAX_LOG_MESSAGE_LENGTH),
+      ...(input.details === undefined || input.details.length === 0
+        ? {}
+        : { details: input.details }),
     };
     this.records.push(record);
     if (this.records.length > this.max) {
@@ -137,7 +146,10 @@ export class LogStore {
       if (severities !== null && !severities.has(record.severity)) {
         return false;
       }
-      if (needle !== null && !`${record.source} ${record.message}`.toLowerCase().includes(needle)) {
+      if (
+        needle !== null &&
+        !`${record.source} ${fullMessage(record)}`.toLowerCase().includes(needle)
+      ) {
         return false;
       }
       return true;

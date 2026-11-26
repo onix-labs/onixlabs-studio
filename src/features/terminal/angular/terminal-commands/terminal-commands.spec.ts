@@ -1,6 +1,7 @@
 import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
+import { ShellFamily, TerminalListing, TerminalLocation } from './shell-commands';
 import { TerminalCommandHandler, TerminalCommands } from './terminal-commands';
 
 /**
@@ -8,18 +9,17 @@ import { TerminalCommandHandler, TerminalCommands } from './terminal-commands';
  * @param calls A record the handler marks when each command is invoked.
  * @returns Returns the recording handler.
  */
-function createHandler(calls: Record<string, boolean>): TerminalCommandHandler {
+function createHandler(calls: Record<string, boolean | string>): TerminalCommandHandler {
   return {
+    shellFamily: signal<ShellFamily>('posix'),
     clear: (): void => void (calls['clear'] = true),
     restart: (): void => void (calls['restart'] = true),
     cut: (): void => void (calls['cut'] = true),
     copy: (): void => void (calls['copy'] = true),
     paste: (): void => void (calls['paste'] = true),
-    list: (): void => void (calls['list'] = true),
-    listAll: (): void => void (calls['listAll'] = true),
+    list: (listing: TerminalListing): void => void (calls['list'] = listing),
     open: (): void => void (calls['open'] = true),
-    home: (): void => void (calls['home'] = true),
-    root: (): void => void (calls['root'] = true),
+    goTo: (location: TerminalLocation): void => void (calls['goTo'] = location),
     scrollLocked: signal<boolean>(false),
     setScrollLock: (): void => void (calls['setScrollLock'] = true),
     scrollToBottom: (): void => void (calls['scrollToBottom'] = true),
@@ -43,7 +43,7 @@ describe('TerminalCommands', () => {
 
   it('restart_whenHandlerRegistered_forwardsToTheHandler', () => {
     const commands: TerminalCommands = TestBed.inject(TerminalCommands);
-    const calls: Record<string, boolean> = {};
+    const calls: Record<string, boolean | string> = {};
     commands.register(createHandler(calls));
 
     commands.restart();
@@ -52,14 +52,36 @@ describe('TerminalCommands', () => {
     expect(commands.hasActiveTerminal()).toBe(true);
   });
 
-  it('listAll_whenHandlerRegistered_forwardsToTheHandler', () => {
+  it('list_whenHandlerRegistered_forwardsTheListingToTheHandler', () => {
     const commands: TerminalCommands = TestBed.inject(TerminalCommands);
-    const calls: Record<string, boolean> = {};
+    const calls: Record<string, boolean | string> = {};
     commands.register(createHandler(calls));
 
-    commands.listAll();
+    commands.list('all');
 
-    expect(calls['listAll']).toBe(true);
+    expect(calls['list']).toBe('all');
+  });
+
+  it('goTo_whenHandlerRegistered_forwardsTheLocationToTheHandler', () => {
+    const commands: TerminalCommands = TestBed.inject(TerminalCommands);
+    const calls: Record<string, boolean | string> = {};
+    commands.register(createHandler(calls));
+
+    commands.goTo('downloads');
+
+    expect(calls['goTo']).toBe('downloads');
+  });
+
+  it('shellFamily_followsTheActiveHandlerAndIsNullWithoutOne', () => {
+    const commands: TerminalCommands = TestBed.inject(TerminalCommands);
+    expect(commands.shellFamily()).toBeNull();
+
+    const family: WritableSignal<ShellFamily> = signal<ShellFamily>('posix');
+    commands.register({ ...createHandler({}), shellFamily: family });
+    expect(commands.shellFamily()).toBe('posix');
+
+    family.set('cmd');
+    expect(commands.shellFamily()).toBe('cmd');
   });
 
   it('scrollLocked_reflectsTheActiveHandlerAndDefaultsFalse', () => {
@@ -76,7 +98,7 @@ describe('TerminalCommands', () => {
 
   it('setScrollLock_whenHandlerRegistered_forwardsToTheHandler', () => {
     const commands: TerminalCommands = TestBed.inject(TerminalCommands);
-    const calls: Record<string, boolean> = {};
+    const calls: Record<string, boolean | string> = {};
     commands.register(createHandler(calls));
 
     commands.setScrollLock(true);
@@ -86,7 +108,7 @@ describe('TerminalCommands', () => {
 
   it('newSession_whenHandlerRegistered_forwardsToTheHandler', () => {
     const commands: TerminalCommands = TestBed.inject(TerminalCommands);
-    const calls: Record<string, boolean> = {};
+    const calls: Record<string, boolean | string> = {};
     commands.register(createHandler(calls));
 
     commands.newSession('/bin/zsh');
@@ -96,7 +118,7 @@ describe('TerminalCommands', () => {
 
   it('find_whenHandlerRegistered_forwardsToTheHandler', () => {
     const commands: TerminalCommands = TestBed.inject(TerminalCommands);
-    const calls: Record<string, boolean> = {};
+    const calls: Record<string, boolean | string> = {};
     commands.register(createHandler(calls));
 
     commands.find();
@@ -106,7 +128,7 @@ describe('TerminalCommands', () => {
 
   it('open_whenHandlerUnregistered_doesNothing', () => {
     const commands: TerminalCommands = TestBed.inject(TerminalCommands);
-    const calls: Record<string, boolean> = {};
+    const calls: Record<string, boolean | string> = {};
     const handler: TerminalCommandHandler = createHandler(calls);
     commands.register(handler);
     commands.unregister(handler);

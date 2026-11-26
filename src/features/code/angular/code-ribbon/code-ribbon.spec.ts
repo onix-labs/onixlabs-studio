@@ -1,17 +1,22 @@
+import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
 import { MenuContribution, MenuEntry } from '@shared/angular/services/app-menu/app-menu-model';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
-import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
+import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
 import { Printing } from '@shared/angular/services/printing/printing';
 import type { PrintResult } from '@shared/api/print-channels';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
-import { CodeAgents } from '@features/code/angular/code-agents/code-agents';
 import { CodeRunner } from '@features/code/angular/code-runner/code-runner';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
+import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { CodeRibbon } from './code-ribbon';
+import { RememberLanguageChoice } from './remember-language-modal/remember-language-choice';
+import type { RememberLanguageOffer } from './remember-language-modal/remember-language-offer';
 
 /**
  * Exposes the protected members the language field is wired to, so the picker behaviour can be
@@ -20,6 +25,9 @@ import { CodeRibbon } from './code-ribbon';
 interface CodeRibbonInternals {
   onLanguageChange(name: string): void;
   languageName(): string;
+  languageOptions(): readonly string[];
+  rememberOffer(): RememberLanguageOffer | undefined;
+  onRememberChosen(choice: RememberLanguageChoice): void;
 }
 
 describe('CodeRibbon', () => {
@@ -31,6 +39,8 @@ describe('CodeRibbon', () => {
   let documents: Documents;
   let tabs: Tabs;
   let calls: string[];
+  /** Whether the active editor's JSON server serves its document. */
+  let sortable: WritableSignal<boolean>;
 
   /**
    * Finds a ribbon button by its visible label.
@@ -60,6 +70,7 @@ describe('CodeRibbon', () => {
 
   beforeEach(async () => {
     calls = [];
+    sortable = signal<boolean>(true);
     const commandsStub: Partial<EditorCommands> = {
       cut: (): void => void calls.push('cut'),
       copy: (): void => void calls.push('copy'),
@@ -70,6 +81,11 @@ describe('CodeRibbon', () => {
       goToSymbol: (): void => void calls.push('goToSymbol'),
       goToLine: (): void => void calls.push('goToLine'),
       formatDocument: (): void => void calls.push('format'),
+      sortDocument: (): Promise<void> => {
+        calls.push('sort');
+        return Promise.resolve();
+      },
+      canSortDocument: (): boolean => sortable(),
     };
     const printingStub: Partial<Printing> = {
       print: (): Promise<PrintResult> => {
@@ -88,11 +104,9 @@ describe('CodeRibbon', () => {
         return Promise.resolve();
       },
     };
-    const terminalsStub: Partial<EditorTerminals> = {
-      toggle: (id: string): void => void calls.push(`terminal:${id}`),
-    };
-    const agentsStub: Partial<CodeAgents> = {
-      toggle: (id: string): void => void calls.push(`agent:${id}`),
+    const docksStub: Partial<TabDocks> = {
+      toggle: (tabId: string | undefined, panelId: string): void =>
+        void calls.push(`${panelId}:${tabId ?? ''}`),
     };
 
     await TestBed.configureTestingModule({
@@ -101,8 +115,8 @@ describe('CodeRibbon', () => {
         { provide: EditorCommands, useValue: commandsStub },
         { provide: Printing, useValue: printingStub },
         { provide: CodeRunner, useValue: runnerStub },
-        { provide: EditorTerminals, useValue: terminalsStub },
-        { provide: CodeAgents, useValue: agentsStub },
+        { provide: TabDocks, useValue: docksStub },
+        { provide: ModalWindows, useValue: new FakeModalWindows() },
       ],
     }).compileComponents();
 
@@ -129,6 +143,121 @@ describe('CodeRibbon', () => {
     internals.onLanguageChange('TypeScript');
 
     expect(documents.get(tab.id)?.language()).toBe('typescript');
+  });
+
+  describe('remembering a language chosen by hand (#1068)', () => {
+    /**
+     * Opens a file from disk in a code tab, and makes it the active one.
+     * @param path The file's path.
+     * @returns Returns the tab.
+     */
+    function openFile(path: string): Tab {
+      const name: string = path.split('/').pop() ?? path;
+      const dot: number = name.lastIndexOf('.');
+      return documents.openFileInfo(
+        { path, name, extension: dot > 0 ? name.slice(dot) : '', content: '{}' },
+        'code',
+      );
+    }
+
+    beforeEach((): void => {
+      TestBed.inject(Settings).set('textEditor.fileAssociations', []);
+    });
+
+    it('offersToRemember_aLanguageTheRulesWouldNotGive', () => {
+      const tab: Tab = openFile('/ws/data.foo');
+
+      internals.onLanguageChange('JSON');
+
+      expect(internals.rememberOffer()).toEqual({
+        documentId: tab.id,
+        path: '/ws/data.foo',
+        fileName: 'data.foo',
+        language: 'json',
+        languageName: 'JSON',
+        extensionPattern: '*.foo',
+      });
+    });
+
+    it('offersNothing_forAnUntitledDocument_orALanguageTheRulesAlreadyGive', () => {
+      const untitled: Tab = tabs.open('code');
+      documents.ensure(untitled.id);
+      internals.onLanguageChange('JSON');
+      expect(internals.rememberOffer()).toBeUndefined();
+
+      openFile('/ws/app.ts');
+      internals.onLanguageChange('TypeScript');
+      expect(internals.rememberOffer()).toBeUndefined();
+    });
+
+    it('thisFile_remembersThePath', () => {
+      openFile('/ws/data.foo');
+      internals.onLanguageChange('JSON');
+
+      internals.onRememberChosen(RememberLanguageChoice.ThisFile);
+
+      expect(TestBed.inject(Settings).get('textEditor.fileAssociations')).toEqual([
+        { pattern: '/ws/data.foo', language: 'json' },
+      ]);
+      expect(internals.rememberOffer()).toBeUndefined();
+    });
+
+    it('extension_remembersTheEnding_inPlaceOfAnEntryForThisFile', () => {
+      const settings: Settings = TestBed.inject(Settings);
+      settings.set('textEditor.fileAssociations', [
+        { pattern: '/ws/data.foo', language: 'yaml' },
+        { pattern: 'Jenkinsfile', language: 'groovy' },
+      ]);
+      openFile('/ws/data.foo');
+      internals.onLanguageChange('JSON');
+
+      internals.onRememberChosen(RememberLanguageChoice.Extension);
+
+      expect(settings.get('textEditor.fileAssociations')).toEqual([
+        { pattern: 'Jenkinsfile', language: 'groovy' },
+        { pattern: '*.foo', language: 'json' },
+      ]);
+    });
+
+    it('none_remembersNothing_andKeepsTheTabsLanguage', () => {
+      const tab: Tab = openFile('/ws/data.foo');
+      internals.onLanguageChange('JSON');
+
+      internals.onRememberChosen(RememberLanguageChoice.None);
+
+      expect(TestBed.inject(Settings).get('textEditor.fileAssociations')).toEqual([]);
+      expect(documents.get(tab.id)?.language()).toBe('json');
+      expect(internals.rememberOffer()).toBeUndefined();
+    });
+
+    it('aLanguageOnlyAnAssociationGives_isNamedInTheField_andPlainTextCanBePickedBack', () => {
+      // `apex` is not among Studio's own languages, and before Monaco loads it is not in the full
+      // list either; the field must still name it rather than call it Plain Text.
+      TestBed.inject(Settings).set('textEditor.fileAssociations', [
+        { pattern: '*.cls', language: 'apex' },
+      ]);
+      const tab: Tab = openFile('/ws/Account.cls');
+      TestBed.tick();
+      expect(documents.get(tab.id)?.language()).toBe('apex');
+      expect(internals.languageName()).toBe('apex');
+      expect(internals.languageOptions()).toContain('apex');
+
+      internals.onLanguageChange('Plain Text');
+
+      expect(documents.get(tab.id)?.language()).toBe('plaintext');
+    });
+
+    it('extension_carriesTheLanguageToOtherOpenFilesWithTheEnding', async () => {
+      const other: Tab = openFile('/ws/other.foo');
+      openFile('/ws/data.foo');
+      internals.onLanguageChange('JSON');
+
+      internals.onRememberChosen(RememberLanguageChoice.Extension);
+      await fixture.whenStable();
+      TestBed.tick();
+
+      expect(documents.get(other.id)?.language()).toBe('json');
+    });
   });
 
   it('languageName_whenDocumentCreatedAfterFirstRead_reflectsItsLanguage', () => {
@@ -198,6 +327,41 @@ describe('CodeRibbon', () => {
     );
     expect(labels).toContain('Go to Line');
     expect(labels).not.toContain('Go to Symbol');
+  });
+
+  it('sortDocument_isOnTheEditMenu_forAJsonFileAlone_andRunsTheEditorCommand (#1214)', () => {
+    const tab: Tab = tabs.open('code');
+    documents.ensure(tab.id);
+    documents.setLanguage(tab.id, 'typescript');
+    TestBed.tick();
+    const ids: () => (string | undefined)[] = (): (string | undefined)[] =>
+      menuItems('edit').map((entry: MenuEntry): string | undefined => entry.id);
+
+    expect(ids()).not.toContain('code.sortDocument');
+
+    documents.setLanguage(tab.id, 'json');
+    TestBed.tick();
+    const sort: MenuEntry | undefined = menuItems('edit').find(
+      (entry: MenuEntry): boolean => entry.id === 'code.sortDocument',
+    );
+    expect(sort?.label).toBe('Sort Document');
+    expect(sort?.accelerator).toBeUndefined();
+    expect(ids().indexOf('code.sortDocument')).toBe(ids().indexOf('code.format') + 1);
+
+    menu.dispatch('code.sortDocument');
+    expect(calls).toEqual(['sort']);
+  });
+
+  it('sortDocument_isNotOnTheEditMenu_forAJsonFileNoServerServes (#1214)', () => {
+    const tab: Tab = tabs.open('code');
+    documents.ensure(tab.id);
+    documents.setLanguage(tab.id, 'json');
+    sortable.set(false);
+    TestBed.tick();
+
+    expect(menuItems('edit').map((entry: MenuEntry): string | undefined => entry.id)).not.toContain(
+      'code.sortDocument',
+    );
   });
 
   it('menu_whenPrintOrExportIsChosen_reachesPrinting', () => {

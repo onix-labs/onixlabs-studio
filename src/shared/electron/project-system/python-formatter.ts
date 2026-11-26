@@ -1,4 +1,4 @@
-import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -6,6 +6,7 @@ import * as path from 'node:path';
 import type { DocumentFormatResult } from '@shared/api/project-system';
 import { logger } from '../logger';
 
+import { Launcher, launchFor, RunToken } from '../process/launch';
 /**
  * Names a tool Python is formatted with (#1212).
  */
@@ -115,47 +116,44 @@ export function pythonProjectDir(filePath: string, root: string): string {
 }
 
 /**
- * Runs a formatter, feeding it the text and collecting what it writes, ended if it outlasts
- * {@link FORMAT_TIMEOUT_MS}.
- * @param executable The executable.
- * @param args Its arguments.
- * @param cwd The folder to run in.
- * @param input The text to format.
- * @returns Returns its exit code and output; rejects when it could not be started.
+ * Gets the runner for a trusted folder's formatter (#1504): it may be one the folder ships (a virtual
+ * environment's ruff or black), so it runs only with the folder's run token. The runner feeds the
+ * formatter the text and collects what it writes, ending it if it outlasts {@link FORMAT_TIMEOUT_MS};
+ * it rejects when the formatter could not be started.
+ * @param token The folder's run token.
+ * @returns Returns the runner.
  */
-export const runFormatter: FormatterRunner = (
-  executable: string,
-  args: readonly string[],
-  cwd: string,
-  input: string,
-) =>
-  new Promise((resolve, reject): void => {
-    const child: ChildProcessWithoutNullStreams = spawn(executable, [...args], {
-      cwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
+export function formatterRunnerFor(token: RunToken): FormatterRunner {
+  const launch: Launcher = launchFor(token);
+  return (executable: string, args: readonly string[], cwd: string, input: string) =>
+    new Promise((resolve, reject): void => {
+      const child: ChildProcessWithoutNullStreams = launch.spawn(executable, [...args], {
+        cwd,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      let stdout: string = '';
+      let stderr: string = '';
+      const timer: NodeJS.Timeout = setTimeout((): void => {
+        child.kill('SIGKILL');
+      }, FORMAT_TIMEOUT_MS);
+      child.stdout.setEncoding('utf8').on('data', (chunk: string): void => {
+        stdout += chunk;
+      });
+      child.stderr.setEncoding('utf8').on('data', (chunk: string): void => {
+        stderr += chunk;
+      });
+      child.on('error', (error: Error): void => {
+        clearTimeout(timer);
+        reject(error);
+      });
+      child.on('close', (code: number | null): void => {
+        clearTimeout(timer);
+        resolve({ code, stdout, stderr });
+      });
+      child.stdin.on('error', (): void => undefined);
+      child.stdin.end(input);
     });
-    let stdout: string = '';
-    let stderr: string = '';
-    const timer: NodeJS.Timeout = setTimeout((): void => {
-      child.kill('SIGKILL');
-    }, FORMAT_TIMEOUT_MS);
-    child.stdout.setEncoding('utf8').on('data', (chunk: string): void => {
-      stdout += chunk;
-    });
-    child.stderr.setEncoding('utf8').on('data', (chunk: string): void => {
-      stderr += chunk;
-    });
-    child.on('error', (error: Error): void => {
-      clearTimeout(timer);
-      reject(error);
-    });
-    child.on('close', (code: number | null): void => {
-      clearTimeout(timer);
-      resolve({ code, stdout, stderr });
-    });
-    child.stdin.on('error', (): void => undefined);
-    child.stdin.end(input);
-  });
+}
 
 /**
  * Formats a Python document's text with the formatter its project uses (#1212): black where its
@@ -164,14 +162,14 @@ export const runFormatter: FormatterRunner = (
  * @param filePath The document's absolute path.
  * @param text The document's text.
  * @param root The absolute workspace root holding it.
- * @param run Runs the formatter; the real one by default.
+ * @param run Runs the formatter: {@link formatterRunnerFor} the folder's run token.
  * @returns Returns the formatted text, or why it could not be formatted.
  */
 export async function formatPython(
   filePath: string,
   text: string,
   root: string,
-  run: FormatterRunner = runFormatter,
+  run: FormatterRunner,
 ): Promise<DocumentFormatResult> {
   const projectDir: string = pythonProjectDir(filePath, root);
   let pyproject: string | null;

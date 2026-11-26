@@ -1,7 +1,7 @@
 import type { PromptScope } from './ai/ai-prompt-scope';
-import type { PromptProfile } from './prompt-profile-channels';
+import type { PersonaEntry } from './persona-channels';
 
-// Shared contract for bringing skills and prompt profiles into Studio's libraries and taking them out
+// Shared contract for bringing skills and persona entries into Studio's libraries and taking them out
 // again (#1263), between the Electron (back-end) and Angular (front-end) processes. The main process
 // reads the chosen folder (never writing to it), drafts every candidate and holds the plan; the
 // renderer walks the user through it one file at a time, may hand files to an AI, and sends back what
@@ -20,9 +20,9 @@ export enum SkillImportChannel {
 
   /**
    * Asks for Markdown files, a folder of them or a Studio export through the platform dialog and
-   * scans them into a plan of prompt profiles only; null when the dialog was cancelled.
+   * scans them into a plan of persona entries only; null when the dialog was cancelled.
    */
-  ChooseProfiles = 'skill-import:choose-profiles',
+  ChoosePersona = 'skill-import:choose-persona',
 
   /**
    * Writes the accepted part of a plan to the libraries, all or nothing.
@@ -46,9 +46,10 @@ export enum SkillImportChannel {
 export const LIBRARY_EXPORT_FORMAT: string = 'onixlabs-studio-ai-library';
 
 /**
- * The export layout's version, written to the manifest.
+ * The export layout's version, written to the manifest. Version 2 carries a `persona` folder where
+ * version 1 carried `profiles` (#1514); an import reads either.
  */
-export const LIBRARY_EXPORT_VERSION: number = 1;
+export const LIBRARY_EXPORT_VERSION: number = 2;
 
 /**
  * How a plan treats what it found:
@@ -167,9 +168,10 @@ export interface SkillImportPlan {
   readonly entries: readonly SkillImportEntry[];
 
   /**
-   * Gets the prompt profiles found in an export; empty otherwise.
+   * Gets the persona entries found: in an export, or (importing into the persona) in the files
+   * picked; empty otherwise. A prompt profile in an older export is read as one (#1514).
    */
-  readonly profiles: readonly PromptProfile[];
+  readonly persona: readonly PersonaEntry[];
 
   /**
    * Gets the names of the skills already in the library, for clash checks.
@@ -177,9 +179,9 @@ export interface SkillImportPlan {
   readonly existingSkills: readonly string[];
 
   /**
-   * Gets the ids of the profiles already in the library, for clash checks.
+   * Gets the ids of the entries already in the persona, for clash checks.
    */
-  readonly existingProfiles: readonly string[];
+  readonly existingPersona: readonly string[];
 }
 
 /**
@@ -203,16 +205,16 @@ export interface SkillImportAcceptedSkill {
 }
 
 /**
- * One accepted profile.
+ * One accepted persona entry.
  */
-export interface SkillImportAcceptedProfile {
+export interface SkillImportAcceptedPersonaEntry {
   /**
-   * Gets the profile to write, under its (possibly renamed) id.
+   * Gets the entry to write, under its (possibly renamed) id.
    */
-  readonly profile: PromptProfile;
+  readonly entry: PersonaEntry;
 
   /**
-   * Gets whether it replaces the library profile with the same id.
+   * Gets whether it replaces the persona's entry with the same id.
    */
   readonly replace: boolean;
 }
@@ -232,9 +234,9 @@ export interface SkillImportCommit {
   readonly skills: readonly SkillImportAcceptedSkill[];
 
   /**
-   * Gets the accepted profiles.
+   * Gets the accepted persona entries.
    */
-  readonly profiles: readonly SkillImportAcceptedProfile[];
+  readonly persona: readonly SkillImportAcceptedPersonaEntry[];
 }
 
 /**
@@ -247,9 +249,9 @@ export interface SkillImportResult {
   readonly skills: number;
 
   /**
-   * Gets how many profiles were written.
+   * Gets how many persona entries were written.
    */
-  readonly profiles: number;
+  readonly persona: number;
 
   /**
    * Gets how many links between imported files were rewritten to the library's layout.
@@ -277,9 +279,9 @@ export interface SkillExportResult {
   readonly skills: number;
 
   /**
-   * Gets how many profiles were exported.
+   * Gets how many persona entries were exported.
    */
-  readonly profiles: number;
+  readonly persona: number;
 
   /**
    * Gets why the export failed, or null.

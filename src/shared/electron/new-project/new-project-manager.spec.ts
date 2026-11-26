@@ -15,6 +15,7 @@ import type { VersionControlDescriptor } from '../version-control/version-contro
 import type { VersionControlHost } from '../version-control/version-control-host';
 import type { PickedDocuments } from '@shared/api/new-project-channels';
 import { NewProjectManager, parseProjectRequest, readDocuments } from './new-project-manager';
+import type { RepositoryTrustChoice } from '../repository-trust';
 
 describe('parseProjectRequest', () => {
   it('keepsASafeDefaultBranch_andDropsOneThatCouldBeAnOption', () => {
@@ -87,6 +88,7 @@ describe('NewProjectManager', () => {
   let inits: VcsParams<'init'>[];
   let initError: string | null;
   let commits: { directory: string; paths: readonly string[]; push: boolean }[];
+  let decisions: { target: string; choice: RepositoryTrustChoice }[];
 
   /**
    * Builds the manager over stand-ins for the clone and hosting managers.
@@ -139,12 +141,18 @@ describe('NewProjectManager', () => {
         },
       } as unknown as VersionControlHost,
       { remember: (target: string): number => trusted.push(target) } as unknown as TrustedPaths,
+      {
+        decide: (target: string, choice: RepositoryTrustChoice): void => {
+          decisions.push({ target, choice });
+        },
+      },
     );
   }
 
   beforeEach(() => {
     parent = fs.mkdtempSync(path.join(os.tmpdir(), 'project-parent-'));
     trusted = [];
+    decisions = [];
     clones = [];
     cloneParents = [];
     cloneOutcome = { ok: true, path: path.join(parent, 'todo') };
@@ -177,6 +185,21 @@ describe('NewProjectManager', () => {
     expect(outcome).toEqual({ ok: true, path: folder });
     expect(fs.statSync(folder).isDirectory()).toBe(true);
     expect(trusted).toEqual([folder]);
+  });
+
+  it('aProjectTheUserMade_isRecordedAsTrusted_soItsFirstCommitCanRun', async () => {
+    // What is in it is Studio's own template, made because the user asked (#1504): the run token its
+    // first commit needs is there before the commit is sent.
+    const outcome: NewProjectOutcome = await manager().create({
+      name: 'todo',
+      repository: { kind: 'local', layout: 'flat' },
+      initialFiles: { readme: true, commit: true },
+    });
+
+    const folder: string = path.join(parent!, 'todo');
+    expect(outcome).toEqual({ ok: true, path: folder });
+    expect(decisions).toEqual([{ target: folder, choice: 'trusted' }]);
+    expect(commits).toHaveLength(1);
   });
 
   it('refuses_untilAFolderIsChosen', async () => {
@@ -277,6 +300,7 @@ describe('NewProjectManager', () => {
     expect(outcome).toMatchObject({ ok: false });
     expect(outcome.ok === false && outcome.error).toContain('Name already exists');
     expect(clones).toEqual([]);
+    expect(decisions).toEqual([]);
   });
 
   it('aCloneThatFails_saysWhereTheRepositoryWasMade', async () => {

@@ -1,0 +1,116 @@
+// The learning side of the Persona page (#1516): a quiet block under the overview, left-aligned so its lists
+// read as lists.
+:host {
+  display: block;
+  inline-size: 100%;
+  max-inline-size: 36rem;
+  text-align: start;
+}
+
+.activity {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-block-start: 1rem;
+  border-block-start: var(--hairline) solid var(--form-control-border-color);
+}
+
+.activity__heading {
+  margin: 0;
+}
+
+.activity__status {
+  margin: 0;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.8125rem;
+}
+
+.activity__pending {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.activity__actions,
+.activity__add {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.activity__subheading {
+  margin: 0.6rem 0 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.activity__list,
+.activity__topics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.activity__topics {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.activity__questions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.activity__question {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.activity__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.activity__muted {
+  color: var(--form-muted-foreground-color);
+}
+
+.activity__topic {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.4rem;
+  border: var(--hairline) solid var(--form-control-border-color);
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  font-size: 0.8rem;
+}
+
+.activity__topic-remove {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--form-muted-foreground-color);
+  font: inherit;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--danger-color);
+  }
+}

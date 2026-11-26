@@ -8,11 +8,17 @@
 // The low-level `captureShellEnvironment` is deliberately separable so a later per-agent shell setting
 // (issue #318) can source a specific shell's profile the same way.
 
-import { execFile, spawnSync, type SpawnSyncReturns } from 'node:child_process';
+import type { SpawnSyncReturns } from 'node:child_process';
+import { Launcher, launchStudioOwned } from './process/launch';
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { logger } from '@shared/electron/logger';
+
+/**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('shell-environment');
 
 /**
  * Delimiter framing the `env` dump in the capture script's stdout. A shell profile is free to print
@@ -111,7 +117,7 @@ export function captureShellEnvironment(
   const script: string = `echo "${ENV_DELIMITER}"; env; echo "${ENV_DELIMITER}"`;
   logger.trace('shell-env', `Capturing environment from ${shell}`);
   try {
-    const result: SpawnSyncReturns<string> = spawnSync(shell, ['-l', '-i', '-c', script], {
+    const result: SpawnSyncReturns<string> = launch.spawnSync(shell, ['-l', '-i', '-c', script], {
       encoding: 'utf-8',
       timeout: options.timeoutMs ?? 5000,
       maxBuffer: 10 * 1024 * 1024,
@@ -286,7 +292,7 @@ function captureShellEnvironmentAsync(
   const script: string = `echo "${ENV_DELIMITER}"; env; echo "${ENV_DELIMITER}"`;
   return new Promise<Record<string, string> | null>((resolve): void => {
     try {
-      execFile(
+      launch.execFile(
         shell,
         ['-l', '-i', '-c', script],
         { encoding: 'utf8', timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024, env: process.env },

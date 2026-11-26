@@ -278,9 +278,9 @@ export interface AiRunRequest {
 
   /**
    * Gets the user's standing system-prompt text for this run, already resolved by the renderer from
-   * the prompt profiles whose scope matches it (#300). Appended after Studio's own instructions —
-   * never in place of them — so a user's text can add guidance but cannot strand the tool-use rules.
-   * Absent when no profile matches.
+   * the persona's core entries whose scope matches it (#300, #1514). Appended after Studio's own
+   * instructions — never in place of them — so a user's text can add guidance but cannot strand the
+   * tool-use rules. Absent when no core entry matches.
    */
   readonly systemPromptExtra?: string;
 

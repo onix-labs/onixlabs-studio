@@ -1,4 +1,4 @@
-// Fills the Terminal dock panel body with a tab tool-strip above the terminals and a status strip
+// Fills the Terminal dock panel body with a tool-strip (the terminal picker) above the terminals and a status strip
 // below. All terminals are mounted at once; only the active one is visible, so switching never tears a
 // session down. The background tracks the resolved theme (the xterm theme paints the same colour, so
 // the gutter matches).
@@ -16,43 +16,22 @@
   min-block-size: 0;
 }
 
-// The tab strip reuses the shared panel tool-strip, adding horizontal scrolling for many tabs.
+// The strip holds the terminal picker and the buttons that act on the terminal shown.
 .terminal-panel__tabs {
-  overflow-x: auto;
+  gap: 0.25rem;
 }
 
-// A terminal tab: the shared tool-strip button (with its shared --active toggle state) plus a name and
-// inline close affordance.
-//
-// Its height is the control height rather than the tool-strip's own 1.5rem, because the New Terminal
-// button at the end of the strip is a button atom and sits at `--control-height`. The strip reads as
-// one row of controls, so the odd one out has to be brought up to the others rather than left a
-// quarter-rem short.
-.terminal-panel__tab {
-  block-size: var(--control-height);
-  white-space: nowrap;
+// The picker fills the room the buttons leave, so a long terminal name has space before it is cut.
+.terminal-panel__picker {
+  flex: 1 1 auto;
+  min-inline-size: 8rem;
 }
 
-.terminal-panel__tab-icon {
-  font-size: 0.85rem;
-}
-
-.terminal-panel__tab-close {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 0.2rem;
-  font-size: 0.7rem;
-  opacity: 0.55;
-
-  &:hover {
-    opacity: 1;
-    background: var(--accent-surface-background-color);
-  }
-}
 // Layout only: how the field is DRAWN belongs to the atom, and a border here would box it twice.
 .terminal-panel__rename {
   align-self: center;
-  inline-size: 8rem;
+  flex: 1 1 auto;
+  min-inline-size: 8rem;
 }
 
 .terminal-panel__bodies {

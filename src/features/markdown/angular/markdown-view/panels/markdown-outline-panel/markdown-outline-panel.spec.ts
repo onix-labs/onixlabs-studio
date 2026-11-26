@@ -23,11 +23,6 @@ describe('MarkdownOutlinePanel', () => {
     expect(component).toBeTruthy();
   });
 
-  it('render_whenShown_isTitledOutline', () => {
-    const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    expect(element.querySelector('.tool-panel__title')?.textContent).toContain('Outline');
-  });
-
   it('render_whenNoHeadings_showsEmptyState', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
     expect(element.querySelector('.outline__empty')).not.toBeNull();

@@ -1,0 +1,101 @@
+@use '../tabs' as *;
+
+// The GPU view fills its tab: a header naming the GPU, then its cards in a grid that shares the view's
+// height, fitting a full-screen 1080p display and scrolling below that.
+:host {
+  @include host;
+}
+
+.gpu {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  box-sizing: border-box;
+  block-size: 100%;
+  min-block-size: 50rem;
+  padding: 0.5rem;
+}
+
+.gpu__header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.75rem;
+  min-inline-size: 0;
+}
+
+.gpu__icon {
+  color: var(--body-foreground-color);
+}
+
+.gpu__title {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.gpu__model {
+  min-inline-size: 0;
+  overflow: hidden;
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
+}
+
+// Twelve columns, so the rows split them as the sketch does. Each card is a size container whose
+// height never comes from what it holds, so every row's height is stated.
+.gpu__grid {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-rows:
+    minmax(11rem, 1fr)
+    minmax(10rem, 1fr)
+    minmax(11rem, 1fr)
+    minmax(11rem, 1fr);
+  grid-template-areas:
+    'utilisation utilisation utilisation utilisation utilisation memory memory memory memory thermals thermals thermals'
+    'engines engines engines engines engines history-memory history-memory history-memory history-memory history-memory history-memory history-memory'
+    'processes processes processes processes processes processes processes information information information information information'
+    'history history history history history history history history history history history history';
+  gap: 0.5rem;
+  min-block-size: 0;
+}
+
+.gpu__utilisation {
+  grid-area: utilisation;
+}
+
+.gpu__memory {
+  grid-area: memory;
+}
+
+.gpu__thermals {
+  grid-area: thermals;
+}
+
+.gpu__engines {
+  grid-area: engines;
+}
+
+.gpu__memory-history {
+  grid-area: history-memory;
+}
+
+.gpu__processes {
+  grid-area: processes;
+}
+
+.gpu__information {
+  grid-area: information;
+}
+
+.gpu__history {
+  grid-area: history;
+}
+
+.gpu__off {
+  @include empty;
+}

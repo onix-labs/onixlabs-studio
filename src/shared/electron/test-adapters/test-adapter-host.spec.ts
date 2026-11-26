@@ -18,6 +18,7 @@ import { TestAdapterDescriptor } from './test-adapter-descriptor';
 import { TestAdapterEndpoint } from './test-adapter-endpoint';
 import { TestAdapterHost, TestAdapterHostOptions } from './test-adapter-host';
 import { DirectoryEntry } from './marker-scan';
+import type { RunToken } from '../process/launch';
 
 /**
  * The open workspace root every test works inside.
@@ -62,10 +63,10 @@ function fakeClient(confirmed: readonly TestAdapterCapability[]): FakeClient {
       },
       request: <Op extends TestAdapterOp>(
         op: Op,
-        root: string,
+        token: RunToken,
         params: unknown,
       ): Promise<TestAdapterResponse<Op>> => {
-        fake.requests.push({ op, root, params });
+        fake.requests.push({ op, root: token.folder, params });
         return Promise.resolve(fake.answer(op, params) as TestAdapterResponse<Op>);
       },
       dispose: (): void => {

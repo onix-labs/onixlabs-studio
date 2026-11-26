@@ -17,47 +17,47 @@
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Clipboard">
-    <app-ribbon-strip-column>
-      <app-ribbon-strip-button-small [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
-      <app-ribbon-strip-button-small [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
-      <app-ribbon-strip-button-small [icon]="Icon.PASTE" label="Paste" (action)="onPaste()" />
-    </app-ribbon-strip-column>
+    <app-ribbon-strip-button [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
+    <app-ribbon-strip-button [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
+    <app-ribbon-strip-button [icon]="Icon.PASTE" label="Paste" (action)="onPaste()" />
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Actions">
-    <app-ribbon-strip-column>
-      <app-ribbon-strip-button-small [icon]="Icon.LIST" label="List" (action)="onList()" />
-      <app-ribbon-strip-button-small
-        [icon]="Icon.LIST_ALL"
-        label="List All"
-        (action)="onListAll()"
-      />
-      <app-ribbon-strip-button-small [icon]="Icon.FOLDER_OPEN" label="Open" (action)="onOpen()" />
-    </app-ribbon-strip-column>
+    <app-ribbon-strip-menu-button
+      [icon]="Icon.LIST"
+      label="List"
+      [items]="listItems"
+      (action)="onList()"
+      (selected)="onListing($event)"
+    />
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Locations">
-    <app-ribbon-strip-button [icon]="Icon.HOME" label="Home" (action)="onHome()" />
-    <app-ribbon-strip-button [icon]="Icon.ROOT" label="Root" (action)="onRoot()" />
+    <app-ribbon-strip-menu-button
+      [icon]="Icon.HOME"
+      label="Home"
+      [items]="locationItems()"
+      (action)="onHome()"
+      (selected)="onLocation($event)"
+    />
+    <app-ribbon-strip-button [icon]="Icon.FOLDER_OPEN" label="Open" (action)="onOpen()" />
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="View">
-    <app-ribbon-strip-column>
-      <app-ribbon-strip-button-small
-        [icon]="Icon.LOCK"
-        label="Scroll Lock"
-        [toggle]="true"
-        [pressed]="scrollLocked()"
-        (action)="onScrollLock(!scrollLocked())"
-      />
-      <app-ribbon-strip-button-small
-        [icon]="Icon.ARROW_DOWN"
-        label="Scroll"
-        [disabled]="scrollLocked()"
-        (action)="onScrollToBottom()"
-      />
-      <app-ribbon-strip-button-small [icon]="Icon.SEARCH" label="Find" (action)="onFind()" />
-    </app-ribbon-strip-column>
+    <app-ribbon-strip-button
+      [icon]="Icon.LOCK"
+      label="Scroll Lock"
+      [toggle]="true"
+      [pressed]="scrollLocked()"
+      (action)="onScrollLock(!scrollLocked())"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.ARROW_DOWN"
+      label="Scroll"
+      [disabled]="scrollLocked()"
+      (action)="onScrollToBottom()"
+    />
+    <app-ribbon-strip-button [icon]="Icon.SEARCH" label="Find" (action)="onFind()" />
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Tools">

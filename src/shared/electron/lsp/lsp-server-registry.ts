@@ -42,6 +42,7 @@ export type {
   LspServerSpec,
 } from './language-server-descriptor';
 
+import { FolderTrustSource, mayRunIn } from '../repository-trust';
 /**
  * Describes a change to the user's values for one server's declared settings (#1204).
  */
@@ -108,14 +109,25 @@ export class LspServerRegistry {
   >();
 
   /**
+   * Holds the trust store a workspace is read from, or null when none is (#1504).
+   */
+  private readonly trust: FolderTrustSource | null;
+
+  /**
    * Initializes a new instance of the {@link LspServerRegistry} class, seeded with the first-party
    * catalogue.
    * @param executablePath The absolute path of the Electron binary (`process.execPath`).
    * @param settings The user's language-server settings.
+   * @param trust The trust store a workspace is read from; absent, no workspace is trusted.
    */
-  public constructor(executablePath: string, settings: LspSettingsManager) {
+  public constructor(
+    executablePath: string,
+    settings: LspSettingsManager,
+    trust: FolderTrustSource | null = null,
+  ) {
     this.executablePath = executablePath;
     this.settings = settings;
+    this.trust = trust;
     for (const descriptor of languageServerCatalogue()) {
       this.register(descriptor);
     }
@@ -370,6 +382,7 @@ export class LspServerRegistry {
   private context(rootPath: string, braceStyle?: LspBraceStyle): LanguageServerContext {
     return {
       rootPath,
+      trusted: this.trust !== null && mayRunIn(this.trust, rootPath),
       braceStyle,
       settings: this.settings,
       provisioner: this.provisioner,

@@ -1,11 +1,11 @@
-import { signal, WritableSignal } from '@angular/core';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DELETE_MODEL,
   DOWNLOAD_MODEL,
   LIST_SKILL_TAGS,
-  SAVE_PROMPT_PROFILE,
+  SAVE_PERSONA_ENTRY,
   SAVE_SKILL,
   type AiBridgeScope,
 } from '@shared/api/ai-types';
@@ -13,10 +13,7 @@ import type { Skill, SkillDraft, SkillSaveResult } from '@shared/api/skill-chann
 import { AiManagerNavigation } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
 import { AiCapability, AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import { Log } from '@shared/angular/services/log/log';
-import {
-  PromptProfile,
-  PromptProfiles,
-} from '@shared/angular/services/prompt-profiles/prompt-profiles';
+import { Persona, PersonaEntry } from '@shared/angular/services/persona/persona';
 import { Skills } from '@shared/angular/services/skills/skills';
 import { ModelConnections } from '../model-connections/model-connections';
 import { ModelManagerCommands } from '../model-manager-commands/model-manager-commands';
@@ -48,7 +45,6 @@ function skill(name: string): Skill {
 describe('AiManagerAgentCapabilities', () => {
   let capabilities: Map<string, AiCapability>;
   let saved: SkillDraft[];
-  let profiles: WritableSignal<readonly PromptProfile[]>;
   let shown: string[];
   let pull: ReturnType<typeof vi.fn>;
   let linked: string[];
@@ -64,7 +60,6 @@ describe('AiManagerAgentCapabilities', () => {
     unlinked = [];
     refreshed = 0;
     removable = true;
-    profiles = signal<readonly PromptProfile[]>([]);
     pull = vi.fn((): Promise<boolean> => Promise.resolve(true));
     TestBed.configureTestingModule({
       providers: [
@@ -97,29 +92,6 @@ describe('AiManagerAgentCapabilities', () => {
           },
         },
         { provide: ModelManagerCommands, useValue: { refresh: (): number => (refreshed += 1) } },
-        {
-          provide: PromptProfiles,
-          useValue: {
-            profiles,
-            create: (name?: string): PromptProfile => {
-              const created: PromptProfile = {
-                id: 'p-new',
-                name: name ?? 'New profile',
-                scope: { surfaces: [], languages: [] },
-                instructions: '',
-                enabled: true,
-              };
-              profiles.update((list: readonly PromptProfile[]) => [...list, created]);
-              return created;
-            },
-            update: (id: string, patch: Partial<PromptProfile>): void =>
-              profiles.update((list: readonly PromptProfile[]) =>
-                list.map((profile: PromptProfile) =>
-                  profile.id === id ? { ...profile, ...patch } : profile,
-                ),
-              ),
-          },
-        },
         {
           provide: Skills,
           useValue: {
@@ -186,26 +158,32 @@ describe('AiManagerAgentCapabilities', () => {
     expect(saved[0]).toMatchObject({ name: 'dotnet-style', previousName: 'csharp-style' });
   });
 
-  it('saveProfile_createsOne_orChangesOneByItsId_andRefusesAnUnknownId', async () => {
+  it('savePersonaEntry_createsAMemory_orChangesOneByItsId_andRefusesAnUnknownId', async () => {
+    const entries: () => readonly PersonaEntry[] = TestBed.inject(Persona).entries;
     expect(
-      await call(SAVE_PROMPT_PROFILE, {
+      await call(SAVE_PERSONA_ENTRY, {
         name: 'Terse',
-        instructions: 'Be brief.',
+        text: 'Be brief.',
+        tags: ['Preferences'],
         languages: ['TS'],
       }),
-    ).toEqual({ available: true, created: true, id: 'p-new', name: 'Terse' });
-    expect(profiles()[0]).toMatchObject({
-      instructions: 'Be brief.',
+    ).toEqual({ available: true, created: true, id: 'terse', name: 'Terse' });
+    expect(entries()[0]).toMatchObject({
+      text: 'Be brief.',
+      layer: 'memory',
+      tags: ['preferences'],
+      author: 'user',
+      locked: true,
       scope: { surfaces: [], languages: ['ts'] },
     });
 
-    await call(SAVE_PROMPT_PROFILE, { id: 'p-new', enabled: false });
-    expect(profiles()[0]).toMatchObject({ name: 'Terse', enabled: false });
+    await call(SAVE_PERSONA_ENTRY, { id: 'terse', enabled: false, layer: 'core' });
+    expect(entries()[0]).toMatchObject({ name: 'Terse', enabled: false, layer: 'core' });
 
-    expect(await call(SAVE_PROMPT_PROFILE, { id: 'nope' })).toMatchObject({
-      error: expect.stringContaining('no profile') as unknown,
+    expect(await call(SAVE_PERSONA_ENTRY, { id: 'nope' })).toMatchObject({
+      error: expect.stringContaining('no persona entry') as unknown,
     });
-    expect(shown).toEqual(['profiles', 'profiles']);
+    expect(shown).toEqual(['persona', 'persona']);
   });
 
   it('download_startsThePull_andLinksTheModelWhenItFinishes', async () => {

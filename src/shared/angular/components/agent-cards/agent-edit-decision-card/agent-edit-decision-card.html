@@ -3,8 +3,7 @@
   [tone]="item().decisionState === 'pending' ? 'pending' : 'settled'"
 >
   <p class="agent__ask-question">
-    Apply this edit to <strong>{{ item().decisionName }}</strong
-    >?
+    Apply this edit to <strong>{{ item().decisionName }}</strong>?
     @if (item().decisionDetail) {
       <span class="agent__permission-detail">
         @for (segment of detail(); track $index) {

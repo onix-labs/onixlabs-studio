@@ -10,7 +10,7 @@ import {
   meetsFloor,
   Severity,
 } from '@shared/api/log-channels';
-import { appendDetails } from '@shared/api/log-format';
+import { serializeDetails } from '@shared/api/log-format';
 
 /**
  * The renderer's structured logging client: a thin, typed wrapper over the generic {@link Bridge} for
@@ -238,7 +238,8 @@ export class Log {
       this.bridge.send(LogChannel.Append, {
         severity,
         source,
-        message: appendDetails(message, details).slice(0, MAX_LOG_MESSAGE_LENGTH),
+        message: message.slice(0, MAX_LOG_MESSAGE_LENGTH),
+        details: serializeDetails(details),
       });
     } catch {
       // A failed forward is deliberately swallowed.

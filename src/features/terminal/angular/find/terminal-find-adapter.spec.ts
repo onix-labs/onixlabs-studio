@@ -197,6 +197,30 @@ describe('TerminalFindAdapter', () => {
       expect(adapter.matches().map((match: FindResultItem): string => match.text)).toEqual(['404']);
     });
 
+    it('setQuery_whenItIsTheQueryAlreadySearchedFor_keepsTheActiveMatch', () => {
+      const harness: PaneHarness = createPane(['beta', 'beta', 'beta'], 3);
+      const adapter: TerminalFindAdapter = new TerminalFindAdapter(() => harness.pane);
+      adapter.setQuery(query('beta'));
+      adapter.select(2);
+      const before: number = harness.calls.length;
+
+      adapter.setQuery(query('beta'));
+
+      expect(adapter.activeIndex()).toBe(2);
+      expect(harness.calls).toHaveLength(before);
+    });
+
+    it('setQuery_whenTheSearchWasCleared_searchesAfresh', () => {
+      const harness: PaneHarness = createPane(['beta'], 1);
+      const adapter: TerminalFindAdapter = new TerminalFindAdapter(() => harness.pane);
+      adapter.setQuery(query('beta'));
+      adapter.clear();
+
+      adapter.setQuery(query('beta'));
+
+      expect(adapter.matches()).toHaveLength(1);
+    });
+
     it('setQuery_whenThePatternIsInvalid_clearsTheMatchesInsteadOfThrowing', () => {
       const harness: PaneHarness = createPane(['alpha'], 1);
       const adapter: TerminalFindAdapter = new TerminalFindAdapter(() => harness.pane);

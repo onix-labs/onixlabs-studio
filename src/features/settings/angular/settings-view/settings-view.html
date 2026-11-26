@@ -59,6 +59,7 @@
         }
         @case ('notifications') {
           <app-settings-section sectionId="notifications" />
+          <app-notification-types />
         }
         @case ('printing') {
           <app-settings-section sectionId="printing" />
@@ -68,6 +69,11 @@
         }
         @case ('workspaces-explorers') {
           <app-settings-section sectionId="workspaces-explorers" />
+          <app-file-nesting-rules />
+        }
+        @case ('workspaces-file-watching') {
+          <app-polling-folders />
+          <app-settings-section sectionId="workspaces-file-watching" />
         }
         @case ('workspaces-search') {
           <app-settings-section sectionId="workspaces-search" />
@@ -84,6 +90,7 @@
         }
         @case ('code-general') {
           <app-settings-section sectionId="code-general" />
+          <app-file-associations />
         }
         @case ('code-appearance') {
           <app-settings-section sectionId="code-appearance" />
@@ -169,6 +176,10 @@
         }
         @case ('ai-manager') {
           <app-settings-section sectionId="ai-manager" />
+        }
+        @case ('ai-manager-persona') {
+          <app-persona-learning-connection />
+          <app-settings-section sectionId="ai-manager-persona" />
         }
         @case ('containers') {
           <app-container-engine />

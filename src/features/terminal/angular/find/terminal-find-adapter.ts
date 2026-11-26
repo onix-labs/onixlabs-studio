@@ -90,6 +90,9 @@ export class TerminalFindAdapter implements FindAdapter {
    * @param query The query to search for.
    */
   public setQuery(query: FindQuery): void {
+    if (this.isSearching(query)) {
+      return;
+    }
     this.lastQuery = query;
     this.activeIndexState.set(-1);
     const pane: Terminal | null = this.paneOf();
@@ -197,6 +200,24 @@ export class TerminalFindAdapter implements FindAdapter {
     this.paneOf()?.clearSearch();
     this.unbind?.();
     this.unbind = null;
+  }
+
+  /**
+   * Determines whether a query is the one already being searched for, as it is when a panel the search
+   * outlived shows it again: searching afresh would lose the user's place among the matches.
+   * @param query The query.
+   * @returns Returns true when it is.
+   */
+  private isSearching(query: FindQuery): boolean {
+    const last: FindQuery | null = this.lastQuery;
+    return (
+      this.unbind !== null &&
+      last !== null &&
+      last.text === query.text &&
+      last.caseSensitive === query.caseSensitive &&
+      last.wholeWord === query.wholeWord &&
+      last.regexp === query.regexp
+    );
   }
 
   /**

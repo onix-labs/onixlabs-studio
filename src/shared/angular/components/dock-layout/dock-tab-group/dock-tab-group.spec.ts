@@ -43,6 +43,72 @@ describe('DockTabGroup', () => {
     availability = TestBed.inject(DockPanelAvailability);
   });
 
+  describe('a tab drop, in a group holding a panel that is not shown', () => {
+    /**
+     * Drops a tab.
+     * @param panelId The panel whose tab it is.
+     * @param previousIndex Where it was among the tabs shown.
+     * @param currentIndex Where it is dropped among them.
+     * @param elsewhere Whether it comes from another group.
+     */
+    function drop(
+      panelId: string,
+      previousIndex: number,
+      currentIndex: number,
+      elsewhere: boolean = false,
+    ): void {
+      const container: object = {};
+      (component as unknown as { onDrop(event: unknown): void }).onDrop({
+        item: { data: panelId },
+        previousIndex,
+        currentIndex,
+        container,
+        previousContainer: elsewhere ? {} : container,
+      });
+    }
+
+    it('reorders_byTheTabsShown', () => {
+      const dock: DockState = TestBed.inject(DockState);
+      const group: StackNode = findStackOfPanel(dock.layout(), 'output')!;
+      for (const id of group.panels.filter((other: string): boolean => other !== 'output')) {
+        dock.removeFromLayout(id);
+      }
+      for (const id of ['problems', 'errors']) {
+        dock.removeFromLayout(id);
+        dock.tabInto(group.id, id);
+      }
+      availability.set({ problems: false });
+      const held: () => readonly string[] = (): readonly string[] =>
+        findStackOfPanel(dock.layout(), 'output')!.panels;
+      expect(held()).toEqual(['output', 'problems', 'errors']);
+
+      render(findStackOfPanel(dock.layout(), 'output')!);
+      drop('output', 0, 1);
+      expect(held()).toEqual(['problems', 'errors', 'output']);
+
+      render(findStackOfPanel(dock.layout(), 'output')!);
+      drop('output', 1, 0);
+      expect(held()).toEqual(['problems', 'output', 'errors']);
+    });
+
+    it('takesATabFromElsewhere_whereItWasDropped', () => {
+      const move: MockInstance<DockState['movePanel']> = vi
+        .spyOn(TestBed.inject(DockState), 'movePanel')
+        .mockReturnValue();
+      availability.set({ problems: false });
+      const group: StackNode = mkStack('tool', ['output', 'problems', 'errors']);
+      render(group);
+
+      drop('solution', 0, 1, true);
+      drop('solution', 0, 2, true);
+
+      expect(move.mock.calls).toEqual([
+        ['solution', group.id, 2],
+        ['solution', group.id, 3],
+      ]);
+    });
+  });
+
   describe('tab fill during a splitter drag', () => {
     /**
      * Reaches the component's resize handling, which jsdom (no layout, no observer) cannot drive.
@@ -276,6 +342,21 @@ describe('DockTabGroup', () => {
     expect(drag.panel()?.id).toBe('output');
 
     document.dispatchEvent(new MouseEvent('mouseup'));
+  });
+
+  it('titleBar_whenAnotherPanelStandsInForTheActiveOne_actsOnTheOneItShows', () => {
+    availability.set({ output: false });
+    render(mkStack('tool', ['output', 'errors']));
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    const title: HTMLElement | null = element.querySelector<HTMLElement>('.dock-tab-group__title');
+    title?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 10, clientY: 10 }));
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 60, clientY: 60 }));
+    expect(drag.panel()?.id).toBe('errors');
+    document.dispatchEvent(new MouseEvent('mouseup'));
+
+    element.querySelector<HTMLButtonElement>('button[aria-label="Float"]')?.click();
+    expect(floating.floats().some((window): boolean => window.panelId === 'output')).toBe(false);
   });
 
   it('startGroupDrag_whenTabRailPressedAndDragged_startsACompassDragForTheWholeGroup', () => {

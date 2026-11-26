@@ -2,7 +2,15 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ToolchainFolders, toolchainSourcePath } from './toolchain-source';
+import {
+  GoEnvAnswer,
+  GoEnvReader,
+  GoFolders,
+  goSourcePath,
+  resolveGoFolders,
+  ToolchainFolders,
+  toolchainSourcePath,
+} from './toolchain-source';
 
 describe('toolchainSourcePath (#1210)', () => {
   let sandbox: string;
@@ -100,5 +108,129 @@ describe('toolchainSourcePath (#1210)', () => {
     await expect(
       toolchainSourcePath(file('cargo/registry/src/a/lib.rs'), missing),
     ).resolves.toBeNull();
+  });
+});
+
+describe('goSourcePath (#1211)', () => {
+  let sandbox: string;
+  let folders: GoFolders;
+
+  /**
+   * Writes a file below the sandbox, making its folders.
+   * @param relative The file's path, relative to the sandbox.
+   * @returns Returns its absolute path.
+   */
+  function file(relative: string): string {
+    const target: string = path.join(sandbox, relative);
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, '// source');
+    return target;
+  }
+
+  beforeEach(() => {
+    sandbox = realpathSync(mkdtempSync(path.join(tmpdir(), 'studio-go-source-')));
+    folders = { roots: [path.join(sandbox, 'goroot')], modules: path.join(sandbox, 'mod') };
+    mkdirSync(path.join(sandbox, 'goroot'));
+    mkdirSync(path.join(sandbox, 'mod'));
+  });
+
+  afterEach(() => {
+    rmSync(sandbox, { recursive: true, force: true });
+  });
+
+  it.each([
+    'goroot/src/fmt/print.go',
+    'mod/golang.org/x/text@v0.44.0/cases/cases.go',
+    'mod/golang.org/toolchain@v0.0.1-go1.27.4.darwin-amd64/src/strings/strings.go',
+  ])('takes %s', async (relative: string) => {
+    const target: string = file(relative);
+
+    await expect(goSourcePath(target, folders)).resolves.toBe(target);
+  });
+
+  it.each([
+    // What the module cache keeps besides sources, and the rest of an installation.
+    'mod/cache/download/golang.org/x/text/@v/v0.44.0.go',
+    'mod/golang.org/x/text@v0.44.0/go.mod',
+    'goroot/misc/thing.go',
+    'goroot/VERSION',
+    'workspace/main.go',
+  ])('refuses %s', async (relative: string) => {
+    await expect(goSourcePath(file(relative), folders)).resolves.toBeNull();
+  });
+
+  it('refuses a link planted among sources that names a file elsewhere', async () => {
+    const secret: string = file('elsewhere/secret.go');
+    const link: string = path.join(path.dirname(file('mod/a@v1/a.go')), 'link.go');
+    symlinkSync(secret, link);
+
+    await expect(goSourcePath(link, folders)).resolves.toBeNull();
+  });
+
+  it('refuses a folder climbing out of the sources', async () => {
+    file('elsewhere/secret.go');
+    file('mod/a@v1/a.go');
+
+    await expect(
+      goSourcePath(path.join(sandbox, 'mod/a@v1/../../elsewhere/secret.go'), folders),
+    ).resolves.toBeNull();
+  });
+
+  it('refuses everything below the working folder when the module cache is not known', async () => {
+    const target: string = file('mod/a@v1/a.go');
+
+    await expect(goSourcePath(target, { roots: [], modules: null })).resolves.toBeNull();
+    // An empty folder setting must never stand for the working folder (`/` when packaged).
+    await expect(goSourcePath(target, { roots: [''], modules: '' })).resolves.toBeNull();
+  });
+
+  it('refuses what is not a path to a Go file that exists', async () => {
+    await expect(goSourcePath(undefined, folders)).resolves.toBeNull();
+    await expect(goSourcePath('relative/a.go', folders)).resolves.toBeNull();
+    await expect(goSourcePath(path.join(sandbox, 'mod/none.go'), folders)).resolves.toBeNull();
+  });
+});
+
+describe('resolveGoFolders (#1211)', () => {
+  /**
+   * Builds a reader answering as `go env -json GOROOT GOMODCACHE` would, or as no Go at all.
+   * @param answer The answer, or null for none.
+   * @returns Returns the reader.
+   */
+  function goEnv(answer: GoEnvAnswer | null): GoEnvReader {
+    return (): Promise<GoEnvAnswer | null> => Promise.resolve(answer);
+  }
+
+  it('takesWhatGoEnvSays', async () => {
+    await expect(
+      resolveGoFolders(
+        { GOROOT: '/elsewhere/go', GOMODCACHE: '/elsewhere/mod' },
+        goEnv({ GOROOT: '/usr/local/go', GOMODCACHE: '/home/me/go/pkg/mod' }),
+        '/home/me',
+      ),
+    ).resolves.toEqual({
+      roots: ['/usr/local/go', '/elsewhere/go'],
+      modules: '/home/me/go/pkg/mod',
+    });
+  });
+
+  it('fallsBackToTheEnvironment_thenToGosOwnDefault_whenNoGoAnswers', async () => {
+    await expect(
+      resolveGoFolders({ GOROOT: '/opt/go', GOPATH: '/work/go:/other' }, goEnv(null), '/home/me'),
+    ).resolves.toEqual({ roots: ['/opt/go'], modules: '/work/go/pkg/mod' });
+    await expect(resolveGoFolders({}, goEnv(null), '/home/me')).resolves.toEqual({
+      roots: [],
+      modules: '/home/me/go/pkg/mod',
+    });
+  });
+
+  it('treatsAnEmptyOrRelativeSettingAsUnset', async () => {
+    await expect(
+      resolveGoFolders(
+        { GOROOT: '', GOMODCACHE: '', GOPATH: '' },
+        goEnv({ GOROOT: 'go', GOMODCACHE: '' }),
+        '/home/me',
+      ),
+    ).resolves.toEqual({ roots: [], modules: '/home/me/go/pkg/mod' });
   });
 });

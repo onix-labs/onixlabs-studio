@@ -1,3 +1,4 @@
+import type { Injector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FeatureDescriptor, FeatureRegistry } from '@shared/angular/services/feature-registry';
@@ -6,6 +7,7 @@ import {
   KeybindingCatalogueEntry,
 } from '@shared/angular/services/keybindings/keybinding-catalogue';
 import { Keybindings, ResolvedBinding } from '@shared/angular/services/keybindings/keybindings';
+import { NotificationTypes } from '@shared/angular/services/notifications/notification-types';
 import { featureContributions, registerFeatureContribution } from './feature-contributions';
 
 /**
@@ -63,11 +65,13 @@ describe('featureContributions', () => {
 describe('registerFeatureContribution', () => {
   let registry: FeatureRegistry;
   let keybindings: Keybindings;
+  let notificationTypes: NotificationTypes;
 
   beforeEach((): void => {
     TestBed.configureTestingModule({});
     registry = TestBed.inject(FeatureRegistry);
     keybindings = TestBed.inject(Keybindings);
+    notificationTypes = TestBed.inject(NotificationTypes);
   });
 
   it('contributesTheKeybindingsBeforeRegisteringTheDescriptor', (): void => {
@@ -88,6 +92,7 @@ describe('registerFeatureContribution', () => {
       { type: 'lazy', view: class {}, keybindings: entry },
       registry,
       keybindings,
+      notificationTypes,
     );
 
     expect(cataloguedAtRegistration).toEqual([true]);
@@ -97,9 +102,54 @@ describe('registerFeatureContribution', () => {
     const contribute: ReturnType<typeof vi.spyOn> = vi.spyOn(keybindings, 'contribute');
 
     const view: new () => object = class {};
-    registerFeatureContribution({ type: 'plain', view }, registry, keybindings);
+    registerFeatureContribution({ type: 'plain', view }, registry, keybindings, notificationTypes);
 
     expect(contribute).not.toHaveBeenCalled();
     expect(registry.viewFor('plain')).toBe(view);
+  });
+
+  it('startsTheFeaturesBackgroundService_onceRegistered (#1488)', (): void => {
+    const started: string[] = [];
+    const injector: Injector = {
+      get: (token: unknown): unknown => {
+        started.push((token as { name: string }).name);
+        return {};
+      },
+    };
+    class Listener {}
+
+    registerFeatureContribution(
+      { type: 'watcher', view: class {}, background: Listener },
+      registry,
+      keybindings,
+      notificationTypes,
+      injector,
+    );
+
+    expect(registry.viewFor('watcher')).toBeTruthy();
+    expect(started).toEqual(['Listener']);
+  });
+
+  it('addsTheNotificationTypesTheDescriptorCarries', (): void => {
+    registerFeatureContribution(
+      {
+        type: 'noisy',
+        view: class {},
+        notificationTypes: [
+          {
+            id: 'noisy.done',
+            label: 'Done',
+            description: 'Something finished.',
+            area: 'Noisy',
+            default: 'history',
+          },
+        ],
+      },
+      registry,
+      keybindings,
+      notificationTypes,
+    );
+
+    expect(notificationTypes.choice('noisy.done')).toBe('history');
   });
 });

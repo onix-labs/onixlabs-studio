@@ -1,4 +1,5 @@
-import { ChildProcess, spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import { Launcher, launchStudioOwned } from '../../process/launch';
 import {
   CONTAINER_ENGINE_OP_CAPABILITY,
   CONTAINER_ENGINE_PROTOCOL_VERSION,
@@ -28,6 +29,11 @@ import { pluginEnvironment } from '../../plugin-environment';
 import { pidJournal } from '../../pid-journal';
 import type { NodeRuntimeSpec } from '../plugins/plugin-loader';
 import { ContainerEngine, StreamHandle } from './container-engine';
+
+/**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('plugin-process');
 
 /**
  * How long a plugin has to answer `initialize` before it is given up on.
@@ -394,7 +400,7 @@ export class ContainerEngineClient implements ContainerEngine {
    */
   private async startProcess(): Promise<boolean> {
     try {
-      this.process = spawn(this.spec.command, [...this.spec.args], {
+      this.process = launch.spawn(this.spec.command, [...this.spec.args], {
         stdio: ['pipe', 'pipe', 'pipe'],
         // Only what a program needs to run, never the user's whole shell (audit S6).
         env: pluginEnvironment(this.spec.env),
@@ -644,12 +650,33 @@ function readEvent(value: unknown): ContainerEvent | null {
     return null;
   }
   const record: Record<string, unknown> = value as Record<string, unknown>;
+  const text: (key: string) => string | undefined = (key: string): string | undefined => {
+    const field: unknown = record[key];
+    return typeof field === 'string' && field.length > 0
+      ? field.slice(0, MAX_EVENT_TEXT)
+      : undefined;
+  };
+  const name: string | undefined = text('name');
+  const image: string | undefined = text('image');
+  const project: string | undefined = text('project');
+  const exitCode: unknown = record['exitCode'];
+  // The details are optional (#1488): a plugin from before them still sends a usable event.
   return {
     type: typeof record['type'] === 'string' ? record['type'] : '',
     action: typeof record['action'] === 'string' ? record['action'] : '',
     id: typeof record['id'] === 'string' ? record['id'] : '',
+    ...(name === undefined ? {} : { name }),
+    ...(image === undefined ? {} : { image }),
+    ...(typeof exitCode === 'number' && Number.isInteger(exitCode) ? { exitCode } : {}),
+    ...(project === undefined ? {} : { project }),
   };
 }
+
+/**
+ * Specifies the longest a text detail of an event may be: a plugin's output is not trusted to keep
+ * names short.
+ */
+const MAX_EVENT_TEXT: number = 256;
 
 /**
  * Reads a download's progress out of a pull line.

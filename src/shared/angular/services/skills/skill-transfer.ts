@@ -8,7 +8,7 @@ import {
   SkillImportResult,
 } from '@shared/api/skill-import-channels';
 import { Log } from '@shared/angular/services/log/log';
-import { PromptProfiles } from '@shared/angular/services/prompt-profiles/prompt-profiles';
+import { Persona } from '@shared/angular/services/persona/persona';
 import { Skills } from './skills';
 
 /**
@@ -30,9 +30,9 @@ export class SkillTransfer {
   private readonly skills: Skills = inject(Skills);
 
   /**
-   * Holds the prompt profiles, re-read after an import that carried any.
+   * Holds the persona, re-read after an import that carried entries for it.
    */
-  private readonly profiles: PromptProfiles = inject(PromptProfiles);
+  private readonly persona: Persona = inject(Persona);
 
   /**
    * Holds the structured logger.
@@ -53,13 +53,13 @@ export class SkillTransfer {
   }
 
   /**
-   * Asks the user for Markdown files, a folder of them or an export to import prompt profiles from,
+   * Asks the user for Markdown files, a folder of them or an export to import into the persona,
    * and scans them.
-   * @returns Returns the plan, holding profiles only, or null when the dialog was cancelled.
+   * @returns Returns the plan, holding persona entries only, or null when the dialog was cancelled.
    */
-  public async chooseProfiles(): Promise<SkillImportPlan | null> {
+  public async choosePersona(): Promise<SkillImportPlan | null> {
     return (
-      (await this.bridge?.invoke<SkillImportPlan | null>(SkillImportChannel.ChooseProfiles)) ?? null
+      (await this.bridge?.invoke<SkillImportPlan | null>(SkillImportChannel.ChoosePersona)) ?? null
     );
   }
 
@@ -74,18 +74,18 @@ export class SkillTransfer {
       commit,
     )) ?? {
       skills: 0,
-      profiles: 0,
+      persona: 0,
       linksRewritten: 0,
       error: 'Importing is only available in the desktop app.',
     };
     if (result.error === null) {
       this.log.info(
         'SkillTransfer',
-        `Imported ${result.skills} skill(s), ${result.profiles} profile(s)`,
+        `Imported ${result.skills} skill(s), ${result.persona} persona entries`,
       );
       await this.skills.reload();
-      if (result.profiles > 0) {
-        await this.profiles.reload();
+      if (result.persona > 0) {
+        await this.persona.reload();
       }
     } else {
       this.log.warn('SkillTransfer', `Import refused: ${result.error}`);
@@ -103,7 +103,7 @@ export class SkillTransfer {
   }
 
   /**
-   * Asks the user where to export to, and exports both libraries there.
+   * Asks the user where to export to, and exports the skills and the persona there.
    * @returns Returns the outcome, or null when the dialog was cancelled.
    */
   public async export(): Promise<SkillExportResult | null> {

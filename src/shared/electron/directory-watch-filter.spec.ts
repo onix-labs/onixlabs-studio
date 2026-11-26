@@ -1,4 +1,8 @@
-import { MetadataPolicies, shouldForwardTreeEvent } from './directory-watch-filter';
+import {
+  MetadataPolicies,
+  shouldForwardTreeEvent,
+  shouldPollInside,
+} from './directory-watch-filter';
 
 /**
  * The Git plugin's metadata policy, as its manifest declares it (#817).
@@ -88,5 +92,35 @@ describe('shouldForwardTreeEvent', () => {
     const svn: MetadataPolicies = new Map<string, readonly string[]>([['.svn', []]]);
     expect(shouldForwardTreeEvent('.svn/wc.db', svn)).toBe(true);
     expect(shouldForwardTreeEvent('.svn/pristine/ab/abcdef', svn)).toBe(true);
+  });
+});
+
+describe('shouldPollInside', () => {
+  it('readsTheRootAndOrdinaryFolders', () => {
+    expect(shouldPollInside('', GIT)).toBe(true);
+    expect(shouldPollInside('src/Api', GIT)).toBe(true);
+  });
+
+  it('skipsBuildOutputsAndDependencyCaches_atAnyDepth', () => {
+    expect(shouldPollInside('node_modules', GIT)).toBe(false);
+    expect(shouldPollInside('src/Api/bin', GIT)).toBe(false);
+    expect(shouldPollInside('src/Api/OBJ/Debug', GIT)).toBe(false);
+  });
+
+  it('readsTheMetadataFolders_aSignalPatternCanReach', () => {
+    expect(shouldPollInside('.git', GIT)).toBe(true);
+    expect(shouldPollInside('.git/refs', GIT)).toBe(true);
+    expect(shouldPollInside('.git/refs/heads/feature', GIT)).toBe(true);
+  });
+
+  it('skipsTheMetadataFolders_noSignalPatternCanReach', () => {
+    expect(shouldPollInside('.git/objects', GIT)).toBe(false);
+    expect(shouldPollInside('.git/logs', GIT)).toBe(false);
+    expect(shouldPollInside('vendor/lib/.git/objects/ab', GIT)).toBe(false);
+  });
+
+  it('readsAllOfAMetadataFolderDeclaredWithoutSignals', () => {
+    const svn: MetadataPolicies = new Map<string, readonly string[]>([['.svn', []]]);
+    expect(shouldPollInside('.svn/pristine', svn)).toBe(true);
   });
 });

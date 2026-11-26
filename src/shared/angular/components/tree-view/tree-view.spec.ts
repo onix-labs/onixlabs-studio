@@ -25,6 +25,7 @@ function makeRow(id: string, depth: number, expandable: boolean, expanded: boole
       [selectedIds]="selectedIds()"
       (rowClick)="onRow($event)"
       (rowActivate)="activated.push($event)"
+      (rowToggle)="toggled.push($event)"
       (backgroundClick)="backgroundClicks = backgroundClicks + 1"
     >
       <ng-template let-row
@@ -43,6 +44,7 @@ class TestHost {
   public readonly selectedIds: WritableSignal<readonly string[]> = signal<readonly string[]>([]);
   public readonly clicked: TreeRow[] = [];
   public readonly activated: TreeRow[] = [];
+  public readonly toggled: TreeRow[] = [];
   public backgroundClicks: number = 0;
 
   public onRow(row: TreeRow): void {
@@ -152,6 +154,33 @@ describe('TreeView', () => {
 
     expect(component.clicked.length).toBe(1);
     expect(component.clicked[0].id).toBe('child');
+  });
+
+  it('click_theSecondOfADoubleClick_isNoClickOfItsOwn', () => {
+    // A double click is two clicks and then the double click; taking both would toggle a folder open
+    // and shut again.
+    rowElements()[0].dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    rowElements()[0].dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 2 }));
+
+    expect(component.clicked.map((row: TreeRow): string => row.id)).toEqual(['root']);
+  });
+
+  it('click_onTheChevronOfARowThatOpens_togglesRatherThanClicks', () => {
+    component.rows.set([{ ...makeRow('parent', 0, true, false), opens: true }]);
+    fixture.detectChanges();
+
+    rowElements()[0].querySelector<HTMLElement>('.tree-chevron')?.click();
+    host.querySelector<HTMLElement>('.probe-label')?.click();
+
+    expect(component.toggled.map((row: TreeRow): string => row.id)).toEqual(['parent']);
+    expect(component.clicked.map((row: TreeRow): string => row.id)).toEqual(['parent']);
+  });
+
+  it('click_onTheChevronOfAFolder_isAClick', () => {
+    rowElements()[0].querySelector<HTMLElement>('.tree-chevron')?.click();
+
+    expect(component.toggled).toEqual([]);
+    expect(component.clicked.map((row: TreeRow): string => row.id)).toEqual(['root']);
   });
 
   it('activate_whenEnterIsPressedOnARow_emitsThatRow', () => {

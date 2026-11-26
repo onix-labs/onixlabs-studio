@@ -1,3 +1,14 @@
+import {
+  DEFAULT_INTERFACE_ZOOM,
+  parseInterfaceZoom,
+  type InterfaceZoom,
+} from '@shared/api/interface-zoom';
+import {
+  DEFAULT_POLLING_INTERVAL,
+  sanitizePollingFolders,
+  sanitizePollingInterval,
+} from './polling-folders';
+
 /**
  * What happens on macOS when the last window closes: Studio keeps running in the dock (the platform's
  * convention), or quits.
@@ -15,6 +26,15 @@ export type WindowSizeOnLaunch = 'remember' | 'default' | 'maximised';
  * Full and rounded corners below it; the others fix the shape whatever the acceleration.
  */
 export type CornerStyle = 'automatic' | 'squircle' | 'rounded' | 'square';
+
+/**
+ * The language the interface is shown in. System follows the operating system's preferred languages,
+ * falling back to English when none of them is one Studio speaks; Pseudo is a test language that
+ * accents and stretches every translated string, so untranslated text and clipped layouts stand out.
+ * Chinese is Simplified Chinese (`zh-Hans`), named by its script rather than a region, since it is
+ * read in mainland China, Singapore and Malaysia alike; Traditional Chinese would be `zh-Hant`.
+ */
+export type InterfaceLanguage = 'system' | 'en' | 'fr' | 'es' | 'de' | 'zh-Hans' | 'ar' | 'pseudo';
 
 /**
  * When opening a link in the browser asks first: never, only for links from content Studio did not
@@ -62,6 +82,18 @@ export interface StartupSettings {
    * change shape as the renderer starts.
    */
   readonly cornerStyle: CornerStyle;
+
+  /**
+   * Gets the language the interface is shown in, needed before the renderer's code loads: its text is
+   * translated as each module is first read, so the translations have to be in place before then.
+   */
+  readonly language: InterfaceLanguage;
+
+  /**
+   * Gets how large the interface is drawn. The main process sets the zoom of every window's web
+   * contents, so it needs the level as each window is created, before the renderer has read its store.
+   */
+  readonly interfaceZoom: InterfaceZoom;
 
   /**
    * Gets when opening a link in the browser asks first. The main process opens every link, including
@@ -142,6 +174,24 @@ export interface StartupSettings {
    * Gets the folder the skill library lives in, empty for under the user data.
    */
   readonly skillLibraryFolder: string;
+
+  /**
+   * Gets whether the GPU is read at all (the System Monitor's GPU Monitoring), which the main process
+   * follows from launch to keep the GPU's history.
+   */
+  readonly gpuMonitoring: boolean;
+
+  /**
+   * Gets the folders whose files are polled instead of watched natively (#1254). The main process runs
+   * every watcher, and a language server or a workspace can start watching before any window has read
+   * its settings.
+   */
+  readonly pollingFolders: readonly string[];
+
+  /**
+   * Gets how often a polled folder is checked, in seconds.
+   */
+  readonly pollingInterval: number;
 }
 
 /**
@@ -152,6 +202,8 @@ export const DEFAULT_STARTUP_SETTINGS: StartupSettings = {
   windowSizeOnLaunch: 'remember',
   restoreFullScreen: true,
   cornerStyle: 'automatic',
+  language: 'system',
+  interfaceZoom: DEFAULT_INTERFACE_ZOOM,
   confirmExternalLinks: 'never',
   addStudioUserFileToGitignore: true,
   projectScanDepth: 2,
@@ -167,6 +219,9 @@ export const DEFAULT_STARTUP_SETTINGS: StartupSettings = {
   ollamaStart: 'needed',
   ollamaKeepAliveMinutes: 5,
   skillLibraryFolder: '',
+  gpuMonitoring: true,
+  pollingFolders: [],
+  pollingInterval: DEFAULT_POLLING_INTERVAL,
 };
 
 /**
@@ -224,6 +279,12 @@ export function parseStartupSettings(raw: unknown): StartupSettings {
       ['automatic', 'squircle', 'rounded', 'square'],
       defaults.cornerStyle,
     ),
+    language: oneOf<InterfaceLanguage>(
+      record['language'],
+      ['system', 'en', 'fr', 'es', 'de', 'zh-Hans', 'ar', 'pseudo'],
+      defaults.language,
+    ),
+    interfaceZoom: parseInterfaceZoom(record['interfaceZoom']),
     confirmExternalLinks: oneOf<ConfirmExternalLinks>(
       record['confirmExternalLinks'],
       ['never', 'untrusted', 'always'],
@@ -273,5 +334,11 @@ export function parseStartupSettings(raw: unknown): StartupSettings {
       defaults.ollamaKeepAliveMinutes,
     ),
     skillLibraryFolder: text(record['skillLibraryFolder'], defaults.skillLibraryFolder),
+    gpuMonitoring:
+      typeof record['gpuMonitoring'] === 'boolean'
+        ? record['gpuMonitoring']
+        : defaults.gpuMonitoring,
+    pollingFolders: sanitizePollingFolders(record['pollingFolders']),
+    pollingInterval: sanitizePollingInterval(record['pollingInterval']),
   };
 }

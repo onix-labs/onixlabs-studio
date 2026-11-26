@@ -3,7 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { describe, expect, it, beforeEach } from 'vitest';
 import type { Skill } from '@shared/api/skill-channels';
 import { AiManagerNavigation } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
-import { PromptProfiles } from '@shared/angular/services/prompt-profiles/prompt-profiles';
+import { Persona } from '@shared/angular/services/persona/persona';
 import { Skills } from '@shared/angular/services/skills/skills';
 import { AiManagerView } from './ai-manager-view';
 
@@ -33,7 +33,7 @@ describe('AiManagerView (#948)', () => {
     fixture.componentRef.setInput('tabId', 'tab-1');
     fixture.detectChanges();
     // Local Models talks to the runtime; these tests are about the frame around the sub-views.
-    navigation.show('profiles');
+    navigation.show('persona');
     fixture.detectChanges();
   });
 
@@ -50,26 +50,26 @@ describe('AiManagerView (#948)', () => {
     fixture.detectChanges();
 
     expect(element().querySelector('.ai-manager__overview')).not.toBeNull();
-    expect(element().querySelector('app-prompt-profiles')).toBeNull();
+    expect(element().querySelector('app-persona')).toBeNull();
   });
 
   it('showsTheSubViewTheRibbonChose_andOnlyThatOne', () => {
-    expect(element().querySelector('app-prompt-profiles')).not.toBeNull();
+    expect(element().querySelector('app-persona')).not.toBeNull();
 
     navigation.show('skills');
     fixture.detectChanges();
 
     expect(element().querySelector('app-skill-library')).not.toBeNull();
-    expect(element().querySelector('app-prompt-profiles')).toBeNull();
+    expect(element().querySelector('app-persona')).toBeNull();
     // The Local Models sub-view is not mounted, so it has no summary for the status strip.
     expect(fixture.componentInstance.modelSummary()).toBeNull();
   });
 
-  it('countsTheProfilesAndSkills_andThoseSwitchedOn', () => {
-    TestBed.inject(PromptProfiles).create('House style');
+  it('countsThePersonaAndSkills_andThoseSwitchedOn', () => {
+    TestBed.inject(Persona).create({ name: 'House style' });
     skills.set([{ name: 'a', enabled: true } as Skill, { name: 'b', enabled: false } as Skill]);
 
-    expect(fixture.componentInstance.profileCounts()).toEqual({ total: 1, enabled: 1 });
+    expect(fixture.componentInstance.personaCounts()).toEqual({ total: 1, enabled: 1 });
     expect(fixture.componentInstance.skillCounts()).toEqual({ total: 2, enabled: 1 });
   });
 

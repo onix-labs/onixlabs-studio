@@ -19,6 +19,9 @@ import { RegisteredWindow, WindowKind, WindowRegistry } from './window-registry'
 import { WindowStateStore } from './window-state-store';
 import { logger } from './logger';
 import type { StartupSettings } from '@shared/api/startup-settings';
+import { zoomFactorOf } from '@shared/api/interface-zoom';
+import { overlayHeightAt, trafficLightPositionAt } from './zoomed-chrome';
+import type { ModalSizing, PixelSize } from './modal-sizing';
 
 /**
  * Describes the application-supplied pieces the window manager needs to build windows: where the
@@ -63,8 +66,8 @@ export interface WindowManagerOptions {
   readonly onMainDidStartLoad: () => void;
 
   /**
-   * Reads the startup settings in force (window size on launch, full-screen restore), as the renderer
-   * last mirrored them.
+   * Reads the startup settings in force (window size on launch, full-screen restore, Interface Zoom),
+   * as the renderer last mirrored them.
    * @returns Returns the startup settings.
    */
   readonly startupSettings: () => StartupSettings;
@@ -151,12 +154,6 @@ export class WindowManager {
   private static readonly MODAL_MIN_HEIGHT: number = 120;
 
   /**
-   * Holds the height (DIP) of the Windows caption-button overlay: the height of the main window's
-   * title strip, so the buttons fill it top to bottom as they would a native title bar.
-   */
-  private static readonly OVERLAY_HEIGHT: number = 40;
-
-  /**
    * Holds the colour of the Windows caption-button glyphs, which follows the application's theme.
    * Starts with the dark theme's, which is the default.
    */
@@ -219,6 +216,12 @@ export class WindowManager {
    * or when none is pending.
    */
   private pendingModalParent: BrowserWindow | null = null;
+
+  /**
+   * Holds the size the next modal window means to be, in CSS pixels, recorded with its parent when
+   * its options are built and consumed the moment it is adopted.
+   */
+  private pendingModalSizing: ModalSizing | null = null;
 
   /**
    * Initializes a new instance of the {@link WindowManager} class.
@@ -363,6 +366,8 @@ export class WindowManager {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        // Drawn at the Interface Zoom from the first paint, rather than at 100% until the page loads.
+        zoomFactor: this.zoomFactor(),
       },
     });
     // Maximizing a window that has not been shown SHOWS it on macOS, which would flash an empty
@@ -404,10 +409,10 @@ export class WindowManager {
         }
       }, WindowManager.MAIN_SHOW_FALLBACK_MS);
     });
-    // Page zoom is disabled (the application menu omits the zoom roles), but Chromium persists zoom
-    // levels per-origin in the session, so a level set before zoom was disabled would silently apply
-    // forever. Reset it on every load; content zoom belongs to the editors' own zoom controls.
-    window.webContents.on('did-finish-load', (): void => window.webContents.setZoomLevel(0));
+    // The window is drawn at the Interface Zoom and nothing else. The application menu has no zoom
+    // roles, but Chromium remembers a zoom per origin in the session, so a level set some other way
+    // would otherwise come back on every load. Content zoom belongs to the editors' own controls.
+    window.webContents.on('did-finish-load', (): void => this.applyZoom(window));
     window.webContents.on('did-start-loading', (): void => this.options.onMainDidStartLoad());
     // The renderer is told whether the window is in full screen, where macOS draws no traffic lights
     // over the title strip: on every change, and after each load for the state it starts in.
@@ -499,8 +504,8 @@ export class WindowManager {
   /**
    * Adopts an auxiliary panel window the renderer opened through the allowed window.open path:
    * hardens its web contents, registers it as a pop-out (so bounds persistence and reload cleanup
-   * treat it like any other), and resets its zoom. The opener observes the window's closure itself
-   * (it holds the DOM window), so no notification is sent.
+   * treat it like any other), and draws it at the Interface Zoom. The opener observes the window's
+   * closure itself (it holds the DOM window), so no notification is sent.
    * @param window The created auxiliary window.
    * @param name The name the window was opened with.
    */
@@ -509,7 +514,8 @@ export class WindowManager {
     const entry: RegisteredWindow<BrowserWindow> = this.registry.add('popout', window);
     this.recordChildName(window, name);
     this.options.applySecurity(window.webContents);
-    window.webContents.on('did-finish-load', (): void => window.webContents.setZoomLevel(0));
+    this.applyZoom(window);
+    window.webContents.on('did-finish-load', (): void => this.applyZoom(window));
     window.on('close', (): void => this.saveBounds('popout', window));
     window.on('closed', (): void => {
       logger.info('WindowManager.adoptAuxiliaryWindow', 'pop-out window closed');
@@ -541,12 +547,15 @@ export class WindowManager {
   ): Electron.BrowserWindowConstructorOptions {
     logger.trace('WindowManager.modalWindowOptions', 'building modal options', features);
     const resizable: boolean = parseFeatureFlag(features, 'resizable', false);
-    this.pendingModalParent = parseFeatureFlag(features, MODAL_UNPARENTED_FEATURE, false)
-      ? null
-      : opener;
+    const unparented: boolean = parseFeatureFlag(features, MODAL_UNPARENTED_FEATURE, false);
+    // Raised from a window that is hidden — the main window, while the welcome screen stands in for it
+    // — the modal belongs to the modal window the user is looking at instead: centred over it and
+    // moving with it, rather than placed over a window they cannot see.
+    const standIn: BrowserWindow | null = unparented ? null : this.visibleStandIn(opener);
+    this.pendingModalParent = unparented ? null : (standIn ?? opener);
     // A modal may state its own resize bounds; otherwise it may shrink to the size of a short
     // confirmation and has no ceiling but the display.
-    const minimum: { width: number; height: number } = parseNamedSize(features, 'min') ?? {
+    const stated: { width: number; height: number } = parseNamedSize(features, 'min') ?? {
       width: WindowManager.MODAL_MIN_WIDTH,
       height: WindowManager.MODAL_MIN_HEIGHT,
     };
@@ -555,11 +564,41 @@ export class WindowManager {
       width: WindowManager.MODAL_DEFAULT_WIDTH,
       height: WindowManager.MODAL_DEFAULT_HEIGHT,
     };
+    // A stated minimum is held to the display it opens on. At a large Interface Zoom a modal's
+    // minimum (the welcome screen's, at 200%) can outgrow a small display, and a window larger than
+    // the screen has controls no one can reach; its content scrolls or clips instead.
+    const opening: { x: number; y: number } | null = parseRequestedPosition(features);
+    const area: Electron.Rectangle = screen.getDisplayMatching({
+      x: opening?.x ?? 0,
+      y: opening?.y ?? 0,
+      width: requested.width,
+      height: requested.height,
+    }).workArea;
+    const minimum: { width: number; height: number } = {
+      width: Math.min(stated.width, area.width),
+      height: Math.min(stated.height, area.height),
+    };
     const size: { width: number; height: number } = {
       width: Math.max(minimum.width, Math.min(requested.width, maximum?.width ?? Infinity)),
       height: Math.max(minimum.height, Math.min(requested.height, maximum?.height ?? Infinity)),
     };
-    const position: { x: number; y: number } | null = parseRequestedPosition(features);
+    // What the modal asked for before the display held it, in CSS pixels, so a later zoom change can
+    // give it back what the display took (see ModalSizing).
+    const zoom: number = this.zoomFactor();
+    this.pendingModalSizing = {
+      size: {
+        width: Math.max(stated.width, Math.min(requested.width, maximum?.width ?? Infinity)) / zoom,
+        height:
+          Math.max(stated.height, Math.min(requested.height, maximum?.height ?? Infinity)) / zoom,
+      },
+      minimum: { width: stated.width / zoom, height: stated.height / zoom },
+      maximum:
+        maximum === null ? null : { width: maximum.width / zoom, height: maximum.height / zoom },
+      zoom,
+      applied: { width: 0, height: 0 },
+    };
+    const position: { x: number; y: number } | null =
+      standIn === null ? parseRequestedPosition(features) : centredOver(standIn.getBounds(), size);
     const rect: WindowRect | null = restoreWindowRect(
       {
         bounds: {
@@ -612,6 +651,24 @@ export class WindowManager {
   }
 
   /**
+   * Finds the window a modal raised from a hidden window is shown over: the newest modal window still
+   * on screen, which is the one in front of the user.
+   * @param opener The window the modal was raised from.
+   * @returns Returns that window, or null when the opener is on screen itself (or there is none).
+   */
+  private visibleStandIn(opener: BrowserWindow | null): BrowserWindow | null {
+    if (opener === null || opener.isDestroyed() || opener.isVisible()) {
+      return null;
+    }
+    const modals: BrowserWindow[] = this.registry
+      .all()
+      .filter((entry: RegisteredWindow<BrowserWindow>): boolean => entry.kind === 'modal')
+      .map((entry: RegisteredWindow<BrowserWindow>): BrowserWindow => entry.window)
+      .filter((window: BrowserWindow): boolean => !window.isDestroyed() && window.isVisible());
+    return modals.at(-1) ?? null;
+  }
+
+  /**
    * Builds the title-bar options every window shares, which differ by platform.
    *
    * - macOS hides the title bar and insets the traffic lights over the content, which leaves room for
@@ -629,7 +686,10 @@ export class WindowManager {
   private chrome(): Electron.BrowserWindowConstructorOptions {
     switch (process.platform) {
       case 'darwin':
-        return { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 14, y: 14 } };
+        return {
+          titleBarStyle: 'hiddenInset',
+          trafficLightPosition: trafficLightPositionAt(this.zoomFactor()),
+        };
       case 'win32':
         return { titleBarStyle: 'hidden', titleBarOverlay: this.overlay() };
       case 'linux':
@@ -688,7 +748,7 @@ export class WindowManager {
     return {
       color: '#00000000',
       symbolColor: this.overlaySymbolColor,
-      height: WindowManager.OVERLAY_HEIGHT,
+      height: overlayHeightAt(this.zoomFactor()),
     };
   }
 
@@ -702,13 +762,23 @@ export class WindowManager {
   >();
 
   /**
+   * Holds the least content size each window's dock layout last asked for, in CSS pixels, so a change
+   * of Interface Zoom can work the window's minimum out again: the layout needs the same CSS pixels at
+   * any zoom, but more or fewer of the screen's.
+   */
+  private readonly layoutMinimums: WeakMap<BrowserWindow, readonly [number, number]> = new WeakMap<
+    BrowserWindow,
+    readonly [number, number]
+  >();
+
+  /**
    * Sets a window's minimum size to what its dock layout needs (#1064): the layout's combined
    * minimum, as content, plus the window's frame. Never below the window's own floor, so the shell
    * keeps room for its chrome; never above the work area of the display it is on, so a crowded
    * layout can still be opened there.
    * @param window The window.
-   * @param contentWidth The least content width the layout needs, in pixels.
-   * @param contentHeight The least content height the layout needs, in pixels.
+   * @param contentWidth The least content width the layout needs, in CSS pixels.
+   * @param contentHeight The least content height the layout needs, in CSS pixels.
    */
   public setLayoutMinimumSize(
     window: BrowserWindow,
@@ -718,6 +788,10 @@ export class WindowManager {
     if (window.isDestroyed()) {
       return;
     }
+    this.layoutMinimums.set(window, [contentWidth, contentHeight]);
+    // The renderer measures in CSS pixels; the window is sized in the screen's, which the Interface
+    // Zoom stretches or shrinks them to.
+    const factor: number = this.zoomFactor();
     let base: readonly [number, number] | undefined = this.baseMinimums.get(window);
     if (base === undefined) {
       const [width, height]: number[] = window.getMinimumSize();
@@ -729,16 +803,144 @@ export class WindowManager {
     const display: Display = screen.getDisplayMatching(window.getBounds());
     const width: number = Math.min(
       display.workAreaSize.width,
-      Math.max(base[0], Math.ceil(contentWidth + (outerWidth - innerWidth))),
+      Math.max(base[0], Math.ceil(contentWidth * factor + (outerWidth - innerWidth))),
     );
     const height: number = Math.min(
       display.workAreaSize.height,
-      Math.max(base[1], Math.ceil(contentHeight + (outerHeight - innerHeight))),
+      Math.max(base[1], Math.ceil(contentHeight * factor + (outerHeight - innerHeight))),
     );
     const [currentWidth, currentHeight]: number[] = window.getMinimumSize();
     if (currentWidth !== width || currentHeight !== height) {
       window.setMinimumSize(width, height);
     }
+  }
+
+  /**
+   * Draws every open window at the Interface Zoom in force, after the setting changes: their web
+   * contents, the room their title strips leave for the window controls, and the minimum size their
+   * dock layouts need.
+   */
+  public applyInterfaceZoom(): void {
+    logger.debug('WindowManager.applyInterfaceZoom', `interface zoom now ${this.zoomFactor()}`);
+    for (const entry of this.registry.all()) {
+      this.applyZoom(entry.window);
+    }
+  }
+
+  /**
+   * Holds the size each modal window means to be, so a change of Interface Zoom can work it out again.
+   */
+  private readonly modalSizings: WeakMap<BrowserWindow, ModalSizing> = new WeakMap<
+    BrowserWindow,
+    ModalSizing
+  >();
+
+  /**
+   * Gets the zoom factor windows are drawn at, from the Interface Zoom setting.
+   * @returns Returns the zoom factor (1 for 100%).
+   */
+  private zoomFactor(): number {
+    return zoomFactorOf(this.options.startupSettings().interfaceZoom);
+  }
+
+  /**
+   * Draws one window at the Interface Zoom. Its web contents take the zoom factor; the window controls
+   * drawn over its title strip follow the strip as it grows or shrinks, the macOS traffic lights
+   * staying centred in it and the Windows caption buttons filling it; and its minimum size is worked
+   * out again for what its dock layout last asked for.
+   * @param window The window.
+   */
+  private applyZoom(window: BrowserWindow): void {
+    if (window.isDestroyed()) {
+      return;
+    }
+    const factor: number = this.zoomFactor();
+    const sizing: ModalSizing | undefined = this.modalSizings.get(window);
+    if (sizing !== undefined && sizing.zoom !== factor) {
+      this.rescaleModal(window, sizing, factor);
+    }
+    window.webContents.setZoomFactor(factor);
+    if (process.platform === 'darwin') {
+      window.setWindowButtonPosition(trafficLightPositionAt(factor));
+    } else if (process.platform === 'win32') {
+      try {
+        window.setTitleBarOverlay(this.overlay());
+      } catch (error: unknown) {
+        // A frameless modal has no caption-button overlay to resize, and Electron throws for one.
+        logger.trace('WindowManager.applyZoom', 'window has no caption-button overlay', error);
+      }
+    }
+    const minimum: readonly [number, number] | undefined = this.layoutMinimums.get(window);
+    if (minimum !== undefined) {
+      this.setLayoutMinimumSize(window, minimum[0], minimum[1]);
+    }
+  }
+
+  /**
+   * Rescales a modal window for a change of Interface Zoom. Its opener sized it, and set its limits,
+   * from CSS pixels, which the zoom draws larger or smaller on screen: so the size and limits it
+   * means to have (see {@link ModalSizing}) are worked out again at the new zoom, about the window's
+   * centre (and a third of the way down, as the opener places it). The renderer cannot do this
+   * itself, because its window may not be resized past limits only the main process can change, and
+   * the limits must move first.
+   *
+   * Nothing is allowed past the display's work area: a modal that filled most of the screen at 100%
+   * would otherwise open off it at 200%. Its content scrolls instead. Because the size is worked out
+   * from what the modal means to be rather than from what it was held to, going back to a smaller
+   * zoom gives it its own size again.
+   * @param window The modal window.
+   * @param sizing The size it means to be.
+   * @param factor The zoom factor now in force.
+   */
+  private rescaleModal(window: BrowserWindow, sizing: ModalSizing, factor: number): void {
+    const area: Electron.Rectangle = screen.getDisplayMatching(window.getBounds()).workArea;
+    const width: number = Math.min(area.width, Math.round(sizing.size.width * factor));
+    const height: number = Math.min(area.height, Math.round(sizing.size.height * factor));
+    // Limits first, so the new size is not held to the old ones. Zero means no maximum.
+    window.setMinimumSize(
+      Math.min(width, Math.round(sizing.minimum.width * factor)),
+      Math.min(height, Math.round(sizing.minimum.height * factor)),
+    );
+    if (sizing.maximum !== null) {
+      window.setMaximumSize(
+        Math.max(width, Math.round(sizing.maximum.width * factor)),
+        Math.max(height, Math.round(sizing.maximum.height * factor)),
+      );
+    }
+    this.modalSizings.set(window, { ...sizing, zoom: factor, applied: { width, height } });
+    const bounds: Electron.Rectangle = window.getBounds();
+    const x: number = Math.round(bounds.x + (bounds.width - width) / 2);
+    const y: number = Math.round(bounds.y + (bounds.height - height) / 3);
+    window.setBounds({
+      x: Math.max(area.x, Math.min(x, area.x + area.width - width)),
+      y: Math.max(area.y, Math.min(y, area.y + area.height - height)),
+      width,
+      height,
+    });
+    logger.debug('WindowManager.rescaleModal', 'rescaled modal for interface zoom', {
+      factor,
+      width,
+      height,
+    });
+  }
+
+  /**
+   * Records a modal window's own resize as the size it now means to be, unless the window manager
+   * made it. The opener fits a dialog to its content, and the user may resize one that allows it;
+   * either is what the window should come back to after a zoom change.
+   * @param window The modal window.
+   */
+  private recordModalResize(window: BrowserWindow): void {
+    const sizing: ModalSizing | undefined = this.modalSizings.get(window);
+    if (sizing === undefined || window.isDestroyed()) {
+      return;
+    }
+    const [width, height]: number[] = window.getSize();
+    if (width === sizing.applied.width && height === sizing.applied.height) {
+      return;
+    }
+    const size: PixelSize = { width: width / sizing.zoom, height: height / sizing.zoom };
+    this.modalSizings.set(window, { ...sizing, size, applied: { width, height } });
   }
 
   /**
@@ -772,7 +974,7 @@ export class WindowManager {
 
   /**
    * Adopts a modal window the renderer opened through the allowed window.open path: hardens its web
-   * contents, registers it as a modal, resets its zoom, and — unless the opener asked for a
+   * contents, registers it as a modal, draws it at the Interface Zoom, and — unless the opener asked for a
    * free-standing window — parents it to the window that raised it, so it always floats above that
    * window and closes with it. A free-standing modal is the welcome screen's cold start, where the
    * main window is hidden: on macOS a child of a hidden parent is not displayed at all.
@@ -791,7 +993,17 @@ export class WindowManager {
     const entry: RegisteredWindow<BrowserWindow> = this.registry.add('modal', window);
     this.recordChildName(window, name);
     this.options.applySecurity(window.webContents);
-    window.webContents.on('did-finish-load', (): void => window.webContents.setZoomLevel(0));
+    // The opener sized the modal for the zoom in force now; a later change rescales it from what it
+    // asked for, not from what the display held it to.
+    const sizing: ModalSizing | null = this.pendingModalSizing;
+    this.pendingModalSizing = null;
+    if (sizing !== null) {
+      const [width, height]: number[] = window.getSize();
+      this.modalSizings.set(window, { ...sizing, applied: { width, height } });
+      window.on('resize', (): void => this.recordModalResize(window));
+    }
+    this.applyZoom(window);
+    window.webContents.on('did-finish-load', (): void => this.applyZoom(window));
     window.on('closed', (): void => {
       logger.info('WindowManager.adoptModalWindow', 'modal window closed');
       this.registry.remove(entry.id);
@@ -884,4 +1096,21 @@ export class WindowManager {
       fullScreen: window.isFullScreen(),
     });
   }
+}
+
+/**
+ * Computes where a window of a given size sits centred over another: horizontally centred, and a
+ * little above centre vertically, as the renderer centres a modal over the window that raised it.
+ * @param bounds The window to centre over.
+ * @param size The size of the window being placed.
+ * @returns Returns the position of its top-left corner.
+ */
+function centredOver(
+  bounds: Electron.Rectangle,
+  size: { width: number; height: number },
+): { x: number; y: number } {
+  return {
+    x: Math.round(bounds.x + (bounds.width - size.width) / 2),
+    y: Math.round(bounds.y + Math.max(0, (bounds.height - size.height) / 3)),
+  };
 }

@@ -1,4 +1,4 @@
-import { inject, Service } from '@angular/core';
+import { inject, Injector, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import type {
   DiskFileEdits,
@@ -11,8 +11,14 @@ import { Log } from '@shared/angular/services/log/log';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Search } from '@shared/angular/services/search/search';
 import {
+  ActiveWorkspace,
+  type WorkspaceWell,
+} from '@shared/angular/services/workspace/active-workspace';
+import {
   AppliedFile,
+  EntryMove,
   FileTextEdits,
+  movedEdits,
   SkippedEdit,
   TextEditEntry,
   WorkspaceEditOutcome,
@@ -53,6 +59,12 @@ export class WorkspaceEditApplier {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the injector the workspace in front is resolved from when an edit renames a file or folder:
+   * few edits do, and it is not needed by the rest.
+   */
+  private readonly injector: Injector = inject(Injector);
+
+  /**
    * Applies edits across the workspace.
    * @param edit The edits, by document, and the parts already refused.
    * @param monaco The Monaco instance of the editor the change came from, whose models are looked in
@@ -60,9 +72,18 @@ export class WorkspaceEditApplier {
    * @returns Returns the documents changed, and the parts not applied with their reasons.
    */
   public async apply(
-    edit: WorkspaceTextEdits,
+    requested: WorkspaceTextEdits,
     monaco?: typeof MonacoApi,
   ): Promise<WorkspaceEditOutcome> {
+    // First, and on its own: renaming a package's folder (#1211). Its edits rewrite every import of
+    // the package, so they are applied only once the folder has its new name, to the paths as they are
+    // then; a rename refused or failed leaves everything as it was, rather than imports naming a
+    // folder that is not there.
+    const moved: WorkspaceTextEdits | WorkspaceEditOutcome = await this.moveFirst(requested);
+    if (!('files' in moved)) {
+      return moved;
+    }
+    const edit: WorkspaceTextEdits = moved;
     const models: ReadonlyMap<string, MonacoApi.editor.ITextModel> = this.modelsOf(monaco);
     const applied: AppliedFile[] = [];
     const skipped: SkippedEdit[] = [...edit.refused];
@@ -118,6 +139,70 @@ export class WorkspaceEditApplier {
   }
 
   /**
+   * Renames the files and folders an edit renames (#1211), before any of its text is changed, as the
+   * Explorer's rename does (`EntryRename`): each through the workspace it belongs to — not the one in
+   * front, which follows the user's focus — so that workspace's open documents follow to their new
+   * paths and a save writes there. Every entry is checked to lie in an open workspace before any is
+   * renamed.
+   * @param edit The edit.
+   * @returns Returns the edit keyed by the paths as they are after the renames, or — when an entry is in
+   * no open workspace, or could not be renamed — the outcome, with nothing of the edit's text applied.
+   */
+  private async moveFirst(
+    edit: WorkspaceTextEdits,
+  ): Promise<WorkspaceTextEdits | WorkspaceEditOutcome> {
+    const moves: readonly EntryMove[] = edit.moves ?? [];
+    if (moves.length === 0) {
+      return edit;
+    }
+    const active: ActiveWorkspace = this.injector.get(ActiveWorkspace);
+    const wells: readonly (WorkspaceWell | null)[] = moves.map(
+      (move: EntryMove): WorkspaceWell | null => active.wellContaining(move.from),
+    );
+    const outside: readonly EntryMove[] = moves.filter(
+      (_move: EntryMove, index: number): boolean => wells[index] === null,
+    );
+    if (outside.length > 0) {
+      return {
+        applied: [],
+        skipped: [
+          ...edit.refused,
+          ...outside.map((move: EntryMove): SkippedEdit => ({
+            path: move.from,
+            reason: MOVE_OUTSIDE_WORKSPACE,
+          })),
+        ],
+      };
+    }
+    let moved: WorkspaceTextEdits = { ...edit, moves: [] };
+    for (const [index, move] of moves.entries()) {
+      const separator: number = Math.max(move.to.lastIndexOf('/'), move.to.lastIndexOf('\\'));
+      const well: WorkspaceWell | null = wells[index];
+      const result: { readonly path: string | null; readonly error: string | null } =
+        well === null
+          ? { path: null, error: MOVE_OUTSIDE_WORKSPACE }
+          : await well.rename(move.from, move.to.slice(separator + 1));
+      if (result.error !== null) {
+        this.log.warn(
+          'workspaceEdit',
+          'A rename an edit asked for failed',
+          move.from,
+          result.error,
+        );
+        return {
+          applied: [],
+          skipped: [
+            ...edit.refused,
+            { path: move.from, reason: `${result.error} ${NOTHING_CHANGED}` },
+          ],
+        };
+      }
+      moved = movedEdits(moved, move.from, result.path ?? move.to);
+    }
+    return moved;
+  }
+
+  /**
    * Writes edits to files on disk, every file failed when the write itself could not be asked for.
    * @param disk The files and their edits.
    * @param creates The files to create, if any.
@@ -166,6 +251,18 @@ export class WorkspaceEditApplier {
     return models;
   }
 }
+
+/**
+ * Holds the reason an edit that renames an entry is not applied: the entry is in no open workspace, so
+ * nothing would move its open documents with it.
+ */
+const MOVE_OUTSIDE_WORKSPACE: string =
+  "It isn't in an open workspace, so it wasn't renamed and nothing was changed.";
+
+/**
+ * Holds what is said after the reason a rename failed: none of the edit was applied.
+ */
+const NOTHING_CHANGED: string = 'Nothing was changed.';
 
 /**
  * Names a part of an edit the main process did not write.

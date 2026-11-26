@@ -1,5 +1,6 @@
 import { DOCUMENT } from '@angular/common';
 import {
+  afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -11,8 +12,11 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { ALL_DOCK_BUTTONS, DockButton } from '../../../services/dock-layout/dock-appearance';
+import { DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-blueprint';
 import { DockAutoHide, PeekSize } from '../../../services/dock-layout/dock-auto-hide';
 import { DockFloating } from '../../../services/dock-layout/dock-floating';
+import { DockFocus } from '../../../services/dock-layout/dock-focus';
 import { Rect } from '../../../services/dock-layout/dock-legality';
 import { DockSide, StackNode } from '../../../services/dock-layout/dock-node';
 import { DockPanel } from '../../../services/dock-layout/dock-panel';
@@ -21,6 +25,8 @@ import {
   CoalescedPointerMoves,
   coalescePointerMoves,
 } from '../../../services/dock-layout/pointer-coalesce';
+import { DockMinimum, DockMinimums } from '../../../services/dock-layout/dock-minimums';
+import { DockRoom } from '../../../services/dock-layout/dock-room';
 import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -102,6 +108,27 @@ export class DockCollapsedStrip {
    * Holds the auto-hide store driving the peek.
    */
   private readonly autoHide: DockAutoHide = inject(DockAutoHide);
+
+  /**
+   * Holds the buttons the dock's title bars show.
+   */
+  private readonly buttons: readonly DockButton[] =
+    inject(DOCK_BLUEPRINT, { optional: true })?.buttons ?? ALL_DOCK_BUTTONS;
+
+  /**
+   * Holds whether there is room to dock the stack.
+   */
+  private readonly dockRoom: DockRoom = inject(DockRoom);
+
+  /**
+   * Holds the least sizes of the dock's groups, and the space it has.
+   */
+  private readonly minimums: DockMinimums = inject(DockMinimums);
+
+  /**
+   * Holds the focused group, which peeking makes this one.
+   */
+  private readonly dockFocus: DockFocus = inject(DockFocus);
 
   /**
    * Holds the floating layer the float button detaches the active panel into.
@@ -207,6 +234,18 @@ export class DockCollapsedStrip {
   );
 
   /**
+   * Gets the least extent of the flyout in pixels: what the stack needs docked, in a dock that collapses it
+   * for want of room.
+   */
+  private readonly leastSize: Signal<number> = computed((): number => {
+    if (!this.dockRoom.enabled) {
+      return MINIMUM_FLYOUT_SIZE;
+    }
+    const docked: DockMinimum = this.minimums.minimumOf(this.stack(), (): boolean => false);
+    return Math.max(MINIMUM_FLYOUT_SIZE, this.isVertical() ? docked.inline : docked.block);
+  });
+
+  /**
    * Gets the flyout's preferred resizable extent in pixels: the size the user resized it to, otherwise
    * half the room it opens into (never below the resize floor). Only when the room cannot be measured
    * does it fall back to the captured docked size, then to a default.
@@ -218,7 +257,7 @@ export class DockCollapsedStrip {
     }
     const room: number | null = this.room();
     if (room !== null) {
-      return Math.max(MINIMUM_FLYOUT_SIZE, Math.round(room * FLYOUT_SHARE_OF_ROOM));
+      return Math.max(this.leastSize(), Math.round(room * FLYOUT_SHARE_OF_ROOM));
     }
     const docked: PeekSize | null = this.autoHide.peekSize(this.stack().id);
     if (docked !== null) {
@@ -239,12 +278,44 @@ export class DockCollapsedStrip {
   });
 
   /**
+   * Gets whether there is room to dock the stack.
+   */
+  protected readonly canDock: Signal<boolean> = computed((): boolean =>
+    this.dockRoom.canDock(this.stack().id),
+  );
+
+  public constructor() {
+    if (this.dockRoom.enabled) {
+      // A stack opened for want of room peeks without its strip being clicked, and the room changes as the
+      // window does.
+      afterRenderEffect((): void => {
+        this.minimums.space();
+        if (this.isPeeking()) {
+          this.room.set(this.measureRoom());
+        }
+      });
+    }
+  }
+
+  /**
+   * Determines whether the peek's title bar shows a button.
+   * @param button The button.
+   * @returns Returns true when it does.
+   */
+  protected shows(button: DockButton): boolean {
+    return this.buttons.includes(button);
+  }
+
+  /**
    * Flies the stack out (or toggles the peek closed) on the chosen panel, measuring the room it has
    * first so it opens no larger than the space it can be seen in.
    * @param panelId The identifier of the panel to peek.
    */
   protected peek(panelId: string): void {
     this.room.set(this.measureRoom());
+    if (this.dockRoom.enabled) {
+      this.dockFocus.focus(this.stack().id);
+    }
     this.autoHide.showFlyout(this.stack().id, panelId);
   }
 
@@ -339,7 +410,7 @@ export class DockCollapsedStrip {
     // pass), and only the frame's last position can ever be seen (see coalescePointerMoves).
     const coalesced: CoalescedPointerMoves = coalescePointerMoves((move: MouseEvent): void => {
       const delta: number = (vertical ? move.clientX : move.clientY) - start;
-      this.resized.set(Math.max(MINIMUM_FLYOUT_SIZE, startSize + sign * delta));
+      this.resized.set(Math.max(this.leastSize(), startSize + sign * delta));
     });
 
     const onRelease: () => void = (): void => {

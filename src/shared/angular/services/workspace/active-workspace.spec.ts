@@ -117,6 +117,16 @@ describe('ActiveWorkspace', () => {
     expect(workspace.wellOwningTerminal('top-level-terminal')).toBeNull();
   });
 
+  it('wellContaining_findsTheWorkspaceAPathIsIn_innermostFirst_whateverIsInFront (#1211)', () => {
+    workspace.setWell('tab-n', 'tab-n', handlersFor('/a/nested'));
+
+    expect(workspace.wellContaining('/b/greet/greet.go')?.scope).toBe('tab-b');
+    expect(workspace.wellContaining('/a/nested/x.go')?.scope).toBe('tab-n');
+    expect(workspace.wellContaining('/a/x.go')?.scope).toBe('tab-a');
+    expect(workspace.wellContaining('/ab/x.go')).toBeNull();
+    expect(workspace.wellContaining('/elsewhere/x.go')).toBeNull();
+  });
+
   it('activeWell_whenTheActiveTabHasSubViews_prefersTheOneLastPublishedInIt', () => {
     workspace.setWell('tab-c:one', 'tab-c', handlersFor('/c1'));
     workspace.setWell('tab-c:two', 'tab-c', handlersFor('/c2'));

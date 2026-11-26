@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
+import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
 
-import { EditorTerminals } from './editor-terminals';
+import { EDITOR_TERMINAL_PANEL_ID, EditorTerminals } from './editor-terminals';
 
 describe('EditorTerminals', () => {
   let editorTerminals: EditorTerminals;
@@ -9,33 +10,18 @@ describe('EditorTerminals', () => {
     editorTerminals = TestBed.inject(EditorTerminals);
   });
 
-  it('isVisible_whenNoState_returnsFalse', () => {
-    expect(editorTerminals.isVisible('tab-1')).toBe(false);
-  });
+  it('queueCommand_storesItAndOpensTheTabsTerminal', () => {
+    const opened: string[] = [];
+    TestBed.inject(TabDocks).register('tab-1', {
+      isOpen: (): boolean => false,
+      open: (panelId: string): void => void opened.push(panelId),
+      close: (): void => undefined,
+      toggle: (): void => undefined,
+    });
 
-  it('show_whenCalled_marksVisibleAndMounted', () => {
-    editorTerminals.show('tab-1');
-    expect(editorTerminals.isVisible('tab-1')).toBe(true);
-    expect(editorTerminals.isMounted('tab-1')).toBe(true);
-  });
-
-  it('toggle_whenVisible_hidesButStaysMounted', () => {
-    editorTerminals.show('tab-1');
-    editorTerminals.toggle('tab-1');
-    expect(editorTerminals.isVisible('tab-1')).toBe(false);
-    expect(editorTerminals.isMounted('tab-1')).toBe(true);
-  });
-
-  it('hide_whenVisible_hidesButStaysMounted', () => {
-    editorTerminals.show('tab-1');
-    editorTerminals.hide('tab-1');
-    expect(editorTerminals.isVisible('tab-1')).toBe(false);
-    expect(editorTerminals.isMounted('tab-1')).toBe(true);
-  });
-
-  it('queueCommand_whenCalled_showsPanelAndStoresPending', () => {
     editorTerminals.queueCommand('tab-1', 'node run.js');
-    expect(editorTerminals.isVisible('tab-1')).toBe(true);
+
+    expect(opened).toEqual([EDITOR_TERMINAL_PANEL_ID]);
     expect(editorTerminals.pending('tab-1')).toBe('node run.js');
   });
 
@@ -43,5 +29,16 @@ describe('EditorTerminals', () => {
     editorTerminals.queueCommand('tab-1', 'node run.js');
     expect(editorTerminals.takePending('tab-1')).toBe('node run.js');
     expect(editorTerminals.pending('tab-1')).toBeNull();
+    expect(editorTerminals.takePending('tab-1')).toBeNull();
+  });
+
+  it('remove_forgetsOnlyThatTabsCommand', () => {
+    editorTerminals.queueCommand('tab-1', 'one');
+    editorTerminals.queueCommand('tab-2', 'two');
+
+    editorTerminals.remove('tab-1');
+
+    expect(editorTerminals.pending('tab-1')).toBeNull();
+    expect(editorTerminals.pending('tab-2')).toBe('two');
   });
 });

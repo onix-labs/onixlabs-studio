@@ -16,6 +16,7 @@ import {
 } from '@shared/angular/services/dock-layout/dock-tree';
 import { Icon } from '@shared/angular/icons/icon';
 import { RecentItem, RecentItems } from '@shared/angular/services/recent-items/recent-items';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { WorkspaceAgentStart, Workspaces } from '../workspaces/workspaces';
@@ -82,7 +83,8 @@ interface ImageOpenerCalls {
 
 /**
  * Builds a fake transport whose open/open-file/reopen-file channels resolve with
- * {@link nextSelection} and whose reopen-folder channel resolves with {@link nextListing}.
+ * {@link nextSelection} and whose open-folder and reopen-folder channels resolve with
+ * {@link nextListing}.
  */
 function fakeBridge(): Bridge {
   return {
@@ -94,7 +96,10 @@ function fakeBridge(): Bridge {
       ) {
         return Promise.resolve(nextSelection as T);
       }
-      if (channel === (WorkspaceChannel.ReopenFolder as string)) {
+      if (
+        channel === (WorkspaceChannel.OpenFolder as string) ||
+        channel === (WorkspaceChannel.ReopenFolder as string)
+      ) {
         return Promise.resolve(nextListing as T);
       }
       if (channel === (FileChannel.Read as string)) {
@@ -298,6 +303,49 @@ describe('FileOpener', () => {
     expect(tabs.tabs()).toHaveLength(0);
   });
 
+  it('openTextInWell_whenFileIsText_addsADocumentToTheWell', async () => {
+    nextSelection = {
+      kind: 'file',
+      file: { path: '/ws/main.ts', name: 'main.ts', extension: '.ts', content: 'export {};' },
+    };
+
+    expect(await opener.openTextInWell('/ws/main.ts', { background: true })).toBe(true);
+
+    expect(wellPanels()).toHaveLength(1);
+    expect(tabs.tabs()).toHaveLength(0);
+  });
+
+  it.each([
+    ['a binary', { kind: 'binary', path: '/ws/data.bin' }],
+    ['an image', { kind: 'image', path: '/ws/logo.png' }],
+    [
+      'an API document',
+      {
+        kind: 'file',
+        file: {
+          path: '/ws/orders.api.json',
+          name: 'orders.api.json',
+          extension: '.json',
+          content: API_DOCUMENT_TEXT,
+        },
+      },
+    ],
+  ] as const)(
+    'openTextInWell_whenFileIs %s_opensNothing_andRecordsNothing',
+    async (_label: string, selection: OpenSelection) => {
+      // #1321: the merge tool falls back to the file's diff, so nothing else may open alongside it.
+      nextSelection = selection;
+      const recentBefore: readonly RecentItem[] = TestBed.inject(RecentItems).items();
+
+      expect(await opener.openTextInWell('/ws/file')).toBe(false);
+
+      expect(wellPanels()).toHaveLength(0);
+      expect(tabs.tabs()).toHaveLength(0);
+      expect(TestBed.inject(RecentItems).items()).toEqual(recentBefore);
+      expect(imageCalls.tabs).toEqual([]);
+    },
+  );
+
   it('openPath_inTheBackground_addsTheDocumentBehindTheOneBeingRead', async () => {
     // An agent's open: the user keeps reading main.ts, and the well is not focused.
     nextSelection = {
@@ -489,6 +537,35 @@ describe('FileOpener', () => {
     expect(await opener.reopenDirectory('/ws', start)).toBe(true);
 
     expect(workspaces.takeAgentStart(tabs.tabs()[0].id)).toBe(start);
+  });
+
+  it('reopenFile_ofAnSvgThatOpensAsCode_recordsItBeforeAnswering_orAnswersFalse', async () => {
+    TestBed.inject(Settings).set('imageViewer.openSvgAs', 'code');
+    nextSelection = { kind: 'image', path: '/ws/logo.svg' };
+    nextFileInfo = { path: '/ws/logo.svg', name: 'logo.svg', extension: '.svg', content: '<svg/>' };
+
+    expect(await opener.reopenFile('/ws/logo.svg')).toBe(true);
+    expect(TestBed.inject(RecentItems).items()[0]).toMatchObject({ path: '/ws/logo.svg' });
+
+    nextFileInfo = null;
+    expect(await opener.reopenFile('/ws/logo.svg')).toBe(false);
+  });
+
+  it('openFolderInteractive_opensTheChosenFolder_asAWorkspaceTabAndARecentItem', async () => {
+    nextListing = ROOT_LISTING;
+
+    expect(await opener.openFolderInteractive()).toBe(ROOT_LISTING.path);
+
+    expect(tabs.tabs().map((tab: Tab): string => tab.type)).toEqual(['directory']);
+    expect(TestBed.inject(RecentItems).items()[0]).toMatchObject({
+      path: ROOT_LISTING.path,
+      kind: 'directory',
+    });
+  });
+
+  it('openFolderInteractive_whenCancelled_opensNothing', async () => {
+    expect(await opener.openFolderInteractive()).toBeNull();
+    expect(tabs.tabs()).toHaveLength(0);
   });
 
   it('reopenDirectory_whenUntrusted_opensNothing', async () => {

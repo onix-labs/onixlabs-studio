@@ -15,6 +15,8 @@ import type {
   ClaudeExecutableChoice,
   CodexExecutableChoice,
 } from '@shared/api/ai-types';
+import type { PersonaQuestion } from '@shared/api/persona-learning-protocol';
+import type { PersonaSearchHit, PersonaSearchRequest } from '@shared/api/persona-search';
 import type { HarnessAuthAction, HarnessAuthState } from '@shared/api/agent-protocol';
 import type { AuditGrantSource } from './agent-audit-log';
 import type { HostingOp, HostingParams, HostingResponse } from '@shared/api/hosting-protocol';
@@ -98,6 +100,56 @@ export interface OfferedSkill {
 }
 
 /**
+ * The user's persona as a run reaches it (#1515): how many memories it may search, their tags, and
+ * the two things it may do — search them, and forget what the user asks it to. Bound to the run's
+ * surface and language, so a memory scoped elsewhere is never found.
+ */
+export interface PersonaAccess {
+  /**
+   * Gets how many memories are in scope; with none, no persona tool is offered.
+   */
+  readonly memories: number;
+
+  /**
+   * Gets the tags those memories carry, most used first, for the agent to search by.
+   */
+  readonly tags: readonly string[];
+
+  /**
+   * Searches the memories in scope.
+   * @param request The search.
+   * @returns Returns the hits, best first.
+   */
+  search(request: PersonaSearchRequest): Promise<readonly PersonaSearchHit[]>;
+
+  /**
+   * Gets how many open questions there are about the user (#1519).
+   */
+  readonly questions: number;
+
+  /**
+   * Offers one open question for this conversation to ask, at most once per conversation.
+   * @returns Returns the question, or null when there is none or one was already offered.
+   */
+  offerQuestion(): Promise<PersonaQuestion | null>;
+
+  /**
+   * Records the user's answer to an open question, as a memory they wrote.
+   * @param questionId The question.
+   * @param answer What the user said.
+   * @returns Returns true when the question was there.
+   */
+  answerQuestion(questionId: string, answer: string): Promise<boolean>;
+
+  /**
+   * Forgets entries the user asked to have forgotten.
+   * @param ids The entries' ids.
+   * @returns Returns the names of the entries forgotten; an id that names nothing is skipped.
+   */
+  forget(ids: readonly string[]): Promise<readonly string[]>;
+}
+
+/**
  * Describes the hosted repository a run works in, with the run's own way to reach the plugin serving
  * it (#852). `request` is bound to the run: its permission posture, per-tool policies and permission
  * prompt gate an agent's writes, and a write that goes through is audited — a tool calls it and
@@ -133,6 +185,12 @@ export interface AgentRunContext {
    * Gets the workspace root the agent should act within, or null for none.
    */
   readonly workspaceRoot: string | null;
+
+  /**
+   * Gets whether the user trusts the workspace (#1504). An agent in an untrusted one loads none of the
+   * workspace's own configuration, whose hooks would be commands run on its behalf.
+   */
+  readonly workspaceTrusted: boolean;
 
   /**
    * Gets the identifier of the model to run the turn with (already resolved to one the provider
@@ -266,9 +324,9 @@ export interface AgentRunContext {
   readonly language: string | null;
 
   /**
-   * Gets the user's standing system-prompt text for this run, or empty when no prompt profile
-   * matches (#300). Appended after Studio's own instructions by `promptForSurface`, never in place
-   * of them.
+   * Gets the user's standing system-prompt text for this run — the persona's core (#1514), which
+   * replaced prompt profiles (#300) — or empty when no core entry matches. Appended after Studio's
+   * own instructions by `promptForSurface`, never in place of them.
    */
   readonly systemPromptExtra: string;
 
@@ -277,6 +335,12 @@ export interface AgentRunContext {
    * when the library has none that apply, in which case no skill tool is offered either.
    */
   readonly skills: readonly OfferedSkill[];
+
+  /**
+   * Gets the user's persona as this run reaches it (#1515), or absent/null when there is none to
+   * search — in which case no persona tool is offered and the prompt says nothing of it.
+   */
+  readonly persona?: PersonaAccess | null;
 
   /**
    * Gets the hosted repository the run works in and a way to reach the plugin serving it (#852), or
@@ -555,6 +619,14 @@ export interface AgentProvider {
    * Absent means it cannot.
    */
   readonly offersSignIn?: boolean;
+
+  /**
+   * Gets whether the provider can be told to leave an untrusted folder's own configuration alone (its
+   * hooks, tool servers and settings), which it must before it runs there at all — including to scan
+   * the folder before the user trusts it (#1504). Null until known: a harness says so only once it has
+   * been started. Absent means it never needs telling.
+   */
+  readonly ignoresUntrustedSettings?: boolean | null;
 
   /**
    * Gets how the provider maintains a conversation — whether it can hold a live session (#324).

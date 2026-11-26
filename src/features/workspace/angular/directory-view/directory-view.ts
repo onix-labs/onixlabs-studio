@@ -48,14 +48,11 @@ import { IssueActions } from '@shared/angular/services/issues/issue-actions';
 import { IssueAgent } from '@shared/angular/services/issues/issue-agent';
 import { IssueOpener } from '@shared/angular/services/issues/issue-opener';
 import { IssueStore } from '@shared/angular/services/issues/issue-store';
-import { DockAutoHide } from '@shared/angular/services/dock-layout/dock-auto-hide';
-import { DockDrag } from '@shared/angular/services/dock-layout/dock-drag';
 import { DockFloating, FloatWindow } from '@shared/angular/services/dock-layout/dock-floating';
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
-import { DockGeometry } from '@shared/angular/services/dock-layout/dock-geometry';
-import { DockMinimums } from '@shared/angular/services/dock-layout/dock-minimums';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
-import { DOCK_BLUEPRINT, DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
+import { DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
+import { dockProviders } from '@shared/angular/services/dock-layout/dock-providers';
 import { DockNode } from '@shared/angular/services/dock-layout/dock-node';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { restoreLayout } from '@shared/angular/services/dock-layout/dock-persistence';
@@ -118,6 +115,7 @@ import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsav
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { idleStopMs, LspClient } from '@shared/angular/services/lsp/lsp-client';
 import { EntryRename } from '@shared/angular/services/rename/entry-rename';
+import { TypeRename } from '@shared/angular/services/rename/type-rename';
 import { WorkspaceSymbolRouter } from '@shared/angular/services/go-to/workspace-symbol-router';
 import { DebugAttachRouter } from '@shared/angular/services/debug-attach/debug-attach-router';
 import { WorkspaceSymbolPalette } from '../workspace-symbols/workspace-symbol-palette';
@@ -129,6 +127,8 @@ import { PackageExplorer } from '@features/workspace/angular/project/package-exp
 import { Output } from '@shared/angular/services/output/output';
 import { Repository } from '@shared/angular/services/repository/repository';
 import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
+import type { TrustChange, TrustScanRequest } from '@shared/api/trust-channels';
+import { TRUST_SCAN_BRIEF, TRUST_SCAN_PROMPT } from '../trust/trust-scan';
 import type { GitBranch, GitFileChange } from '@shared/angular/services/repository/repository-data';
 import { ForgeRepository } from '@shared/angular/services/forge-repository/forge-repository';
 import {
@@ -156,6 +156,7 @@ import {
 } from '@shared/angular/services/workspace/active-workspace';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
+import { LiveServerSession } from '@features/workspace/angular/live-server/live-server-session';
 import { WorkspaceAgentStart, Workspaces } from '@shared/angular/services/workspaces/workspaces';
 import { CommitDetail } from '@shared/angular/components/panels/commit-detail/commit-detail';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
@@ -172,6 +173,8 @@ import { WorktreeRepository } from '@features/workspace/angular/worktree/worktre
 import { WorktreeDialogs } from '@features/workspace/angular/worktree/worktree-dialogs/worktree-dialogs';
 import { REPOSITORY_WORKTREES } from '@shared/angular/services/repository-worktrees/repository-worktrees';
 import { CONFLICT_CONTEXT } from '@shared/angular/services/repository/conflict-context';
+import { MergeTools } from '@shared/angular/services/merge-tool/merge-tools';
+import { MergeToolOpener } from '@shared/angular/services/merge-tool/merge-tool-opener';
 import { OpenOptions } from '@shared/angular/services/tabs/tab';
 import { TERMINAL_PATH_LINKS } from '@shared/angular/services/terminal-path-links/terminal-path-links';
 import { WorkspaceTerminalPathLinks } from '@shared/angular/services/terminal-path-links/workspace-terminal-path-links';
@@ -253,6 +256,7 @@ const AGENT_OPEN: OpenOptions = { background: true };
   providers: [
     Workspace,
     EntryRename,
+    TypeRename,
     Documents,
     Output,
     Diagnostics,
@@ -295,6 +299,10 @@ const AGENT_OPEN: OpenOptions = { background: true };
     ForgeRepository,
     Diffs,
     DiffOpener,
+    // The merge tool (#1321), beside the diff pair and for the same reason: its opener tabs it into
+    // this tab's well, and the panel edits this tab's documents.
+    MergeTools,
+    MergeToolOpener,
     // The find requests on their way to this tab's Search panel (#1007), per view as the panel is.
     SearchPanelRequests,
     // The list this tab's References panel shows (#1014), per view so it outlives the panel.
@@ -303,6 +311,9 @@ const AGENT_OPEN: OpenOptions = { background: true };
     HierarchyPanelState,
     // This tab's tests and test runs (#1352), per view so a run carries on while the panel is hidden.
     TestExplorer,
+    // This tab's live server (#1062), per view so it stops when the tab closes, and so the explorers
+    // and the status strip reach the same one.
+    LiveServerSession,
     // Where this tab's problems are, for its explorers' error squiggles and filters (#1182 follow-up).
     WorkspaceProblems,
     // Beside the openers it switches between, so a switch acts on this tab's dock and documents.
@@ -314,73 +325,55 @@ const AGENT_OPEN: OpenOptions = { background: true };
     IssueOpener,
     IssueAgent,
     IssueActions,
-    DockTabContext,
-    DockState,
-    DockGeometry,
-    DockMinimums,
-    DockFocus,
-    DockPanelRegistry,
-    // Which of this tab's panels have something behind them, which the dock filters its stacks
-    // through. Scoped here beside DockState, since availability is a fact about THIS workspace.
-    DockPanelAvailability,
-    DockFloating,
-    DockAutoHide,
-    DockDrag,
-    DockReveal,
     // The terminal sessions live at this view's level, not in the dock's terminal panel: tool stacks
     // destroy an inactive panel when another activates, and sessions scoped to the panel would tear
     // every PTY down on a tool-tab switch. Here they live as long as the tab.
     TerminalSessions,
-    // The pop-out seam: which panels live in their own OS windows (reveals focus those windows)
-    // and the auxiliary-window coordinator that pops any panel into one.
-    PopoutPanels,
-    PanelPopout,
-    {
-      // The dock seeds from the root's ACTIVE LAYOUT rather than a persisted tree: the blueprint
-      // carries no key (session rearrangements are ephemeral by ruling — every construction and
-      // reset re-applies the layout's saved definition), and createLayout reads the layout store at
-      // call time so DockState.reset() is exactly "apply the active layout".
-      provide: DOCK_BLUEPRINT,
-      useFactory: (): DockBlueprint => {
-        const layouts: Layouts = inject(Layouts);
-        const context: DockTabContext = inject(DockTabContext);
-        // Templates are registered and seeded HERE, not in the component's constructor, because of
-        // ordering: this factory runs while DockState is being built, which is a field initializer
-        // and so runs BEFORE any constructor body. Seeding afterwards would leave the very first tab
-        // of a fresh install showing the fallback while its seeded Default layout sat unused —
-        // and the re-seed-on-root effect would not correct it, since the root's layout and the
-        // default are then the same layout. Both calls are idempotent.
-        for (const template of LAYOUT_TEMPLATES) {
-          layouts.registerTemplate(template);
-        }
-        layouts.seedFromTemplates();
-        // The unified panel catalogue: the workspace panels plus the repository view's own
-        // (branches rail, history graph, commit detail) — shared-id panels (terminal, agent) keep
-        // the workspace definition. Any preset may arrange any of them.
-        const workspaceIds: ReadonlySet<string> = new Set<string>(
-          WORKSPACE_DOCK_BLUEPRINT.panels.map((panel: DockPanel): string => panel.id),
-        );
-        const panels: readonly DockPanel[] = [
-          ...WORKSPACE_DOCK_BLUEPRINT.panels,
-          ...REPOSITORY_DOCK_BLUEPRINT.panels.filter(
-            (panel: DockPanel): boolean => !workspaceIds.has(panel.id),
-          ),
-        ];
-        const known: ReadonlySet<string> = new Set<string>(
-          panels.map((panel: DockPanel): string => panel.id),
-        );
-        return {
-          panels,
-          createLayout: (): DockNode => {
-            const layout: DockNode | null = layouts.layoutForRoot(context.presetRoot());
-            return (
-              (layout !== null ? restoreLayout(layout, known) : null) ??
-              WORKSPACE_DOCK_BLUEPRINT.createLayout()
-            );
-          },
-        };
-      },
-    },
+    // The dock framework, instantiated per dock-hosting view.
+    //
+    // The dock seeds from the root's ACTIVE LAYOUT rather than a persisted tree: the blueprint
+    // carries no key (session rearrangements are ephemeral by ruling — every construction and
+    // reset re-applies the layout's saved definition), and createLayout reads the layout store at
+    // call time so DockState.reset() is exactly "apply the active layout".
+    ...dockProviders((): DockBlueprint => {
+      const layouts: Layouts = inject(Layouts);
+      const context: DockTabContext = inject(DockTabContext);
+      // Templates are registered and seeded HERE, not in the component's constructor, because of
+      // ordering: this factory runs while DockState is being built, which is a field initializer
+      // and so runs BEFORE any constructor body. Seeding afterwards would leave the very first tab
+      // of a fresh install showing the fallback while its seeded Default layout sat unused —
+      // and the re-seed-on-root effect would not correct it, since the root's layout and the
+      // default are then the same layout. Both calls are idempotent.
+      for (const template of LAYOUT_TEMPLATES) {
+        layouts.registerTemplate(template);
+      }
+      layouts.seedFromTemplates();
+      // The unified panel catalogue: the workspace panels plus the repository view's own
+      // (branches rail, history graph, commit detail) — shared-id panels (terminal, agent) keep
+      // the workspace definition. Any preset may arrange any of them.
+      const workspaceIds: ReadonlySet<string> = new Set<string>(
+        WORKSPACE_DOCK_BLUEPRINT.panels.map((panel: DockPanel): string => panel.id),
+      );
+      const panels: readonly DockPanel[] = [
+        ...WORKSPACE_DOCK_BLUEPRINT.panels,
+        ...REPOSITORY_DOCK_BLUEPRINT.panels.filter(
+          (panel: DockPanel): boolean => !workspaceIds.has(panel.id),
+        ),
+      ];
+      const known: ReadonlySet<string> = new Set<string>(
+        panels.map((panel: DockPanel): string => panel.id),
+      );
+      return {
+        panels,
+        createLayout: (): DockNode => {
+          const layout: DockNode | null = layouts.layoutForRoot(context.presetRoot());
+          return (
+            (layout !== null ? restoreLayout(layout, known) : null) ??
+            WORKSPACE_DOCK_BLUEPRINT.createLayout()
+          );
+        },
+      };
+    }),
     // The agent conversation lives at this view's level, not in the dock's agent panel: tool stacks
     // destroy an inactive panel when another activates, and a conversation scoped to the panel would
     // lose its transcript and in-flight run on every switch. Here it lives as long as the tab.
@@ -1587,6 +1580,57 @@ export class DirectoryView implements OnInit, OnDestroy {
       }
     });
 
+    // Ask whether the user trusts the folder as it opens, whatever plugins are installed (#1504). The
+    // main process asks in a window of its own; a folder already decided about is not asked again.
+    effect((): void => {
+      const root: string | null = this.workspace.root()?.path ?? null;
+      if (root !== null) {
+        untracked((): void => {
+          void this.repositoryTrust.ensureAsked(root);
+        });
+      }
+    });
+
+    // Once the folder is trusted, start what waited on it: the project's own tools read its contents
+    // again, and its documents are opened against their language servers (#1504).
+    effect((): void => {
+      const change: TrustChange | null = this.repositoryTrust.changed();
+      const root: string | null = untracked(
+        (): string | null => this.workspace.root()?.path ?? null,
+      );
+      if (change?.decision !== 'trusted' || root === null) {
+        return;
+      }
+      if (!foldersOverlap(root, change.folder)) {
+        return;
+      }
+      untracked((): void => {
+        this.solutionModel.refreshFromDisk();
+        this.lspClient.retryTrusted(change.folder);
+        const model: ProjectModel | null = this.solutionModel.model();
+        const language: string | null =
+          model === null ? null : (PRESTART_LANGUAGES[model.kind] ?? null);
+        const serverId: string | null =
+          language === null ? null : this.lspSettings.serverForLanguage(language);
+        if (model !== null && serverId !== null && this.isActive()) {
+          this.lspClient.prestartServer(serverId, model.root);
+        }
+      });
+    });
+
+    // The user asked for this folder to be scanned before deciding whether to trust it (#1504): a
+    // fresh, read-only conversation reads it and reports. The folder stays untrusted meanwhile.
+    effect((): void => {
+      const request: TrustScanRequest | null = this.repositoryTrust.scanRequested();
+      const root: string | null = untracked(
+        (): string | null => this.workspace.root()?.path ?? null,
+      );
+      if (request === null || root === null || request.folder !== root) {
+        return;
+      }
+      untracked((): void => this.startTrustScan());
+    });
+
     // Release a long-hidden view's language servers, and bring them back on activation. A worktree
     // container keeps every visited checkout's view alive with its own LSP client; without a reap,
     // each visited checkout would hold its own live server (Roslyn on a big solution is easily
@@ -2267,6 +2311,19 @@ export class DirectoryView implements OnInit, OnDestroy {
   }
 
   /**
+   * Starts the agent that scans this folder for threats before the user decides whether to trust it
+   * (#1504): a fresh conversation, in chat mode, which can only read, list and search files.
+   */
+  private startTrustScan(): void {
+    this.log.info('workspace', 'Scanning the folder before it is trusted');
+    this.agentConversation.newChat();
+    this.agent.setMode('chat');
+    this.agent.setBrief(TRUST_SCAN_BRIEF);
+    void this.agent.sendWhenReady(TRUST_SCAN_PROMPT, this.tabId(), 'workspace', []);
+    this.dockReveal.reveal('agent');
+  }
+
+  /**
    * Opens this workspace's agent on a new project (#806): a fresh conversation carrying the project's
    * brief, sending the user's first message at once — as this workspace, the way its agent panel and
    * Mission Control's tile send — with the agent panel brought forward.
@@ -2488,4 +2545,22 @@ export class DirectoryView implements OnInit, OnDestroy {
     this.repository.bind(info);
     return true;
   }
+}
+
+/**
+ * Determines whether two folders overlap: one is the other, or lies beneath it. A decision about
+ * either reaches the other, since a decision covers everything beneath its folder.
+ * @param first The first folder.
+ * @param second The second folder.
+ * @returns Returns true when they overlap.
+ */
+function foldersOverlap(first: string, second: string): boolean {
+  const beneath: (target: string, folder: string) => boolean = (
+    target: string,
+    folder: string,
+  ): boolean => {
+    const base: string = folder.replace(/[\\/]+$/, '');
+    return target === base || target.startsWith(`${base}/`) || target.startsWith(`${base}\\`);
+  };
+  return beneath(first, second) || beneath(second, first);
 }

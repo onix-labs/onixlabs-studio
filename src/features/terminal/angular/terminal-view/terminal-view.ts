@@ -12,52 +12,113 @@ import {
   OutputEmitterRef,
   signal,
   Signal,
+  untracked,
   viewChild,
   WritableSignal,
 } from '@angular/core';
 import { Terminal, TerminalExit } from '@shared/angular/components/terminal/terminal';
 import { closesOnShellExit } from '@shared/angular/services/terminal-close-guard/terminal-close-guard';
 import { FindPanel } from '@shared/angular/components/find-panel/find-panel';
-import { Panel } from '@shared/angular/components/panel-layout/panel';
-import { PanelArrangements } from '@shared/angular/components/panel-layout/panel-arrangements';
+import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
+import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
+import { DockTemplatePanel } from '@shared/angular/components/dock-layout/dock-template-panel/dock-template-panel';
+import { Icon } from '@shared/angular/icons/icon';
+import { DockSides } from '@shared/angular/services/dock-layout/dock-sides';
+import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
+import {
+  AgentHostRegistrar,
+  createAgentHostRegistrar,
+} from '@shared/angular/services/agent-hosts/agent-host-registration';
+import { dockProviders } from '@shared/angular/services/dock-layout/dock-providers';
+import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
+import {
+  createDockTabRegistrar,
+  DockTabRegistrar,
+} from '@shared/angular/services/dock-layout/dock-tab-registration';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
-import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Shell } from '@shared/angular/services/shell/shell';
+import { Studio } from '@shared/angular/services/studio/studio';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
-import { TerminalAgents } from '@features/terminal/angular/terminal-agents/terminal-agents';
 import {
   TerminalCommandHandler,
   TerminalCommands,
 } from '@features/terminal/angular/terminal-commands/terminal-commands';
+import {
+  listCommand,
+  locationCommand,
+  ShellFamily,
+  shellFamilyOf,
+  TerminalListing,
+  TerminalLocation,
+} from '@features/terminal/angular/terminal-commands/shell-commands';
 import { TerminalFindAdapter } from '@features/terminal/angular/find/terminal-find-adapter';
+import {
+  TERMINAL_AGENT_PANEL_ID,
+  TERMINAL_DOCK_BLUEPRINT,
+  TERMINAL_FIND_PANEL_ID,
+  TERMINAL_PANEL_ID,
+} from '@features/terminal/angular/terminal-dock-blueprint';
 import { TerminalStatus } from '@features/terminal/angular/terminal-status/terminal-status';
 import {
   createViewInjectorRegistrar,
   ViewInjectorRegistrar,
 } from '@shared/angular/services/view-injectors/view-injector-registration';
-import { TerminalAgentPanel } from './terminal-agent-panel/terminal-agent-panel';
 
 /**
- * Represents the terminal feature view: the shared {@link Terminal} pane in the main area with an
- * optional docked agent panel beside it. It owns the terminal-tab concerns the bare pane does not —
+ * Represents the terminal feature view: the shared {@link Terminal} pane in the main group of
+ * a dock, with an agent panel and Find that dock around it. It owns the terminal-tab concerns the bare pane does not —
  * the ribbon command handler, the shell (terminal type) status segment, the terminal's address (its
- * prompt title) on the tab and status strip, and the agent panel — driving the pane through its
- * imperative API. The address comes from the shell's own title (`user@host:~/path`): both the tab and
+ * prompt title) on the tab and status strip, the agent's conversation and the search — driving the pane through its
+ * imperative API. The dock creates a panel afresh whenever it is shown or moved, which is why the
+ * conversation and the search belong here. The address comes from the shell's own title (`user@host:~/path`): both the tab and
  * the status strip show it in full; the tab truncates it from the left in CSS (keeping the tail) when
  * squeezed, so the current directory stays visible.
  */
 @Component({
   selector: 'app-terminal-view',
-  imports: [PanelLayout, Panel, Terminal, TerminalAgentPanel, FindPanel],
+  imports: [AgentConversationPanel, DockContainer, DockTemplatePanel, FindPanel, Terminal],
   templateUrl: './terminal-view.html',
   styleUrl: './terminal-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  // One per terminal tab: the status strip reads this view's own context through its injector.
-  providers: [TerminalStatus],
+  providers: [
+    // One per terminal tab: the status strip reads this view's own context through its injector.
+    TerminalStatus,
+    ...dockProviders(TERMINAL_DOCK_BLUEPRINT),
+    Agent,
+    AgentConversation,
+    { provide: AGENT_CONVERSATION_KIND, useValue: 'terminal' },
+  ],
 })
 export class TerminalView implements OnInit, OnDestroy {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Exposes the sides a panel may dock to to the template.
+   */
+  protected readonly DockSides: typeof DockSides = DockSides;
+
+  /**
+   * Gets the identifier of the terminal's own panel.
+   */
+  protected readonly terminalPanel: string = TERMINAL_PANEL_ID;
+
+  /**
+   * Gets the identifier of the agent panel.
+   */
+  protected readonly agentPanel: string = TERMINAL_AGENT_PANEL_ID;
+
+  /**
+   * Gets the identifier of the Find panel.
+   */
+  protected readonly findPanel: string = TERMINAL_FIND_PANEL_ID;
+
   /**
    * Holds the tab registry used to rename the owning tab when the shell sets the terminal title.
    */
@@ -89,9 +150,21 @@ export class TerminalView implements OnInit, OnDestroy {
   private readonly settings: Settings = inject(Settings);
 
   /**
-   * Holds the docked agent-panel state for terminal tabs.
+   * Holds the host bridge, read for the platform whose usual shell stands in before the pane reports
+   * the one it spawned.
    */
-  private readonly terminalAgents: TerminalAgents = inject(TerminalAgents);
+  private readonly studio: Studio = inject(Studio);
+
+  /**
+   * Holds what opens the dock's panels wherever they are.
+   */
+  protected readonly dockReveal: DockReveal = inject(DockReveal);
+
+  /**
+   * Registers this tab's dock, so the ribbon can open and close its panels. Finalised in
+   * {@link ngOnInit} once the tab id is readable.
+   */
+  private readonly dockTab: DockTabRegistrar = createDockTabRegistrar();
 
   /**
    * Holds the structured logger for terminal-view actions.
@@ -102,12 +175,6 @@ export class TerminalView implements OnInit, OnDestroy {
    * Holds the shared terminal pane this view drives, or undefined before the view initialises.
    */
   private readonly terminal: Signal<Terminal | undefined> = viewChild<Terminal>(Terminal);
-
-  /**
-   * Holds the persisted panel arrangements, observed so the pane re-fits when the agent panel
-   * moves or resizes.
-   */
-  private readonly arrangements: PanelArrangements = inject(PanelArrangements);
 
   /**
    * Holds a value indicating whether the pane's PTY session is ready.
@@ -127,6 +194,19 @@ export class TerminalView implements OnInit, OnDestroy {
   private readonly currentShell: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
+   * Holds the executable path of the shell the pane reports it spawned, or null until it does.
+   */
+  private readonly currentShellPath: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Gets the command dialect of the running shell, which the ribbon's listings and locations are
+   * written in.
+   */
+  private readonly shellFamily: Signal<ShellFamily> = computed((): ShellFamily =>
+    shellFamilyOf(this.currentShellPath(), this.studio.platform),
+  );
+
+  /**
    * Holds the terminal's address — the shell's own prompt title (`user@host:~/path`) — published in
    * full to the status strip and left-truncated onto the tab. Null until the shell first sets a title.
    */
@@ -138,9 +218,9 @@ export class TerminalView implements OnInit, OnDestroy {
   private lastTabTitle: string | null = null;
 
   /**
-   * Holds a value indicating whether the find panel is shown over the terminal.
+   * Holds the text searched for, for as long as Find is open.
    */
-  protected readonly findVisible: WritableSignal<boolean> = signal<boolean>(false);
+  protected readonly findText: WritableSignal<string> = signal<string>('');
 
   /**
    * Holds the find adapter that drives the shared find panel against this terminal's buffer. Replace is
@@ -189,6 +269,15 @@ export class TerminalView implements OnInit, OnDestroy {
   });
 
   /**
+   * Registers this tab's live agent with Mission Control and the requests inbox for the tab's whole
+   * life, whether or not its panel is open. Finalised in {@link ngOnInit} once the tab id is readable.
+   */
+  private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
+    isActive: this.isActive,
+    surface: 'terminal',
+  });
+
+  /**
    * Emits once the PTY session is created and its I/O is wired up.
    */
   public readonly ready: OutputEmitterRef<void> = output<void>();
@@ -225,17 +314,17 @@ export class TerminalView implements OnInit, OnDestroy {
       }
     });
 
-    // Re-fit the pane whenever the docked agent panel opens/closes, moves edge or is resized, since
-    // the terminal's extent changes. The fit is deferred so the layout change has applied to the DOM
-    // first.
+    // A closed Find forgets its search, however it was closed.
+    let finding: boolean = false;
     effect((): void => {
-      this.agentVisible();
-      this.arrangements.arrangement('terminal')();
-      const pane: Terminal | undefined = this.terminal();
-      if (pane === undefined) {
-        return;
+      const wasFinding: boolean = finding;
+      finding = this.dockReveal.isOpen(TERMINAL_FIND_PANEL_ID);
+      if (wasFinding && !finding) {
+        untracked((): void => {
+          this.findText.set('');
+          this.findAdapter.clear();
+        });
       }
-      setTimeout((): void => pane.handleResize(), 0);
     });
 
     // Apply scroll lock to the pane whenever it changes, and once the pane becomes available.
@@ -246,15 +335,17 @@ export class TerminalView implements OnInit, OnDestroy {
   }
 
   /**
-   * Publishes this view's injector for the status strip, once the tab id is readable.
+   * Registers the view with what needs its tab's identity, once it is readable: the status strip, the
+   * agent registries and the dock.
    */
   public ngOnInit(): void {
+    this.dockTab.register(this.tabId());
+    this.agentHost.register(this.tabId());
     this.statusHost.register(this.tabId());
   }
 
   /**
-   * Unregisters the command handler and tears down the agent panel state on destroy. The pane manages
-   * its own xterm and PTY lifecycle.
+   * Unregisters the command handler on destroy. The pane manages its own xterm and PTY lifecycle.
    */
   public ngOnDestroy(): void {
     if (this.commandHandler !== null) {
@@ -262,7 +353,6 @@ export class TerminalView implements OnInit, OnDestroy {
       this.keybindings.forget(this.tabId());
       this.commandHandler = null;
     }
-    this.terminalAgents.remove(this.tabId());
     this.log.info('terminal.view', 'Terminal closed', this.tabId());
   }
 
@@ -283,6 +373,7 @@ export class TerminalView implements OnInit, OnDestroy {
     const base: string = shell.split(/[\\/]/).pop() ?? shell;
     const name: string = base.replace(/\.[^.]+$/, '');
     this.currentShell.set(name);
+    this.currentShellPath.set(shell);
     this.log.debug('terminal.view', 'Terminal shell reported', {
       tabId: this.tabId(),
       shell: name,
@@ -321,20 +412,13 @@ export class TerminalView implements OnInit, OnDestroy {
   }
 
   /**
-   * Gets a value indicating whether the docked agent panel is currently visible.
-   * @returns Returns true when the panel is shown.
-   */
-  protected agentVisible(): boolean {
-    return this.terminalAgents.isVisible(this.tabId());
-  }
-
-  /**
    * Registers this terminal's command handler so the ribbon's copy/paste/clear/nuke actions act on
    * the pane while it is active.
    */
   private registerCommandHandler(): void {
     this.commandHandler = {
       scrollLocked: this.scrollLocked.asReadonly(),
+      shellFamily: this.shellFamily,
       setScrollLock: (value: boolean): void => this.scrollLocked.set(value),
       scrollToBottom: (): void => {
         this.terminal()?.scrollToBottom();
@@ -363,21 +447,13 @@ export class TerminalView implements OnInit, OnDestroy {
       paste: (): void => {
         this.terminal()?.paste();
       },
-      list: (): void => {
-        this.terminal()?.runCommand('ls');
-      },
-      listAll: (): void => {
-        this.terminal()?.runCommand('ls -la');
+      list: (listing: TerminalListing): void => {
+        this.terminal()?.runCommand(listCommand(this.shellFamily(), listing));
       },
       open: (): void => {
         void this.openDirectory();
       },
-      home: (): void => {
-        this.terminal()?.runCommand('cd ~');
-      },
-      root: (): void => {
-        this.terminal()?.runCommand('cd /');
-      },
+      goTo: (location: TerminalLocation): void => this.goTo(location),
       find: (): void => this.showFind(),
     };
     this.terminalCommands.register(this.commandHandler);
@@ -385,19 +461,19 @@ export class TerminalView implements OnInit, OnDestroy {
   }
 
   /**
-   * Shows the find panel over the terminal — used by the ribbon's Find command and the pane's find
+   * Shows the find panel beside the terminal — used by the ribbon's Find command and the pane's find
    * chord, both of which should open rather than toggle it.
    */
   protected showFind(): void {
-    this.findVisible.set(true);
+    this.dockReveal.open(TERMINAL_FIND_PANEL_ID);
     this.log.info('terminal.view', 'Terminal find panel opened', this.tabId());
   }
 
   /**
-   * Hides the find panel when the shared panel asks to be dismissed.
+   * Closes the find panel when it asks to be dismissed.
    */
   protected onFindClosed(): void {
-    this.findVisible.set(false);
+    this.dockReveal.close(TERMINAL_FIND_PANEL_ID);
   }
 
   /**
@@ -412,14 +488,31 @@ export class TerminalView implements OnInit, OnDestroy {
   }
 
   /**
-   * Opens the terminal's working directory in the operating system's file manager.
+   * Changes the terminal's working directory to the given location, in the running shell's own
+   * command; a location the shell cannot reach (a previous directory in cmd) is ignored.
+   * @param location The location wanted.
+   */
+  private goTo(location: TerminalLocation): void {
+    const family: ShellFamily = this.shellFamily();
+    const command: string | null = locationCommand(family, location);
+    if (command === null) {
+      this.log.debug('terminal.view', 'The shell cannot go to that location', { family, location });
+      return;
+    }
+    this.terminal()?.runCommand(command);
+  }
+
+  /**
+   * Opens the terminal's working directory in the operating system's file manager. Where the platform
+   * cannot report a process's working directory (Windows), the directory the terminal started in is
+   * opened instead.
    */
   private async openDirectory(): Promise<void> {
     const pane: Terminal | undefined = this.terminal();
     if (pane === undefined) {
       return;
     }
-    const cwd: string | null = await pane.getCwd();
+    const cwd: string | null = (await pane.getCwd()) ?? this.cwd() ?? null;
     if (cwd !== null) {
       this.log.debug('terminal.view', 'Opening terminal directory in file manager', cwd);
       await this.shell.openPath(cwd);

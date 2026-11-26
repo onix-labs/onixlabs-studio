@@ -238,6 +238,12 @@ const SLOT_STEPS: Readonly<Record<PluginSlot, { icon: Icon; title: string; summa
     summary:
       'What the Tests panel finds and runs, one plugin for each ecosystem whose tests you run.',
   },
+  'live-server': {
+    icon: Icon.SETUP_LIVE_SERVERS,
+    title: 'Live servers',
+    summary:
+      'What serves a static site from the explorers, reloading the page in your browser on save.',
+  },
 };
 
 /**

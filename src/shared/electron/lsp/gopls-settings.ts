@@ -1,6 +1,19 @@
 import type { LspServerSettingDescriptor } from '@shared/api/lsp-channels';
 
 /**
+ * What gopls is started with (#1211), beneath what it is answered: gopls lays its `gopls` section over
+ * its start-up options, so these hold unless a declared setting says otherwise.
+ *
+ * `renameMovesSubpackages` makes renaming a package rename its folder, with the packages inside it, as
+ * renaming the folder in the Explorer does. gopls's own default moves the package's files one by one
+ * into a new folder and deletes the old one, which Studio does not do; with this, the move is the one
+ * rename of a folder in place that it does.
+ */
+export const GOPLS_INITIALIZATION_OPTIONS: Readonly<Record<string, unknown>> = {
+  renameMovesSubpackages: true,
+};
+
+/**
  * The gopls settings a user is offered (#1211), on the Go page in Settings. gopls asks for its whole
  * `gopls` section through `workspace/configuration`, at start-up and again after every
  * `didChangeConfiguration`, so each is answered nested under it — `gopls.hints.parameterNames` reaches

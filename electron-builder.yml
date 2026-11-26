@@ -100,7 +100,16 @@ mac:
     - target: zip
   icon: build/icon.icns
   category: public.app-category.developer-tools
-  identity: null # disable code signing for local/unsigned builds
+  # Signed with the ONIXLABS LIMITED Developer ID and notarised, but only when the credentials are
+  # there: the release workflow supplies them (CSC_LINK, CSC_KEY_PASSWORD, APPLE_API_KEY,
+  # APPLE_API_KEY_ID, APPLE_API_ISSUER) and checks the result. Without them electron-builder signs
+  # with a Developer ID it finds in the local keychain, or with none, and skips notarisation with a
+  # warning, so a local build still works. No `identity:` pin, which would fail every machine without
+  # the certificate. Notarisation requires the hardened runtime (on by default, stated here so it is
+  # never turned off by accident) and the entitlements below.
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
 
 win:
   target:

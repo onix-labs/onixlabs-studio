@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { ContainerChannel } from '@shared/api/container-channels';
@@ -147,5 +147,47 @@ describe('ContainersClient', () => {
     const client: ContainersClient = TestBed.inject(ContainersClient);
 
     expect(client.engineInEffect()).toBeNull();
+  });
+
+  describe('what Studio did, and what it started (#1488)', () => {
+    it('remembersTheContainersItJustActedOn_byFullOrShortId', async () => {
+      stubBridge(true);
+      const client: ContainersClient = TestBed.inject(ContainersClient);
+
+      await client.stop('abc123');
+
+      expect(client.actedOnRecently('abc123def456')).toBe(true);
+      expect(client.actedOnRecently('abc')).toBe(true);
+      expect(client.actedOnRecently('zzz999')).toBe(false);
+      expect(client.actedOnRecently('')).toBe(false);
+    });
+
+    it('forgetsAnActionOnceItsWindowHasPassed', async () => {
+      vi.useFakeTimers();
+      try {
+        stubBridge(true);
+        const client: ContainersClient = TestBed.inject(ContainersClient);
+        await client.restart('abc123');
+
+        vi.advanceTimersByTime(31_000);
+
+        expect(client.actedOnRecently('abc123')).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('tellsWhoListensWhenADownloadEnds', async () => {
+      stubBridge({ ok: false, error: 'not found' });
+      const client: ContainersClient = TestBed.inject(ContainersClient);
+      const ended: { reference: string; ok: boolean }[] = [];
+      client.onPullFinished((reference: string, result: { ok: boolean }): number =>
+        ended.push({ reference, ok: result.ok }),
+      );
+
+      await client.pullImage('missing:tag');
+
+      expect(ended).toEqual([{ reference: 'missing:tag', ok: false }]);
+    });
   });
 });

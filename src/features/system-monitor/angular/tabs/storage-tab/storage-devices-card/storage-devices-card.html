@@ -1,0 +1,33 @@
+<app-system-monitor-dashboard-card [icon]="Icon.MONITOR_STORAGE" heading="Devices">
+  @if (rows().length > 0) {
+    <div
+      class="storage-devices"
+      role="radiogroup"
+      aria-label="Devices"
+      data-testid="storage-devices"
+    >
+      @for (row of rows(); track row.device.id) {
+        @let chosen = storage.selected()?.id === row.device.id;
+        <button
+          type="button"
+          role="radio"
+          class="storage-devices__device"
+          [class.storage-devices__device--chosen]="chosen"
+          [attr.aria-checked]="chosen"
+          (click)="storage.select(row.device.id)"
+        >
+          <app-icon class="storage-devices__icon" [icon]="row.icon" [size]="1.6" />
+          <span class="storage-devices__text">
+            <span class="storage-devices__name" [title]="row.device.name">{{
+              row.device.name
+            }}</span>
+            <span class="storage-devices__detail">{{ row.detail }}</span>
+          </span>
+          <span class="storage-devices__mark" aria-hidden="true"></span>
+        </button>
+      }
+    </div>
+  } @else {
+    <p class="storage-devices__empty">{{ read() ? 'No drives found.' : 'Reading the drives…' }}</p>
+  }
+</app-system-monitor-dashboard-card>

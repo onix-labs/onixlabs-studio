@@ -1,9 +1,11 @@
 import type { OllamaStart, OllamaStopOnQuit } from '@shared/api/startup-settings';
+import type { PersonaReviewMode, LearningSchedule } from '@shared/api/persona-learning-protocol';
 import type { Severity } from '@shared/api/log-channels';
 import type { VcsPullMode, VcsSignCommits } from '@shared/api/version-control-protocol';
 import type { CloneLayout } from '@shared/api/clone-channels';
 import { encodingLabel, TEXT_ENCODINGS, type TextEncoding } from '@shared/api/text-encodings';
 import type { RunPresentation } from '@shared/api/studio';
+import { DEFAULT_POLLING_INTERVAL } from '@shared/api/polling-folders';
 import type {
   AiConnection,
   AiPermissionPosture,
@@ -17,6 +19,7 @@ import type { LogLevelSetting } from '@shared/api/log-channels';
 import type {
   ConfirmExternalLinks,
   CornerStyle,
+  InterfaceLanguage,
   QuitWhenLastWindowCloses,
   WindowSizeOnLaunch,
 } from '@shared/api/startup-settings';
@@ -69,8 +72,19 @@ import type {
   SelectAllScope,
   WorkspaceTexture,
 } from './settings';
+import {
+  DEFAULT_FILE_NESTING_RULES,
+  type FileNestingRule,
+} from '@shared/angular/services/workspace/file-nesting';
+import type { FileAssociation } from '@shared/angular/services/monaco/file-associations';
 import { isSettingsOwned } from './settings-schema';
-import type { SectionDef, SettingDef, SettingsOwnedDef } from './settings-schema';
+import type { ChoiceOption, SectionDef, SettingDef, SettingsOwnedDef } from './settings-schema';
+import {
+  DEFAULT_INTERFACE_ZOOM,
+  INTERFACE_ZOOM_LEVELS,
+  type InterfaceZoom,
+} from '@shared/api/interface-zoom';
+import { isLanguageChoiceOffered } from '@shared/angular/services/locale/language-choice';
 
 /**
  * Maps a connection id to the model the user last selected for it, so switching connections restores
@@ -103,6 +117,12 @@ export type RunSetupAfterUpdates = 'when-new' | 'never';
  * says.
  */
 export type ReduceMotion = 'system' | 'on' | 'off';
+
+/**
+ * How keyboard focus is drawn: the standard thin accent outline, or a thicker outline in the theme's
+ * strongest colour on every control, including those that otherwise only recolour their border.
+ */
+export type FocusRing = 'standard' | 'high-visibility';
 
 /**
  * Names how dates read in the commit history.
@@ -270,10 +290,10 @@ export type QuickResponseMode = 'send' | 'insert';
 export type ScrollBars = 'auto-hide' | 'always';
 
 /**
- * When the end of a piece of work (an agent's turn, a run or build) is announced with a toast and a
- * system notification: always, only when it failed, or never. It is recorded in the tray either way.
+ * What happens to one kind of background notification (#1486): it pops up as a toast (and on the
+ * desktop when it would), goes to the notification centre's history only, or is not recorded at all.
  */
-export type FinishNotifications = 'always' | 'failures' | 'never';
+export type NotificationChoice = 'popup' | 'history' | 'off';
 
 /**
  * Defines how large an agent conversation's text renders: its transcript and its prompt.
@@ -535,6 +555,7 @@ export interface SettingsValues {
   readonly 'application.menuAppearance': ApplicationMenuAppearance;
   readonly 'application.showWindowLock': boolean;
   readonly 'application.cornerStyle': CornerStyle;
+  readonly 'application.language': InterfaceLanguage;
   readonly 'application.windowSizeOnLaunch': WindowSizeOnLaunch;
   readonly 'application.restoreFullScreen': boolean;
   readonly 'application.quitWhenLastWindowCloses': QuitWhenLastWindowCloses;
@@ -544,6 +565,8 @@ export interface SettingsValues {
   readonly 'application.spellCheckingLanguages': readonly string[];
   readonly 'spelling.personalDictionary': readonly string[];
 
+  readonly 'accessibility.interfaceZoom': InterfaceZoom;
+  readonly 'accessibility.focusRing': FocusRing;
   readonly 'accessibility.showTooltips': boolean;
   readonly 'accessibility.tooltipDelay': number;
   readonly 'accessibility.reduceMotion': ReduceMotion;
@@ -561,8 +584,7 @@ export interface SettingsValues {
   readonly 'notifications.rememberMute': boolean;
   readonly 'notifications.errorsStay': boolean;
   readonly 'notifications.desktopErrors': boolean;
-  readonly 'notifications.agentFinished': FinishNotifications;
-  readonly 'notifications.runFinished': FinishNotifications;
+  readonly 'notifications.types': Readonly<Record<string, NotificationChoice>>;
 
   readonly 'printing.paperSize': PrintPaperSize;
   readonly 'printing.orientation': PrintOrientation;
@@ -582,9 +604,12 @@ export interface SettingsValues {
   readonly 'workspaces.sortOrder': ExplorerSortOrder;
   readonly 'workspaces.collapsedFolderSeparator': CollapsedFolderSeparator;
   readonly 'workspaces.openFilesWith': ExplorerOpenFilesWith;
+  readonly 'workspaces.fileNesting': readonly FileNestingRule[];
   readonly 'workspaces.confirmBeforeDeleting': boolean;
   readonly 'workspaces.moveToTrash': boolean;
   readonly 'workspaces.projectScanDepth': number;
+  readonly 'workspaces.pollingFolders': readonly string[];
+  readonly 'workspaces.pollingInterval': number;
   readonly 'workspaces.searchMaximumResults': number;
   readonly 'workspaces.searchTimeout': number;
   readonly 'workspaces.searchMaximumFileSize': number;
@@ -691,6 +716,7 @@ export interface SettingsValues {
   readonly 'textEditor.largeFileSizeMb': number;
   readonly 'textEditor.largeFileLineThreshold': number;
   readonly 'textEditor.defaultLanguage': string;
+  readonly 'textEditor.fileAssociations': readonly FileAssociation[];
   readonly 'textEditor.defaultEol': DefaultEndOfLine;
   readonly 'textEditor.defaultEncoding': TextEncoding;
   readonly 'textEditor.autoDetectEncoding': boolean;
@@ -909,6 +935,12 @@ export interface SettingsValues {
   readonly 'aiManager.resultsPerSource': number;
   readonly 'aiManager.skillLibraryFolder': string;
   readonly 'aiManager.lastSection': string;
+  readonly 'persona.learningConnectionId': string;
+  readonly 'persona.learningModel': string;
+  readonly 'persona.learningPaused': boolean;
+  readonly 'persona.learningSchedule': LearningSchedule;
+  readonly 'persona.learningIdleMinutes': number;
+  readonly 'persona.review': PersonaReviewMode;
   readonly 'containers.engine': string;
   readonly 'containers.engineAddressMode': ContainerEngineAddressMode;
   readonly 'containers.engineAddress': string;
@@ -973,32 +1005,71 @@ const MOD_LABEL: string =
 const MODIFIER_CLICK: string =
   typeof window !== 'undefined' && window.host?.platform === 'darwin' ? '⌘-click' : 'Ctrl-click';
 
+/**
+ * Holds the Language setting's choices. Each language is named in itself, as language pickers do, so
+ * someone who cannot read the current language can still find their own. The test language is only
+ * offered in a development build.
+ */
+const LANGUAGE_OPTIONS: readonly ChoiceOption[] = [
+  {
+    value: 'system',
+    label: $localize`:Language setting choice that follows the operating system:Match the System`,
+  },
+  { value: 'en', label: 'English' },
+  { value: 'fr', label: 'Français' },
+  { value: 'es', label: 'Español' },
+  { value: 'de', label: 'Deutsch' },
+  { value: 'zh-Hans', label: '简体中文' },
+  { value: 'ar', label: 'العربية' },
+  ...(typeof window !== 'undefined' && window.host?.packaged === true
+    ? []
+    : [{ value: 'pseudo', label: 'Pseudo (testing)' }]),
+];
+
+/**
+ * Holds whether the Language setting is offered in this build. A packaged build holds the interface
+ * in English until the whole of it is translated (see `language-choice.ts`).
+ */
+const LANGUAGE_CHOICE_OFFERED: boolean = isLanguageChoiceOffered(
+  typeof window !== 'undefined' && window.host?.packaged === true,
+);
+
 export const SETTINGS_REGISTRY: readonly SectionDef[] = [
   {
     id: 'application',
-    label: 'Application',
+    label: $localize`:Settings section title:Application`,
     settings: [
+      {
+        key: 'application.language',
+        since: '2026.1.0-beta.12',
+        title: $localize`:Setting title:Language`,
+        description: $localize`:Setting description:The language Studio's interface is shown in. Match the System uses the first of your system's preferred languages that Studio speaks, and English when it speaks none of them. Changing it restarts Studio.`,
+        control: { kind: 'select', options: LANGUAGE_OPTIONS },
+        default: 'system',
+        requiresRestart: true,
+        // Where the choice isn't offered, the setting applies on no platform, so neither Settings nor
+        // its search shows it, while its key and default stay registered for the startup mirror.
+        ...(LANGUAGE_CHOICE_OFFERED ? {} : { platforms: [] }),
+      },
       {
         key: 'display.graphicsAcceleration',
         owner: 'display',
         // Collapsed out of three separate switches in this release, so an upgrading user has never
         // seen it and the wizard puts the appearance step in front of them once.
         since: '2026.1.0-beta.4',
-        title: 'Graphics Acceleration',
-        description:
-          'How much of the GPU the interface uses. Full shows every effect; Limited drops the ' +
-          'heavier ones for hardware that struggles; Off can fix rendering glitches but makes the ' +
-          'interface lag. Turning acceleration on or off restarts Studio.',
-        shortDescription:
-          'How much of the GPU the interface uses. Leave this automatic unless the interface ' +
-          'renders oddly or lags; changing it restarts Studio.',
+        title: $localize`:Setting title:Graphics Acceleration`,
+        description: $localize`:Setting description:How much of the GPU the interface uses. Full shows every effect; Limited drops the heavier ones for hardware that struggles; Off can fix rendering glitches but makes the interface lag. Turning acceleration on or off restarts Studio.`,
+        shortDescription: $localize`:Setting description, shortened for the setup wizard:How much of the GPU the interface uses. Leave this automatic unless the interface renders oddly or lags; changing it restarts Studio.`,
         control: {
           kind: 'select',
           options: [
-            { value: 'auto', label: 'Automatic' },
-            { value: 'off', label: 'Off' },
-            { value: 'limited', label: 'Limited' },
-            { value: 'full', label: 'Full' },
+            { value: 'auto', label: $localize`:Setting choice:Automatic` },
+            {
+              value: 'off',
+              label: $localize`:Setting choice, graphics acceleration turned off:Off`,
+            },
+            { value: 'limited', label: $localize`:Setting choice, graphics acceleration:Limited` },
+            { value: 'full', label: $localize`:Setting choice, graphics acceleration:Full` },
           ],
         },
         requiresRestart: true,
@@ -1006,38 +1077,41 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       {
         key: 'appearance.themeMode',
         owner: 'theme',
-        title: 'Theme',
-        description: 'Light, dark, or follow the operating system.',
+        title: $localize`:Setting title, the colour scheme:Theme`,
+        description: $localize`:Setting description:Light, dark, or follow the operating system.`,
         control: {
           kind: 'select',
           options: [
-            { value: 'light', label: 'Light' },
-            { value: 'dark', label: 'Dark' },
-            { value: 'system', label: 'System' },
+            { value: 'light', label: $localize`:Setting choice, light theme:Light` },
+            { value: 'dark', label: $localize`:Setting choice, dark theme:Dark` },
+            {
+              value: 'system',
+              label: $localize`:Setting choice, theme follows the operating system:System`,
+            },
           ],
         },
       },
       {
         key: 'appearance.accent',
         owner: 'theme',
-        title: 'Accent',
-        description:
-          'The colour used for highlights and focus. Pick a preset, or choose Custom for any hue.',
+        title: $localize`:Setting title, the highlight colour:Accent`,
+        description: $localize`:Setting description:The colour used for highlights and focus. Pick a preset, or choose Custom for any hue.`,
         control: { kind: 'accent' },
       },
       {
         key: 'application.cornerStyle',
-        title: 'Corner Style',
-        description:
-          'The shape of corners across the interface. Automatic draws squircles when Graphics ' +
-          'Acceleration is at Full, and rounded corners below it; Squircle is only offered at Full.',
+        title: $localize`:Setting title:Corner Style`,
+        description: $localize`:Setting description:The shape of corners across the interface. Automatic draws squircles when Graphics Acceleration is at Full, and rounded corners below it; Squircle is only offered at Full.`,
         control: {
           kind: 'select',
           options: [
-            { value: 'automatic', label: 'Automatic' },
-            { value: 'squircle', label: 'Squircle' },
-            { value: 'rounded', label: 'Rounded' },
-            { value: 'square', label: 'Square' },
+            { value: 'automatic', label: $localize`:Setting choice:Automatic` },
+            {
+              value: 'squircle',
+              label: $localize`:Setting choice, a corner shape between a square and a circle:Squircle`,
+            },
+            { value: 'rounded', label: $localize`:Setting choice, corner shape:Rounded` },
+            { value: 'square', label: $localize`:Setting choice, corner shape:Square` },
           ],
         },
         default: 'automatic',
@@ -1195,6 +1269,41 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     id: 'accessibility',
     label: 'Accessibility',
     settings: [
+      {
+        key: 'accessibility.interfaceZoom',
+        since: '2026.1.0-beta.12',
+        title: $localize`:Setting title, how large the whole interface is drawn:Interface Zoom`,
+        description: $localize`:Setting description:Draw the whole interface larger or smaller, in every window. Code editors and terminals keep their own zoom on top of this.`,
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: INTERFACE_ZOOM_LEVELS.map((level: InterfaceZoom): ChoiceOption => ({
+            value: String(level),
+            label: $localize`:Setting choice, an interface zoom level as a percentage:${level}:level:%`,
+          })),
+        },
+        default: DEFAULT_INTERFACE_ZOOM,
+      },
+      {
+        key: 'accessibility.focusRing',
+        since: '2026.1.0-beta.12',
+        title: $localize`:Setting title, how keyboard focus is outlined:Focus Ring`,
+        description: $localize`:Setting description:How the control that keyboard focus is on is outlined. High Visibility draws a thicker outline in a stronger colour, on every control.`,
+        control: {
+          kind: 'select',
+          options: [
+            {
+              value: 'standard',
+              label: $localize`:Setting choice, the usual focus outline:Standard`,
+            },
+            {
+              value: 'high-visibility',
+              label: $localize`:Setting choice, a thicker and stronger focus outline:High Visibility`,
+            },
+          ],
+        },
+        default: 'standard',
+      },
       {
         key: 'accessibility.showTooltips',
         title: 'Tooltips on Icon-Only Controls',
@@ -1394,36 +1503,13 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: true,
       },
       {
-        key: 'notifications.agentFinished',
-        title: 'Notify When an Agent Finishes',
+        key: 'notifications.types',
+        title: 'Notification Types',
         description:
-          'Announce an agent finishing its turn or a background task: always, only when it ' +
-          'fails, or never. It is recorded in the notification tray either way.',
-        control: {
-          kind: 'select',
-          options: [
-            { value: 'always', label: 'Always' },
-            { value: 'failures', label: 'Failures Only' },
-            { value: 'never', label: 'Never' },
-          ],
-        },
-        default: 'always',
-      },
-      {
-        key: 'notifications.runFinished',
-        title: 'Notify When a Run or Build Finishes',
-        description:
-          'Announce a run or build ending on its own: always, only when it fails, or never. It ' +
-          'is recorded in the notification tray either way.',
-        control: {
-          kind: 'select',
-          options: [
-            { value: 'always', label: 'Always' },
-            { value: 'failures', label: 'Failures Only' },
-            { value: 'never', label: 'Never' },
-          ],
-        },
-        default: 'always',
+          'For each kind of background notification: pop up, go to the history only, or be ' +
+          'switched off. Notifications about something you just did always show.',
+        control: { kind: 'custom', component: 'notification-types' },
+        default: {},
       },
     ],
   },
@@ -1589,6 +1675,16 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: 'double',
       },
       {
+        key: 'workspaces.fileNesting',
+        title: 'File Nesting',
+        description:
+          'Which files gather others beneath them, when an explorer nests files: the parts of a ' +
+          'partial class under the class, a code-behind under its page. Turned on in each ' +
+          "explorer's Options.",
+        control: { kind: 'custom', component: 'file-nesting' },
+        default: DEFAULT_FILE_NESTING_RULES,
+      },
+      {
         key: 'workspaces.confirmBeforeDeleting',
         title: 'Confirm Before Deleting',
         description:
@@ -1620,6 +1716,41 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 2,
+      },
+    ],
+  },
+  {
+    // How Studio learns that files changed on disk (#1254): every watcher, wherever it runs, which is
+    // why it is its own page rather than an Explorers setting. Native watching is the default and has
+    // no setting; only the folders where it misses changes are listed.
+    id: 'workspaces-file-watching',
+    label: $localize`:Settings page title, under Workspaces:File Watching`,
+    settings: [
+      {
+        key: 'workspaces.pollingFolders',
+        title: $localize`:Setting title, folders checked on a timer for changes:Polled Folders`,
+        description: $localize`:Setting description:Folders whose files Studio checks on a timer instead of waiting for the system to report changes. Add network shares, container mounts and other drives where changes made elsewhere do not show up in the explorers by themselves. Everything else is watched as usual.`,
+        since: '2026.1.0-beta.12',
+        control: { kind: 'custom', component: 'polling-folders' },
+        default: [],
+      },
+      {
+        key: 'workspaces.pollingInterval',
+        title: $localize`:Setting title:Polling Interval`,
+        description: $localize`:Setting description:How often a polled folder is checked for changes. Checking less often costs less on a slow share or a large folder.`,
+        since: '2026.1.0-beta.12',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '1', label: $localize`:Polling interval choice:Every second` },
+            { value: '2', label: $localize`:Polling interval choice:Every 2 seconds` },
+            { value: '5', label: $localize`:Polling interval choice:Every 5 seconds` },
+            { value: '10', label: $localize`:Polling interval choice:Every 10 seconds` },
+            { value: '30', label: $localize`:Polling interval choice:Every 30 seconds` },
+          ],
+        },
+        default: DEFAULT_POLLING_INTERVAL,
       },
     ],
   },
@@ -2035,6 +2166,15 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description: 'The language a new, untitled code document starts in.',
         control: { kind: 'select', options: [{ value: 'plaintext', label: 'Plain Text' }] },
         default: 'plaintext',
+      },
+      {
+        // Drawn by its own list editor beside the section (#1068); the user's entries win over every
+        // built-in rule in the one resolver, `languageForFileName`.
+        key: 'textEditor.fileAssociations',
+        title: $localize`:Settings row title, the user's own file name to language mappings:File Associations`,
+        description: $localize`:Settings row description for File Associations:The language files open in, by name or pattern, ahead of Studio's own rules. Changing the language of a file by hand offers to add one.`,
+        control: { kind: 'custom', component: 'file-associations' },
+        default: [],
       },
       {
         key: 'textEditor.defaultEncoding',
@@ -5857,6 +5997,80 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description: 'The AI Manager section left open.',
         control: { kind: 'custom', component: 'ai-manager-section' },
         default: '',
+      },
+    ],
+  },
+  {
+    // Learning the persona in the background (#1516), and how what is learned lands (#1517).
+    id: 'ai-manager-persona',
+    label: 'Persona',
+    settings: [
+      {
+        // Chosen on the Learning Connection row above the section; it has no row of its own.
+        key: 'persona.learningConnectionId',
+        title: 'Learning Connection',
+        description:
+          'The AI connection your conversations are read with. Nothing is learned until one is chosen.',
+        control: { kind: 'custom', component: 'persona-learning-connection' },
+        default: '',
+      },
+      {
+        key: 'persona.learningModel',
+        title: 'Learning Model',
+        description: "The model used for learning, or empty for the connection's default.",
+        control: { kind: 'custom', component: 'persona-learning-connection' },
+        default: '',
+      },
+      {
+        key: 'persona.learningPaused',
+        title: 'Pause Learning',
+        description: 'Stop reading conversations until you switch this off. Nothing is lost.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'persona.learningSchedule',
+        title: 'When Learning Runs',
+        description:
+          'After a conversation has been idle for a while, or once a day. Either way only what has not been read before is read.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'idle', label: 'After a conversation goes idle' },
+            { value: 'daily', label: 'Once a day' },
+          ],
+        },
+        default: 'idle',
+      },
+      {
+        key: 'persona.learningIdleMinutes',
+        title: 'Idle For',
+        description: 'How long a conversation has to be quiet before it is read.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '10', label: '10 minutes' },
+            { value: '30', label: '30 minutes' },
+            { value: '60', label: '1 hour' },
+            { value: '240', label: '4 hours' },
+          ],
+        },
+        default: 30,
+      },
+      {
+        key: 'persona.review',
+        title: 'Learned Changes',
+        description:
+          'Ask me first holds what is learned until you approve it, and agents do not use it until then. Update automatically applies it, and lists it so you can undo it.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'ask', label: 'Ask me first' },
+            { value: 'automatic', label: 'Update automatically' },
+          ],
+        },
+        default: 'ask',
       },
     ],
   },

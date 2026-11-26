@@ -81,43 +81,47 @@ export class WelcomeTools {
   private readonly pluginUpdates: PluginUpdates = inject(PluginUpdates);
 
   /**
+   * Gets the tooltip of a tool that is not available yet.
+   */
+  protected readonly comingSoon: string = $localize`:Tooltip of a feature that is not available yet:Coming soon`;
+
+  /**
    * Gets the tool cards, in reading order.
    */
   protected readonly tools: readonly ToolCard[] = [
     {
-      title: 'Containers',
-      description:
-        'Build, run and manage containerised applications with Docker and compatible runtimes.',
+      title: $localize`:Welcome tool card:Containers`,
+      description: $localize`:Welcome tool card:Build, run and manage containerised applications with Docker and compatible runtimes.`,
       icon: Icon.WELCOME_CONTAINERS,
       opens: 'containers',
     },
     {
-      title: 'Orchestration',
-      description: 'Manage distributed services and deployments across your environments.',
+      title: $localize`:Welcome tool card:Orchestration`,
+      description: $localize`:Welcome tool card:Manage distributed services and deployments across your environments.`,
       icon: Icon.WELCOME_ORCHESTRATION,
       opens: null,
     },
     {
-      title: 'AI Manager',
-      description: 'Providers, local models, prompt profiles and skills, in one place.',
+      title: $localize`:Welcome tool card:AI Manager`,
+      description: $localize`:Welcome tool card:Providers, local models, your persona and skills, in one place.`,
       icon: Icon.WELCOME_AI_MODELS,
       opens: 'model-manager',
     },
     {
-      title: 'System Monitor',
-      description: 'Watch system resources, Studio’s processes and its logs.',
+      title: $localize`:Welcome tool card:System Monitor`,
+      description: $localize`:Welcome tool card:Watch system resources, Studio’s processes and its logs.`,
       icon: Icon.WELCOME_SYSTEM_MONITOR,
       opens: 'system-monitor',
     },
     {
-      title: 'Plugin Manager',
-      description: 'Discover, install and manage the plugins that extend ONIXLabs Studio.',
+      title: $localize`:Welcome tool card:Plugin Manager`,
+      description: $localize`:Welcome tool card:Discover, install and manage the plugins that extend ONIXLabs Studio.`,
       icon: Icon.WELCOME_TOOL_PLUGINS,
       opens: 'plugin-manager',
     },
     {
-      title: 'Settings',
-      description: 'Configure Studio’s preferences, providers and appearance.',
+      title: $localize`:Welcome tool card:Settings`,
+      description: $localize`:Welcome tool card:Configure Studio’s preferences, providers and appearance.`,
       icon: Icon.WELCOME_TOOL_SETTINGS,
       opens: 'settings',
     },

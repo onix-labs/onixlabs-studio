@@ -28,6 +28,7 @@ import {
   NotificationAction,
   Notifications,
 } from '@shared/angular/services/notifications/notifications';
+import { CoreNotificationType } from '@shared/angular/services/notifications/core-notification-types';
 import {
   FileDiff,
   MutationResult,
@@ -37,6 +38,7 @@ import {
   SourceControlProvider,
 } from '../source-control/source-control-provider';
 import { SourceControl } from '../source-control/source-control';
+import { SshFailureNotice, sshFailureNotice } from '../source-control/ssh-failure-notice';
 import { SourceControlProviders } from '../source-control/source-control-providers';
 import {
   GitBranch,
@@ -48,6 +50,13 @@ import {
   GitTag,
   GraphNode,
 } from './repository-data';
+import type { MergedBranch, MergedRemoteBranch } from './merged-branch';
+import type { MergedBranchesDeletion, MergedBranchFailure } from './merged-branches-deletion';
+
+/**
+ * What a failed operation says when the plugin gave no reason.
+ */
+const FAILED_OPERATION: string = 'The operation failed.';
 
 /**
  * Identifies the synthetic graph node that represents the uncommitted working tree, sitting above the
@@ -125,6 +134,26 @@ const LANE_COLORS: readonly string[] = ['#5073b8', '#07b39b', '#ef4e7b', '#f7953
  * the lane is free. Indexed by lane number.
  */
 type LaneSlots = (string | null)[];
+
+/**
+ * Describes a push from Studio that went through.
+ */
+export interface RepositoryPush {
+  /**
+   * Gets the repository's root.
+   */
+  readonly root: string;
+
+  /**
+   * Gets the branch pushed.
+   */
+  readonly branch: string;
+
+  /**
+   * Gets when the push began, as epoch milliseconds: CI runs it started begin after it.
+   */
+  readonly startedAt: number;
+}
 
 /**
  * Represents the model of a single opened repository surfaced by the source-control view: its
@@ -314,6 +343,14 @@ export class Repository {
   >([]);
 
   /**
+   * Holds the default branch merges are measured against, or undefined when the plugin did not say
+   * (#887).
+   */
+  private readonly defaultBranchSignal: WritableSignal<string | undefined> = signal<
+    string | undefined
+  >(undefined);
+
+  /**
    * Holds the tags.
    */
   private readonly tagsSignal: WritableSignal<readonly GitTag[]> = signal<readonly GitTag[]>([]);
@@ -445,6 +482,12 @@ export class Repository {
   public readonly remotes: Signal<readonly GitRemote[]> = this.remotesSignal.asReadonly();
 
   /**
+   * Gets the default branch merges are measured against, or undefined when the plugin did not say —
+   * one before protocol 1.6, or a repository with no default branch it could find (#887).
+   */
+  public readonly defaultBranch: Signal<string | undefined> = this.defaultBranchSignal.asReadonly();
+
+  /**
    * Gets the tags.
    */
   public readonly tags: Signal<readonly GitTag[]> = this.tagsSignal.asReadonly();
@@ -526,6 +569,17 @@ export class Repository {
    * Gets the identifier of the selected graph node, or null when nothing is selected.
    */
   public readonly selectedNodeId: Signal<string | null> = this.selectedNodeSignal.asReadonly();
+
+  /**
+   * Holds the last push from Studio that went through, or null before one.
+   */
+  private readonly pushedSignal: WritableSignal<RepositoryPush | null> =
+    signal<RepositoryPush | null>(null);
+
+  /**
+   * Gets the last push from Studio that went through (#1495), for what watches what follows one.
+   */
+  public readonly lastPush: Signal<RepositoryPush | null> = this.pushedSignal.asReadonly();
 
   /**
    * Gets the current branch, or undefined when the head is detached or no repository is bound.
@@ -683,6 +737,7 @@ export class Repository {
       return;
     }
     this.lastFetchAt = Date.now();
+    const before: GitBranch | undefined = this.currentBranch();
     let result: MutationResult;
     try {
       result = await provider.fetch();
@@ -696,9 +751,58 @@ export class Repository {
     if (result.success) {
       this.log.debug('Repository', 'Background fetch done', root);
       await this.refresh();
+      if (this.infoSignal()?.root === root) {
+        this.announceIncoming(root, before, this.currentBranch());
+      }
     } else {
       this.log.info('Repository', 'Background fetch failed; will retry', result.error);
     }
+  }
+
+  /**
+   * Tells the user what a background fetch brought (#1494): new commits on the current branch's
+   * upstream, or that the branch and its upstream have diverged. Nothing when the fetch brought nothing
+   * new for the branch. One notice per branch, updated in place by later fetches.
+   * @param root The repository root.
+   * @param before The current branch before the fetch.
+   * @param after The current branch after it.
+   */
+  private announceIncoming(
+    root: string,
+    before: GitBranch | undefined,
+    after: GitBranch | undefined,
+  ): void {
+    if (
+      before === undefined ||
+      after?.upstream === undefined ||
+      before.name !== after.name ||
+      before.upstream !== after.upstream ||
+      after.behind <= before.behind
+    ) {
+      return;
+    }
+    const pull: NotificationAction = { label: 'Pull', run: (): void => void this.pull() };
+    const key: string = `git:incoming:${root}:${after.name}`;
+    const commits: string = `${after.behind} commit${after.behind === 1 ? '' : 's'}`;
+    if (after.ahead > 0) {
+      this.notifications.notify({
+        severity: 'warning',
+        title: `${after.name} and ${after.upstream} have diverged`,
+        detail: `${after.ahead} ahead, ${after.behind} behind · ${this.repoName()}`,
+        actions: [pull],
+        key,
+        type: CoreNotificationType.GitDiverged,
+      });
+      return;
+    }
+    this.notifications.notify({
+      severity: 'info',
+      title: `${commits} to pull on ${after.upstream}`,
+      detail: this.repoName(),
+      actions: [pull],
+      key,
+      type: CoreNotificationType.GitIncoming,
+    });
   }
 
   /**
@@ -880,6 +984,7 @@ export class Repository {
     this.infoSignal.set(null);
     this.branchesSignal.set([]);
     this.remotesSignal.set([]);
+    this.defaultBranchSignal.set(undefined);
     this.tagsSignal.set([]);
     this.stashesSignal.set([]);
     this.commitsSignal.set([]);
@@ -931,6 +1036,7 @@ export class Repository {
       this.commitsSignal.set(commits);
       this.branchesSignal.set(refs.branches);
       this.remotesSignal.set(refs.remotes);
+      this.defaultBranchSignal.set(refs.defaultBranch);
       this.tagsSignal.set(refs.tags);
       this.stashesSignal.set(stashes);
       this.commitFilesSignal.set(new Map<string, readonly GitFileChange[]>());
@@ -1594,6 +1700,36 @@ export class Repository {
    */
   private runPush(branch?: GitBranch): Promise<MutationResult> {
     const target: GitBranch | undefined = branch ?? this.currentBranch();
+    const root: string | undefined = this.infoSignal()?.root;
+    const startedAt: number = Date.now();
+    return this.pushing(target, root, startedAt);
+  }
+
+  /**
+   * Pushes, then records a push that went through, for what follows a push (#1495: the CI watch).
+   * @param target The branch pushed, or undefined for a detached head.
+   * @param root The repository root.
+   * @param startedAt When the push began.
+   * @returns Returns the outcome.
+   */
+  private async pushing(
+    target: GitBranch | undefined,
+    root: string | undefined,
+    startedAt: number,
+  ): Promise<MutationResult> {
+    const result: MutationResult = await this.pushNow(target);
+    if (result.success && target !== undefined && root !== undefined) {
+      this.pushedSignal.set({ root, branch: target.name, startedAt });
+    }
+    return result;
+  }
+
+  /**
+   * Pushes without reporting the outcome (see {@link runPush}).
+   * @param target The branch to push, or undefined for a detached head.
+   * @returns Returns the outcome.
+   */
+  private pushNow(target: GitBranch | undefined): Promise<MutationResult> {
     if (target === undefined) {
       // Detached, with no branch to name. The bare push is the only thing left to mean.
       this.log.info('Repository', 'Pushing HEAD', this.infoSignal()?.root);
@@ -1696,6 +1832,127 @@ export class Repository {
     return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
       provider.deleteBranch(name, force),
     );
+  }
+
+  /**
+   * Deletes merged branches in one go (#887), with their copies on the remote when asked, then reloads
+   * once and raises one toast for the lot.
+   *
+   * Each local delete is forced. Every branch here was found merged by Studio (its tip in the default
+   * branch, or exactly the commit a merged pull request took), which is a stronger test than git's
+   * unforced delete makes: that one asks about the checked-out branch and the upstream, so it refuses a
+   * branch merged by squash, or one whose upstream is gone.
+   *
+   * A branch's remote copy goes first, as a tag's does ({@link deleteTagEverywhere}): when the remote
+   * refuses — including because someone pushed to the branch since it was found merged, which the
+   * expected commit catches — the local branch is left as it was, so nothing is half-done and the retry
+   * is obvious. And before the remote is touched, the local delete is checked against the branches as
+   * they are now: one checked out here or in another worktree since the dialog opened is skipped and
+   * reported, rather than left deleted on the remote and refused locally.
+   * @param branches The merged branches to delete.
+   * @param includeRemotes Whether to delete their copies on the remote too.
+   * @returns Returns what was deleted, and what was not and why.
+   */
+  public async deleteMergedBranches(
+    branches: readonly MergedBranch[],
+    includeRemotes: boolean,
+  ): Promise<MergedBranchesDeletion> {
+    const provider: SourceControlProvider | null = this.provider;
+    if (provider === null) {
+      return { deleted: [], deletedOnRemote: [], failed: [] };
+    }
+    this.log.info(
+      'Repository',
+      `Deleting ${branches.length} merged branches${includeRemotes ? ' and their remote copies' : ''}`,
+    );
+    const deleted: string[] = [];
+    const deletedOnRemote: string[] = [];
+    const failed: MergedBranchFailure[] = [];
+    // One at a time: each is a git process against the same repository, and a remote may rate-limit.
+    for (const branch of branches) {
+      const blocker: string | undefined = this.localDeleteBlocker(branch.name);
+      if (blocker !== undefined) {
+        failed.push({ name: branch.name, error: blocker });
+        continue;
+      }
+      const remote: MergedRemoteBranch | undefined = includeRemotes
+        ? branch.remoteBranch
+        : undefined;
+      if (remote !== undefined) {
+        const remoteResult: MutationResult = await provider.deleteRemoteBranch(
+          remote.remote,
+          remote.name,
+          remote.expected,
+        );
+        if (!remoteResult.success) {
+          failed.push({ name: branch.name, error: remoteResult.error ?? FAILED_OPERATION });
+          continue;
+        }
+        deletedOnRemote.push(`${remote.remote}/${remote.name}`);
+      }
+      const localResult: MutationResult = await provider.deleteBranch(branch.name, true);
+      if (localResult.success) {
+        deleted.push(branch.name);
+      } else {
+        failed.push({ name: branch.name, error: localResult.error ?? FAILED_OPERATION });
+      }
+    }
+    const outcome: MergedBranchesDeletion = { deleted, deletedOnRemote, failed };
+    this.lastErrorSignal.set(failed[0]?.error ?? null);
+    this.notifyMergedBranchesDeleted(outcome);
+    await this.refresh();
+    return outcome;
+  }
+
+  /**
+   * Says why git would refuse to delete a local branch as the branches stand now, or nothing when it
+   * would not: a branch checked out here, or in another worktree, cannot be deleted (#887).
+   * @param name The branch.
+   * @returns Returns the reason, or undefined when the delete can go ahead.
+   */
+  private localDeleteBlocker(name: string): string | undefined {
+    const branch: GitBranch | undefined = this.branchesSignal().find(
+      (candidate: GitBranch): boolean => candidate.name === name,
+    );
+    if (branch?.current === true) {
+      return $localize`:Why a merged branch was not deleted; it is checked out:It is checked out.`;
+    }
+    if (branch?.otherWorktree !== undefined) {
+      return $localize`:Why a merged branch was not deleted; another worktree has it checked out:It is checked out in ${branch.otherWorktree}:path:.`;
+    }
+    return undefined;
+  }
+
+  /**
+   * Raises the toast for Delete Merged Branches: a transient one naming what went, or a sticky error
+   * naming each branch left standing and why.
+   * @param outcome What was deleted, and what was not.
+   */
+  private notifyMergedBranchesDeleted(outcome: MergedBranchesDeletion): void {
+    if (outcome.failed.length > 0) {
+      this.notifications.notify({
+        severity: 'error',
+        title: $localize`:Toast title when some merged branches could not be deleted:Some merged branches were not deleted`,
+        detail: outcome.failed
+          .map((failure: MergedBranchFailure): string => `${failure.name}: ${failure.error}`)
+          .join('\n'),
+        key: this.notificationKey('delete-merged-branches'),
+      });
+      return;
+    }
+    if (outcome.deleted.length === 0) {
+      return;
+    }
+    const names: string = outcome.deleted.join(', ');
+    this.notifications.notify({
+      severity: 'success',
+      title:
+        outcome.deletedOnRemote.length > 0
+          ? $localize`:Toast title after merged branches were deleted locally and on the remote:Deleted merged branches here and on the remote`
+          : $localize`:Toast title after merged branches were deleted locally:Deleted merged branches`,
+      detail: names,
+      key: this.notificationKey('delete-merged-branches'),
+    });
   }
 
   /**
@@ -2094,7 +2351,7 @@ export class Repository {
     if (result.success) {
       this.notifyNetworkSuccess(operation, subject);
     } else {
-      this.notifyNetworkFailure(operation, result.error);
+      this.notifyNetworkFailure(operation, result);
     }
   }
 
@@ -2130,16 +2387,24 @@ export class Repository {
   /**
    * Raises the sticky error toast reporting a failed network operation, so an auth or conflict
    * failure never vanishes silently — whichever surface the operation was started from.
+   * An SSH failure the plugin coded (#1255) is worded here, in the user's language, with the commands
+   * that fix it and git's own output under Show Details.
    * @param operation The failed operation.
-   * @param error The failure detail, when the provider supplied one.
+   * @param result The failed outcome.
    */
-  private notifyNetworkFailure(operation: NetworkOperation, error: string | undefined): void {
+  private notifyNetworkFailure(operation: NetworkOperation, result: MutationResult): void {
     const label: string = NETWORK_OPERATION_LABELS[operation];
     const repo: string = this.repoName();
+    const ssh: SshFailureNotice | null = sshFailureNotice(
+      result.code,
+      result.sshHost,
+      window.host?.platform,
+    );
     this.notifications.notify({
       severity: 'error',
       title: repo === '' ? `${label} failed` : `${label} failed — ${repo}`,
-      detail: error,
+      detail: ssh?.detail ?? result.error,
+      ...(ssh === null ? {} : { commands: ssh.commands, output: result.output ?? result.error }),
       key: this.notificationKey(operation),
     });
   }

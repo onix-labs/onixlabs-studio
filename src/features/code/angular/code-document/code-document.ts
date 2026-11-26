@@ -20,6 +20,7 @@ import {
 } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Log } from '@shared/angular/services/log/log';
+import { MergeToolOpener } from '@shared/angular/services/merge-tool/merge-tool-opener';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Printing } from '@shared/angular/services/printing/printing';
 import { CodePrintToken, renderCodePrint } from './code-print';
@@ -44,7 +45,10 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { BreakpointGutter } from '@features/code/angular/breakpoints/breakpoint-gutter';
 import { BreakpointGutterController } from '@features/code/angular/breakpoints/breakpoint-gutter-controller';
-import { ConflictLens, ConflictLensLabels } from '@features/code/angular/conflicts/conflict-lens';
+import {
+  ConflictLens,
+  ConflictLensLabels,
+} from '@shared/angular/components/conflict-lens/conflict-lens';
 import {
   CONFLICT_CONTEXT,
   ConflictContext,
@@ -141,6 +145,13 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
   private readonly conflictContext: ConflictContext | null = inject(CONFLICT_CONTEXT, {
     optional: true,
   });
+
+  /**
+   * Holds the merge tool opener, behind each conflict's Compare (#1321). Offered only beside a
+   * repository's conflict context: a standalone code tab has no well to open a merge tool in.
+   */
+  private readonly mergeToolOpener: MergeToolOpener | null =
+    this.conflictContext === null ? null : inject(MergeToolOpener);
 
   /**
    * Holds the keyboard catalogue, read for Next Conflict and Previous Conflict's chords.
@@ -482,6 +493,20 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
   }
 
   /**
+   * Opens one of the file's conflicts side by side in the merge tool. A file never saved has no path to
+   * open it by, so nothing happens.
+   * @param index The conflict's position in the file, counting from 0.
+   */
+  private compareConflict(index: number): void {
+    const path: string | null = this.backingDocument()?.filePath() ?? null;
+    if (path === null || this.mergeToolOpener === null) {
+      return;
+    }
+    this.log.info('code.document', 'Compare a conflict in the merge tool', path, index);
+    void this.mergeToolOpener.open(path, index);
+  }
+
+  /**
    * Draws the file's merge conflicts and binds Next Conflict and Previous Conflict to their catalogued
    * chords. The chords are matched while the editor has focus rather than registered as a scope: an
    * editor in a workspace's document well cannot register under the workspace tab's scope without
@@ -497,6 +522,9 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
         canMarkResolved: (): boolean => untracked((): boolean => this.isRepositoryConflicted()),
         markResolved: (): void => this.markFileResolved(),
         countChanged: (count: number): void => this.conflictCountSignal.set(count),
+        ...(this.mergeToolOpener === null
+          ? {}
+          : { compare: (index: number): void => this.compareConflict(index) }),
       }),
     );
     editor.onKeyDown((event: MonacoApi.IKeyboardEvent): void => {

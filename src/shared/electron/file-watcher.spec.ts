@@ -63,6 +63,7 @@ vi.mock('node:fs', async (importOriginal: () => Promise<typeof fs>) => {
 });
 
 const { FileWatcher } = await import('./file-watcher');
+const { WatchModes } = await import('./watching/watch-modes');
 
 describe('FileWatcher', () => {
   let directory: string;
@@ -144,16 +145,52 @@ describe('FileWatcher', () => {
   });
 
   it.each([[null], [Buffer.from('a.txt')]])(
-    'event_withoutAStringName_isIgnored %#',
+    'event_withItsNameWithheld_checksEveryWatchedFileInTheFolder %#',
     async (filename: string | Buffer | null) => {
+      const other: string = path.join(directory, 'b.txt');
+      fs.writeFileSync(other, 'world');
       await invoke(FileChannel.Watch, file);
+      await invoke(FileChannel.Watch, other);
 
       nativeEvent(filename);
       await vi.advanceTimersByTimeAsync(500);
 
-      expect(sent).toEqual([]);
+      expect(sent).toEqual([
+        [FileChannel.Changed, file],
+        [FileChannel.Changed, other],
+      ]);
     },
   );
+
+  it('polledFolder_isPolledInsteadOfWatchedNatively_andAChangeIsReported (#1254)', async () => {
+    vi.useRealTimers();
+    manager.disposeAll();
+    const modes: InstanceType<typeof WatchModes> = new WatchModes(undefined, false);
+    await modes.update([directory], 1);
+    manager = new FileWatcher(
+      (): BrowserWindow | null =>
+        ({
+          isDestroyed: (): boolean => false,
+          webContents: {
+            send: (channel: unknown, target: unknown): void => void sent.push([channel, target]),
+          },
+        }) as unknown as BrowserWindow,
+      modes,
+    );
+    manager.register();
+    await invoke(FileChannel.Watch, file);
+    await new Promise<void>((resolve: () => void): void => void setTimeout(resolve, 200));
+
+    fs.writeFileSync(file, 'changed from elsewhere');
+
+    expect(fakes.watches).toEqual([]);
+    await vi.waitFor(
+      (): void => {
+        expect(sent).toContainEqual([FileChannel.Changed, file]);
+      },
+      { timeout: 4000, interval: 50 },
+    );
+  });
 
   it('removal_ofAWatchedFile_reportsRemoved', async () => {
     await invoke(FileChannel.Watch, file);

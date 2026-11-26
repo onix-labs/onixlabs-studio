@@ -1,5 +1,5 @@
 import { app } from 'electron';
-import { execFile } from 'node:child_process';
+import { Launcher, launchStudioOwned } from '../process/launch';
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream, existsSync, readdirSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
@@ -18,7 +18,13 @@ import {
 } from '../provisioning/archive-provisioner';
 import { LockfileProvision } from '../provisioning/lockfile-provision';
 import { LockfileProvisioner } from '../provisioning/lockfile-provisioner';
+import { tarProgram } from '../provisioning/tar-program';
 import { bundledLockfile } from '../contributions/plugins/bundled-lockfiles';
+
+/**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('server-provisioning');
 
 /**
  * Runs a child process and resolves with its standard output and error, used for the lightweight
@@ -28,7 +34,7 @@ const execFileAsync: (
   file: string,
   args: readonly string[],
   options?: { env?: NodeJS.ProcessEnv; maxBuffer?: number },
-) => Promise<{ stdout: string; stderr: string }> = promisify(execFile);
+) => Promise<{ stdout: string; stderr: string }> = promisify(launch.execFile);
 
 /**
  * Holds the pinned Eclipse JDT Language Server version. The distribution is pinned (rather than a
@@ -214,7 +220,7 @@ export const KOTLIN_LS_SHA256: string =
  * it is built from source with the detected Go toolchain (`go install`) — pinned so every machine
  * provisions the same server.
  */
-export const GOPLS_VERSION: string = 'v0.23.0';
+export const GOPLS_VERSION: string = 'v0.24.0';
 
 /**
  * Bounds the buffered output of the `go install` and version probes, generous so a verbose build is not
@@ -969,7 +975,7 @@ export class LspProvisioner {
    */
   private async extractZip(archive: string, destination: string): Promise<void> {
     if (process.platform === 'win32') {
-      await execFileAsync('tar', ['-xf', archive, '-C', destination]);
+      await execFileAsync(tarProgram(), ['-xf', archive, '-C', destination]);
     } else {
       await execFileAsync('unzip', ['-q', '-o', archive, '-d', destination]);
     }
@@ -1004,7 +1010,7 @@ export class LspProvisioner {
         await fs.rm(archive, { force: true });
         return null;
       }
-      await execFileAsync('tar', ['-xzf', archive, '-C', installDir]);
+      await execFileAsync(tarProgram(), ['-xzf', archive, '-C', installDir]);
       await fs.rm(archive, { force: true });
       const installed: JdtlsInstall | null = await this.readInstall(installDir);
       if (installed === null) {

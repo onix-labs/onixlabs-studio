@@ -98,7 +98,10 @@ interface RawImage {
 interface RawEvent {
   readonly Type?: string;
   readonly Action?: string;
-  readonly Actor?: { readonly ID?: string };
+  readonly Actor?: {
+    readonly ID?: string;
+    readonly Attributes?: Readonly<Record<string, string | undefined>>;
+  };
 }
 
 /**
@@ -577,10 +580,21 @@ export function parseEvent(line: string): ContainerEvent | null {
   } catch {
     return null;
   }
+  // The details a notification names the container by (#1488): the engine sends them as string
+  // attributes, the exit code included.
+  const attributes: Readonly<Record<string, string | undefined>> = raw.Actor?.Attributes ?? {};
+  const exitCode: number = Number.parseInt(attributes['exitCode'] ?? '', 10);
+  const name: string | undefined = attributes['name'];
+  const image: string | undefined = attributes['image'];
+  const project: string | undefined = attributes['com.docker.compose.project'];
   return {
     type: raw.Type ?? '',
     action: raw.Action ?? '',
     id: raw.Actor?.ID ?? '',
+    ...(name === undefined || name.length === 0 ? {} : { name: name.replace(/^\//, '') }),
+    ...(image === undefined || image.length === 0 ? {} : { image }),
+    ...(Number.isInteger(exitCode) ? { exitCode } : {}),
+    ...(project === undefined || project.length === 0 ? {} : { project }),
   };
 }
 

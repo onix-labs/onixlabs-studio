@@ -184,6 +184,19 @@ export class FileOpener {
   }
 
   /**
+   * Shows an open-folder dialog and opens the chosen folder as a workspace tab.
+   * @returns Returns the opened folder's path, or null when cancelled or unreadable.
+   */
+  public async openFolderInteractive(): Promise<string | null> {
+    const listing: DirectoryListing | null = await this.workspace.chooseFolder();
+    if (listing === null) {
+      return null;
+    }
+    this.openDirectory(listing);
+    return listing.path;
+  }
+
+  /**
    * Opens a file from a workspace's directory tree into that workspace's document well, reusing the
    * panel when the file is already open. The editor is chosen by file type (Milkdown for markdown,
    * Monaco otherwise).
@@ -221,6 +234,34 @@ export class FileOpener {
       return true;
     }
     this.log.debug('FileOpener', 'Opening file in well', path);
+    return this.openInWell(selection.file, options);
+  }
+
+  /**
+   * Opens a file into the workspace's document well only when it is text the well edits — not a binary,
+   * an image or a document with a surface of its own (an API or database document) — and opens nothing
+   * otherwise. For a caller that wants the file's text document, such as the merge tool (#1321), and
+   * has somewhere else to send any other file: {@link openPath} would open those in a tab of their own.
+   * Like any file opened into a well, it is not recorded as a recent item.
+   * @param path The absolute path of the file to open; must be inside the workspace.
+   * @param options How to open it; in the background, nothing is brought forward.
+   * @returns Returns true when the file is open in the well as text; false when it is not text, cannot
+   * be read, or this dock has no document home.
+   */
+  public async openTextInWell(path: string, options?: OpenOptions): Promise<boolean> {
+    const existing: string | undefined = this.documents.findIdByPath(path);
+    if (existing !== undefined && this.activateInWell(existing, options)) {
+      return true;
+    }
+    const selection: OpenSelection | null = await this.workspace.readFile(path);
+    if (
+      selection?.kind !== 'file' ||
+      isDatabaseDocumentName(selection.file.name) ||
+      isApiDocumentName(selection.file.name)
+    ) {
+      this.log.debug('FileOpener', 'Not opening as text in the well', path);
+      return false;
+    }
     return this.openInWell(selection.file, options);
   }
 
@@ -276,7 +317,7 @@ export class FileOpener {
    * @param selection The selection to route, or null when the dialog was cancelled.
    * @returns Returns true when something was opened; otherwise, false.
    */
-  private route(selection: OpenSelection | null): boolean {
+  private async route(selection: OpenSelection | null): Promise<boolean> {
     if (selection === null) {
       return false;
     }
@@ -297,8 +338,7 @@ export class FileOpener {
       }
       case 'image':
         if (this.opensAsCode(selection.path)) {
-          void this.openAsText(selection.path);
-          return true;
+          return this.openAsText(selection.path);
         }
         return this.openImage(selection.path);
       case 'binary':

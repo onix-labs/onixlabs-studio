@@ -1,4 +1,5 @@
-import { ChildProcess, spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import { Launcher, launchStudioOwned } from '../process/launch';
 import {
   HOSTING_PROTOCOL_VERSION,
   HostingAuthMode,
@@ -17,6 +18,11 @@ import { pluginEnvironment } from '../plugin-environment';
 import { pidJournal } from '../pid-journal';
 import { HostingSpec } from './hosting-descriptor';
 import { HostingCredentialSource, HostingEndpoint } from './hosting-endpoint';
+
+/**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('plugin-process');
 
 /**
  * Specifies how long the initialize handshake may take.
@@ -132,7 +138,7 @@ export class HostingClient implements HostingEndpoint {
       return this.description;
     }
     try {
-      this.process = spawn(this.spec.command, [...this.spec.args], {
+      this.process = launch.spawn(this.spec.command, [...this.spec.args], {
         stdio: ['pipe', 'pipe', 'pipe'],
         // Only what a program needs to run, never the user's whole shell (audit S6).
         env: pluginEnvironment(this.spec.env),

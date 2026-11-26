@@ -56,6 +56,7 @@ const EVERY_OP: Readonly<Record<VersionControlOp, true>> = {
   createTag: true,
   deleteTag: true,
   deleteRemoteTag: true,
+  deleteRemoteBranch: true,
   pushTag: true,
   pushAllTags: true,
   clone: true,

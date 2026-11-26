@@ -34,7 +34,16 @@
 // reachable from) and `upstreamGone` (its upstream was deleted on the remote), so the Repository panel
 // can mark branches that are safe to clean up. Additions: a 1.4 plugin sends neither, and no branch is
 // marked.
-export const VERSION_CONTROL_PROTOCOL_VERSION: string = '1.5';
+// 1.6 (#887) adds `deleteRemoteBranch`, behind `deleteRemoteBranches`, so Delete Merged Branches can
+// remove a merged branch's copy on its remote — only while the remote still has the commit Studio
+// expects — and, so nothing that must stay is offered: the refs' optional `defaultBranch`, each
+// remote's `defaultBranch`, a remote-tracking branch's `mergedInto`, and a local branch's
+// `otherWorktree`. Additions: a 1.5 plugin offers none of them, and only local branches are deleted.
+// 1.7 (#1255) adds the failure codes `ssh-key-rejected` and `ssh-host-unknown`, with a failure's optional
+// `sshHost` (the server SSH named) and `output` (the tool's own words), so Studio can say in the user's
+// language what to do about the two SSH failures a non-interactive run cannot get past. Additions: a
+// 1.6 plugin sends none of them, and its `error` is shown as it always was.
+export const VERSION_CONTROL_PROTOCOL_VERSION: string = '1.7';
 
 /**
  * Names one optional capability a version-control plugin can advertise.
@@ -123,7 +132,13 @@ export type VersionControlCapability =
   /**
    * Settling a conflicted file whole, by taking one side of it (1.4, #1321).
    */
-  | 'resolveConflicts';
+  | 'resolveConflicts'
+
+  /**
+   * Deleting a branch on a remote, so a merged branch can be cleaned up there as well as locally
+   * (1.6, #887).
+   */
+  | 'deleteRemoteBranches';
 
 /**
  * Lists every optional capability. Closed on purpose, like a decoder's formats: a capability is the join
@@ -146,6 +161,7 @@ export const VERSION_CONTROL_CAPABILITIES: readonly VersionControlCapability[] =
   'stopTracking',
   'pathHistory',
   'resolveConflicts',
+  'deleteRemoteBranches',
 ];
 
 /**
@@ -153,7 +169,7 @@ export const VERSION_CONTROL_CAPABILITIES: readonly VersionControlCapability[] =
  * (#1043).
  *
  * Every other capability must be declared and confirmed both: a manifest is a promise, the handshake
- * the plugin answering. These two arrived after builds that refuse a manifest naming a capability they
+ * the plugin answering. These arrived after builds that refuse a manifest naming a capability they
  * do not know — and the curated index is read by every installed build — so a manifest declaring them
  * would make the plugin uninstallable on those builds. A plugin confirms them at start-up instead, and
  * an older build, which drops capabilities it does not know from a handshake, never offers them.
@@ -163,6 +179,7 @@ export const VCS_HANDSHAKE_CAPABILITIES: readonly VersionControlCapability[] = [
   'stopTracking',
   'pathHistory',
   'resolveConflicts',
+  'deleteRemoteBranches',
 ];
 
 /**
@@ -446,6 +463,13 @@ export interface VcsBranch {
    * Absent when the upstream exists or there is none.
    */
   readonly upstreamGone?: boolean;
+
+  /**
+   * Gets the path of another worktree that has this branch checked out, when one does (1.6, #887). Git
+   * refuses to delete such a branch. Absent for the branch checked out here (see `current`), for one
+   * checked out nowhere, and from a 1.5 plugin.
+   */
+  readonly otherWorktree?: string;
 }
 
 /**
@@ -461,6 +485,12 @@ export interface VcsRemoteBranch {
    * Gets the identifier of the commit it points at.
    */
   readonly commit: string;
+
+  /**
+   * Gets the default branch this remote-tracking branch is already merged into by ancestry, when it is
+   * (1.6, #887): what it holds is safe to delete on the remote. Absent otherwise and from a 1.5 plugin.
+   */
+  readonly mergedInto?: string;
 }
 
 /**
@@ -481,6 +511,13 @@ export interface VcsRemote {
    * Gets the remote's branches, as last fetched.
    */
   readonly branches: readonly VcsRemoteBranch[];
+
+  /**
+   * Gets the remote's own default branch, without the remote (`develop` for `upstream/develop`), as its
+   * `HEAD` names it, when the plugin could tell (1.6, #887). Never offered for deletion. Absent when the
+   * remote's `HEAD` is unknown, and from a 1.5 plugin.
+   */
+  readonly defaultBranch?: string;
 }
 
 /**
@@ -516,6 +553,12 @@ export interface VcsRefs {
    * Gets the tags. Empty from a plugin without `tags`.
    */
   readonly tags: readonly VcsTag[];
+
+  /**
+   * Gets the default branch merges are measured against (see `VcsBranch.mergedInto`), when the plugin
+   * could tell which it is (1.6, #887). Absent from a 1.5 plugin.
+   */
+  readonly defaultBranch?: string;
 }
 
 /**
@@ -660,6 +703,10 @@ export interface VcsPushTarget {
  * - `untrusted`: the host would not send the request because the user has not said they trust the
  *   repository, or has said they do not. The host answers this itself; the plugin never runs in such
  *   a repository.
+ * - `ssh-key-rejected`: the SSH server refused every key offered. Usually a key with a passphrase,
+ *   which a run with no terminal cannot unlock; it has to be loaded into ssh-agent first (#1255).
+ * - `ssh-host-unknown`: SSH does not know the server's host key yet, and a run with no terminal cannot
+ *   ask the user to accept it (#1255). Never sent for a host key that has changed.
  */
 export type VcsErrorCode =
   | 'conflicted'
@@ -669,7 +716,25 @@ export type VcsErrorCode =
   | 'skip-unsupported'
   | 'unsupported'
   | 'refused'
-  | 'untrusted';
+  | 'untrusted'
+  | 'ssh-key-rejected'
+  | 'ssh-host-unknown';
+
+/**
+ * Names an SSH server, as a failure reports it so the remedy can name it too (#1255). Untrusted: it is
+ * read from a plugin, and checked before it is put into a command for the user to run.
+ */
+export interface VcsSshHost {
+  /**
+   * Gets the server's host name or address, as SSH connects to it: an alias already resolved.
+   */
+  readonly host: string;
+
+  /**
+   * Gets the server's port, when it is not SSH's own 22.
+   */
+  readonly port?: number;
+}
 
 /**
  * Describes what a plugin says it is, in answer to `initialize`.
@@ -930,6 +995,17 @@ export interface VersionControlOperations {
     readonly params: { readonly remote: string; readonly name: string };
     readonly result: Done;
   };
+
+  /**
+   * Deletes a branch on a remote, named without the remote (`feature`, not `origin/feature`), and its
+   * remote-tracking branch with it (1.6, #887) — only while the remote's branch is still at `expected`,
+   * so commits pushed since are never destroyed (the remote refuses, and the request fails). A branch
+   * the remote no longer has counts as deleted. Gated by `deleteRemoteBranches`.
+   */
+  readonly deleteRemoteBranch: {
+    readonly params: { readonly remote: string; readonly name: string; readonly expected: string };
+    readonly result: Done;
+  };
   readonly pushTag: {
     readonly params: { readonly remote: string; readonly name: string };
     readonly result: Done;
@@ -1070,6 +1146,7 @@ export const VCS_REPOSITORY_OPS: readonly VersionControlOp[] = [
   'createTag',
   'deleteTag',
   'deleteRemoteTag',
+  'deleteRemoteBranch',
   'pushTag',
   'pushAllTags',
 ];
@@ -1113,6 +1190,7 @@ export const VCS_NETWORK_OPS: readonly VersionControlOp[] = [
   'fetchRemote',
   'pruneRemote',
   'deleteRemoteTag',
+  'deleteRemoteBranch',
   'pushTag',
   'pushAllTags',
   'clone',
@@ -1148,6 +1226,7 @@ export const VCS_OP_CAPABILITY: Readonly<
   createTag: 'tags',
   deleteTag: 'tags',
   deleteRemoteTag: 'tags',
+  deleteRemoteBranch: 'deleteRemoteBranches',
   pushTag: 'tags',
   pushAllTags: 'tags',
   clone: 'clone',
@@ -1222,6 +1301,18 @@ export type VersionControlResponse<Op extends VersionControlOp = VersionControlO
        * failure.
        */
       readonly code?: VcsErrorCode;
+
+      /**
+       * Gets the SSH server a `ssh-key-rejected` or `ssh-host-unknown` failure is about, when it is
+       * known.
+       */
+      readonly sshHost?: VcsSshHost;
+
+      /**
+       * Gets the tool's own output for the failure, when `error` is a rewording of it: kept so the
+       * user can still read exactly what the tool said.
+       */
+      readonly output?: string;
     };
 
 /**

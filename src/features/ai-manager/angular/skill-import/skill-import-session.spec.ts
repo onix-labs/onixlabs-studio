@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { GLOBAL_SCOPE } from '@shared/api/ai-types';
-import type { PromptProfile } from '@shared/api/prompt-profile-channels';
+import type { PersonaEntry } from '@shared/api/persona-channels';
 import type {
   SkillImportCommit,
   SkillImportDraft,
@@ -60,10 +60,33 @@ function plan(
     root: '/source',
     kind: 'convert',
     entries,
-    profiles: [],
+    persona: [],
     existingSkills: [],
-    existingProfiles: [],
+    existingPersona: [],
     ...overrides,
+  };
+}
+
+/**
+ * Builds a persona entry the user wrote, in the core.
+ * @param id The id, which is also its name.
+ * @returns Returns the entry.
+ */
+function personaEntry(id: string): PersonaEntry {
+  return {
+    id,
+    name: id,
+    text: 'x',
+    why: '',
+    tags: [],
+    links: [],
+    scope: GLOBAL_SCOPE,
+    layer: 'core',
+    enabled: true,
+    confidence: 1,
+    confirmed: '',
+    author: 'user',
+    locked: true,
   };
 }
 
@@ -99,7 +122,7 @@ describe('SkillImportSession (#1263)', () => {
     signals = [];
     const transfer: Partial<SkillTransfer> = {
       choose: (): Promise<SkillImportPlan> => Promise.resolve(chosen),
-      chooseProfiles: (): Promise<SkillImportPlan> => Promise.resolve(chosen),
+      choosePersona: (): Promise<SkillImportPlan> => Promise.resolve(chosen),
       discard: (id: string): Promise<void> => {
         discarded.push(id);
         return Promise.resolve();
@@ -108,7 +131,7 @@ describe('SkillImportSession (#1263)', () => {
         commits.push(commit);
         return Promise.resolve({
           skills: commit.skills.length,
-          profiles: commit.profiles.length,
+          persona: commit.persona.length,
           linksRewritten: 2,
           error: commitErrors.shift() ?? null,
         });
@@ -241,16 +264,14 @@ describe('SkillImportSession (#1263)', () => {
     chosen = plan([entry('alpha'), entry('bravo')], {
       kind: 'restore',
       existingSkills: ['bravo'],
-      profiles: [
-        { id: 'terse', name: 'Terse', scope: GLOBAL_SCOPE, instructions: 'x', enabled: true },
-      ],
-      existingProfiles: ['terse'],
+      persona: [personaEntry('terse')],
+      existingPersona: ['terse'],
     });
     const outcome: Promise<string | null> = session.start({ providerId: 'claude', model: '' });
 
     expect(await next()).toMatchObject({ kind: 'clash', subject: 'skill', name: 'bravo' });
     session.answer({ action: 'replace', all: false });
-    expect(await next()).toMatchObject({ kind: 'clash', subject: 'profile', name: 'terse' });
+    expect(await next()).toMatchObject({ kind: 'clash', subject: 'persona', name: 'terse' });
     session.answer({ action: 'skip', all: false });
     expect((await next())?.kind).toBe('summary');
     session.answer('import');
@@ -261,7 +282,7 @@ describe('SkillImportSession (#1263)', () => {
       ['alpha', false],
       ['bravo', true],
     ]);
-    expect(commits[0].profiles).toEqual([]);
+    expect(commits[0].persona).toEqual([]);
   });
 
   it('start_whenNoAi_neverOffersImprovements', async () => {
@@ -275,29 +296,22 @@ describe('SkillImportSession (#1263)', () => {
     expect(commits[0].skills).toHaveLength(1);
   });
 
-  it('start_whenImportingProfiles_asksOnlyClashesAndHonoursUnticking', async () => {
-    const profile: (id: string) => PromptProfile = (id: string): PromptProfile => ({
-      id,
-      name: id,
-      scope: GLOBAL_SCOPE,
-      instructions: 'x',
-      enabled: true,
-    });
+  it('start_whenImportingIntoThePersona_asksOnlyClashesAndHonoursUnticking', async () => {
     chosen = plan([], {
       kind: 'restore',
-      profiles: [profile('terse'), profile('tone'), profile('house')],
-      existingProfiles: ['terse'],
+      persona: [personaEntry('terse'), personaEntry('tone'), personaEntry('house')],
+      existingPersona: ['terse'],
     });
-    const outcome: Promise<string | null> = session.start(null, 'profiles');
+    const outcome: Promise<string | null> = session.start(null, 'persona');
 
-    expect(await next()).toMatchObject({ kind: 'clash', subject: 'profile', name: 'terse' });
+    expect(await next()).toMatchObject({ kind: 'clash', subject: 'persona', name: 'terse' });
     session.answer({ action: 'rename', name: 'terse-2', all: false });
     expect((await next())?.kind).toBe('summary');
-    session.includeProfile('tone', false);
+    session.includePersonaEntry('tone', false);
     session.answer('import');
     await outcome;
 
-    expect(commits[0].profiles.map((item) => [item.profile.id, item.replace])).toEqual([
+    expect(commits[0].persona.map((item) => [item.entry.id, item.replace])).toEqual([
       ['terse-2', false],
       ['house', false],
     ]);

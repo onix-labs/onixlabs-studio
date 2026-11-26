@@ -1,5 +1,5 @@
-// One query in the well: its tool strip, then the editor over its results in the shared panel layout,
-// so the divider between them drags and is remembered.
+// One query in the well: its tool strip, then the editor over its results, with a divider between
+// them that drags and is remembered.
 
 :host {
   display: flex;
@@ -18,6 +18,11 @@
 .query__database {
   flex: 1 1 0;
   min-inline-size: 7rem;
+}
+
+// The results stand on the surface every panel shares.
+.query__results-pane {
+  background: var(--panel-surface-color);
 }
 
 .query__editor {
@@ -205,4 +210,9 @@
   padding: 0.75rem;
   font-size: 0.75rem;
   color: var(--form-muted-foreground-color);
+
+  // Why a plan could not be made: the engine's own words, in the error tone.
+  &--error {
+    color: var(--error-color);
+  }
 }

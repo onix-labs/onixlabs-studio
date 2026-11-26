@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { AiManagerNavigation } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
 
 import type { AgentConversationSummary } from '@shared/api/agent-conversation-channels';
 import { AgentConversations } from '@shared/angular/services/agent-conversations/agent-conversations';
@@ -75,6 +76,22 @@ describe('ConversationRetentionPrompt', () => {
     await press('retention-yes');
 
     expect(deleted).toEqual(['a', 'b']);
+  });
+
+  it('saysThePersonaKeepsWhatWasLearned_andLinksToIt', (): void => {
+    // #1519: deleting conversations never touches the persona.
+    const note: HTMLElement | null | undefined = windows.contentHost?.querySelector<HTMLElement>(
+      '[data-testid="retention-persona"]',
+    );
+    let opened: string | null = null;
+    Reflect.set(TestBed.inject(AiManagerNavigation), 'open', (section: string): void => {
+      opened = section;
+    });
+
+    expect(note?.textContent).toContain('Your persona keeps anything learned from them.');
+    note?.querySelector('button')?.click();
+
+    expect(opened).toBe('persona');
   });
 
   it('no_keepsThemAll', async (): Promise<void> => {

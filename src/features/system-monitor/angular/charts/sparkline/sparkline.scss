@@ -1,0 +1,27 @@
+// A sparkline fills the box its host gives it; the drawing stretches to it.
+:host {
+  display: block;
+  position: relative;
+  min-inline-size: 0;
+}
+
+.sparkline {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  overflow: visible;
+}
+
+.sparkline__area {
+  fill: var(--accent-color);
+  fill-opacity: 0.1;
+}
+
+.sparkline__line {
+  fill: none;
+  stroke: var(--accent-color);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

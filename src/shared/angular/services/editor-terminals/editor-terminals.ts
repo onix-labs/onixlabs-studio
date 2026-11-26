@@ -1,52 +1,38 @@
 import { inject, Service, signal, WritableSignal } from '@angular/core';
+import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
 import { Log } from '@shared/angular/services/log/log';
 
 /**
- * Holds the panel state for a single code tab's docked run terminal.
+ * The identifier of a code tab's run-terminal panel in its dock.
  */
-interface PanelState {
-  /**
-   * Gets a value indicating whether the terminal panel is currently shown.
-   */
-  readonly visible: boolean;
+export const EDITOR_TERMINAL_PANEL_ID: string = 'terminal';
 
-  /**
-   * Gets a value indicating whether the terminal panel has ever been shown, and so is mounted. The
-   * panel stays mounted once shown so its session survives being hidden.
-   */
-  readonly mounted: boolean;
-
-  /**
-   * Gets the command queued to run once the terminal is ready, or null when none is pending.
-   */
-  readonly pending: string | null;
+/**
+ * Gets the identifier of a code tab's run-terminal session.
+ * @param tabId The owning tab identifier.
+ * @returns Returns the session's identifier.
+ */
+export function editorTerminalId(tabId: string): string {
+  return `run-${tabId}`;
 }
 
 /**
- * Holds the panel state assumed for a code tab that has no entry yet.
- */
-const DEFAULT_STATE: PanelState = {
-  visible: false,
-  mounted: false,
-  pending: null,
-};
-
-/**
- * Owns the docked run-terminal panel state for code tabs: whether each panel is shown and any command
- * queued to run once the terminal is ready. Where the panel docks is not state here — it belongs to
- * the shared panel layout's persisted arrangement.
- *
- * State is read reactively (templates calling these accessors re-evaluate when it changes). The panel
- * stays mounted once first shown so its terminal session is preserved while hidden.
+ * Runs commands in code tabs' docked terminals: holds the command queued to run in each once its terminal
+ * is ready, and opens its panel. The tab's dock is what knows whether the panel is open.
  */
 @Service()
 export class EditorTerminals {
   /**
-   * Holds the panel state for every code tab, keyed by tab identifier.
+   * Holds the command queued in each tab's terminal, by the tab's identifier.
    */
-  private readonly states: WritableSignal<ReadonlyMap<string, PanelState>> = signal<
-    ReadonlyMap<string, PanelState>
-  >(new Map<string, PanelState>());
+  private readonly queued: WritableSignal<ReadonlyMap<string, string>> = signal<
+    ReadonlyMap<string, string>
+  >(new Map<string, string>());
+
+  /**
+   * Holds the tabs' docks, which the terminal's panel is opened in.
+   */
+  private readonly docks: TabDocks = inject(TabDocks);
 
   /**
    * Holds the structured logger.
@@ -54,58 +40,15 @@ export class EditorTerminals {
   private readonly log: Log = inject(Log);
 
   /**
-   * Returns whether a tab's terminal panel is currently shown.
-   * @param id The owning tab identifier.
-   * @returns Returns true when the panel is shown.
-   */
-  public isVisible(id: string): boolean {
-    return this.stateOf(id).visible;
-  }
-
-  /**
-   * Returns whether a tab's terminal panel is mounted (has been shown at least once).
-   * @param id The owning tab identifier.
-   * @returns Returns true when the panel is mounted.
-   */
-  public isMounted(id: string): boolean {
-    return this.stateOf(id).mounted;
-  }
-
-  /**
-   * Toggles the visibility of a tab's terminal panel.
-   * @param id The owning tab identifier.
-   */
-  public toggle(id: string): void {
-    if (this.isVisible(id)) {
-      this.update(id, { visible: false });
-    } else {
-      this.show(id);
-    }
-  }
-
-  /**
-   * Shows a tab's terminal panel, mounting it if needed.
-   * @param id The owning tab identifier.
-   */
-  public show(id: string): void {
-    this.update(id, { visible: true, mounted: true });
-  }
-
-  /**
-   * Hides a tab's terminal panel, leaving it mounted so its session is preserved.
-   * @param id The owning tab identifier.
-   */
-  public hide(id: string): void {
-    this.update(id, { visible: false });
-  }
-
-  /**
-   * Queues a command to run in a tab's terminal, showing the panel.
+   * Queues a command to run in a tab's terminal, opening its panel.
    * @param id The owning tab identifier.
    * @param command The command to run.
    */
   public queueCommand(id: string, command: string): void {
-    this.update(id, { visible: true, mounted: true, pending: command });
+    this.queued.update((queued: ReadonlyMap<string, string>): ReadonlyMap<string, string> =>
+      new Map<string, string>(queued).set(id, command),
+    );
+    this.docks.open(id, EDITOR_TERMINAL_PANEL_ID);
     this.log.info('EditorTerminals', `Queued terminal command`, id, command);
   }
 
@@ -115,7 +58,7 @@ export class EditorTerminals {
    * @returns Returns the pending command, or null when none is queued.
    */
   public pending(id: string): string | null {
-    return this.stateOf(id).pending;
+    return this.queued().get(id) ?? null;
   }
 
   /**
@@ -124,40 +67,23 @@ export class EditorTerminals {
    * @returns Returns the pending command, or null when none is queued.
    */
   public takePending(id: string): string | null {
-    const pending: string | null = this.stateOf(id).pending;
+    const pending: string | null = this.pending(id);
     if (pending !== null) {
-      this.update(id, { pending: null });
+      this.remove(id);
     }
     return pending;
   }
 
   /**
-   * Removes a tab's panel state. Called when the tab closes.
+   * Forgets a tab's pending command. Called when the tab closes.
    * @param id The owning tab identifier.
    */
   public remove(id: string): void {
-    const next: Map<string, PanelState> = new Map<string, PanelState>(this.states());
-    next.delete(id);
-    this.states.set(next);
-  }
-
-  /**
-   * Gets the current state for a tab, falling back to the default state.
-   * @param id The owning tab identifier.
-   * @returns Returns the tab's panel state.
-   */
-  private stateOf(id: string): PanelState {
-    return this.states().get(id) ?? DEFAULT_STATE;
-  }
-
-  /**
-   * Applies a partial update to a tab's panel state.
-   * @param id The owning tab identifier.
-   * @param patch The fields to change.
-   */
-  private update(id: string, patch: Partial<PanelState>): void {
-    const next: Map<string, PanelState> = new Map<string, PanelState>(this.states());
-    next.set(id, { ...this.stateOf(id), ...patch });
-    this.states.set(next);
+    this.queued.update(
+      (queued: ReadonlyMap<string, string>): ReadonlyMap<string, string> =>
+        new Map<string, string>(
+          [...queued].filter(([other]: readonly [string, string]): boolean => other !== id),
+        ),
+    );
   }
 }

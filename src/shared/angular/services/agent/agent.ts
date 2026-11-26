@@ -46,8 +46,9 @@ import {
   NotificationAction,
   Notifications,
 } from '@shared/angular/services/notifications/notifications';
+import { CoreNotificationType } from '@shared/angular/services/notifications/core-notification-types';
 import { AgentTasks } from '@shared/angular/services/agent-tasks/agent-tasks';
-import { PromptProfiles } from '@shared/angular/services/prompt-profiles/prompt-profiles';
+import { Persona } from '@shared/angular/services/persona/persona';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -706,9 +707,9 @@ export class Agent {
   private readonly settings: Settings = inject(Settings);
 
   /**
-   * Holds the user's prompt profiles, resolved against each run's surface and language (#300).
+   * Holds the user's persona, whose core is resolved against each run's surface and language (#1514).
    */
-  private readonly promptProfiles: PromptProfiles = inject(PromptProfiles);
+  private readonly persona: Persona = inject(Persona);
 
   /**
    * Holds the host's reading of the owning document's language, or null for a host with no document.
@@ -974,7 +975,7 @@ export class Agent {
 
   /**
    * Holds the conversation's brief: standing instructions Studio gives every turn of this conversation
-   * alone, on top of the user's prompt profiles — what a new project is, and the starter skill it began
+   * alone, on top of the persona's core — what a new project is, and the starter skill it began
    * from (#806). Null for an ordinary conversation; a new chat or a restored one drops it.
    */
   private briefText: string | null = null;
@@ -1594,11 +1595,12 @@ export class Agent {
       seed === null
         ? prompt
         : `Summary of the conversation so far, for context:\n\n${seed}\n\n---\n\n${prompt}`;
-    // The user's standing instructions (#300): resolved here, where the surface and the owning
-    // document's language are both known, and threaded through the run as one string so core applies
-    // it in one place for every harness.
+    // The persona's core (#1514), which replaced prompt profiles (#300): resolved here, where the
+    // surface and the owning document's language are both known, and threaded through the run as one
+    // string so core applies it in one place for every harness. Memories are not sent; the agent
+    // searches for them (#1515).
     const language: string | undefined = this.languageSource?.();
-    const standing: string = this.promptProfiles.resolve(surface ?? 'editor', language ?? null);
+    const standing: string = this.persona.resolve(surface ?? 'editor', language ?? null);
     this.busy.set(true);
     this.activeRequestId = this.runtime.run(this.provider(), runPrompt, {
       agentSessionId: this.agentSessionId,
@@ -1938,7 +1940,7 @@ export class Agent {
 
   /**
    * Gives this conversation a brief: standing instructions sent with every turn, alongside the user's
-   * prompt profiles, until a new chat or a restored conversation replaces it.
+   * persona's core, until a new chat or a restored conversation replaces it.
    * @param text The brief, or null for none.
    */
   public setBrief(text: string | null): void {
@@ -2603,7 +2605,7 @@ export class Agent {
       route: watching ? 'history-only' : 'default',
       // Seen on the desktop while the user is elsewhere, watching or not (#927).
       desktop: true,
-      finished: { kind: 'agent', failed },
+      type: failed ? CoreNotificationType.AgentFailed : CoreNotificationType.AgentFinished,
       ...(tabId === undefined ? {} : { reveal: (): void => this.tabs.activate(tabId) }),
     });
   }
@@ -2662,7 +2664,8 @@ export class Agent {
       route: watching ? 'history-only' : 'default',
       // Seen on the desktop while the user is elsewhere, watching or not (#927).
       desktop: true,
-      finished: { kind: 'agent', failed: status === 'failed' },
+      type:
+        status === 'failed' ? CoreNotificationType.AgentFailed : CoreNotificationType.AgentFinished,
       ...(tabId === undefined ? {} : { reveal: (): void => this.tabs.activate(tabId) }),
     });
   }

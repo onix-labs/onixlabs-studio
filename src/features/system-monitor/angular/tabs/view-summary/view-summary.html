@@ -1,0 +1,14 @@
+@if (items().length > 0) {
+  <ul class="view-summary" [attr.aria-label]="ariaLabel()">
+    @for (item of items(); track item.label) {
+      <li
+        class="view-summary__item"
+        [class.view-summary__item--warning]="item.tone === 'warning'"
+        [class.view-summary__item--danger]="item.tone === 'danger'"
+      >
+        <span class="view-summary__label">{{ item.label }}</span>
+        <strong class="view-summary__value" [title]="item.value">{{ item.value }}</strong>
+      </li>
+    }
+  </ul>
+}

@@ -20,7 +20,7 @@ import type { AuthAction, AuthState } from './auth';
  * an `input` request, and `omit` on a `tools` request so this harness keeps its own clarifying-question
  * tool instead of being handed Studio's as well.
  */
-export const PROTOCOL_VERSION: string = '1.10.0';
+export const PROTOCOL_VERSION: string = '1.20.0';
 
 /**
  * The Studio protocol version that knows the `turn-started` event (1.17.0, #1070).
@@ -125,6 +125,12 @@ export interface TurnRequest {
    * the permission gate.
    */
   readonly excludedCommands?: readonly string[];
+  /**
+   * Whether the workspace's own configuration may be loaded (protocol 1.20.0, #1504): its CLAUDE.md,
+   * hooks, MCP servers and permission rules. `false` for a folder the user has not trusted; absent from
+   * an older Studio, which means it may.
+   */
+  readonly projectSettings?: boolean;
   /**
    * Whether this harness's own tools are offered (protocol 1.16.0, #965). `'none'` keeps the model to
    * Studio's tools and its clarifying question; absent from an older Studio, which means `'all'`.

@@ -11,6 +11,8 @@ import { Decoders } from './decoders';
 import { JitCaptureResult } from '@shared/api/jit-capture';
 import { JitCapture } from './jit-capture';
 
+import { RunToken, RunTokens } from '../process/launch';
+import { UNTRUSTED_FOLDER_REASON } from '../repository-trust';
 /**
  * Hosts the decoder registry and answers the renderer's decode requests.
  *
@@ -33,6 +35,26 @@ export class DecoderHost {
    * Holds the JIT capture, which runs a program rather than decoding a file.
    */
   private readonly jit: JitCapture = new JitCapture();
+
+  /**
+   * Holds the open workspaces a program to run must lie within.
+   */
+  private readonly scope: { isWithin(target: unknown): boolean };
+
+  /**
+   * Issues the run tokens a program to run needs (#1504): one only for a folder the user trusts.
+   */
+  private readonly tokens: RunTokens;
+
+  /**
+   * Initializes a new instance of the {@link DecoderHost} class.
+   * @param scope The open workspaces a program to run must lie within.
+   * @param tokens Issues the run tokens a program to run needs.
+   */
+  public constructor(scope: { isWithin(target: unknown): boolean }, tokens: RunTokens) {
+    this.scope = scope;
+    this.tokens = tokens;
+  }
 
   /**
    * Registers every contributed decoder and the decode IPC handler.
@@ -102,9 +124,19 @@ export class DecoderHost {
     if (typeof assemblyPath !== 'string' || assemblyPath.length === 0) {
       return Promise.resolve({ ok: false, error: 'No assembly to run.' });
     }
+    // ⛔ This runs a program. It must be one the open workspace built, and the workspace trusted: the
+    // path comes from the renderer, and the project's own build could name any file (#1504).
+    if (!this.scope.isWithin(assemblyPath)) {
+      logger.warn('DecoderHost', 'Refused to run an assembly outside the open workspace');
+      return Promise.resolve({ ok: false, error: 'That program is not in the open workspace.' });
+    }
+    const token: RunToken | null = this.tokens.issue(assemblyPath);
+    if (token === null) {
+      return Promise.resolve({ ok: false, error: UNTRUSTED_FOLDER_REASON });
+    }
     const pattern: string =
       typeof methodPattern === 'string' && methodPattern.length > 0 ? methodPattern : '*';
-    return this.jit.capture(assemblyPath, pattern, tier === 'tier0' ? 'tier0' : 'full-opts');
+    return this.jit.capture(assemblyPath, pattern, tier === 'tier0' ? 'tier0' : 'full-opts', token);
   }
 
   /**

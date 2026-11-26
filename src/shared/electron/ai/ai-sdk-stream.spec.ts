@@ -97,7 +97,7 @@ const PROMPTED: readonly string[] = [
   'delete_binary_bytes',
   'delete_model',
   'delete_path',
-  'delete_prompt_profile',
+  'delete_persona_entry',
   'delete_run_configurations',
   'delete_skill',
   'download_model',
@@ -112,7 +112,7 @@ const PROMPTED: readonly string[] = [
   'run_active_document',
   'run_container',
   'run_database_query',
-  'save_prompt_profile',
+  'save_persona_entry',
   'save_run_configurations',
   'save_skill',
   'send_api_request',
@@ -144,9 +144,10 @@ const UNPROMPTED: readonly string[] = [
   'list_database_queries',
   'list_local_models',
   'list_log_sessions',
+  'list_processes',
   'list_open_documents',
+  'list_persona',
   'list_plugins',
-  'list_prompt_profiles',
   'list_run_configurations',
   'list_skill_tags',
   'list_skills',
@@ -163,6 +164,7 @@ const UNPROMPTED: readonly string[] = [
   'read_binary_selection',
   'read_container_logs',
   'read_document',
+  'read_resource',
   'read_machine_facts',
   'read_skill',
   'read_source_control_status',
@@ -556,6 +558,12 @@ describe('ai sdk tools', () => {
       expect(
         describeStandingInstruction({ name: 'Terse', instructions: '  Be brief.\nAlways.' }),
       ).toBe('Terse: "Be brief."');
+    });
+
+    it('quotesAPersonaEntrysText', () => {
+      expect(describeStandingInstruction({ name: 'Trains', text: 'Prefers trains.' })).toBe(
+        'Trains: "Prefers trains."',
+      );
     });
 
     it('fallsBackToTheId_thenToUnnamed', () => {

@@ -194,8 +194,13 @@ import { isTestAdapterCapability, TestAdapterCapability } from './test-adapter-p
  * listens on and speaks one ordinary DAP session over it, as Delve's `dlv dap` does — unlike
  * `tcp-server`, whose server hosts js-debug's tree of sessions. A manifest naming it is refused by an
  * older build, which is why this is a version. Adds only.
+ *
+ * `1.31.0` adds the `liveServers` contribution point (#1062): a plugin process that serves a workspace
+ * folder's static files on 127.0.0.1 and reloads the pages it served when their files change, speaking
+ * the live-server protocol. Unkeyed and chosen once, like a container engine: the installed one with the
+ * highest priority serves every workspace. Adds only, on the same terms as every minor before it.
  */
-export const PLUGIN_API_VERSION: string = '1.30.0';
+export const PLUGIN_API_VERSION: string = '1.31.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -625,6 +630,42 @@ export interface ManifestTestAdapter {
    * confirms.
    */
   readonly capabilities: readonly TestAdapterCapability[];
+
+  /**
+   * Gets how to start the plugin.
+   */
+  readonly command: ManifestCommand;
+
+  /**
+   * Gets this contribution's own entry point within the installed payload, or undefined to use the
+   * provision's. See {@link ManifestLanguageServer.entryPoint}.
+   */
+  readonly entryPoint?: string;
+}
+
+/**
+ * Describes a live server a plugin contributes (#1062): a process that serves a workspace folder's
+ * static files over HTTP on 127.0.0.1, and reloads the pages it served when their files change.
+ *
+ * Keyed by nothing, like a container engine: one serves every workspace, so the installed one with the
+ * highest priority is used. Studio names the folder and checks it lies in an open workspace; the plugin
+ * serves nothing outside it.
+ */
+export interface ManifestLiveServer {
+  /**
+   * Gets the identifier the plugin is registered under.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name, such as `Live Server`.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets the priority used to pick between installed live servers, higher first.
+   */
+  readonly priority: number;
 
   /**
    * Gets how to start the plugin.
@@ -1303,6 +1344,11 @@ export interface ManifestContributions {
    * Gets the test adapters contributed (1.28.0).
    */
   readonly testAdapters?: readonly ManifestTestAdapter[];
+
+  /**
+   * Gets the live servers contributed (1.31.0).
+   */
+  readonly liveServers?: readonly ManifestLiveServer[];
 }
 
 /**
@@ -2026,6 +2072,26 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
       });
     },
   );
+  const liveServers: ManifestLiveServer[] = [];
+  readContributionList(
+    source['liveServers'],
+    'contributes.liveServers',
+    errors,
+    (entry: Record<string, unknown>, path: string): void => {
+      const command: ManifestCommand | null = readCommand(
+        entry['command'],
+        `${path}.command`,
+        errors,
+      );
+      liveServers.push({
+        id: readId(entry, 'id', `${path}.`, errors),
+        displayName: readString(entry, 'displayName', `${path}.`, errors),
+        priority: readPriority(entry, path, errors),
+        command: command ?? { kind: 'executable' },
+        entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
+      });
+    },
+  );
   if (
     languageServers.length === 0 &&
     debugAdapters.length === 0 &&
@@ -2036,11 +2102,12 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
     hosting.length === 0 &&
     databaseEngines.length === 0 &&
     packageManagers.length === 0 &&
-    testAdapters.length === 0
+    testAdapters.length === 0 &&
+    liveServers.length === 0
   ) {
     errors.add(
       'contributes',
-      'must contribute at least one language server, debug adapter, decoder, container engine, agent harness, version-control system, code host, database engine, package manager or test adapter',
+      'must contribute at least one language server, debug adapter, decoder, container engine, agent harness, version-control system, code host, database engine, package manager, test adapter or live server',
     );
   }
   return {
@@ -2054,6 +2121,7 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
     databaseEngines,
     packageManagers,
     testAdapters,
+    liveServers,
   };
 }
 
@@ -3031,20 +3099,24 @@ function readRequirements(value: unknown, errors: Errors): readonly ManifestRequ
  * field that is not exactly what it should be is a reason to stop, not to guess — and every reason is
  * reported at once so an author can fix them in one pass.
  * @param value The parsed JSON to validate.
+ * @param supported The plugin API to judge `apiVersion` against, defaulting to the one this build
+ * implements. Lower it to ask what an older build would accept (the curated index chooses between
+ * releases this way in its specs). Raising it above {@link PLUGIN_API_VERSION} is meaningless: the
+ * contributions themselves are still validated against what this build knows.
  * @returns Returns the manifest, or the reasons it was refused.
  */
-export function parsePluginManifest(value: unknown): ManifestResult {
+export function parsePluginManifest(
+  value: unknown,
+  supported: string = PLUGIN_API_VERSION,
+): ManifestResult {
   const errors: Errors = new Errors();
   const source: Record<string, unknown> | null = readObject(value, 'manifest', errors);
   if (source === null) {
     return { manifest: null, errors: errors.items };
   }
   const apiVersion: unknown = source['apiVersion'];
-  if (!isApiCompatible(apiVersion)) {
-    errors.add(
-      'apiVersion',
-      `must be a semver this build can honour; it implements ${PLUGIN_API_VERSION}`,
-    );
+  if (!isApiCompatible(apiVersion, supported)) {
+    errors.add('apiVersion', `must be a semver this build can honour; it implements ${supported}`);
     return { manifest: null, errors: errors.items };
   }
   const id: string = readId(source, 'id', '', errors);

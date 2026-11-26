@@ -1,0 +1,48 @@
+// Text direction, and the fonts for each script.
+//
+// Studio's layout is left to right in every language, Arabic included, as VS Code's and most IDEs' is:
+// the document never takes `dir="rtl"`, so nothing in the layout mirrors. Right-to-left text instead
+// takes its own direction paragraph by paragraph, so an Arabic sentence reads, punctuates and aligns
+// right to left wherever it is shown.
+
+// The interface's translated prose (setting descriptions, dialog and notification messages, hints,
+// empty states, the Welcome screen's lines) takes its direction from its first letter, as `dir="auto"`
+// would, and lines up at that direction's start: an Arabic description reads and aligns right to left
+// beneath its left-aligned setting name. Short labels (buttons, menu items, tabs, titles) are left as
+// they are, and so is anything English, which is why the rule only applies outside English (Pseudo is
+// English too): English text renders exactly as it did. Prose is found by element and by the BEM
+// element names Studio gives it, so a new description or message needs no markup of its own.
+:root:not(:lang(en))
+  :is(
+    p,
+    [class*='__desc'],
+    [class*='__message'],
+    [class*='__hint'],
+    [class*='__note'],
+    [class*='__caption'],
+    [class*='__subtitle']
+  ):not([class*='__title']) {
+  unicode-bidi: plaintext;
+}
+
+// Each script's own fonts, after the system interface font (which draws the Latin letters, digits and
+// product names) and before the generic fallbacks. Browsers fall back per character anyway, but naming
+// the fonts keeps every platform on its best one: without them Windows can reach for SimSun's bitmap
+// strokes, and Linux for whichever CJK font fontconfig ranks first. `lang` also picks Simplified rather
+// than Japanese forms of the characters the two share.
+:root:lang(zh) {
+  --font-sans:
+    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans SC',
+    'Source Han Sans SC', 'WenQuanYi Micro Hei', Roboto, Ubuntu, Cantarell, 'Noto Sans',
+    'Helvetica Neue', Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
+    'Noto Color Emoji';
+}
+
+:root:lang(ar) {
+  --font-sans:
+    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'SF Arabic', 'Geeza Pro',
+    'Noto Sans Arabic', 'Noto Naskh Arabic', 'DejaVu Sans', Tahoma, Roboto, Ubuntu, Cantarell,
+    'Noto Sans', 'Helvetica Neue', Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    'Segoe UI Symbol', 'Noto Color Emoji';
+}

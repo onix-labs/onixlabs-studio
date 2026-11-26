@@ -1,5 +1,6 @@
 import { signal, WritableSignal } from '@angular/core';
 import { describe, expect, it, Mock, vi } from 'vitest';
+import { SystemMonitorTabId } from '../tabs/system-monitor-tab-id';
 import { SystemMonitorCommandHandler, SystemMonitorCommands } from './system-monitor-commands';
 
 /**
@@ -7,45 +8,48 @@ import { SystemMonitorCommandHandler, SystemMonitorCommands } from './system-mon
  */
 interface FakeHandler {
   readonly handler: SystemMonitorCommandHandler;
-  readonly records: WritableSignal<boolean>;
   readonly refresh: Mock;
   readonly clearFilters: Mock;
-  readonly copy: Mock;
   readonly agent: WritableSignal<boolean>;
   readonly toggleAgent: Mock;
+  readonly tab: WritableSignal<SystemMonitorTabId>;
 }
 
 /**
  * Builds a handler whose methods are spies.
- * @param hasRecords The initial has-records state.
  * @returns Returns the fake handler.
  */
-function fakeHandler(hasRecords: boolean = true): FakeHandler {
-  const records: WritableSignal<boolean> = signal<boolean>(hasRecords);
+function fakeHandler(): FakeHandler {
   const refresh: Mock = vi.fn();
   const clearFilters: Mock = vi.fn();
-  const copy: Mock = vi.fn();
   const agent: WritableSignal<boolean> = signal<boolean>(false);
   const toggleAgent: Mock = vi.fn();
+  const tab: WritableSignal<SystemMonitorTabId> = signal<SystemMonitorTabId>(
+    SystemMonitorTabId.Overview,
+  );
   return {
-    records,
+    tab,
     refresh,
     clearFilters,
-    copy,
     agent,
     toggleAgent,
-    handler: { hasRecords: records, agentShown: agent, toggleAgent, refresh, clearFilters, copy },
+    handler: {
+      agentShown: agent,
+      toggleAgent,
+      refresh,
+      clearFilters,
+      tab,
+      selectTab: (next: SystemMonitorTabId): void => tab.set(next),
+    },
   };
 }
 
 describe('SystemMonitorCommands', () => {
-  it('withNoHandler_reportsNoRecordsAndForwardsAreNoOps', () => {
+  it('withNoHandler_forwardsAreNoOps', () => {
     const commands: SystemMonitorCommands = new SystemMonitorCommands();
-    expect(commands.hasRecords()).toBe(false);
     expect((): void => {
       commands.refresh();
       commands.clearFilters();
-      commands.copy();
     }).not.toThrow();
   });
 
@@ -55,10 +59,8 @@ describe('SystemMonitorCommands', () => {
     commands.register(fake.handler);
     commands.refresh();
     commands.clearFilters();
-    commands.copy();
     expect(fake.refresh).toHaveBeenCalledOnce();
     expect(fake.clearFilters).toHaveBeenCalledOnce();
-    expect(fake.copy).toHaveBeenCalledOnce();
   });
 
   it('agent_reflectsAndTogglesTheCurrentViewsAgent', () => {
@@ -73,15 +75,6 @@ describe('SystemMonitorCommands', () => {
     expect(fake.toggleAgent).toHaveBeenCalledOnce();
   });
 
-  it('hasRecords_reflectsTheCurrentHandler', () => {
-    const commands: SystemMonitorCommands = new SystemMonitorCommands();
-    const fake: FakeHandler = fakeHandler(false);
-    commands.register(fake.handler);
-    expect(commands.hasRecords()).toBe(false);
-    fake.records.set(true);
-    expect(commands.hasRecords()).toBe(true);
-  });
-
   it('unregister_clearsOnlyTheCurrentHandler', () => {
     const commands: SystemMonitorCommands = new SystemMonitorCommands();
     const first: FakeHandler = fakeHandler();
@@ -94,5 +87,17 @@ describe('SystemMonitorCommands', () => {
     commands.unregister(second.handler);
     commands.refresh();
     expect(second.refresh).toHaveBeenCalledOnce();
+  });
+
+  it('tab_followsTheActiveMonitor_andSelectTabSwitchesIt', () => {
+    const commands: SystemMonitorCommands = new SystemMonitorCommands();
+    expect(commands.tab()).toBeUndefined();
+
+    const fake: FakeHandler = fakeHandler();
+    commands.register(fake.handler);
+    expect(commands.tab()).toBe(SystemMonitorTabId.Overview);
+
+    commands.selectTab(SystemMonitorTabId.Storage);
+    expect(commands.tab()).toBe(SystemMonitorTabId.Storage);
   });
 });

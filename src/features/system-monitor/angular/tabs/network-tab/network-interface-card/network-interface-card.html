@@ -1,0 +1,28 @@
+<app-system-monitor-dashboard-card [icon]="icon()" [heading]="heading()">
+  @if (selected(); as info) {
+    <dl class="network-interface" data-testid="network-interface">
+      <div class="network-interface__row">
+        <dt>Type</dt>
+        <dd [title]="kind()">{{ kind() }}</dd>
+      </div>
+      <div class="network-interface__row">
+        <dt>Status</dt>
+        <dd>
+          @if (info.up) {
+            <app-chip tone="success" [icon]="Icon.CHECK">Up</app-chip>
+          } @else {
+            <app-chip tone="neutral">Down</app-chip>
+          }
+        </dd>
+      </div>
+      @for (fact of facts(); track fact.label) {
+        <div class="network-interface__row">
+          <dt>{{ fact.label }}</dt>
+          <dd [title]="fact.value">{{ fact.value }}</dd>
+        </div>
+      }
+    </dl>
+  } @else {
+    <p class="network-interface__empty">Reading the interfaces…</p>
+  }
+</app-system-monitor-dashboard-card>

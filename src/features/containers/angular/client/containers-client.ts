@@ -16,6 +16,17 @@ import {
 } from '@shared/api/container-types';
 
 /**
+ * Specifies how long after Studio acts on a container the engine's reports about it are taken as the
+ * echo of that action (#1488). Long enough for a slow stop's grace period to run out.
+ */
+const OWN_ACTION_WINDOW_MS: number = 30_000;
+
+/**
+ * Receives an image download's end: the image reference, and how it ended.
+ */
+export type PullListener = (reference: string, result: { ok: boolean; error?: string }) => void;
+
+/**
  * The renderer client for the containers backend contribution (#391): a thin, typed wrapper over the
  * generic {@link Bridge} that names the {@link ContainerChannel} channels so the view never touches
  * `window.bridge` directly. Outside Electron (or before the backend answers) every call degrades to a
@@ -61,6 +72,7 @@ export class ContainersClient {
    * @returns Returns true when the engine accepted the request.
    */
   public start(id: string): Promise<boolean> {
+    this.actedOn(id);
     this.log.trace('containers.client', 'IPC start container', id);
     return this.bridge?.invoke<boolean>(ContainerChannel.Start, id) ?? Promise.resolve(false);
   }
@@ -71,6 +83,7 @@ export class ContainersClient {
    * @returns Returns true when the engine accepted the request.
    */
   public stop(id: string): Promise<boolean> {
+    this.actedOn(id);
     this.log.trace('containers.client', 'IPC stop container', id);
     return this.bridge?.invoke<boolean>(ContainerChannel.Stop, id) ?? Promise.resolve(false);
   }
@@ -82,6 +95,7 @@ export class ContainersClient {
    * @returns Returns true when the engine accepted the request.
    */
   public remove(id: string, volumes: boolean = false): Promise<boolean> {
+    this.actedOn(id);
     this.log.trace('containers.client', 'IPC remove container', id);
     return (
       this.bridge?.invoke<boolean>(ContainerChannel.Remove, id, volumes) ?? Promise.resolve(false)
@@ -140,6 +154,7 @@ export class ContainersClient {
    * @returns Returns true when the engine accepted it.
    */
   public pause(id: string): Promise<boolean> {
+    this.actedOn(id);
     return this.bridge?.invoke<boolean>(ContainerChannel.Pause, id) ?? Promise.resolve(false);
   }
 
@@ -149,6 +164,7 @@ export class ContainersClient {
    * @returns Returns true when the engine accepted it.
    */
   public unpause(id: string): Promise<boolean> {
+    this.actedOn(id);
     return this.bridge?.invoke<boolean>(ContainerChannel.Unpause, id) ?? Promise.resolve(false);
   }
 
@@ -158,6 +174,7 @@ export class ContainersClient {
    * @returns Returns true when the engine accepted it.
    */
   public restart(id: string): Promise<boolean> {
+    this.actedOn(id);
     return this.bridge?.invoke<boolean>(ContainerChannel.Restart, id) ?? Promise.resolve(false);
   }
 
@@ -180,15 +197,80 @@ export class ContainersClient {
    * @param reference The image reference.
    * @returns Returns whether it succeeded, and why not.
    */
-  public pullImage(reference: string): Promise<{ ok: boolean; error?: string }> {
+  public async pullImage(reference: string): Promise<{ ok: boolean; error?: string }> {
     this.log.info('containers.client', 'Pulling image', reference);
-    return (
-      this.bridge?.invoke<{ ok: boolean; error?: string }>(ContainerChannel.PullImage, reference) ??
+    const result: { ok: boolean; error?: string } = await (this.bridge?.invoke<{
+      ok: boolean;
+      error?: string;
+    }>(ContainerChannel.PullImage, reference) ??
       Promise.resolve({
         ok: false,
         error: 'Container engines are only available in the desktop app.',
-      })
-    );
+      }));
+    if (this.bridge !== undefined) {
+      for (const listener of this.pullListeners) {
+        listener(reference, result);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Holds who is told when an image download started from Studio finishes (#1488).
+   */
+  private readonly pullListeners: Set<PullListener> = new Set<PullListener>();
+
+  /**
+   * Subscribes to image downloads started from Studio finishing, however they finished.
+   * @param listener Receives the image reference and how its download ended.
+   * @returns Returns the function that unsubscribes.
+   */
+  public onPullFinished(listener: PullListener): () => void {
+    this.pullListeners.add(listener);
+    return (): void => {
+      this.pullListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Holds when Studio last acted on each container, by identifier, so its own actions are not reported
+   * back to the user as news (#1488).
+   */
+  private readonly actions: Map<string, number> = new Map<string, number>();
+
+  /**
+   * Records that Studio is acting on a container.
+   * @param id The container.
+   */
+  private actedOn(id: string): void {
+    const now: number = Date.now();
+    for (const [known, at] of this.actions) {
+      if (now - at > OWN_ACTION_WINDOW_MS) {
+        this.actions.delete(known);
+      }
+    }
+    this.actions.set(id, now);
+  }
+
+  /**
+   * Determines whether Studio acted on a container a moment ago — stopped, restarted or removed it —
+   * so what the engine reports next is the user's own doing. An engine names a container by its full
+   * identifier, and Studio may have used a shortened one, so either may be the other's prefix.
+   * @param id The container, as the engine names it.
+   * @returns Returns true when Studio acted on it within {@link OWN_ACTION_WINDOW_MS}.
+   */
+  public actedOnRecently(id: string): boolean {
+    const now: number = Date.now();
+    for (const [known, at] of this.actions) {
+      if (
+        now - at <= OWN_ACTION_WINDOW_MS &&
+        id.length > 0 &&
+        (id.startsWith(known) || known.startsWith(id))
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

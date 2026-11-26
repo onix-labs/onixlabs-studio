@@ -37,12 +37,7 @@ import {
   DatabaseFiles,
   OpenDatabaseDocument,
 } from '@shared/angular/services/database-files/database-files';
-import { DOCK_BLUEPRINT } from '@shared/angular/services/dock-layout/dock-blueprint';
-import { DockAutoHide } from '@shared/angular/services/dock-layout/dock-auto-hide';
-import { DockDrag } from '@shared/angular/services/dock-layout/dock-drag';
-import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
-import { DockGeometry } from '@shared/angular/services/dock-layout/dock-geometry';
-import { DockMinimums } from '@shared/angular/services/dock-layout/dock-minimums';
+import { dockProviders } from '@shared/angular/services/dock-layout/dock-providers';
 import {
   DockNode,
   DockSide,
@@ -50,7 +45,6 @@ import {
   StackNode,
 } from '@shared/angular/services/dock-layout/dock-node';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
-import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
@@ -142,20 +136,9 @@ import { DatabaseSelection, DatabaseWorkspace } from '../database-workspace/data
     DatabaseCompletions,
     // The agent's in-app tools, answering for this tab for as long as it is open.
     DatabaseAgentCapabilities,
-    DockTabContext,
-    DockState,
-    DockGeometry,
-    DockMinimums,
-    DockFocus,
-    DockPanelRegistry,
-    DockFloating,
-    DockAutoHide,
-    DockDrag,
-    DockReveal,
     TerminalSessions,
-    PopoutPanels,
-    PanelPopout,
-    { provide: DOCK_BLUEPRINT, useValue: DATABASE_EXPLORER_DOCK_BLUEPRINT },
+    // The dock framework, instantiated per dock-hosting view.
+    ...dockProviders(DATABASE_EXPLORER_DOCK_BLUEPRINT),
     // The agent conversation lives at the view's level, as in every dock-hosting view, so its
     // transcript survives the agent panel being swapped out of its stack.
     Agent,
@@ -248,6 +231,20 @@ export class DatabaseExplorerView implements OnInit, OnDestroy, DatabaseExplorer
   public readonly executing: Signal<boolean> = computed((): boolean => {
     const id: string | null = this.openQueryId();
     return id !== null && this.workspace.running().has(id);
+  });
+
+  /**
+   * Gets whether the open query can be explained: its engine can, and it is neither running nor being
+   * explained.
+   */
+  public readonly canExplain: Signal<boolean> = computed((): boolean => {
+    const id: string | null = this.openQueryId();
+    return (
+      id !== null &&
+      this.workspace.canExplain(id) &&
+      !this.workspace.running().has(id) &&
+      !this.workspace.explaining().has(id)
+    );
   });
 
   /**
@@ -495,6 +492,17 @@ export class DatabaseExplorerView implements OnInit, OnDestroy, DatabaseExplorer
     const id: string | null = this.openQueryId();
     if (id !== null) {
       this.opener.runStatement(id);
+    }
+  }
+
+  /**
+   * Explains the open query as its panel would, selection and all.
+   * @param analyze Whether to run it and report what actually happened.
+   */
+  public explain(analyze: boolean): void {
+    const id: string | null = this.openQueryId();
+    if (id !== null) {
+      this.opener.explain(id, analyze);
     }
   }
 

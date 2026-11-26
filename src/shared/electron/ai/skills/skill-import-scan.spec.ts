@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { GLOBAL_SCOPE } from '@shared/api/ai-types';
-import type { PromptProfile } from '@shared/api/prompt-profile-channels';
+import type { PersonaEntry } from '@shared/api/persona-channels';
 import { SKILL_DESCRIPTION_TARGET } from '@shared/api/skill-channels';
 import { LIBRARY_EXPORT_FORMAT, type SkillImportDraft } from '@shared/api/skill-import-channels';
 import {
@@ -13,7 +13,7 @@ import {
   linkedFiles,
   rewriteSkillLinks,
   scanForSkills,
-  scanProfiles,
+  scanPersona,
   scanSelection,
   type ScannedFolder,
 } from './skill-import-scan';
@@ -206,21 +206,43 @@ describe('scanForSkills', () => {
     expect(found.entries[0]).toMatchObject({ source: 'alpha/SKILL.md', status: 'ready' });
   });
 
-  it('scanForSkills_whenExport_readsSkillsAndProfiles', async () => {
+  it('scanForSkills_whenAnOlderExport_readsItsProfilesAsPersonaEntries', async () => {
     write('manifest.json', JSON.stringify({ format: LIBRARY_EXPORT_FORMAT, version: 1 }));
     write('skills/alpha/SKILL.md', '---\nname: alpha\ndescription: A.\n---\nBody\n');
     write('profiles/terse.md', '---\nname: "Be terse"\nenabled: false\n---\nShort answers.\n');
     const found: ScannedFolder = await scanForSkills(root);
     expect(found.kind).toBe('restore');
     expect(found.entries[0].source).toBe('skills/alpha/SKILL.md');
-    expect(found.profiles).toEqual([
+    expect(found.persona).toEqual([
       {
         id: 'terse',
         name: 'Be terse',
+        text: 'Short answers.',
+        why: '',
+        tags: [],
+        links: [],
         scope: GLOBAL_SCOPE,
-        instructions: 'Short answers.',
+        layer: 'core',
         enabled: false,
+        confidence: 1,
+        confirmed: '',
+        author: 'user',
+        locked: true,
       },
+    ]);
+  });
+
+  it('scanForSkills_whenAnExportHasBoth_prefersThePersonaEntry', async () => {
+    write('manifest.json', JSON.stringify({ format: LIBRARY_EXPORT_FORMAT, version: 2 }));
+    write('profiles/terse.md', '---\nname: "Old"\n---\nOld.\n');
+    write('persona/terse.md', '---\nname: "New"\nlayer: memory\n---\nNew.\n');
+    write('persona/trains.md', '---\nname: "Trains"\nlayer: memory\n---\nLikes trains.\n');
+    const found: ScannedFolder = await scanForSkills(root);
+    expect(
+      found.persona.map((entry: PersonaEntry): [string, string] => [entry.id, entry.name]),
+    ).toEqual([
+      ['terse', 'New'],
+      ['trains', 'Trains'],
     ]);
   });
 
@@ -263,7 +285,7 @@ describe('scanForSkills', () => {
   });
 });
 
-describe('scanProfiles', () => {
+describe('scanPersona', () => {
   let root: string;
 
   beforeEach(() => {
@@ -274,7 +296,7 @@ describe('scanProfiles', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it('scanProfiles_whenMarkdownAndExport_namesEachAndKeepsIdsUnique', async () => {
+  it('scanPersona_whenMarkdownAndExport_namesEachAndKeepsIdsUnique', async () => {
     mkdirSync(join(root, 'mine'));
     writeFileSync(join(root, 'mine/README.md'), '# Index\n');
     writeFileSync(join(root, 'mine/terse.md'), '# Be Terse\n\nShort answers.\n');
@@ -286,16 +308,17 @@ describe('scanProfiles', () => {
       JSON.stringify({ format: LIBRARY_EXPORT_FORMAT }),
     );
     writeFileSync(join(root, 'export/profiles/be-terse.md'), '---\nname: "Be Terse"\n---\nOld.\n');
-    const profiles: readonly PromptProfile[] = await scanProfiles([
+    const entries: readonly PersonaEntry[] = await scanPersona([
       join(root, 'mine'),
       join(root, 'export'),
     ]);
-    expect(profiles.map((profile) => [profile.id, profile.name])).toEqual([
+    expect(entries.map((entry) => [entry.id, entry.name])).toEqual([
       ['be-terse', 'Be Terse'],
       ['plain', 'plain'],
       ['be-terse-2', 'Be Terse'],
     ]);
-    expect(profiles[2].instructions).toBe('# Be Terse\n\nShort answers.');
+    expect(entries[2].text).toBe('# Be Terse\n\nShort answers.');
+    expect(entries[2]).toMatchObject({ layer: 'core', author: 'user', locked: true });
   });
 });
 

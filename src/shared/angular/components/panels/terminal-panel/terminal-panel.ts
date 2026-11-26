@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   effect,
   ElementRef,
   inject,
@@ -20,6 +21,7 @@ import { PanelStatus } from '@shared/angular/components/panel-status/panel-statu
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { Dropdown, type DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Log } from '@shared/angular/services/log/log';
 import { TerminalCloseGuard } from '@shared/angular/services/terminal-close-guard/terminal-close-guard';
@@ -42,7 +44,7 @@ import {
  */
 @Component({
   selector: 'app-terminal-panel',
-  imports: [TextField, Button, Terminal, AppIcon, PanelToolbar, PanelStatus],
+  imports: [TextField, Button, Dropdown, Terminal, AppIcon, PanelToolbar, PanelStatus],
   templateUrl: './terminal-panel.html',
   styleUrl: './terminal-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -111,11 +113,42 @@ export class TerminalPanel {
   protected readonly editingId: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
+   * Gets the terminal being renamed, or null.
+   */
+  protected readonly editingSession: Signal<TerminalSession | null> = computed(
+    (): TerminalSession | null =>
+      this.sessions().find(
+        (session: TerminalSession): boolean => session.id === this.editingId(),
+      ) ?? null,
+  );
+
+  /**
+   * Gets the terminals, as the picker lists them: by name, numbered when two share one so each can
+   * be told apart.
+   */
+  protected readonly terminalOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] => {
+      const sessions: readonly TerminalSession[] = this.sessions();
+      const seen: Map<string, number> = new Map<string, number>();
+      return sessions.map((session: TerminalSession): DropdownOption => {
+        const shared: boolean =
+          sessions.filter((other: TerminalSession): boolean => other.name === session.name).length >
+          1;
+        const count: number = (seen.get(session.name) ?? 0) + 1;
+        seen.set(session.name, count);
+        return { value: session.id, label: shared ? `${session.name} (${count})` : session.name };
+      });
+    },
+  );
+
+  /**
    * Holds the inline rename box, focused when a rename begins (the `autofocus` attribute is unreliable
    * on dynamically-inserted content and flagged for accessibility).
    */
-  private readonly renameInput: Signal<ElementRef<HTMLInputElement> | undefined> =
-    viewChild<ElementRef<HTMLInputElement>>('renameInput');
+  private readonly renameField: Signal<ElementRef<HTMLElement> | undefined> = viewChild<
+    TextField,
+    ElementRef<HTMLElement>
+  >('renameField', { read: ElementRef });
 
   /**
    * Initializes the panel, asking the session store for a shell once a folder is known. The store's
@@ -132,8 +165,9 @@ export class TerminalPanel {
 
     effect((): void => {
       if (this.editingId() !== null) {
-        const input: HTMLInputElement | undefined = this.renameInput()?.nativeElement;
-        if (input !== undefined) {
+        const input: HTMLInputElement | null | undefined =
+          this.renameField()?.nativeElement.querySelector('input');
+        if (input !== null && input !== undefined) {
           setTimeout((): void => input.focus(), 0);
         }
       }
@@ -157,12 +191,10 @@ export class TerminalPanel {
   }
 
   /**
-   * Closes a terminal without activating it first.
+   * Closes a terminal, asking first when something is still running in it.
    * @param id The session identifier.
-   * @param event The originating click, whose propagation to the tab is stopped.
    */
-  protected async close(id: string, event: Event): Promise<void> {
-    event.stopPropagation();
+  protected async close(id: string): Promise<void> {
     const name: string =
       this.terminals.sessions().find((session: TerminalSession): boolean => session.id === id)
         ?.name ?? 'this terminal';
@@ -177,6 +209,27 @@ export class TerminalPanel {
    * Begins renaming a terminal inline.
    * @param session The session to rename.
    */
+  /**
+   * Closes the terminal shown, asking first when something is still running in it.
+   * @returns Resolves once closed, or kept.
+   */
+  protected async closeActive(): Promise<void> {
+    const id: string | null = this.activeId();
+    if (id !== null) {
+      await this.close(id);
+    }
+  }
+
+  /**
+   * Renames the terminal shown.
+   */
+  protected renameActive(): void {
+    const session: TerminalSession | null = this.activeSession();
+    if (session !== null) {
+      this.startRename(session);
+    }
+  }
+
   protected startRename(session: TerminalSession): void {
     this.editingId.set(session.id);
   }
@@ -185,7 +238,7 @@ export class TerminalPanel {
    * Commits an inline rename, unless it was already cancelled (so the blur that follows an Escape does
    * not overwrite the name).
    * @param id The session identifier.
-   * @param event The input event carrying the new name.
+   * @param name The new name.
    */
   protected commitRenameValue(id: string, name: string): void {
     if (this.editingId() !== id) {

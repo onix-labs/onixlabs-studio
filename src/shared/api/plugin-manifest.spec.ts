@@ -1008,6 +1008,52 @@ describe('parsePluginManifest', () => {
     });
   });
 
+  describe('live-server contributions (#1062)', () => {
+    /**
+     * Builds a well-formed live-server contribution, which tests then break in one place at a time.
+     * @param overrides Fields to replace on the contribution.
+     * @returns Returns the contribution as untrusted JSON would arrive.
+     */
+    function liveServer(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        id: 'live-server',
+        displayName: 'Live Server',
+        command: { kind: 'node' },
+        ...overrides,
+      };
+    }
+
+    it('accepts a live server contributed alone', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { liveServers: [liveServer()] } }),
+      );
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.liveServers?.[0]).toMatchObject({
+        id: 'live-server',
+        displayName: 'Live Server',
+        priority: 100,
+        command: { kind: 'node' },
+      });
+    });
+
+    it('refuses a live server with no display name', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { liveServers: [liveServer({ displayName: undefined })] } }),
+      );
+
+      expect(paths(result)).toContain('contributes.liveServers[0].displayName');
+    });
+
+    it('refuses live servers that are not a list', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { liveServers: liveServer() } }),
+      );
+
+      expect(paths(result)).toContain('contributes.liveServers');
+    });
+  });
+
   describe('version-control contributions', () => {
     /**
      * Builds a well-formed version-control contribution, modelled on the Git plugin (#817), which
@@ -1315,6 +1361,15 @@ describe('parsePluginManifest', () => {
 
       expect(result.manifest).toBeNull();
       expect(paths(result)).toEqual(['apiVersion']);
+    });
+
+    it('judgesTheApiAgainstAnOlderBuild_whenAskedTo', () => {
+      // How the curated index asks what an older build would accept (#1467).
+      const written: Record<string, unknown> = manifest({ apiVersion: '1.20.0' });
+
+      expect(parsePluginManifest(written, '1.20.0').manifest?.apiVersion).toBe('1.20.0');
+      expect(paths(parsePluginManifest(written, '1.19.0'))).toEqual(['apiVersion']);
+      expect(parsePluginManifest(written, '1.19.0').errors[0].message).toContain('1.19.0');
     });
   });
 

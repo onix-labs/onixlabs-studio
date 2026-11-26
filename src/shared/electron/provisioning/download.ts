@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { Launcher, launchStudioOwned } from '../process/launch';
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import * as fs from 'node:fs/promises';
@@ -6,7 +6,13 @@ import * as path from 'node:path';
 import { Readable } from 'node:stream';
 import { createGunzip } from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
+import { tarProgram } from './tar-program';
 import { promisify } from 'node:util';
+
+/**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('download');
 
 // The primitives every provisioner is built from: fetch a file, hash it, and — only once the hash
 // matches what was pinned — unpack it. They live here rather than on a provisioner because there is now
@@ -20,7 +26,7 @@ import { promisify } from 'node:util';
 const execFileAsync: (
   file: string,
   args: readonly string[],
-) => Promise<{ stdout: string; stderr: string }> = promisify(execFile);
+) => Promise<{ stdout: string; stderr: string }> = promisify(launch.execFile);
 
 /**
  * The archive kinds the extractor understands.
@@ -137,12 +143,12 @@ export async function extractArchive(
     return;
   }
   if (kind === 'tar.gz') {
-    await execFileAsync('tar', ['-xzf', archive, '-C', destination, ...strip, ...members]);
+    await execFileAsync(tarProgram(), ['-xzf', archive, '-C', destination, ...strip, ...members]);
     return;
   }
   // `tar` reads zips through libarchive on Windows and modern macOS; `unzip` is the fallback.
   if (process.platform === 'win32') {
-    await execFileAsync('tar', ['-xf', archive, '-C', destination, ...strip, ...members]);
+    await execFileAsync(tarProgram(), ['-xf', archive, '-C', destination, ...strip, ...members]);
     return;
   }
   // `unzip` wants the members before the destination flag, unlike tar's trailing operands.

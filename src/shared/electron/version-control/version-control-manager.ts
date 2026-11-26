@@ -15,7 +15,7 @@ import {
   VersionControlResponse,
 } from '@shared/api/version-control-protocol';
 import { logger } from '../logger';
-import { RepositoryTrust } from '../repository-trust';
+import type { TrustGrants } from '../trust/trust-manager';
 import { VersionControlDescriptor } from './version-control-descriptor';
 import { OpenedRepository, PluginDescription, VersionControlHost } from './version-control-host';
 import { readExecutableChoice, VersionControlSettings } from './version-control-settings';
@@ -43,7 +43,7 @@ export class VersionControlManager {
   /**
    * Holds which repositories the user trusts.
    */
-  private readonly trust: RepositoryTrust;
+  private readonly trust: TrustGrants;
 
   /**
    * Initializes the manager.
@@ -54,7 +54,7 @@ export class VersionControlManager {
   public constructor(
     host: VersionControlHost,
     settings: VersionControlSettings,
-    trust: RepositoryTrust,
+    trust: TrustGrants,
   ) {
     this.host = host;
     this.settings = settings;
@@ -116,8 +116,11 @@ export class VersionControlManager {
     );
     ipcMain.handle(
       SourceControlChannel.SetTrust,
-      (_event: IpcMainInvokeEvent, root: unknown, decision: unknown): RepositoryTrustDecision =>
-        this.setTrust(root, decision),
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        decision: unknown,
+      ): Promise<RepositoryTrustDecision> => this.setTrust(root, decision),
     );
   }
 
@@ -151,14 +154,16 @@ export class VersionControlManager {
   }
 
   /**
-   * Records the user's answer to "do you trust this repository?". Only for a repository that is open
-   * right now, so the renderer cannot decide about a folder nobody opened; the answer is what the host
-   * reads from then on.
+   * Handles a renderer's request to trust or restrict an open repository. Only for a repository that
+   * is open right now, so the renderer cannot name a folder nobody opened.
+   *
+   * ⛔ A request to trust is never recorded as asked: it puts the question to the user in the main
+   * process's own prompt (#1504), so the renderer cannot grant trust. Restricting needs no question.
    * @param root The repository root, untrusted.
-   * @param decision The answer, untrusted.
+   * @param decision What the renderer asks for, untrusted.
    * @returns Returns the decision in force afterwards, `unknown` when the request was refused.
    */
-  private setTrust(root: unknown, decision: unknown): RepositoryTrustDecision {
+  private async setTrust(root: unknown, decision: unknown): Promise<RepositoryTrustDecision> {
     if (
       typeof root !== 'string' ||
       !this.host.isOpen(root) ||
@@ -167,8 +172,7 @@ export class VersionControlManager {
       logger.warn('VersionControlManager', 'Refused a malformed repository trust decision');
       return 'unknown';
     }
-    this.trust.decide(root, decision);
-    return this.trust.decisionFor(root);
+    return decision === 'trusted' ? this.trust.ask(root) : this.trust.restrict(root);
   }
 
   /**

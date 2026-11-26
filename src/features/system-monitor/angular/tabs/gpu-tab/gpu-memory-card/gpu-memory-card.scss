@@ -1,0 +1,68 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+.gpu-memory {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 1.25rem;
+  min-block-size: 0;
+}
+
+.gpu-memory__meter {
+  flex: none;
+  inline-size: clamp(6rem, 70cqb, 9.5rem);
+}
+
+.gpu-memory__entries {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.gpu-memory__entry {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+
+  dt {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--form-muted-foreground-color);
+  }
+
+  dd {
+    margin: 0;
+    font-size: 0.85rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--body-foreground-color);
+  }
+}
+
+.gpu-memory__key {
+  display: inline-block;
+  inline-size: 0.5rem;
+  block-size: 0.5rem;
+  border-radius: 50%;
+}
+
+.gpu-memory__key--used {
+  background-color: var(--accent-color);
+}
+
+.gpu-memory__key--free {
+  background-color: color-mix(in srgb, var(--accent-color) 25%, transparent);
+}
+
+.gpu-memory__empty {
+  @include empty;
+}

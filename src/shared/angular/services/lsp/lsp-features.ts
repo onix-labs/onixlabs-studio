@@ -18,6 +18,7 @@ import {
   type FoldingProvider,
   type LanguageOverrides,
   Settings,
+  type TextEditorSettings,
 } from '@shared/angular/services/settings/settings';
 import { codeLensKind, CodeLensSwitches, showsCodeLensKind } from './code-lens-kinds';
 import { BUILT_IN_FORMATTER_LANGUAGES } from '@shared/angular/services/settings/settings-registry';
@@ -50,6 +51,10 @@ import {
   WorkspaceTextEdits,
 } from '@shared/angular/services/workspace-edit/workspace-edit';
 import { markStudioProvider } from '@shared/angular/services/monaco/monaco-editor-capabilities';
+import {
+  builtInFormattingEdits,
+  setFormattingOverride,
+} from '@shared/angular/services/monaco/monaco-formatting-route';
 import { escapeMarkdown, fenced } from '@shared/angular/services/hover/hover-content';
 import type {
   HierarchyDirection,
@@ -173,6 +178,18 @@ export interface LspDocumentRef {
    * none.
    */
   readonly navigation?: LspNavigationSupport;
+
+  /**
+   * Gets whether the server sorts the document's keys on request (#1214): the JSON server's
+   * `json/sort`, which it advertises nowhere. Undefined is taken as not.
+   */
+  readonly sortsDocument?: boolean;
+
+  /**
+   * Gets the version of the document the server was last sent (#1214), which a fix a server offered
+   * for one version must not be applied to another. Undefined where it is not known.
+   */
+  readonly version?: number;
 
   /**
    * Gets the document's diagnostics exactly as the server sent them, codes and data included, which a
@@ -478,6 +495,13 @@ export interface LspStructureSupport {
    * before colours were read.
    */
   readonly colors?: boolean;
+
+  /**
+   * Gets whether it links parts of a document to pages or files (`textDocument/documentLink`) — a Go
+   * import path to its documentation, a stylesheet's `url(…)` (#1211). Absent from a support built
+   * before links were read.
+   */
+  readonly links?: boolean;
 }
 
 /**
@@ -533,6 +557,25 @@ const JAVA_SHOW_REFERENCES_COMMAND: string = 'java.show.references';
  * {@link SHOW_REFERENCES_COMMAND}.
  */
 const JAVA_SHOW_IMPLEMENTATIONS_COMMAND: string = 'java.show.implementations';
+
+/**
+ * The JSON server's own request that sorts a document's keys (#1214), with the document's URI and
+ * formatting options, answered with text edits. It is advertised nowhere.
+ */
+const SORT_DOCUMENT_METHOD: string = 'json/sort';
+
+/**
+ * The client command the JSON server's "Sort JSON" source action runs (#1214): VS Code's, which
+ * Studio runs as Sort Document.
+ */
+export const JSON_SORT_COMMAND: string = 'json.sort';
+
+/**
+ * The client command the CSS server's quick fixes run (#1214) — `Rename to 'color'` for an unknown
+ * property — with the document's URI, its version and the fix's text edits as arguments. VS Code's
+ * client applies the edits; Studio does too.
+ */
+export const CSS_APPLY_CODE_ACTION_COMMAND: string = '_css.applyCodeAction';
 
 /**
  * The client commands that hand a lens the places it counted, for Studio to list itself.
@@ -750,6 +793,22 @@ interface LspPosition {
 }
 
 /**
+ * What a formatting request says of a document's last line: the protocol's `FormattingOptions`
+ * `insertFinalNewline` and `trimFinalNewlines`.
+ */
+interface LspFinalNewlineOptions {
+  /**
+   * Gets whether the formatted document ends with a newline.
+   */
+  readonly insertFinalNewline: boolean;
+
+  /**
+   * Gets whether blank lines after the document's last line are removed.
+   */
+  readonly trimFinalNewlines: boolean;
+}
+
+/**
  * A Language Server Protocol range.
  */
 interface LspRange {
@@ -818,6 +877,8 @@ export const FEATURE_LANGUAGES: readonly string[] = [
   'css',
   'dockerfile',
   'go',
+  'go.mod',
+  'go.work',
   'html',
   'java',
   'javascript',
@@ -832,6 +893,7 @@ export const FEATURE_LANGUAGES: readonly string[] = [
   'shell',
   'sql',
   'svelte',
+  'toml',
   'typescript',
   'yaml',
 ];
@@ -988,6 +1050,41 @@ const FIXED_FUNCTION_INDEX: number = SEMANTIC_TOKEN_TYPES.indexOf('function');
  * never grow without bound across many opened documents.
  */
 const HEURISTIC_CACHE_LIMIT: number = 64;
+
+/**
+ * Holds the name and message Monaco reads as a cancelled request rather than a failure. A whole
+ * document's token request that ends this way leaves the tokens already painted where they are and is
+ * not reported as an error.
+ */
+const MONACO_CANCELLED: string = 'Canceled';
+
+/**
+ * Bounds the lines asked for when finding out whether a server colours a document's ranges (#1211):
+ * enough to hold real tokens in any source file, few enough to stay well under gopls's 100,000-byte
+ * limit.
+ */
+const RANGE_PROBE_LINES: number = 50;
+
+/**
+ * Describes the part of Monaco's internal text-model tokenization that says whether a model's
+ * semantic tokens are complete (Monaco 0.57; not in its public typings), as far as
+ * {@link LspFeatures} reads and resets it (#1211).
+ */
+interface SemanticTokensCompleteness {
+  /**
+   * Gets whether the model's semantic tokens cover the whole document, after which Monaco neither
+   * asks for nor paints a range's.
+   * @returns Returns true when they are complete.
+   */
+  hasCompleteSemanticTokens(): boolean;
+
+  /**
+   * Replaces the model's semantic tokens.
+   * @param tokens The tokens, or null to clear them.
+   * @param isComplete Whether they cover the whole document.
+   */
+  setSemanticTokens(tokens: null, isComplete: boolean): void;
+}
 
 /**
  * Registers Monaco language features (completion, hover, go-to-definition, references) backed by the
@@ -1159,6 +1256,24 @@ export class LspFeatures {
     string,
     MonacoApi.Emitter<void>
   >();
+
+  /**
+   * Fires to ask Monaco to re-request the range tokens of a language's open models, one emitter per
+   * language whose server colours ranges (#1211). Monaco asks for a range only on scrolls, edits and
+   * a provider's change, so a refresh that re-asks for the whole document must re-ask for the screen
+   * too, or a file the server will not colour whole stays as it was.
+   */
+  private readonly rangeTokensChanged: Map<string, MonacoApi.Emitter<void>> = new Map<
+    string,
+    MonacoApi.Emitter<void>
+  >();
+
+  /**
+   * Holds the URIs of the models a server has coloured a range of with real tokens (#1211). Only for
+   * these is a refused whole-document request left to the ranges; anything else keeps the heuristic,
+   * so a server that colours neither never leaves a document uncoloured.
+   */
+  private readonly rangeColoured: Set<string> = new Set<string>();
 
   /**
    * Holds the listeners notified when a server demonstrably serves a session (a request returns a
@@ -1342,9 +1457,15 @@ export class LspFeatures {
         provideDocumentFormattingEdits: (
           model: MonacoApi.editor.ITextModel,
           options: MonacoApi.languages.FormattingOptions,
+          token: MonacoApi.CancellationToken,
         ): Promise<MonacoApi.languages.TextEdit[] | undefined> =>
-          this.provideFormatting(model, 'textDocument/formatting', options),
+          this.serverFormats(model, 'document')
+            ? this.provideFormatting(model, 'textDocument/formatting', options)
+            : builtInFormattingEdits(monaco, model, options, token, undefined),
       };
+      // Monaco's own formatter for the language routes to this one for a model a server formats, and
+      // this one to Monaco's for a model none does (#1214).
+      markStudioProvider(provider);
       registered.set(
         `${language}:document`,
         monaco.languages.registerDocumentFormattingEditProvider(language, provider),
@@ -1356,14 +1477,13 @@ export class LspFeatures {
           model: MonacoApi.editor.ITextModel,
           range: MonacoApi.Range,
           options: MonacoApi.languages.FormattingOptions,
+          token: MonacoApi.CancellationToken,
         ): Promise<MonacoApi.languages.TextEdit[] | undefined> =>
-          this.provideFormatting(model, 'textDocument/rangeFormatting', options, {
-            range: {
-              start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
-              end: { line: range.endLineNumber - 1, character: range.endColumn - 1 },
-            },
-          }),
+          this.serverFormats(model, 'range')
+            ? this.formatRange(model, range, options)
+            : builtInFormattingEdits(monaco, model, options, token, range),
       };
+      markStudioProvider(provider);
       registered.set(
         `${language}:range`,
         monaco.languages.registerDocumentRangeFormattingEditProvider(language, provider),
@@ -1412,6 +1532,42 @@ export class LspFeatures {
         this.formattingRegistered.delete(`${language}:${kind}`);
       }
     }
+  }
+
+  /**
+   * Determines whether a language server formats a model, as Studio has registered it to (#1214): the
+   * model's server formats this way, and Default Formatter has not given its language to Monaco.
+   * @param model The model.
+   * @param kind Whether the whole document or a range is formatted.
+   * @returns Returns true when the server formats it.
+   */
+  private serverFormats(model: MonacoApi.editor.ITextModel, kind: 'document' | 'range'): boolean {
+    const support: LspFormattingSupport | undefined = this.resolve(model)?.formatting;
+    return (
+      support !== undefined &&
+      (kind === 'document' ? support.document : support.range) &&
+      this.formattingRegistered.has(`${model.getLanguageId()}:${kind}`)
+    );
+  }
+
+  /**
+   * Asks a model's server to format a range of it.
+   * @param model The model.
+   * @param range The range, one-based.
+   * @param options The editor's indentation.
+   * @returns Returns the edits, or undefined when the server does not answer.
+   */
+  private formatRange(
+    model: MonacoApi.editor.ITextModel,
+    range: MonacoApi.IRange,
+    options: MonacoApi.languages.FormattingOptions,
+  ): Promise<MonacoApi.languages.TextEdit[] | undefined> {
+    return this.provideFormatting(model, 'textDocument/rangeFormatting', options, {
+      range: {
+        start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
+        end: { line: range.endLineNumber - 1, character: range.endColumn - 1 },
+      },
+    });
   }
 
   /**
@@ -2014,11 +2170,14 @@ export class LspFeatures {
     }
     if (support.rangeTokens && !registered.has(`${language}:rangeTokens`)) {
       registered.add(`${language}:rangeTokens`);
+      const rangeTokensChanged: MonacoApi.Emitter<void> = new monaco.Emitter<void>();
+      this.rangeTokensChanged.set(language, rangeTokensChanged);
       monaco.languages.registerDocumentRangeSemanticTokensProvider(language, {
+        onDidChange: rangeTokensChanged.event,
         getLegend: (): MonacoApi.languages.SemanticTokensLegend => SEMANTIC_LEGEND,
         provideDocumentRangeSemanticTokens: (
           model: MonacoApi.editor.ITextModel,
-          range: MonacoApi.Range,
+          range: MonacoApi.IRange,
         ): Promise<MonacoApi.languages.SemanticTokens | null> =>
           this.provideRangeSemanticTokens(model, range),
       });
@@ -2033,6 +2192,67 @@ export class LspFeatures {
           this.provideSelectionRanges(model, positions),
       });
     }
+    if (support.links === true && !registered.has(`${language}:links`)) {
+      registered.add(`${language}:links`);
+      monaco.languages.registerLinkProvider(language, {
+        provideLinks: (
+          model: MonacoApi.editor.ITextModel,
+        ): Promise<MonacoApi.languages.ILinksList | undefined> => this.provideLinks(model),
+      });
+    }
+  }
+
+  /**
+   * Asks the server serving a model for the parts of it that link elsewhere (#1211): a Go import path
+   * to its documentation on pkg.go.dev. A link is followed as any other in the editor, a web page
+   * through the external-link policy. Links the server leaves to be resolved later are left out, as are
+   * targets that are not web pages or files.
+   * @param model The model.
+   * @returns Returns the links, or undefined when no server serving the model gives them.
+   */
+  private async provideLinks(
+    model: MonacoApi.editor.ITextModel,
+  ): Promise<MonacoApi.languages.ILinksList | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || this.bridge === undefined || ref.structure?.links !== true) {
+      return undefined;
+    }
+    await ref.sync?.(model.getValue());
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/documentLink',
+        {
+          textDocument: { uri: ref.uri },
+        },
+      );
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(result)) {
+      return undefined;
+    }
+    const links: MonacoApi.languages.ILink[] = [];
+    for (const item of result as readonly unknown[]) {
+      const link: { range?: unknown; target?: unknown; tooltip?: unknown } | null =
+        typeof item === 'object' && item !== null ? item : null;
+      if (
+        link === null ||
+        !isLspRange(link.range) ||
+        typeof link.target !== 'string' ||
+        !/^(https?|file):/i.test(link.target)
+      ) {
+        continue;
+      }
+      links.push({
+        range: this.toRange(link.range),
+        url: link.target,
+        ...(typeof link.tooltip === 'string' ? { tooltip: link.tooltip } : {}),
+      });
+    }
+    return { links };
   }
 
   /**
@@ -2350,14 +2570,18 @@ export class LspFeatures {
   /**
    * Asks the server serving a model for the semantic tokens of a range — what is on screen — remapped
    * onto the fixed legend. Only real tokens are given: while the server cannot serve them, the whole
-   * document's tokens (with their heuristic stand-in) colour it.
+   * document's tokens (with their heuristic stand-in) colour it. Monaco asks until the whole
+   * document's tokens arrive, so for a file the server will not colour whole (gopls past 100,000
+   * bytes, #1211) these are the only colours it gets, asked again on every scroll and edit. Whether
+   * the server answered with real tokens is remembered per model, which decides what a refused
+   * whole-document request falls back to.
    * @param model The model.
    * @param range The range shown.
    * @returns Returns the tokens, or null to leave the range to the whole document's.
    */
   private async provideRangeSemanticTokens(
     model: MonacoApi.editor.ITextModel,
-    range: MonacoApi.Range,
+    range: MonacoApi.IRange,
   ): Promise<MonacoApi.languages.SemanticTokens | null> {
     const ref: LspDocumentRef | null = this.resolve(model);
     const legend: LspSemanticTokensLegend | null | undefined = ref?.semanticLegend;
@@ -2367,10 +2591,14 @@ export class LspFeatures {
       legend === undefined ||
       legend === null ||
       ref.structure?.rangeTokens !== true ||
-      ref.suppressServerTokens === true
+      ref.suppressServerTokens === true ||
+      !this.monaco.semanticHighlightingEnabled(model)
     ) {
       return null;
     }
+    // The tokens are positions in the text, so the server must have the text on screen: a range asked
+    // for just after a keystroke would otherwise be coloured as the text before it.
+    await ref.sync?.(model.getValue());
     let result: unknown;
     try {
       result = await this.bridge.invoke(
@@ -2386,14 +2614,19 @@ export class LspFeatures {
         },
       );
     } catch {
+      this.rangeColoured.delete(model.uri.toString());
       return null;
     }
     const data: unknown = (result as { data?: unknown } | null)?.data;
-    if (!Array.isArray(data)) {
+    const remapped: Uint32Array = Array.isArray(data)
+      ? this.remapSemanticTokens(data as number[], legend)
+      : new Uint32Array(0);
+    if (remapped.length === 0) {
+      this.rangeColoured.delete(model.uri.toString());
       return null;
     }
-    const remapped: Uint32Array = this.remapSemanticTokens(data as number[], legend);
-    return remapped.length === 0 ? null : { data: remapped };
+    this.rangeColoured.add(model.uri.toString());
+    return { data: remapped };
   }
 
   /**
@@ -2644,7 +2877,11 @@ export class LspFeatures {
     try {
       result = await this.bridge.invoke(LspChannel.Request, ref.sessionId, method, {
         textDocument: { uri: ref.uri },
-        options: { tabSize: options.tabSize, insertSpaces: options.insertSpaces },
+        options: {
+          tabSize: options.tabSize,
+          insertSpaces: options.insertSpaces,
+          ...this.finalNewlineOptions(model),
+        },
         ...extra,
       });
     } catch {
@@ -2665,6 +2902,26 @@ export class LspFeatures {
   }
 
   /**
+   * Builds what a formatting request says of the document's last line (#1214), which the JSON, CSS and
+   * HTML servers act on: without being told to keep it, the JSON server's formatting dropped a file's
+   * final newline. A final newline is kept when the document has one or Insert Final Newline asks for
+   * one, and extra blank lines go when Trim Final Newlines asks.
+   * @param model The model being formatted.
+   * @returns Returns the protocol's `insertFinalNewline` and `trimFinalNewlines` options.
+   */
+  private finalNewlineOptions(model: MonacoApi.editor.ITextModel): LspFinalNewlineOptions {
+    const editing: TextEditorSettings = this.settings.resolveSettingsForLanguage(
+      model.getLanguageId(),
+    );
+    const lines: number = model.getLineCount();
+    return {
+      insertFinalNewline:
+        editing.insertFinalNewline || (lines > 1 && model.getLineLength(lines) === 0),
+      trimFinalNewlines: editing.trimFinalNewlines,
+    };
+  }
+
+  /**
    * Registers the Monaco feature providers for every supported language.
    */
   private registerProviders(): void {
@@ -2673,6 +2930,25 @@ export class LspFeatures {
       return;
     }
     this.registered = true;
+    // Monaco's own formatters of JSON, CSS, HTML and the rest hand a model a server formats to the
+    // server, whichever Monaco picks (#1214).
+    setFormattingOverride(
+      monaco,
+      (
+        model: MonacoApi.editor.ITextModel,
+        options: MonacoApi.languages.FormattingOptions,
+        range: MonacoApi.Range | undefined,
+      ): Promise<MonacoApi.languages.TextEdit[] | undefined> | undefined => {
+        if (range === undefined) {
+          return this.serverFormats(model, 'document')
+            ? this.provideFormatting(model, 'textDocument/formatting', options)
+            : undefined;
+        }
+        return this.serverFormats(model, 'range')
+          ? this.formatRange(model, range, options)
+          : undefined;
+      },
+    );
     // Suppress Monaco's heuristic semantic tokens for any model a language server can serve, so the
     // server's accurate tokens are the sole source and the heuristic does no redundant work.
     this.monaco.suppressHeuristicTokensWhen((model: MonacoApi.editor.ITextModel): boolean =>
@@ -2791,6 +3067,14 @@ export class LspFeatures {
         emitter.fire();
       }
     }
+    // Monaco re-asks for the screen only when its range provider changes, so the ranges are refreshed
+    // with the whole document: a file the server colours only by range would otherwise keep the
+    // colours it had before the refresh (#1211).
+    for (const [language, emitter] of this.rangeTokensChanged) {
+      if (languages === undefined || languages.includes(language)) {
+        emitter.fire();
+      }
+    }
   }
 
   /**
@@ -2843,6 +3127,8 @@ export class LspFeatures {
    * @param model The model the tokens are requested for.
    * @returns Returns the semantic tokens, or undefined when no server owns the model and no heuristic
    * applies.
+   * @throws {Error} Throws an error Monaco reads as cancelled when the request fails for a server that
+   * has coloured a range of the document, so the range tokens colour it instead.
    */
   private async fetchSemanticTokens(
     model: MonacoApi.editor.ITextModel,
@@ -2871,6 +3157,19 @@ export class LspFeatures {
         },
       );
     } catch {
+      // A server that also colours a range can refuse the whole document yet still colour the screen:
+      // gopls refuses a file over 100,000 bytes (#1211). Whatever is returned here Monaco takes as the
+      // whole document's tokens, painted over the screen's and ending its range requests, so the
+      // heuristic would replace the server's colours on a large file. Once the server is known to
+      // colour this document's ranges, ending as cancelled leaves the range tokens painted and the
+      // range requests going, on every scroll and edit; otherwise the heuristic stays.
+      if (ref.structure?.rangeTokens === true && (await this.coloursRanges(model))) {
+        this.reopenForRanges(model);
+        this.rangeTokensChanged.get(model.getLanguageId())?.fire();
+        const cancelled: Error = new Error(MONACO_CANCELLED);
+        cancelled.name = MONACO_CANCELLED;
+        throw cancelled;
+      }
       return this.heuristicFallback(model);
     }
     const data: unknown = (result as { data?: unknown } | null)?.data;
@@ -2883,6 +3182,52 @@ export class LspFeatures {
     }
     this.notifyServed(ref.sessionId);
     return { data: remapped };
+  }
+
+  /**
+   * Determines whether the server serving a model colours its ranges (#1211): known once a range of
+   * it has come back with real tokens, and otherwise found out by asking for the document's first
+   * lines. Monaco asks for the screen only about 100 ms after the whole document, so the first refusal
+   * usually comes before any range has, and must not be taken as the server colouring nothing.
+   * @param model The model.
+   * @returns Returns true when a range of it has been coloured with real tokens.
+   */
+  private async coloursRanges(model: MonacoApi.editor.ITextModel): Promise<boolean> {
+    if (this.rangeColoured.has(model.uri.toString())) {
+      return true;
+    }
+    const endLineNumber: number = Math.min(model.getLineCount(), RANGE_PROBE_LINES);
+    await this.provideRangeSemanticTokens(model, {
+      startLineNumber: 1,
+      startColumn: 1,
+      endLineNumber,
+      endColumn: model.getLineMaxColumn(endLineNumber),
+    });
+    return this.rangeColoured.has(model.uri.toString());
+  }
+
+  /**
+   * Lets Monaco ask for a model's ranges again after it has taken the model's tokens as complete
+   * (#1211). Any answer to a whole-document request, the heuristic's or none, marks them complete,
+   * and from then on Monaco neither asks for a range nor paints one: a file opened before its server
+   * was ready, or coloured again after Semantic Highlighting was turned off and on, would stay as it
+   * was. Clearing the tokens as incomplete undoes that; the range tokens asked for next repaint it.
+   * @param model The model.
+   */
+  private reopenForRanges(model: MonacoApi.editor.ITextModel): void {
+    // ⛔ `tokenization` is Monaco's internal text-model part (0.57), absent from its public typings:
+    // nothing public marks a model's semantic tokens incomplete. It is narrowly typed and checked
+    // before use, so a Monaco without it leaves the model as it is rather than throwing.
+    const tokenization: Partial<SemanticTokensCompleteness> | undefined = (
+      model as unknown as { tokenization?: Partial<SemanticTokensCompleteness> }
+    ).tokenization;
+    if (
+      typeof tokenization?.hasCompleteSemanticTokens === 'function' &&
+      typeof tokenization.setSemanticTokens === 'function' &&
+      tokenization.hasCompleteSemanticTokens()
+    ) {
+      tokenization.setSemanticTokens(null, false);
+    }
   }
 
   /**
@@ -3440,6 +3785,88 @@ export class LspFeatures {
       uri: ref.uri,
     });
     return outcome.ok && typeof outcome.result === 'string' ? this.uriToPath(outcome.result) : null;
+  }
+
+  /**
+   * Determines whether the language server that serves a document sorts it on request, for Sort
+   * Document (#1214): the JSON server does.
+   * @param model The editor model.
+   * @returns Returns true when it does.
+   */
+  public servesDocumentSorting(model: MonacoApi.editor.ITextModel): boolean {
+    return this.resolve(model)?.sortsDocument === true;
+  }
+
+  /**
+   * Sorts a document's keys, for Sort Document (#1214): asks the JSON server (`json/sort`), which
+   * answers with the document sorted and laid out with the editor's indentation, and applies its edits
+   * to the model as one step of undo. A final newline is kept as Format Document keeps it. Nothing is applied when the document changed while the server
+   * answered, so nothing typed meanwhile is lost.
+   * @param model The editor model.
+   * @returns Returns whether it was sorted, or why it was not.
+   */
+  public async sortDocument(model: MonacoApi.editor.ITextModel): Promise<LspCommandOutcome> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref?.sortsDocument !== true) {
+      return { ran: false, reason: 'No language server sorts this document.' };
+    }
+    const version: number = model.getVersionId();
+    await ref.sync?.(model.getValue());
+    const indentation: MonacoApi.editor.TextModelResolvedOptions = model.getOptions();
+    const outcome: LspOutcome = await this.ask(ref, SORT_DOCUMENT_METHOD, {
+      uri: ref.uri,
+      options: {
+        tabSize: indentation.tabSize,
+        insertSpaces: indentation.insertSpaces,
+        ...this.finalNewlineOptions(model),
+      },
+    });
+    if (!outcome.ok) {
+      return { ran: false, reason: outcome.message };
+    }
+    const edits: MonacoApi.editor.IIdentifiedSingleEditOperation[] | null = textEditsOf(
+      outcome.result,
+    );
+    if (edits === null) {
+      return { ran: false, reason: "The language server's answer couldn't be read." };
+    }
+    if (model.isDisposed() || model.getVersionId() !== version) {
+      return { ran: false, reason: 'The document changed while it was being sorted. Try again.' };
+    }
+    applyAsOneStep(model, edits);
+    return { ran: true };
+  }
+
+  /**
+   * Applies a CSS quick fix (#1214): the edits its `_css.applyCodeAction` command carries, to the
+   * document they name, as one step of undo. The server made them for one version of the document:
+   * once the server is up to date with the editor, a fix offered for an older version is refused,
+   * since its edits would land in the wrong places.
+   * @param model The editor model the fix was offered in.
+   * @param ref The document.
+   * @param command The command.
+   * @returns Returns whether the fix was applied, or why it was not.
+   */
+  private async applyCssCodeAction(
+    model: MonacoApi.editor.ITextModel,
+    ref: LspDocumentRef,
+    command: LspCommand,
+  ): Promise<LspCommandOutcome> {
+    const [uri, version, raw]: readonly unknown[] = command.arguments ?? [];
+    const edits: MonacoApi.editor.IIdentifiedSingleEditOperation[] | null = textEditsOf(raw);
+    if (uri !== ref.uri || typeof version !== 'number' || edits === null) {
+      return { ran: false, reason: "The language server's fix couldn't be read." };
+    }
+    await ref.sync?.(model.getValue());
+    const current: number | undefined = this.resolve(model)?.version;
+    if (current !== undefined && current !== version) {
+      return {
+        ran: false,
+        reason: 'The document changed after the fix was offered. Open Quick Fix again.',
+      };
+    }
+    applyAsOneStep(model, edits);
+    return { ran: true };
   }
 
   /**
@@ -4046,6 +4473,14 @@ export class LspFeatures {
     if (ref === null) {
       return { ran: false, reason: 'No language server serves this document any more.' };
     }
+    // The JSON server's "Sort JSON" source action runs a client command of VS Code's; Studio runs it
+    // as its own Sort Document (#1214).
+    if (command.command === JSON_SORT_COMMAND && ref.sortsDocument === true) {
+      return this.sortDocument(model);
+    }
+    if (command.command === CSS_APPLY_CODE_ACTION_COMMAND) {
+      return this.applyCssCodeAction(model, ref, command);
+    }
     if (!(ref.commands ?? []).includes(command.command)) {
       return {
         ran: false,
@@ -4565,4 +5000,70 @@ export function hoverContents(
     }
   }
   return blocks;
+}
+
+/**
+ * Applies edits to a model as one step of undo, apart from the typing around them (#1214).
+ * @param model The model.
+ * @param edits The edits; none is no step at all.
+ */
+function applyAsOneStep(
+  model: MonacoApi.editor.ITextModel,
+  edits: MonacoApi.editor.IIdentifiedSingleEditOperation[],
+): void {
+  if (edits.length === 0) {
+    return;
+  }
+  model.pushStackElement();
+  model.pushEditOperations(null, edits, (): null => null);
+  model.pushStackElement();
+}
+
+/**
+ * Reads a server's text edits (#1214) — the JSON server's answer to a sort, the CSS server's quick
+ * fix — into Monaco's edit operations.
+ * @param result The edits, untrusted.
+ * @returns Returns the edits, or null when the answer is not a list of text edits.
+ */
+function textEditsOf(result: unknown): MonacoApi.editor.IIdentifiedSingleEditOperation[] | null {
+  if (!Array.isArray(result)) {
+    return null;
+  }
+  const edits: MonacoApi.editor.IIdentifiedSingleEditOperation[] = [];
+  for (const entry of result as readonly unknown[]) {
+    const range: unknown = (entry as { range?: unknown } | null)?.range;
+    const text: unknown = (entry as { newText?: unknown } | null)?.newText;
+    if (!isLspRange(range) || typeof text !== 'string') {
+      return null;
+    }
+    edits.push({
+      range: {
+        startLineNumber: range.start.line + 1,
+        startColumn: range.start.character + 1,
+        endLineNumber: range.end.line + 1,
+        endColumn: range.end.character + 1,
+      },
+      text,
+    });
+  }
+  return edits;
+}
+
+/**
+ * Determines whether a server's value is a range: a start and an end, each a line and a character.
+ * @param value The value, untrusted.
+ * @returns Returns true when it is.
+ */
+function isLspRange(value: unknown): value is LspRange {
+  const isPosition: (candidate: unknown) => boolean = (candidate: unknown): boolean =>
+    typeof candidate === 'object' &&
+    candidate !== null &&
+    typeof (candidate as { line?: unknown }).line === 'number' &&
+    typeof (candidate as { character?: unknown }).character === 'number';
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    isPosition((value as { start?: unknown }).start) &&
+    isPosition((value as { end?: unknown }).end)
+  );
 }

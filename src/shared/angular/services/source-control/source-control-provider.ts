@@ -1,4 +1,8 @@
-import type { VcsConflictResolution, VcsIgnoreRule } from '@shared/api/version-control-protocol';
+import type {
+  VcsConflictResolution,
+  VcsIgnoreRule,
+  VcsSshHost,
+} from '@shared/api/version-control-protocol';
 import { GitMergeMode, GitOperationState } from '@shared/api/source-control-channels';
 import {
   GitBranch,
@@ -74,6 +78,11 @@ export interface ParsedRefs {
    * Gets the tags.
    */
   readonly tags: readonly GitTag[];
+
+  /**
+   * Gets the default branch merges are measured against, when the plugin said (#887).
+   */
+  readonly defaultBranch?: string;
 }
 
 /**
@@ -116,6 +125,16 @@ export interface MutationResult {
    * a caller never has to read git's prose to tell one refusal from another.
    */
   readonly code?: string;
+
+  /**
+   * Gets the SSH server an SSH failure names (#1255), untrusted until checked, or undefined.
+   */
+  readonly sshHost?: VcsSshHost;
+
+  /**
+   * Gets the tool's own output, when the error rewords it, or undefined.
+   */
+  readonly output?: string;
 }
 
 /**
@@ -447,6 +466,17 @@ export interface SourceControlProvider {
    * @returns Returns the outcome.
    */
   deleteRemoteTag(remote: string, name: string): Promise<MutationResult>;
+
+  /**
+   * Deletes a branch on a remote, and its remote-tracking branch (#887), only while the remote's
+   * branch still points at the expected commit. Destructive for everyone who works from that remote;
+   * the caller confirms first.
+   * @param remote The remote to delete on.
+   * @param name The branch's name on the remote, without the remote.
+   * @param expected The commit the remote's branch must still point at; the remote refuses otherwise.
+   * @returns Returns the outcome.
+   */
+  deleteRemoteBranch(remote: string, name: string, expected: string): Promise<MutationResult>;
 
   /**
    * Pushes one tag to a remote.

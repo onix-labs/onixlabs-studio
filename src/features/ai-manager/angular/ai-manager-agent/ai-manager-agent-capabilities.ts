@@ -4,29 +4,31 @@ import {
   type AgentSurface,
   type AiBridgeScope,
   DELETE_MODEL,
-  DELETE_PROMPT_PROFILE,
+  DELETE_PERSONA_ENTRY,
   DELETE_SKILL,
   DOWNLOAD_MODEL,
   LIST_LOCAL_MODELS,
-  LIST_PROMPT_PROFILES,
+  LIST_PERSONA,
   LIST_SKILL_TAGS,
   LIST_SKILLS,
   normalizeLanguage,
   READ_SKILL,
-  SAVE_PROMPT_PROFILE,
+  SAVE_PERSONA_ENTRY,
   SAVE_SKILL,
   SEARCH_MODEL_CATALOG,
 } from '@shared/api/ai-types';
 import type { CatalogModel, CatalogResult } from '@shared/api/model-catalog-types';
 import type { ModelRuntimeStatus } from '@shared/api/model-runtime-types';
+import {
+  normalizeTags,
+  PERSONA_CORE_LINE_LIMIT,
+  type PersonaLayer,
+} from '@shared/api/persona-channels';
 import type { Skill, SkillDraft, SkillSaveResult } from '@shared/api/skill-channels';
 import { AiManagerNavigation } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import { Log } from '@shared/angular/services/log/log';
-import {
-  PromptProfile,
-  PromptProfiles,
-} from '@shared/angular/services/prompt-profiles/prompt-profiles';
+import { Persona, PersonaEntry } from '@shared/angular/services/persona/persona';
 import { Skills } from '@shared/angular/services/skills/skills';
 import { ModelConnections } from '../model-connections/model-connections';
 import { ModelManagerCommands } from '../model-manager-commands/model-manager-commands';
@@ -95,7 +97,7 @@ function refuse(error: string): Answer {
 }
 
 /**
- * The AI Manager agent's capabilities (#967): the local models, the prompt profiles and the skill
+ * The AI Manager agent's capabilities (#967): the local models, the persona and the skill
  * library, each acted on through the same service the view's own controls use — so the view shows
  * what the agent did, and the agent can do nothing the view could not.
  *
@@ -120,9 +122,9 @@ export class AiManagerAgentCapabilities {
   private readonly modelCommands: ModelManagerCommands = inject(ModelManagerCommands);
 
   /**
-   * Holds the prompt profiles.
+   * Holds the persona.
    */
-  private readonly profiles: PromptProfiles = inject(PromptProfiles);
+  private readonly persona: Persona = inject(Persona);
 
   /**
    * Holds the skill library.
@@ -149,9 +151,9 @@ export class AiManagerAgentCapabilities {
       [SEARCH_MODEL_CATALOG]: (input: unknown): Promise<Answer> => this.search(input),
       [DOWNLOAD_MODEL]: (input: unknown): Promise<Answer> => this.download(input),
       [DELETE_MODEL]: (input: unknown): Promise<Answer> => this.deleteModel(input),
-      [LIST_PROMPT_PROFILES]: (): Answer => this.listProfiles(),
-      [SAVE_PROMPT_PROFILE]: (input: unknown): Answer => this.saveProfile(input),
-      [DELETE_PROMPT_PROFILE]: (input: unknown): Answer => this.deleteProfile(input),
+      [LIST_PERSONA]: (): Answer => this.listPersona(),
+      [SAVE_PERSONA_ENTRY]: (input: unknown): Answer => this.savePersonaEntry(input),
+      [DELETE_PERSONA_ENTRY]: (input: unknown): Answer => this.deletePersonaEntry(input),
       [LIST_SKILLS]: (): Answer => this.listSkills(),
       [READ_SKILL]: (input: unknown): Answer => this.readSkill(input),
       [LIST_SKILL_TAGS]: (): Answer => this.listTags(),
@@ -276,63 +278,75 @@ export class AiManagerAgentCapabilities {
   }
 
   /**
-   * Lists the prompt profiles.
+   * Lists the persona's entries, with the core's size against its limit.
    * @returns Returns them.
    */
-  private listProfiles(): Answer {
-    return { available: true, result: this.profiles.profiles() };
+  private listPersona(): Answer {
+    return {
+      available: true,
+      result: this.persona.entries(),
+      coreLines: this.persona.coreLines(),
+      coreLineLimit: PERSONA_CORE_LINE_LIMIT,
+    };
   }
 
   /**
-   * Creates a profile, or changes one, and shows the profiles.
+   * Creates a persona entry, or changes one, and shows the persona. An entry made here is the user's —
+   * the agent writes it on their behalf, through a gated tool — so it is locked like anything else the
+   * user writes. A new one is a memory unless the core was asked for, because the core is paid for on
+   * every turn and should hold only what applies everywhere.
    * @param input The request.
    * @returns Returns the outcome.
    */
-  private saveProfile(input: unknown): Answer {
+  private savePersonaEntry(input: unknown): Answer {
     const request: Record<string, unknown> = recordOf(input);
     const id: string | undefined = text(request, 'id');
-    const existing: PromptProfile | undefined =
-      id === undefined
-        ? undefined
-        : this.profiles.profiles().find((profile: PromptProfile): boolean => profile.id === id);
+    const existing: PersonaEntry | undefined = id === undefined ? undefined : this.persona.find(id);
     if (id !== undefined && existing === undefined) {
-      return refuse(`There is no profile with the id "${id}". List the profiles to find it.`);
+      return refuse(`There is no persona entry with the id "${id}". List the persona to find it.`);
     }
-    const profile: PromptProfile = existing ?? this.profiles.create(text(request, 'name'));
+    const layerAsked: unknown = request['layer'];
+    const layer: PersonaLayer | undefined =
+      layerAsked === 'core' || layerAsked === 'memory' ? layerAsked : undefined;
+    const entry: PersonaEntry =
+      existing ?? this.persona.create({ name: text(request, 'name'), layer: layer ?? 'memory' });
     const surfaces: readonly AgentSurface[] | undefined = surfacesOf(request);
     const languages: readonly string[] | undefined = strings(request, 'languages')?.map(
       normalizeLanguage,
     );
+    const tags: readonly string[] | undefined = strings(request, 'tags');
     const enabled: unknown = request['enabled'];
-    this.profiles.update(profile.id, {
-      ...(text(request, 'name') === undefined ? {} : { name: text(request, 'name')!.trim() }),
-      ...(text(request, 'instructions') === undefined
-        ? {}
-        : { instructions: text(request, 'instructions') }),
+    const name: string | undefined = text(request, 'name')?.trim();
+    const body: string | undefined = text(request, 'text');
+    const why: string | undefined = text(request, 'why');
+    this.persona.update(entry.id, {
+      ...(name === undefined || name.length === 0 ? {} : { name }),
+      ...(body === undefined ? {} : { text: body }),
+      ...(why === undefined ? {} : { why: why.trim() }),
+      ...(layer === undefined ? {} : { layer }),
+      ...(tags === undefined ? {} : { tags: normalizeTags(tags) }),
       scope: {
-        surfaces: surfaces ?? profile.scope.surfaces,
-        languages: languages ?? profile.scope.languages,
+        surfaces: surfaces ?? entry.scope.surfaces,
+        languages: languages ?? entry.scope.languages,
       },
       ...(typeof enabled === 'boolean' ? { enabled } : {}),
     });
-    this.navigation.show('profiles');
-    const saved: PromptProfile | undefined = this.profiles
-      .profiles()
-      .find((candidate: PromptProfile): boolean => candidate.id === profile.id);
-    return { available: true, created: existing === undefined, id: profile.id, name: saved?.name };
+    this.navigation.show('persona');
+    const saved: PersonaEntry | undefined = this.persona.find(entry.id);
+    return { available: true, created: existing === undefined, id: entry.id, name: saved?.name };
   }
 
   /**
-   * Deletes a profile.
+   * Deletes a persona entry.
    * @param input The request.
    * @returns Returns the outcome.
    */
-  private deleteProfile(input: unknown): Answer {
+  private deletePersonaEntry(input: unknown): Answer {
     const id: string = text(recordOf(input), 'id') ?? '';
-    if (!this.profiles.profiles().some((profile: PromptProfile): boolean => profile.id === id)) {
-      return refuse(`There is no profile with the id "${id}".`);
+    if (this.persona.find(id) === undefined) {
+      return refuse(`There is no persona entry with the id "${id}".`);
     }
-    this.profiles.delete(id);
+    this.persona.delete(id);
     return { available: true, deleted: true };
   }
 

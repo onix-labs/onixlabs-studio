@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -12,6 +13,7 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { BuildConfiguration, ProjectItemNode, ProjectItems } from '@shared/api/project-system';
 import { buildTargetTree, CppProjectSystem, parseCmakeProjectName } from './cpp-project-system';
+import { trustedToken } from '../process/run-token.fixture';
 
 /**
  * Reads a contents tree as slash-joined paths, folders marked with a trailing slash.
@@ -129,11 +131,15 @@ describe('CppProjectSystem.loadProjectItems with a configured build tree (#1213)
 
   /**
    * Loads the project's contents and reads what `cmake` was asked.
+   * @param trusted Whether the folder is trusted, so CMake may run.
    * @returns Returns the recorded command lines, and the contents.
    */
-  async function load(): Promise<{ calls: readonly string[]; tree: readonly string[] }> {
+  async function load(
+    trusted: boolean = false,
+  ): Promise<{ calls: readonly string[]; tree: readonly string[] }> {
     const items: ProjectItems | null = await new CppProjectSystem().loadProjectItems(
       path.join(root, 'CMakeLists.txt'),
+      { token: trusted ? trustedToken(root) : null },
     );
     const calls: readonly string[] = existsSync(invoked)
       ? readFileSync(invoked, 'utf8').trim().split('\n')
@@ -154,37 +160,71 @@ describe('CppProjectSystem.loadProjectItems with a configured build tree (#1213)
     rmSync(root, { recursive: true, force: true });
   });
 
-  it('reconfiguresOnce_soATreeWithNoDatabaseWritesOne', async () => {
+  it('listsTheTargetsTheLastConfigureReported_withoutRunningCMake', async () => {
     configured('CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=');
     answered();
 
     const { calls, tree } = await load();
 
-    expect(calls).toEqual([`-S ${root} -B ${build} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON`]);
+    expect(calls).toEqual([]);
     expect(tree).toContain('app (executable)/main.cpp');
   });
 
-  it('leavesATreeAlone_thatAlreadyWritesTheDatabase', async () => {
+  it('neverRunsTheProgramACommittedCacheNames (#1504)', async () => {
+    // A repository can commit a build tree whose cache names any program as CMake, and any
+    // configure runs the project's CMakeLists.txt. Opening the folder must run neither.
     configured('CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=');
-    answered();
-    writeFileSync(path.join(build, 'compile_commands.json'), '[]');
 
-    expect((await load()).calls).toEqual([]);
+    const { calls, tree } = await load();
+
+    expect(calls).toEqual([]);
+    expect(tree).toContain('main.cpp');
   });
 
-  it('leavesATreeAlone_whoseOwnerTurnedTheDatabaseOff', async () => {
-    configured('CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=OFF');
-    answered();
+  it('leavesTheQuery_forTheNextConfigureTheUserRuns', async () => {
+    configured('CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=');
 
-    expect((await load()).calls).toEqual([]);
+    await load();
+
+    const query: string = path.join(build, '.cmake', 'api', 'v1', 'query');
+    expect(readdirSync(query, { recursive: true })).toContainEqual(
+      expect.stringMatching(/query\.json$/),
+    );
   });
 
-  it('stillListsTheTargets_whenTheReconfigureFails', async () => {
-    configured('CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=');
-    answered();
-    writeFileSync(path.join(root, 'fake-cmake'), '#!/bin/sh\nexit 1\n');
+  describe('in a trusted folder', () => {
+    it('reconfiguresOnce_soATreeWithNoDatabaseWritesOne', async () => {
+      configured('CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=');
+      answered();
 
-    expect((await load()).tree).toContain('app (executable)/main.cpp');
+      const { calls, tree } = await load(true);
+
+      expect(calls).toEqual([`-S ${root} -B ${build} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON`]);
+      expect(tree).toContain('app (executable)/main.cpp');
+    });
+
+    it('leavesATreeAlone_thatAlreadyWritesTheDatabase', async () => {
+      configured('CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=');
+      answered();
+      writeFileSync(path.join(build, 'compile_commands.json'), '[]');
+
+      expect((await load(true)).calls).toEqual([]);
+    });
+
+    it('leavesATreeAlone_whoseOwnerTurnedTheDatabaseOff', async () => {
+      configured('CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=OFF');
+      answered();
+
+      expect((await load(true)).calls).toEqual([]);
+    });
+
+    it('stillListsTheTargets_whenTheReconfigureFails', async () => {
+      configured('CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=');
+      answered();
+      writeFileSync(path.join(root, 'fake-cmake'), '#!/bin/sh\nexit 1\n');
+
+      expect((await load(true)).tree).toContain('app (executable)/main.cpp');
+    });
   });
 });
 

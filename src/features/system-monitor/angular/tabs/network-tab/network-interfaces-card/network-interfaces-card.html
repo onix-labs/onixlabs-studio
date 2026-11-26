@@ -1,0 +1,47 @@
+<app-system-monitor-dashboard-card [icon]="Icon.MONITOR_NETWORK" heading="Network Interfaces">
+  @if (rows().length > 0) {
+    <div
+      class="network-interfaces"
+      role="radiogroup"
+      aria-label="Interfaces"
+      data-testid="network-interfaces"
+    >
+      @for (row of rows(); track row.info.id) {
+        @let chosen = network.selected()?.id === row.info.id;
+        <button
+          type="button"
+          role="radio"
+          class="network-interfaces__interface"
+          [class.network-interfaces__interface--chosen]="chosen"
+          [attr.aria-checked]="chosen"
+          (click)="network.select(row.info.id)"
+        >
+          <app-icon class="network-interfaces__icon" [icon]="row.icon" [size]="1.3" />
+          <span
+            class="network-interfaces__status"
+            [class.network-interfaces__status--active]="row.active"
+            aria-hidden="true"
+          ></span>
+          <span class="network-interfaces__text">
+            <span class="network-interfaces__name">{{ row.info.id }}</span>
+            <span class="network-interfaces__detail" [title]="row.detail">{{ row.detail }}</span>
+          </span>
+          <span class="network-interfaces__rates">
+            <span
+              ><app-icon [icon]="Icon.MONITOR_IN" [size]="0.7" />
+              <span class="network-interfaces__rate">{{ row.download }}</span></span
+            >
+            <span
+              ><app-icon [icon]="Icon.MONITOR_OUT" [size]="0.7" />
+              <span class="network-interfaces__rate">{{ row.upload }}</span></span
+            >
+          </span>
+        </button>
+      }
+    </div>
+  } @else {
+    <p class="network-interfaces__empty">
+      {{ read() ? 'No interfaces found.' : 'Reading the interfaces…' }}
+    </p>
+  }
+</app-system-monitor-dashboard-card>

@@ -12,6 +12,7 @@ import type {
   PackageManagerResponse,
 } from '@shared/api/package-manager-protocol';
 import { PackageManagerClient } from './package-manager-client';
+import { trustedToken } from '../process/run-token.fixture';
 
 /**
  * The Conan plugin's directory.
@@ -142,7 +143,7 @@ describe('Conan plugin contract', () => {
     // Act
     const response: PackageManagerResponse<'load'> = await client.request(
       'load',
-      workspace,
+      trustedToken(workspace),
       {},
       15_000,
     );
@@ -173,7 +174,7 @@ describe('Conan plugin contract', () => {
     // Act
     const response: PackageManagerResponse<'sources'> = await client.request(
       'sources',
-      workspace,
+      trustedToken(workspace),
       {},
       15_000,
     );
@@ -193,7 +194,7 @@ describe('Conan plugin contract', () => {
     // Act
     const response: PackageManagerResponse<'search'> = await client.request(
       'search',
-      workspace,
+      trustedToken(workspace),
       { source: 'fixture', query: 'fmt', skip: 0, take: 20, prerelease: false },
       15_000,
     );
@@ -214,7 +215,7 @@ describe('Conan plugin contract', () => {
     // Act
     const response: PackageManagerResponse<'restore'> = await client.request(
       'restore',
-      workspace,
+      trustedToken(workspace),
       { project: path.join(workspace, 'conanfile.txt') },
       15_000,
     );

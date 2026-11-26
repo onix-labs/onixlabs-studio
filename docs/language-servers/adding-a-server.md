@@ -17,14 +17,18 @@ There are two kinds, and nearly every server should be the first.
 `src/shared/api/plugin-manifest.ts`. Use it whenever starting the server means "run the entry point of
 what we installed":
 
+- **First check the build you mean to pin really contains the server.** Run its language-server
+  command by hand before writing anything. Some projects leave the server out of a build: `@taplo/cli`
+  on npm is a WASM build that answers `taplo lsp stdio` with "the LSP is not part of this build", and
+  calls itself `taplo 0.9.0` while the package is 0.7.0. Taplo's native release binaries have it.
 - `provision`:
-  - `kind: 'archive'`: a release download per platform, each with a `url`, a `sha256`, an `archive` type and an `executablePath`.
-  - `kind: 'npm'`: a pinned lockfile under `contributions/plugins/lockfiles/`, its `sha256`, and the package's `executablePath`. Use this for any npm package that has dependencies.
+  - `kind: 'archive'`: a release download per platform (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `win32-x64`), each with a `url`, a `sha256` (of the file as downloaded), an `archive` type (`tar.gz`, `zip`, or `gz` for a single compressed binary) and an `executablePath`. A `zip` holding more than the server takes `members` (rust-analyzer's Windows build). An npm package with **no** dependencies is provisioned this way too, from its registry tarball (`https://registry.npmjs.org/<name>/-/<name>-<version>.tgz`, `executablePath: "package/…"`), as Pyright is.
+  - `kind: 'npm'`: for an npm package that has dependencies. It needs a `lockfileUrl` (the raw `main` URL of a file under `contributions/plugins/lockfiles/`), that file's `sha256`, and the package's `executablePath` (`node_modules/<package>/…`). The lockfile is the `package-lock.json` of a wrapper package named after the plugin that depends on the server. **Register it in `contributions/plugins/bundled-lockfiles.ts` too**: a spec holds every lockfile the seed index pins to a bundled copy, so an install works without the network. A third-party server's lockfile is named for its version (`<id>-<version>.lock.json`) and served from `main`; a new version is a new file, never an edit to an old one, so the bytes under a URL an index already pins never change. Regenerating the lockfile for a version that already has one (a dependency fix, say) is a new file too, with a counter: `<id>-<version>-1.lock.json`, then `-2`. Each version-named file is frozen once it lands: `bundled-lockfiles.spec.ts` records its hash, and adding a file means adding its hash there, never changing one.
 - `contributes.languageServers[]`:
   - `id`: names the **implementation, never the language** (`pyright`, not `python`). A second server for the same language is a slot the user picks from.
-  - `languages`: Monaco language ids. A file extension Monaco doesn't map yet goes in `src/shared/angular/services/monaco/monaco-languages.ts` (#1338).
+  - `languages`: Monaco language ids. For a language Studio hasn't served before, see "A new language" below.
   - `priority`: the default among installed servers; higher wins.
-  - `command`: `executable`, `node` (run under Electron in Node mode) or `python`, plus `args`.
+  - `command`: `executable`, `node` (run under Electron in Node mode) or `python`, plus `args`. ⚠️ A `node` command is always started as `<entry point> --stdio <args…>`: Studio puts `--stdio` straight after the entry point, ahead of `args`, and the manifest can't turn it off. A server whose command line rejects an unknown leading flag (taplo's `taplo lsp stdio` does) can't run as `node`. Use its native build as an `executable`.
   - `entryPoint`: for a payload that holds several servers.
   - `initializationOptions`: fixed start-up options.
   - `settings` and `settingsDelivery`: see step 3.
@@ -48,14 +52,71 @@ Things to know before touching the index:
   and the seed wins.
 - **Keep `apiVersion` as low as the entry allows.** A Studio older than the version refuses the entry
   and loses the server. Fields it doesn't know are ignored. #1220, #1381 and #1398 all added settings
-  without raising it.
+  without raising it. The floor comes from the shapes the entry uses, and the version history above
+  `PLUGIN_API_VERSION` in `src/shared/api/plugin-manifest.ts` says when each arrived: `npm` provision
+  1.2.0, `members` 1.6.0, the `python` command 1.7.0, a `gz` archive 1.8.0.
+- **When a new release has to raise `apiVersion`, list the previous one under `releases`.** An entry's
+  top-level fields are always its newest release: the only shape builds before #1467 read. Beside them,
+  an optional `releases` array offers older releases, and a build installs the highest `version` whose
+  `apiVersion` it can honour (falling back to its own bundled entry only when it can run none). Each
+  release must state its own `version`, `apiVersion` and `provision` (for a first-party plugin, the
+  lockfile URL at _that_ release's tag and its hash), and inherits everything else from the top level,
+  which is the _newest_ release. So restate everything that differs, `contributes` and `requires`
+  above all, or an older release claims contributions it doesn't implement. For a first-party plugin
+  that means, in practice, its whole `plugin.json` at its tag minus `id`; a spec holds each listed
+  release to `git show plugin-<x>-v<version>:plugins/<x>/plugin.json`. The shape (contributions
+  abbreviated):
+
+  ```json
+  {
+    "id": "onixlabs.github",
+    "version": "0.7.0",
+    "apiVersion": "1.29.0",
+    "provision": { "kind": "npm", "lockfileUrl": "…/plugin-github-v0.7.0/…", "sha256": "…" },
+    "contributes": { "…": "…" },
+    "releases": [
+      {
+        "name": "GitHub",
+        "description": "…",
+        "version": "0.6.5",
+        "apiVersion": "1.28.0",
+        "provision": { "kind": "npm", "lockfileUrl": "…/plugin-github-v0.6.5/…", "sha256": "…" },
+        "contributes": { "…": "0.6.5's own" },
+        "requires": []
+      }
+    ]
+  }
+  ```
+
+  Prune a release from the list once no supported build needs it, that is, once every supported build
+  can run a newer one. `verify-plugin-index.mjs` checks the pins of every listed release.
+
 - **Keep the file's layout.** Rewriting it through `JSON.stringify` re-lays every other entry. Change
   the entries you mean to change, and leave the rest byte for byte.
 - A plugin that also has a folder under `plugins/` has its index entry as an exact copy of its
   `plugin.json`. Repinning one touches four places: the lockfile, `plugin.json`'s `sha256`, the
   index's copy of it, and the index `revision`. The language servers in the index have no folder.
-- Run `node scripts/verify-plugin-index.mjs` before the unit specs. It needs the network, so run it
-  where the release hosts can be reached.
+- Run `node scripts/verify-plugin-index.mjs --all` before the unit specs. Without `--all` it checks
+  only this machine's platform, and a new archive entry pins five. It needs the network, so run it
+  where the release hosts can be reached. In an agent's sandbox, Node's `fetch` ignores the proxy, and
+  every download fails with "fetch failed" until it's run with `NODE_USE_ENV_PROXY=1`.
+
+**A new language.** When the server serves a language no other server does (TOML, say), the
+language id has to be known in several places. A spec catches only some of them:
+
+- `src/shared/angular/services/monaco/monaco-languages.ts`: the extension (or whole file name) and
+  the display name (#1338).
+- `src/shared/angular/services/plugins/language-names.ts`: the display name again, for the Plugin
+  Manager and the settings tree.
+- `FEATURE_LANGUAGES` in `src/shared/angular/services/lsp/lsp-features.ts`: the languages the editor's
+  providers are registered for. Without it, no feature reaches the file. The spec checks it against
+  both catalogues.
+- **Monaco itself.** Check `node_modules/monaco-editor/esm/vs/languages/definitions/`. A model whose
+  language Monaco doesn't know falls back to `plaintext`, so a provider registered for the id never
+  runs. A language Monaco lacks needs a `monaco-<lang>-language.ts` that registers it, with a Monarch
+  grammar (follow `monaco-cypher-language.ts`). Call it in both places in `monaco.ts` (the main
+  window and `loadIntoChild`).
+- `EXTENSIONS` in `scripts/probe-lsp.mjs`, so the probe finds a file to open.
 
 ## 2. Probe it first
 
@@ -70,15 +131,29 @@ node scripts/probe-lsp.mjs --server <id> --workspace .cache/<fixture> [--file <p
 
 - **Use a scratch profile under `.cache/`, never Matthew's.** Copy an install into it, or install one the
   way the provisioner does (a verified download, or `npm ci --ignore-scripts` from the pinned lockfile,
-  then the `.studio-install-complete` marker). Check the path the probe prints.
+  then the `.studio-install-complete` marker). Check the path the probe prints. The install goes in
+  `<profile>/lsp-servers/<plugin id>/<version>/<platform>-<arch>/` (`darwin-x64`, …). Archives are
+  extracted unstripped, so `executablePath` is relative to that folder. A `gz` is decompressed to
+  `executablePath` itself. Make the executable `chmod 755`, as the provisioner does. Write the marker
+  last.
+- `--server <id>` resolves the server from the descriptor, so write the descriptor (step 1) first. The
+  `--server "<command line>"` form runs a command as it stands, from the workspace folder, so give it
+  absolute paths. `--file` is read from the current folder, not the workspace, so give it an absolute
+  path too.
 - **Mark the fixture.** Put `@probe type=… member=… call=… interface=… value=… completion=…` in comments
-  so each check lands on a real symbol.
+  so each check lands on a real symbol. A marker's value must be a plain identifier (`[\w$]+`), so
+  point it at `service_name`, not at `serde-json`.
 - **Run it at least twice:** once as Studio starts the server today, and once with the settings you plan
   to declare (`--settings` answers `workspace/configuration` and is pushed; `--init-options` merges into
   `initializationOptions`). The difference is what Studio would gain.
 - Run under `--node` when `node_modules/electron` has no binary (`npm ci --ignore-scripts`).
 - A server that builds or caches (gopls, Go's build cache) needs `GOCACHE` and the like pointed under
   `$TMPDIR` to run sandboxed.
+- Some servers can't run in an agent's macOS sandbox at all. taplo 0.10.0 panics as it starts, in
+  `system-configuration` ("Attempted to create a NULL object"), because its HTTP client reads the
+  system proxy settings and the sandbox denies that lookup. `taplo fmt` dies the same way. No
+  environment variable avoids it. Such a probe has to run outside the sandbox, and that needs
+  Matthew's say-so.
 
 Read the report (`.cache/lsp-probe/<id>/<version>.json`) for:
 
@@ -88,8 +163,10 @@ Read the report (`.cache/lsp-probe/<id>/<version>.json`) for:
 - every client command it sends (lens, code action, completion, hint);
 - every request it sends the client.
 
-Then add the server's row to the capability matrix: name the report in
-`docs/language-servers/capability-wiring.json` and run `node scripts/probe-lsp.mjs --matrix --docs`.
+The server's row in the capability matrix comes later, once the live check (§5) has turned cells ✅:
+name the report in `docs/language-servers/capability-wiring.json`, list the checked features under
+`verified`, and run `node scripts/probe-lsp.mjs --matrix --docs`. It rewrites `capability-matrix.md`
+whole from the JSON, so restore any note someone wrote into the Markdown by hand.
 
 ## 3. Settings: pulled, pushed, at start-up, or on the command line
 
@@ -142,13 +219,21 @@ What needs wiring per server:
 
 ## 5. Fixture, specs and a live check
 
-- **Fixture:** a small project under `.cache/<language>-fixture`. Give it two modules referencing each other, an interface and an implementation, a test, a deliberate error, and a dependency if the language has a package manager. Never use one of Matthew's repositories, not even a copy. If the fixture needs a git repo, use `set -euo pipefail` and `git -C "$F"`, and check `rev-parse --show-toplevel` equals the fixture before anything mutates. `.cache/` sits inside the real repo, so a failed `git init` falls through to it.
-- **Specs:** build the descriptor from the real curated entry (`parsePluginManifest` and `toLanguageServerDescriptors`), as `lsp-server-registry.spec.ts` does. Assert what the server is answered, pushed and started with, and which settings restart it. Run single specs (`npx ng test --watch=false --include <file>`). Leave the full suite to CI; it saturates the machine.
+- **Fixture:** a small project under `.cache/<language>-fixture`. Give it two modules referencing each other, an interface and an implementation, a test, a deliberate error, and a dependency if the language has a package manager. A data or configuration language (TOML, YAML, JSON) has none of those. Give it what its server works from instead: a document bound to a local JSON schema (so the probe needs no network), the server's own config file (`.taplo.toml`), a second document, and a value the schema rejects as the deliberate error. Never use one of Matthew's repositories, not even a copy. If the fixture needs a git repo, use `set -euo pipefail` and `git -C "$F"`, and check `rev-parse --show-toplevel` equals the fixture before anything mutates. `.cache/` sits inside the real repo, so a failed `git init` falls through to it.
+- **Specs:** build the descriptor from the real curated entry (`parsePluginManifest` and `toLanguageServerDescriptors`), as `lsp-server-registry.spec.ts` does. Assert what the server is answered, pushed and started with, and which settings restart it. Run single specs (`npx ng test --watch=false --include <file>`, the path relative to `src/`, such as `shared/electron/lsp/lsp-server-registry.spec.ts`; the flag can be repeated). Leave the full suite to CI; it saturates the machine.
 - **Live check:** a second instance on a scratch profile (`STUDIO_USER_DATA_DIR`) against the fixture, feature by feature. Only then does a cell turn ✅.
 
 ## 6. Gotchas, each found the hard way
 
 - **Never send `didOpen` twice.** Roslyn aborts; the manager tracks open documents per window (#1190).
+- **A full-sync server needs the whole text.** taplo advertises `textDocumentSync: 1` and reads a
+  change's text as the whole document whatever range comes with it. Studio sent a ranged edit, so after
+  the first keystroke taplo held only the edited span, and hover, completion and the schema's errors
+  went dark. Studio now sends such a server the whole text (#1206). Edit in the live check, then check
+  again.
+- **A server can read a push flat.** taplo applies `didChangeConfiguration`'s `settings` as its section's
+  contents, where Studio pushes them nested under the section, and it never asks again after starting.
+  Its settings are all `startupOnly`.
 - **A null answer can mean "unchanged".** Roslyn keeps its previous value, so Studio answers declared defaults (#1145).
 - **A null answer can crash the server.** The CSS server threw on `null.validProperties` and gave no diagnostics at all (#1218). Svelte and the JSON server throw on `{ settings: null }` (#1219).
 - **A feature can sit behind a setting or an init option:**

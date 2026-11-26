@@ -4,7 +4,7 @@
     "bash-language-server": "5.6.0.json",
     "clangd": "22.1.6.json",
     "dockerfile-language-server": "0.15.0.json",
-    "go": "v0.23.0.studio-defaults.json",
+    "go": "v0.24.0.settings.shapes.go.json",
     "java": "1.58.0.studio-1216-defaults.json",
     "kotlin": "1.3.13.default.json",
     "lua-language-server": "3.19.1.with-settings.shapes.json",
@@ -13,6 +13,7 @@
     "rust": "2026-07-13.json",
     "sqls": "0.2.48.with-settings.json",
     "svelte-language-server": "0.18.4.json",
+    "taplo": "0.10.0.with-settings.json",
     "ty": "0.0.74.studio-defaults.json",
     "typescript": "4.4.1.with-settings.json",
     "vscode-css-language-server": "4.10.0.with-settings.json",
@@ -20,7 +21,115 @@
     "vscode-json-language-server": "4.10.0.with-settings.json",
     "yaml-language-server": "1.24.0.with-settings.json"
   },
-  "verified": {},
+  "verified": {
+    "bash-language-server": [
+      "definition",
+      "hover",
+      "completion",
+      "rename",
+      "documentHighlight",
+      "documentSymbol"
+    ],
+    "dockerfile-language-server": [
+      "hover",
+      "completion",
+      "formatting",
+      "documentSymbol",
+      "publishDiagnostics"
+    ],
+    "go": [
+      "definition",
+      "implementation",
+      "typeDefinition",
+      "references",
+      "hover",
+      "completion",
+      "signatureHelp",
+      "formatting",
+      "rename",
+      "codeAction",
+      "codeLens",
+      "inlayHint",
+      "foldingRange",
+      "documentHighlight",
+      "selectionRange",
+      "documentLink",
+      "semanticTokens/full",
+      "semanticTokens/range",
+      "documentSymbol",
+      "workspace/symbol",
+      "callHierarchy",
+      "typeHierarchy",
+      "publishDiagnostics",
+      "textDocument/diagnostic"
+    ],
+    "lua-language-server": [
+      "definition",
+      "hover",
+      "completion",
+      "formatting",
+      "rename",
+      "codeLens",
+      "documentSymbol",
+      "publishDiagnostics"
+    ],
+    "perlnavigator": ["definition", "hover", "completion", "documentSymbol", "publishDiagnostics"],
+    "svelte-language-server": [
+      "definition",
+      "hover",
+      "completion",
+      "formatting",
+      "codeLens",
+      "documentHighlight",
+      "documentSymbol",
+      "textDocument/diagnostic"
+    ],
+    "taplo": [
+      "hover",
+      "completion",
+      "formatting",
+      "rename",
+      "foldingRange",
+      "documentSymbol",
+      "publishDiagnostics"
+    ],
+    "vscode-css-language-server": [
+      "hover",
+      "completion",
+      "formatting",
+      "rename",
+      "codeAction",
+      "documentHighlight",
+      "documentSymbol",
+      "textDocument/diagnostic"
+    ],
+    "vscode-html-language-server": [
+      "hover",
+      "completion",
+      "formatting",
+      "documentHighlight",
+      "linkedEditingRange",
+      "documentSymbol",
+      "textDocument/diagnostic"
+    ],
+    "vscode-json-language-server": [
+      "hover",
+      "completion",
+      "formatting",
+      "rangeFormatting",
+      "codeAction",
+      "documentSymbol",
+      "textDocument/diagnostic"
+    ],
+    "yaml-language-server": [
+      "hover",
+      "completion",
+      "formatting",
+      "codeLens",
+      "documentSymbol",
+      "publishDiagnostics"
+    ]
+  },
   "notApplicable": {
     "vscode-css-language-server": ["callHierarchy", "typeHierarchy", "implementation"],
     "vscode-json-language-server": [
@@ -30,16 +139,21 @@
       "typeDefinition"
     ],
     "yaml-language-server": ["callHierarchy", "typeHierarchy", "implementation"],
-    "dockerfile-language-server": ["callHierarchy", "typeHierarchy", "implementation"]
+    "dockerfile-language-server": ["callHierarchy", "typeHierarchy", "implementation"],
+    "taplo": ["callHierarchy", "typeHierarchy", "implementation", "typeDefinition"]
   },
   "servers": {
     "ty": {
       "source": "Workspace diagnostics: registered with diagnosticMode workspace; the probe's 60 s pull without a partial-result token timed out (#1212)",
-      "cells": { "workspace/diagnostic": "offered" }
+      "cells": {
+        "workspace/diagnostic": "offered"
+      }
     },
     "pyright": {
       "source": "Workspace diagnostics: registered with python.analysis.diagnosticMode workspace; the probe's 60 s pull timed out (#1212)",
-      "cells": { "workspace/diagnostic": "offered" }
+      "cells": {
+        "workspace/diagnostic": "offered"
+      }
     },
     "csharp": {
       "language": "csharp",

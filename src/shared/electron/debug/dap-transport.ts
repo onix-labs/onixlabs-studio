@@ -1,6 +1,7 @@
-import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { connect, Socket } from 'node:net';
 import { logger } from '../logger';
+import type { Launcher } from '../process/launch';
 import { pidJournal } from '../pid-journal';
 import { detachedSpawnOptions, killProcessTree } from '../process-tree';
 
@@ -100,22 +101,31 @@ export class StdioTransport implements DapTransport {
   private closeListener: ((code: number | null, signal: string | null) => void) | null = null;
 
   /**
+   * Starts the adapter's process: made from the folder's run token, so no adapter starts for a
+   * folder the user has not trusted (#1504).
+   */
+  private readonly launch: Launcher;
+
+  /**
    * Initializes a new instance of the {@link StdioTransport} class.
    * @param command The executable to spawn.
    * @param args The arguments passed to the executable.
    * @param env The environment overlaid on the process, or undefined to inherit unchanged.
    * @param cwd The working directory to spawn the process in.
+   * @param launch Starts the adapter: a launcher made from the folder's run token (#1504).
    */
   public constructor(
     command: string,
     args: readonly string[],
     env: Readonly<Record<string, string>> | undefined,
     cwd: string,
+    launch: Launcher,
   ) {
     this.command = command;
     this.args = args;
     this.env = env;
     this.cwd = cwd;
+    this.launch = launch;
   }
 
   /**
@@ -128,7 +138,7 @@ export class StdioTransport implements DapTransport {
       try {
         // Own process group, so disposal reaches the adapter's children too — a netcoredbg-launched
         // debuggee is the adapter's child and must not outlive the session.
-        child = spawn(this.command, [...this.args], {
+        child = this.launch.spawn(this.command, [...this.args], {
           cwd: this.cwd,
           env: { ...process.env, ...this.env },
           stdio: ['pipe', 'pipe', 'pipe'],
@@ -266,22 +276,31 @@ export class TcpServerTransport implements DapTransport {
   private closeListener: ((code: number | null, signal: string | null) => void) | null = null;
 
   /**
+   * Starts the adapter's process: made from the folder's run token, so no adapter starts for a
+   * folder the user has not trusted (#1504).
+   */
+  private readonly launch: Launcher;
+
+  /**
    * Initializes a new instance of the {@link TcpServerTransport} class.
    * @param command The executable to spawn (the Node runtime).
    * @param args The arguments passed to the executable (the server script, port, and host).
    * @param env The environment overlaid on the process, or undefined to inherit unchanged.
    * @param cwd The working directory to spawn the server in.
+   * @param launch Starts the adapter: a launcher made from the folder's run token (#1504).
    */
   public constructor(
     command: string,
     args: readonly string[],
     env: Readonly<Record<string, string>> | undefined,
     cwd: string,
+    launch: Launcher,
   ) {
     this.command = command;
     this.args = args;
     this.env = env;
     this.cwd = cwd;
+    this.launch = launch;
   }
 
   /**
@@ -307,7 +326,7 @@ export class TcpServerTransport implements DapTransport {
       let child: ChildProcessWithoutNullStreams;
       try {
         // Own process group, so disposal reaches every session the server hosts.
-        child = spawn(this.command, [...this.args], {
+        child = this.launch.spawn(this.command, [...this.args], {
           cwd: this.cwd,
           env: { ...process.env, ...this.env },
           stdio: ['pipe', 'pipe', 'pipe'],

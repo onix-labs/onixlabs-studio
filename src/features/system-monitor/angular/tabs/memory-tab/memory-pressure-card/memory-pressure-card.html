@@ -1,0 +1,28 @@
+<app-system-monitor-dashboard-card [icon]="Icon.SYSTEM_MONITOR" heading="Memory Pressure">
+  @if (state(); as pressure) {
+    <div
+      class="memory-pressure"
+      [class.memory-pressure--warning]="pressure.level === 'warning'"
+      [class.memory-pressure--critical]="pressure.level === 'critical'"
+      data-testid="memory-pressure"
+    >
+      <p class="memory-pressure__level">
+        <app-icon class="memory-pressure__icon" [icon]="pressure.icon" [size]="1.15" />
+        {{ pressure.label }}
+      </p>
+      <p class="memory-pressure__description">{{ pressure.description }}</p>
+      <div
+        class="memory-pressure__track"
+        role="meter"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        [attr.aria-valuenow]="pressure.percent"
+        aria-label="Memory pressure"
+      >
+        <div class="memory-pressure__fill" [style.inline-size.%]="pressure.percent"></div>
+      </div>
+    </div>
+  } @else {
+    <p class="memory-pressure__empty">This platform does not report memory pressure.</p>
+  }
+</app-system-monitor-dashboard-card>

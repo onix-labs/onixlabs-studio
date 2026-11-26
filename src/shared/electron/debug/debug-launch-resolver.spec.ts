@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DebugResolveResult } from '@shared/api/debug-channels';
+import { TRUSTED_TOKENS } from '../process/run-token.fixture';
 
 /**
  * A handler the resolver registered on the IPC bus.
@@ -29,7 +30,11 @@ describe('DebugLaunchResolver', () => {
     systems = new Map<string, unknown>();
     const workspace: InstanceType<typeof WorkspaceContext> = new WorkspaceContext();
     workspace.addRoot(root);
-    new DebugLaunchResolver(systems as unknown as ProjectSystemRegistry, workspace).register();
+    new DebugLaunchResolver(
+      systems as unknown as ProjectSystemRegistry,
+      workspace,
+      TRUSTED_TOKENS,
+    ).register();
   });
 
   /**

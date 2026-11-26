@@ -1,5 +1,5 @@
 {
-  "revision": 69,
+  "revision": 79,
   "plugins": [
     {
       "id": "pyright",
@@ -148,7 +148,7 @@
             "url": "https://github.com/astral-sh/ty/releases/download/0.0.74/ty-x86_64-pc-windows-msvc.zip",
             "sha256": "45dbce4b3fa2f65e4672d3756c12448a9ec9a69732655dc4429c70af1fe02d37",
             "archive": "zip",
-            "executablePath": "ty-x86_64-pc-windows-msvc/ty.exe"
+            "executablePath": "ty.exe"
           }
         }
       },
@@ -354,7 +354,7 @@
             "url": "https://github.com/bscan/perlnavigator/releases/download/v0.8.20/perlnavigator-win-x86_64.zip",
             "sha256": "3a521c936b01046ed79cc6f3e3ac31a71c5368641aeeb28fea11b21577380ee2",
             "archive": "zip",
-            "executablePath": "perlnavigator-win-x86_64/perlnavigator"
+            "executablePath": "perlnavigator-win-x86_64/perlnavigator.exe"
           }
         }
       },
@@ -381,7 +381,7 @@
       "apiVersion": "1.2.0",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/dockerfile-language-server.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/dockerfile-language-server-0.15.0.lock.json",
         "sha256": "ce51bba16fd25abc8db7532a7b16acf0c0e683270ac8e94b2561276a4613d67f",
         "executablePath": "node_modules/dockerfile-language-server-nodejs/bin/docker-langserver"
       },
@@ -407,7 +407,7 @@
       "apiVersion": "1.2.0",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/yaml-language-server.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/yaml-language-server-1.24.0.lock.json",
         "sha256": "c4c3136a019386738fc0ccc1ba91c69025fae4485a3d32936b01001c5d8431eb",
         "executablePath": "node_modules/yaml-language-server/bin/yaml-language-server"
       },
@@ -454,7 +454,7 @@
       "apiVersion": "1.2.0",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/bash-language-server.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/bash-language-server-5.6.0.lock.json",
         "sha256": "8c13cf54220250fd33cf79fb872fda5cca79fc204463b4e1645ece205ad8969f",
         "executablePath": "node_modules/bash-language-server/out/cli.js"
       },
@@ -481,7 +481,7 @@
       "apiVersion": "1.2.0",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/svelte-language-server.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/svelte-language-server-0.18.4.lock.json",
         "sha256": "02dcbd8c721d2404e3a8b0e3d4c18ab8ee9fdcecfe0cf6dcd800d4ab22c7c40f",
         "executablePath": "node_modules/svelte-language-server/bin/server.js"
       },
@@ -560,7 +560,7 @@
       "apiVersion": "1.3.0",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/vscode-langservers-extracted.lock.json",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/vscode-langservers-extracted-4.10.0.lock.json",
         "sha256": "2e9cfac6ede4f8b4e5facd11f34f42cc875f0b5feb2984636709b4fb824a9739"
       },
       "contributes": {
@@ -573,6 +573,9 @@
             "entryPoint": "node_modules/vscode-langservers-extracted/bin/vscode-html-language-server",
             "command": {
               "kind": "node"
+            },
+            "initializationOptions": {
+              "provideFormatter": true
             },
             "settings": [
               {
@@ -600,6 +603,9 @@
             "entryPoint": "node_modules/vscode-langservers-extracted/bin/vscode-css-language-server",
             "command": {
               "kind": "node"
+            },
+            "initializationOptions": {
+              "provideFormatter": true
             },
             "settings": [
               {
@@ -633,6 +639,9 @@
             "entryPoint": "node_modules/vscode-langservers-extracted/bin/vscode-json-language-server",
             "command": {
               "kind": "node"
+            },
+            "initializationOptions": {
+              "provideFormatter": true
             },
             "settings": [
               {
@@ -1131,6 +1140,147 @@
                 }
               ]
             }
+          }
+        ]
+      }
+    },
+    {
+      "id": "taplo",
+      "name": "Taplo",
+      "description": "TOML validation, formatting and schema-aware completion.",
+      "version": "0.10.0",
+      "apiVersion": "1.8.0",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-darwin-aarch64.gz",
+            "sha256": "713734314c3e71894b9e77513c5349835eefbd52908445a0d73b0c7dc469347d",
+            "archive": "gz",
+            "executablePath": "taplo"
+          },
+          "darwin-x64": {
+            "url": "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-darwin-x86_64.gz",
+            "sha256": "898122cde3a0b1cd1cbc2d52d3624f23338218c91b5ddb71518236a4c2c10ef2",
+            "archive": "gz",
+            "executablePath": "taplo"
+          },
+          "linux-arm64": {
+            "url": "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-linux-aarch64.gz",
+            "sha256": "033681d01eec8376c3fd38fa3703c79316f5e14bb013d859943b60a07bccdcc3",
+            "archive": "gz",
+            "executablePath": "taplo"
+          },
+          "linux-x64": {
+            "url": "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-linux-x86_64.gz",
+            "sha256": "8fe196b894ccf9072f98d4e1013a180306e17d244830b03986ee5e8eabeb6156",
+            "archive": "gz",
+            "executablePath": "taplo"
+          },
+          "win32-x64": {
+            "url": "https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-windows-x86_64.zip",
+            "sha256": "1615eed140039bd58e7089109883b1c434de5d6de8f64a993e6e8c80ca57bdf9",
+            "archive": "zip",
+            "members": ["taplo.exe"],
+            "executablePath": "taplo.exe"
+          }
+        }
+      },
+      "contributes": {
+        "languageServers": [
+          {
+            "id": "taplo",
+            "displayName": "Taplo",
+            "languages": ["toml"],
+            "priority": 100,
+            "command": {
+              "kind": "executable",
+              "args": ["lsp", "stdio"]
+            },
+            "settings": [
+              {
+                "section": "evenBetterToml.schema.enabled",
+                "label": "Schema Validation",
+                "description": "Check documents against the JSON schema they are bound to, by a #:schema line or a .taplo.toml rule, and complete keys and values from it. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true
+              },
+              {
+                "section": "evenBetterToml.schema.links",
+                "label": "Schema Links",
+                "description": "Make keys into links to the documentation their schema names. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": false,
+                "startupOnly": true
+              },
+              {
+                "section": "evenBetterToml.formatter.alignEntries",
+                "label": "Align Entries",
+                "description": "Line up the = of consecutive entries when formatting. A .taplo.toml in the workspace overrides this and the other formatting settings. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": false,
+                "startupOnly": true
+              },
+              {
+                "section": "evenBetterToml.formatter.alignComments",
+                "label": "Align Comments",
+                "description": "Line up comments that follow consecutive entries when formatting. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true
+              },
+              {
+                "section": "evenBetterToml.formatter.arrayTrailingComma",
+                "label": "Trailing Commas in Arrays",
+                "description": "End each item of an array laid over several lines with a comma when formatting. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true
+              },
+              {
+                "section": "evenBetterToml.formatter.reorderKeys",
+                "label": "Sort Keys",
+                "description": "Sort keys alphabetically when formatting, within each run of entries not broken by a blank line. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": false,
+                "startupOnly": true
+              },
+              {
+                "section": "evenBetterToml.formatter.arrayAutoExpand",
+                "label": "Expand Long Arrays",
+                "description": "Lay an array over several lines when formatting, once it no longer fits on one. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true,
+                "advanced": true
+              },
+              {
+                "section": "evenBetterToml.formatter.arrayAutoCollapse",
+                "label": "Collapse Short Arrays",
+                "description": "Put an array back on one line when formatting, if it fits. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true,
+                "advanced": true
+              },
+              {
+                "section": "evenBetterToml.formatter.indentTables",
+                "label": "Indent Subtables",
+                "description": "Indent a table that follows its parent, such as [a.b] after [a], when formatting. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": false,
+                "startupOnly": true,
+                "advanced": true
+              },
+              {
+                "section": "evenBetterToml.formatter.indentEntries",
+                "label": "Indent Entries",
+                "description": "Indent the entries under each table header when formatting. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": false,
+                "startupOnly": true,
+                "advanced": true
+              },
+              {
+                "section": "evenBetterToml.taplo.configFile.enabled",
+                "label": "Taplo Config File",
+                "description": "Read the workspace's .taplo.toml (or taplo.toml) for schema rules and formatting. Taplo reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true,
+                "advanced": true
+              }
+            ]
           }
         ]
       }
@@ -1674,12 +1824,12 @@
       "name": "Docker",
       "description": "Talk to a Docker-compatible container engine over its local socket.",
       "detail": "Speaks to the engine over its local socket; it does not install or run a container engine itself. Open Shell uses the docker command-line tool when one is installed.",
-      "version": "30.3.0",
+      "version": "30.4.0",
       "apiVersion": "1.19.0",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-docker-engine-v30.3.0/src/shared/electron/contributions/plugins/lockfiles/docker-engine.lock.json",
-        "sha256": "423a8ab0f744d1d67fdf839f6dcac468c42e2598563147a240a3f3dab28d0110",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-docker-engine-v30.4.0/src/shared/electron/contributions/plugins/lockfiles/docker-engine.lock.json",
+        "sha256": "ae21ef72cad96b0b83d46c0e5bda5cb1384ee72e136230730925cdb2f7e63e45",
         "executablePath": "node_modules/@onixlabs/docker-engine/main.js"
       },
       "contributes": {
@@ -1716,12 +1866,12 @@
       "name": "Podman",
       "description": "Talk to a Podman container engine over its local socket.",
       "detail": "Speaks to the engine over its local socket; it does not install or run a container engine itself. Open Shell uses the podman command-line tool when one is installed.",
-      "version": "7.3.0",
+      "version": "7.4.0",
       "apiVersion": "1.19.0",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-podman-engine-v7.3.0/src/shared/electron/contributions/plugins/lockfiles/podman-engine.lock.json",
-        "sha256": "ebfed83beababbccef030deedf64b93e7eb0cfeeec795af07f4ffafc9c1aeb4a",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-podman-engine-v7.4.0/src/shared/electron/contributions/plugins/lockfiles/podman-engine.lock.json",
+        "sha256": "3b7a9119676ec82397b73178568bd511e10461390f3b707dd18dd4261474367a",
         "executablePath": "node_modules/@onixlabs/podman-engine/main.js"
       },
       "contributes": {
@@ -1873,13 +2023,13 @@
       "id": "onixlabs.git",
       "name": "Git",
       "description": "Git version control: status, history, diffs, commits, branches, remotes, tags, stashes, merges, rebases, worktree checkouts, ignore rules and per-file history.",
-      "version": "0.9.0",
+      "version": "0.11.0",
       "apiVersion": "1.14.0",
       "detail": "Drives the git installed on your machine, or one you point it at in Settings. Needs git 2.23 or later.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-git-v0.9.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.git.lock.json",
-        "sha256": "b538e5dce3bcad767d66f603694de1b745a6e78766b0ba0095d95651026c38cc",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-git-v0.11.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.git.lock.json",
+        "sha256": "10beb213884e0cd10a05950159dcdc3539940f1331e11149cd1cb9ec7a7c88ba",
         "executablePath": "node_modules/@onixlabs/git/main.js"
       },
       "contributes": {
@@ -1966,13 +2116,13 @@
       "id": "onixlabs.claude-harness",
       "name": "Claude",
       "description": "Runs Claude through Anthropic's Agent SDK in its own process, over Studio's agent protocol.",
-      "version": "0.21.0",
+      "version": "0.22.0",
       "apiVersion": "1.12.0",
       "detail": "The full Claude agent: sessions held open across turns, sub-agents, background tasks, slash commands, per-tool policy, write confinement, the OS sandbox, model discovery, and Remote Control through claude.ai/code. Authenticates with your local `claude` login, or with an Anthropic API key set on the connection. Downloads around 200MB: the SDK ships its Claude Code CLI as a native binary, and one platform's is fetched.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-claude-harness-v0.21.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.claude-harness.lock.json",
-        "sha256": "193df61c2466e33d1b0d0feaabd1e808b500f60cd9be1af51ccccf44c969a6b5",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-claude-harness-v0.22.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.claude-harness.lock.json",
+        "sha256": "43479de5769260704a89182719681ceac790ba0850cc70409c56088803d4a3ac",
         "executablePath": "node_modules/@onixlabs/claude-harness/main.js"
       },
       "contributes": {
@@ -2623,13 +2773,13 @@
       "id": "onixlabs.go-tests",
       "name": "Go Tests",
       "description": "Go tests in the Tests panel: finds Test and Fuzz functions in each package and runs them with go test.",
-      "version": "0.1.0",
-      "apiVersion": "1.28.0",
+      "version": "0.2.0",
+      "apiVersion": "1.30.0",
       "detail": "Reads your packages' _test.go files to list their tests; running them uses the go on your machine, in a terminal you can see.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-go-tests-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.go-tests.lock.json",
-        "sha256": "dde2d14e763577183aa636e2d79ba30ca3b5262165d0f2fba1a957a427f284dd",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-go-tests-v0.2.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.go-tests.lock.json",
+        "sha256": "b29e8bc1e247e7cb45d1d360a132a9746e8153d5da306d4bf05951e637a2326b",
         "executablePath": "node_modules/@onixlabs/go-tests/main.js"
       },
       "contributes": {
@@ -2640,14 +2790,45 @@
             "frameworks": ["go test"],
             "priority": 100,
             "markers": ["go.mod"],
-            "capabilities": ["run", "runSelected"],
+            "capabilities": ["run", "runSelected", "debug"],
             "command": {
               "kind": "node"
             },
             "entryPoint": "node_modules/@onixlabs/go-tests/main.js"
           }
         ]
-      }
+      },
+      "releases": [
+        {
+          "name": "Go Tests",
+          "description": "Go tests in the Tests panel: finds Test and Fuzz functions in each package and runs them with go test.",
+          "version": "0.1.0",
+          "apiVersion": "1.28.0",
+          "detail": "Reads your packages' _test.go files to list their tests; running them uses the go on your machine, in a terminal you can see.",
+          "provision": {
+            "kind": "npm",
+            "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-go-tests-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.go-tests.lock.json",
+            "sha256": "dde2d14e763577183aa636e2d79ba30ca3b5262165d0f2fba1a957a427f284dd",
+            "executablePath": "node_modules/@onixlabs/go-tests/main.js"
+          },
+          "contributes": {
+            "testAdapters": [
+              {
+                "id": "onixlabs.go-tests",
+                "displayName": "Go Tests",
+                "frameworks": ["go test"],
+                "priority": 100,
+                "markers": ["go.mod"],
+                "capabilities": ["run", "runSelected"],
+                "command": {
+                  "kind": "node"
+                },
+                "entryPoint": "node_modules/@onixlabs/go-tests/main.js"
+              }
+            ]
+          }
+        }
+      ]
     },
     {
       "id": "onixlabs.jvm-tests",
@@ -2705,6 +2886,33 @@
               "kind": "node"
             },
             "entryPoint": "node_modules/@onixlabs/ctest/main.js"
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.live-server",
+      "name": "Live Server",
+      "description": "Serves a static site from the File or Solution Explorer and reloads the page in your browser when you save.",
+      "version": "0.1.0",
+      "apiVersion": "1.31.0",
+      "detail": "Serves only the open workspace's files, on 127.0.0.1, so nothing on your network can reach it. Runs nothing from the workspace itself.",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-live-server-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.live-server.lock.json",
+        "sha256": "752cf4f28bc7926533efc1a5afb9363e154c86f3fc45d92032690ed36c13b24e",
+        "executablePath": "node_modules/@onixlabs/live-server/main.js"
+      },
+      "contributes": {
+        "liveServers": [
+          {
+            "id": "onixlabs.live-server",
+            "displayName": "Live Server",
+            "priority": 100,
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/live-server/main.js"
           }
         ]
       }

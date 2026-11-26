@@ -12,6 +12,7 @@ import type {
   PackageManagerResponse,
 } from '@shared/api/package-manager-protocol';
 import { PackageManagerClient } from './package-manager-client';
+import { trustedToken } from '../process/run-token.fixture';
 
 /**
  * The Cargo plugin's directory.
@@ -154,7 +155,7 @@ describe('Cargo plugin contract', () => {
 
     const response: PackageManagerResponse<'load'> = await client.request(
       'load',
-      workspace,
+      trustedToken(workspace),
       {},
       15_000,
     );
@@ -184,7 +185,9 @@ describe('Cargo plugin contract', () => {
   it('namesItsSourcesWithoutTheirUrls', TIMEOUT, async () => {
     await client.start();
 
-    await expect(client.request('sources', workspace, {}, 15_000)).resolves.toMatchObject({
+    await expect(
+      client.request('sources', trustedToken(workspace), {}, 15_000),
+    ).resolves.toMatchObject({
       ok: true,
       result: { sources: [{ name: 'crates.io' }, { name: 'fixture' }] },
     });
@@ -195,7 +198,7 @@ describe('Cargo plugin contract', () => {
 
     const response: PackageManagerResponse<'search'> = await client.request(
       'search',
-      workspace,
+      trustedToken(workspace),
       { source: 'crates.io', query: 'serde', skip: 0, take: 20, prerelease: false },
       15_000,
     );
@@ -212,7 +215,7 @@ describe('Cargo plugin contract', () => {
     await expect(
       client.request(
         'install',
-        workspace,
+        trustedToken(workspace),
         { project: manifest, name: 'anyhow', version: '1.0' },
         15_000,
       ),
@@ -232,7 +235,7 @@ describe('Cargo plugin contract', () => {
     await expect(
       client.request(
         'install',
-        workspace,
+        trustedToken(workspace),
         { project: path.join(workspace, 'Cargo.toml'), name: 'anyhow', version: null },
         15_000,
       ),

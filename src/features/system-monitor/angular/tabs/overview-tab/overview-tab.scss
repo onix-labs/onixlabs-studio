@@ -1,0 +1,32 @@
+// The Overview fills the view: eight cards, four to a row on a wide view, two on a narrower one and one
+// on a narrow one, scrolling once the view is too short for them. The grid is exactly the view's height
+// (not at least it), so its rows share that height equally rather than growing to their tallest card.
+:host {
+  display: block;
+  container-type: inline-size;
+  block-size: 100%;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+.overview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: minmax(22rem, 1fr);
+  gap: 0.5rem;
+  box-sizing: border-box;
+  block-size: 100%;
+  padding: 0.5rem;
+}
+
+@container (max-width: 90rem) {
+  .overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 45rem) {
+  .overview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

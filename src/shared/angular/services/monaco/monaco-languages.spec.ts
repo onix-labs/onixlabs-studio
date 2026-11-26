@@ -6,6 +6,7 @@ import {
   readsAsXml,
   supportedLanguages,
 } from './monaco-languages';
+import type { FileAssociation } from './file-associations';
 
 describe('monaco-languages', () => {
   it('languageForExtension_resolvesKnownExtensionsRegardlessOfDotOrCase', () => {
@@ -127,6 +128,14 @@ describe('monaco-languages', () => {
       expect(languageForFileName('data.json', '<oops>')).toBe('json');
     });
 
+    it('opensGoModuleAndWorkspaceFiles_underGoplsOwnIds', () => {
+      // gopls parses a file by the id it is opened with: go.mod opened as `go` fails to parse.
+      expect(languageForFileName('/repo/go.mod')).toBe('go.mod');
+      expect(languageForFileName('/repo/go.work')).toBe('go.work');
+      expect(languageForFileName('/repo/main.go')).toBe('go');
+      expect(languageForFileName('/repo/other.mod')).toBe('plaintext');
+    });
+
     it('keepsTheEarlierRules', () => {
       expect(languageForFileName('Dockerfile')).toBe('dockerfile');
       expect(languageForFileName('main.ts')).toBe('typescript');
@@ -143,6 +152,53 @@ describe('monaco-languages', () => {
       ['# <not xml>', false],
     ])('readsAsXml(%j)_is %s', (content: string, expected: boolean) => {
       expect(readsAsXml(content)).toBe(expected);
+    });
+  });
+
+  describe('the user associations (#1068)', () => {
+    it('languageForFileName_userExactName_beatsABuiltInName', () => {
+      expect(
+        languageForFileName('/ws/Dockerfile', undefined, [
+          { pattern: 'Dockerfile', language: 'shell' },
+        ]),
+      ).toBe('shell');
+    });
+
+    it('languageForFileName_userGlob_beatsABuiltInNameAndTheExtension', () => {
+      expect(
+        languageForFileName('/ws/nuget.config', '<configuration/>', [
+          { pattern: '*.config', language: 'ini' },
+        ]),
+      ).toBe('ini');
+      expect(
+        languageForFileName('/ws/app.ts', undefined, [{ pattern: '*.ts', language: 'javascript' }]),
+      ).toBe('javascript');
+    });
+
+    it('languageForFileName_userGlob_beatsTheContentCheck', () => {
+      expect(
+        languageForFileName('/ws/settings.config', '<?xml version="1.0"?>', [
+          { pattern: '*.config', language: 'plaintext' },
+        ]),
+      ).toBe('plaintext');
+    });
+
+    it('languageForFileName_userExact_beatsAUserGlob', () => {
+      expect(
+        languageForFileName('/ws/todo.foo', undefined, [
+          { pattern: '*.foo', language: 'json' },
+          { pattern: '/ws/todo.foo', language: 'yaml' },
+        ]),
+      ).toBe('yaml');
+    });
+
+    it('languageForFileName_withoutAMatchingAssociation_fallsThroughToTheBuiltInRules', () => {
+      const associations: readonly FileAssociation[] = [{ pattern: '*.foo', language: 'json' }];
+
+      expect(languageForFileName('/ws/Dockerfile', undefined, associations)).toBe('dockerfile');
+      expect(languageForFileName('/ws/app.ts', undefined, associations)).toBe('typescript');
+      expect(languageForFileName('/ws/web.Config', '<x/>', associations)).toBe('xml');
+      expect(languageForFileName('/ws/odd.config', 'a=1', associations)).toBe('plaintext');
     });
   });
 });

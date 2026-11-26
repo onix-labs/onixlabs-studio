@@ -12,6 +12,7 @@ import type {
   PackageManagerResponse,
 } from '@shared/api/package-manager-protocol';
 import { PackageManagerClient } from './package-manager-client';
+import { trustedToken } from '../process/run-token.fixture';
 
 /**
  * The NuGet plugin's directory.
@@ -165,7 +166,7 @@ describe('NuGet plugin contract', () => {
 
     const response: PackageManagerResponse<'load'> = await client.request(
       'load',
-      workspace,
+      trustedToken(workspace),
       {},
       15_000,
     );
@@ -187,7 +188,9 @@ describe('NuGet plugin contract', () => {
   it('namesItsSourcesWithoutTheirUrls', TIMEOUT, async () => {
     await client.start();
 
-    await expect(client.request('sources', workspace, {}, 15_000)).resolves.toMatchObject({
+    await expect(
+      client.request('sources', trustedToken(workspace), {}, 15_000),
+    ).resolves.toMatchObject({
       ok: true,
       result: { sources: [{ name: 'fixture' }] },
     });
@@ -198,7 +201,7 @@ describe('NuGet plugin contract', () => {
 
     const response: PackageManagerResponse<'search'> = await client.request(
       'search',
-      workspace,
+      trustedToken(workspace),
       { source: 'fixture', query: '', skip: 0, take: 20, prerelease: true },
       15_000,
     );
@@ -214,7 +217,7 @@ describe('NuGet plugin contract', () => {
     await expect(
       client.request(
         'install',
-        workspace,
+        trustedToken(workspace),
         { project: path.join(workspace, 'Api.csproj'), name: 'Serilog', version: '4.0.0' },
         15_000,
       ),

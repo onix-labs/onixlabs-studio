@@ -88,6 +88,50 @@
   overflow-y: auto;
 }
 
+// A suggested command (#1255): code on a darker well, always left to right (a shell reads it so in
+// any interface language), wrapping rather than clipping, with its Copy button at the trailing edge.
+.toast__command {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.125rem 0.125rem 0.5rem;
+  background: rgba(0, 0, 0, 0.14);
+  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  direction: ltr;
+}
+
+.toast__command-text {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  font-family: var(--monospace-font-family, monospace);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.toast__details-toggle {
+  align-self: flex-start;
+  margin-block: -0.25rem;
+  margin-inline-start: -0.375rem;
+  font-size: 0.6875rem;
+}
+
+// The tool's own output, verbatim: monospace, its line breaks kept, and scrolling inside the card.
+.toast__output {
+  margin: 0;
+  padding: 0.375rem 0.5rem;
+  background: rgba(0, 0, 0, 0.14);
+  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  font-family: var(--monospace-font-family, monospace);
+  font-size: 0.6875rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-block-size: 9rem;
+  overflow-y: auto;
+  direction: ltr;
+  user-select: text;
+}
+
 // The action buttons sit below the content, aligned to the trailing edge of the card.
 // Actions wrap onto a further row, still trailing, when they don't fit side by side (#1455): a row
 // that can't wrap overflows, and a right-aligned row overflows out of the card's leading edge. A
@@ -98,6 +142,23 @@
   justify-content: flex-end;
   gap: 0.375rem;
   min-inline-size: 0;
+
+  > app-button {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
+}
+
+// Choices about the kind of notification (#1487): leading, smaller and muted, so they never compete
+// with the notification's own actions.
+.toast__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-block-start: -0.25rem;
+  margin-inline-start: -0.375rem;
+  font-size: 0.6875rem;
+  opacity: 0.75;
 
   > app-button {
     min-inline-size: 0;

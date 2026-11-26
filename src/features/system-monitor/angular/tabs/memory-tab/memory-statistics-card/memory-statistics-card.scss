@@ -1,0 +1,43 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+// The figures run down two columns, the wide card's room halving its height; they scroll on their
+// own when the card is short.
+.memory-statistics {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  margin: 0;
+  overflow: auto;
+  column-count: 2;
+  column-gap: 2rem;
+}
+
+.memory-statistics__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.2rem 0.25rem;
+  border-block-end: 1px solid color-mix(in srgb, var(--dock-border-color) 50%, transparent);
+  break-inside: avoid;
+
+  dt {
+    font-size: 0.8rem;
+    color: var(--form-muted-foreground-color);
+  }
+
+  dd {
+    margin: 0;
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--body-foreground-color);
+  }
+}
+
+.memory-statistics__empty {
+  @include empty;
+}

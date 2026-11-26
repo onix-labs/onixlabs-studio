@@ -19,7 +19,7 @@ import type {
 } from '@shared/angular/services/workspace-edit/workspace-edit';
 import { WorkspaceEditApplier } from '@shared/angular/services/workspace-edit/workspace-edit-applier';
 import { RenameConfirmation, RenameConfirmationRequest } from './rename-confirmation';
-import { RenameSymbol } from './rename-symbol';
+import { moveQuestion, RenameSymbol } from './rename-symbol';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Settings } from '@shared/angular/services/settings/settings';
 
@@ -416,5 +416,24 @@ describe('RenameSymbol (#1015)', () => {
     expect(applied).toEqual([
       { files: [{ path: '/ws/src/a.ts', edits: [renameAt(3)] }], refused: [] },
     ]);
+  });
+});
+
+describe('moveQuestion (#1211)', () => {
+  it('saysAPackageRenameRenamesItsFolderToo', () => {
+    expect(
+      moveQuestion('example.com/m/greet', 'example.com/m/salute', [
+        { from: '/w/greet', to: '/w/salute' },
+      ]),
+    ).toBe('Rename example.com/m/greet to example.com/m/salute, and the folder greet to salute?');
+  });
+
+  it('countsSeveralMoves', () => {
+    expect(
+      moveQuestion('a', 'b', [
+        { from: '/w/a', to: '/w/b' },
+        { from: '/w/c', to: '/w/d' },
+      ]),
+    ).toBe('Rename a to b, and 2 files and folders?');
   });
 });

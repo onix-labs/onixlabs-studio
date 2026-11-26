@@ -1,6 +1,13 @@
+import { RunTokens } from '../process/launch';
+import type { RepositoryTrustDecision } from '@shared/api/source-control-channels';
 import { describe, expect, it, vi } from 'vitest';
 import type { BrowserWindow, WebContents } from 'electron';
 import type { ClientCapabilities } from 'vscode-languageserver-protocol';
+
+/**
+ * A trust store that trusts every folder, for the tests that are about something other than trust.
+ */
+const TRUSTED: RunTokens = new RunTokens({ decisionFor: (): RepositoryTrustDecision => 'trusted' });
 
 vi.mock('electron', () => ({
   ipcMain: { handle: (): void => undefined, on: (): void => undefined },
@@ -123,6 +130,7 @@ describe('LspManager (#1015)', () => {
       (): BrowserWindow | null => null,
       new WorkspaceContext(),
       {} as LspServerRegistry,
+      TRUSTED,
       forwarder,
     );
     const gone: WebContents = contents(true);
@@ -161,6 +169,7 @@ describe('LspManager (#1015)', () => {
         ({ isDestroyed: (): boolean => false, webContents: main }) as unknown as BrowserWindow,
       new WorkspaceContext(),
       {} as LspServerRegistry,
+      TRUSTED,
       forwarder,
     );
     const connection: FakeConnection = fakeConnection();
@@ -183,6 +192,7 @@ describe('LspManager (#1015)', () => {
         (): BrowserWindow | null => null,
         new WorkspaceContext(),
         {} as LspServerRegistry,
+        TRUSTED,
         new LspApplyEditForwarder(),
       ) as unknown as ManagerInternals;
     }
@@ -250,6 +260,7 @@ describe('LspManager (#1015)', () => {
         (): BrowserWindow | null => null,
         new WorkspaceContext(),
         registry as LspServerRegistry,
+        TRUSTED,
         new LspApplyEditForwarder(),
       );
       const connection: FakeConnection = fakeConnection();
@@ -295,10 +306,11 @@ describe('LspManager (#1015)', () => {
         (): BrowserWindow | null => null,
         new WorkspaceContext(),
         registry as LspServerRegistry,
+        TRUSTED,
         new LspApplyEditForwarder(),
         undefined,
         undefined,
-        indentation as ConstructorParameters<typeof LspManager>[6],
+        indentation as ConstructorParameters<typeof LspManager>[7],
       );
       const connection: FakeConnection = fakeConnection();
       (manager as unknown as ManagerInternals).answerServerRequests(connection, '/root::java', {
@@ -329,6 +341,7 @@ describe('LspManager (#1015)', () => {
           pushedSettingsOf: (): undefined => undefined,
           pullsSettings: (): boolean => true,
         } as unknown as LspServerRegistry,
+        TRUSTED,
         new LspApplyEditForwarder(),
       ) as unknown as ManagerInternals & {
         announceConfigurationChange(changes: readonly unknown[]): void;
@@ -396,6 +409,7 @@ describe('LspManager (#1015)', () => {
           // A server shaped like the JSON server never asks for its settings (#1219).
           pullsSettings: (serverId: string): boolean => serverId !== 'json',
         } as unknown as LspServerRegistry,
+        TRUSTED,
         new LspApplyEditForwarder(),
       ) as unknown as DeliveryInternals;
     }
@@ -500,6 +514,7 @@ describe('LspManager (#1015)', () => {
           pushedSettingsOf: (): Record<string, unknown> => json,
           pullsSettings: (): boolean => false,
         } as unknown as LspServerRegistry,
+        TRUSTED,
         new LspApplyEditForwarder(),
       ) as unknown as DeliveryInternals;
       vi.spyOn(internals, 'forwardNotification').mockImplementation((): void => undefined);
@@ -604,13 +619,19 @@ describe('LspManager (#1015)', () => {
   });
 
   describe('workspace diagnostics (#1144)', () => {
-    it('aServersRefresh_pullsAfresh_andIsAnswered', async () => {
+    it('aServersRefresh_pullsAfresh_andRepullsTheOpenDocuments_andIsAnswered', async () => {
       const manager: InstanceType<typeof LspManager> = new LspManager(
         (): BrowserWindow | null => null,
         new WorkspaceContext(),
         {} as LspServerRegistry,
+        TRUSTED,
         new LspApplyEditForwarder(),
       );
+      const forwarded: string[] = [];
+      vi.spyOn(
+        manager as unknown as { notifyRenderer(id: string, method: string): void },
+        'notifyRenderer',
+      ).mockImplementation((_id: string, method: string): void => void forwarded.push(method));
       let refreshed: number = 0;
       const connection: FakeConnection = fakeConnection();
       (manager as unknown as ManagerInternals).answerServerRequests(connection, '/root::csharp', {
@@ -626,6 +647,8 @@ describe('LspManager (#1015)', () => {
 
       expect(answer).toBeNull();
       expect(refreshed).toBe(1);
+      // Roslyn's workspace pull leaves open documents out: the renderer pulls those again.
+      expect(forwarded).toEqual(['workspace/diagnostic/refresh']);
     });
 
     it('aServerWithNoWorkspacePull_hasTheRefreshSentOnToTheRenderer (#1210)', async () => {
@@ -633,6 +656,7 @@ describe('LspManager (#1015)', () => {
         (): BrowserWindow | null => null,
         new WorkspaceContext(),
         {} as LspServerRegistry,
+        TRUSTED,
         new LspApplyEditForwarder(),
       );
       const forwarded: string[] = [];
@@ -666,6 +690,7 @@ describe('LspManager (#1015)', () => {
           {
             servesWorkspaceDiagnostics: (id: string): boolean => id === 'csharp',
           } as unknown as LspServerRegistry,
+          TRUSTED,
           new LspApplyEditForwarder(),
         );
         const requests: unknown[] = [];
@@ -717,6 +742,7 @@ describe('LspManager (#1015)', () => {
           pushedSettingsOf: (): undefined => undefined,
           pullsSettings: (): boolean => true,
         } as unknown as LspServerRegistry,
+        TRUSTED,
         new LspApplyEditForwarder(),
       );
       const internals: ManagerInternals = manager as ManagerInternals;
@@ -761,6 +787,7 @@ describe('LspManager (#1015)', () => {
       (): BrowserWindow | null => null,
       new WorkspaceContext(),
       {} as LspServerRegistry,
+      TRUSTED,
       new LspApplyEditForwarder(),
     );
     const forwarded: string[] = [];
@@ -798,6 +825,7 @@ describe('LspManager (#1015)', () => {
       (): BrowserWindow | null => null,
       new WorkspaceContext(),
       {} as LspServerRegistry,
+      TRUSTED,
       new LspApplyEditForwarder(),
     );
     const connection: FakeConnection = fakeConnection();
@@ -825,8 +853,9 @@ describe('LspManager (#1015)', () => {
       (): BrowserWindow | null => null,
       new WorkspaceContext(),
       {} as LspServerRegistry,
+      TRUSTED,
       new LspApplyEditForwarder(),
-      attaches as unknown as ConstructorParameters<typeof LspManager>[4],
+      attaches as unknown as ConstructorParameters<typeof LspManager>[5],
     );
     const live: WebContents = contents();
     const connection: FakeConnection = fakeConnection();
@@ -862,6 +891,7 @@ describe('LspManager (#1015)', () => {
         (): BrowserWindow | null => null,
         new WorkspaceContext(),
         {} as LspServerRegistry,
+        TRUSTED,
         new LspApplyEditForwarder(),
       );
       (manager as ManagerInternals).sessions.set('/root::csharp', {
@@ -951,6 +981,7 @@ describe('LspManager (#1015)', () => {
         (): BrowserWindow | null => null,
         new WorkspaceContext(),
         { projectDiagnosticsOf: (): 'tsserver' | undefined => how } as unknown as LspServerRegistry,
+        TRUSTED,
         new LspApplyEditForwarder(),
       ) as unknown as Checking;
     }
@@ -1021,6 +1052,7 @@ describe('LspManager (#1015)', () => {
         (): BrowserWindow | null => null,
         new WorkspaceContext(),
         {} as LspServerRegistry,
+        TRUSTED,
         new LspApplyEditForwarder(),
       );
       (manager as ManagerInternals).sessions.set('/root::csharp', {

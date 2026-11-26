@@ -162,6 +162,13 @@ app-markdown-editor .milkdown .ProseMirror {
   outline: none;
   min-height: 100%;
 
+  // A document's direction is its own, not the interface's. Each paragraph takes its direction from its
+  // first letter, as GitHub's `dir="auto"` does, so an Arabic paragraph reads and aligns right to left
+  // in any interface language.
+  :is(p, h1, h2, h3, h4, h5, h6, li, th, td, dt, dd) {
+    unicode-bidi: plaintext;
+  }
+
   p {
     font-size: var(--markdown-font-size, 16px) !important;
     line-height: var(--markdown-line-height, 1.6) !important;

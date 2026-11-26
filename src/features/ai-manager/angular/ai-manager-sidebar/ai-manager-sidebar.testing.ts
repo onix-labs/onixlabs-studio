@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import type { ComponentFixture } from '@angular/core/testing';
 import { ModelManagerView } from '../model-manager-view/model-manager-view';
-import { PromptProfilesSection } from '../prompt-profiles/prompt-profiles';
+import { PersonaSection } from '../persona/persona';
 import { SkillLibrarySection } from '../skill-library/skill-library';
 import { AiManagerSidebar } from './ai-manager-sidebar';
 import { AiManagerSidebarState } from './ai-manager-sidebar-state';
@@ -23,16 +23,16 @@ import { AiManagerSidebarState } from './ai-manager-sidebar-state';
 export class ModelsWithSidebar {}
 
 /**
- * Hosts the Prompt Profiles section with the sidebar.
+ * Hosts the Persona section with the sidebar.
  */
 @Component({
-  selector: 'app-profiles-with-sidebar',
-  imports: [AiManagerSidebar, PromptProfilesSection],
+  selector: 'app-persona-with-sidebar',
+  imports: [AiManagerSidebar, PersonaSection],
   providers: [AiManagerSidebarState],
-  template: '<app-ai-manager-sidebar /><app-prompt-profiles />',
+  template: '<app-ai-manager-sidebar /><app-persona />',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ProfilesWithSidebar {}
+export class PersonaWithSidebar {}
 
 /**
  * Hosts the Skills section with the sidebar.

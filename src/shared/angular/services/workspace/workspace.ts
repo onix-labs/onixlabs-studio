@@ -1,6 +1,7 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { RememberedSwitch } from '@shared/angular/services/explorer-filter/remembered-switch';
 import { explorerSorted } from './explorer-sort';
+import { FileNesting, FileNestingRule, fileNestingRules, nestFiles } from './file-nesting';
 import { ExplorerFilter } from '@shared/angular/services/explorer-filter/explorer-filter';
 import { Bridge } from '@shared/api/bridge';
 import { DirectoryChangeEvent } from '@shared/api/file-channels';
@@ -139,6 +140,12 @@ export interface WorkspaceTreeRow {
    * or undefined when the row shows its node's own name. The row stands for the last of the chain.
    */
   readonly label?: string;
+
+  /**
+   * Gets the files File Nesting gathered beneath this file's row, in the order they show; undefined
+   * for a row that gathers none. A row with any expands as well as opens.
+   */
+  readonly nested?: readonly WorkspaceTreeNode[];
 }
 
 /**
@@ -285,6 +292,36 @@ export class Workspace {
   );
 
   /**
+   * Holds whether files gather the files File Nesting names beneath them. Off by default here: the
+   * File Explorer shows the folder as it is on disk unless asked otherwise.
+   */
+  private readonly nestingFiles: RememberedSwitch = new RememberedSwitch(
+    'workspace.files.nestFiles',
+    false,
+  );
+
+  /**
+   * Gets the File Nesting rules, read once per change of the setting.
+   */
+  private readonly nestingRules: Signal<readonly FileNestingRule[]> = computed(
+    (): readonly FileNestingRule[] =>
+      fileNestingRules(this.settings.value('workspaces.fileNesting')()),
+  );
+
+  /**
+   * Holds the paths of the files whose nested files are shown. Files have no expansion of their own
+   * in the tree's nodes, which mirror the disk; this is the explorer's alone.
+   */
+  private readonly nestExpanded: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
+    new Set<string>(),
+  );
+
+  /**
+   * Gets whether files gather the files File Nesting names beneath them.
+   */
+  public readonly nestsFiles: Signal<boolean> = this.nestingFiles.on;
+
+  /**
    * Gets whether the tree follows the active document, revealing it as the editor's tab changes.
    */
   public readonly followsActiveDocument: Signal<boolean> = this.followingActive.on;
@@ -319,6 +356,27 @@ export class Workspace {
    */
   public toggleCollapseEmptyFolders(): void {
     this.collapsingEmptyFolders.toggle();
+  }
+
+  /**
+   * Toggles whether files gather the files File Nesting names beneath them.
+   */
+  public toggleNestFiles(): void {
+    this.nestingFiles.toggle();
+  }
+
+  /**
+   * Shows or hides the files nested beneath a file.
+   * @param path The absolute path of the file.
+   */
+  public toggleNested(path: string): void {
+    this.nestExpanded.update((current: ReadonlySet<string>): ReadonlySet<string> => {
+      const next: Set<string> = new Set<string>(current);
+      if (!next.delete(path)) {
+        next.add(path);
+      }
+      return next;
+    });
   }
 
   /**
@@ -373,14 +431,25 @@ export class Workspace {
    * @returns Returns a promise that resolves once the folder has been opened (or the dialog cancelled).
    */
   public async openFolder(): Promise<void> {
-    const listing: DirectoryListing | null = await (this.bridge?.invoke<DirectoryListing | null>(
-      WorkspaceChannel.OpenFolder,
-    ) ?? Promise.resolve(null));
+    const listing: DirectoryListing | null = await this.chooseFolder();
     if (listing === null) {
       return;
     }
     this.log.info('Workspace', `Opened folder '${listing.name}'`, listing.path);
     this.setListing(listing);
+  }
+
+  /**
+   * Shows an open-folder dialog. The main process opens the chosen folder as a root; routing it into a
+   * tab or this workspace is the caller's responsibility.
+   * @returns Returns the chosen folder's listing, or null when cancelled, unreadable, or outside
+   * Electron.
+   */
+  public chooseFolder(): Promise<DirectoryListing | null> {
+    return (
+      this.bridge?.invoke<DirectoryListing | null>(WorkspaceChannel.OpenFolder) ??
+      Promise.resolve(null)
+    );
   }
 
   /**
@@ -618,6 +687,15 @@ export class Workspace {
       }
       nodes = loaded.children;
     }
+    // A file nested beneath another is revealed by showing its parent's nested files.
+    for (const [parent, children] of this.nesting(nodes).children) {
+      if (children.some((child: WorkspaceTreeNode): boolean => child.path === path)) {
+        this.nestExpanded.update(
+          (current: ReadonlySet<string>): ReadonlySet<string> =>
+            new Set<string>([...current, parent.path]),
+        );
+      }
+    }
     this.selection.set(path);
   }
 
@@ -657,6 +735,39 @@ export class Workspace {
         this.expandLoaded(nodes),
       );
     }
+    this.nestExpanded.set(new Set<string>(this.nestParents(this.treeNodes())));
+  }
+
+  /**
+   * Gathers every loaded file that has others nested beneath it, for Expand All.
+   * @param nodes The nodes to search.
+   * @returns Returns the files' paths.
+   */
+  private nestParents(nodes: readonly WorkspaceTreeNode[]): readonly string[] {
+    return [
+      ...[...this.nesting(nodes).children.keys()].map(
+        (node: WorkspaceTreeNode): string => node.path,
+      ),
+      ...nodes.flatMap((node: WorkspaceTreeNode): readonly string[] =>
+        node.children === null ? [] : this.nestParents(node.children),
+      ),
+    ];
+  }
+
+  /**
+   * Nests one folder's files by File Nesting, when it is on.
+   * @param nodes The folder's nodes, folders and files.
+   * @returns Returns how its files nest; nothing nests while File Nesting is off.
+   */
+  private nesting(nodes: readonly WorkspaceTreeNode[]): FileNesting<WorkspaceTreeNode> {
+    const files: readonly WorkspaceTreeNode[] = this.nestsFiles()
+      ? nodes.filter((node: WorkspaceTreeNode): boolean => node.type === 'file')
+      : [];
+    return nestFiles<WorkspaceTreeNode>(
+      files,
+      (node: WorkspaceTreeNode): string => node.name,
+      this.nestingRules(),
+    );
   }
 
   /**
@@ -666,6 +777,7 @@ export class Workspace {
     this.treeNodes.update((nodes: readonly WorkspaceTreeNode[]): readonly WorkspaceTreeNode[] =>
       this.collapse(nodes),
     );
+    this.nestExpanded.set(new Set<string>());
   }
 
   /**
@@ -1166,7 +1278,27 @@ export class Workspace {
    */
   private flatten(nodes: readonly WorkspaceTreeNode[], depth: number): readonly WorkspaceTreeRow[] {
     const rows: WorkspaceTreeRow[] = [];
-    for (const node of this.sorted(nodes)) {
+    const ordered: readonly WorkspaceTreeNode[] = this.sorted(nodes);
+    const nesting: FileNesting<WorkspaceTreeNode> = this.nesting(ordered);
+    for (const node of ordered) {
+      if (nesting.nested.has(node)) {
+        continue;
+      }
+      const nested: readonly WorkspaceTreeNode[] | undefined = nesting.children.get(node);
+      if (nested !== undefined) {
+        const open: boolean = this.nestExpanded().has(node.path);
+        rows.push({ node, depth, expanded: open, nested });
+        if (open) {
+          rows.push(
+            ...nested.map((child: WorkspaceTreeNode): WorkspaceTreeRow => ({
+              node: child,
+              depth: depth + 1,
+              expanded: false,
+            })),
+          );
+        }
+        continue;
+      }
       const chain: readonly WorkspaceTreeNode[] = this.emptyFolderChain(node);
       const last: WorkspaceTreeNode = chain[chain.length - 1];
       const expanded: boolean = last.type === 'directory' && last.expanded;
@@ -1199,8 +1331,31 @@ export class Workspace {
     query: string,
   ): readonly WorkspaceTreeRow[] {
     const rows: WorkspaceTreeRow[] = [];
-    for (const node of this.sorted(nodes)) {
+    const ordered: readonly WorkspaceTreeNode[] = this.sorted(nodes);
+    const nesting: FileNesting<WorkspaceTreeNode> = this.nesting(ordered);
+    for (const node of ordered) {
+      if (nesting.nested.has(node)) {
+        continue;
+      }
       const selfMatch: boolean = node.name.toLowerCase().includes(query);
+      const nested: readonly WorkspaceTreeNode[] | undefined = nesting.children.get(node);
+      if (nested !== undefined) {
+        // A nested file that matches shows beneath its parent, opening the parent's row.
+        const matching: readonly WorkspaceTreeNode[] = nested.filter(
+          (child: WorkspaceTreeNode): boolean => child.name.toLowerCase().includes(query),
+        );
+        if (selfMatch || matching.length > 0) {
+          rows.push({ node, depth, expanded: matching.length > 0, nested });
+          rows.push(
+            ...matching.map((child: WorkspaceTreeNode): WorkspaceTreeRow => ({
+              node: child,
+              depth: depth + 1,
+              expanded: false,
+            })),
+          );
+        }
+        continue;
+      }
       if (node.type === 'directory') {
         const childRows: readonly WorkspaceTreeRow[] =
           node.children !== null ? this.filteredRows(node.children, depth + 1, query) : [];

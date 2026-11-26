@@ -28,7 +28,24 @@ import {
   WorkspaceGit,
 } from '@features/workspace/angular/workspace-git/workspace-git';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
+import { LiveServerSession } from '@features/workspace/angular/live-server/live-server-session';
 import { TreePanel } from './tree-panel';
+
+/**
+ * Stands in for this tab's live server: offered on HTML pages, recording what it was asked to open.
+ */
+class FakeLiveServer {
+  public readonly opened: string[] = [];
+
+  public opens(path: string): boolean {
+    return path.endsWith('.html');
+  }
+
+  public open(path: string): Promise<void> {
+    this.opened.push(path);
+    return Promise.resolve();
+  }
+}
 
 /**
  * Builds a filter that remembers nothing between specs: its storage is cleared first.
@@ -76,6 +93,7 @@ class FakeWorkspace {
   public readonly selectedPath: WritableSignal<string | null> = signal<string | null>(null);
   public readonly created: { directory: string; name: string; type: string }[] = [];
   public readonly renamed: { path: string; name: string }[] = [];
+  public readonly groupRenames: { path: string; name: string; nested: readonly string[] }[] = [];
   public readonly deleted: string[] = [];
   public readonly toggled: string[] = [];
   public result: FileOperationResult = { success: true, path: '/ws/added.ts', trashed: true };
@@ -95,6 +113,8 @@ class FakeWorkspace {
   public readonly followsActiveDocument: WritableSignal<boolean> = signal<boolean>(true);
   public readonly showsGitStatus: WritableSignal<boolean> = signal<boolean>(true);
   public readonly collapsesEmptyFolders: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly nestsFiles: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly nestToggles: string[] = [];
   public refreshes: number = 0;
 
   public toggleFollowActiveDocument(): void {
@@ -107,6 +127,14 @@ class FakeWorkspace {
 
   public toggleCollapseEmptyFolders(): void {
     this.collapsesEmptyFolders.update((value: boolean): boolean => !value);
+  }
+
+  public toggleNestFiles(): void {
+    this.nestsFiles.update((value: boolean): boolean => !value);
+  }
+
+  public toggleNested(path: string): void {
+    this.nestToggles.push(path);
   }
 
   public expandSkip: (path: string) => boolean = (): boolean => false;
@@ -257,6 +285,7 @@ describe('TreePanel row context menu', () => {
   let shell: FakeShell;
   let opener: FakeFileOpener;
   let notifications: FakeNotifications;
+  let liveServer: FakeLiveServer;
 
   const panel: DockPanel = {
     id: 'files',
@@ -272,16 +301,26 @@ describe('TreePanel row context menu', () => {
     shell = new FakeShell();
     opener = new FakeFileOpener();
     notifications = new FakeNotifications();
+    liveServer = new FakeLiveServer();
 
     await TestBed.configureTestingModule({
       imports: [TreePanel],
       providers: [
         { provide: Workspace, useValue: workspace },
+        { provide: LiveServerSession, useValue: liveServer },
         {
           provide: EntryRename,
           useValue: {
             rename: (path: string, name: string): Promise<FileOperationResult> =>
               workspace.rename(path, name),
+            renameGroup: (
+              path: string,
+              name: string,
+              nested: readonly string[],
+            ): Promise<FileOperationResult> => {
+              workspace.groupRenames.push({ path, name, nested });
+              return Promise.resolve(workspace.result);
+            },
           },
         },
         { provide: Shell, useValue: shell },
@@ -308,6 +347,130 @@ describe('TreePanel row context menu', () => {
       .filter((item: MenuItem): boolean => item.separator !== true)
       .map((item: MenuItem): string => item.id);
   }
+
+  describe('a file with others nested beneath it', () => {
+    afterEach((): void => {
+      localStorage.removeItem('settings');
+    });
+
+    /**
+     * Shows a file with two others nested beneath it, as the workspace would.
+     */
+    async function showParent(): Promise<void> {
+      workspace.rows.set([
+        {
+          node: node('Enumeration.cs', '/ws/Enumeration.cs', 'file'),
+          depth: 0,
+          expanded: false,
+          nested: [
+            node('Enumeration.Comparable.cs', '/ws/Enumeration.Comparable.cs', 'file'),
+            node('Enumeration.From.cs', '/ws/Enumeration.From.cs', 'file'),
+          ],
+        },
+      ]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+    }
+
+    /**
+     * Gets the parent's rendered row.
+     * @returns Returns the row element.
+     */
+    function parentRow(): HTMLElement {
+      const row: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
+        '.tree-row',
+      );
+      if (row === null) {
+        throw new Error('The parent row was not rendered.');
+      }
+      return row;
+    }
+
+    it('expands_andAClickTogglesIt_whileADoubleClickOpensIt', async () => {
+      await showParent();
+
+      expect(parentRow().querySelector('.tree-chevron')).not.toBeNull();
+      parentRow().dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+      parentRow().dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 2 }));
+      parentRow().dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+
+      expect(workspace.nestToggles).toEqual(['/ws/Enumeration.cs']);
+      expect(opener.opened).toEqual(['/ws/Enumeration.cs']);
+    });
+
+    it('withSingleClickOpening_opensOnAClick_andTogglesFromItsChevron', async () => {
+      TestBed.inject(Settings).set('workspaces.openFilesWith', 'single');
+      await showParent();
+
+      parentRow().querySelector<HTMLElement>('.tree-name')?.click();
+      parentRow().querySelector<HTMLElement>('.tree-chevron')?.click();
+
+      expect(opener.opened).toEqual(['/ws/Enumeration.cs']);
+      expect(workspace.nestToggles).toEqual(['/ws/Enumeration.cs']);
+    });
+
+    it('rename_takesTheNestedFilesAlong', async () => {
+      await showParent();
+      component.onContextAction({
+        itemId: 'rename',
+        row: treeRow(node('Enumeration.cs', '/ws/Enumeration.cs', 'file')),
+      });
+
+      await component.onEditCommit({
+        row: treeRow(node('Enumeration.cs', '/ws/Enumeration.cs', 'file')),
+        value: 'Ordinal.cs',
+      });
+
+      expect(workspace.groupRenames).toEqual([
+        {
+          path: '/ws/Enumeration.cs',
+          name: 'Ordinal.cs',
+          nested: ['/ws/Enumeration.Comparable.cs', '/ws/Enumeration.From.cs'],
+        },
+      ]);
+      expect(workspace.renamed).toEqual([]);
+    });
+
+    it('delete_asksWhetherTheNestedFilesGoToo_andDeletesThemWhenTheyDo', async () => {
+      TestBed.inject(Settings).set('workspaces.confirmBeforeDeleting', false);
+      await showParent();
+      const parent: WorkspaceTreeNode = node('Enumeration.cs', '/ws/Enumeration.cs', 'file');
+
+      component.onContextAction({ itemId: 'delete', row: treeRow(parent) });
+      expect(workspace.deleted).toEqual([]);
+      expect(component.deleteTargets()).toEqual([parent]);
+
+      await component.confirmDelete(true);
+
+      expect(workspace.deleted).toEqual([
+        '/ws/Enumeration.cs',
+        '/ws/Enumeration.Comparable.cs',
+        '/ws/Enumeration.From.cs',
+      ]);
+    });
+
+    it('delete_only_keepsTheNestedFiles', async () => {
+      await showParent();
+
+      component.onContextAction({
+        itemId: 'delete',
+        row: treeRow(node('Enumeration.cs', '/ws/Enumeration.cs', 'file')),
+      });
+      await component.confirmDelete(false);
+
+      expect(workspace.deleted).toEqual(['/ws/Enumeration.cs']);
+    });
+
+    it('readsAsContainingAChange_whenOnlyANestedFileChanged', async () => {
+      vi.spyOn(TestBed.inject(WorkspaceGit), 'stateFor').mockImplementation(
+        (path: string): ExplorerScmState | null =>
+          path === '/ws/Enumeration.Comparable.cs' ? 'modified' : null,
+      );
+      await showParent();
+
+      expect(parentRow().className).toContain('tree-row--tone-info');
+    });
+  });
 
   describe('status strip', () => {
     /**
@@ -637,6 +800,15 @@ describe('TreePanel row context menu', () => {
     ]);
   });
 
+  it('contextMenuFor_anHtmlPage_offersOpenWithLiveServer_andRunsIt (#1062)', () => {
+    const page: WorkspaceTreeNode = node('index.html', '/ws/index.html', 'file');
+
+    expect(itemIds(page).slice(0, 2)).toEqual(['open', 'open-with-live-server']);
+    component.onContextAction({ itemId: 'open-with-live-server', row: treeRow(page) });
+
+    expect(liveServer.opened).toEqual(['/ws/index.html']);
+  });
+
   it('contextMenuFor_aDirectory_offersTheNewCommandsInPlaceOfOpen', () => {
     // Clicking a directory row toggles it, so an Open item would either duplicate the row click or
     // mean something the tree does not do.
@@ -866,6 +1038,7 @@ describe('TreePanel row context menu', () => {
         'follow-active',
         'git-status',
         'collapse-empty-folders',
+        'nest-files',
         'show-hidden',
       ]);
     });
@@ -895,13 +1068,15 @@ describe('TreePanel row context menu', () => {
       choose('follow-active');
       choose('git-status');
       choose('collapse-empty-folders');
+      choose('nest-files');
 
       expect(workspace.followsActiveDocument()).toBe(false);
       expect(workspace.showsGitStatus()).toBe(false);
       expect(workspace.collapsesEmptyFolders()).toBe(true);
+      expect(workspace.nestsFiles()).toBe(true);
       expect(
         moreItems()[0].children?.map((item: MenuItem): boolean | undefined => item.checked),
-      ).toEqual([false, false, true, true]);
+      ).toEqual([false, false, true, true, true]);
     });
 
     it('showGitStatus_off_dropsTheRowColours', async () => {

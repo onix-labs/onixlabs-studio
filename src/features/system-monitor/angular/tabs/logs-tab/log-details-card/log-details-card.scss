@@ -1,0 +1,57 @@
+@use '../../cards' as *;
+
+:host {
+  @include host;
+}
+
+// Label beside value, the labels in a column of their own; the message takes the rest of the card.
+.log-details {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-rows: repeat(5, auto) minmax(0, 1fr);
+  gap: 0.35rem 2rem;
+  align-items: center;
+  min-block-size: 0;
+  margin: 0;
+
+  dt {
+    font-size: 0.8rem;
+    color: var(--form-muted-foreground-color);
+  }
+
+  dd {
+    min-inline-size: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: 0.8rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--body-foreground-color);
+  }
+
+  dt:last-of-type {
+    align-self: start;
+    padding-block-start: 0.4rem;
+  }
+}
+
+// The whole message, wrapped and scrolling in its own well, so it can be read and selected.
+.log-details dd.log-details__message {
+  align-self: stretch;
+  box-sizing: border-box;
+  max-block-size: 100%;
+  padding: 0.4rem 0.6rem;
+  overflow: auto;
+  border: 1px solid var(--dock-border-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background-color: var(--panel-surface-color);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.log-details__empty {
+  @include empty;
+}

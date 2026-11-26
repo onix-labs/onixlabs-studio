@@ -3,8 +3,16 @@ import type { AgentRunContext } from './agent-provider';
 
 vi.mock('electron', () => ({ app: { isPackaged: false } }));
 
-const { clampLogLimit, formatLogRecord, listLogSessions, MAX_LOG_RECORDS, queryLogs, setLogLevel } =
-  await import('./monitor-tools');
+const {
+  clampLogLimit,
+  formatLogRecord,
+  listLogSessions,
+  listProcesses,
+  MAX_LOG_RECORDS,
+  queryLogs,
+  readResource,
+  setLogLevel,
+} = await import('./monitor-tools');
 
 /**
  * Builds a run context whose bridge answers with the given value.
@@ -120,5 +128,33 @@ describe('monitor tools', () => {
     expect(await setLogLevel(contextAnswering({ ok: false, error: 'Nope.' }).context, 'loud')).toBe(
       'Nope.',
     );
+  });
+
+  it('readResource_asksForTheResource_roundsFractions_andMasksSecrets', async () => {
+    const { context, request } = contextAnswering({
+      available: true,
+      result: {
+        utilisationPercent: 0.32712274916635736,
+        count: 12,
+        command: 'deploy --token ghp_abcdefghijklmnopqrstuvwxyz0123456789',
+      },
+    });
+
+    const text: string = await readResource(context, 'storage');
+
+    expect(request).toHaveBeenCalledWith('read_resource', { resource: 'storage' });
+    expect(text).toContain('"utilisationPercent": 0.3');
+    expect(text).toContain('"count": 12');
+    expect(text).not.toContain('ghp_abcdefghijklmnopqrstuvwxyz0123456789');
+  });
+
+  it('listProcesses_passesTheQuery_andSaysWhyWhenItCannot', async () => {
+    const { context, request } = contextAnswering({ available: true, error: 'No listing.' });
+
+    expect(await listProcesses(context, { sort: 'memory', limit: 5 })).toBe('No listing.');
+    expect(request).toHaveBeenCalledWith('list_processes', { sort: 'memory', limit: 5 });
+
+    const closed: { context: AgentRunContext } = contextAnswering({ available: false });
+    expect(await listProcesses(closed.context, {})).toContain('not open');
   });
 });

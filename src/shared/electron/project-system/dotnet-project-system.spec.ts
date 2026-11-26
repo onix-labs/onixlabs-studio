@@ -1,3 +1,4 @@
+import type { ProjectLoadOptions } from './project-system';
 import {
   chmodSync,
   existsSync,
@@ -16,6 +17,12 @@ import type { ProjectItems, ProjectModel } from '@shared/api/project-system';
 import type { RunConfiguration } from '@shared/api/studio';
 import { ProjectEntry } from '@shared/api/project-system';
 import { DotnetProjectSystem, resolveProjectPath } from './dotnet-project-system';
+import { trustedToken } from '../process/run-token.fixture';
+
+/**
+ * Loads a project as a trusted folder does, letting the provider ask its tool.
+ */
+const TRUSTED_LOAD: ProjectLoadOptions = { token: trustedToken('/') };
 
 describe('resolveProjectPath (#882)', () => {
   const root: string = path.resolve('/w');
@@ -70,6 +77,7 @@ describe('DotnetProjectSystem.resolveDebugTarget (#882)', () => {
     const result: DebugResolveResult = await new DotnetProjectSystem().resolveDebugTarget(
       configuration,
       root,
+      trustedToken('/'),
     );
 
     expect(result).toEqual({ target: null, error: 'The project is outside the workspace.' });
@@ -232,12 +240,26 @@ describe.skipIf(process.platform === 'win32')('DotnetProjectSystem with a toolch
   describe('project items', () => {
     const PROJECT: () => string = (): string => path.join(scratch, 'a', 'a.csproj');
 
+    it('inAFolderNotTrusted_runsNoMsbuild_andListsTheFiles (#1504)', async () => {
+      dotnet(`echo '{"Items":{"Compile":[{"Identity":"Program.cs"}]}}'`);
+      mkdirSync(path.dirname(PROJECT()), { recursive: true });
+      writeFileSync(PROJECT(), '<Project />');
+      writeFileSync(path.join(path.dirname(PROJECT()), 'Program.cs'), '');
+
+      const items: ProjectItems | null = await provider.loadProjectItems(PROJECT());
+
+      expect(runs()).toEqual([]);
+      expect(items?.tree.map((node: { name: string }): string => node.name)).toContain(
+        'Program.cs',
+      );
+    });
+
     it('buildsTheTreeFromWhatMsbuildEvaluates', async () => {
       dotnet(
         `echo '{"Properties":{"TargetFramework":"net10.0"},"Items":{"Compile":[{"Identity":"Program.cs"},{"Identity":""}]}}'`,
       );
 
-      const items: ProjectItems | null = await provider.loadProjectItems(PROJECT());
+      const items: ProjectItems | null = await provider.loadProjectItems(PROJECT(), TRUSTED_LOAD);
 
       expect(items?.tree.map((node: { name: string }): string => node.name)).toContain(
         'Program.cs',
@@ -250,7 +272,7 @@ describe.skipIf(process.platform === 'win32')('DotnetProjectSystem with a toolch
   *) echo '{"Properties":{"TargetFramework":"","TargetFrameworks":"net8.0;net10.0"},"Items":{}}' ;;
 esac`);
 
-      const items: ProjectItems | null = await provider.loadProjectItems(PROJECT());
+      const items: ProjectItems | null = await provider.loadProjectItems(PROJECT(), TRUSTED_LOAD);
 
       expect(items?.tree.map((node: { name: string }): string => node.name)).toContain('Pinned.cs');
     });
@@ -261,7 +283,7 @@ esac`);
     ])('isNull_for_%s', async (_name: string, body: string) => {
       dotnet(body);
 
-      expect(await provider.loadProjectItems(PROJECT())).toBeNull();
+      expect(await provider.loadProjectItems(PROJECT(), TRUSTED_LOAD)).toBeNull();
     });
 
     it('isNull_whenThePinnedEvaluationFails', async () => {
@@ -270,15 +292,15 @@ esac`);
   *) echo '{"Properties":{"TargetFrameworks":"net8.0"}}' ;;
 esac`);
 
-      expect(await provider.loadProjectItems(PROJECT())).toBeNull();
+      expect(await provider.loadProjectItems(PROJECT(), TRUSTED_LOAD)).toBeNull();
     });
 
     it('sharesOneEvaluation_betweenConcurrentCallers', async () => {
       dotnet(`echo '{"Items":{}}'`);
 
       await Promise.all([
-        provider.loadProjectItems(PROJECT()),
-        provider.loadProjectItems(PROJECT()),
+        provider.loadProjectItems(PROJECT(), TRUSTED_LOAD),
+        provider.loadProjectItems(PROJECT(), TRUSTED_LOAD),
       ]);
 
       expect(runs()).toHaveLength(1);
@@ -286,10 +308,10 @@ esac`);
 
     it('evaluatesAgainAfterAFailure', async () => {
       dotnet('exit 1');
-      await provider.loadProjectItems(PROJECT());
+      await provider.loadProjectItems(PROJECT(), TRUSTED_LOAD);
       dotnet(`echo '{"Items":{}}'`);
 
-      expect(await provider.loadProjectItems(PROJECT())).not.toBeNull();
+      expect(await provider.loadProjectItems(PROJECT(), TRUSTED_LOAD)).not.toBeNull();
     });
   });
 
@@ -303,6 +325,7 @@ esac`);
       const result: DebugResolveResult = await provider.resolveDebugTarget(
         { ...CONFIGURATION, target: path.join(scratch, 'app', 'app.csproj') },
         scratch,
+        trustedToken('/'),
       );
 
       expect(result).toEqual({
@@ -319,6 +342,7 @@ esac`);
       const result: DebugResolveResult = await provider.resolveDebugTarget(
         { ...CONFIGURATION, target: '/elsewhere/evil.csproj' },
         scratch,
+        trustedToken('/'),
       );
 
       expect(result).toEqual({ target: null, error: 'The project is outside the workspace.' });
@@ -332,6 +356,7 @@ esac`);
       const result: DebugResolveResult = await provider.resolveDebugTarget(
         { ...CONFIGURATION, target: path.join(scratch, 'app', 'app.csproj') },
         scratch,
+        trustedToken('/'),
       );
 
       expect(result.target).toBeNull();
@@ -345,6 +370,7 @@ esac`);
       const result: DebugResolveResult = await provider.resolveDebugTarget(
         { ...CONFIGURATION, target: path.join(scratch, 'app', 'app.csproj') },
         scratch,
+        trustedToken('/'),
       );
 
       expect(result.error).toMatch(/output assembly/);
@@ -355,14 +381,26 @@ esac`);
     it('isNull_forASourceWithNoProject', async () => {
       write({ 'loose.cs': '' });
 
-      expect(await provider.resolveArtifact(path.join(scratch, 'loose.cs'))).toBeNull();
+      expect(
+        await provider.resolveArtifact(
+          path.join(scratch, 'loose.cs'),
+          undefined,
+          trustedToken('/'),
+        ),
+      ).toBeNull();
     });
 
     it('isNull_whenNotBuiltYet', async () => {
       write({ 'app/app.csproj': '', 'app/a.cs': '' });
       dotnet(`echo "${scratch}/app/bin/app.dll"`);
 
-      expect(await provider.resolveArtifact(path.join(scratch, 'app', 'a.cs'))).toBeNull();
+      expect(
+        await provider.resolveArtifact(
+          path.join(scratch, 'app', 'a.cs'),
+          undefined,
+          trustedToken('/'),
+        ),
+      ).toBeNull();
     });
 
     it('findsTheOutputAndItsSymbols_andSaysWhenTheSourceIsNewer', async () => {
@@ -370,7 +408,13 @@ esac`);
       utimesSync(path.join(scratch, 'app/bin/app.dll'), 1_000, 1_000);
       dotnet(`echo "${scratch}/app/bin/app.dll"`);
 
-      expect(await provider.resolveArtifact(path.join(scratch, 'app', 'a.cs'))).toEqual({
+      expect(
+        await provider.resolveArtifact(
+          path.join(scratch, 'app', 'a.cs'),
+          undefined,
+          trustedToken('/'),
+        ),
+      ).toEqual({
         artifactPath: `${scratch}/app/bin/app.dll`,
         symbolsPath: `${scratch}/app/bin/app.pdb`,
         stale: true,

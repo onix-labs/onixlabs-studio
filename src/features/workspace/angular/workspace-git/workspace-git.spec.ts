@@ -456,6 +456,19 @@ describe('WorkspaceGit', () => {
     expect(staged).toEqual([['src/both.ts']]);
   });
 
+  it('markResolved_refusesAFileWhoseMarkersAreLonger_byConflictMarkerSize', async () => {
+    // A `conflict-marker-size=9` attribute: the markers are still markers.
+    status = { ...status, conflicted: [change('src/both.ts', 'conflicted')] };
+    working.set('src/both.ts', '<<<<<<<<< HEAD\na\n=========\nb\n>>>>>>>>> topic\n');
+    root.set(listing('/repo'));
+    await bind();
+
+    const refused: MutationResult = await git.markResolved(['/repo/src/both.ts']);
+
+    expect(refused).toMatchObject({ success: false });
+    expect(staged).toEqual([]);
+  });
+
   it('aConflict_namesItsSides_andItsKind_andCanBeSettledWhole', async () => {
     status = {
       ...status,

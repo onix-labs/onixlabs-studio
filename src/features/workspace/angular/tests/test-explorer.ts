@@ -26,7 +26,12 @@ import {
   TestRunPlan,
   TestRunPlanAnswer,
 } from '@shared/api/test-channels';
+import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { Log } from '@shared/angular/services/log/log';
+import {
+  NotificationAction,
+  Notifications,
+} from '@shared/angular/services/notifications/notifications';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import {
   DISPOSED_EXIT_CODE,
@@ -51,6 +56,12 @@ import {
   testKey,
   TestState,
 } from './test-tree';
+import { TestNotificationType } from './test-notification-types';
+
+/**
+ * Names the Tests panel in the workspace dock, for bringing it forward.
+ */
+const TESTS_PANEL_ID: string = 'tests';
 
 /**
  * Says what the explorer is doing.
@@ -108,6 +119,16 @@ export class TestExplorer implements OnDestroy {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the notification store a finished run is reported to (#1489).
+   */
+  private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Holds the dock's reveal seam, for bringing the Tests panel forward from a notification.
+   */
+  private readonly dockReveal: DockReveal = inject(DockReveal);
 
   /**
    * Holds the generic transport, or undefined outside Electron.
@@ -182,6 +203,13 @@ export class TestExplorer implements OnDestroy {
   private readonly runProblemSignal: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
+   * Holds whether the panel shows only failed tests. Kept here rather than in the panel so a finished
+   * run's notification can open the panel on its failures, and the choice survives the panel being
+   * hidden.
+   */
+  private readonly failedOnlySignal: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
    * Holds the generation of the current discovery, so a stale one (the folder changed) is dropped.
    */
   private generation: number = 0;
@@ -244,6 +272,11 @@ export class TestExplorer implements OnDestroy {
    * Gets why the last run as a whole failed, or null.
    */
   public readonly runProblem: Signal<string | null> = this.runProblemSignal.asReadonly();
+
+  /**
+   * Gets whether the panel shows only failed tests.
+   */
+  public readonly failedOnly: Signal<boolean> = this.failedOnlySignal.asReadonly();
 
   /**
    * Gets the merged tree of every installed adapter, by key, in tree order.
@@ -409,12 +442,30 @@ export class TestExplorer implements OnDestroy {
   }
 
   /**
+   * Shows only failed tests, or every test.
+   * @param failedOnly Whether to show only failed tests.
+   */
+  public setFailedOnly(failedOnly: boolean): void {
+    this.failedOnlySignal.set(failedOnly);
+  }
+
+  /**
+   * Brings the Tests panel forward showing only the tests that failed.
+   */
+  public showFailures(): void {
+    this.failedOnlySignal.set(true);
+    this.dockReveal.reveal(TESTS_PANEL_ID);
+  }
+
+  /**
    * Runs every test of every installed adapter.
    * @returns Returns a promise resolving true once the run started.
    */
   public runAll(): Promise<boolean> {
+    const root: string = this.workspace.root()?.path ?? '';
     return this.runPlugins(
       this.installed().map((adapter: TestAdapterInfo) => ({ pluginId: adapter.pluginId, ids: [] })),
+      root.split(/[\\/]/).pop() ?? root,
     );
   }
 
@@ -429,15 +480,17 @@ export class TestExplorer implements OnDestroy {
         failed.push(key);
       }
     }
-    return failed.length === 0 ? Promise.resolve(false) : this.run(failed);
+    return failed.length === 0 ? Promise.resolve(false) : this.run(failed, 'failed tests');
   }
 
   /**
    * Runs nodes — a test, or a suite, file or project standing for the tests beneath it.
    * @param keys The nodes' keys.
+   * @param label What the run is called when its notification reports it, or undefined to name the
+   * one node run, or count them.
    * @returns Returns a promise resolving true once the run started.
    */
-  public run(keys: readonly string[]): Promise<boolean> {
+  public run(keys: readonly string[], label?: string): Promise<boolean> {
     const byPlugin: Map<string, string[]> = new Map<string, string[]>();
     for (const key of keys) {
       const entry: TestEntry | undefined = this.index().get(key);
@@ -448,8 +501,10 @@ export class TestExplorer implements OnDestroy {
       ids.push(entry.node.id);
       byPlugin.set(entry.pluginId, ids);
     }
+    const only: TestEntry | undefined = keys.length === 1 ? this.index().get(keys[0]) : undefined;
     return this.runPlugins(
       [...byPlugin].map(([pluginId, ids]: [string, string[]]) => ({ pluginId, ids })),
+      label ?? only?.node.label ?? `${keys.length} selected`,
     );
   }
 
@@ -526,10 +581,12 @@ export class TestExplorer implements OnDestroy {
   /**
    * Runs each adapter's share of a run in turn, in the one Tests terminal.
    * @param requests What to run, per adapter; empty identifiers run all of an adapter's tests.
+   * @param label What the run is called when its notification reports it.
    * @returns Returns a promise resolving true once the run started.
    */
   private runPlugins(
     requests: readonly { readonly pluginId: string; readonly ids: readonly string[] }[],
+    label: string,
   ): Promise<boolean> {
     const root: string | null = this.workspace.root()?.path ?? null;
     if (
@@ -551,25 +608,28 @@ export class TestExplorer implements OnDestroy {
       }
     }
     this.queuedSignal.set(queued);
-    void this.runQueue(root, requests);
+    void this.runQueue(root, requests, label);
     return Promise.resolve(true);
   }
 
   /**
-   * Works through a run's adapters in turn.
+   * Works through a run's adapters in turn, then reports how it came out.
    * @param root The folder.
    * @param requests What to run, per adapter.
+   * @param label What the run is called when its notification reports it.
    */
   private async runQueue(
     root: string,
     requests: readonly { readonly pluginId: string; readonly ids: readonly string[] }[],
+    label: string,
   ): Promise<void> {
+    const reported: TestResult[] = [];
     try {
       for (const request of requests) {
         if (this.stopped) {
           break;
         }
-        await this.runOne(root, request.pluginId, request.ids);
+        reported.push(...(await this.runOne(root, request.pluginId, request.ids)));
       }
     } catch (error: unknown) {
       this.log.error('workspace.tests', 'The test run failed', error);
@@ -579,6 +639,61 @@ export class TestExplorer implements OnDestroy {
       this.queuedSignal.set(new Set<string>());
       this.phaseSignal.set('idle');
     }
+    // A run the user stopped is not reported: stopping it was their own doing.
+    if (!this.stopped) {
+      this.notifyOutcome(reported, label);
+    }
+  }
+
+  /**
+   * Reports a finished run (#1489): how many of the tests it ran passed and failed. A run with a
+   * failure, or one that could not run at all, pops up with Show Failures and Run Failed Again; one
+   * where every test passed goes to the history.
+   * @param reported The results the run reported, including cases only the run found (a theory's).
+   * @param label What the run is called.
+   */
+  private notifyOutcome(reported: readonly TestResult[], label: string): void {
+    let passed: number = 0;
+    let failed: number = 0;
+    for (const result of reported) {
+      if (result.outcome === 'passed') {
+        passed++;
+      } else if (result.outcome === 'failed' || result.outcome === 'errored') {
+        failed++;
+      }
+    }
+    const problem: string | null = this.runProblemSignal();
+    const counts: string = `${passed} passed, ${failed} failed`;
+    if (failed === 0 && problem === null) {
+      this.notifications.notify({
+        severity: 'success',
+        title: `${passed} passed — ${label}`,
+        key: `tests:${this.sessionId}`,
+        type: TestNotificationType.Passed,
+        reveal: (): void => this.dockReveal.reveal(TESTS_PANEL_ID),
+      });
+      return;
+    }
+    const actions: NotificationAction[] = [];
+    if (failed > 0) {
+      actions.push(
+        { label: 'Show failures', run: (): void => this.showFailures() },
+        { label: 'Run failed again', run: (): void => void this.runFailed() },
+      );
+    } else {
+      actions.push({ label: 'Show output', run: (): void => this.showOutput() });
+    }
+    this.notifications.notify({
+      severity: 'error',
+      title: failed > 0 ? `${counts} — ${label}` : `Tests couldn't run — ${label}`,
+      ...(problem === null ? {} : { detail: problem }),
+      actions,
+      key: `tests:${this.sessionId}`,
+      type: TestNotificationType.Failed,
+      // A long run can be left running in another app; its failure is worth coming back for.
+      desktop: true,
+      reveal: (): void => (failed > 0 ? this.showFailures() : this.showOutput()),
+    });
   }
 
   /**
@@ -586,8 +701,13 @@ export class TestExplorer implements OnDestroy {
    * @param root The folder.
    * @param pluginId The adapter.
    * @param ids The nodes asked for, or empty for all.
+   * @returns Returns the results the share reported, or none when it could not run.
    */
-  private async runOne(root: string, pluginId: string, ids: readonly string[]): Promise<void> {
+  private async runOne(
+    root: string,
+    pluginId: string,
+    ids: readonly string[],
+  ): Promise<readonly TestResult[]> {
     const bridge: Bridge = this.bridge!;
     const answer: TestRunPlanAnswer = await bridge.invoke<TestRunPlanAnswer>(
       TestChannel.PlanRun,
@@ -597,7 +717,7 @@ export class TestExplorer implements OnDestroy {
     );
     if (!answer.ok) {
       this.runProblemSignal.set(answer.error);
-      return;
+      return [];
     }
     const plan: TestRunPlan = answer.value;
     // A plugin that cannot narrow a run runs everything it found.
@@ -605,6 +725,7 @@ export class TestExplorer implements OnDestroy {
     this.moveToRunning(tests);
     this.log.info('workspace.tests', `Run tests: ${plan.command.title}`, plan.command.executable);
     const launch: TerminalLaunch = await this.sessions.launch({
+      reportsItsOwnOutcome: true,
       sessionId: this.sessionId,
       name: 'Tests',
       kind: 'task',
@@ -630,9 +751,10 @@ export class TestExplorer implements OnDestroy {
     if (!results.ok) {
       this.runProblemSignal.set(results.error);
       this.clearRunning(tests);
-      return;
+      return [];
     }
     this.apply(pluginId, tests, results.value);
+    return results.value.results;
   }
 
   /**

@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { CloneOutcome, CloneRequest } from '@shared/api/clone-channels';
 import type { VcsParams, VersionControlResponse } from '@shared/api/version-control-protocol';
 import { parseWorktreeConfig } from '@shared/api/worktree';
+import type { RepositoryTrustChoice } from '../repository-trust';
+import type { CloneTrustAnswer } from '../trust/trust-manager';
 import type { TrustedPaths } from '../trusted-paths';
 import type { VersionControlDescriptor } from '../version-control/version-control-descriptor';
 import type { VersionControlHost } from '../version-control/version-control-host';
@@ -23,6 +25,11 @@ class FakeHost {
    * Holds the error the next clone fails with, or null to succeed.
    */
   public failWith: string | null = null;
+
+  /**
+   * Holds what else the next failure carries: a code, a server and the tool's output.
+   */
+  public failExtra: Partial<Extract<VersionControlResponse<'clone'>, { ok: false }>> = {};
 
   /**
    * Gets the plugin that clones.
@@ -44,7 +51,7 @@ class FakeHost {
   ): Promise<VersionControlResponse<'clone'>> {
     this.clones.push(params);
     if (this.failWith !== null) {
-      return Promise.resolve({ id: 1, ok: false, error: this.failWith });
+      return Promise.resolve({ ...this.failExtra, id: 1, ok: false, error: this.failWith });
     }
     fs.mkdirSync(params.directory, { recursive: true });
     fs.writeFileSync(path.join(params.directory, 'README.md'), '# cloned');
@@ -102,6 +109,9 @@ describe('CloneManager', () => {
   let file: string;
   let host: FakeHost;
   let trusted: string[];
+  let answer: CloneTrustAnswer;
+  let asked: { source: string; destination: string; existed: boolean }[];
+  let recorded: { folder: string; choice: RepositoryTrustChoice }[];
 
   /**
    * Builds the manager, with the parent folder already chosen unless told otherwise.
@@ -117,6 +127,15 @@ describe('CloneManager', () => {
       () => null,
       host as unknown as VersionControlHost,
       { remember: (target: string): number => trusted.push(target) } as unknown as TrustedPaths,
+      {
+        askBeforeClone: (source: string, destination: string): Promise<CloneTrustAnswer> => {
+          asked.push({ source, destination, existed: fs.existsSync(destination) });
+          return Promise.resolve(answer);
+        },
+        recordClone: (folder: string, choice: RepositoryTrustChoice): void => {
+          recorded.push({ folder, choice });
+        },
+      },
     );
   }
 
@@ -125,10 +144,89 @@ describe('CloneManager', () => {
     file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'clone-settings-')), 'clone.json');
     host = new FakeHost();
     trusted = [];
+    answer = 'trusted';
+    asked = [];
+    recorded = [];
   });
 
   afterEach(() => {
     fs.rmSync(parent, { recursive: true, force: true });
+  });
+
+  describe('asking before a clone (#1504)', () => {
+    const request: CloneRequest = {
+      url: 'https://user:secret@github.com/a/b.git',
+      name: 'b',
+      layout: 'flat',
+    };
+
+    it('asksBeforeAnythingIsDownloaded_showingTheAddressWithoutItsCredentials', async () => {
+      await manager().cloneAsking(request);
+
+      const destination: string = path.join(parent, 'b');
+      expect(asked).toEqual([
+        { source: 'https://github.com/a/b.git', destination, existed: false },
+      ]);
+    });
+
+    it('trust_clones_andRecordsTheCloneAsTrusted', async () => {
+      const outcome: CloneOutcome = await manager().cloneAsking(request);
+
+      const destination: string = path.join(parent, 'b');
+      expect(outcome).toEqual({ ok: true, path: destination });
+      expect(recorded).toEqual([{ folder: destination, choice: 'trusted' }]);
+    });
+
+    it('dontTrust_clonesTheFilesOnly_andRecordsItAsNotTrusted', async () => {
+      answer = 'restricted';
+
+      const outcome: CloneOutcome = await manager().cloneAsking(request);
+
+      expect(outcome.ok).toBe(true);
+      expect(recorded).toEqual([{ folder: path.join(parent, 'b'), choice: 'restricted' }]);
+    });
+
+    it('decideLater_clones_andRecordsNothing_soOpeningItAsks', async () => {
+      answer = 'later';
+
+      const outcome: CloneOutcome = await manager().cloneAsking(request);
+
+      expect(outcome.ok).toBe(true);
+      expect(recorded).toEqual([]);
+    });
+
+    it('closingTheQuestion_clonesNothing', async () => {
+      answer = 'cancel';
+
+      const outcome: CloneOutcome = await manager().cloneAsking(request);
+
+      expect(outcome).toMatchObject({ ok: false, cancelled: true });
+      expect(host.clones).toEqual([]);
+      expect(fs.existsSync(path.join(parent, 'b'))).toBe(false);
+      expect(recorded).toEqual([]);
+    });
+
+    it('aRequestThatCannotBeCloned_isRefusedWithoutAsking', async () => {
+      const outcome: CloneOutcome = await manager().cloneAsking({ ...request, url: '/etc' });
+
+      expect(outcome.ok).toBe(false);
+      expect(asked).toEqual([]);
+    });
+
+    it('aCloneThatFails_recordsNothing', async () => {
+      host.failWith = 'network down';
+
+      const outcome: CloneOutcome = await manager().cloneAsking(request);
+
+      expect(outcome.ok).toBe(false);
+      expect(recorded).toEqual([]);
+    });
+
+    it('aNewProjectsClone_asksNothing', async () => {
+      await manager().clone(request, parent);
+
+      expect(asked).toEqual([]);
+    });
   });
 
   it('refuses_untilAFolderIsChosen', async () => {
@@ -242,6 +340,29 @@ describe('CloneManager', () => {
     );
     expect(written).not.toContain('ghp_');
     expect(parseWorktreeConfig(JSON.parse(written)).origin).toBe('https://github.com/a/b.git');
+  });
+
+  it('carriesAnSshFailuresCodeServerAndOutput_redactingTheOutput (#1255)', async () => {
+    const url: string = 'ssh://me:ghp_abcdefghijklmnopqrstuvwxyz0123@git.example.com/a/b.git';
+    host.failWith = "SSH doesn't know git.example.com's host key yet.";
+    host.failExtra = {
+      code: 'ssh-host-unknown',
+      sshHost: { host: 'git.example.com' },
+      output: `Cloning from ${url}\nHost key verification failed.`,
+    };
+
+    for (const layout of ['flat', 'worktree'] as const) {
+      const failed: CloneOutcome = await manager().clone({ url, name: `b-${layout}`, layout });
+
+      expect(failed).toEqual({
+        ok: false,
+        error: "SSH doesn't know git.example.com's host key yet.",
+        code: 'ssh-host-unknown',
+        sshHost: { host: 'git.example.com' },
+        output:
+          'Cloning from ssh://[redacted]@git.example.com/a/b.git\nHost key verification failed.',
+      });
+    }
   });
 
   it('removesTheContainer_whenItsCloneFails', async () => {

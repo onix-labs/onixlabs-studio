@@ -1,0 +1,27 @@
+{
+  "id": "onixlabs.live-server",
+  "name": "Live Server",
+  "description": "Serves a static site from the File or Solution Explorer and reloads the page in your browser when you save.",
+  "version": "0.1.0",
+  "apiVersion": "1.31.0",
+  "detail": "Serves only the open workspace's files, on 127.0.0.1, so nothing on your network can reach it. Runs nothing from the workspace itself.",
+  "provision": {
+    "kind": "npm",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-live-server-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.live-server.lock.json",
+    "sha256": "752cf4f28bc7926533efc1a5afb9363e154c86f3fc45d92032690ed36c13b24e",
+    "executablePath": "node_modules/@onixlabs/live-server/main.js"
+  },
+  "contributes": {
+    "liveServers": [
+      {
+        "id": "onixlabs.live-server",
+        "displayName": "Live Server",
+        "priority": 100,
+        "command": {
+          "kind": "node"
+        },
+        "entryPoint": "node_modules/@onixlabs/live-server/main.js"
+      }
+    ]
+  }
+}

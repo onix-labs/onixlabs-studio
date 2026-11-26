@@ -1,16 +1,15 @@
 <app-ribbon-overflow>
-  <app-ribbon-strip-group title="Audit">
-    <app-ribbon-strip-button [icon]="Icon.REFRESH" label="Refresh" (action)="onRefresh()" />
-    <app-ribbon-strip-button [icon]="Icon.CLEAN" label="Clear Filters" (action)="onClear()" />
-  </app-ribbon-strip-group>
-
-  <app-ribbon-strip-group title="Clipboard">
-    <app-ribbon-strip-button
-      [icon]="Icon.COPY"
-      label="Copy"
-      [disabled]="!hasRecords()"
-      (action)="onCopy()"
-    />
+  <!-- The monitor's views: the ribbon is its tab strip. One is pressed — the view showing. -->
+  <app-ribbon-strip-group title="View">
+    @for (view of views; track view.tab) {
+      <app-ribbon-strip-button
+        [icon]="view.icon"
+        [label]="view.label"
+        [toggle]="true"
+        [pressed]="tab() === view.tab"
+        (action)="onSelect(view.tab)"
+      />
+    }
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Agent">

@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { WatchModes } from '../watching/watch-modes';
 import { FileChangeType, FileEvent, LspFileWatcher, MAX_PENDING_PATHS } from './lsp-file-watcher';
 
 /**
@@ -96,6 +97,55 @@ describe('LspFileWatcher', () => {
     expect(
       events().some((event: FileEvent): boolean => event.uri.includes('node_modules/pkg/index.js')),
     ).toBe(false);
+  });
+
+  it('reportsAFileInsideABuildOutput_whenARegistrationMatchesIt', async () => {
+    // Roslyn 5.13's shape: each project watches `**/*.json` beneath it, which takes in the
+    // obj/project.assets.json a restore rewrites. Dropping it with the rest of obj kept a project's
+    // restored references from the server; what no pattern asks for there is still dropped.
+    mkdirSync(path.join(root, 'A', 'obj'), { recursive: true });
+    mkdirSync(path.join(root, 'A', 'node_modules', 'pkg'), { recursive: true });
+    start();
+    watcher?.register('a', [
+      {
+        globPattern: {
+          baseUri: pathToFileURL(path.join(root, 'A')).href,
+          pattern: '{**/*.csproj,**/*.cs,**/*.json}',
+        },
+      },
+    ]);
+    await settle();
+    writeFileSync(path.join(root, 'A', 'obj', 'project.assets.json'), '{}');
+    writeFileSync(path.join(root, 'A', 'obj', 'A.csproj.nuget.g.props'), 'x');
+    writeFileSync(path.join(root, 'A', 'node_modules', 'pkg', 'index.js'), 'x');
+    await settle();
+
+    const uris: string[] = events().map((event: FileEvent): string => event.uri);
+    expect(uris.some((uri: string): boolean => uri.endsWith('/A/obj/project.assets.json'))).toBe(
+      true,
+    );
+    expect(uris.some((uri: string): boolean => uri.endsWith('.nuget.g.props'))).toBe(false);
+    expect(uris.some((uri: string): boolean => uri.endsWith('/index.js'))).toBe(false);
+  });
+
+  it('observe_isToldEveryChangedPath_includingThoseNoRegistrationAsksFor', async () => {
+    // Roslyn does not watch its solution; the manager has to see it change all the same.
+    const observed: string[] = [];
+    watcher = new LspFileWatcher(
+      root,
+      (delivered: readonly FileEvent[]): void => void batches.push(delivered),
+      (relativePaths: readonly string[]): void => void observed.push(...relativePaths),
+    );
+    watcher.register('cs', [{ globPattern: '**/*.cs' }]);
+    internals().onEvent('change', 'App.slnx');
+    internals().onEvent('change', 'A/Program.cs');
+    internals().onEvent('change', 'A/obj/A.csproj.nuget.g.props');
+    await internals().flush();
+
+    expect(observed.sort()).toEqual(['A/Program.cs', 'App.slnx']);
+    expect(events().map((event: FileEvent): string => path.basename(event.uri))).toEqual([
+      'Program.cs',
+    ]);
   });
 
   it('honoursRegisteredPatterns_reportingOnlyMatches', async () => {
@@ -235,6 +285,60 @@ describe('LspFileWatcher', () => {
     ).toBe(false);
     // Gone from disk and renamed: resolved at flush, so it did not stay a mere change.
     expect(events()[0]).toMatchObject({ type: FileChangeType.Deleted });
+  });
+
+  it('aRootInAPolledFolder_isPolled_andAFileCreatedOutsideStudioIsReported', async () => {
+    const modes: WatchModes = new WatchModes(undefined, false);
+    await modes.update([root], 1);
+    watcher = new LspFileWatcher(
+      root,
+      (delivered: readonly FileEvent[]): void => {
+        batches.push(delivered);
+      },
+      undefined,
+      modes,
+    );
+    await settle();
+
+    writeFileSync(path.join(root, 'polled.ts'), 'x');
+    await vi.waitFor(
+      (): void => {
+        expect(events()).toContainEqual({
+          uri: pathToFileURL(path.join(root, 'polled.ts')).href,
+          type: FileChangeType.Created,
+        });
+      },
+      { timeout: 4000, interval: 50 },
+    );
+  });
+
+  it('aPolledRoot_stillReadsObj_whereTheServerRegisteredForIt (#1254)', async () => {
+    mkdirSync(path.join(root, 'obj'));
+    writeFileSync(path.join(root, 'obj', 'project.assets.json'), '{}');
+    const modes: WatchModes = new WatchModes(undefined, false);
+    await modes.update([root], 1);
+    watcher = new LspFileWatcher(
+      root,
+      (delivered: readonly FileEvent[]): void => {
+        batches.push(delivered);
+      },
+      undefined,
+      modes,
+    );
+    watcher.register('restore', [{ globPattern: '**/obj/project.assets.json' }]);
+    await settle();
+    await settle();
+
+    writeFileSync(path.join(root, 'obj', 'project.assets.json'), '{"restored": true}');
+    await vi.waitFor(
+      (): void => {
+        expect(events()).toContainEqual({
+          uri: pathToFileURL(path.join(root, 'obj', 'project.assets.json')).href,
+          type: FileChangeType.Changed,
+        });
+      },
+      { timeout: 4000, interval: 50 },
+    );
   });
 
   it('close_stopsDelivering', async () => {

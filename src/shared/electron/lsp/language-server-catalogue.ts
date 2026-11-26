@@ -13,7 +13,7 @@ import {
   unavailable,
 } from './language-server-descriptor';
 import { CUSTOM_AFTER_COMMON_TARGETS, writeCsharpBraceConfig } from './csharp-editor-config';
-import { GOPLS_SETTINGS } from './gopls-settings';
+import { GOPLS_INITIALIZATION_OPTIONS, GOPLS_SETTINGS } from './gopls-settings';
 import { JdtlsInstall } from './lsp-provisioner';
 import { TYPESCRIPT_PROVISION, TYPESCRIPT_SERVER_PROVISION } from './language-server-downloads';
 
@@ -101,34 +101,27 @@ export function csharpOpenPlan(
 }
 
 /**
- * Decides which `tsserver` the TypeScript language server should drive for a workspace: the
- * workspace's own TypeScript when it has one (version-accurate diagnostics for that project), else
- * the bundled compiler installed alongside the server, else nothing — in which case the server is
- * left to its own search and a workspace without TypeScript gets no service.
+ * Decides which compiler the TypeScript language server drives for a workspace: the workspace's own
+ * TypeScript when the user trusts the workspace and it has one (version-accurate diagnostics for that
+ * project), else the compiler Studio installed beside the server.
+ *
+ * ⛔ Never the workspace's own before it is trusted: that is code the repository ships, and the server
+ * would run it (#1504). The path is always named, so the server never looks for one itself.
  * @param rootPath The workspace root.
  * @param bundled The bundled compiler's `tsserver.js`, or null when it is not installed.
- * @returns Returns the `initializationOptions` to pass, or undefined to pass none.
+ * @param trusted Whether the user trusts the workspace.
+ * @returns Returns the `initializationOptions` to pass, or null when there is no compiler to run.
  */
 export function typescriptInitializationOptions(
   rootPath: string,
   bundled: string | null,
-): { tsserver: { path: string } } | undefined {
+  trusted: boolean,
+): { tsserver: { path: string } } | null {
   const local: string = path.join(rootPath, 'node_modules', 'typescript', 'lib', 'tsserver.js');
-  if (existsSync(local)) {
-    return undefined;
+  if (trusted && existsSync(local)) {
+    return { tsserver: { path: local } };
   }
-  if (bundled === null) {
-    logger.warn(
-      'LanguageServerCatalogue',
-      `${rootPath} has no TypeScript and the bundled compiler is not installed; the server has nothing to run`,
-    );
-    return undefined;
-  }
-  logger.debug(
-    'LanguageServerCatalogue',
-    `Using the bundled TypeScript ${TYPESCRIPT_PROVISION.version} for ${rootPath}`,
-  );
-  return { tsserver: { path: bundled } };
+  return bundled === null ? null : { tsserver: { path: bundled } };
 }
 
 /**
@@ -352,9 +345,18 @@ const TYPESCRIPT: LanguageServerDescriptor = {
     },
   ],
   resolve: (context: LanguageServerContext): LspResolution => {
-    const bundled: string | null = context.installedPath(TYPESCRIPT_PROVISION);
-    const initializationOptions: { tsserver: { path: string } } | undefined =
-      typescriptInitializationOptions(context.rootPath, bundled);
+    const initializationOptions: { tsserver: { path: string } } | null =
+      typescriptInitializationOptions(
+        context.rootPath,
+        context.installedPath(TYPESCRIPT_PROVISION),
+        context.trusted,
+      );
+    if (initializationOptions === null) {
+      // Left to its own search, the server would find the workspace's TypeScript whatever its trust.
+      return unavailable(
+        'The TypeScript compiler is not installed — reinstall TypeScript in Plugins.',
+      );
+    }
     const override: string | undefined = context.settings.get().serverPaths['typescript'];
     if (override !== undefined) {
       if (!existsSync(override)) {
@@ -556,7 +558,9 @@ export function kotlinServerEnv(
 const GO: LanguageServerDescriptor = {
   id: 'go',
   displayName: 'gopls',
-  languages: ['go'],
+  // go.mod and go.work under gopls's own ids for them (#1211): its module lenses, hover and
+  // diagnostics live there, and it parses a file by the id it is opened with.
+  languages: ['go', 'go.mod', 'go.work'],
   priority: DEFAULT_PRIORITY,
   // gopls asks for its whole `gopls` section, at start-up and after every change (#1211), so its
   // settings are pulled and answered nested; it also answers `textDocument/diagnostic` unadvertised,
@@ -576,7 +580,12 @@ const GO: LanguageServerDescriptor = {
     const env: Record<string, string> | undefined = path.isAbsolute(go)
       ? { PATH: `${process.env['PATH'] ?? ''}${path.delimiter}${path.dirname(go)}` }
       : undefined;
-    return resolved({ command: gopls, args: [], env });
+    return resolved({
+      command: gopls,
+      args: [],
+      env,
+      initializationOptions: GOPLS_INITIALIZATION_OPTIONS,
+    });
   },
 };
 

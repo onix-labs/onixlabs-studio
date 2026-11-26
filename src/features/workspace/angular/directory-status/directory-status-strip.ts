@@ -1,17 +1,38 @@
-import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  signal,
+  Signal,
+  untracked,
+  WritableSignal,
+} from '@angular/core';
 import { StatusStripSegments } from '@shared/angular/components/strips/status-strip/status-strip-segments/status-strip-segments';
 import { Icon } from '@shared/angular/icons/icon';
 import { StatusSegment } from '@shared/angular/services/status-bar/status-segment';
 import { Repository } from '@shared/angular/services/repository/repository';
+import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
+import type { RepositoryTrustDecision } from '@shared/api/source-control-channels';
 import { GitBranch } from '@shared/angular/services/repository/repository-data';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-session';
+import { LiveServerSession } from '@features/workspace/angular/live-server/live-server-session';
+import type { LiveServerInfo } from '@shared/api/live-server-channels';
 
 /**
- * Shows the active workspace view's status at the start of the strip: the open folder, and — when
- * that folder is a git repository — the checkout, the branch, the uncommitted changes, and the
- * commits waiting to be pushed and pulled.
+ * Identifies the Live Server chip's menu rows (#1062).
+ */
+const LIVE_SERVER_OPEN: string = 'live-server.open';
+const LIVE_SERVER_COPY: string = 'live-server.copy';
+const LIVE_SERVER_STOP: string = 'live-server.stop';
+
+/**
+ * Shows the active workspace view's status at the start of the strip: the open folder, whether it
+ * is trusted, and — when that folder is a git repository — the checkout, the branch, the uncommitted
+ * changes, and the commits waiting to be pushed and pulled.
  *
  * Mounted by the status strip through the active workspace view's injector, so it reads that view's
  * own {@link Workspace} and {@link Repository}. A worktree container tab holds one sub-view per
@@ -45,10 +66,119 @@ export class DirectoryStatusStrip {
   private readonly worktreeSession: WorktreeSession = inject(WorktreeSession);
 
   /**
-   * Gets the start-aligned segments: the workspace folder, then the git segments when the folder is
-   * a repository.
+   * Holds the trust question's client, which reads and asks for the folder's trust.
+   */
+  private readonly trust: RepositoryTrust = inject(RepositoryTrust);
+
+  /**
+   * Holds the view's live server, whose chip shows while it runs (#1062).
+   */
+  private readonly liveServer: LiveServerSession = inject(LiveServerSession);
+
+  /**
+   * Holds what the user decided about the open folder, read again whenever a decision changes.
+   */
+  private readonly decision: WritableSignal<RepositoryTrustDecision | null> =
+    signal<RepositoryTrustDecision | null>(null);
+
+  /**
+   * Initializes a new instance of the {@link DirectoryStatusStrip} class, reading the open folder's
+   * trust as the folder opens and whenever a decision changes.
+   */
+  public constructor() {
+    effect((): void => {
+      const root: string | null = this.workspace.root()?.path ?? null;
+      this.trust.changed();
+      untracked((): void => {
+        if (root === null) {
+          this.decision.set(null);
+          return;
+        }
+        void this.trust.state(root).then((decision: RepositoryTrustDecision): void => {
+          if (this.workspace.root()?.path === root) {
+            this.decision.set(decision);
+          }
+        });
+      });
+    });
+  }
+
+  /**
+   * Gets the start-aligned segments: the workspace's own, then the Live Server chip while one serves
+   * this workspace.
    */
   protected readonly leading: Signal<readonly StatusSegment[]> = computed(
+    (): readonly StatusSegment[] => [...this.workspaceSegments(), ...this.liveServerSegments()],
+  );
+
+  /**
+   * Gets the Live Server chip (#1062): the address it serves at, with a menu that opens it again,
+   * copies it, or stops the server.
+   */
+  private readonly liveServerSegments: Signal<readonly StatusSegment[]> = computed(
+    (): readonly StatusSegment[] => {
+      const server: LiveServerInfo | null = this.liveServer.server();
+      if (server === null) {
+        return [];
+      }
+      const address: string = server.url.replace(/^http:\/\//, '').replace(/\/$/, '');
+      return [
+        {
+          id: 'ws-live-server',
+          text: $localize`:The status-strip chip of a running Live Server, followed by its address such as 127.0.0.1.5500:Live Server ${address}:address:`,
+          icon: Icon.LIVE_SERVER,
+          title: $localize`:Hover text of the Live Server status-strip chip:Live Server is serving this workspace at ${server.url}:url:`,
+          menu: {
+            items: [
+              {
+                id: LIVE_SERVER_OPEN,
+                label: $localize`:Opens the Live Server's address in the browser:Open in Browser`,
+                icon: Icon.LIVE_SERVER,
+              },
+              {
+                id: LIVE_SERVER_COPY,
+                label: $localize`:Copies the Live Server's address:Copy Address`,
+                icon: Icon.COPY,
+              },
+              { id: 'live-server.sep', label: '', separator: true },
+              {
+                id: LIVE_SERVER_STOP,
+                label: $localize`:Stops the Live Server, freeing its port:Stop Live Server`,
+                icon: Icon.STOP,
+              },
+            ],
+            choose: (id: string): void => this.chooseLiveServer(id),
+          },
+        },
+      ];
+    },
+  );
+
+  /**
+   * Runs a row chosen from the Live Server chip's menu.
+   * @param id The chosen row.
+   */
+  private chooseLiveServer(id: string): void {
+    switch (id) {
+      case LIVE_SERVER_OPEN:
+        void this.liveServer.openAddress();
+        return;
+      case LIVE_SERVER_COPY:
+        void this.liveServer.copyAddress();
+        return;
+      case LIVE_SERVER_STOP:
+        void this.liveServer.stop();
+        return;
+      default:
+        return;
+    }
+  }
+
+  /**
+   * Gets the workspace's own segments: the workspace folder, then the version-control segments when
+   * the folder is a repository.
+   */
+  private readonly workspaceSegments: Signal<readonly StatusSegment[]> = computed(
     (): readonly StatusSegment[] => {
       const root: DirectoryListing | null = this.workspace.root();
       if (root === null) {
@@ -62,6 +192,23 @@ export class DirectoryStatusStrip {
       const segments: StatusSegment[] = [
         { id: 'ws-folder', text: workspaceName, title: workspaceName, shrink: 'end' },
       ];
+      // A folder not yet trusted runs nothing (#1504), which explains empty panels; this says so,
+      // and is where the user trusts it once they have decided they do.
+      const decision: RepositoryTrustDecision | null = this.decision();
+      if (decision !== null && decision !== 'trusted') {
+        const folder: string = root.path;
+        segments.push({
+          id: 'ws-trust',
+          text: 'Not Trusted',
+          icon: Icon.LOCK,
+          title:
+            'Nothing runs from this folder: no language servers, build tools or version control. ' +
+            'Click to choose whether to trust it.',
+          activate: (): void => {
+            void this.trust.trust(folder);
+          },
+        });
+      }
       if (!this.repository.isBound()) {
         return segments;
       }

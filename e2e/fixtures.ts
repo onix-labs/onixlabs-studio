@@ -203,6 +203,14 @@ export const test: TestType<
       });
     }
     await page.waitForLoadState('domcontentloaded');
+    // Loaded is not started: the shell bootstraps once the interface's language has loaded (see
+    // `main.ts`), after the page's own scripts have run. Until then nothing in the window listens,
+    // and a question the main process puts to it — a test that invokes a channel straight away, as
+    // the trust tests do — is sent to no one.
+    await page.waitForFunction((): boolean => {
+      const root: Element | null = document.querySelector('app-root');
+      return root !== null && root.childElementCount > 0;
+    });
     await use(page);
   },
 });

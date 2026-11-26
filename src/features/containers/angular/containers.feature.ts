@@ -1,5 +1,7 @@
 import { FeatureDescriptor } from '@shared/angular/services/feature-registry';
 import { CONTAINERS_KEYBINDINGS } from './containers-keybindings';
+import { CONTAINER_NOTIFICATION_TYPES } from './container-notifications/container-notification-types';
+import { ContainerNotifier } from './container-notifications/container-notifier';
 import { ContainersRibbon } from './containers-ribbon/containers-ribbon';
 import { ContainersStatusStrip } from './containers-status/containers-status-strip';
 import { ContainersView } from './containers-view/containers-view';
@@ -17,4 +19,6 @@ export const descriptor: FeatureDescriptor = {
   ribbon: ContainersRibbon,
   status: ContainersStatusStrip,
   keybindings: CONTAINERS_KEYBINDINGS,
+  notificationTypes: CONTAINER_NOTIFICATION_TYPES,
+  background: ContainerNotifier,
 };

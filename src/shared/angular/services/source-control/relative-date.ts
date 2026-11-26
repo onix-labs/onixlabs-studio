@@ -1,11 +1,26 @@
+import { interfaceLocale } from '@shared/angular/services/locale/interface-locale';
+
 /**
- * Phrases a count with its unit, singular for one.
+ * Phrases how long ago a count of units was, in the language's own grammar: its plurals, and whether
+ * "ago" comes before or after (`3 days ago`, `il y a 3 jours`, `vor 3 Tagen`).
  * @param count The count.
- * @param unit The singular unit.
- * @returns Returns the phrase, such as `1 day` or `3 days`.
+ * @param unit The unit.
+ * @param locale The locale to phrase it in.
+ * @returns Returns the phrase.
  */
-function units(count: number, unit: string): string {
-  return `${count} ${unit}${count === 1 ? '' : 's'}`;
+function ago(count: number, unit: Intl.RelativeTimeFormatUnit, locale: string): string {
+  return new Intl.RelativeTimeFormat(locale, { numeric: 'always' }).format(-count, unit);
+}
+
+/**
+ * Phrases a count with its unit, as a part of a longer phrase.
+ * @param count The count.
+ * @param unit The unit.
+ * @param locale The locale to phrase it in.
+ * @returns Returns the phrase, such as `1 year` or `3 months`.
+ */
+function units(count: number, unit: 'year' | 'month', locale: string): string {
+  return new Intl.NumberFormat(locale, { style: 'unit', unit, unitDisplay: 'long' }).format(count);
 }
 
 /**
@@ -17,45 +32,53 @@ function units(count: number, unit: string): string {
  * list reads exactly as it did.
  * @param isoDate The date, ISO 8601.
  * @param now The current time, in epoch milliseconds.
+ * @param locale The locale to phrase it in; the interface's by default.
  * @returns Returns the phrase, or empty for an unreadable date.
  */
-export function relativeDate(isoDate: string, now: number = Date.now()): string {
+export function relativeDate(
+  isoDate: string,
+  now: number = Date.now(),
+  locale: string = interfaceLocale(),
+): string {
   const then: number = Date.parse(isoDate);
   if (Number.isNaN(then)) {
     return '';
   }
   const diff: number = Math.floor((now - then) / 1000);
   if (diff < 0) {
-    return 'in the future';
+    return $localize`:How long ago a commit was, when its date is later than now:in the future`;
   }
   if (diff < 90) {
-    return `${units(diff, 'second')} ago`;
+    return ago(diff, 'second', locale);
   }
   const minutes: number = Math.floor((diff + 30) / 60);
   if (minutes < 90) {
-    return `${units(minutes, 'minute')} ago`;
+    return ago(minutes, 'minute', locale);
   }
   const hours: number = Math.floor((minutes + 30) / 60);
   if (hours < 36) {
-    return `${units(hours, 'hour')} ago`;
+    return ago(hours, 'hour', locale);
   }
   const days: number = Math.floor((hours + 12) / 24);
   if (days < 14) {
-    return `${units(days, 'day')} ago`;
+    return ago(days, 'day', locale);
   }
   if (days < 70) {
-    return `${units(Math.floor((days + 3) / 7), 'week')} ago`;
+    return ago(Math.floor((days + 3) / 7), 'week', locale);
   }
   if (days < 365) {
-    return `${units(Math.floor((days + 15) / 30), 'month')} ago`;
+    return ago(Math.floor((days + 15) / 30), 'month', locale);
   }
   if (days < 1825) {
     const totalMonths: number = Math.floor((days * 12 * 2 + 365) / (365 * 2));
     const years: number = Math.floor(totalMonths / 12);
     const months: number = totalMonths % 12;
-    return months === 0
-      ? `${units(years, 'year')} ago`
-      : `${units(years, 'year')}, ${units(months, 'month')} ago`;
+    if (months === 0) {
+      return ago(years, 'year', locale);
+    }
+    const yearsText: string = units(years, 'year', locale);
+    const monthsText: string = units(months, 'month', locale);
+    return $localize`:How long ago a commit was, such as "1 year, 2 months ago":${yearsText}:years:, ${monthsText}:months: ago`;
   }
-  return `${units(Math.floor((days + 183) / 365), 'year')} ago`;
+  return ago(Math.floor((days + 183) / 365), 'year', locale);
 }

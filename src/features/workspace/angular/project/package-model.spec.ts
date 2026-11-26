@@ -1,3 +1,4 @@
+import type { TrustChange } from '@shared/api/trust-channels';
 import { Signal, signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
@@ -8,11 +9,12 @@ import {
 } from '@shared/api/package-channels';
 import type { PackageManagerModel } from '@shared/api/package-management';
 import type { PluginSummary } from '@shared/api/plugin-channels';
-import { Plugins } from '@shared/angular/services/plugins/plugins';
 import {
-  RepositoryTrust,
-  RepositoryTrustQuestion,
-} from '@shared/angular/services/repository-trust/repository-trust';
+  NotificationRequest,
+  Notifications,
+} from '@shared/angular/services/notifications/notifications';
+import { Plugins } from '@shared/angular/services/plugins/plugins';
+import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import {
   TerminalLaunchOptions,
@@ -70,10 +72,12 @@ describe('PackageModel', () => {
   let status: PackageWorkspaceStatus;
   let calls: string[];
   let plugins: WritableSignal<readonly PluginSummary[]>;
-  let pending: WritableSignal<RepositoryTrustQuestion | null>;
+  let changed: WritableSignal<TrustChange | null>;
   let launched: TerminalLaunchOptions[];
   let exitCode: number;
   let command: unknown;
+  let raised: NotificationRequest[];
+  let activateAndReveal: ReturnType<typeof vi.fn>;
 
   /**
    * Builds the model and lets its first refresh land.
@@ -92,9 +96,11 @@ describe('PackageModel', () => {
     calls = [];
     status = { managers: [manager('npm', true), manager('nuget', true)], trust: 'trusted' };
     plugins = signal<readonly PluginSummary[]>([]);
-    pending = signal<RepositoryTrustQuestion | null>(null);
+    changed = signal<TrustChange | null>(null);
     launched = [];
     exitCode = 0;
+    raised = [];
+    activateAndReveal = vi.fn();
     command = {
       ok: true,
       result: {
@@ -136,15 +142,23 @@ describe('PackageModel', () => {
           useValue: { root: signal({ path: '/work' }) as Signal<{ path: string } | null> },
         },
         { provide: Plugins, useValue: { plugins } },
-        { provide: RepositoryTrust, useValue: { pending } },
+        { provide: RepositoryTrust, useValue: { changed } },
         {
           provide: TerminalSessions,
           useValue: {
             launch: (options: TerminalLaunchOptions): Promise<unknown> => {
               launched.push(options);
-              return Promise.resolve({ exited: Promise.resolve(exitCode) });
+              return Promise.resolve({
+                session: { id: 'task-1' },
+                exited: Promise.resolve(exitCode),
+              });
             },
+            activateAndReveal,
           },
+        },
+        {
+          provide: Notifications,
+          useValue: { notify: (request: NotificationRequest): void => void raised.push(request) },
         },
       ],
     });
@@ -241,13 +255,48 @@ describe('PackageModel', () => {
     expect(packages.hasModels()).toBe(true);
   });
 
-  it('aTrustQuestionAnswered_readsTheFolderAgain', async () => {
+  it('aFolderTrusted_restoresEveryProjectOfEachManagerThatCan (#1504)', async () => {
+    status = {
+      managers: [{ ...manager('npm', true), capabilities: ['restore'] }, manager('nuget', true)],
+      trust: 'trusted',
+    };
     await create();
     calls = [];
 
-    pending.set({ root: '/work', name: 'work' });
+    changed.set({ folder: '/work', decision: 'trusted' });
     TestBed.tick();
-    pending.set(null);
+
+    await vi.waitFor((): void => {
+      expect(launched).toHaveLength(1);
+    });
+    // nuget declared no restore, so only npm's one project is restored.
+    expect(
+      calls.filter((call: string): boolean => call.startsWith(PackageChannel.Command)),
+    ).toEqual([`${PackageChannel.Command} npm restore [object Object]`]);
+  });
+
+  it('aFolderRestricted_restoresNothing', async () => {
+    status = {
+      managers: [{ ...manager('npm', true), capabilities: ['restore'] }],
+      trust: 'trusted',
+    };
+    await create();
+    calls = [];
+
+    changed.set({ folder: '/work', decision: 'restricted' });
+    TestBed.tick();
+
+    await vi.waitFor((): void => {
+      expect(calls[0]).toBe(PackageChannel.Managers);
+    });
+    expect(launched).toEqual([]);
+  });
+
+  it('aFolderTrusted_readsTheFolderAgain', async () => {
+    await create();
+    calls = [];
+
+    changed.set({ folder: '/work', decision: 'trusted' });
     TestBed.tick();
 
     await vi.waitFor((): void => {
@@ -265,6 +314,7 @@ describe('PackageModel', () => {
       expect(calls[0]).toBe(`${PackageChannel.Command} npm install [object Object]`);
       expect(launched).toEqual([
         {
+          reportsItsOwnOutcome: true,
           kind: 'task',
           name: 'Install left-pad',
           command: 'npm',
@@ -294,6 +344,57 @@ describe('PackageModel', () => {
       await packages.write('npm', 'install', { project: '/work/package.json', name: 'left-pad' });
 
       expect(packages.writeError()).toBe('Install left-pad ended with exit code 1.');
+    });
+
+    it('write_thatFinishes_isReportedToTheHistoryByDefault (#1492)', async () => {
+      const packages: PackageModel = await create();
+
+      await packages.write('npm', 'install', {
+        project: '/work/package.json',
+        name: 'left-pad',
+        version: '1.3.0',
+      });
+
+      expect(raised).toEqual([
+        expect.objectContaining({
+          severity: 'success',
+          title: 'Installed left-pad 1.3.0',
+          type: 'packages.finished',
+        }),
+      ]);
+    });
+
+    it('write_thatFails_popsUpWithShowOutput', async () => {
+      exitCode = 1;
+      const packages: PackageModel = await create();
+
+      await packages.write('npm', 'remove', { project: '/work/package.json', name: 'left-pad' });
+
+      expect(raised[0]).toMatchObject({
+        severity: 'error',
+        title: "Couldn't remove left-pad",
+        detail: 'Exited with code 1.',
+        type: 'packages.failed',
+      });
+      raised[0].actions?.[0].run();
+      expect(activateAndReveal).toHaveBeenCalledWith('task-1');
+    });
+
+    it('restore_namesTheProjectAsItsManagerReportedIt', async () => {
+      const packages: PackageModel = await create();
+
+      await packages.write('npm', 'restore', { project: '/work/npm.manifest' });
+
+      expect(raised[0].title).toBe('Restored packages for npm-app');
+    });
+
+    it('write_whoseTerminalTheUserClosed_raisesNothing', async () => {
+      exitCode = -1;
+      const packages: PackageModel = await create();
+
+      await packages.write('npm', 'install', { project: '/work/package.json', name: 'left-pad' });
+
+      expect(raised).toEqual([]);
     });
   });
 });

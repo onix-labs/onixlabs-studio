@@ -10,7 +10,25 @@ import {
   renameSupportOf,
   semanticLegendOf,
   fileRenameFiltersOf,
+  syncsWholeDocument,
 } from './lsp-capabilities';
+
+describe('syncsWholeDocument (#1206)', () => {
+  it('readsFullSync_inEitherFormOfTextDocumentSync', () => {
+    // taplo advertises the bare kind; others put it on the options object's `change`.
+    expect(syncsWholeDocument({ textDocumentSync: 1 })).toBe(true);
+    expect(syncsWholeDocument({ textDocumentSync: { openClose: true, change: 1 } })).toBe(true);
+  });
+
+  it('readsIncrementalOrAbsentSync_asRangedEdits', () => {
+    expect(syncsWholeDocument({ textDocumentSync: 2 })).toBe(false);
+    expect(
+      syncsWholeDocument({ textDocumentSync: { change: 2, save: { includeText: true } } }),
+    ).toBe(false);
+    expect(syncsWholeDocument({})).toBe(false);
+    expect(syncsWholeDocument(undefined)).toBe(false);
+  });
+});
 
 describe('formattingSupportOf (#1141)', () => {
   it('readsRoslynsFormatters_andItsOnTypeTriggerCharacters', () => {
@@ -166,6 +184,7 @@ describe('structureSupportOf (#1147)', () => {
       rangeTokens: true,
       selectionRanges: true,
       colors: false,
+      links: false,
     });
     expect(structureSupportOf({ semanticTokensProvider: { range: true } })).toEqual({
       folding: false,
@@ -174,6 +193,7 @@ describe('structureSupportOf (#1147)', () => {
       rangeTokens: false,
       selectionRanges: false,
       colors: false,
+      links: false,
     });
     expect(structureSupportOf(undefined)).toEqual({
       folding: false,
@@ -182,7 +202,14 @@ describe('structureSupportOf (#1147)', () => {
       rangeTokens: false,
       selectionRanges: false,
       colors: false,
+      links: false,
     });
+  });
+
+  it('readsDocumentLinks_asGoplsAdvertisesThem (#1211)', () => {
+    // gopls v0.24.0 advertises `documentLinkProvider: {}`.
+    expect(structureSupportOf({ documentLinkProvider: {} }).links).toBe(true);
+    expect(structureSupportOf({ documentLinkProvider: false }).links).toBe(false);
   });
 
   it('readsColours_asTheHtmlServerAdvertisesThem (#1214)', () => {

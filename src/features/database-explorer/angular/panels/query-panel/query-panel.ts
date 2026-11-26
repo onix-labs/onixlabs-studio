@@ -34,7 +34,9 @@ import {
   DatabaseNode,
   DatabaseValue,
   ExecuteOutcome,
+  PlanNode,
   QueryMessage,
+  QueryPlan,
   ResultColumn,
   ResultColumnKey,
   ResultColumnKeyKind,
@@ -44,9 +46,9 @@ import { DatabaseConnection, DatabaseQuery } from '@shared/api/database-document
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { Panel } from '@shared/angular/components/panel-layout/panel';
-import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
-import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
+import { SplitDivider } from '@shared/angular/components/split-panel/split-divider/split-divider';
+import { SplitPane } from '@shared/angular/components/split-panel/split-pane/split-pane';
+import { SplitPanel } from '@shared/angular/components/split-panel/split-panel/split-panel';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import {
   Table,
@@ -93,18 +95,15 @@ import {
   DatabaseWorkspace,
   NodeChildren,
   nodeKey,
+  PlanOutcome,
 } from '../../database-workspace/database-workspace';
 import { GraphPick, GraphView } from '../../graph-view/graph-view';
+import { PlanPick, PlanView, PlanViewMode } from '../../plan-view/plan-view';
 
 /**
- * The edges the results pane may sit on: beneath the editor only.
+ * The fraction of the panel the results pane opens at.
  */
-const RESULTS_EDGES: readonly PanelEdge[] = ['bottom'];
-
-/**
- * The share of the panel the results pane opens at.
- */
-const RESULTS_SHARE: number = 0.45;
+const RESULTS_FRACTION: number = 0.45;
 
 /**
  * The marker owner the query's error squiggles are filed under.
@@ -193,6 +192,36 @@ const KEY_LABELS: Readonly<Record<ResultColumnKeyKind, string>> = {
 };
 
 /**
+ * The tabs of the results pane.
+ */
+type ResultsTab = 'results' | 'messages' | 'plan';
+
+/**
+ * The Plan tab's own text, marked for translation once and bound by the template.
+ */
+interface PlanText {
+  readonly tree: string;
+  readonly treeTitle: string;
+  readonly raw: string;
+  readonly rawTitle: string;
+  readonly views: string;
+  readonly explaining: string;
+  readonly empty: string;
+  readonly noPlan: string;
+  readonly noActuals: string;
+  readonly failed: string;
+}
+
+/**
+ * Determines whether any step of a plan reports what actually happened.
+ * @param node The top step.
+ * @returns Returns true when one has actual rows or a time.
+ */
+function hasActuals(node: PlanNode): boolean {
+  return node.actualRows !== undefined || node.time !== undefined || node.children.some(hasActuals);
+}
+
+/**
  * One grid row, its cells already formatted.
  */
 interface GridRow {
@@ -213,15 +242,17 @@ interface GridRow {
   selector: 'app-query-panel',
   imports: [
     AppIcon,
+    SplitDivider,
+    SplitPane,
+    SplitPanel,
     TabList,
     Button,
     CdkMenuTrigger,
     Menu,
     Dropdown,
     GraphView,
-    Panel,
-    PanelLayout,
     PanelToolbar,
+    PlanView,
     Table,
     TableRowDef,
     TextEditor,
@@ -292,10 +323,8 @@ export class QueryPanel {
    */
   private readonly cursor: WritableSignal<TextEditorCursor | null> =
     signal<TextEditorCursor | null>(null);
-  private readonly elementRef: ElementRef<HTMLElement> =
-    inject<ElementRef<HTMLElement>>(ElementRef);
   protected readonly Icon: typeof Icon = Icon;
-  protected readonly resultsEdges: readonly PanelEdge[] = RESULTS_EDGES;
+  protected readonly resultsFraction: number = RESULTS_FRACTION;
 
   /**
    * Holds the editor, once it has rendered.
@@ -303,12 +332,8 @@ export class QueryPanel {
   private readonly editor: Signal<TextEditor | undefined> = viewChild<TextEditor>(TextEditor);
 
   /**
-   * Holds the panel's height, for the results pane's default share of it.
-   */
-  private readonly hostHeight: WritableSignal<number | null> = signal<number | null>(null);
-
-  /**
-   * Gets the result area's tabs: Results with how many sets came back, Messages with how many errors.
+   * Gets the result area's tabs: Results with how many sets came back, Messages with how many errors,
+   * and Plan where the engine can explain a query or a plan is showing.
    */
   protected readonly resultTabs: Signal<readonly TabListTab[]> = computed(
     (): readonly TabListTab[] => {
@@ -321,6 +346,15 @@ export class QueryPanel {
           label: 'Messages',
           ...(errors > 0 ? { badge: errors, badgeTone: 'error' as const } : {}),
         },
+        ...(this.canExplain() || this.plan() !== null
+          ? [
+              {
+                value: 'plan',
+                label: $localize`:The results pane's tab showing how the database runs a query:Plan`,
+                ...(this.plan()?.failed === true ? { badge: 1, badgeTone: 'error' as const } : {}),
+              },
+            ]
+          : []),
       ];
     },
   );
@@ -328,9 +362,89 @@ export class QueryPanel {
   /**
    * Holds which tab of the results pane is showing.
    */
-  protected readonly tab: WritableSignal<'results' | 'messages'> = signal<'results' | 'messages'>(
-    'results',
+  protected readonly tab: WritableSignal<ResultsTab> = signal<ResultsTab>('results');
+
+  /**
+   * Holds how the Plan tab shows its plan: the tree table, or the engine's own text.
+   */
+  protected readonly planView: WritableSignal<PlanViewMode> = signal<PlanViewMode>('tree');
+
+  /**
+   * Gets the query's latest plan, or null before it has been explained.
+   */
+  protected readonly plan: Signal<PlanOutcome | null> = computed(
+    (): PlanOutcome | null => this.workspace.plans().get(this.panel().id) ?? null,
   );
+
+  /**
+   * Gets whether the query is being explained.
+   */
+  protected readonly explaining: Signal<boolean> = computed((): boolean =>
+    this.workspace.explaining().has(this.panel().id),
+  );
+
+  /**
+   * Gets whether the connection's engine can explain a query (protocol 1.5).
+   */
+  protected readonly canExplain: Signal<boolean> = computed(
+    (): boolean => this.engine()?.capabilities.includes('explain') === true,
+  );
+
+  /**
+   * Gets whether Explain can be pressed: the engine can explain, and the query is neither running nor
+   * being explained.
+   */
+  protected readonly explainEnabled: Signal<boolean> = computed(
+    (): boolean => this.canExplain() && !this.running() && !this.explaining(),
+  );
+
+  /**
+   * Gets whether an analyzed plan came back without a single actual figure — SQLite measures nothing —
+   * so the Plan tab can say the figures are only estimates.
+   */
+  protected readonly planHasNoActuals: Signal<boolean> = computed((): boolean => {
+    const plan: PlanOutcome | null = this.plan();
+    return (
+      plan !== null &&
+      plan.analyzed &&
+      plan.plans.length > 0 &&
+      !plan.plans.some((each: QueryPlan): boolean => hasActuals(each.root))
+    );
+  });
+
+  /**
+   * Gets whether the plan showing has any statement's plan to draw, so the Tree and Raw views are
+   * offered.
+   */
+  protected readonly hasPlans: Signal<boolean> = computed(
+    (): boolean => (this.plan()?.plans.length ?? 0) > 0,
+  );
+
+  /**
+   * Gets the Explain button's accessible name.
+   */
+  protected readonly explainLabel: string = $localize`:A button or menu item showing a query's plan without running it:Explain`;
+
+  /**
+   * Gets the Explain button's tooltip.
+   */
+  protected readonly explainTooltip: string = $localize`:Tooltip on the query tool strip's Explain button:Explain — show how the database would run the selection, or the whole query, without running it`;
+
+  /**
+   * Gets the Plan tab's labels: its views, and what it says when there is nothing to draw.
+   */
+  protected readonly planText: PlanText = {
+    tree: $localize`:The Plan tab's view showing the plan as an expandable tree table:Tree`,
+    treeTitle: $localize`:Tooltip on the Plan tab's Tree view:Show the plan as a tree of steps`,
+    raw: $localize`:The Plan tab's view showing the database's own plan text:Raw`,
+    rawTitle: $localize`:Tooltip on the Plan tab's Raw view:Show the plan as the database wrote it`,
+    views: $localize`:The group of buttons choosing how the plan is shown:Show the plan as`,
+    explaining: $localize`:Shown on the Plan tab while a query is being explained:Explaining…`,
+    empty: $localize`:Shown on the Plan tab before the query has been explained:Explain the query to see how the database would run it.`,
+    noPlan: $localize`:Shown on the Plan tab when the database answered with no plan:The database returned no plan for this text.`,
+    noActuals: $localize`:Shown on the Plan tab when an analyzed plan holds only estimates:The database reports no actual figures for this plan, only its estimates.`,
+    failed: $localize`:Introduces why a statement could not be explained, on the Plan tab:The plan could not be made:`,
+  };
 
   /**
    * Holds which result set is showing, by index.
@@ -480,18 +594,39 @@ export class QueryPanel {
   );
 
   /**
-   * Gets whether the results pane is showing: once the query has run, or while it is running.
+   * Gets whether the results pane is showing: once the query has run or been explained, or while it
+   * is doing either.
    */
   protected readonly resultsVisible: Signal<boolean> = computed(
-    (): boolean => this.running() || this.outcome() !== null,
+    (): boolean =>
+      this.running() || this.outcome() !== null || this.explaining() || this.plan() !== null,
   );
 
   /**
-   * Gets the tool strip's menu: the exports of the result set showing, offered once there is one.
+   * Gets the tool strip's menu: Explain and Explain Analyze where the engine can explain, then the
+   * exports of the result set showing, offered once there is one.
    */
   protected readonly moreItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] => {
     const none: boolean = this.resultSet() === undefined || this.running();
+    const explain: readonly MenuItem[] = this.canExplain()
+      ? [
+          {
+            id: EXPLAIN,
+            label: this.explainLabel,
+            icon: Icon.DATABASE_EXPLAIN,
+            disabled: !this.explainEnabled(),
+          },
+          {
+            id: EXPLAIN_ANALYZE,
+            label: $localize`:A button or menu item running a query to show its plan with actual figures:Explain Analyze`,
+            icon: Icon.DATABASE_EXPLAIN_ANALYZE,
+            disabled: !this.explainEnabled(),
+          },
+          { id: 'explain-separator', label: '', separator: true },
+        ]
+      : [];
     return [
+      ...explain,
       { id: EXPORT_CSV, label: 'Export to CSV', icon: Icon.EXPORT, disabled: none },
       { id: EXPORT_XLSX, label: 'Export to XLSX', icon: Icon.EXPORT, disabled: none },
       { id: EXPORT_JSON, label: 'Export to JSON', icon: Icon.EXPORT, disabled: none },
@@ -729,14 +864,6 @@ export class QueryPanel {
   );
 
   /**
-   * Gets the results pane's default height: a share of the panel.
-   */
-  protected readonly resultsDefaultSize: Signal<number | null> = computed((): number | null => {
-    const height: number | null = this.hostHeight();
-    return height === null ? null : Math.max(140, Math.round(height * RESULTS_SHARE));
-  });
-
-  /**
    * Holds the editor's ⌘↵ command, so it is added once.
    */
   private commandAdded: boolean = false;
@@ -783,6 +910,27 @@ export class QueryPanel {
       );
       onCleanup(detach);
     });
+    // The ribbon's and the menu's Explain explain this panel exactly as its own button does.
+    effect((onCleanup: (cleanup: () => void) => void): void => {
+      onCleanup(
+        this.opener.attachExplain(this.panel().id, (analyze: boolean): void =>
+          this.explain(analyze),
+        ),
+      );
+    });
+    // A new plan opens the Plan tab. A panel opened again over a plan it already had opens on it only
+    // when the query has no results to show instead.
+    const planId: Signal<string | null> = computed((): string | null => this.plan()?.id ?? null);
+    let seenPlan: string | null | undefined = undefined;
+    effect((): void => {
+      const id: string | null = planId();
+      untracked((): void => {
+        if (id !== null && id !== seenPlan && (seenPlan !== undefined || this.outcome() === null)) {
+          this.tab.set('plan');
+        }
+        seenPlan = id;
+      });
+    });
     // Fit to View shares out the grid's width, so it follows the grid as the panel is resized.
     effect((onCleanup: (cleanup: () => void) => void): void => {
       const grid: HTMLElement | undefined = this.grid()?.nativeElement;
@@ -795,15 +943,6 @@ export class QueryPanel {
       observer.observe(grid);
       onCleanup((): void => observer.disconnect());
     });
-    if (typeof ResizeObserver !== 'undefined') {
-      const host: HTMLElement = this.elementRef.nativeElement;
-      const observer: ResizeObserver = new ResizeObserver((): void => {
-        this.hostHeight.set(host.clientHeight > 0 ? host.clientHeight : null);
-      });
-      observer.observe(host);
-      destroyRef.onDestroy((): void => observer.disconnect());
-    }
-
     // A new outcome: show its first result, open on Messages when it failed with nothing to show, and
     // mark its errors in the editor.
     // Keyed on the execution's id, so fetching more rows into the same outcome changes nothing here.
@@ -988,6 +1127,8 @@ export class QueryPanel {
       void this.exportResult(format);
     } else if (id === COPY_ROWS) {
       void this.copySelectedRows();
+    } else if (id === EXPLAIN || id === EXPLAIN_ANALYZE) {
+      this.explain(id === EXPLAIN_ANALYZE);
     }
   }
 
@@ -1145,6 +1286,52 @@ export class QueryPanel {
       }
     }
     await this.workspace.execute(this.panel().id, text, line);
+  }
+
+  /**
+   * Explains the selection, or the whole query when nothing is selected, as Execute would run it.
+   * Analyzing runs the statements, so it asks about any that cannot be taken back as Execute does.
+   * @param analyze Whether to run the statements and report what actually happened.
+   */
+  public explain(analyze: boolean = false): void {
+    if (!this.explainEnabled()) {
+      return;
+    }
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null =
+      this.editor()?.getEditor() ?? null;
+    const model: MonacoApi.editor.ITextModel | null = editor?.getModel() ?? null;
+    const selection: MonacoApi.Selection | null = editor?.getSelection() ?? null;
+    if (model !== null && selection !== null && !selection.isEmpty()) {
+      void this.explainText(model.getValueInRange(selection), selection.startLineNumber, analyze);
+      return;
+    }
+    void this.explainText(this.query()?.text ?? '', 1, analyze);
+  }
+
+  /**
+   * Explains some of the query's text, first asking about any statement that cannot be taken back when
+   * analyzing would run it and the user wants that.
+   * @param text The text.
+   * @param line The document line it starts on.
+   * @param analyze Whether to run the statements.
+   */
+  private async explainText(text: string, line: number, analyze: boolean): Promise<void> {
+    if (analyze && this.settings.get('databaseExplorer.confirmDestructive')) {
+      const statements: readonly string[] = destructiveStatements(text, this.language());
+      if (statements.length > 0 && !(await this.prompts.confirmDestructive(statements))) {
+        return;
+      }
+    }
+    this.tab.set('plan');
+    await this.workspace.explain(this.panel().id, text, line, analyze);
+  }
+
+  /**
+   * Shows a picked plan step in Properties.
+   * @param pick The step.
+   */
+  protected onPlanPick(pick: PlanPick): void {
+    this.workspace.select({ kind: 'graph', title: pick.title, properties: pick.properties });
   }
 
   /**
@@ -1379,6 +1566,12 @@ const EXPORT_XLSX: string = 'export-xlsx';
 const EXPORT_JSON: string = 'export-json';
 const EXPORT_MARKDOWN: string = 'export-markdown';
 const COPY_ROWS: string = 'copy-rows';
+
+/**
+ * The tool strip menu's Explain items.
+ */
+const EXPLAIN: string = 'explain';
+const EXPLAIN_ANALYZE: string = 'explain-analyze';
 
 /**
  * Names a file format a result set is exported to, by its extension.

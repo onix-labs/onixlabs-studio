@@ -231,4 +231,11 @@ export interface AiProviderInfo {
    * sign-in window and the `/login` and `/logout` commands. Absent reads as false.
    */
   readonly supportsSignIn?: boolean;
+
+  /**
+   * Gets a value indicating whether the connection's plugin can be kept from an untrusted folder's own
+   * settings (#1504), which it needs before it runs there — to scan the folder, for one. False only once
+   * the plugin has said it cannot; absent when that is not yet known, or it never needs to.
+   */
+  readonly ignoresUntrustedSettings?: boolean;
 }

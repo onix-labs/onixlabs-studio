@@ -141,6 +141,17 @@
   }
 }
 
+// The columns hidden for want of width, whose positions the component gives.
+@for $index from 1 through 24 {
+  .table[data-hidden~='#{$index}'] {
+    col:nth-child(#{$index}),
+    .table-th:nth-child(#{$index}),
+    .table-row ::ng-deep > td:nth-child(#{$index}) {
+      display: none;
+    }
+  }
+}
+
 // A data row. Cells are the consumer's; the row owns its stripe, hover and selection chrome.
 .table-row {
   transition: var(--hover-transition);

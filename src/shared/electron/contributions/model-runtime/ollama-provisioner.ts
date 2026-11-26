@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { Launcher, launchStudioOwned } from '../../process/launch';
 import { createHash } from 'node:crypto';
 import { createReadStream, Dirent, existsSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
@@ -9,6 +9,7 @@ import { createWriteStream } from 'node:fs';
 import { promisify } from 'node:util';
 import { RuntimeInstallation, RuntimeInstallProgress } from '@shared/api/model-runtime-types';
 import { logger } from '../../logger';
+import { tarProgram } from '../../provisioning/tar-program';
 import {
   OllamaAsset,
   ollamaAsset,
@@ -19,13 +20,18 @@ import {
 } from './ollama-assets';
 
 /**
+ * Starts this file's programs: Studio's own, which act on no repository (#1504).
+ */
+const launch: Launcher = launchStudioOwned('model-runtime');
+
+/**
  * Runs a command and resolves with its stdout.
  */
 const execFileAsync: (
   file: string,
   args: readonly string[],
   options: { timeout: number },
-) => Promise<{ stdout: string }> = promisify(execFile);
+) => Promise<{ stdout: string }> = promisify(launch.execFile);
 
 /**
  * How long, in milliseconds, a `--version` probe is given before it is treated as unusable.
@@ -351,16 +357,18 @@ export class OllamaProvisioner {
   private async extract(archive: string, asset: OllamaAsset, destination: string): Promise<void> {
     switch (asset.archive) {
       case 'tgz':
-        await execFileAsync('tar', ['-xzf', archive, '-C', destination], { timeout: 0 });
+        await execFileAsync(tarProgram(), ['-xzf', archive, '-C', destination], { timeout: 0 });
         return;
       case 'tar.zst':
         // GNU tar and libarchive both need zstd support built in; when it is missing the install
         // fails cleanly and the user is told to install Ollama themselves.
-        await execFileAsync('tar', ['--zstd', '-xf', archive, '-C', destination], { timeout: 0 });
+        await execFileAsync(tarProgram(), ['--zstd', '-xf', archive, '-C', destination], {
+          timeout: 0,
+        });
         return;
       case 'zip':
         if (this.platform === 'win32') {
-          await execFileAsync('tar', ['-xf', archive, '-C', destination], { timeout: 0 });
+          await execFileAsync(tarProgram(), ['-xf', archive, '-C', destination], { timeout: 0 });
         } else {
           await execFileAsync('unzip', ['-q', '-o', archive, '-d', destination], { timeout: 0 });
         }

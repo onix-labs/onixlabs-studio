@@ -27,12 +27,15 @@ import {
   effectiveViewToggles,
 } from '@shared/angular/services/documents/documents';
 import { Log } from '@shared/angular/services/log/log';
+import { MergeToolOpener } from '@shared/angular/services/merge-tool/merge-tool-opener';
+import { CONFLICT_CONTEXT } from '@shared/angular/services/repository/conflict-context';
 import { DocumentStatus } from '@shared/angular/services/document-status/document-status';
 import {
   EditorCommandHandler,
   EditorCommands,
 } from '@shared/angular/services/editor-commands/editor-commands';
 import { Editors, RevealRequest } from '@shared/angular/services/editors/editors';
+import { DocumentSorting } from '@shared/angular/services/document-sorting/document-sorting';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
@@ -170,6 +173,11 @@ export class CodeDocumentPanel {
    * language-server diagnostics resolve back to a model and paint as editor markers (squiggles).
    */
   private readonly editors: Editors = inject(Editors);
+
+  /**
+   * Holds Sort Document, which the Edit menu runs on this view's editor where its server sorts (#1214).
+   */
+  private readonly sorting: DocumentSorting = inject(DocumentSorting);
 
   /**
    * Holds the URI of this panel's Monaco model, or null before the editor is created and after
@@ -650,6 +658,16 @@ export class CodeDocumentPanel {
         await pane.organizeImports();
         await pane.runAction('editor.action.formatDocument');
       },
+      sortDocument: async (): Promise<void> => {
+        const editor: MonacoApi.editor.IStandaloneCodeEditor | null = pane.getEditor();
+        if (editor !== null) {
+          await this.sorting.sortDocument(editor);
+        }
+      },
+      offersSortDocument: (): boolean => {
+        const editor: MonacoApi.editor.IStandaloneCodeEditor | null = pane.getEditor();
+        return editor !== null && this.sorting.offersSortDocument(editor);
+      },
       save: (): void => {
         this.log.info('code.document', 'Save well document', this.documentId());
         void this.documents.save(this.documentId());
@@ -725,6 +743,40 @@ export class CodeDocumentPanel {
   protected goToConflict(direction: 'next' | 'previous'): void {
     this.log.info('code.document', 'Go to conflict', direction, this.documentId());
     this.core()?.goToConflict(direction);
+  }
+
+  /**
+   * Holds the merge tool opener, or null outside a repository's view (a standalone code tab, which has
+   * no well to open a merge tool in): the same conflict context the editor's rows read decides.
+   */
+  private readonly mergeToolOpener: MergeToolOpener | null =
+    inject(CONFLICT_CONTEXT, { optional: true }) === null ? null : inject(MergeToolOpener);
+
+  /**
+   * Gets whether the strip offers the merge tool: the file holds conflicts, is saved to a path, and the
+   * workspace has a merge tool to open it in (#1321).
+   */
+  protected readonly canOpenMergeTool: Signal<boolean> = computed(
+    (): boolean =>
+      this.mergeToolOpener !== null &&
+      this.conflictCount() > 0 &&
+      (this.document()?.filePath() ?? null) !== null,
+  );
+
+  /**
+   * Gets the merge tool button's tooltip.
+   */
+  protected readonly mergeToolTooltip: string = $localize`:Tooltip of the code tab's button opening the file in the merge tool:Open in Merge Tool — the sides next to each other`;
+
+  /**
+   * Opens the file in the merge tool, the sides next to each other.
+   */
+  protected openMergeTool(): void {
+    const path: string | null = this.document()?.filePath() ?? null;
+    if (path !== null && this.mergeToolOpener !== null) {
+      this.log.info('code.document', 'Open in merge tool', path);
+      void this.mergeToolOpener.open(path);
+    }
   }
 
   /**

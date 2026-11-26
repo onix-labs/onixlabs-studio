@@ -48,12 +48,18 @@
     display: none !important;
   }
 
-  // Only the active document prints: inactive tab views and any docked tool panels
-  // (outline, review, reader, agent, find) are dropped so the printout is just the
-  // document in the layout's main slot.
+  // Only the active document prints: inactive tab views and everything docked around a tab's main
+  // group (outline, review, reader, agent, find) are dropped so the printout is just the document.
   app-content-host .tab-view--hidden,
-  app-panel {
+  app-dock-container[data-appearance='simple'] > .dock-container,
+  app-dock-container[data-appearance='simple'] > app-dock-floating-layer,
+  app-dock-container[data-appearance='simple'] > app-dock-overlay {
     display: none !important;
+  }
+
+  // The main group's content is laid over its slot on screen; in print it is the page.
+  app-dock-container[data-appearance='simple'] > .dock-container__main {
+    position: static !important;
   }
 
   // --- Let content paginate to natural height --------------------------------
@@ -66,7 +72,9 @@
   app-content-host,
   app-content-host .tab-view,
   app-markdown-view,
-  app-panel-layout,
+  app-dock-container[data-appearance='simple'],
+  app-dock-container[data-appearance='simple'] > .dock-container__main,
+  app-dock-container[data-appearance='simple'] > .dock-container__main > app-dock-panel-outlet,
   app-markdown-document,
   app-markdown-editor,
   app-markdown-editor .editor-scroll,

@@ -26,13 +26,17 @@ import { AgentConversationStore } from './ai/agent-conversation-store';
 import { useDevelopmentUserData } from './development-user-data';
 import { AgentCategoryStore } from './ai/agent-category-store';
 import { AiManager } from './ai/ai-manager';
-import { PromptProfileLibrary } from './ai/prompt-profiles/prompt-profile-library';
+import { announcePersonaChange, PersonaHandlers } from './ai/persona/persona-handlers';
+import { PersonaLibrary } from './ai/persona/persona-library';
+import { PersonaLearningService } from './ai/persona/persona-learning-service';
+import { PersonaLearningStore } from './ai/persona/persona-learning-store';
 import { LibraryTransfer } from './ai/skills/library-transfer';
 import { LibraryTransferHandlers } from './ai/skills/library-transfer-handlers';
 import { SkillHandlers } from './ai/skills/skill-handlers';
 import { SkillLibrary } from './ai/skills/skill-library';
 import { mainContributions } from '@shared/electron/contributions';
 import { databaseContribution } from '@shared/electron/contributions/database/database.contribution';
+import { systemMonitorContribution } from '@shared/electron/contributions/system-monitor/system-monitor.contribution';
 import {
   ContributionContext,
   ContributionListener,
@@ -62,6 +66,7 @@ import { DirectoryWatcher } from '@shared/electron/directory-watcher';
 import { EditorConfigManager } from '@shared/electron/editor-config/editor-config-manager';
 import { FileManager } from '@shared/electron/file-manager';
 import { FileWatcher } from '@shared/electron/file-watcher';
+import { WatchModes } from '@shared/electron/watching/watch-modes';
 import { Logger, logger as appLogger } from '@shared/electron/logger';
 import {
   consoleLevelToSeverity,
@@ -108,6 +113,9 @@ import { PackageRegistryTokenStore } from '@shared/electron/package-managers/pac
 import { createPackageRegistryTokens } from '@shared/electron/package-managers/package-registry-tokens';
 import { TestAdapterHost } from '@shared/electron/test-adapters/test-adapter-host';
 import { TestAdapterManager } from '@shared/electron/test-adapters/test-adapter-manager';
+import { LiveServerHost } from '@shared/electron/live-server/live-server-host';
+import { LiveServerManager } from '@shared/electron/live-server/live-server-manager';
+import { LiveServerChannel, LiveServerInfo } from '@shared/api/live-server-channels';
 import { VersionControlManager } from '@shared/electron/version-control/version-control-manager';
 import { VersionControlSetup } from '@shared/electron/version-control/version-control-setup';
 import { VersionControlSettings } from '@shared/electron/version-control/version-control-settings';
@@ -115,6 +123,7 @@ import type { VersionControlExecutableChoice } from '@shared/api/version-control
 import type { MetadataPolicies } from '@shared/electron/directory-watch-filter';
 import {
   contributedHosting,
+  contributedLiveServers,
   contributedPackageManagers,
   contributedTestAdapters,
   contributedVersionControl,
@@ -140,6 +149,10 @@ import { NewProjectManager } from '@shared/electron/new-project/new-project-mana
 import { TerminalManager } from '@shared/electron/terminal-manager';
 import { TrustedPaths } from './trusted-paths';
 import { RepositoryTrust } from './repository-trust';
+import { Launcher, launcherForFolder, RunTokens } from './process/launch';
+import { TrustManager } from './trust/trust-manager';
+import { WindowTrustAsker } from './trust/trust-asker';
+import { TrustChannel, type TrustChange, type TrustScanRequest } from '@shared/api/trust-channels';
 import { WindowManager } from '@shared/electron/window-manager';
 import { WorkspaceContext } from './workspace-context';
 import { WorkspaceManager } from './workspace-manager';
@@ -358,6 +371,9 @@ class Program {
    */
   private readonly terminalManager: TerminalManager = new TerminalManager(
     (): BrowserWindow | null => this.windows.main(),
+    // Read when a terminal starts, by which time the token issuer below exists.
+    (folder: string): Launcher | null =>
+      launcherForFolder(this.workspaceContext, this.runTokens, folder, 'user-terminal'),
   );
 
   /**
@@ -385,6 +401,50 @@ class Program {
     path.join(app.getPath('userData'), 'repository-trust.json'),
   );
 
+  /**
+   * Issues run tokens (#1504): starting a program for a folder needs one, and there is one only for a
+   * folder the user trusts.
+   */
+  private readonly runTokens: RunTokens = new RunTokens(this.repositoryTrust);
+
+  /**
+   * Puts the trust question to the user in the application window (#1504).
+   */
+  private readonly trustAsker: WindowTrustAsker = new WindowTrustAsker((): BrowserWindow | null =>
+    this.windows.main(),
+  );
+
+  /**
+   * Owns the trust question for every folder Studio opens, whatever plugins are installed: the
+   * renderer may ask for it, and only the user's answer to it is recorded (#1504).
+   */
+  private readonly trustManager: TrustManager = new TrustManager(
+    this.repositoryTrust,
+    {
+      openRoots: (): readonly string[] => this.workspaceContext.openRoots(),
+      // A file opened on its own, through a dialog or the operating system, vouches for its folder.
+      holdsOpenedFileIn: (folder: string): boolean =>
+        this.trustedPaths
+          .list()
+          .some((opened: string): boolean => path.dirname(path.resolve(opened)) === folder),
+    },
+    this.trustAsker,
+    (change: TrustChange): void => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) {
+          window.webContents.send(TrustChannel.Changed, change);
+        }
+      }
+    },
+    (request: TrustScanRequest): void => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) {
+          window.webContents.send(TrustChannel.ScanRequested, request);
+        }
+      }
+    },
+  );
+
   private readonly fileManager: FileManager = new FileManager(
     (): BrowserWindow | null => this.windows.main(),
     this.trustedPaths,
@@ -409,10 +469,20 @@ class Program {
   private readonly codeRunner: CodeRunner = new CodeRunner();
 
   /**
+   * Decides, for every watcher below, whether a folder is watched natively or polled (#1254): the
+   * polled folders from Settings › Workspaces › File Watching, mirrored with the startup settings.
+   */
+  private readonly watchModes: WatchModes = new WatchModes(
+    // Read lazily, per poll: the host is declared after this field.
+    (): MetadataPolicies => this.versionControlHost.metadataPolicies(),
+  );
+
+  /**
    * Watches open documents on disk and notifies the renderer when they change.
    */
-  private readonly fileWatcher: FileWatcher = new FileWatcher((): BrowserWindow | null =>
-    this.windows.main(),
+  private readonly fileWatcher: FileWatcher = new FileWatcher(
+    (): BrowserWindow | null => this.windows.main(),
+    this.watchModes,
   );
 
   /**
@@ -424,6 +494,7 @@ class Program {
     // Read lazily, per event: the host is declared after this field, and the policies follow whatever
     // version-control plugins are installed.
     (): MetadataPolicies => this.versionControlHost.metadataPolicies(),
+    this.watchModes,
   );
 
   /**
@@ -436,18 +507,24 @@ class Program {
   );
 
   /**
-   * Owns the user's prompt profiles (#1263): a folder of Markdown files beside the skill library.
+   * Owns the user's persona (#1513): a folder of Markdown entries beside the skill library. Its first
+   * read converts the prompt profiles that came before it (#1263), whose folder is left as it was.
    */
-  private readonly promptProfileLibrary: PromptProfileLibrary = new PromptProfileLibrary(
+  private readonly personaLibrary: PersonaLibrary = new PersonaLibrary(
+    path.join(app.getPath('userData'), 'persona'),
     path.join(app.getPath('userData'), 'prompt-profiles'),
   );
 
   /**
-   * Serves the prompt-profile library, and imports into and exports out of both libraries (#1263).
+   * Serves the persona to the renderer.
+   */
+  private readonly personaHandlers: PersonaHandlers = new PersonaHandlers(this.personaLibrary);
+
+  /**
+   * Imports into and exports out of the skill library and the persona (#1263).
    */
   private readonly libraryTransferHandlers: LibraryTransferHandlers = new LibraryTransferHandlers(
-    this.promptProfileLibrary,
-    new LibraryTransfer(this.skillLibrary, this.promptProfileLibrary),
+    new LibraryTransfer(this.skillLibrary, this.personaLibrary),
     (): BrowserWindow | null => this.windows.main(),
   );
 
@@ -490,7 +567,7 @@ class Program {
   private readonly packageManagerChannels: PackageManagerChannels = new PackageManagerChannels(
     this.packageManagerHost,
     this.workspaceContext,
-    this.repositoryTrust,
+    this.trustManager,
     this.packageRegistryTokens,
   );
 
@@ -513,6 +590,31 @@ class Program {
   );
 
   /**
+   * Hosts the live-server plugin (#1062): one server per workspace, serving only that workspace's
+   * files on 127.0.0.1, stopped when the workspace closes. Core runs no web server — it is a plugin.
+   */
+  private readonly liveServerHost: LiveServerHost = new LiveServerHost({
+    descriptors: () => contributedLiveServers(versionControlNodeRuntime),
+    roots: this.workspaceContext,
+    pollInterval: (root: string): Promise<number | undefined> =>
+      this.watchModes.resolvePollInterval(root),
+    onChanged: (servers: readonly LiveServerInfo[]): void => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) {
+          window.webContents.send(LiveServerChannel.Changed, servers);
+        }
+      }
+    },
+  });
+
+  /**
+   * Serves the explorers' and the status chip's requests to the live-server host.
+   */
+  private readonly liveServerManager: LiveServerManager = new LiveServerManager(
+    this.liveServerHost,
+  );
+
+  /**
    * Holds which tool each version-control plugin runs, as chosen in Settings.
    */
   private readonly versionControlSettings: VersionControlSettings = new VersionControlSettings(
@@ -525,7 +627,7 @@ class Program {
   private readonly versionControlManager: VersionControlManager = new VersionControlManager(
     this.versionControlHost,
     this.versionControlSettings,
-    this.repositoryTrust,
+    this.trustManager,
   );
 
   /**
@@ -596,7 +698,10 @@ class Program {
     (): BrowserWindow | null => this.windows.main(),
     this.skillLibrary,
     this.workspaceContext,
+    this.repositoryTrust,
     new HostingAgentAccess(this.hostingHost, this.versionControlHost),
+    this.personaLibrary,
+    (): PersonaLearningService => this.personaLearningService,
   );
 
   /**
@@ -643,6 +748,7 @@ class Program {
     (): BrowserWindow | null => this.windows.main(),
     this.workspaceContext,
     this.trustedPaths,
+    this.runTokens,
   );
 
   /**
@@ -656,14 +762,15 @@ class Program {
   );
 
   /**
-   * Clones repositories into a folder the user chose in this process's own dialog (#805), trusting the
-   * result so it opens like any folder they opened themselves.
+   * Clones repositories into a folder the user chose in this process's own dialog (#805), asking first,
+   * before anything is downloaded, whether the user trusts what it brings in (#1504).
    */
   private readonly cloneManager: CloneManager = new CloneManager(
     path.join(app.getPath('userData'), 'clone.json'),
     (): BrowserWindow | null => this.windows.main(),
     this.versionControlHost,
     this.trustedPaths,
+    this.trustManager,
   );
 
   /**
@@ -675,6 +782,7 @@ class Program {
     this.hostingManager,
     this.versionControlHost,
     this.trustedPaths,
+    this.repositoryTrust,
     (): BrowserWindow | null => this.windows.main(),
     path.join(app.getPath('userData'), 'new-project.json'),
   );
@@ -698,7 +806,10 @@ class Program {
   /**
    * Holds the decoder host: the registry of installed decoder plugins and the processes they run in.
    */
-  private readonly decoderHost: DecoderHost = new DecoderHost();
+  private readonly decoderHost: DecoderHost = new DecoderHost(
+    this.workspaceContext,
+    this.runTokens,
+  );
 
   /**
    * Assembles machine code for the binary/hex editor's agent, the write-side counterpart to the
@@ -718,6 +829,17 @@ class Program {
   private readonly agentConversationStore: AgentConversationStore = new AgentConversationStore();
 
   /**
+   * Runs the main process's side of learning the persona (#1516): hands out the user's unread messages, checks
+   * what the model proposed, and applies it or holds it for review.
+   */
+  private readonly personaLearningService: PersonaLearningService = new PersonaLearningService(
+    this.personaLibrary,
+    new PersonaLearningStore(this.personaLibrary.directory),
+    this.agentConversationStore,
+    (): void => announcePersonaChange(),
+  );
+
+  /**
    * Owns the user's conversation categories — the organisation layer over conversation history.
    */
   private readonly agentCategoryStore: AgentCategoryStore = new AgentCategoryStore();
@@ -728,6 +850,7 @@ class Program {
   private readonly lspServerRegistry: LspServerRegistry = new LspServerRegistry(
     process.execPath,
     this.lspSettingsManager,
+    this.repositoryTrust,
   );
 
   /**
@@ -738,6 +861,12 @@ class Program {
     (): BrowserWindow | null => this.windows.main(),
     this.workspaceContext,
     this.lspServerRegistry,
+    this.runTokens,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    this.watchModes,
   );
 
   /**
@@ -756,6 +885,7 @@ class Program {
     (): BrowserWindow | null => this.windows.main(),
     this.workspaceContext,
     this.debugAdapterRegistry,
+    this.runTokens,
   );
 
   /**
@@ -765,6 +895,7 @@ class Program {
   private readonly debugLaunchResolver: DebugLaunchResolver = new DebugLaunchResolver(
     projectSystems,
     this.workspaceContext,
+    this.runTokens,
   );
 
   /**
@@ -834,6 +965,10 @@ class Program {
     this.graphicsAcceleration = startupPreferences.graphicsAcceleration;
     this.startupSettings = startupPreferences.settings;
     setProjectScanDepth(this.startupSettings.projectScanDepth);
+    void this.watchModes.update(
+      this.startupSettings.pollingFolders,
+      this.startupSettings.pollingInterval,
+    );
     // The log floor is applied as early as the preferences can be read: everything logged from here
     // on is filtered by it. A packaged build defaults to info, which drops the trace and debug
     // records that are nineteen in twenty of what would otherwise be written.
@@ -1147,9 +1282,16 @@ class Program {
         if (JSON.stringify(parsed) === JSON.stringify(this.startupSettings)) {
           return;
         }
+        const zoomChanged: boolean = parsed.interfaceZoom !== this.startupSettings.interfaceZoom;
         this.startupSettings = parsed;
+        // Applied at once, to every window: Interface Zoom needs no restart.
+        if (zoomChanged) {
+          this.windows.applyInterfaceZoom();
+        }
         setProjectScanDepth(parsed.projectScanDepth);
+        void this.watchModes.update(parsed.pollingFolders, parsed.pollingInterval);
         this.applyLogLimits(parsed);
+        systemMonitorContribution.setGpuHistory(parsed.gpuMonitoring);
         StartupPreferencesStore.write({ settings: parsed });
       },
     );
@@ -1236,9 +1378,15 @@ class Program {
     this.editorConfigManager.register();
     this.menuManager.register();
     this.codeRunner.register();
+    this.trustAsker.register();
+    this.trustManager.register();
     this.versionControlManager.register();
     this.hostingManager.register();
     this.testAdapterManager.register();
+    this.liveServerManager.register();
+    this.workspaceContext.onRootRemoved((root: string): void =>
+      this.liveServerHost.stopWithin(root),
+    );
     this.workspaceManager.register();
     this.packageManagerChannels.register();
     this.searchManager.register();
@@ -1252,8 +1400,10 @@ class Program {
     this.directoryWatcher.register();
     this.aiManager.register();
     this.skillHandlers.register();
+    this.personaHandlers.register();
     this.libraryTransferHandlers.register();
     this.agentConversationStore.register();
+    this.personaLearningService.register();
     this.agentCategoryStore.register();
     this.lspSettingsManager.register();
     this.lspManager.register();
@@ -1293,6 +1443,8 @@ class Program {
         this.packageManagerHost.restartPlugin(contribution.id);
       } else if (contribution.slot === 'test-adapter') {
         this.testAdapterHost.restartPlugin(contribution.id);
+      } else if (contribution.slot === 'live-server') {
+        this.liveServerHost.restartPlugin(contribution.id);
       } else if (contribution.slot === 'agent-harness') {
         this.aiManager.retireHarnessSessions(contribution.id);
       } else if (contribution.slot === 'database-engine') {
@@ -1472,6 +1624,9 @@ class Program {
     this.logger.pruneSessions(this.startupSettings.keepSessionLogsDays);
     this.installApplicationMenu();
     this.registerIpcHandlers();
+    // Keep the GPU's history from launch, as GPU Monitoring says, so the System Monitor's longer spans
+    // have readings whether or not it is ever opened.
+    systemMonitorContribution.setGpuHistory(this.startupSettings.gpuMonitoring);
     // Resolve the GPU rendering recommendation before the window exists, so the value is ready when
     // the renderer's preload reads it synchronously (before the first paint).
     await this.resolveGpuRenderingRecommendation();
@@ -1661,6 +1816,7 @@ class Program {
     this.versionControlManager.dispose();
     this.packageManagerHost.dispose();
     this.testAdapterManager.dispose();
+    this.liveServerManager.dispose();
     this.hostingManager.dispose();
     this.fileWatcher.disposeAll();
     this.directoryWatcher.disposeAll();

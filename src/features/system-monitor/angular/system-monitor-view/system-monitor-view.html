@@ -1,119 +1,173 @@
-<app-panel-layout class="system-monitor">
-  <!-- The resources (#951): the graphs stacked in a side panel beside the logs, which are what this
-       view is worked in. Part of the view, so the panel can be resized but not closed or moved. -->
-  <app-panel
-    panelId="system-monitor-resources"
-    defaultEdge="left"
-    [allowedEdges]="sideEdges"
-    [movable]="false"
-    [defaultSize]="340"
-    [minSize]="240"
-    [maxSize]="480"
-  >
-    <div class="system-monitor__resources">
-      <h3 class="system-monitor__resources-title">Resources</h3>
-      <!-- CPU, GPU, Memory, Network and Disk tiles. CPU and Memory carry a machine (SYS) reading and
-           this app's share (APP) overlaid on one graph; Network and Disk split into two
-           independently-scaled graphs (Received/Sent, Read/Write); GPU shows N/A where unsupported. -->
-      <section class="system-monitor__tiles">
-        <app-metric-tile label="CPU" [channels]="cpuChannels()" />
-        @if (gpuMonitoring()) {
-          <app-metric-tile label="GPU" [channels]="gpuChannels()" />
+<ng-template
+  [appDockPanel]="mainPanel"
+  panelTitle="System Monitor"
+  [panelIcon]="Icon.SYSTEM_MONITOR"
+  panelRole="main"
+>
+  <div class="system-monitor__main">
+    <!-- The monitor has views, which the ribbon's View group switches between: Overview at a glance,
+         a view per resource in full, System, and the logs on their own. One view is in front at a
+         time, and only its feeds run beyond the samples every view shares (processes are listed only
+         while Overview or Processes is in front). -->
+    <div class="system-monitor__body">
+      @switch (selectedTab()) {
+        @case (Tab.Overview) {
+          <app-system-monitor-overview-tab
+            [logs]="logsOverview()"
+            [sessionStartedAt]="sessionStartedAt()"
+          />
         }
-        <app-metric-tile label="Memory" [suffix]="memoryTotal()" [channels]="memoryChannels()" />
-        <app-metric-tile label="Network" [channels]="networkChannels()" />
-        <app-metric-tile label="Disk" [channels]="diskChannels()" />
-      </section>
+        @case (Tab.Processes) {
+          <app-system-monitor-processes-tab />
+        }
+        @case (Tab.Cpu) {
+          <app-system-monitor-cpu-tab />
+        }
+        @case (Tab.Memory) {
+          <app-system-monitor-memory-tab />
+        }
+        @case (Tab.Storage) {
+          <app-system-monitor-storage-tab />
+        }
+        @case (Tab.Network) {
+          <app-system-monitor-network-tab />
+        }
+        @case (Tab.Gpu) {
+          <app-system-monitor-gpu-tab />
+        }
+        @case (Tab.Logs) {
+          <section class="logs" data-testid="logs-view">
+            <header class="logs__header">
+              <app-icon class="logs__icon" [icon]="Icon.MONITOR_LOGS" [size]="1.75" />
+              <h2 class="logs__title">Logs</h2>
+
+              <app-dropdown
+                class="logs__session"
+                label="Session"
+                [options]="sessionOptions()"
+                [value]="selectedSessionValue()"
+                (valueChange)="selectSession($event)"
+              />
+
+              <div class="logs__levels" role="group" aria-label="Filter by level">
+                <app-button
+                  variant="none"
+                  label="All"
+                  [pressed]="allSeverities()"
+                  (click)="showAllSeverities()"
+                />
+                @for (severity of severities; track severity) {
+                  <app-button
+                    variant="none"
+                    [label]="severityName(severity)"
+                    [pressed]="isEnabled(severity)"
+                    (click)="toggleSeverity(severity)"
+                  />
+                }
+              </div>
+
+              <app-text-field
+                class="logs__search"
+                kind="search"
+                variant="floating"
+                label="Filter messages"
+                [value]="text()"
+                (valueChange)="text.set($event)"
+                (escape)="clearText()"
+              />
+
+              <div class="logs__actions">
+                <app-button
+                  variant="none"
+                  label="Filters"
+                  [icon]="Icon.FILTER"
+                  [cdkMenuTriggerFor]="filtersMenu.panel() ?? null"
+                  [cdkMenuPosition]="filtersMenu.position()"
+                />
+                <app-menu
+                  #filtersMenu
+                  [items]="filterItems()"
+                  placement="down-end"
+                  (selected)="toggleOrigin($event)"
+                />
+                <app-button
+                  variant="none"
+                  ariaLabel="More Actions"
+                  tooltip="More Actions"
+                  [icon]="Icon.DOTS_THREE_BOLD"
+                  [cdkMenuTriggerFor]="moreMenu.panel() ?? null"
+                  [cdkMenuPosition]="moreMenu.position()"
+                />
+                <app-menu
+                  #moreMenu
+                  [items]="moreItems()"
+                  placement="down-end"
+                  (selected)="onMore($event)"
+                />
+              </div>
+
+              <app-system-monitor-view-summary
+                class="logs__summary"
+                ariaLabel="Records by level"
+                [items]="logSummary()"
+              />
+            </header>
+
+            <div class="logs__list">
+              <app-table
+                class="logs__table"
+                [columns]="columns"
+                [rows]="rows()"
+                [selectedIds]="selected()"
+                [virtual]="true"
+                emptyText="No log records match the current filters."
+                (rowSelect)="selectRow($event)"
+                (sortChange)="onSort($event)"
+              >
+                <!-- Every string is built once per record (rowFor), so a pass only reads them (#980 P5). -->
+                <ng-template appTableRow let-row>
+                  @let entry = entryOf(row);
+                  <td class="logs__time">{{ entry.time }}</td>
+                  <td>
+                    <app-chip class="logs__badge" [tone]="entry.tone">
+                      {{ entry.severityLabel }}
+                    </app-chip>
+                  </td>
+                  <td class="logs__component" [title]="entry.origin">
+                    {{ entry.record.source }}
+                  </td>
+                  <td class="logs__message" [title]="entry.record.message">
+                    {{ entry.record.message }}
+                  </td>
+                </ng-template>
+              </app-table>
+            </div>
+
+            <div class="logs__details">
+              <app-system-monitor-log-details-card
+                [record]="focusedRecord()"
+                [session]="summary().session"
+              />
+              <app-system-monitor-log-context-card [record]="focusedRecord()" />
+            </div>
+          </section>
+        }
+      }
     </div>
-  </app-panel>
-
-  <div main class="system-monitor__main">
-    <section class="system-monitor__audit">
-      <header class="system-monitor__toolbar">
-        <app-dropdown
-          class="system-monitor__session"
-          ariaLabel="Session"
-          [options]="sessionOptions()"
-          [value]="selectedSessionValue()"
-          (valueChange)="selectSession($event)"
-        />
-
-        <div class="system-monitor__severities" role="group" aria-label="Filter by severity">
-          @for (severity of severities; track severity) {
-            <app-button
-              class="system-monitor__severity"
-              variant="none"
-              size="small"
-              [label]="severityLabel(severity)"
-              [pressed]="isEnabled(severity)"
-              (click)="toggleSeverity(severity)"
-            />
-          }
-        </div>
-
-        <app-text-field
-          class="system-monitor__search"
-          placeholder="Filter messages…"
-          ariaLabel="Filter messages"
-          [value]="text()"
-          (valueChange)="text.set($event)"
-          (escape)="clearText()"
-        />
-
-        @if (selectedCount() > 0) {
-          <span class="system-monitor__selection">{{ selectedCount() }} selected</span>
-          <app-button-row class="system-monitor__selection-actions" align="start" size="small">
-            <app-button variant="ghost" size="small" label="Copy" (click)="copy()" />
-            <app-button variant="none" size="small" label="Clear" (click)="clearSelection()" />
-          </app-button-row>
-        }
-
-        <span class="system-monitor__count">{{ filtered().length }} / {{ records().length }}</span>
-      </header>
-
-      <app-table
-        class="system-monitor__table"
-        [columns]="columns"
-        [rows]="rows()"
-        [selectedIds]="selected()"
-        [virtual]="true"
-        emptyText="No log records match the current filters."
-        (rowClick)="toggleRow($event)"
-      >
-        <!-- Every string is built once per record (rowFor), so a pass only reads them (#980 P5). -->
-        <ng-template appTableRow let-row>
-          @let entry = entryOf(row);
-          <td>
-            <app-chip class="system-monitor__badge" [tone]="entry.tone">
-              {{ entry.severityLabel }}
-            </app-chip>
-          </td>
-          <td class="system-monitor__where" [title]="entry.origin">{{ entry.record.source }}</td>
-          <td class="system-monitor__message" [title]="entry.record.message">
-            {{ entry.record.message }}
-          </td>
-          <td class="system-monitor__time">{{ entry.time }}</td>
-        </ng-template>
-      </app-table>
-    </section>
   </div>
+</ng-template>
 
-  <!-- The view's own agent (#966), docked on the right. It mounts on first show and stays mounted, so
-       closing it keeps its conversation; Mission Control registration lives on the view. -->
-  @if (agentMounted()) {
-    <app-panel
-      panelId="agent"
-      defaultEdge="right"
-      [visible]="agentVisible()"
-      [defaultSize]="360"
-      [minSize]="240"
-      [maxSize]="900"
-    >
-      <app-system-monitor-agent-panel
-        [tabId]="tabId()"
-        [isActive]="isActive() && agentVisible()"
-        (closed)="agentVisible.set(false)"
-      />
-    </app-panel>
-  }
-</app-panel-layout>
+<!-- The view's own agent (#966); Mission Control registration lives on the view. -->
+<ng-template
+  [appDockPanel]="agentPanel"
+  panelTitle="Agent"
+  [panelIcon]="Icon.AGENT"
+  [sides]="DockSides.Horizontal"
+  [minInlineSize]="22.5"
+  [defaultInlineSize]="360"
+  [maxInlineSize]="900"
+>
+  <app-agent-conversation-panel surface="monitor" [tabId]="tabId()" [isActive]="isActive()" />
+</ng-template>
+
+<app-dock-container />

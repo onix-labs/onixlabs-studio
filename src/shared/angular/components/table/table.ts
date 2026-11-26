@@ -125,6 +125,12 @@ export interface TableColumn {
    * Defaults to false.
    */
   readonly sortable?: boolean;
+
+  /**
+   * Gets the width of the table, in rem, below which the column is hidden, leaving its room to the others;
+   * absent for one always shown. Not for a {@link Table.resizable} table, whose columns the user sizes.
+   */
+  readonly hideBelow?: number;
 }
 
 /**
@@ -188,6 +194,39 @@ export interface TableRow {
    * {@link TableRowDef} template. Defaults to false.
    */
   readonly group?: boolean;
+
+  /**
+   * Gets the data row's depth in a tree of rows: 0 (the default) at the top, one more for each level
+   * beneath. Rows are given in tree order, so a data row followed by deeper ones is their parent, and
+   * in a {@link Table.collapsible} table it can be folded to hide them. Ignored on a group row.
+   */
+  readonly depth?: number;
+}
+
+/**
+ * Where a data row sits in a tree of rows, handed to the row template as its `tree` context
+ * (`let-tree="tree"`) for a {@link TableTreeCell} to indent the row and draw its twisty.
+ */
+export interface TableTreeState {
+  /**
+   * Gets the row's depth: 0 at the top.
+   */
+  readonly depth: number;
+
+  /**
+   * Gets whether the row has rows beneath it and the table is collapsible, so it can be folded.
+   */
+  readonly expandable: boolean;
+
+  /**
+   * Gets whether the rows beneath it are showing.
+   */
+  readonly expanded: boolean;
+
+  /**
+   * Folds the row's subtree when it is showing, and unfolds it when it is not.
+   */
+  readonly toggle: () => void;
 }
 
 /**
@@ -214,7 +253,8 @@ export interface TableRowSelect {
 /**
  * Marks the `<ng-template>` a {@link Table} renders for each data row. The row is the template's
  * implicit context (`<ng-template appTableRow let-row>`), and the template must render one `<td>` per
- * column in column order.
+ * column in column order. Where the row sits in a tree is its `tree` context (`let-tree="tree"`), a
+ * {@link TableTreeState}.
  */
 @Directive({ selector: '[appTableRow]' })
 export class TableRowDef {
@@ -278,7 +318,9 @@ export class Table {
   /**
    * Gets whether group rows can be collapsed. When on, each group row grows a leading twisty that
    * hides or reveals the data rows beneath it (up to the next group), turning the table into a grouped,
-   * tree-like surface that still keeps its column headers. Defaults to false.
+   * tree-like surface that still keeps its column headers. Data rows with a {@link TableRow.depth}
+   * fold the same way, each parent hiding the deeper rows after it, so the table is a tree table: the
+   * row template draws the twisty with a {@link TableTreeCell}. Defaults to false.
    */
   public readonly collapsible: InputSignal<boolean> = input<boolean>(false);
 
@@ -334,11 +376,50 @@ export class Table {
   public readonly gridlineTone: InputSignal<TableGridlineTone> = input<TableGridlineTone>('light');
 
   /**
-   * Gets how many cells a full-width row spans: every column, and the filler a resizable table ends
+   * Gets whether the table keeps its newest rows in view, as a log does: while the user is scrolled to
+   * the end, rows added below scroll into view; scrolling up stops it until they return to the end.
+   * Defaults to false.
+   */
+  public readonly followEnd: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Holds the table's width in rem, or null until it has one.
+   */
+  private readonly width: WritableSignal<number | null> = signal<number | null>(null);
+
+  /**
+   * Gets the positions, from one, of the columns hidden for want of width, as the stylesheet matches them.
+   */
+  private readonly hiddenColumns: Signal<readonly number[]> = computed((): readonly number[] => {
+    const width: number | null = this.width();
+    return this.columns().flatMap((column: TableColumn, index: number): readonly number[] =>
+      width !== null && column.hideBelow !== undefined && width < column.hideBelow
+        ? [index + 1]
+        : [],
+    );
+  });
+
+  /**
+   * Gets the hidden columns' positions as the table's attribute has them, or null when none is.
+   */
+  protected readonly hiddenAttribute: Signal<string | null> = computed((): string | null => {
+    const hidden: readonly number[] = this.hiddenColumns();
+    return hidden.length === 0 ? null : hidden.join(' ');
+  });
+
+  /**
+   * Gets whether any column is hidden when the table is narrow, so its width is worth watching.
+   */
+  private readonly hidesColumns: Signal<boolean> = computed((): boolean =>
+    this.columns().some((column: TableColumn): boolean => column.hideBelow !== undefined),
+  );
+
+  /**
+   * Gets how many cells a full-width row spans: every column shown, and the filler a resizable table ends
    * with.
    */
   protected readonly spanCount: Signal<number> = computed(
-    (): number => this.columns().length + (this.resizable() ? 1 : 0),
+    (): number => this.columns().length - this.hiddenColumns().length + (this.resizable() ? 1 : 0),
   );
 
   /**
@@ -351,14 +432,25 @@ export class Table {
 
   /**
    * Gets each column's width as rendered: the resized width once there is one, otherwise the stated
-   * width.
+   * width. Once every column without a stated width is hidden, those stated as a share of the table take
+   * what the others leave, rather than all of them growing.
    */
   protected readonly columnWidths: Signal<readonly (string | null)[]> = computed(
     (): readonly (string | null)[] => {
       const resized: ReadonlyMap<string, number> = this.resizedWidths();
+      const hidden: readonly number[] = this.hiddenColumns();
+      const takesRest: boolean =
+        hidden.length > 0 &&
+        this.columns().every(
+          (column: TableColumn, index: number): boolean =>
+            column.width !== undefined || hidden.includes(index + 1),
+        );
       return this.columns().map((column: TableColumn): string | null => {
         const px: number | undefined = resized.get(column.id);
-        return px === undefined ? (column.width ?? null) : `${px}px`;
+        if (px !== undefined) {
+          return `${px}px`;
+        }
+        return takesRest && column.width?.endsWith('%') === true ? null : (column.width ?? null);
       });
     },
   );
@@ -464,9 +556,56 @@ export class Table {
   >(new Set<string>());
 
   /**
+   * Gets the ids of the data rows with rows beneath them in a tree: those followed by a deeper data
+   * row.
+   */
+  private readonly branchIds: Signal<ReadonlySet<string>> = computed((): ReadonlySet<string> => {
+    const rows: readonly TableRow[] = this.rows();
+    const branches: Set<string> = new Set<string>();
+    rows.forEach((row: TableRow, index: number): void => {
+      const next: TableRow | undefined = rows[index + 1];
+      if (
+        row.group !== true &&
+        next !== undefined &&
+        next.group !== true &&
+        (next.depth ?? 0) > (row.depth ?? 0)
+      ) {
+        branches.add(row.id);
+      }
+    });
+    return branches;
+  });
+
+  /**
+   * Gets where each data row sits in the tree, for the row template's `tree` context. A row can only
+   * be folded in a collapsible table.
+   */
+  protected readonly treeStates: Signal<ReadonlyMap<string, TableTreeState>> = computed(
+    (): ReadonlyMap<string, TableTreeState> => {
+      const collapsible: boolean = this.collapsible();
+      const branches: ReadonlySet<string> = this.branchIds();
+      const collapsed: ReadonlySet<string> = this.collapsedGroups();
+      const states: Map<string, TableTreeState> = new Map<string, TableTreeState>();
+      for (const row of this.rows()) {
+        if (row.group === true) {
+          continue;
+        }
+        const expandable: boolean = collapsible && branches.has(row.id);
+        states.set(row.id, {
+          depth: row.depth ?? 0,
+          expandable,
+          expanded: expandable && !collapsed.has(row.id),
+          toggle: (): void => this.toggleGroup(row),
+        });
+      }
+      return states;
+    },
+  );
+
+  /**
    * Gets the rows actually rendered: every row when not collapsible, otherwise every group row plus the
    * data rows of the groups that are expanded (a collapsed group's data rows — those up to the next
-   * group — are dropped).
+   * group — are dropped), less the rows beneath a folded tree row.
    */
   protected readonly visibleRows: Signal<readonly TableRow[]> = computed(
     (): readonly TableRow[] => {
@@ -474,14 +613,31 @@ export class Table {
         return this.rows();
       }
       const collapsed: ReadonlySet<string> = this.collapsedGroups();
+      const branches: ReadonlySet<string> = this.branchIds();
       const visible: TableRow[] = [];
       let hidden: boolean = false;
+      // The depth of the folded tree row whose subtree is being skipped, or null when none is.
+      let foldedAt: number | null = null;
       for (const row of this.rows()) {
         if (row.group === true) {
           hidden = collapsed.has(row.id);
+          foldedAt = null;
           visible.push(row);
-        } else if (!hidden) {
-          visible.push(row);
+          continue;
+        }
+        if (hidden) {
+          continue;
+        }
+        const depth: number = row.depth ?? 0;
+        if (foldedAt !== null) {
+          if (depth > foldedAt) {
+            continue;
+          }
+          foldedAt = null;
+        }
+        visible.push(row);
+        if (branches.has(row.id) && collapsed.has(row.id)) {
+          foldedAt = depth;
         }
       }
       return visible;
@@ -518,6 +674,11 @@ export class Table {
    */
   private readonly scroller: Signal<ElementRef<HTMLElement> | undefined> =
     viewChild<ElementRef<HTMLElement>>('scroller');
+
+  /**
+   * Holds whether the user is scrolled to the end, which is when {@link followEnd} keeps them there.
+   */
+  private atEnd: boolean = true;
 
   /**
    * Holds the identity of the column set the resized widths belong to, so a new set starts afresh.
@@ -722,6 +883,66 @@ export class Table {
       });
     });
 
+    // The width decides which columns are hidden. A table behind another tab has none, and keeps what it
+    // had.
+    effect((onCleanup: (cleanup: () => void) => void): void => {
+      const element: HTMLElement | undefined = this.scroller()?.nativeElement;
+      const view: (Window & typeof globalThis) | null = element?.ownerDocument.defaultView ?? null;
+      if (!this.hidesColumns() || element === undefined || view?.ResizeObserver === undefined) {
+        return;
+      }
+      const read: () => void = (): void => {
+        const rem: number = Number.parseFloat(
+          view.getComputedStyle(element.ownerDocument.documentElement).fontSize,
+        );
+        if (element.clientWidth > 0) {
+          this.width.set(element.clientWidth / (rem > 0 ? rem : 16));
+        }
+      };
+      read();
+      const resize: ResizeObserver = new view.ResizeObserver(read);
+      resize.observe(element);
+      onCleanup((): void => resize.disconnect());
+    });
+
+    // Following the end (a log's newest rows): note whether the user is at the end as they scroll, and
+    // after rows are added keep them there if they were.
+    effect((onCleanup: (cleanup: () => void) => void): void => {
+      const element: HTMLElement | undefined = this.scroller()?.nativeElement;
+      if (!this.followEnd() || element === undefined) {
+        return;
+      }
+      const note: () => void = (): void => {
+        this.atEnd = element.scrollHeight - element.scrollTop - element.clientHeight < 4;
+      };
+      element.addEventListener('scroll', note, { passive: true });
+      onCleanup((): void => element.removeEventListener('scroll', note));
+    });
+    afterRenderEffect({
+      write: (): void => {
+        this.rows();
+        const element: HTMLElement | undefined = this.scroller()?.nativeElement;
+        if (this.followEnd() && this.atEnd && element !== undefined) {
+          element.scrollTop = element.scrollHeight;
+        }
+      },
+    });
+
+    // The pinned header covers the top of the scroll area, so it is the area's top scroll padding: the
+    // scroll bar's track starts below it, and rows scrolled into view are not left under it. Measured,
+    // so a header that wraps or a display-scale change is followed.
+    afterRenderEffect({
+      earlyRead: (): number =>
+        this.host.nativeElement.querySelector('.table-head')?.getBoundingClientRect().height ?? 0,
+      write: (height: Signal<number>): void => {
+        const element: HTMLElement | undefined = this.scroller()?.nativeElement;
+        const padding: string = `${height()}px`;
+        if (element !== undefined && element.style.scrollPaddingBlockStart !== padding) {
+          element.style.scrollPaddingBlockStart = padding;
+        }
+      },
+    });
+
     // The row height is measured, not assumed, so a font-size or display-scale change is followed.
     // Read in the render's read phase, after the rows are laid out.
     afterRenderEffect({
@@ -759,8 +980,9 @@ export class Table {
   }
 
   /**
-   * Toggles a group row's collapsed state, hiding or revealing its data rows.
-   * @param row The group row to toggle.
+   * Toggles a group row's collapsed state, hiding or revealing its data rows, or folds or unfolds a
+   * tree row's subtree.
+   * @param row The group or tree row to toggle.
    */
   protected toggleGroup(row: TableRow): void {
     const next: Set<string> = new Set<string>(this.collapsedGroups());

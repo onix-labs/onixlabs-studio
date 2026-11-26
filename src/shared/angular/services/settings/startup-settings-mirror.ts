@@ -29,6 +29,8 @@ export class StartupSettingsMirror {
     windowSizeOnLaunch: this.settings.value('application.windowSizeOnLaunch')(),
     restoreFullScreen: this.settings.value('application.restoreFullScreen')(),
     cornerStyle: this.settings.value('application.cornerStyle')(),
+    language: this.settings.value('application.language')(),
+    interfaceZoom: this.settings.value('accessibility.interfaceZoom')(),
     confirmExternalLinks: this.settings.value('privacy.confirmExternalLinks')(),
     addStudioUserFileToGitignore: this.settings.value('workspaces.addStudioUserFileToGitignore')(),
     projectScanDepth: this.settings.value('workspaces.projectScanDepth')(),
@@ -47,6 +49,9 @@ export class StartupSettingsMirror {
     ollamaStart: this.settings.value('aiManager.startRuntime')(),
     ollamaKeepAliveMinutes: this.settings.value('aiManager.keepModelsLoadedMinutes')(),
     skillLibraryFolder: this.settings.value('aiManager.skillLibraryFolder')(),
+    gpuMonitoring: this.settings.value('systemMonitor.gpuMonitoring')(),
+    pollingFolders: this.settings.value('workspaces.pollingFolders')(),
+    pollingInterval: this.settings.value('workspaces.pollingInterval')(),
   }));
 
   /**

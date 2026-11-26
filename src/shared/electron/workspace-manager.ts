@@ -37,6 +37,7 @@ import { projectSystems } from './project-system/default-project-systems';
 import { ProjectSystem } from './project-system/project-system';
 import { readOnlySourcePath } from './lsp/toolchain-source';
 import { TrustedPaths } from './trusted-paths';
+import { RunToken, RunTokens } from './process/launch';
 import { trashOrRemove } from './trash-or-remove';
 import { WorkspaceContext } from './workspace-context';
 import { decodeText, hasUtf16ByteOrderMark, type DecodedText } from './text-encoding';
@@ -104,20 +105,29 @@ export class WorkspaceManager {
   private readonly trusted: TrustedPaths;
 
   /**
+   * Issues run tokens: a project tool runs only with a trusted folder's (#1504). Distinct from
+   * {@link trusted}, which records folders chosen in a dialog.
+   */
+  private readonly tokens: RunTokens;
+
+  /**
    * Initializes a new instance of the {@link WorkspaceManager} class.
    * @param windowGetter A function that returns the window dialogs are parented to when the
    * requesting window is gone.
    * @param workspace The shared workspace context to update when a folder is opened or closed.
    * @param trusted The store recording paths the user has opened, gating path-based re-opens.
+   * @param tokens Issues the run tokens a project tool needs.
    */
   public constructor(
     windowGetter: () => BrowserWindow | null,
     workspace: WorkspaceContext,
     trusted: TrustedPaths,
+    tokens: RunTokens,
   ) {
     this.windowGetter = windowGetter;
     this.workspace = workspace;
     this.trusted = trusted;
+    this.tokens = tokens;
   }
 
   /**
@@ -348,7 +358,11 @@ export class WorkspaceManager {
       return null;
     }
     const system: ProjectSystem | null = projectSystems.matchProject(projectPath);
-    return (await system?.loadProjectItems?.(projectPath)) ?? null;
+    return (
+      (await system?.loadProjectItems?.(projectPath, {
+        token: this.tokens.issue(projectPath),
+      })) ?? null
+    );
   }
 
   /**
@@ -370,11 +384,17 @@ export class WorkspaceManager {
       logger.warn('WorkspaceManager.resolveArtifact', 'Rejected a file outside the workspace');
       return null;
     }
+    // Resolving asks the build tool (MSBuild for .NET), which runs the project's own files (#1504).
+    const token: RunToken | null = this.tokens.issue(sourcePath);
+    if (token === null) {
+      logger.debug('WorkspaceManager.resolveArtifact', 'Held for an untrusted folder');
+      return null;
+    }
     const configuration: string | undefined =
       typeof configurationId === 'string' ? configurationId : undefined;
     for (const system of projectSystems.all()) {
       const artifact: CompiledArtifact | null =
-        (await system.resolveArtifact?.(sourcePath, configuration)) ?? null;
+        (await system.resolveArtifact?.(sourcePath, configuration, token)) ?? null;
       if (artifact !== null) {
         return artifact;
       }
@@ -409,9 +429,16 @@ export class WorkspaceManager {
     if (root === undefined) {
       return null;
     }
+    // A formatter here may be one the folder ships (a virtual environment's ruff or black), and reads
+    // the folder's configuration: none runs until the folder is trusted (#1504).
+    const token: RunToken | null = this.tokens.issue(filePath);
+    if (token === null) {
+      logger.debug('WorkspaceManager.formatDocument', 'Held for an untrusted folder');
+      return null;
+    }
     for (const system of projectSystems.all()) {
       const result: DocumentFormatResult | null =
-        (await system.formatDocument?.(filePath, text, root)) ?? null;
+        (await system.formatDocument?.(filePath, text, root, token)) ?? null;
       if (result !== null) {
         return result;
       }
@@ -535,7 +562,7 @@ export class WorkspaceManager {
       const resolved: string = path.resolve(filePath as string);
       const selection: OpenSelection = await this.readFileSelection(resolved, policy);
       // Remember the file so it can be re-opened from the welcome screen once its workspace is closed.
-      this.trusted.remember(resolved);
+      this.trusted.rememberOpened(resolved);
       return selection;
     } catch (error: unknown) {
       logger.debug('WorkspaceManager', 'Failed to open file', error);
@@ -804,7 +831,9 @@ export class WorkspaceManager {
     this.workspace.addRoot(resolved);
     logger.info('WorkspaceManager.reopenFolder', `Re-opened workspace root ${resolved}`);
     try {
-      return await this.readListing(resolved);
+      const listing: DirectoryListing = await this.readListing(resolved);
+      this.trusted.refresh(resolved);
+      return listing;
     } catch (error: unknown) {
       logger.warn('WorkspaceManager', `Failed to refresh root ${resolved}; removing`, error);
       this.workspace.removeRoot(resolved);
@@ -829,7 +858,10 @@ export class WorkspaceManager {
       return null;
     }
     try {
-      return await this.readFileSelection(path.resolve(filePath as string), policy);
+      const resolved: string = path.resolve(filePath as string);
+      const selection: OpenSelection = await this.readFileSelection(resolved, policy);
+      this.trusted.refresh(resolved);
+      return selection;
     } catch (error: unknown) {
       logger.debug('WorkspaceManager', 'Failed to read file selection', error);
       return null;

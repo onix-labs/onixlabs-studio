@@ -107,4 +107,99 @@ describe('ToastCard', () => {
       'button--tone-neutral',
     );
   });
+
+  describe('commands and details (#1255)', () => {
+    /**
+     * The notification an unknown SSH host raises.
+     */
+    const unknownHost: Notification = {
+      ...notification('error'),
+      title: 'Fetch failed — studio',
+      detail: "SSH doesn't know the host key of github.com yet.",
+      commands: ['ssh -T git@github.com', 'ssh-keyscan github.com | ssh-keygen -lf -'],
+      output: 'Host key verification failed.\nfatal: Could not read from remote repository.',
+    };
+
+    it('showsEachCommandAsCode_andCopiesIt', async () => {
+      const copied: string[] = [];
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: (text: string): Promise<void> => Promise.resolve(void copied.push(text)),
+        },
+      });
+      render(unknownHost);
+
+      const commands: string[] = [
+        ...host.querySelectorAll<HTMLElement>('[data-testid="toast-command"] code'),
+      ].map((code: HTMLElement): string => code.textContent ?? '');
+      host
+        .querySelectorAll<HTMLButtonElement>('[data-testid="toast-copy-command"] button')[1]
+        ?.click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(commands).toEqual(unknownHost.commands);
+      expect(copied).toEqual(['ssh-keyscan github.com | ssh-keygen -lf -']);
+      expect(
+        host
+          .querySelectorAll('[data-testid="toast-copy-command"] button')[1]
+          ?.getAttribute('aria-label'),
+      ).toBe('Copied');
+    });
+
+    it('keepsTheToolsOutputUnderShowDetails', () => {
+      render(unknownHost);
+
+      expect(host.querySelector('[data-testid="toast-output"]')).toBeNull();
+      host.querySelector<HTMLButtonElement>('[data-testid="toast-details"] button')?.click();
+      fixture.detectChanges();
+
+      expect(host.querySelector('[data-testid="toast-output"]')?.textContent).toBe(
+        unknownHost.output,
+      );
+      expect(host.querySelector('[data-testid="toast-details"] button')?.textContent?.trim()).toBe(
+        'Hide Details',
+      );
+    });
+
+    it('offersNeitherWithoutThem', () => {
+      render(notification('error'));
+
+      expect(host.querySelector('[data-testid="toast-command"]')).toBeNull();
+      expect(host.querySelector('[data-testid="toast-details"]')).toBeNull();
+    });
+  });
+
+  describe("Don't Show Again (#1487)", () => {
+    it('isOfferedOnlyWhenTheSurfaceSaysSo', () => {
+      render(notification('error'));
+
+      expect(host.querySelector('.toast__options')).toBeNull();
+    });
+
+    it('reportsDontShowAgain_andNotificationSettings', () => {
+      let silenced: number = 0;
+      let configured: number = 0;
+      fixture.componentInstance.silenced.subscribe((): number => (silenced += 1));
+      fixture.componentInstance.configured.subscribe((): number => (configured += 1));
+      fixture.componentRef.setInput('silenceable', true);
+      fixture.componentRef.setInput('configurable', true);
+      render(notification('error'));
+
+      host.querySelector<HTMLButtonElement>('[data-testid="toast-silence"] button')?.click();
+      host.querySelector<HTMLButtonElement>('[data-testid="toast-configure"] button')?.click();
+
+      expect(silenced).toBe(1);
+      expect(configured).toBe(1);
+    });
+
+    it('keepsTheChoicesApartFromTheNotificationsOwnActions', () => {
+      fixture.componentRef.setInput('silenceable', true);
+      render(notification('error', [{ label: 'Show Logs', run: (): void => undefined }]));
+
+      expect(host.querySelector('.toast__actions [data-testid="toast-silence"]')).toBeNull();
+      expect(host.querySelector('.toast__options [data-testid="toast-silence"]')).not.toBeNull();
+    });
+  });
 });

@@ -1,6 +1,6 @@
 import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, MockInstance, vi } from 'vitest';
 import { Bridge } from '@shared/api/bridge';
 import { DebugChannel, DebugEventMessage, DebugStartResult } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
@@ -11,7 +11,14 @@ import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { Breakpoints } from '@shared/angular/services/debug/breakpoints';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { SolutionModel } from '@features/workspace/angular/project/solution-model';
+import {
+  NotificationRequest,
+  Notifications,
+} from '@shared/angular/services/notifications/notifications';
 import { DebugSession } from './debug-session';
+import { Documents } from '@shared/angular/services/documents/documents';
+import { Editors } from '@shared/angular/services/editors/editors';
+import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 
 /**
  * A recorded request/notification made through the fake transport.
@@ -165,6 +172,8 @@ describe('DebugSession', () => {
   let output: FakeOutput;
   let root: WritableSignal<DirectoryListing | null>;
   let caps: WritableSignal<ProjectCapabilities | null>;
+  let raised: NotificationRequest[];
+  let revealed: string[];
 
   /**
    * Builds the service under test with the fakes wired in.
@@ -186,6 +195,27 @@ describe('DebugSession', () => {
         { provide: Workspace, useValue: { root } },
         { provide: Output, useValue: output },
         { provide: SolutionModel, useValue: { capabilities: caps } },
+        {
+          provide: Notifications,
+          useValue: { notify: (request: NotificationRequest): number => raised.push(request) },
+        },
+        {
+          provide: FileOpener,
+          useValue: {
+            openPath: (path: string): Promise<boolean> => {
+              revealed.push(`open ${path}`);
+              return Promise.resolve(true);
+            },
+          },
+        },
+        { provide: Documents, useValue: { findIdByPath: (path: string): string => `doc:${path}` } },
+        {
+          provide: Editors,
+          useValue: {
+            requestReveal: (documentId: string, line: number, column: number): number =>
+              revealed.push(`reveal ${documentId} ${line}:${column}`),
+          },
+        },
       ],
     });
     return TestBed.inject(DebugSession);
@@ -196,6 +226,8 @@ describe('DebugSession', () => {
     output = new FakeOutput();
     root = signal<DirectoryListing | null>({ path: '/ws', name: 'ws', entries: [] });
     caps = signal<ProjectCapabilities | null>(capabilities('netcoredbg'));
+    raised = [];
+    revealed = [];
     (window as unknown as { bridge: Bridge }).bridge = bridge;
   });
 
@@ -524,6 +556,115 @@ describe('DebugSession', () => {
     expect(session.state()).toBe('idle');
   });
 
+  describe('telling the user what they did not ask for (#1490)', () => {
+    /**
+     * Launches a session.
+     * @returns Returns the session's identifier.
+     */
+    async function launched(): Promise<string> {
+      build().launch(config());
+      await flush();
+      return currentSessionId(bridge);
+    }
+
+    it('aProgramThatFails_popsUpWithShowOutput', async () => {
+      const sessionId: string = await launched();
+
+      bridge.emit(DebugChannel.Event, { sessionId, event: 'exited', body: { exitCode: 3 } });
+      bridge.emit(DebugChannel.Event, sessionIdEvent(sessionId, 'terminated'));
+
+      expect(raised).toHaveLength(1);
+      expect(raised[0]).toMatchObject({
+        severity: 'error',
+        title: 'App exited (code 3)',
+        type: 'debug.failed',
+      });
+      expect(raised[0].actions?.[0].label).toBe('Show Output');
+    });
+
+    it('aProgramThatEndsCleanly_isRecordedAsEnded', async () => {
+      const sessionId: string = await launched();
+
+      bridge.emit(DebugChannel.Event, { sessionId, event: 'exited', body: { exitCode: 0 } });
+      bridge.emit(DebugChannel.Event, sessionIdEvent(sessionId, 'terminated'));
+
+      expect(raised).toEqual([expect.objectContaining({ type: 'debug.ended' })]);
+    });
+
+    it('aDebuggerThatCrashes_saysTheDebuggerStopped', async () => {
+      const sessionId: string = await launched();
+
+      bridge.emit(DebugChannel.AdapterExit, { sessionId, code: 134, signal: null });
+
+      expect(raised[0]).toMatchObject({
+        title: 'The debugger stopped unexpectedly — App',
+        type: 'debug.failed',
+      });
+    });
+
+    it('stop_saysNothing', async () => {
+      const session: DebugSession = build();
+      session.launch(config());
+      await flush();
+      const sessionId: string = currentSessionId(bridge);
+
+      session.stop();
+      bridge.emit(DebugChannel.Event, sessionIdEvent(sessionId, 'terminated'));
+      bridge.emit(DebugChannel.AdapterExit, { sessionId, code: 0, signal: null });
+
+      expect(raised).toEqual([]);
+    });
+
+    it('aBreakpointHitWhileStudioIsInTheBackground_reachesTheDesktopOnly', async () => {
+      const hasFocus: MockInstance<() => boolean> = vi
+        .spyOn(document, 'hasFocus')
+        .mockReturnValue(false);
+      try {
+        const sessionId: string = await launched();
+
+        bridge.emit(DebugChannel.Event, {
+          sessionId,
+          event: 'stopped',
+          body: { reason: 'breakpoint', threadId: 1 },
+        });
+
+        expect(raised).toEqual([
+          expect.objectContaining({
+            title: 'App paused at a breakpoint',
+            type: 'debug.stopped',
+            route: 'history-only',
+            desktop: true,
+          }),
+        ]);
+      } finally {
+        hasFocus.mockRestore();
+      }
+    });
+
+    it('aPauseTheUserCanSee_orAStep_saysNothing', async () => {
+      const hasFocus: MockInstance<() => boolean> = vi.spyOn(document, 'hasFocus');
+      try {
+        const sessionId: string = await launched();
+        hasFocus.mockReturnValue(true);
+        bridge.emit(DebugChannel.Event, {
+          sessionId,
+          event: 'stopped',
+          body: { reason: 'breakpoint', threadId: 1 },
+        });
+        hasFocus.mockReturnValue(false);
+        bridge.emit(DebugChannel.Event, {
+          sessionId,
+          event: 'stopped',
+          body: { reason: 'step', threadId: 1 },
+        });
+
+        expect(raised).toEqual([]);
+      } finally {
+        hasFocus.mockRestore();
+      }
+    });
+  });
+
   it('stop_terminatesAndResets', async () => {
     const session: DebugSession = build();
     session.launch(config());
@@ -636,6 +777,28 @@ describe('DebugSession', () => {
       .requests()
       .find((r) => r.command === 'stackTrace');
     expect(stack?.args).toMatchObject({ threadId: 1 });
+  });
+
+  it('stopped_bringsTheStoppedLineIntoView_openingItsFileWhenNeeded (#1211)', async () => {
+    bridge.responses.set('stackTrace', {
+      stackFrames: [
+        { id: 1000, name: 'Greet', source: { path: '/ws/greet/greet.go' }, line: 25, column: 0 },
+      ],
+    });
+    bridge.responses.set('scopes', { scopes: [] });
+    const session: DebugSession = build();
+    session.launch(config());
+    await flush();
+
+    bridge.emit(DebugChannel.Event, {
+      sessionId: currentSessionId(bridge),
+      event: 'stopped',
+      body: { reason: 'breakpoint', threadId: 1 },
+    } satisfies DebugEventMessage);
+    await flush();
+
+    // Delve gives no column; the line is revealed from its start.
+    expect(revealed).toEqual(['open /ws/greet/greet.go', 'reveal doc:/ws/greet/greet.go 25:1']);
   });
 
   it('selectFrame_loadsScopesForThatFrameAndMovesLocation', async () => {

@@ -1,0 +1,101 @@
+// The meter is square, as large as its host allows, with the reading stacked over its centre.
+:host {
+  display: block;
+  aspect-ratio: 1;
+}
+
+.radial-meter {
+  --radial-meter-fill: var(--accent-color);
+
+  display: grid;
+  place-items: center;
+  block-size: 100%;
+}
+
+.radial-meter--warning {
+  --radial-meter-fill: var(--warning-color);
+}
+
+.radial-meter--danger {
+  --radial-meter-fill: var(--danger-color);
+}
+
+// The SVG and the reading share the one grid cell, so the reading sits in the ring's middle.
+.radial-meter__svg,
+.radial-meter__reading {
+  grid-area: 1 / 1;
+}
+
+.radial-meter__svg {
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+.radial-meter__track,
+.radial-meter__fill,
+.radial-meter__inner-track,
+.radial-meter__inner-fill {
+  fill: none;
+  stroke-width: 9;
+}
+
+// A nested meter's rings are narrower, so the reading still fits inside the inner one.
+.radial-meter--nested {
+  .radial-meter__track,
+  .radial-meter__fill,
+  .radial-meter__inner-track,
+  .radial-meter__inner-fill {
+    stroke-width: 7;
+  }
+
+  .radial-meter__value {
+    font-size: 1.35rem;
+  }
+}
+
+// The inner ring is Studio's share, in the muted grey that marks it elsewhere, on a track of its own
+// hue.
+.radial-meter__inner-track {
+  stroke: color-mix(in srgb, var(--form-muted-foreground-color) 18%, transparent);
+}
+
+.radial-meter__inner-fill {
+  stroke: var(--form-muted-foreground-color);
+  stroke-linecap: round;
+}
+
+.radial-meter__inner {
+  margin-block-start: 0.1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
+}
+
+// The unfilled track is a lighter step of the fill's own hue, so the state reads around the ring.
+.radial-meter__track {
+  stroke: color-mix(in srgb, var(--radial-meter-fill) 18%, transparent);
+}
+
+.radial-meter__fill {
+  stroke: var(--radial-meter-fill);
+  stroke-linecap: round;
+}
+
+.radial-meter__reading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+// The reading wears its ring's colour, so its severity reads in the centre too.
+.radial-meter__value {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--radial-meter-fill);
+}
+
+.radial-meter__label {
+  font-size: 0.72rem;
+  color: var(--form-muted-foreground-color);
+}

@@ -1,4 +1,13 @@
-import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import {
+  computed,
+  effect,
+  inject,
+  Service,
+  signal,
+  Signal,
+  untracked,
+  WritableSignal,
+} from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import {
   PackageAnswer,
@@ -10,9 +19,14 @@ import {
 } from '@shared/api/package-channels';
 import type { PackageCommand } from '@shared/api/package-manager-protocol';
 import {
+  DISPOSED_EXIT_CODE,
   TerminalLaunch,
   TerminalSessions,
 } from '@shared/angular/services/terminal-sessions/terminal-sessions';
+import {
+  NotificationAction,
+  Notifications,
+} from '@shared/angular/services/notifications/notifications';
 import {
   InstalledPackage,
   PackageManagerModel,
@@ -25,6 +39,20 @@ import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { Log } from '@shared/angular/services/log/log';
+import { PackageNotificationType } from './package-notification-types';
+import type { TrustChange } from '@shared/api/trust-channels';
+
+/**
+ * Words each change's outcome for its notification: what it is called once done, and when it failed.
+ */
+const OUTCOME_WORDS: Readonly<
+  Record<PackageWriteOp, { readonly done: string; readonly verb: string }>
+> = {
+  install: { done: 'Installed', verb: 'install' },
+  update: { done: 'Updated', verb: 'update' },
+  remove: { done: 'Removed', verb: 'remove' },
+  restore: { done: 'Restored packages for', verb: 'restore packages for' },
+};
 
 /**
  * A flattened Packages row: either a project header or one of its packages, with its display fields
@@ -172,6 +200,11 @@ export class PackageModel {
    * Holds this tab's terminals, where a change runs where the user can see it (#912).
    */
   private readonly terminals: TerminalSessions = inject(TerminalSessions);
+
+  /**
+   * Holds the notification store a finished change is reported to (#1492).
+   */
+  private readonly notifications: Notifications = inject(Notifications);
 
   /**
    * Holds the change running in a terminal, or null when none is.
@@ -381,7 +414,7 @@ export class PackageModel {
 
   /**
    * Initializes a new instance of the {@link PackageModel} class, refreshing whenever the open root
-   * changes, a package-manager plugin is installed or removed, or a trust question is answered.
+   * changes, a package-manager plugin is installed or removed, or a folder's trust changes.
    */
   public constructor() {
     effect((): void => {
@@ -389,14 +422,21 @@ export class PackageModel {
       this.installedKey();
       void this.refresh(root);
     });
-    let asking: boolean = false;
     effect((): void => {
-      // A repository's trust is asked in a window of its own; once it is answered, ask again.
-      const pending: boolean = this.repositoryTrust.pending() !== null;
-      if (asking && !pending) {
-        this.refreshNow();
+      // Trust is decided in the main process's own window; once a decision changes, ask again. The
+      // moment the user trusts this folder, its packages are restored too (#1504).
+      const change: TrustChange | null = this.repositoryTrust.changed();
+      if (change === null) {
+        return;
       }
-      asking = pending;
+      untracked((): void => {
+        const root: string | null = this.workspace.root()?.path ?? null;
+        if (change.decision === 'trusted' && root !== null && isWithinFolder(root, change.folder)) {
+          void this.restoreAfterTrust(root);
+        } else {
+          this.refreshNow();
+        }
+      });
     });
   }
 
@@ -449,6 +489,7 @@ export class PackageModel {
     this.log.info('workspace.packages', 'Running a package change', command.title);
     try {
       const launch: TerminalLaunch = await this.terminals.launch({
+        reportsItsOwnOutcome: true,
         kind: 'task',
         name: command.title,
         command: command.executable,
@@ -459,10 +500,103 @@ export class PackageModel {
       if (exitCode !== 0) {
         this.writeErrorSignal.set(`${command.title} ended with exit code ${exitCode}.`);
       }
+      // A terminal the user closed ended the change by their own hand: nothing to report.
+      if (exitCode !== DISPOSED_EXIT_CODE) {
+        this.notifyOutcome(op, request, exitCode, launch.session.id);
+      }
     } finally {
       this.writingSignal.set(null);
     }
     await this.refresh(this.workspace.root()?.path ?? null);
+  }
+
+  /**
+   * Reports a finished change (#1492): "Installed left-pad 1.3.0" to the history, or "Couldn't
+   * install left-pad" popping up with Show Output, which brings its terminal forward.
+   * @param op The change.
+   * @param request What it changed.
+   * @param exitCode The command's exit code.
+   * @param sessionId The terminal it ran in.
+   */
+  private notifyOutcome(
+    op: PackageWriteOp,
+    request: PackageWriteRequest,
+    exitCode: number,
+    sessionId: string,
+  ): void {
+    const words: { readonly done: string; readonly verb: string } = OUTCOME_WORDS[op];
+    const subject: string =
+      op === 'restore' ? this.projectName(request.project) : (request.name ?? '');
+    const version: string = op === 'install' || op === 'update' ? (request.version ?? '') : '';
+    const showOutput: () => void = (): void => this.terminals.activateAndReveal(sessionId);
+    if (exitCode === 0) {
+      this.notifications.notify({
+        severity: 'success',
+        title: `${words.done} ${subject}${version === '' ? '' : ` ${version}`}`,
+        key: `packages:${sessionId}`,
+        type: PackageNotificationType.Finished,
+        reveal: showOutput,
+      });
+      return;
+    }
+    const actions: readonly NotificationAction[] = [{ label: 'Show output', run: showOutput }];
+    this.notifications.notify({
+      severity: 'error',
+      title: `Couldn't ${words.verb} ${subject}`,
+      detail: `Exited with code ${exitCode}.`,
+      actions,
+      key: `packages:${sessionId}`,
+      type: PackageNotificationType.Failed,
+      reveal: showOutput,
+    });
+  }
+
+  /**
+   * Names a project for a notification: as its package manager reported it, or its folder.
+   * @param manifestPath The project's manifest path.
+   * @returns Returns the project's name.
+   */
+  private projectName(manifestPath: string): string {
+    for (const state of this.statesSignal()) {
+      const project: PackageProject | undefined = state.model?.projects.find(
+        (candidate: PackageProject): boolean => candidate.manifestPath === manifestPath,
+      );
+      if (project !== undefined) {
+        return project.name;
+      }
+    }
+    const parts: readonly string[] = manifestPath.split(/[\\/]/);
+    return parts.at(-2) ?? manifestPath;
+  }
+
+  /**
+   * Reads a folder the user has just trusted, then restores every project each package manager found
+   * in it, one after another, each in a visible terminal (#1504). Only when trust is granted: a folder
+   * that was already trusted when it opened is not restored again.
+   * @param root The folder.
+   * @returns Returns a promise that resolves once every restore has ended.
+   */
+  public async restoreAfterTrust(root: string): Promise<void> {
+    await this.refresh(root);
+    const restores: { pluginId: string; project: string }[] = [];
+    for (const state of this.statesSignal()) {
+      if (!state.manager.capabilities.includes('restore')) {
+        continue;
+      }
+      for (const project of state.model?.projects ?? []) {
+        restores.push({ pluginId: state.manager.pluginId, project: project.manifestPath });
+      }
+    }
+    if (restores.length > 0) {
+      this.log.info('workspace.packages', `Restoring ${restores.length} project(s) after trust`);
+    }
+    for (const restore of restores) {
+      // The folder may have closed, or another been opened in its place, while the last one ran.
+      if ((this.workspace.root()?.path ?? null) !== root) {
+        return;
+      }
+      await this.write(restore.pluginId, 'restore', { project: restore.project });
+    }
   }
 
   /**
@@ -567,4 +701,15 @@ function ordered(packages: readonly InstalledPackage[]): readonly InstalledPacka
     const byStatus: number = rank[a.status] - rank[b.status];
     return byStatus !== 0 ? byStatus : a.name.localeCompare(b.name);
   });
+}
+
+/**
+ * Determines whether a folder is another or lies beneath it, on either separator.
+ * @param target The folder.
+ * @param folder The folder it may lie within.
+ * @returns Returns true when it does.
+ */
+function isWithinFolder(target: string, folder: string): boolean {
+  const base: string = folder.replace(/[\\/]+$/, '');
+  return target === base || target.startsWith(`${base}/`) || target.startsWith(`${base}\\`);
 }

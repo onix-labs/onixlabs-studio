@@ -1,6 +1,12 @@
 import { RememberedSwitch } from '@shared/angular/services/explorer-filter/remembered-switch';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { explorerSorted } from '@shared/angular/services/workspace/explorer-sort';
+import {
+  FileNesting,
+  FileNestingRule,
+  fileNestingRules,
+  nestFiles,
+} from '@shared/angular/services/workspace/file-nesting';
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { ExplorerFilter } from '@shared/angular/services/explorer-filter/explorer-filter';
 import { Bridge } from '@shared/api/bridge';
@@ -54,6 +60,11 @@ const QUERY_DEBOUNCE_MS: number = 150;
  * Describes a project item that is a folder.
  */
 type ProjectItemFolder = Extract<ProjectItemNode, { readonly type: 'folder' }>;
+
+/**
+ * Describes a project item that is a file.
+ */
+type ProjectItemFile = Extract<ProjectItemNode, { readonly type: 'file' }>;
 
 /**
  * A flattened Solution Explorer row: one visible line of the tree, with its depth, expansion, and
@@ -122,6 +133,12 @@ export interface SolutionRow {
    * it. Empty when the row stands for nothing on disk.
    */
   readonly scmPaths: readonly string[];
+
+  /**
+   * Holds the paths of the files nested beneath a file's row by File Nesting, in the order they show;
+   * empty for every other row. A row with any is expandable, and also opens its own file.
+   */
+  readonly nestedPaths: readonly string[];
 }
 
 /**
@@ -230,6 +247,13 @@ export class SolutionModel {
   private readonly inFlight: Set<string> = new Set<string>();
 
   /**
+   * Holds the paths a newer load wanted re-evaluated while an older fetch of them was still in flight.
+   * That fetch's answer belongs to the older load and is discarded, so each is queued again as it
+   * settles; otherwise a project changed mid-evaluation kept its old contents.
+   */
+  private readonly refetch: Set<string> = new Set<string>();
+
+  /**
    * Holds the generic transport, or undefined when running outside Electron.
    */
   private readonly bridge: Bridge | undefined = window.bridge;
@@ -292,6 +316,23 @@ export class SolutionModel {
   private readonly syncWithActive: RememberedSwitch = new RememberedSwitch(
     'workspace.solution.followActiveDocument',
     true,
+  );
+
+  /**
+   * Holds whether files gather the files File Nesting names beneath them. On by default here: the
+   * Solution Explorer is where a type split across several files is looked for.
+   */
+  private readonly nestingFiles: RememberedSwitch = new RememberedSwitch(
+    'workspace.solution.nestFiles',
+    true,
+  );
+
+  /**
+   * Gets the File Nesting rules, read once per change of the setting.
+   */
+  private readonly nestingRules: Signal<readonly FileNestingRule[]> = computed(
+    (): readonly FileNestingRule[] =>
+      fileNestingRules(this.settings.value('workspaces.fileNesting')()),
   );
 
   /**
@@ -516,6 +557,7 @@ export class SolutionModel {
       parentKey: string,
       ancestors: readonly string[],
     ): readonly string[] | null => {
+      const nesting: FileNesting<ProjectItemFile> = this.nesting(nodes);
       for (const node of nodes) {
         if (node.type === 'folder') {
           const key: string = `${parentKey}/${node.name}`;
@@ -528,6 +570,13 @@ export class SolutionModel {
           }
         } else if (node.path === path) {
           return ancestors;
+        } else if (
+          (nesting.children.get(node) ?? []).some(
+            (child: ProjectItemFile): boolean => child.path === path,
+          )
+        ) {
+          // A file nested beneath another is revealed by opening its parent's row.
+          return [...ancestors, `file:${node.path}`];
         }
       }
       return null;
@@ -629,6 +678,18 @@ export class SolutionModel {
    */
   public toggleCollapseEmptyFolders(): void {
     this.collapsingEmptyFolders.toggle();
+  }
+
+  /**
+   * Gets whether files gather the files File Nesting names beneath them.
+   */
+  public readonly nestsFiles: Signal<boolean> = this.nestingFiles.on;
+
+  /**
+   * Toggles whether files gather the files File Nesting names beneath them.
+   */
+  public toggleNestFiles(): void {
+    this.nestingFiles.toggle();
   }
 
   /**
@@ -889,8 +950,20 @@ export class SolutionModel {
     if (model === null) {
       this.itemsByProject.set(new Map<string, ProjectItems>());
       this.loadingProjects.set(new Set<string>());
+      this.refetch.clear();
       this.expandedKeys.set(new Set<string>());
       return;
+    }
+    // A project renamed or removed mid-evaluation is no row of the new model: its spinner goes now,
+    // rather than keeping the root spinning until its evaluation gives up.
+    const present: ReadonlySet<string> = new Set<string>(
+      model.projects.map((project: ProjectEntry): string => project.path),
+    );
+    const loading: ReadonlySet<string> = this.loadingProjects();
+    if ([...loading].some((path: string): boolean => !present.has(path))) {
+      this.loadingProjects.set(
+        new Set<string>([...loading].filter((path: string): boolean => present.has(path))),
+      );
     }
     // Drop cached contents of projects that left the model, keep the rest visible while any fresh
     // contents arrive, and re-evaluate only what the burst could have affected: a project is skipped
@@ -947,6 +1020,7 @@ export class SolutionModel {
     this.searchQuery.set('');
     this.selectedKeySignal.set(null);
     this.loadingProjects.set(new Set<string>());
+    this.refetch.clear();
     this.expandedKeys.set(model !== null ? new Set<string>([ROOT_KEY]) : new Set<string>());
   }
 
@@ -958,13 +1032,23 @@ export class SolutionModel {
    * @param generation The load generation this work belongs to.
    */
   private scheduleContents(paths: readonly string[], generation: number): void {
-    this.queue = paths.filter((path: string): boolean => !this.inFlight.has(path));
+    this.queue = [];
+    for (const path of paths) {
+      if (this.inFlight.has(path)) {
+        this.refetch.add(path);
+      } else {
+        this.queue.push(path);
+      }
+    }
     this.pump(generation);
   }
 
   /**
    * Drains the background queue up to the concurrency bound, fetching one project's contents per
-   * worker and re-pumping as each completes. Stops when the generation is superseded.
+   * worker and re-pumping as each completes. Stops when the generation is superseded. A worker that
+   * settles pumps whatever queue is current: a newer load replaced the queue while it ran, and that
+   * load's own pump found every worker busy, so pumping only the worker's own (superseded) generation
+   * left the new queue undrained and its projects pending for good.
    * @param generation The load generation the queue belongs to.
    */
   private pump(generation: number): void {
@@ -975,12 +1059,13 @@ export class SolutionModel {
     ) {
       const next: string = this.queue.shift()!;
       if (this.inFlight.has(next)) {
+        this.refetch.add(next);
         continue;
       }
       this.activeWorkers += 1;
       void this.fetchItems(next, generation).finally((): void => {
         this.activeWorkers -= 1;
-        this.pump(generation);
+        this.pump(this.generation);
       });
     }
   }
@@ -1001,8 +1086,10 @@ export class SolutionModel {
 
   /**
    * Fetches one project's contents, marking it loading while the fetch is in flight and applying the
-   * result unless the load generation has been superseded. The spinner clears whether or not the
-   * evaluation yielded contents, so it never spins forever.
+   * result unless the load generation has been superseded. The spinner clears however the fetch ends
+   * — with contents, without, superseded by a newer load, or failed — so it never spins forever: a
+   * superseded fetch used to return before clearing it, which a burst of solution edits (an agent
+   * adding a project, then creating it) left spinning until the whole solution was reloaded.
    * @param path The absolute project-file path.
    * @param generation The load generation this fetch belongs to.
    * @returns Returns a promise that resolves once the fetch has settled.
@@ -1010,18 +1097,41 @@ export class SolutionModel {
   private async fetchItems(path: string, generation: number): Promise<void> {
     this.inFlight.add(path);
     this.setLoading(path, true);
-    const items: ProjectItems | null =
-      (await this.bridge?.invoke<ProjectItems | null>(ProjectChannel.ItemsLoad, path)) ?? null;
-    this.inFlight.delete(path);
-    if (generation !== this.generation) {
+    try {
+      const items: ProjectItems | null =
+        (await this.bridge?.invoke<ProjectItems | null>(ProjectChannel.ItemsLoad, path)) ?? null;
+      if (generation === this.generation && items !== null) {
+        const cache: Map<string, ProjectItems> = new Map<string, ProjectItems>(
+          this.itemsByProject(),
+        );
+        cache.set(items.projectPath, items);
+        this.itemsByProject.set(cache);
+      }
+    } catch (error: unknown) {
+      this.log.warn('workspace.solution', `Could not evaluate ${path}`, error);
+    } finally {
+      this.inFlight.delete(path);
+      this.setLoading(path, false);
+      this.requeueIfWanted(path);
+    }
+  }
+
+  /**
+   * Queues a project again when a newer load asked for it while an older fetch of it was in flight,
+   * and it is still part of the solution.
+   * @param path The absolute project-file path whose fetch has just settled.
+   */
+  private requeueIfWanted(path: string): void {
+    if (!this.refetch.delete(path)) {
       return;
     }
-    if (items !== null) {
-      const cache: Map<string, ProjectItems> = new Map<string, ProjectItems>(this.itemsByProject());
-      cache.set(items.projectPath, items);
-      this.itemsByProject.set(cache);
+    const inModel: boolean =
+      this.current()?.projects.some((project: ProjectEntry): boolean => project.path === path) ===
+      true;
+    if (inModel && !this.queue.includes(path)) {
+      this.queue.push(path);
+      this.pump(this.generation);
     }
-    this.setLoading(path, false);
   }
 
   /**
@@ -1220,7 +1330,9 @@ export class SolutionModel {
     parentKey: string,
     rows: SolutionRow[],
   ): void {
-    for (const node of this.orderedItems(nodes)) {
+    const ordered: readonly ProjectItemNode[] = this.orderedItems(nodes);
+    const nesting: FileNesting<ProjectItemFile> = this.nesting(ordered);
+    for (const node of ordered) {
       if (node.type === 'folder') {
         let last: ProjectItemFolder = node;
         const names: string[] = [node.name];
@@ -1242,22 +1354,64 @@ export class SolutionModel {
         if (expanded) {
           this.appendItems(last.children, depth + 1, key, rows);
         }
-      } else {
-        rows.push(
-          this.row(
-            `file:${node.path}`,
-            depth,
-            node.name,
-            'file',
-            false,
-            false,
-            false,
-            false,
-            node.path,
-          ),
-        );
+      } else if (!nesting.nested.has(node)) {
+        const nested: readonly ProjectItemFile[] = nesting.children.get(node) ?? [];
+        const expanded: boolean = nested.length > 0 && this.expandedKeys().has(`file:${node.path}`);
+        rows.push(this.fileRow(node, depth, nested, expanded));
+        if (expanded) {
+          for (const child of nested) {
+            rows.push(this.fileRow(child, depth + 1, [], false));
+          }
+        }
       }
     }
+  }
+
+  /**
+   * Builds a file's row: a leaf, or — with files nested beneath it — a row that expands as well as
+   * opens.
+   * @param file The file.
+   * @param depth The row's depth.
+   * @param nested The files nested beneath it.
+   * @param expanded Whether it is expanded.
+   * @returns Returns the row.
+   */
+  private fileRow(
+    file: ProjectItemFile,
+    depth: number,
+    nested: readonly ProjectItemFile[],
+    expanded: boolean,
+  ): SolutionRow {
+    return {
+      ...this.row(
+        `file:${file.path}`,
+        depth,
+        file.name,
+        'file',
+        nested.length > 0,
+        expanded,
+        false,
+        false,
+        file.path,
+      ),
+      nestedPaths: nested.map((child: ProjectItemFile): string => child.path),
+    };
+  }
+
+  /**
+   * Nests a run of project items' files by File Nesting, when it is on.
+   * @param nodes The items, folders and files.
+   * @returns Returns how their files nest; nothing nests while File Nesting is off.
+   */
+  private nesting(nodes: readonly ProjectItemNode[]): FileNesting<ProjectItemFile> {
+    const files: readonly ProjectItemFile[] = this.nestsFiles()
+      ? nodes.filter((node: ProjectItemNode): node is ProjectItemFile => node.type === 'file')
+      : [];
+    return nestFiles<ProjectItemFile>(
+      files,
+      (file: ProjectItemFile): string => file.name,
+      this.nestingRules(),
+    );
   }
 
   /**
@@ -1360,7 +1514,9 @@ export class SolutionModel {
     query: string,
   ): boolean {
     let matched: boolean = false;
-    for (const node of this.orderedItems(nodes)) {
+    const ordered: readonly ProjectItemNode[] = this.orderedItems(nodes);
+    const nesting: FileNesting<ProjectItemFile> = this.nesting(ordered);
+    for (const node of ordered) {
       if (node.type === 'folder') {
         const key: string = `${parentKey}/${node.name}`;
         const childRows: SolutionRow[] = [];
@@ -1388,21 +1544,19 @@ export class SolutionModel {
           rows.push(...childRows);
           matched = true;
         }
-      } else if (this.matches(node.name, query)) {
-        rows.push(
-          this.row(
-            `file:${node.path}`,
-            depth,
-            node.name,
-            'file',
-            false,
-            false,
-            false,
-            false,
-            node.path,
-          ),
+      } else if (!nesting.nested.has(node)) {
+        // A file nested beneath another shows beneath it when it matches, opening its parent's row.
+        const nested: readonly ProjectItemFile[] = nesting.children.get(node) ?? [];
+        const matching: readonly ProjectItemFile[] = nested.filter(
+          (child: ProjectItemFile): boolean => this.matches(child.name, query),
         );
-        matched = true;
+        if (this.matches(node.name, query) || matching.length > 0) {
+          rows.push(this.fileRow(node, depth, nested, matching.length > 0));
+          for (const child of matching) {
+            rows.push(this.fileRow(child, depth + 1, [], false));
+          }
+          matched = true;
+        }
       }
     }
     return matched;
@@ -1430,6 +1584,9 @@ export class SolutionModel {
       nodes: readonly ProjectItemNode[],
       parentKey: string,
     ): void => {
+      for (const parent of this.nesting(nodes).children.keys()) {
+        keys.add(`file:${parent.path}`);
+      }
       for (const node of nodes) {
         if (node.type === 'folder') {
           const key: string = `${parentKey}/${node.name}`;
@@ -1486,7 +1643,19 @@ export class SolutionModel {
     path: string | null,
     scmPaths: readonly string[] = path !== null ? [path] : [],
   ): SolutionRow {
-    return { key, depth, label, kind, expandable, expanded, loading, pending, path, scmPaths };
+    return {
+      key,
+      depth,
+      label,
+      kind,
+      expandable,
+      expanded,
+      loading,
+      pending,
+      path,
+      scmPaths,
+      nestedPaths: [],
+    };
   }
 
   /**

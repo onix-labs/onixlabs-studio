@@ -76,6 +76,21 @@ if (existsSync(modules) && lstatSync(modules).isSymbolicLink()) {
   exit(1);
 }
 
+// 🔥 The tarball is packed by the npm that ships with this Node, and npm versions write different
+// bytes. A pack under any Node but the one CI uses (`.nvmrc`) "matches" a pin it made itself, and the
+// release then refuses it. That is how claude-harness 0.22.0 was pinned from Node 26 and could not be
+// released from CI's Node 24.
+const wanted = readFileSync(join(REPO, '.nvmrc'), 'utf8').trim().replace(/^v/, '');
+const running = process.versions.node;
+if (running !== wanted) {
+  stdout.write(
+    `\nThis is Node ${running}, but CI packs with Node ${wanted} (.nvmrc), and a different Node\n` +
+      `ships a different npm, which writes different bytes. Pack under Node ${wanted}, for example\n` +
+      `\`docker run --rm -v "$PWD":/w -w /w node:${wanted}-bookworm bash -c 'npm ci --ignore-scripts && node scripts/pack-plugin-tarball.mjs ${given}'\`.\n`,
+  );
+  exit(1);
+}
+
 // 🔥 A harness that bundles its dependencies resolves them out of the *repository's* `node_modules`,
 // because the plugin declares none of its own — so the bytes this script pins are decided by whatever
 // happens to be installed. A tree that has drifted from `package-lock.json` therefore produces a

@@ -1,8 +1,8 @@
 // One request open in the API well: the panel's own tool strip (its name and Send), then the request
-// over its response in the shared panel layout, so the two halves split at a divider the user can drag
-// and each fills its pane. The body editor and the response body take whatever height they are given.
+// over its response in a split, so the two halves meet at a divider the user can drag and each fills
+// its pane. The body editor and the response body take whatever height they are given.
 
-// The tool strip is chrome and stays put; the layout below it takes the rest.
+// The tool strip is chrome and stays put; the split below it takes the rest.
 :host {
   display: flex;
   flex-direction: column;
@@ -13,6 +13,11 @@
 .request {
   flex: 1 1 auto;
   min-block-size: 0;
+}
+
+// The response half stands on the surface every panel shares.
+.request__response-pane {
+  background: var(--panel-surface-color);
 }
 
 // The request half: the send bar and section tabs at their natural height, the section's content

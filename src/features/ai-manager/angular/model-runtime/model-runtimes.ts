@@ -1,6 +1,7 @@
 import { inject, Service } from '@angular/core';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Log } from '@shared/angular/services/log/log';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Bridge } from '@shared/api/bridge';
 import { CatalogQuery, CatalogResult } from '@shared/api/model-catalog-types';
 import { ModelRuntimeChannel } from '@shared/api/model-runtime-channels';
@@ -15,6 +16,7 @@ import {
   RuntimeInstallation,
   RuntimeInstallProgress,
 } from '@shared/api/model-runtime-types';
+import { ModelNotificationType } from './model-notification-types';
 
 /**
  * The renderer client for the local model-runtime backend contribution (#409): a thin, typed wrapper
@@ -38,6 +40,16 @@ export class ModelRuntimes {
    * Holds the settings, which say where a catalogue search looks and how much it brings back.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the notification store a finished download or runtime install is reported to (#1491).
+   */
+  private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Holds the models whose pull the user asked to cancel, so its end is not reported as a failure.
+   */
+  private readonly cancelling: Set<string> = new Set<string>();
 
   /**
    * Identifies the runtime being served, so the view can name it rather than assuming one.
@@ -113,9 +125,59 @@ export class ModelRuntimes {
    * @param name The model reference to pull.
    * @returns Returns true when the model finished downloading.
    */
-  public pull(name: string): Promise<boolean> {
+  public async pull(name: string): Promise<boolean> {
     this.log.info('model-manager.runtime', 'IPC pull model', name);
-    return this.bridge?.invoke<boolean>(ModelRuntimeChannel.Pull, name) ?? Promise.resolve(false);
+    if (this.bridge === undefined) {
+      return false;
+    }
+    // Followed for the pull's last word: whether it was cancelled, and why it failed.
+    let last: ModelPullProgress | null = null;
+    const unfollow: () => void = this.onPullProgress((progress: ModelPullProgress): void => {
+      if (progress.model === name) {
+        last = progress;
+      }
+    });
+    this.cancelling.delete(name);
+    try {
+      const pulled: boolean = await this.bridge.invoke<boolean>(ModelRuntimeChannel.Pull, name);
+      this.notifyPulled(name, pulled, last);
+      return pulled;
+    } finally {
+      unfollow();
+      this.cancelling.delete(name);
+    }
+  }
+
+  /**
+   * Reports how a pull ended (#1491): "{model} downloaded", or "Couldn't download {model}" with the
+   * reason, which stays until dismissed. A pull the user cancelled raises nothing.
+   * @param name The model reference.
+   * @param pulled Whether it finished downloading.
+   * @param last The pull's last progress update, or null when none arrived.
+   */
+  private notifyPulled(name: string, pulled: boolean, last: ModelPullProgress | null): void {
+    if (pulled) {
+      this.notifications.notify({
+        severity: 'success',
+        title: `${name} downloaded`,
+        key: `model-pull:${name}`,
+        type: ModelNotificationType.PullFinished,
+        desktop: true,
+      });
+      return;
+    }
+    if (this.cancelling.has(name) || last?.stage === 'cancelled') {
+      return;
+    }
+    this.notifications.notify({
+      severity: 'error',
+      title: `Couldn't download ${name}`,
+      ...(last?.error === undefined ? {} : { detail: last.error }),
+      key: `model-pull:${name}`,
+      sticky: true,
+      type: ModelNotificationType.PullFailed,
+      desktop: true,
+    });
   }
 
   /**
@@ -125,6 +187,7 @@ export class ModelRuntimes {
    */
   public cancelPull(name: string): Promise<boolean> {
     this.log.info('model-manager.runtime', 'IPC cancel pull', name);
+    this.cancelling.add(name);
     return (
       this.bridge?.invoke<boolean>(ModelRuntimeChannel.CancelPull, name) ?? Promise.resolve(false)
     );
@@ -171,12 +234,59 @@ export class ModelRuntimes {
    * {@link onInstallProgress} first: the archives are large, so this takes minutes.
    * @returns Returns the resulting installation.
    */
-  public install(): Promise<RuntimeInstallation> {
+  public async install(): Promise<RuntimeInstallation> {
     this.log.info('model-manager.runtime', 'IPC install managed runtime');
-    return (
-      this.bridge?.invoke<RuntimeInstallation>(ModelRuntimeChannel.Install) ??
-      Promise.resolve({ kind: 'absent' as const, executable: '', version: '' })
+    if (this.bridge === undefined) {
+      return { kind: 'absent', executable: '', version: '' };
+    }
+    // Followed for why an install failed: the result alone only says nothing was installed.
+    let last: RuntimeInstallProgress | null = null;
+    const unfollow: () => void = this.onInstallProgress(
+      (progress: RuntimeInstallProgress): void => {
+        last = progress;
+      },
     );
+    try {
+      const installation: RuntimeInstallation = await this.bridge.invoke<RuntimeInstallation>(
+        ModelRuntimeChannel.Install,
+      );
+      this.notifyInstalled(installation, last);
+      return installation;
+    } finally {
+      unfollow();
+    }
+  }
+
+  /**
+   * Reports how a runtime install ended (#1491): installed, with its version, or failed, with the
+   * reason, which stays until dismissed.
+   * @param installation The resulting installation.
+   * @param last The install's last progress update, or null when none arrived.
+   */
+  private notifyInstalled(
+    installation: RuntimeInstallation,
+    last: RuntimeInstallProgress | null,
+  ): void {
+    if (installation.kind !== 'absent' && last?.stage !== 'failed') {
+      this.notifications.notify({
+        severity: 'success',
+        title: 'Model runtime installed',
+        ...(installation.version === '' ? {} : { detail: `Version ${installation.version}` }),
+        key: 'model-runtime-install',
+        type: ModelNotificationType.InstallFinished,
+        desktop: true,
+      });
+      return;
+    }
+    this.notifications.notify({
+      severity: 'error',
+      title: "Couldn't install the model runtime",
+      ...(last?.error === undefined ? {} : { detail: last.error }),
+      key: 'model-runtime-install',
+      sticky: true,
+      type: ModelNotificationType.InstallFailed,
+      desktop: true,
+    });
   }
 
   /**

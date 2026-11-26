@@ -13,6 +13,8 @@ import {
 } from '@shared/api/worktree';
 import { showOpenDialog } from '../dialog-parent';
 import { logger } from '../logger';
+import type { RepositoryTrustChoice } from '../repository-trust';
+import type { CloneTrustAnswer } from '../trust/trust-manager';
 import type { TrustedPaths } from '../trusted-paths';
 import type { VersionControlHost } from '../version-control/version-control-host';
 import type { VersionControlDescriptor } from '../version-control/version-control-descriptor';
@@ -29,13 +31,57 @@ const REMOTE_URL: RegExp = /^(?:https?:\/\/|ssh:\/\/|git:\/\/|[\w.-]+@[\w.-]+:)/
 const FOLDER_NAME: RegExp = /^(?!\.{1,2}$)[\w.-]+$/;
 
 /**
+ * Asks, before a clone, whether the user trusts what it brings in, and records what they said.
+ */
+export interface CloneTrust {
+  /**
+   * Asks the user, before anything is downloaded.
+   * @param source The address the clone comes from, with any credentials removed.
+   * @param destination The folder the clone would create.
+   * @returns Returns the user's answer.
+   */
+  askBeforeClone(source: string, destination: string): Promise<CloneTrustAnswer>;
+
+  /**
+   * Records what the user said about the folder the clone made.
+   * @param folder The folder.
+   * @param choice The decision.
+   */
+  recordClone(folder: string, choice: RepositoryTrustChoice): void;
+}
+
+/**
+ * A clone that has been checked and can be made.
+ */
+interface PreparedClone {
+  /**
+   * Gets the clone asked for.
+   */
+  readonly request: CloneRequest;
+
+  /**
+   * Gets the folder it creates.
+   */
+  readonly destination: string;
+
+  /**
+   * Gets the plugin that makes it.
+   */
+  readonly plugin: VersionControlDescriptor;
+}
+
+/**
  * Clones repositories into a folder the user chose (#805).
  *
  * A clone's destination cannot be an open workspace yet, so it is confined to a parent folder the user
  * picked in this process's own folder dialog instead. The choice is remembered here, in the user's data
  * folder: the renderer can read it and ask to change it, and can name the new folder inside it, but can
- * never say where that parent is. A successful clone is trusted — the user chose to bring it in — so it
- * opens like any folder they opened themselves.
+ * never say where that parent is. A successful clone is a trusted path — the user chose to bring it in —
+ * so it opens like any folder they opened themselves.
+ *
+ * Whether its code may run is a separate question (#1504), asked before anything is downloaded, with
+ * the address it comes from in front of the user: trust it, don't, or decide once it is open. Closing
+ * the question clones nothing.
  */
 export class CloneManager {
   /**
@@ -49,12 +95,14 @@ export class CloneManager {
    * @param window Gets the window a dialog belongs to when no sender is known.
    * @param versionControl The version-control host, which runs the clone.
    * @param trusted The trusted paths, which the result joins.
+   * @param trust Asks, before a clone, whether the user trusts what it brings in.
    */
   public constructor(
     private readonly file: string,
     private readonly window: () => Electron.BrowserWindow | null,
     private readonly versionControl: VersionControlHost,
     private readonly trusted: TrustedPaths,
+    private readonly trust: CloneTrust,
   ) {
     this.chosen = load(file);
   }
@@ -69,7 +117,8 @@ export class CloneManager {
     );
     ipcMain.handle(
       CloneChannel.Clone,
-      (_event: IpcMainInvokeEvent, request: unknown): Promise<CloneOutcome> => this.clone(request),
+      (_event: IpcMainInvokeEvent, request: unknown): Promise<CloneOutcome> =>
+        this.cloneAsking(request),
     );
   }
 
@@ -103,31 +152,86 @@ export class CloneManager {
   }
 
   /**
-   * Clones a repository into the chosen parent folder.
+   * Clones a repository the user asked for in Studio into the chosen parent folder, having first asked
+   * whether they trust it (#1504). Nothing is downloaded until they answer, and closing the question
+   * clones nothing.
+   * @param request The untrusted request.
+   * @returns Returns where the result is, or why there is none.
+   */
+  public async cloneAsking(request: unknown): Promise<CloneOutcome> {
+    const prepared: PreparedClone | string = this.prepare(request);
+    if (typeof prepared === 'string') {
+      return { ok: false, error: prepared };
+    }
+    const answer: CloneTrustAnswer = await this.trust.askBeforeClone(
+      stripUrlCredentials(prepared.request.url),
+      prepared.destination,
+    );
+    if (answer === 'cancel') {
+      logger.info('CloneManager', `Clone into ${prepared.destination} cancelled before it began`);
+      return {
+        ok: false,
+        error: 'The clone was cancelled. Nothing was downloaded.',
+        cancelled: true,
+      };
+    }
+    const outcome: CloneOutcome = await this.run(prepared);
+    if (outcome.ok && answer !== 'later') {
+      this.trust.recordClone(outcome.path, answer);
+    }
+    return outcome;
+  }
+
+  /**
+   * Clones a repository into the chosen parent folder, asking nothing: for a new project's repository,
+   * which Studio made for the user and records as trusted itself.
    * @param request The untrusted request.
    * @param into The folder to clone into in place of the chosen one: a new project's, which the main
    * process's own dialog chose. Never from a renderer.
    * @returns Returns where the result is, or why there is none.
    */
   public async clone(request: unknown, into?: string): Promise<CloneOutcome> {
+    const prepared: PreparedClone | string = this.prepare(request, into);
+    return typeof prepared === 'string' ? { ok: false, error: prepared } : this.run(prepared);
+  }
+
+  /**
+   * Checks a clone can be made: the request is well formed, there is a folder to clone into, the new
+   * folder's name is free, and a plugin can clone.
+   * @param request The untrusted request.
+   * @param into The folder to clone into in place of the chosen one, or undefined for the chosen one.
+   * @returns Returns the clone to make, or why it cannot be.
+   */
+  private prepare(request: unknown, into?: string): PreparedClone | string {
     const parsed: CloneRequest | string = parseRequest(request);
     if (typeof parsed === 'string') {
-      return { ok: false, error: parsed };
+      return parsed;
     }
     const parent: string | null = into ?? this.parent();
     if (parent === null) {
-      return { ok: false, error: 'Choose a folder to clone into first.' };
+      return 'Choose a folder to clone into first.';
     }
     const destination: string = path.join(parent, parsed.name);
     if (fs.existsSync(destination)) {
-      return { ok: false, error: `${destination} already exists. Choose another name.` };
+      return `${destination} already exists. Choose another name.`;
     }
     const plugin: VersionControlDescriptor | null = this.versionControl.preferredPlugin();
     if (plugin === null) {
-      return {
-        ok: false,
-        error: 'No version-control plugin is installed. Install Git from the Plugin Manager.',
-      };
+      return 'No version-control plugin is installed. Install Git from the Plugin Manager.';
+    }
+    return { request: parsed, destination, plugin };
+  }
+
+  /**
+   * Makes a clone that has been checked.
+   * @param prepared The clone.
+   * @returns Returns where the result is, or why there is none.
+   */
+  private async run(prepared: PreparedClone): Promise<CloneOutcome> {
+    const { request: parsed, destination, plugin } = prepared;
+    if (fs.existsSync(destination)) {
+      // Something took the name while the user was answering.
+      return { ok: false, error: `${destination} already exists. Choose another name.` };
     }
     // A URL may carry a token (`https://user:token@host/…`). It is used as given, since that is how
     // the user chose to authenticate, but it is never written down: not in the log, which the System
@@ -145,10 +249,16 @@ export class CloneManager {
       logger.info('CloneManager', `Cloned into ${outcome.path}`);
       return outcome;
     }
-    // The plugin's error can echo the command line it ran, URL and all.
+    // The plugin's error can echo the command line it ran, URL and all, and so can git's own output.
     const error: string = redactSecrets(outcome.error);
     logger.warn('CloneManager', `Clone failed: ${error}`);
-    return { ok: false, error };
+    return {
+      ok: false,
+      error,
+      ...(outcome.code === undefined ? {} : { code: outcome.code }),
+      ...(outcome.sshHost === undefined ? {} : { sshHost: outcome.sshHost }),
+      ...(outcome.output === undefined ? {} : { output: redactSecrets(outcome.output) }),
+    };
   }
 
   /**
@@ -172,7 +282,7 @@ export class CloneManager {
         ...cloneFlags(request),
       },
     );
-    return cloned.ok ? { ok: true, path: destination } : { ok: false, error: cloned.error };
+    return cloned.ok ? { ok: true, path: destination } : cloneFailure(cloned);
   }
 
   /**
@@ -205,7 +315,7 @@ export class CloneManager {
     );
     if (!cloned.ok) {
       fs.rmSync(destination, { recursive: true, force: true });
-      return { ok: false, error: cloned.error };
+      return cloneFailure(cloned);
     }
     try {
       const studio: string = path.join(destination, STUDIO_DIR);
@@ -264,6 +374,25 @@ export function parseRequest(value: unknown): CloneRequest | string {
     ...(branch === undefined ? {} : { branch }),
     ...(submodules === true ? { submodules } : {}),
     ...(shallow === true ? { shallow } : {}),
+  };
+}
+
+/**
+ * Carries a plugin's failed clone over as a clone outcome, with the code, server and output an SSH
+ * failure comes with (#1255), so the renderer can word it. The server is passed on unchecked: the
+ * renderer checks it before it builds a command from it.
+ * @param cloned The plugin's failed answer.
+ * @returns Returns the outcome.
+ */
+function cloneFailure(
+  cloned: Extract<VersionControlResponse<'clone'>, { ok: false }>,
+): CloneOutcome {
+  return {
+    ok: false,
+    error: cloned.error,
+    ...(cloned.code === undefined ? {} : { code: cloned.code }),
+    ...(cloned.sshHost === undefined ? {} : { sshHost: cloned.sshHost }),
+    ...(typeof cloned.output === 'string' ? { output: cloned.output } : {}),
   };
 }
 

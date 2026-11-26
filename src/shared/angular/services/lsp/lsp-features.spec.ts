@@ -89,6 +89,8 @@ interface CapturedProviders {
   };
   /** The semantic-token change emitter per registered language, in registration order. */
   semanticEmitters: Map<string, FakeEmitter>;
+  /** The range-token change emitter per language whose server colours ranges (#1211). */
+  rangeEmitters?: Map<string, FakeEmitter>;
   /** The formatting providers registered, keyed `<language>:<document|range|onType>` (#1141). */
   formatting?: Map<string, FakeFormattingProvider>;
   /** The Python formatter Studio registers at start for its projects' own tools (#1212). */
@@ -121,6 +123,7 @@ interface FakeStructureProvider {
   provideFoldingRanges?(model: unknown): Promise<unknown>;
   provideDocumentHighlights?(model: unknown, position: unknown): Promise<unknown>;
   provideSelectionRanges?(model: unknown, positions: unknown[]): Promise<unknown>;
+  provideLinks?(model: unknown): Promise<unknown>;
   provideDocumentRangeSemanticTokens?(
     model: unknown,
     range: unknown,
@@ -241,12 +244,19 @@ function fakeMonacoNamespace(
       },
       registerDocumentRangeSemanticTokensProvider: (language: string, provider: unknown): void => {
         (captured.structure ??= new Map()).set(`${language}:rangeTokens`, provider);
+        const lastEmitter: FakeEmitter | undefined = created[created.length - 1];
+        if (lastEmitter !== undefined) {
+          (captured.rangeEmitters ??= new Map()).set(language, lastEmitter);
+        }
       },
       registerSelectionRangeProvider: (language: string, provider: unknown): void => {
         (captured.structure ??= new Map()).set(`${language}:selectionRanges`, provider);
       },
       registerColorProvider: (language: string, provider: unknown): void => {
         (captured.structure ??= new Map()).set(`${language}:colors`, provider);
+      },
+      registerLinkProvider: (language: string, provider: unknown): void => {
+        (captured.structure ??= new Map()).set(`${language}:links`, provider);
       },
       registerDocumentFormattingEditProvider: (language: string, provider: unknown): unknown =>
         captureFormatter(captured, `${language}:document`, provider),
@@ -297,6 +307,49 @@ function fakeModel(uri: string, languageId: string = 'typescript', value: string
     getLanguageId: (): string => languageId,
     getVersionId: (): number => 1,
     getValue: (): string => value,
+    getLineCount: (): number => value.split('\n').length,
+    getLineLength: (line: number): number => value.split('\n')[line - 1].length,
+    getLineMaxColumn: (line: number): number => (value.split('\n')[line - 1] ?? '').length + 1,
+  };
+}
+
+/**
+ * Records what was done to a fake model's semantic-token completeness (#1211).
+ */
+interface FakeTokenization {
+  /** Whether Monaco holds the model's tokens as complete. */
+  complete: boolean;
+  /** Each `setSemanticTokens` call, as `<tokens> <isComplete>`. */
+  readonly calls: string[];
+  hasCompleteSemanticTokens(): boolean;
+  setSemanticTokens(tokens: null, isComplete: boolean): void;
+}
+
+/**
+ * Builds a fake model carrying Monaco's internal tokenization part, which says whether its semantic
+ * tokens are complete (#1211).
+ * @param complete Whether its tokens start complete, as after any whole-document answer.
+ * @param value The model text.
+ * @returns Returns the model and its tokenization.
+ */
+function tokenizedModel(
+  complete: boolean,
+  value: string = 'Widget Run()',
+): { model: unknown; tokenization: FakeTokenization } {
+  const tokenization: FakeTokenization = {
+    complete,
+    calls: [],
+    hasCompleteSemanticTokens(): boolean {
+      return this.complete;
+    },
+    setSemanticTokens(tokens: null, isComplete: boolean): void {
+      this.calls.push(`${String(tokens)} ${String(isComplete)}`);
+      this.complete = isComplete;
+    },
+  };
+  return {
+    model: { ...(fakeModel('inmemory://model/1', 'csharp', value) as object), tokenization },
+    tokenization,
   };
 }
 
@@ -337,6 +390,9 @@ describe('LspFeatures', () => {
   let syncHook: ((text: string) => Promise<void>) | undefined;
   let formattingSupport: LspFormattingSupport | undefined;
   let navigationSupport: LspNavigationSupport | undefined;
+  let sortsDocument: boolean | undefined;
+  /** The version of the document the server was last sent, when a test gives one. */
+  let documentVersion: number | undefined;
   let inlayHintSupport: LspInlayHintSupport | undefined;
   /** What the main process answers a project formatting request with, and what it was asked. */
   let projectFormatAnswer: unknown;
@@ -372,6 +428,8 @@ describe('LspFeatures', () => {
     syncHook = undefined;
     formattingSupport = undefined;
     navigationSupport = undefined;
+    sortsDocument = undefined;
+    documentVersion = undefined;
     inlayHintSupport = undefined;
     structureSupport = undefined;
     autoInsertTriggers = undefined;
@@ -379,6 +437,7 @@ describe('LspFeatures', () => {
     testsRun = undefined;
     captured.codeLens = undefined;
     captured.structure = undefined;
+    captured.rangeEmitters = undefined;
     captured.inlayHints = undefined;
     captured.formatting = undefined;
     const bridge: Bridge = {
@@ -463,6 +522,8 @@ describe('LspFeatures', () => {
             ...(syncHook === undefined ? {} : { sync: syncHook }),
             ...(formattingSupport === undefined ? {} : { formatting: formattingSupport }),
             ...(navigationSupport === undefined ? {} : { navigation: navigationSupport }),
+            ...(sortsDocument === undefined ? {} : { sortsDocument }),
+            ...(documentVersion === undefined ? {} : { version: documentVersion }),
             ...(inlayHintSupport === undefined ? {} : { inlayHints: inlayHintSupport }),
             ...(structureSupport === undefined ? {} : { structure: structureSupport }),
             ...(autoInsertTriggers === undefined ? {} : { autoInsertTriggers }),
@@ -572,6 +633,13 @@ describe('LspFeatures', () => {
       onTypeTriggers: ['}', ';', '\n'],
     };
     const OPTIONS: unknown = { tabSize: 4, insertSpaces: true };
+    /** What the server is told: the indentation, and what to do with the document's last line. */
+    const SENT: unknown = {
+      tabSize: 4,
+      insertSpaces: true,
+      insertFinalNewline: false,
+      trimFinalNewlines: false,
+    };
 
     it('registersEachFormatterOncePerLanguage_withTheServersTriggerCharacters', async () => {
       const features: LspFeatures = await build();
@@ -640,7 +708,7 @@ describe('LspFeatures', () => {
         {
           sessionId: '/root::typescript',
           method: 'textDocument/formatting',
-          params: { textDocument: { uri: 'file:///root/app.ts' }, options: OPTIONS },
+          params: { textDocument: { uri: 'file:///root/app.ts' }, options: SENT },
         },
       ]);
       expect(edits).toEqual([
@@ -649,6 +717,58 @@ describe('LspFeatures', () => {
           text: '    ',
         },
       ]);
+    });
+
+    it('formatDocument_keepsAFinalNewline_theDocumentHas (#1214)', async () => {
+      formattingSupport = ROSLYN;
+      responses['textDocument/formatting'] = [];
+      const features: LspFeatures = await build();
+      features.enableFormatting('csharp', ROSLYN);
+
+      await captured.formatting
+        ?.get('csharp:document')
+        ?.provideDocumentFormattingEdits?.(fakeModel(MODEL_URI, 'csharp', '{}\n'), OPTIONS);
+
+      expect(requests.at(-1)?.params).toMatchObject({
+        options: { insertFinalNewline: true, trimFinalNewlines: false },
+      });
+    });
+
+    it('formatDocument_asksForAFinalNewline_whenInsertFinalNewlineIsOn (#1214)', async () => {
+      formattingSupport = ROSLYN;
+      responses['textDocument/formatting'] = [];
+      const features: LspFeatures = await build();
+      const settings: Settings = TestBed.inject(Settings);
+      settings.setLanguageOverride('csharp', 'insertFinalNewline', true);
+      settings.setLanguageOverride('csharp', 'trimFinalNewlines', true);
+      features.enableFormatting('csharp', ROSLYN);
+
+      await captured.formatting
+        ?.get('csharp:document')
+        ?.provideDocumentFormattingEdits?.(fakeModel(MODEL_URI, 'csharp', '{}'), OPTIONS);
+
+      expect(requests.at(-1)?.params).toMatchObject({
+        options: { insertFinalNewline: true, trimFinalNewlines: true },
+      });
+    });
+
+    it('formatDocument_asksNoServer_forAModelNoServerServes (#1214)', async () => {
+      formattingSupport = ROSLYN;
+      const features: LspFeatures = await build();
+      features.enableFormatting('csharp', ROSLYN);
+
+      const edits: unknown = await captured.formatting
+        ?.get('csharp:document')
+        ?.provideDocumentFormattingEdits?.(
+          fakeModel('inmemory://model/unsaved', 'csharp'),
+          OPTIONS,
+        );
+
+      // Monaco's own formatter answers for it; this fake Monaco has none.
+      expect(edits).toBeUndefined();
+      expect(requests.filter((request) => request.method === 'textDocument/formatting')).toEqual(
+        [],
+      );
     });
 
     it('formatOnType_bringsTheServerUpToDate_thenSendsThePositionAndCharacter', async () => {
@@ -675,7 +795,7 @@ describe('LspFeatures', () => {
       expect(order).toEqual(['sync', 'textDocument/onTypeFormatting']);
       expect(requests[0]?.params).toEqual({
         textDocument: { uri: 'file:///root/app.ts' },
-        options: OPTIONS,
+        options: SENT,
         position: { line: 4, character: 1 },
         ch: '}',
       });
@@ -765,7 +885,7 @@ describe('LspFeatures', () => {
         ]);
         expect(requests[1]?.params).toEqual({
           textDocument: { uri: 'file:///root/app.ts' },
-          options: OPTIONS,
+          options: SENT,
           range: { start: { line: 2, character: 0 }, end: { line: 4, character: 5 } },
         });
         expect(edits).toEqual([
@@ -2150,6 +2270,50 @@ describe('LspFeatures', () => {
       ).resolves.toBeUndefined();
     });
 
+    it('links_areTheServersWebPagesAndFiles_inTheEditorsRange (#1211)', async () => {
+      structureSupport = { ...ALL, links: true };
+      const at: (line: number, from: number, to: number) => unknown = (
+        line: number,
+        from: number,
+        to: number,
+      ): unknown => ({ start: { line, character: from }, end: { line, character: to } });
+      responses['textDocument/documentLink'] = [
+        { range: at(4, 2, 7), target: 'https://pkg.go.dev/fmt', tooltip: 'fmt on pkg.go.dev' },
+        { range: at(8, 2, 9), target: 'file:///root/go.mod' },
+        { range: at(9, 2, 9) },
+        { range: at(10, 2, 9), target: 'command:run' },
+      ];
+      const features: LspFeatures = await build();
+      features.enableStructure('go', { ...ALL, links: true });
+
+      const links: unknown = await captured.structure?.get('go:links')?.provideLinks?.(owned);
+
+      expect(requests.at(-1)).toMatchObject({
+        method: 'textDocument/documentLink',
+        params: { textDocument: { uri: 'file:///root/app.ts' } },
+      });
+      expect(links).toEqual({
+        links: [
+          {
+            range: { startLineNumber: 5, startColumn: 3, endLineNumber: 5, endColumn: 8 },
+            url: 'https://pkg.go.dev/fmt',
+            tooltip: 'fmt on pkg.go.dev',
+          },
+          {
+            range: { startLineNumber: 9, startColumn: 3, endLineNumber: 9, endColumn: 10 },
+            url: 'file:///root/go.mod',
+          },
+        ],
+      });
+    });
+
+    it('links_areNotAskedFor_whenTheServerGivesNone (#1211)', async () => {
+      const features: LspFeatures = await build();
+      features.enableStructure('go', ALL);
+
+      expect(captured.structure?.has('go:links')).toBe(false);
+    });
+
     it('selectionRanges_climbFromTheIdentifierOutward_oneChainPerCaret (#1155)', async () => {
       structureSupport = ALL;
       const span: (line: number, from: number, to: number) => unknown = (
@@ -2326,6 +2490,261 @@ describe('LspFeatures', () => {
         },
       });
       expect([...(tokens?.data ?? [])]).toEqual([10, 4, 6, 2, 0]);
+    });
+
+    it('aRangesTokens_bringTheServerUpToDateFirst_soAKeystrokeIsColouredAsTyped', async () => {
+      structureSupport = ALL;
+      semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+      const synced: string[] = [];
+      syncHook = (text: string): Promise<void> => {
+        // Nothing may have been asked of the server yet when it is brought up to date.
+        synced.push(`${text} after ${requests.length} request(s)`);
+        return Promise.resolve();
+      };
+      responses['textDocument/semanticTokens/range'] = { data: [0, 0, 6, 0, 0] };
+      const features: LspFeatures = await build();
+      features.enableStructure('csharp', ALL);
+
+      await captured.structure
+        ?.get('csharp:rangeTokens')
+        ?.provideDocumentRangeSemanticTokens?.(fakeModel(MODEL_URI, 'csharp', 'Widget x'), {
+          startLineNumber: 1,
+          startColumn: 1,
+          endLineNumber: 1,
+          endColumn: 9,
+        });
+
+      expect(synced).toEqual(['Widget x after 0 request(s)']);
+      expect(requests.map((request: { method: string }): string => request.method)).toEqual([
+        'textDocument/semanticTokens/range',
+      ]);
+    });
+
+    it('aRangesTokens_whenSemanticHighlightingIsOff_areNotAskedFor', async () => {
+      structureSupport = ALL;
+      semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+      responses['textDocument/semanticTokens/range'] = { data: [0, 0, 6, 0, 0] };
+      semanticHighlightingOn = false;
+      const features: LspFeatures = await build();
+      features.enableStructure('csharp', ALL);
+
+      const tokens: unknown = await captured.structure
+        ?.get('csharp:rangeTokens')
+        ?.provideDocumentRangeSemanticTokens?.(owned, {
+          startLineNumber: 1,
+          startColumn: 1,
+          endLineNumber: 2,
+          endColumn: 1,
+        });
+      semanticHighlightingOn = true;
+
+      expect(tokens).toBeNull();
+      expect(requests).toEqual([]);
+    });
+
+    it('aWholeDocumentRefused_byAServerThatColoursRanges_endsAsCancelled_soTheRangesKeepColouringIt', async () => {
+      // gopls refuses a file over 100,000 bytes whole but colours any screen of it (#1211). Heuristic
+      // tokens handed back would be taken as the whole document's and end Monaco's range requests.
+      structureSupport = ALL;
+      semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+      responses['textDocument/semanticTokens/full'] = new Error(
+        "Error invoking remote method 'lsp:request': Error: semantic tokens: range big.go too large (542563 > 100000)",
+      );
+      responses['textDocument/semanticTokens/range'] = { data: [0, 0, 6, 0, 0] };
+      const features: LspFeatures = await build();
+      features.enableStructure('csharp', ALL);
+      const { model } = tokenizedModel(false, 'Widget Run()\nnext line');
+
+      const outcome: Promise<unknown> | undefined =
+        captured.semantic?.provideDocumentSemanticTokens(model);
+
+      // Monaco reads exactly this name and message as a cancellation, not a failure to report.
+      await expect(outcome).rejects.toMatchObject({ name: 'Canceled', message: 'Canceled' });
+      // The first refusal comes before Monaco has asked for any range, so the server is asked for the
+      // document's first lines to find out whether it colours ranges at all.
+      expect(requests.map((request: { method: string }): string => request.method)).toEqual([
+        'textDocument/semanticTokens/full',
+        'textDocument/semanticTokens/range',
+      ]);
+      expect(requests[1]?.params).toEqual({
+        textDocument: { uri: 'file:///root/app.ts' },
+        range: { start: { line: 0, character: 0 }, end: { line: 1, character: 9 } },
+      });
+      // And Monaco is asked to fetch the screen.
+      expect(captured.rangeEmitters?.get('csharp')?.fired).toBe(1);
+    });
+
+    it('aWholeDocumentRefused_afterARangeWasColoured_isCancelledWithoutAskingAgain', async () => {
+      structureSupport = ALL;
+      semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+      responses['textDocument/semanticTokens/full'] = new Error('too large');
+      responses['textDocument/semanticTokens/range'] = { data: [0, 0, 6, 0, 0] };
+      const features: LspFeatures = await build();
+      features.enableStructure('csharp', ALL);
+      const { model } = tokenizedModel(false);
+      await captured.structure
+        ?.get('csharp:rangeTokens')
+        ?.provideDocumentRangeSemanticTokens?.(model, {
+          startLineNumber: 1,
+          startColumn: 1,
+          endLineNumber: 1,
+          endColumn: 13,
+        });
+      requests.length = 0;
+
+      await expect(captured.semantic?.provideDocumentSemanticTokens(model)).rejects.toMatchObject({
+        name: 'Canceled',
+      });
+      expect(requests.map((request: { method: string }): string => request.method)).toEqual([
+        'textDocument/semanticTokens/full',
+      ]);
+    });
+
+    it.each([
+      [
+        'a file opened before its server was ready, which the heuristic coloured whole',
+        'cold start',
+      ],
+      ['a file coloured again after Semantic Highlighting was turned off and on', 'toggled'],
+    ])('aWholeDocumentRefused_forAModelMonacoHoldsComplete_reopensItForRanges: %s', async () => {
+      // Any whole-document answer marks Monaco's tokens complete, after which it neither asks for
+      // nor paints a range; a cancellation alone would leave the file as it was (#1211).
+      structureSupport = ALL;
+      semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+      responses['textDocument/semanticTokens/full'] = new Error('too large');
+      responses['textDocument/semanticTokens/range'] = { data: [0, 0, 6, 0, 0] };
+      const features: LspFeatures = await build();
+      features.enableStructure('csharp', ALL);
+      const { model, tokenization } = tokenizedModel(true);
+
+      await expect(captured.semantic?.provideDocumentSemanticTokens(model)).rejects.toMatchObject({
+        name: 'Canceled',
+      });
+
+      expect(tokenization.calls).toEqual(['null false']);
+      expect(tokenization.complete).toBe(false);
+      expect(captured.rangeEmitters?.get('csharp')?.fired).toBe(1);
+    });
+
+    it('aWholeDocumentRefused_leavesAModelWhoseTokensAreNotComplete_asItIs', async () => {
+      structureSupport = ALL;
+      semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+      responses['textDocument/semanticTokens/full'] = new Error('too large');
+      responses['textDocument/semanticTokens/range'] = { data: [0, 0, 6, 0, 0] };
+      await build();
+      const { model, tokenization } = tokenizedModel(false);
+
+      await expect(captured.semantic?.provideDocumentSemanticTokens(model)).rejects.toMatchObject({
+        name: 'Canceled',
+      });
+      // The range tokens already painted stay.
+      expect(tokenization.calls).toEqual([]);
+    });
+
+    it('aWholeDocumentRefused_forAModelWithoutMonacosTokenizationPart_isStillCancelled', async () => {
+      structureSupport = ALL;
+      semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+      responses['textDocument/semanticTokens/full'] = new Error('too large');
+      responses['textDocument/semanticTokens/range'] = { data: [0, 0, 6, 0, 0] };
+      await build();
+
+      await expect(
+        captured.semantic?.provideDocumentSemanticTokens(
+          fakeModel(MODEL_URI, 'csharp', 'Widget Run()'),
+        ),
+      ).rejects.toMatchObject({ name: 'Canceled' });
+    });
+
+    it.each([
+      ['refuses the range too', new Error('too large')],
+      ['colours no range', { data: [] }],
+    ])(
+      'aWholeDocumentRefused_byAServerThat%s_keepsTheHeuristic',
+      async (_label: string, rangeAnswer: unknown) => {
+        structureSupport = ALL;
+        semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+        responses['textDocument/semanticTokens/full'] = new Error('too large');
+        responses['textDocument/semanticTokens/range'] = rangeAnswer;
+        const features: LspFeatures = await build();
+        features.enableStructure('csharp', ALL);
+        const { model, tokenization } = tokenizedModel(true);
+
+        const tokens: { data: Uint32Array } | undefined =
+          await captured.semantic?.provideDocumentSemanticTokens(model);
+
+        expect([...(tokens?.data ?? [])]).toEqual([0, 0, 6, 1, 0, 0, 7, 3, 12, 0]);
+        expect(tokenization.calls).toEqual([]);
+        expect(captured.rangeEmitters?.get('csharp')?.fired).toBe(0);
+      },
+    );
+
+    it('aRangeThatStopsBeingColoured_letsTheNextRefusalKeepTheHeuristic', async () => {
+      structureSupport = ALL;
+      semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+      responses['textDocument/semanticTokens/full'] = new Error('too large');
+      responses['textDocument/semanticTokens/range'] = { data: [0, 0, 6, 0, 0] };
+      const features: LspFeatures = await build();
+      features.enableStructure('csharp', ALL);
+      const { model } = tokenizedModel(false);
+      const range: unknown = {
+        startLineNumber: 1,
+        startColumn: 1,
+        endLineNumber: 1,
+        endColumn: 13,
+      };
+      const rangeTokens: FakeStructureProvider | undefined =
+        captured.structure?.get('csharp:rangeTokens');
+      await rangeTokens?.provideDocumentRangeSemanticTokens?.(model, range);
+      responses['textDocument/semanticTokens/range'] = new Error('gone');
+      await rangeTokens?.provideDocumentRangeSemanticTokens?.(model, range);
+
+      const tokens: { data: Uint32Array } | undefined =
+        await captured.semantic?.provideDocumentSemanticTokens(model);
+
+      expect([...(tokens?.data ?? [])]).toEqual([0, 0, 6, 1, 0, 0, 7, 3, 12, 0]);
+    });
+
+    it('aRefresh_alsoAsksForTheRangesOfItsLanguagesOnly', async () => {
+      const features: LspFeatures = await build();
+      features.enableStructure('csharp', ALL);
+      features.enableStructure('java', ALL);
+
+      features.refreshSemanticTokens(['csharp']);
+      expect(captured.rangeEmitters?.get('csharp')?.fired).toBe(1);
+      expect(captured.rangeEmitters?.get('java')?.fired).toBe(0);
+
+      features.refreshSemanticTokens();
+      expect(captured.rangeEmitters?.get('csharp')?.fired).toBe(2);
+      expect(captured.rangeEmitters?.get('java')?.fired).toBe(1);
+    });
+
+    it('aWholeDocumentRefused_byAServerThatColoursNoRanges_stillFallsBackToTheHeuristic', async () => {
+      structureSupport = { ...ALL, rangeTokens: false };
+      semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+      responses['textDocument/semanticTokens/full'] = new Error('too large');
+      await build();
+
+      const tokens: { data: Uint32Array } | undefined =
+        await captured.semantic?.provideDocumentSemanticTokens(
+          fakeModel(MODEL_URI, 'csharp', 'Widget Run()'),
+        );
+
+      expect([...(tokens?.data ?? [])]).toEqual([0, 0, 6, 1, 0, 0, 7, 3, 12, 0]);
+    });
+
+    it('anEmptyWholeDocument_fromAServerThatColoursRanges_stillFallsBackToTheHeuristic', async () => {
+      // Roslyn serves an empty set while it loads; that is not a refusal, so the heuristic stays.
+      structureSupport = ALL;
+      semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+      responses['textDocument/semanticTokens/full'] = { data: [] };
+      await build();
+
+      const tokens: { data: Uint32Array } | undefined =
+        await captured.semantic?.provideDocumentSemanticTokens(
+          fakeModel(MODEL_URI, 'csharp', 'Widget Run()'),
+        );
+
+      expect([...(tokens?.data ?? [])]).toEqual([0, 0, 6, 1, 0, 0, 7, 3, 12, 0]);
     });
 
     it('aDocumentWhoseServerGivesNone_isLeftToTheHeuristics', async () => {
@@ -2664,6 +3083,245 @@ describe('LspFeatures', () => {
 
       expect(features.servesNavigation(model, 'implementation')).toBe(false);
       expect(features.servesNavigation(model, 'typeDefinition')).toBe(false);
+    });
+  });
+
+  describe('Sort Document and the JSON and CSS client commands (#1214)', () => {
+    /**
+     * A model's record of the undo steps and edits made to it.
+     */
+    interface SortedModel {
+      readonly model: Parameters<LspFeatures['sortDocument']>[0];
+      readonly steps: string[];
+      readonly edits: { range: unknown; text: string | null }[];
+      version: number;
+    }
+
+    /**
+     * Builds a stand-in model of a JSON document.
+     * @param lines The document's lines; an empty last line is a final newline.
+     * @returns Returns the model and its records.
+     */
+    function jsonModel(lines: readonly string[]): SortedModel {
+      const record: SortedModel = {
+        model: undefined as unknown as SortedModel['model'],
+        steps: [],
+        edits: [],
+        version: 3,
+      };
+      const model: unknown = {
+        uri: { toString: (): string => MODEL_URI },
+        getLanguageId: (): string => 'json',
+        getValue: (): string => lines.join('\n'),
+        getVersionId: (): number => record.version,
+        getOptions: (): unknown => ({ tabSize: 2, insertSpaces: true }),
+        getLineCount: (): number => lines.length,
+        getLineLength: (line: number): number => lines[line - 1].length,
+        isDisposed: (): boolean => false,
+        pushStackElement: (): void => void record.steps.push('stop'),
+        pushEditOperations: (
+          _selections: unknown,
+          operations: readonly { range: unknown; text: string | null }[],
+        ): null => {
+          record.steps.push('edit');
+          record.edits.push(...operations);
+          return null;
+        },
+      };
+      return { ...record, model: model as SortedModel['model'] };
+    }
+
+    const SORTED: unknown = [
+      {
+        range: { start: { line: 0, character: 0 }, end: { line: 1, character: 0 } },
+        newText: '{ "a": 1, "b": 2 }\n',
+      },
+    ];
+
+    it('isServed_whereTheDocumentsServerSorts', async () => {
+      sortsDocument = true;
+      const features: LspFeatures = await build();
+
+      expect(features.servesDocumentSorting(jsonModel(['{}']).model)).toBe(true);
+    });
+
+    it('isNotServed_whereTheDocumentsServerDoesNotSort', async () => {
+      const features: LspFeatures = await build();
+
+      expect(features.servesDocumentSorting(jsonModel(['{}']).model)).toBe(false);
+    });
+
+    it('asksJsonSort_withTheUriAndIndentation_andAppliesTheEdits_asOneStepOfUndo', async () => {
+      sortsDocument = true;
+      responses['json/sort'] = SORTED;
+      const features: LspFeatures = await build();
+      const sorted: SortedModel = jsonModel(['{ "b": 2, "a": 1 }', '']);
+
+      expect(await features.sortDocument(sorted.model)).toEqual({ ran: true });
+
+      expect(requests.at(-1)).toEqual({
+        sessionId: '/root::typescript',
+        method: 'json/sort',
+        params: {
+          uri: 'file:///root/app.ts',
+          options: {
+            tabSize: 2,
+            insertSpaces: true,
+            insertFinalNewline: true,
+            trimFinalNewlines: false,
+          },
+        },
+      });
+      expect(sorted.steps).toEqual(['stop', 'edit', 'stop']);
+      expect(sorted.edits).toEqual([
+        {
+          range: { startLineNumber: 1, startColumn: 1, endLineNumber: 2, endColumn: 1 },
+          text: '{ "a": 1, "b": 2 }\n',
+        },
+      ]);
+    });
+
+    it('asksForNoFinalNewline_whenTheDocumentHasNone', async () => {
+      sortsDocument = true;
+      responses['json/sort'] = [];
+      const features: LspFeatures = await build();
+      const sorted: SortedModel = jsonModel(['{ "a": 1 }']);
+
+      expect(await features.sortDocument(sorted.model)).toEqual({ ran: true });
+
+      expect(requests.at(-1)?.params).toMatchObject({ options: { insertFinalNewline: false } });
+      // Nothing to change is no step of undo.
+      expect(sorted.steps).toEqual([]);
+    });
+
+    it('isRefused_withoutAsking_byAServerThatDoesNotSort', async () => {
+      const features: LspFeatures = await build();
+      const sorted: SortedModel = jsonModel(['{}']);
+
+      expect(await features.sortDocument(sorted.model)).toEqual({
+        ran: false,
+        reason: 'No language server sorts this document.',
+      });
+      expect(requests.filter((request) => request.method === 'json/sort')).toEqual([]);
+    });
+
+    it('saysWhy_whenTheServerFails_orAnswersWhatCannotBeRead', async () => {
+      sortsDocument = true;
+      responses['json/sort'] = new Error(
+        "Error invoking remote method 'lsp:request': Error: Bad JSON.",
+      );
+      const features: LspFeatures = await build();
+      const sorted: SortedModel = jsonModel(['{']);
+
+      expect(await features.sortDocument(sorted.model)).toEqual({
+        ran: false,
+        reason: 'Bad JSON.',
+      });
+
+      responses['json/sort'] = [{ newText: 'no range' }];
+      expect(await features.sortDocument(sorted.model)).toEqual({
+        ran: false,
+        reason: "The language server's answer couldn't be read.",
+      });
+      expect(sorted.steps).toEqual([]);
+    });
+
+    it('appliesNothing_whenTheDocumentChangedWhileTheServerAnswered', async () => {
+      sortsDocument = true;
+      responses['json/sort'] = SORTED;
+      const features: LspFeatures = await build();
+      const sorted: SortedModel = jsonModel(['{ "b": 2, "a": 1 }', '']);
+      // The user types while the request is out: the version moves on before the answer is applied.
+      const asked: Promise<unknown> = features.sortDocument(sorted.model);
+      (sorted.model as unknown as { getVersionId: () => number }).getVersionId = (): number => 4;
+
+      expect(await asked).toEqual({
+        ran: false,
+        reason: 'The document changed while it was being sorted. Try again.',
+      });
+      expect(sorted.steps).toEqual([]);
+    });
+
+    it('aCssQuickFix_appliesTheEditsItCarries_asOneStepOfUndo', async () => {
+      codeActionSupport = 'actions';
+      documentVersion = 4;
+      const features: LspFeatures = await build();
+      const fixed: SortedModel = jsonModel(['.box {', '  colr: red;', '}']);
+      const edit: unknown = {
+        range: { start: { line: 1, character: 2 }, end: { line: 1, character: 6 } },
+        newText: 'color',
+      };
+
+      expect(
+        await features.executeCommand(fixed.model, {
+          title: "Rename to 'color'",
+          command: '_css.applyCodeAction',
+          arguments: ['file:///root/app.ts', 4, [edit]],
+        }),
+      ).toEqual({ ran: true });
+      expect(fixed.edits).toEqual([
+        {
+          range: { startLineNumber: 2, startColumn: 3, endLineNumber: 2, endColumn: 7 },
+          text: 'color',
+        },
+      ]);
+      expect(fixed.steps).toEqual(['stop', 'edit', 'stop']);
+      expect(requests.map((request) => request.method)).not.toContain('workspace/executeCommand');
+    });
+
+    it('aCssQuickFix_forAnOlderVersionOfTheDocument_isRefused', async () => {
+      codeActionSupport = 'actions';
+      documentVersion = 5;
+      const order: string[] = [];
+      syncHook = (): Promise<void> => {
+        order.push('sync');
+        return Promise.resolve();
+      };
+      const features: LspFeatures = await build();
+      const fixed: SortedModel = jsonModel(['.box {', '  colr: red;', '}']);
+
+      expect(
+        await features.executeCommand(fixed.model, {
+          title: "Rename to 'color'",
+          command: '_css.applyCodeAction',
+          arguments: ['file:///root/app.ts', 4, []],
+        }),
+      ).toEqual({
+        ran: false,
+        reason: 'The document changed after the fix was offered. Open Quick Fix again.',
+      });
+      // The server is brought up to date first, so the version compared is the editor's.
+      expect(order).toEqual(['sync']);
+      expect(fixed.steps).toEqual([]);
+    });
+
+    it('aCssQuickFix_forAnotherDocument_isNotApplied', async () => {
+      codeActionSupport = 'actions';
+      const features: LspFeatures = await build();
+      const fixed: SortedModel = jsonModel(['.box {}']);
+
+      expect(
+        await features.executeCommand(fixed.model, {
+          title: "Rename to 'color'",
+          command: '_css.applyCodeAction',
+          arguments: ['file:///root/other.css', 4, []],
+        }),
+      ).toEqual({ ran: false, reason: "The language server's fix couldn't be read." });
+      expect(fixed.steps).toEqual([]);
+    });
+
+    it('theSortJsonSourceAction_runsSortDocument_ratherThanTheServer', async () => {
+      sortsDocument = true;
+      codeActionSupport = 'actions';
+      responses['json/sort'] = SORTED;
+      const features: LspFeatures = await build();
+      const sorted: SortedModel = jsonModel(['{ "b": 2, "a": 1 }', '']);
+
+      expect(
+        await features.executeCommand(sorted.model, { title: 'Sort JSON', command: 'json.sort' }),
+      ).toEqual({ ran: true });
+      expect(requests.map((request) => request.method)).not.toContain('workspace/executeCommand');
+      expect(sorted.steps).toEqual(['stop', 'edit', 'stop']);
     });
   });
 
@@ -3218,7 +3876,8 @@ describe('LspFeatures', () => {
               },
             ],
           },
-          { kind: 'rename', oldUri: 'file:///root/greet.ts', newUri: 'file:///root/salute.ts' },
+          // A rename in place is carried out since #1211; deleting a file still is not.
+          { kind: 'delete', uri: 'file:///root/greet.ts' },
         ],
       };
       const features: LspFeatures = await build();

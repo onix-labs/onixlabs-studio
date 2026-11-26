@@ -36,13 +36,6 @@ export function semanticLegendOf(capabilities: unknown): LspSemanticTokensLegend
 }
 
 /**
- * Determines whether a server advertises pull diagnostics (a `diagnosticProvider`), so the client
- * requests diagnostics via `textDocument/diagnostic` rather than waiting for pushed
- * `publishDiagnostics`. Pull-based servers (notably Roslyn) surface compile errors only this way.
- * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
- * @returns Returns true when the server supports pull diagnostics.
- */
-/**
  * Determines whether a server asked for the document's text to accompany `textDocument/didSave`
  * (`textDocumentSync.save.includeText`). The protocol allows the text only when the server asked.
  * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
@@ -55,6 +48,29 @@ export function saveIncludesText(capabilities: unknown): boolean {
   return (save as { includeText?: unknown } | undefined)?.includeText === true;
 }
 
+/**
+ * Determines whether a server takes each change as the document's whole text (`TextDocumentSyncKind.Full`,
+ * 1), in either form of `textDocumentSync`: the bare kind, or the options object's `change`. Such a
+ * server reads a change's text as the whole document whatever range comes with it, so a ranged edit
+ * would leave it holding only the edited span (taplo, #1206).
+ * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+ * @returns Returns true when changes must carry the whole text.
+ */
+export function syncsWholeDocument(capabilities: unknown): boolean {
+  const sync: unknown = (capabilities as { textDocumentSync?: unknown } | undefined)
+    ?.textDocumentSync;
+  const kind: unknown =
+    typeof sync === 'object' && sync !== null ? (sync as { change?: unknown }).change : sync;
+  return kind === 1;
+}
+
+/**
+ * Determines whether a server advertises pull diagnostics (a `diagnosticProvider`), so the client
+ * requests diagnostics via `textDocument/diagnostic` rather than waiting for pushed
+ * `publishDiagnostics`. Pull-based servers (notably Roslyn) surface compile errors only this way.
+ * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+ * @returns Returns true when the server supports pull diagnostics.
+ */
 export function supportsPullDiagnostics(capabilities: unknown): boolean {
   const provider: unknown = (capabilities as { diagnosticProvider?: unknown } | undefined)
     ?.diagnosticProvider;
@@ -239,6 +255,7 @@ export function structureSupportOf(capabilities: unknown): LspStructureSupport {
         linkedEditingRangeProvider?: unknown;
         selectionRangeProvider?: unknown;
         colorProvider?: unknown;
+        documentLinkProvider?: unknown;
         semanticTokensProvider?: { range?: unknown; legend?: unknown };
       }
     | undefined = capabilities as typeof caps;
@@ -252,6 +269,7 @@ export function structureSupportOf(capabilities: unknown): LspStructureSupport {
       (range === true || (typeof range === 'object' && range !== null)),
     selectionRanges: isOffered(caps?.selectionRangeProvider),
     colors: isOffered(caps?.colorProvider),
+    links: isOffered(caps?.documentLinkProvider),
   };
 }
 

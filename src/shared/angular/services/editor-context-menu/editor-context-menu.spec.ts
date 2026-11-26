@@ -6,7 +6,11 @@ import { Editors } from '@shared/angular/services/editors/editors';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
-import { LspDefinition, LspFeatures } from '@shared/angular/services/lsp/lsp-features';
+import {
+  LspCommandOutcome,
+  LspDefinition,
+  LspFeatures,
+} from '@shared/angular/services/lsp/lsp-features';
 import { captureEditorCapabilities } from '@shared/angular/services/monaco/monaco-editor-capabilities';
 import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
 import { HierarchyKind, HierarchyRouter } from '@shared/angular/services/hierarchy/hierarchy';
@@ -253,6 +257,9 @@ describe('EditorContextMenu (#1012)', () => {
     servesParentModule: Mock<LspFeatures['servesParentModule']>;
     servesCargoManifest: Mock<LspFeatures['servesCargoManifest']>;
     servesProjectConfiguration: Mock<LspFeatures['servesProjectConfiguration']>;
+    servesDocumentSorting: Mock<LspFeatures['servesDocumentSorting']>;
+    sortDocument: Mock<LspFeatures['sortDocument']>;
+    registerServedListener: Mock<LspFeatures['registerServedListener']>;
   };
   let opener: { openPath: Mock<(path: string) => Promise<boolean>> };
 
@@ -301,6 +308,13 @@ describe('EditorContextMenu (#1012)', () => {
       servesCargoManifest: vi.fn<LspFeatures['servesCargoManifest']>((): boolean => false),
       servesProjectConfiguration: vi.fn<LspFeatures['servesProjectConfiguration']>(
         (): boolean => false,
+      ),
+      servesDocumentSorting: vi.fn<LspFeatures['servesDocumentSorting']>((): boolean => false),
+      sortDocument: vi.fn<LspFeatures['sortDocument']>((): Promise<LspCommandOutcome> =>
+        Promise.resolve({ ran: true }),
+      ),
+      registerServedListener: vi.fn<LspFeatures['registerServedListener']>(
+        (): (() => void) => (): void => undefined,
       ),
     };
     opener = {
@@ -838,6 +852,50 @@ describe('EditorContextMenu (#1012)', () => {
       detach();
 
       expect(fake.listening()).toBe(false);
+    });
+  });
+
+  describe('Sort Document (#1214)', () => {
+    it('isShown_afterTheFormattingRows_whereTheDocumentsServerSorts', () => {
+      const menu: EditorContextMenu = build('darwin');
+      lsp.servesDocumentSorting.mockReturnValue(true);
+      const { editor } = fakeEditor({
+        language: 'json',
+        supported: ['editor.action.formatDocument', 'editor.action.formatSelection'],
+      });
+
+      const items: readonly MenuItem[] = menu.itemsFor(editor);
+      const ids: string[] = idsOf(items);
+
+      expect(ids.indexOf('sortDocument')).toBe(ids.indexOf('formatSelection') + 1);
+      // No chord: it shows none rather than an empty hint.
+      expect(rowOf(items, 'sortDocument')).toEqual({ id: 'sortDocument', label: 'Sort Document' });
+    });
+
+    it('isHidden_whereTheServerDoesNotSort_orTheEditorIsReadOnly', () => {
+      const menu: EditorContextMenu = build();
+
+      expect(rowOf(menu.itemsFor(fakeEditor({ language: 'json' }).editor), 'sortDocument')).toBe(
+        undefined,
+      );
+
+      lsp.servesDocumentSorting.mockReturnValue(true);
+      expect(
+        rowOf(
+          menu.itemsFor(fakeEditor({ language: 'json', readOnly: true }).editor),
+          'sortDocument',
+        ),
+      ).toBeUndefined();
+    });
+
+    it('run_sortsTheEditorsDocument_throughItsServer', () => {
+      const menu: EditorContextMenu = build();
+      const fake: FakeEditor = fakeEditor({ language: 'json' });
+
+      menu.run('sortDocument', fake.editor);
+
+      expect(fake.calls).toEqual(['focus']);
+      expect(lsp.sortDocument).toHaveBeenCalledWith(fake.editor.getModel());
     });
   });
 

@@ -155,6 +155,10 @@ function migrateAiConnections(overrides: SettingsOverrides): SettingsOverrides {
   // The log level moved to System Monitor, beside the logs it governs.
   moveKey(result, 'application.logLevel', ['systemMonitor.logLevel']);
 
+  // The two Notify When … Finishes settings became notification types (#1486).
+  migrateFinishNotifications(result, 'notifications.agentFinished', ['agent']);
+  migrateFinishNotifications(result, 'notifications.runFinished', ['run', 'build']);
+
   // Line height stopped being something a language can override: it is a multiple of the font size,
   // and the font is global. A stored override would sit there unseen, so it goes.
   dropLanguageOverride(result, 'lineHeight');
@@ -179,6 +183,42 @@ function moveKey(overrides: Record<string, unknown>, from: string, to: readonly 
     }
   }
   delete overrides[from];
+}
+
+/**
+ * Carries a retired Notify When … Finishes choice onto the notification types that replaced it, then
+ * removes it. Those types pop up by default, as `always` did, so only the other two choices need
+ * storing: `failures` sends successes to the history, and `never` — which still recorded the end in
+ * the tray — sends both there. A choice the user has already made for a type is kept.
+ * @param overrides The override map, updated in place.
+ * @param from The retired key.
+ * @param prefixes The type prefixes it governed: `agent` covers `agent.finished` and `agent.failed`.
+ */
+function migrateFinishNotifications(
+  overrides: Record<string, unknown>,
+  from: string,
+  prefixes: readonly string[],
+): void {
+  if (!(from in overrides)) {
+    return;
+  }
+  const choice: unknown = overrides[from];
+  delete overrides[from];
+  if (choice !== 'failures' && choice !== 'never') {
+    return;
+  }
+  const stored: unknown = overrides['notifications.types'];
+  const types: Record<string, unknown> =
+    typeof stored === 'object' && stored !== null && !Array.isArray(stored)
+      ? { ...(stored as Record<string, unknown>) }
+      : {};
+  for (const prefix of prefixes) {
+    types[`${prefix}.finished`] ??= 'history';
+    if (choice === 'never') {
+      types[`${prefix}.failed`] ??= 'history';
+    }
+  }
+  overrides['notifications.types'] = types;
 }
 
 /**

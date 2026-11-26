@@ -34,14 +34,38 @@ export class SettingsNavigation {
   public readonly requestedSection: Signal<string | null> = this.requested.asReadonly();
 
   /**
+   * Holds the row within the section to bring into view, or null for none. Kept apart from the
+   * section, which the view consumes before the section's own content has rendered to take it.
+   */
+  private readonly focusRequested: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Gets the pending row to bring into view, for the section that holds it to take.
+   */
+  public readonly requestedFocus: Signal<string | null> = this.focusRequested.asReadonly();
+
+  /**
    * Opens the Settings tab and requests that it show the given section. If the tab is already open it
    * is activated; either way the view picks up the request and switches section.
    * @param section The identifier of the section to show.
+   * @param focus A row within the section to bring into view, which the section interprets, or
+   * undefined for none.
    */
-  public open(section: string): void {
+  public open(section: string, focus?: string): void {
+    this.focusRequested.set(focus ?? null);
     this.requested.set(section);
     this.tabs.open('settings');
     this.log.info('SettingsNavigation', `Opened Settings at section '${section}'`);
+  }
+
+  /**
+   * Takes the pending row to bring into view, clearing it so it is brought into view once.
+   * @returns Returns the row, or null when none is pending.
+   */
+  public takeFocus(): string | null {
+    const focus: string | null = this.focusRequested();
+    this.focusRequested.set(null);
+    return focus;
   }
 
   /**

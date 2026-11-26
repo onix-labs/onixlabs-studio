@@ -21,13 +21,18 @@ import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/rib
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
+import {
+  BINARY_AGENT_PANEL_ID,
+  BINARY_DISASSEMBLY_PANEL_ID,
+  BINARY_INSPECTOR_PANEL_ID,
+} from '../binary-dock-blueprint';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import {
   BinaryDocumentEntry,
   BinaryDocuments,
   BinarySelection,
 } from '../binary-document/binary-document';
-import { BinaryPanels } from '../binary-panels/binary-panels';
 
 /**
  * Represents the contextual ribbon shown when a binary tab is active. Its actions resolve the active
@@ -66,9 +71,9 @@ export class BinaryRibbon {
   private readonly binaryDocuments: BinaryDocuments = inject(BinaryDocuments);
 
   /**
-   * Holds the side-panel state the Tools group toggles.
+   * Holds the tabs' docks, which the panels are shown and hidden in.
    */
-  private readonly binaryPanels: BinaryPanels = inject(BinaryPanels);
+  private readonly docks: TabDocks = inject(TabDocks);
 
   /**
    * Holds the file opener, which opens the active file as text in the code editor.
@@ -265,16 +270,14 @@ export class BinaryRibbon {
    * Gets whether the active document's disassembly panel is currently shown.
    */
   protected readonly disassemblyShown: Signal<boolean> = computed((): boolean => {
-    const id: string | undefined = this.tabs.activeTabId();
-    return id !== undefined && this.binaryPanels.isVisible(id, 'disassembly');
+    return this.docks.isOpen(this.tabs.activeTabId(), BINARY_DISASSEMBLY_PANEL_ID);
   });
 
   /**
    * Gets whether the active document's inspector panel is currently shown.
    */
   protected readonly inspectorShown: Signal<boolean> = computed((): boolean => {
-    const id: string | undefined = this.tabs.activeTabId();
-    return id !== undefined && this.binaryPanels.isVisible(id, 'inspector');
+    return this.docks.isOpen(this.tabs.activeTabId(), BINARY_INSPECTOR_PANEL_ID);
   });
 
   /**
@@ -303,41 +306,31 @@ export class BinaryRibbon {
    * Toggles the disassembly panel for the active binary tab.
    */
   protected onToggleDisassembly(): void {
-    const id: string | undefined = this.tabs.activeTabId();
-    if (id !== undefined) {
-      this.log.info('binary.ribbon', 'Toggle disassembly panel');
-      this.binaryPanels.toggle(id, 'disassembly');
-    }
+    this.log.info('binary.ribbon', 'Toggle disassembly panel');
+    this.docks.toggle(this.tabs.activeTabId(), BINARY_DISASSEMBLY_PANEL_ID);
   }
 
   /**
    * Toggles the inspector panel for the active binary tab.
    */
   protected onToggleInspector(): void {
-    const id: string | undefined = this.tabs.activeTabId();
-    if (id !== undefined) {
-      this.log.info('binary.ribbon', 'Toggle inspector panel');
-      this.binaryPanels.toggle(id, 'inspector');
-    }
+    this.log.info('binary.ribbon', 'Toggle inspector panel');
+    this.docks.toggle(this.tabs.activeTabId(), BINARY_INSPECTOR_PANEL_ID);
   }
 
   /**
    * Gets whether the active document's agent panel is currently shown.
    */
   protected readonly agentShown: Signal<boolean> = computed((): boolean => {
-    const id: string | undefined = this.tabs.activeTabId();
-    return id !== undefined && this.binaryPanels.isVisible(id, 'agent');
+    return this.docks.isOpen(this.tabs.activeTabId(), BINARY_AGENT_PANEL_ID);
   });
 
   /**
    * Toggles the agent panel for the active binary tab.
    */
   protected onToggleAgent(): void {
-    const id: string | undefined = this.tabs.activeTabId();
-    if (id !== undefined) {
-      this.log.info('binary.ribbon', 'Toggle agent panel');
-      this.binaryPanels.toggle(id, 'agent');
-    }
+    this.log.info('binary.ribbon', 'Toggle agent panel');
+    this.docks.toggle(this.tabs.activeTabId(), BINARY_AGENT_PANEL_ID);
   }
 
   /**
