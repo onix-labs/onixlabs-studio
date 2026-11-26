@@ -8,8 +8,8 @@
 #     build matrix has just produced (`reuse-installers: true`), and its own "Install gate" job is the
 #     check a release ruleset requires.
 #   - On a PR into `main` that changes the gate itself (this file, e2e/install/**, its scripts), so a
-#     change to the gate is proved on its own PR. It then builds its own installers, unsigned, the way
-#     release.yml does.
+#     change to the gate is proved on its own PR. It then builds its own installers the way release.yml
+#     does, except that macOS is not signed or notarised: the signing secrets stay with the release.
 #   - By hand (Actions → Install gate → Run workflow), building its own installers.
 # Never on ordinary PRs into `main`, nor on pushes: it takes the better part of an hour of runners.
 #

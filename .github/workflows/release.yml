@@ -9,6 +9,12 @@
 #   3. This workflow runs on the push to `release`. When it is green there is a draft release —
 #      read the notes, then Publish.
 #
+# The macOS builds are signed and notarised with five more secrets: MAC_CERTIFICATE_P12_BASE64 and
+# MAC_CERTIFICATE_PASSWORD (the ONIXLABS LIMITED Developer ID Application certificate, which Apple now
+# issues for about a year: renew it before it runs out, 2027-12-25 for the first), and
+# APPLE_API_KEY_P8, APPLE_API_KEY_ID and APPLE_API_ISSUER (an App Store Connect team key with the
+# Developer role, for the notary service).
+#
 # `RELEASE_TOKEN` is a fine-grained PAT of a repository admin (contents: read/write), because the
 # `v*` tag ruleset only lets admins create tags and the workflow's own token is not one.
 name: Release
@@ -71,7 +77,9 @@ jobs:
   build:
     name: Build (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    # 90, not 60: a macOS build waits on Apple's notary service, which usually answers in minutes but
+    # can take much longer when it is busy.
+    timeout-minutes: 90
     strategy:
       fail-fast: true
       # One entry per target, and every entry runs on a runner of that target's own architecture.
@@ -148,9 +156,51 @@ jobs:
         if: matrix.platform != 'linux'
         run: npm run build:electron
 
+      # The macOS builds are signed with the ONIXLABS LIMITED Developer ID and notarised, in the dry run
+      # as well as the release: the install gate then installs what will ship, and the dry run's disk
+      # image can be tried on a real Mac before the merge. electron-builder takes the certificate and
+      # the App Store Connect key as files, so the secrets are written to the runner's temporary
+      # directory, which is emptied when the job ends. A missing secret fails here: without it
+      # electron-builder would quietly build an unsigned app. It also skips signing on any pull request
+      # unless CSC_FOR_PULL_REQUEST is set, to keep secrets from a fork's code; a fork's PR is given no
+      # secrets, so it fails at this step instead, and only admins open PRs into `release` anyway.
+      - name: Prepare the signing credentials (macOS)
+        if: matrix.platform == 'darwin'
+        shell: bash
+        env:
+          CERTIFICATE: ${{ secrets.MAC_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+          API_KEY: ${{ secrets.APPLE_API_KEY_P8 }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          missing=0
+          for name in CERTIFICATE CERTIFICATE_PASSWORD API_KEY API_KEY_ID API_ISSUER; do
+            if [ -z "${!name}" ]; then
+              echo "::error::The $name secret is empty — macOS cannot be signed and notarised without it."
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
+          printf '%s' "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          printf '%s\n' "$API_KEY" > "$RUNNER_TEMP/notary-key.p8"
+          {
+            echo "CSC_LINK=$RUNNER_TEMP/developer-id.p12"
+            echo "CSC_KEY_PASSWORD=$CERTIFICATE_PASSWORD"
+            echo "APPLE_API_KEY=$RUNNER_TEMP/notary-key.p8"
+            echo "APPLE_API_KEY_ID=$API_KEY_ID"
+            echo "APPLE_API_ISSUER=$API_ISSUER"
+            echo "CSC_FOR_PULL_REQUEST=true"
+          } >> "$GITHUB_ENV"
+
       - name: Package
         if: matrix.platform != 'linux'
         run: npx electron-builder ${{ matrix.args }} --publish never
+
+      - name: Remove the signing credentials (macOS)
+        if: always() && matrix.platform == 'darwin'
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/developer-id.p12" "$RUNNER_TEMP/notary-key.p8"
 
       # Linux is built inside Debian 12, not on the runner. The AppImage's native module (node-pty) is
       # compiled against the builder's glibc and will not load on a system with an older one: built on
@@ -197,6 +247,53 @@ jobs:
             ls -1 "$mount"
             hdiutil detach "$mount" >/dev/null
           done
+
+      # electron-builder signs with whatever identity it is given and skips notarisation with only a
+      # warning, so its success says nothing about whether a Mac will open the app without a warning.
+      # Check the app as it ships, inside each disk image and each zip: signed by ONIXLabs' team,
+      # intact, notarised with the ticket stapled (so it opens offline), and accepted by Gatekeeper.
+      - name: Verify the app is signed and notarised
+        if: matrix.platform == 'darwin'
+        shell: bash
+        env:
+          TEAM_ID: 66F8GTCBT9
+        run: |
+          shopt -s nullglob
+          check() {
+            local app="$1"
+            echo "checking $app"
+            codesign --verify --deep --strict --verbose=2 "$app"
+            local team
+            team="$(codesign --display --verbose=2 "$app" 2>&1 | sed -n 's/^TeamIdentifier=//p')"
+            if [ "$team" != "$TEAM_ID" ]; then
+              echo "::error::$app is signed by team '${team:-none}', not $TEAM_ID."
+              return 1
+            fi
+            xcrun stapler validate "$app"
+            spctl --assess --type execute --verbose=2 "$app"
+          }
+          checked=0
+          for dmg in release/*.dmg; do
+            mount="$(mktemp -d)"
+            hdiutil attach "$dmg" -readonly -nobrowse -noverify -mountpoint "$mount" >/dev/null
+            for app in "$mount"/*.app; do
+              check "$app" || { hdiutil detach "$mount" >/dev/null; exit 1; }
+              checked=$((checked + 1))
+            done
+            hdiutil detach "$mount" >/dev/null
+          done
+          for zip in release/*.zip; do
+            dir="$(mktemp -d)"
+            ditto -x -k "$zip" "$dir"
+            for app in "$dir"/*.app; do
+              check "$app"
+              checked=$((checked + 1))
+            done
+          done
+          if [ "$checked" -eq 0 ]; then
+            echo "::error::No app was found inside the disk images or zips to check."
+            exit 1
+          fi
 
       # Hashes recorded at the source, checked again after the release job downloads them. This is the
       # only guard that covers the journey itself — beta.4 was corrupted in transit, between a build
@@ -359,7 +456,7 @@ jobs:
           | Plugin API | \`$API\` |
           | Curated catalogue revision | \`$REVISION\` |
 
-          > **These builds are not code-signed.** macOS will say the app "cannot be opened because the developer cannot be verified" — right-click → Open, or run \`xattr -d com.apple.quarantine\` on the app. Windows SmartScreen will warn on first run — More info → Run anyway.
+          > **The Windows installer is not code-signed.** Windows SmartScreen will warn on first run — More info → Run anyway. The macOS builds are signed and notarised by ONIXLabs, and open without a warning.
 
           EOF
           prerelease=""

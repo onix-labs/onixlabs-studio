@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The exceptions to the hardened runtime a signed, notarised Studio asks for. Notarisation requires
+  the hardened runtime, which forbids all three of these unless they are declared here. Used for the
+  app and, through `entitlementsInherit`, for every helper and binary signed inside it.
+
+  Nothing else is needed: Studio asks for no camera, microphone or Apple Events, and a Developer ID
+  app needs no entitlement to post notifications.
+-->
+<plist version="1.0">
+  <dict>
+    <!-- V8 compiles JavaScript to machine code at run time. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <!-- V8 and WebAssembly still write to executable memory outside the JIT region on some paths. -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <!--
+      Plugins and language servers run in Studio's own binary in Node mode (`ELECTRON_RUN_AS_NODE`),
+      so they inherit these entitlements. A plugin's SDK may load a compiled `.node` module signed by
+      its own vendor, or not signed at all; library validation would refuse to load it.
+    -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+  </dict>
+</plist>
