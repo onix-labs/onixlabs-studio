@@ -15,6 +15,7 @@ import GO_MODULES from './lockfiles/onixlabs.go-modules.lock.json';
 import GO_TESTS from './lockfiles/onixlabs.go-tests.lock.json';
 import JS_TESTS from './lockfiles/onixlabs.js-tests.lock.json';
 import JVM_TESTS from './lockfiles/onixlabs.jvm-tests.lock.json';
+import LIVE_SERVER from './lockfiles/onixlabs.live-server.lock.json';
 import MAVEN from './lockfiles/onixlabs.maven.lock.json';
 import NPM from './lockfiles/onixlabs.npm.lock.json';
 import NUGET from './lockfiles/onixlabs.nuget.lock.json';
@@ -70,6 +71,7 @@ const BUNDLED_LOCKFILES: Readonly<Record<string, unknown>> = {
   'onixlabs.go-tests.lock.json': GO_TESTS,
   'onixlabs.js-tests.lock.json': JS_TESTS,
   'onixlabs.jvm-tests.lock.json': JVM_TESTS,
+  'onixlabs.live-server.lock.json': LIVE_SERVER,
   'onixlabs.maven.lock.json': MAVEN,
   'onixlabs.npm.lock.json': NPM,
   'onixlabs.nuget.lock.json': NUGET,

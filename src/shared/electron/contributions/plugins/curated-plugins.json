@@ -1,5 +1,5 @@
 {
-  "revision": 78,
+  "revision": 79,
   "plugins": [
     {
       "id": "pyright",
@@ -1824,12 +1824,12 @@
       "name": "Docker",
       "description": "Talk to a Docker-compatible container engine over its local socket.",
       "detail": "Speaks to the engine over its local socket; it does not install or run a container engine itself. Open Shell uses the docker command-line tool when one is installed.",
-      "version": "30.3.0",
+      "version": "30.4.0",
       "apiVersion": "1.19.0",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-docker-engine-v30.3.0/src/shared/electron/contributions/plugins/lockfiles/docker-engine.lock.json",
-        "sha256": "423a8ab0f744d1d67fdf839f6dcac468c42e2598563147a240a3f3dab28d0110",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-docker-engine-v30.4.0/src/shared/electron/contributions/plugins/lockfiles/docker-engine.lock.json",
+        "sha256": "ae21ef72cad96b0b83d46c0e5bda5cb1384ee72e136230730925cdb2f7e63e45",
         "executablePath": "node_modules/@onixlabs/docker-engine/main.js"
       },
       "contributes": {
@@ -1866,12 +1866,12 @@
       "name": "Podman",
       "description": "Talk to a Podman container engine over its local socket.",
       "detail": "Speaks to the engine over its local socket; it does not install or run a container engine itself. Open Shell uses the podman command-line tool when one is installed.",
-      "version": "7.3.0",
+      "version": "7.4.0",
       "apiVersion": "1.19.0",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-podman-engine-v7.3.0/src/shared/electron/contributions/plugins/lockfiles/podman-engine.lock.json",
-        "sha256": "ebfed83beababbccef030deedf64b93e7eb0cfeeec795af07f4ffafc9c1aeb4a",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-podman-engine-v7.4.0/src/shared/electron/contributions/plugins/lockfiles/podman-engine.lock.json",
+        "sha256": "3b7a9119676ec82397b73178568bd511e10461390f3b707dd18dd4261474367a",
         "executablePath": "node_modules/@onixlabs/podman-engine/main.js"
       },
       "contributes": {
@@ -2773,13 +2773,13 @@
       "id": "onixlabs.go-tests",
       "name": "Go Tests",
       "description": "Go tests in the Tests panel: finds Test and Fuzz functions in each package and runs them with go test.",
-      "version": "0.1.0",
-      "apiVersion": "1.28.0",
+      "version": "0.2.0",
+      "apiVersion": "1.30.0",
       "detail": "Reads your packages' _test.go files to list their tests; running them uses the go on your machine, in a terminal you can see.",
       "provision": {
         "kind": "npm",
-        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-go-tests-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.go-tests.lock.json",
-        "sha256": "dde2d14e763577183aa636e2d79ba30ca3b5262165d0f2fba1a957a427f284dd",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-go-tests-v0.2.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.go-tests.lock.json",
+        "sha256": "b29e8bc1e247e7cb45d1d360a132a9746e8153d5da306d4bf05951e637a2326b",
         "executablePath": "node_modules/@onixlabs/go-tests/main.js"
       },
       "contributes": {
@@ -2790,14 +2790,45 @@
             "frameworks": ["go test"],
             "priority": 100,
             "markers": ["go.mod"],
-            "capabilities": ["run", "runSelected"],
+            "capabilities": ["run", "runSelected", "debug"],
             "command": {
               "kind": "node"
             },
             "entryPoint": "node_modules/@onixlabs/go-tests/main.js"
           }
         ]
-      }
+      },
+      "releases": [
+        {
+          "name": "Go Tests",
+          "description": "Go tests in the Tests panel: finds Test and Fuzz functions in each package and runs them with go test.",
+          "version": "0.1.0",
+          "apiVersion": "1.28.0",
+          "detail": "Reads your packages' _test.go files to list their tests; running them uses the go on your machine, in a terminal you can see.",
+          "provision": {
+            "kind": "npm",
+            "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-go-tests-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.go-tests.lock.json",
+            "sha256": "dde2d14e763577183aa636e2d79ba30ca3b5262165d0f2fba1a957a427f284dd",
+            "executablePath": "node_modules/@onixlabs/go-tests/main.js"
+          },
+          "contributes": {
+            "testAdapters": [
+              {
+                "id": "onixlabs.go-tests",
+                "displayName": "Go Tests",
+                "frameworks": ["go test"],
+                "priority": 100,
+                "markers": ["go.mod"],
+                "capabilities": ["run", "runSelected"],
+                "command": {
+                  "kind": "node"
+                },
+                "entryPoint": "node_modules/@onixlabs/go-tests/main.js"
+              }
+            ]
+          }
+        }
+      ]
     },
     {
       "id": "onixlabs.jvm-tests",
@@ -2855,6 +2886,33 @@
               "kind": "node"
             },
             "entryPoint": "node_modules/@onixlabs/ctest/main.js"
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.live-server",
+      "name": "Live Server",
+      "description": "Serves a static site from the File or Solution Explorer and reloads the page in your browser when you save.",
+      "version": "0.1.0",
+      "apiVersion": "1.31.0",
+      "detail": "Serves only the open workspace's files, on 127.0.0.1, so nothing on your network can reach it. Runs nothing from the workspace itself.",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-live-server-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.live-server.lock.json",
+        "sha256": "752cf4f28bc7926533efc1a5afb9363e154c86f3fc45d92032690ed36c13b24e",
+        "executablePath": "node_modules/@onixlabs/live-server/main.js"
+      },
+      "contributes": {
+        "liveServers": [
+          {
+            "id": "onixlabs.live-server",
+            "displayName": "Live Server",
+            "priority": 100,
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/live-server/main.js"
           }
         ]
       }

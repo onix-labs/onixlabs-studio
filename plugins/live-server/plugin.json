@@ -7,8 +7,8 @@
   "detail": "Serves only the open workspace's files, on 127.0.0.1, so nothing on your network can reach it. Runs nothing from the workspace itself.",
   "provision": {
     "kind": "npm",
-    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.live-server.lock.json",
-    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-live-server-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.live-server.lock.json",
+    "sha256": "752cf4f28bc7926533efc1a5afb9363e154c86f3fc45d92032690ed36c13b24e",
     "executablePath": "node_modules/@onixlabs/live-server/main.js"
   },
   "contributes": {
