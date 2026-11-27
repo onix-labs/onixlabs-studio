@@ -201,7 +201,7 @@ test.describe('a clone through Studio (#1504)', () => {
           bounds: JSON.stringify(inner),
           parentVisible: parent.isVisible(),
           offsetX: Math.abs(inner.x + inner.width / 2 - (outer.x + outer.width / 2)),
-          offsetY: Math.abs(inner.y - (outer.y + Math.max(0, (outer.height - inner.height) / 3))),
+          offsetY: Math.abs(inner.y + inner.height / 2 - (outer.y + outer.height / 2)),
         };
       }, 'Do you trust this repository?');
     let previous: string = '';
