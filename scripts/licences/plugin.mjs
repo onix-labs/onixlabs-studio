@@ -13,14 +13,19 @@ import { createLicensing, packagesFromMetafile, REPO, report, writeOutputs } fro
 /**
  * Writes a plugin's LICENSE, THIRD-PARTY-NOTICES.txt and licences.json beside its bundle.
  * @param {object} options The plugin.
- * @param {string} options.root The plugin's directory, which its build ran in.
+ * @param {string} options.root The plugin's directory.
  * @param {any} options.metafile The esbuild metafile of its bundle.
  * @param {string} options.out The package directory the tarball is packed from.
+ * @param {string} [options.base] The directory esbuild resolved the metafile's paths against: its
+ * `absWorkingDir`, which every tarball plugin pins to its root, or the working directory for a build
+ * that does not.
+ * @param {string[]} [options.ships] Package directories the plugin ships whole, beside its bundle,
+ * which the metafile cannot see because they are external to it.
  */
-export function writePluginLicences({ root, metafile, out }) {
+export function writePluginLicences({ root, metafile, out, base = root, ships = [] }) {
   const licensing = createLicensing();
   const scoped = new Map();
-  for (const directory of packagesFromMetafile(metafile, root)) {
+  for (const directory of [...packagesFromMetafile(metafile, base), ...ships]) {
     scoped.set(directory, ['plugin']);
   }
   const packages = licensing.collect(scoped);

@@ -28,8 +28,16 @@ const bundled = await build({
   external: ['disassembler'],
 });
 
-// Its licence, and the notices of what its bundle carries from others, travel in the tarball (#1612).
-writePluginLicences({ root, metafile: bundled.metafile, out });
+// Its licence, and the notices of what it carries from others, travel in the archive (#1612):
+// disassembler (and the Capstone engine inside it) ships whole beside the bundle, so it is named
+// rather than found in the metafile, whose paths are relative to the working directory here.
+writePluginLicences({
+  root,
+  metafile: bundled.metafile,
+  out,
+  base: process.cwd(),
+  ships: [join(repo, 'node_modules', 'disassembler')],
+});
 
 cpSync(
   join(repo, 'node_modules', 'disassembler'),

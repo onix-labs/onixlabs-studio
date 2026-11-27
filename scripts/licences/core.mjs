@@ -319,6 +319,9 @@ export function createLicensing(overridesFile = join(REPO, 'licensing', 'overrid
       try {
         resolved = realpathSync(directory);
       } catch {
+        // A bundle's input resolved to no package on disk: a path read against the wrong directory,
+        // which would otherwise leave the package out of the notices without a word.
+        problems.push(`${directory}: is shipped, but is not there to read its licence from.`);
         continue;
       }
       real.set(resolved, new Set([...(real.get(resolved) ?? []), ...scopes]));
@@ -337,9 +340,11 @@ export function createLicensing(overridesFile = join(REPO, 'licensing', 'overrid
         known.scopes = [...new Set([...known.scopes, ...scopes])];
       }
     }
+    // By code point, not by locale: the order is part of a tarball's pinned bytes, and a locale's
+    // collation (Lithuanian sorts y before j) would make them depend on the machine.
+    const order = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
     return [...byKey.values()].sort(
-      (left, right) =>
-        left.name.localeCompare(right.name) || left.version.localeCompare(right.version),
+      (left, right) => order(left.name, right.name) || order(left.version, right.version),
     );
   }
 
