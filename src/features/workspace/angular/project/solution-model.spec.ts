@@ -177,6 +177,7 @@ describe('SolutionModel', () => {
   let project: FakeProject;
   let root: WritableSignal<DirectoryListing | null>;
   let treeChanged: ((event: DirectoryChangeEvent) => void) | null;
+  let missing: Set<string>;
 
   /**
    * Builds the service under test with the fakes wired in, capturing the tree-change callback the
@@ -187,7 +188,14 @@ describe('SolutionModel', () => {
     TestBed.configureTestingModule({
       providers: [
         SolutionModel,
-        { provide: Workspace, useValue: { root } },
+        {
+          provide: Workspace,
+          useValue: {
+            root,
+            readDirectoryListing: (path: string): Promise<DirectoryListing | null> =>
+              Promise.resolve(missing.has(path) ? null : { path, name: path, entries: [] }),
+          },
+        },
         {
           provide: DirectoryWatch,
           useValue: {
@@ -258,6 +266,7 @@ describe('SolutionModel', () => {
     project = new FakeProject();
     root = signal<DirectoryListing | null>(null);
     treeChanged = null;
+    missing = new Set<string>();
     (window as unknown as { bridge: Bridge }).bridge = project;
   });
 
@@ -793,6 +802,173 @@ describe('SolutionModel', () => {
     // one standing for a real directory has a path for the panel's path commands to act on.
     expect(rowFor(model, 'Sub')!.path).toBe('/root/A/Sub');
     expect(rowFor(model, 'Group')!.path).toBeNull();
+  });
+
+  describe('creating files and folders', () => {
+    it('creationDirectory_isAProjectsDirectory_aFoldersOwn_andAFilesParent', async () => {
+      project.model = sampleModel();
+      project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+      const model: SolutionModel = build();
+      await open(model);
+      model.toggle(rowFor(model, 'Group')!);
+      model.toggle(rowFor(model, 'A')!);
+      model.toggle(rowFor(model, 'Sub')!);
+
+      expect(model.creationDirectory(rowFor(model, 'A')!)).toBe('/root/A');
+      expect(model.creationDirectory(rowFor(model, 'Sub')!)).toBe('/root/A/Sub');
+      expect(model.creationDirectory(rowFor(model, 'f.cs')!)).toBe('/root/A/Sub');
+      // A solution folder is no directory, and this root holds more than one project.
+      expect(model.creationDirectory(rowFor(model, 'Group')!)).toBeNull();
+      expect(model.creationDirectory(rowFor(model, 'root')!)).toBeNull();
+    });
+
+    it('creationDirectory_ofTheRoot_isTheLoneProjectsDirectory_whenItsContentsShowThere', async () => {
+      project.model = {
+        kind: 'node',
+        root: '/root',
+        solution: null,
+        projects: [{ name: 'root', path: '/root/package.json' }],
+        tree: [{ type: 'project', name: 'root', path: '/root/package.json' }],
+        capabilities: sampleCapabilities(),
+      };
+      const model: SolutionModel = build();
+      await open(model);
+
+      expect(model.creationDirectory(rowFor(model, 'root')!)).toBe('/root');
+    });
+
+    it('aCreatedFolder_shows_thoughItsProjectListsNothingInIt', async () => {
+      project.model = sampleModel();
+      project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+      const model: SolutionModel = build();
+      await open(model);
+      model.toggle(rowFor(model, 'Group')!);
+      model.toggle(rowFor(model, 'A')!);
+      const before: string[] = labels(model);
+
+      model.noteCreatedFolder('/root/A/Models');
+
+      expect(labels(model)).toHaveLength(before.length + 1);
+      expect(rowFor(model, 'Models')).toMatchObject({
+        kind: 'item-folder',
+        path: '/root/A/Models',
+        depth: rowFor(model, 'Sub')!.depth,
+      });
+    });
+
+    it('aCreatedFolder_theProjectNowLists_isNotShownTwice', async () => {
+      project.model = sampleModel();
+      project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+      const model: SolutionModel = build();
+      await open(model);
+      model.toggle(rowFor(model, 'Group')!);
+      model.toggle(rowFor(model, 'A')!);
+
+      model.noteCreatedFolder('/root/A/Sub');
+
+      expect(labels(model).filter((label: string): boolean => label === 'Sub')).toHaveLength(1);
+    });
+
+    it('aCreatedFolder_holdsTheFoldersCreatedInsideIt', async () => {
+      project.model = sampleModel();
+      project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+      const model: SolutionModel = build();
+      await open(model);
+      model.toggle(rowFor(model, 'Group')!);
+      model.toggle(rowFor(model, 'A')!);
+      model.noteCreatedFolder('/root/A/Models');
+      model.noteCreatedFolder('/root/A/Models/Dto');
+
+      model.toggle(rowFor(model, 'Models')!);
+
+      expect(rowFor(model, 'Dto')?.depth).toBe(rowFor(model, 'Models')!.depth + 1);
+    });
+
+    it('forgetCreatedFolder_dropsIt_andThoseCreatedBeneathIt', async () => {
+      project.model = sampleModel();
+      project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+      const model: SolutionModel = build();
+      await open(model);
+      model.toggle(rowFor(model, 'Group')!);
+      model.toggle(rowFor(model, 'A')!);
+      model.noteCreatedFolder('/root/A/Models');
+      model.noteCreatedFolder('/root/A/Models/Dto');
+      model.noteCreatedFolder('/root/A/ModelsToo');
+      model.toggle(rowFor(model, 'Models')!);
+
+      model.forgetCreatedFolder('/root/A/Models');
+
+      expect(rowFor(model, 'Models')).toBeUndefined();
+      expect(rowFor(model, 'Dto')).toBeUndefined();
+      expect(rowFor(model, 'ModelsToo')).toBeDefined();
+    });
+
+    it('renameCreatedFolder_keepsItShowingUnderItsNewName_withWhatWasCreatedInIt', async () => {
+      project.model = sampleModel();
+      project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+      const model: SolutionModel = build();
+      await open(model);
+      model.toggle(rowFor(model, 'Group')!);
+      model.toggle(rowFor(model, 'A')!);
+      model.noteCreatedFolder('/root/A/Models');
+      model.noteCreatedFolder('/root/A/Models/Dto');
+
+      model.renameCreatedFolder('/root/A/Models', '/root/A/Entities');
+      // A folder the project lists itself, holding nothing created, adds nothing.
+      model.renameCreatedFolder('/root/A/Sub', '/root/A/Other');
+      model.toggle(rowFor(model, 'Entities')!);
+
+      expect(rowFor(model, 'Models')).toBeUndefined();
+      expect(rowFor(model, 'Entities')?.path).toBe('/root/A/Entities');
+      expect(rowFor(model, 'Dto')?.path).toBe('/root/A/Entities/Dto');
+      expect(rowFor(model, 'Other')).toBeUndefined();
+    });
+
+    it('aCreatedFolder_showsInASearchThatMatchesItsName', async () => {
+      project.model = sampleModel();
+      project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+      const model: SolutionModel = build();
+      await open(model);
+      model.noteCreatedFolder('/root/A/Models');
+
+      model.setQuery('model');
+      await new Promise<void>((resolve: () => void): void => {
+        setTimeout(resolve, 200);
+      });
+      await settle();
+
+      expect(rowFor(model, 'Models')?.path).toBe('/root/A/Models');
+    });
+
+    it('aCreatedFolder_goneFromDisk_stopsShowing_whenItsDirectoryChanges', async () => {
+      project.model = sampleModel();
+      project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+      const model: SolutionModel = build();
+      await open(model);
+      model.toggle(rowFor(model, 'Group')!);
+      model.toggle(rowFor(model, 'A')!);
+      model.noteCreatedFolder('/root/A/Models');
+      model.noteCreatedFolder('/root/A/Kept');
+      missing.add('/root/A/Models');
+
+      treeChanged?.({ root: '/root', directories: ['/root/A'], overflow: false });
+      await waitForReloadDebounce();
+      await settle();
+
+      expect(rowFor(model, 'Models')).toBeUndefined();
+      expect(rowFor(model, 'Kept')).toBeDefined();
+    });
+
+    it('expand_opensARow_andLeavesAnOpenOneOpen', async () => {
+      project.model = sampleModel();
+      const model: SolutionModel = build();
+      await open(model);
+
+      model.expand(rowFor(model, 'Group')!);
+      model.expand(rowFor(model, 'Group')!);
+
+      expect(rowFor(model, 'Group')?.expanded).toBe(true);
+    });
   });
 
   it('search_aMatchingFolderInsideAProject_keepsItsDirectory', async () => {
