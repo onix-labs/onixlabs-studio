@@ -86,6 +86,9 @@ test.describe('an agent conversation on a live harness', () => {
       [
         '> A quoted line the user wrote.',
         '',
+        '> [!NOTE]',
+        '> An alert the user wrote.',
+        '',
         '| Column | Another column |',
         '| --- | --- |',
         '| one | two |',
@@ -107,7 +110,9 @@ test.describe('an agent conversation on a live harness', () => {
       bodyRight: number;
       codeScrolls: boolean;
       quoteContrast: number;
-      codeContrast: number;
+      codeOpaque: boolean;
+      tokenContrast: number;
+      alertContrast: number;
     } = await bubble.evaluate((element: HTMLElement) => {
       // Composites a colour over an opaque one: the computed value of a translucent mix is
       // `color(srgb r g b / a)` or `rgba(...)`, in 0–1 or 0–255 channels.
@@ -150,6 +155,17 @@ test.describe('an agent conversation on a live harness', () => {
         bubbleBackground,
       );
       const pre: HTMLElement = element.querySelector('.code-block__pre')!;
+      const preBackground: number[] = parse(getComputedStyle(pre).backgroundColor);
+      const codeBackground: number[] = over(preBackground, bubbleBackground);
+      // The colours the editor theme gives each token, which are what were unreadable on the accent.
+      const tokens: readonly HTMLElement[] = Array.from(
+        pre.querySelectorAll<HTMLElement>('span[class*="mtk"]'),
+      ).filter((span: HTMLElement): boolean => span.textContent.trim() !== '');
+      const alert: HTMLElement = element.querySelector('.github-alert')!;
+      const alertBackground: number[] = over(
+        parse(getComputedStyle(alert).backgroundColor),
+        bubbleBackground,
+      );
       const body: DOMRect = element.closest('.agent__message-body')!.getBoundingClientRect();
       const box: DOMRect = element.getBoundingClientRect();
       return {
@@ -159,10 +175,13 @@ test.describe('an agent conversation on a live harness', () => {
         bodyRight: body.right,
         codeScrolls: pre.scrollWidth > pre.clientWidth,
         quoteContrast: contrast(parse(getComputedStyle(quote).color), quoteBackground),
-        codeContrast: contrast(
-          parse(getComputedStyle(pre).color),
-          parse(getComputedStyle(pre).backgroundColor),
+        codeOpaque: preBackground[3] === 1,
+        tokenContrast: Math.min(
+          ...tokens.map((span: HTMLElement): number =>
+            contrast(parse(getComputedStyle(span).color), codeBackground),
+          ),
         ),
+        alertContrast: contrast(parse(getComputedStyle(alert).color), alertBackground),
       };
     });
 
@@ -170,9 +189,12 @@ test.describe('an agent conversation on a live harness', () => {
     expect(layout.bubbleLeft).toBeGreaterThanOrEqual(layout.bodyLeft - 1);
     expect(layout.bubbleRight).toBeLessThanOrEqual(layout.bodyRight + 1);
     expect(layout.codeScrolls).toBe(true);
-    // A quote and a code block read clearly against what they sit on.
+    // A quote, an alert and every token of code read clearly against what they sit on. Code sits on
+    // the editor's own opaque panel, so its tokens keep the colours the editor theme chose for it.
     expect(layout.quoteContrast).toBeGreaterThanOrEqual(4.5);
-    expect(layout.codeContrast).toBeGreaterThanOrEqual(4.5);
+    expect(layout.alertContrast).toBeGreaterThanOrEqual(4.5);
+    expect(layout.codeOpaque).toBe(true);
+    expect(layout.tokenContrast).toBeGreaterThanOrEqual(4.5);
   });
 
   test('output_appearsWhileTheTurnIsStillRunning', async ({ app, page }) => {

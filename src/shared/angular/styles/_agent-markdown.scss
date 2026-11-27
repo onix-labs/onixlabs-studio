@@ -451,7 +451,7 @@ app-agent-chat .agent__message--user .agent__markdown {
 }
 
 // In the light theme the editor is light, and so is its code panel.
-:root[data-theme-mode='light'] app-agent-chat .agent__message--user .agent__markdown {
+[data-theme-mode='light'] app-agent-chat .agent__message--user .agent__markdown {
   .code-block__pre,
   pre:not(.code-block__pre) {
     color: var(--gray-900);
@@ -489,4 +489,14 @@ app-agent-chat .agent__message--user .agent__markdown {
     background: rgba(239, 68, 68, 0.15);
     border-color: rgba(239, 68, 68, 0.5);
   }
+}
+
+// An alert in the user's own message keeps its icon and title but takes the bubble's text colour on a
+// darkened surface: its own blue, green or purple text on a tint of itself is unreadable on an accent
+// that is often the same hue. Last in the file, after the dark theme's alert colours, which match this
+// selector's weight.
+app-agent-chat .agent__message--user .agent__markdown [class*='github-alert-'] {
+  color: inherit;
+  background: var(--agent-markdown-surface-color);
+  border-color: var(--agent-markdown-outline-color);
 }
