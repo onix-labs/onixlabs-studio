@@ -154,6 +154,23 @@ describe('TitleStripTabList', () => {
       expect(tabs.tabs().map((tab: Tab): string => tab.id)).toEqual([terminal.id]);
     });
 
+    it('aRightClick_leavesTheShowingTabShowing', () => {
+      const code: Tab = tabs.open('code');
+      const terminal: Tab = tabs.open('terminal');
+      tabs.activate(terminal.id);
+      fixture.detectChanges();
+      const tab: HTMLElement | undefined = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+          'app-title-strip-tab > [role="tab"]',
+        ),
+      )[0];
+
+      tab?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 2 }));
+      openMenu(code);
+
+      expect(tabs.activeTabId()).toBe(terminal.id);
+    });
+
     it('closeTab_namesTheCloseChord_onlyOnTheActiveTab_whichItCloses', () => {
       TestBed.inject(Keybindings).contribute(APPLICATION_KEYBINDINGS);
       const code: Tab = tabs.open('code');

@@ -153,8 +153,15 @@ export class TitleStripTab {
    * (which nudges it onto the rail) is applied before the CDK captures the drag's starting geometry.
    * Without the synchronous flush, dragging straight from the press would pin the chip a pixel high
    * and leave the rail showing beneath it.
+   *
+   * Only the primary button selects: a right-click opens the tab's menu over whatever tab is showing,
+   * and switching to the tab first would flash its content for a command that may be to close it.
+   * @param event The press.
    */
-  protected onPress(): void {
+  protected onPress(event: MouseEvent): void {
+    if (event.button !== 0) {
+      return;
+    }
     this.selectTab.emit();
     this.applicationRef.tick();
   }

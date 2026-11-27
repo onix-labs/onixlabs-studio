@@ -161,10 +161,9 @@ export class TitleStripTabList {
       id: CLOSE,
       label: 'Close Tab',
       icon: Icon.CLOSE,
-      ...(closeChord === null || closeChord === ''
-        ? {}
-        : { shortcut: this.keybindings.formatChord(closeChord) }),
+      ...(closeChord === null || closeChord === '' ? {} : { chord: closeChord }),
     };
+    this.menuTabId = tabs[index].id;
     if (isPinnedTabType(tabs[index].type)) {
       return [close];
     }
@@ -186,6 +185,29 @@ export class TitleStripTabList {
       close,
     ];
   };
+
+  /**
+   * Holds the id of the tab whose menu was last opened, so the keyboard can return to it.
+   */
+  private menuTabId: string | null = null;
+
+  /**
+   * Returns the keyboard to the tab whose menu just closed: the menu is opened on the tab's host,
+   * which cannot take focus, so nothing else would, and it would fall to the page.
+   */
+  protected onTabMenuClosed(): void {
+    const id: string | null = this.menuTabId;
+    this.menuTabId = null;
+    const index: number = this.tabs().findIndex((tab: Tab): boolean => tab.id === id);
+    if (index < 0) {
+      return;
+    }
+    const tabElements: NodeListOf<HTMLElement> =
+      this.hostElement.nativeElement.querySelectorAll<HTMLElement>(
+        'app-title-strip-tab > [role="tab"]',
+      );
+    tabElements.item(index)?.focus();
+  }
 
   /**
    * Runs a command chosen from a tab's context menu.

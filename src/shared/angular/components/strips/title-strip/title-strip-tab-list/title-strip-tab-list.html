@@ -15,6 +15,7 @@
       [isActive]="tab.id === activeTabId()"
       [cdkContextMenuTriggerFor]="tabMenu.panel() ?? null"
       [appMenuSubject]="tab.id"
+      (cdkContextMenuClosed)="onTabMenuClosed()"
       (selectTab)="onSelect(tab)"
       (closeTab)="onClose(tab)"
     />

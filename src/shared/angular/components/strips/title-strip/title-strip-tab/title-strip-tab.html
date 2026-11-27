@@ -6,7 +6,7 @@
   [cdkDragConstrainPosition]="anchorDragToRail"
   [attr.tabindex]="isActive() ? 0 : -1"
   [attr.aria-selected]="isActive()"
-  (mousedown)="onPress()"
+  (mousedown)="onPress($event)"
   (keydown.enter)="selectTab.emit()"
   (cdkDragStarted)="onDragStarted($event)"
 >

@@ -1,6 +1,6 @@
 import { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
-import { modalWindow } from './helpers';
+import { answerMessageBoxWith, editorLines, messageBoxesAsked, MOD, modalWindow } from './helpers';
 
 /**
  * Opens a tab from the welcome screen, reopening the welcome screen first when a tab is already open.
@@ -73,5 +73,36 @@ test.describe('title-strip tabs', () => {
 
     await fromMenu(page, tabOfType(page, 'markdown'), 'Close Tab');
     await expect.poll((): Promise<string[]> => types(page)).toEqual(['terminal', 'code']);
+  });
+
+  test('aRightClick_opensTheMenu_withoutSwitchingToTheTab', async ({ app, page }) => {
+    await openTab(app, page, 'New Code File');
+    await openTab(app, page, 'New Terminal');
+    const showing: Locator = page.locator('app-title-strip-tab [role="tab"][aria-selected="true"]');
+    await expect(showing).toHaveAttribute('data-tab-type', 'terminal');
+
+    await tabOfType(page, 'code').click({ button: 'right' });
+
+    await expect(page.getByRole('menuitem', { name: 'Close Tab' })).toBeVisible();
+    await expect(showing).toHaveAttribute('data-tab-type', 'terminal');
+    await page.keyboard.press('Escape');
+  });
+
+  test('theCloseChord_onAnEditedTab_asksBeforeClosingIt', async ({ app, page }) => {
+    await openTab(app, page, 'New Code File');
+    await editorLines(page).click();
+    await page.keyboard.type('unsaved work');
+    await answerMessageBoxWith(app, 'Cancel');
+
+    await page.keyboard.press(`${MOD}+w`);
+
+    await expect.poll((): Promise<readonly string[]> => messageBoxesAsked(app)).toHaveLength(1);
+    await expect(tabOfType(page, 'code')).toBeVisible();
+    await expect(editorLines(page)).toContainText('unsaved work');
+
+    // Discarded only so the application can close without a prompt of its own.
+    await answerMessageBoxWith(app, "Don't Save");
+    await page.keyboard.press(`${MOD}+w`);
+    await expect(tabOfType(page, 'code')).toHaveCount(0);
   });
 });
