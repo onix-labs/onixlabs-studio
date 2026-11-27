@@ -2135,7 +2135,9 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
             { value: 'ignore', label: 'Ignore' },
           ],
         },
-        default: 'ask',
+        // Silent, so a file an agent is changing can be watched as it changes (#1588). Ask was the
+        // default from #1286 until then; a choice made explicitly is kept.
+        default: 'silent',
       },
       {
         key: 'textEditor.largeFileSizeMb',

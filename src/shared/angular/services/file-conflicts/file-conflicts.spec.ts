@@ -29,17 +29,18 @@ describe('FileConflicts', () => {
     let reloads: number = 0;
     const reload: () => void = (): void => void (reloads += 1);
     try {
-      // Ask, by default: a question worded for a document with nothing to lose, reloading on yes.
+      // Silent, by default (#1588): reloaded at once, and nothing is asked.
+      conflicts.changedOnDisk(conflictFor(tab.id), reload);
+      expect(reloads).toBe(1);
+      expect(conflicts.activeConflict()).toBeNull();
+
+      // Ask: a question worded for a document with nothing to lose, reloading on yes.
+      settings.set('textEditor.reloadOnDiskChange', 'ask');
       conflicts.changedOnDisk(conflictFor(tab.id), reload);
       expect(conflicts.activeConflict()).toEqual({ ...conflictFor(tab.id), unedited: true });
-      expect(reloads).toBe(0);
-      conflicts.reload(tab.id);
       expect(reloads).toBe(1);
-
-      settings.set('textEditor.reloadOnDiskChange', 'silent');
-      conflicts.changedOnDisk(conflictFor(tab.id), reload);
+      conflicts.reload(tab.id);
       expect(reloads).toBe(2);
-      expect(conflicts.activeConflict()).toBeNull();
 
       settings.set('textEditor.reloadOnDiskChange', 'ignore');
       conflicts.changedOnDisk(conflictFor(tab.id), reload);

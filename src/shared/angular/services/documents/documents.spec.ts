@@ -653,22 +653,35 @@ describe('Documents, with files on disk (#1236)', () => {
     const change: (content: string) => void = (content: string): void =>
       watchers.get(SAMPLE_FILE.path)?.({ ...SAMPLE_FILE, content });
 
-    // Ask, by default: nothing changes until the user answers.
+    // Silent, by default (#1588): the open copy simply follows the file.
+    change('silent');
+    expect(documents.get(tab.id)?.content()).toBe('silent');
+    expect(documents.get(tab.id)?.dirty()).toBe(false);
+    expect(conflicts.activeConflict()).toBeNull();
+
+    // Ask: nothing changes until the user answers.
+    settings.set('textEditor.reloadOnDiskChange', 'ask');
     change('asked');
-    expect(documents.get(tab.id)?.content()).toBe(SAMPLE_FILE.content);
+    expect(documents.get(tab.id)?.content()).toBe('silent');
     expect(conflicts.activeConflict()).toMatchObject({ documentId: tab.id, unedited: true });
     conflicts.reload(tab.id);
     expect(documents.get(tab.id)?.content()).toBe('asked');
 
-    settings.set('textEditor.reloadOnDiskChange', 'silent');
-    change('silent');
-    expect(documents.get(tab.id)?.content()).toBe('silent');
-    expect(conflicts.activeConflict()).toBeNull();
-
     settings.set('textEditor.reloadOnDiskChange', 'ignore');
     change('ignored');
-    expect(documents.get(tab.id)?.content()).toBe('silent');
+    expect(documents.get(tab.id)?.content()).toBe('asked');
     expect(conflicts.activeConflict()).toBeNull();
+  });
+
+  it('anEditedDocument_asks_underTheDefault', () => {
+    const tab: Tab = documents.openFileInfo(SAMPLE_FILE, 'code');
+    documents.setContent(tab.id, 'mine');
+
+    watchers.get(SAMPLE_FILE.path)?.({ ...SAMPLE_FILE, content: 'theirs' });
+
+    expect(documents.get(tab.id)?.content()).toBe('mine');
+    expect(TestBed.inject(FileConflicts).activeConflict()).toMatchObject({ documentId: tab.id });
+    expect(TestBed.inject(FileConflicts).activeConflict()?.unedited).toBeUndefined();
   });
 
   it('anEditedDocument_alwaysAsks_whateverTheSetting', () => {

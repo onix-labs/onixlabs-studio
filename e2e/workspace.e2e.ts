@@ -87,12 +87,40 @@ test.describe('a folder as a workspace', () => {
     expect(fs.readFileSync(alpha, 'utf8')).toContain('edited');
   });
 
-  test('externalChange_toACleanDocument_asksByDefault_andReloadTakesTheDiskVersion', async ({
+  test('externalChange_toACleanDocument_followsTheFile_withoutAsking (#1588)', async ({
     app,
     page,
     scratch,
   }) => {
     const alpha: string = writeProject(scratch);
+    await openFolderFromWelcome(app, page, scratch);
+    await openAlpha(page, alpha);
+
+    // As an agent does: one change after another, each simply appearing.
+    fs.writeFileSync(alpha, 'export const changedOutside = 2;\n');
+    await expect(editorLines(page)).toContainText('changedOutside');
+    fs.writeFileSync(alpha, 'export const changedAgain = 3;\n');
+    await expect(editorLines(page)).toContainText('changedAgain');
+
+    expect(app.windows().filter(isModalWindow)).toEqual([]);
+    await expect(documentTab(page, 'alpha.ts').locator('.dock-tab__dirty')).toBeHidden();
+  });
+
+  test('externalChange_toACleanDocument_asks_whenTheSettingSaysAsk', async ({
+    app,
+    page,
+    scratch,
+  }) => {
+    const alpha: string = writeProject(scratch);
+    // Written from the welcome window: the main window follows a change another window makes.
+    const welcome: Page = await modalWindow(app);
+    await welcome.evaluate((): void => {
+      const raw: string = localStorage.getItem('settings') ?? '{}';
+      localStorage.setItem(
+        'settings',
+        `${raw.replace(/}\s*$/, raw.trim() === '{}' ? '' : ',')}"textEditor.reloadOnDiskChange":"ask"}`,
+      );
+    });
     await openFolderFromWelcome(app, page, scratch);
     await openAlpha(page, alpha);
 
