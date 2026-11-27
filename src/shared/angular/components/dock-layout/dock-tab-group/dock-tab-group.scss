@@ -273,6 +273,12 @@
     min-inline-size: 0;
   }
 
+  // A previewed document's name is in italics until the document is kept: the tab is on loan, and
+  // the next file previewed takes it.
+  .dock-tab--preview .dock-tab__label {
+    font-style: italic;
+  }
+
   .dock-tab__icon,
   .dock-tab__close {
     flex: none;

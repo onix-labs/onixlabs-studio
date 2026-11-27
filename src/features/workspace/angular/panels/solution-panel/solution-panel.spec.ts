@@ -32,6 +32,7 @@ import { ExplorerVcsMenu } from '@features/workspace/angular/workspace-git/explo
 import { SolutionPanel } from './solution-panel';
 
 import { LiveServerSession } from '@features/workspace/angular/live-server/live-server-session';
+import { OpenOptions } from '@shared/angular/services/tabs/tab';
 
 /**
  * Stands in for this tab's live server: offered on HTML pages, recording what it was asked to open.
@@ -230,9 +231,10 @@ class FakeBuildRunner {
  */
 class FakeOpener {
   public readonly opened: string[] = [];
+  public readonly previewed: string[] = [];
 
-  public openPath(path: string): Promise<void> {
-    this.opened.push(path);
+  public openPath(path: string, options?: OpenOptions): Promise<void> {
+    (options?.preview === true ? this.previewed : this.opened).push(path);
     return Promise.resolve();
   }
 }
@@ -345,6 +347,8 @@ describe('SolutionPanel', () => {
         rootListing: WritableSignal<{ path: string; name: string; entries: [] } | null>;
       }
     ).rootListing.set({ path: '/root', name: 'root', entries: [] });
+    // Off, so a click's own behaviour is what these cases see; the preview has cases of its own.
+    TestBed.inject(Settings).set('workspaces.showFilePreview', false);
     fixture = TestBed.createComponent(SolutionPanel);
     component = fixture.componentInstance;
     fixture.componentRef.setInput('panel', panel);
@@ -397,6 +401,53 @@ describe('SolutionPanel', () => {
 
     expect(solution.toggled).toEqual([folder]);
     expect(opener.opened).toEqual([]);
+  });
+
+  it('showFilePreview_previewsAFileOnItsClick_andADoubleClickOpensIt', () => {
+    TestBed.inject(Settings).set('workspaces.showFilePreview', true);
+    const file: SolutionRow = makeRow({ key: 'g', kind: 'file', path: '/root/A/g.cs' });
+    const row: TreeRow = { id: 'g', depth: 0, expandable: false, expanded: false, data: file };
+
+    component.onRowClick(row);
+    expect(opener.previewed).toEqual(['/root/A/g.cs']);
+    expect(opener.opened).toEqual([]);
+
+    component.onRowOpen(row);
+    expect(opener.opened).toEqual(['/root/A/g.cs']);
+  });
+
+  it('showFilePreview_aFileWithOthersNestedBeneathIt_previewsOnItsClick_andItsChevronTogglesIt', () => {
+    TestBed.inject(Settings).set('workspaces.showFilePreview', true);
+    const parent: SolutionRow = makeRow({
+      key: 'e',
+      kind: 'file',
+      expandable: true,
+      path: '/root/Enumeration.cs',
+      nestedPaths: ['/root/Enumeration.Comparable.cs'],
+    });
+    const row: TreeRow = { id: 'e', depth: 0, expandable: true, expanded: false, data: parent };
+
+    component.onRowClick(row);
+    expect(opener.previewed).toEqual(['/root/Enumeration.cs']);
+    expect(solution.toggled).toEqual([]);
+
+    component.onRowToggle(row);
+    expect(solution.toggled).toEqual([parent]);
+  });
+
+  it('showFilePreview_leavesAProjectToggling', () => {
+    TestBed.inject(Settings).set('workspaces.showFilePreview', true);
+    const project: SolutionRow = makeRow({
+      key: 'a',
+      kind: 'project',
+      expandable: true,
+      path: '/root/A/A.csproj',
+    });
+
+    component.onRowClick({ id: 'a', depth: 0, expandable: true, expanded: false, data: project });
+
+    expect(solution.toggled).toEqual([project]);
+    expect(opener.previewed).toEqual([]);
   });
 
   it('onRowClick_aFileRow_selectsItWithoutOpeningIt_andDoubleClickOpensIt', () => {

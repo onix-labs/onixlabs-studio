@@ -58,6 +58,7 @@ import {
 import type { MarkdownPastedImageStorage } from '@shared/angular/services/settings/settings-registry';
 import type { FileWriteResult } from '@shared/api/file-channels';
 import { selectAllTargetsDocument } from './select-all-scope';
+import { ActivationFocus } from '@shared/angular/services/activation-focus/activation-focus';
 
 /**
  * Minimum number of rows for the HTML image editor textarea.
@@ -193,6 +194,11 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
    * Gets a value indicating whether the pane belongs to the active tab. The active pane is focused.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Holds whether the pane takes the keyboard as it becomes active.
+   */
+  private readonly activationFocus: ActivationFocus = inject(ActivationFocus);
 
   /**
    * Gets the absolute directory a relative image source resolves against (the backing document's
@@ -387,7 +393,9 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
 
     effect((): void => {
       const active: boolean = this.isActive();
-      if (this.isEditorReady() && this.crepe !== null && active) {
+      // A document only being looked at leaves the keyboard where the user is working.
+      const mayFocus: boolean = this.activationFocus.allowed();
+      if (this.isEditorReady() && this.crepe !== null && active && mayFocus) {
         this.focusEditor();
       }
     });

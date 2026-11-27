@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { signal, WritableSignal } from '@angular/core';
 import { MockInstance, vi } from 'vitest';
 import { DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-blueprint';
 import { TEST_DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-test-blueprint';
@@ -477,6 +478,42 @@ describe('DockTabGroup', () => {
     document.querySelector<HTMLButtonElement>('button[aria-label="Close doc-b"]')?.click();
 
     expect(close).toHaveBeenCalledWith('doc-b');
+  });
+
+  it('aPreviewedDocumentsTab_isMarked_untilItIsKept_andADoubleClickKeepsIt', () => {
+    const previewed: WritableSignal<boolean> = signal<boolean>(true);
+    const registry: DockPanelRegistry = TestBed.inject(DockPanelRegistry);
+    registry.register({
+      id: 'doc-preview',
+      title: 'preview.ts',
+      icon: Icon.CODE,
+      role: 'document',
+      component: DockPanelPlaceholder,
+      preview: previewed,
+      keep: (): void => previewed.set(false),
+    });
+    registry.register({
+      id: 'doc-kept',
+      title: 'kept.ts',
+      icon: Icon.CODE,
+      role: 'document',
+      component: DockPanelPlaceholder,
+    });
+    render(mkStack('document', ['doc-preview', 'doc-kept']));
+    const tabs: HTMLElement[] = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.dock-tab'),
+    );
+    expect(
+      tabs.map((tab: HTMLElement): boolean => tab.classList.contains('dock-tab--preview')),
+    ).toEqual([true, false]);
+
+    // A document that is never a preview takes a double click as nothing at all.
+    tabs[1].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    tabs[0].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    fixture.detectChanges();
+
+    expect(previewed()).toBe(false);
+    expect(tabs[0].classList.contains('dock-tab--preview')).toBe(false);
   });
 
   describe('a document tab’s context menu', () => {

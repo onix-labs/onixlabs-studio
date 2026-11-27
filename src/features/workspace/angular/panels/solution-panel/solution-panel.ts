@@ -1724,12 +1724,17 @@ export class SolutionPanel {
     if (row.loading) {
       return;
     }
-    const opensOnClick: boolean = this.settings.get('workspaces.openFilesWith') === 'single';
-    // A file with others nested beneath it toggles as a folder does — unless a click opens files,
-    // when it opens, and its chevron is what toggles it (see onRowToggle).
-    if (row.expandable && !(row.kind === 'file' && opensOnClick)) {
+    const previews: boolean = this.settings.get('workspaces.showFilePreview');
+    const opensOnClick: boolean =
+      !previews && this.settings.get('workspaces.openFilesWith') === 'single';
+    // A file with others nested beneath it toggles as a folder does — unless a click previews or
+    // opens files, when it does that, and its chevron is what toggles it (see onRowToggle).
+    if (row.expandable && !(row.kind === 'file' && (previews || opensOnClick))) {
       this.log.debug('workspace.solution', `Toggle ${row.kind} row`, row.key);
       this.solution.toggle(row);
+    } else if (previews && row.kind === 'file' && row.path !== null) {
+      this.log.debug('workspace.solution', 'Preview file', row.path);
+      void this.fileOpener.openPath(row.path, { preview: true });
     } else if (opensOnClick) {
       this.onRowOpen(treeRow);
     }

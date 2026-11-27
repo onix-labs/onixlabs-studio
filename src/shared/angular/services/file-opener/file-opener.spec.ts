@@ -6,6 +6,8 @@ import { FileChannel, FileInfo } from '@shared/api/file-channels';
 import { DirectoryListing, OpenSelection, WorkspaceChannel } from '@shared/api/workspace-channels';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { Documents } from '@shared/angular/services/documents/documents';
+import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
@@ -432,6 +434,193 @@ describe('FileOpener', () => {
     await opener.openPath('/ws/main.ts');
     await opener.openPath('/ws/main.ts');
     expect(wellPanels()).toHaveLength(1);
+  });
+
+  describe('previewing a file', () => {
+    /**
+     * Makes the next file read the given one.
+     * @param name The file's name.
+     */
+    function nextFile(name: string): void {
+      nextSelection = {
+        kind: 'file',
+        file: { path: `/ws/${name}`, name, extension: '.ts', content: 'export {};' },
+      };
+    }
+
+    /**
+     * Opens a file as a preview.
+     * @param name The file's name.
+     * @returns Returns a promise resolving to whether it opened.
+     */
+    function preview(name: string): Promise<boolean> {
+      nextFile(name);
+      return opener.openPath(`/ws/${name}`, { preview: true });
+    }
+
+    /**
+     * Opens a file properly.
+     * @param name The file's name.
+     * @returns Returns a promise resolving to whether it opened.
+     */
+    function open(name: string): Promise<boolean> {
+      nextFile(name);
+      return opener.openPath(`/ws/${name}`);
+    }
+
+    /**
+     * Lists the names of the documents in the well, in tab order, a previewed one in brackets.
+     * @returns Returns the names.
+     */
+    function wellTabs(): readonly string[] {
+      const registry: DockPanelRegistry = TestBed.inject(DockPanelRegistry);
+      return wellPanels().map((id: string): string => {
+        const panel: DockPanel | undefined = registry.get(id);
+        return panel?.preview?.() === true ? `(${panel.title})` : (panel?.title ?? id);
+      });
+    }
+
+    it('opensInAPreviewTab_whichTheNextPreviewTakesOver', async () => {
+      expect(await preview('a.ts')).toBe(true);
+      expect(wellTabs()).toEqual(['(a.ts)']);
+
+      await preview('b.ts');
+
+      expect(wellTabs()).toEqual(['(b.ts)']);
+      expect(firstStackOfRole(dockState.layout(), 'document')?.active).toBe(wellPanels()[0]);
+    });
+
+    it('takesThePreviewsPlaceAmongTheTabs', async () => {
+      await open('first.ts');
+      await preview('a.ts');
+      await open('last.ts');
+
+      await preview('b.ts');
+
+      expect(wellTabs()).toEqual(['first.ts', '(b.ts)', 'last.ts']);
+    });
+
+    it('openedProperly_thePreviewedFileIsKept_andTheNextPreviewGetsATabOfItsOwn', async () => {
+      await preview('a.ts');
+
+      await open('a.ts');
+      expect(wellTabs()).toEqual(['a.ts']);
+
+      await preview('b.ts');
+      expect(wellTabs()).toEqual(['a.ts', '(b.ts)']);
+    });
+
+    it('previewedAgain_thePreviewedFileStaysThePreview', async () => {
+      await preview('a.ts');
+
+      await preview('a.ts');
+
+      expect(wellTabs()).toEqual(['(a.ts)']);
+    });
+
+    it('aFileAlreadyOpen_isBroughtForward_andStaysOpen', async () => {
+      await open('a.ts');
+      await preview('b.ts');
+
+      await preview('a.ts');
+
+      expect(wellTabs()).toEqual(['a.ts', '(b.ts)']);
+      expect(firstStackOfRole(dockState.layout(), 'document')?.active).toBe(wellPanels()[0]);
+    });
+
+    it('keptFromItsTab_thePreviewIsAnOrdinaryTab', async () => {
+      await preview('a.ts');
+
+      TestBed.inject(DockPanelRegistry).get(wellPanels()[0])?.keep?.();
+      await preview('b.ts');
+
+      expect(wellTabs()).toEqual(['a.ts', '(b.ts)']);
+    });
+
+    it('edited_thePreviewIsKept_soTheNextPreviewCannotTakeUnsavedWork', async () => {
+      await preview('a.ts');
+
+      TestBed.inject(Documents).setContent(wellPanels()[0], 'export const edited = 1;');
+      TestBed.tick();
+      await preview('b.ts');
+
+      expect(wellTabs()).toEqual(['a.ts', '(b.ts)']);
+    });
+
+    it('leavesTheKeyboardWhereItIs_untilTheFileIsOpenedProperly', async () => {
+      const takesFocus: () => boolean | undefined = (): boolean | undefined =>
+        TestBed.inject(DockPanelRegistry).get(wellPanels()[0])?.focusOnActivate?.();
+
+      await preview('a.ts');
+      expect(takesFocus()).toBe(false);
+
+      await open('a.ts');
+      expect(takesFocus()).toBe(true);
+    });
+
+    it('comeBackToLater_aPreviewedFileTakesTheKeyboard_asAnyDocumentDoes', async () => {
+      await open('first.ts');
+      await preview('a.ts');
+      const previewed: string = wellPanels()[1];
+      const stack: string = firstStackOfRole(dockState.layout(), 'document')!.id;
+
+      dockState.setActive(stack, wellPanels()[0]);
+      TestBed.tick();
+      dockState.setActive(stack, previewed);
+
+      expect(TestBed.inject(DockPanelRegistry).get(previewed)?.focusOnActivate?.()).toBe(true);
+      // Still the preview: only the keyboard's place was at stake.
+      expect(wellTabs()).toEqual(['first.ts', '(a.ts)']);
+    });
+
+    it('closed_thePreviewLeavesNothingForTheNextToTakeOver', async () => {
+      await preview('a.ts');
+      await dockState.requestClose(wellPanels()[0]);
+
+      await preview('b.ts');
+
+      expect(wellTabs()).toEqual(['(b.ts)']);
+    });
+
+    it.each([
+      ['a binary', { kind: 'binary', path: '/ws/data.bin' }],
+      ['an image shown in a tab of its own', { kind: 'image', path: '/ws/logo.png' }],
+      [
+        'an API document',
+        {
+          kind: 'file',
+          file: {
+            path: '/ws/orders.api.json',
+            name: 'orders.api.json',
+            extension: '.json',
+            content: API_DOCUMENT_TEXT,
+          },
+        },
+      ],
+    ] as const)(
+      'opensNothingFor %s_whichNeedsATabOfItsOwn',
+      async (_label: string, selection: OpenSelection) => {
+        nextSelection = selection;
+
+        expect(await opener.openPath('/ws/file', { preview: true })).toBe(false);
+
+        expect(wellPanels()).toHaveLength(0);
+        expect(tabs.tabs()).toHaveLength(0);
+      },
+    );
+
+    it('anImageShownInTheWell_isPreviewedThere', async () => {
+      TestBed.inject(DockTabContext).setTabId('ws-tab');
+      await preview('a.ts');
+      nextSelection = { kind: 'image', path: '/ws/logo.svg' };
+
+      expect(await opener.openPath('/ws/logo.svg', { preview: true })).toBe(true);
+
+      expect(wellPanels()).toEqual(['image-well:ws-tab:/ws/logo.svg']);
+      expect(
+        TestBed.inject(DockPanelRegistry).get('image-well:ws-tab:/ws/logo.svg')?.preview?.(),
+      ).toBe(true);
+    });
   });
 
   it('reopenFile_whenTrustedFile_opensATopLevelTabNotAWellDocument', async () => {

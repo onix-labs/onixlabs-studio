@@ -49,6 +49,25 @@ export interface DockPanel {
   readonly dirty?: Signal<boolean>;
 
   /**
+   * Gets whether the panel is a preview: a document shown for a look, which gives up its tab to the
+   * next one previewed. Its tab reads in italics until it is kept. Absent for a panel that is never
+   * one.
+   */
+  readonly preview?: Signal<boolean>;
+
+  /**
+   * Gets whether the panel's editor takes the keyboard as the panel becomes the active one. False for
+   * a document just shown as a preview, whose opener still has the keyboard; absent means it does.
+   */
+  readonly focusOnActivate?: Signal<boolean>;
+
+  /**
+   * Keeps a previewed document open as an ordinary tab, as a double click on its tab does. Absent for
+   * a panel that is never a preview.
+   */
+  keep?(): void;
+
+  /**
    * Resolves unsaved changes before the panel closes: prompts to save / discard / cancel and returns
    * whether the close may proceed. Present only for panels that can hold unsaved work; a panel without
    * it closes unconditionally. A returned `false` keeps the panel open (the user cancelled).

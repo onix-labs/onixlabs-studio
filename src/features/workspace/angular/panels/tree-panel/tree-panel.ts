@@ -671,16 +671,23 @@ export class TreePanel {
   }
 
   /**
-   * Handles a plain click on a tree row: toggles a directory. Selecting is {@link onRowSelect}'s, and a
-   * file is only selected — clicking around the tree to look opens nothing (#1047).
+   * Handles a plain click on a tree row: toggles a directory, and shows a file in the preview tab
+   * while Show File Preview is on. With it off, a click opens a file only when Open Files With says
+   * so; otherwise the file is only selected (#1047). Selecting is {@link onRowSelect}'s.
    * @param row The tree row that was clicked.
    */
   public onRowClick(row: TreeRow): void {
     const node: WorkspaceTreeNode = this.nodeOf(row);
-    const opensOnClick: boolean = this.settings.get('workspaces.openFilesWith') === 'single';
+    const previews: boolean = this.settings.get('workspaces.showFilePreview');
+    const opensOnClick: boolean =
+      !previews && this.settings.get('workspaces.openFilesWith') === 'single';
     if (node.type === 'directory') {
       this.log.debug('workspace.tree', 'Toggle directory', node.path);
       void this.workspace.toggleDirectory(node.path);
+    } else if (previews) {
+      // Its chevron is what toggles a file with others nested beneath it (see onRowToggle).
+      this.log.debug('workspace.tree', 'Preview file from tree', node.path);
+      void this.fileOpener.openPath(node.path, { preview: true });
     } else if (opensOnClick) {
       this.onRowOpen(row);
     } else if (row.expandable) {
