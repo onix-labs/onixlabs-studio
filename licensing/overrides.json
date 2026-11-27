@@ -1,0 +1,87 @@
+{
+  "$comment": "What npm metadata cannot say about what Studio ships (#1612). Read by scripts/generate-licences.mjs; every entry says why it is here.",
+  "allowed": [
+    "MIT",
+    "ISC",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Apache-2.0",
+    "0BSD",
+    "Unlicense",
+    "CC0-1.0",
+    "BlueOak-1.0.0"
+  ],
+  "elections": {
+    "dompurify": {
+      "licence": "Apache-2.0",
+      "offered": "(MPL-2.0 OR Apache-2.0)",
+      "reason": "Dual-licensed; Studio takes it under Apache-2.0."
+    },
+    "json-schema": {
+      "licence": "BSD-3-Clause",
+      "offered": "(AFL-2.1 OR BSD-3-Clause)",
+      "reason": "Dual-licensed; Studio takes it under BSD-3-Clause."
+    },
+    "elkjs": {
+      "licence": "EPL-2.0",
+      "offered": "EPL-2.0 OR GPL-3.0-or-later",
+      "reason": "Dual-licensed; Studio takes it under EPL-2.0, whose source is at the repository below. Bundled through mermaid for graph layout."
+    }
+  },
+  "packages": {
+    "khroma": {
+      "licence": "MIT",
+      "reason": "Its package.json has no license field; the licence file it ships is MIT."
+    },
+    "remark-math": {
+      "standardText": true,
+      "reason": "Ships no licence file; package.json says MIT."
+    },
+    "@defasm/core": {
+      "standardText": true,
+      "copyright": "Copyright (c) Defectus",
+      "reason": "Ships no licence file; package.json says ISC and names Defectus as its author."
+    },
+    "@ai-sdk/provider-utils": {
+      "standardText": true,
+      "copyright": "Copyright (c) Vercel, Inc.",
+      "reason": "Ships no licence file; package.json says Apache-2.0. Part of the Vercel AI SDK."
+    }
+  },
+  "include": [
+    {
+      "name": "monaco-editor",
+      "scope": "renderer",
+      "reason": "Copied into the app whole as an asset (min/vs), so the bundle does not list it. Its ThirdPartyNotices.txt covers the code it carries from others, the codicon font among them."
+    }
+  ],
+  "components": [
+    {
+      "name": "Electron",
+      "fromPackage": "electron",
+      "licence": "MIT",
+      "repository": "https://github.com/electron/electron",
+      "homepage": "https://www.electronjs.org",
+      "scope": "component",
+      "texts": ["node_modules/electron/LICENSE"]
+    },
+    {
+      "name": "Chromium, Node.js, V8, FFmpeg and their dependencies",
+      "fromPackage": "electron",
+      "licence": "Various",
+      "repository": "https://chromium.googlesource.com/chromium/src",
+      "homepage": "https://www.chromium.org",
+      "scope": "component",
+      "notice": "Electron carries Chromium, Node.js, V8 and FFmpeg. Their licences, and those of everything they include, are in LICENSES.chromium.html, which is installed with the application."
+    },
+    {
+      "name": "Hero Patterns",
+      "licence": "MIT",
+      "unverified": "Credited as MIT in _textures.scss; to be confirmed in #1613.",
+      "homepage": "https://heropatterns.com",
+      "scope": "artwork",
+      "copyright": "Copyright (c) 2016 Alec Lomas",
+      "standardText": true
+    }
+  ]
+}

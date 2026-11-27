@@ -222,6 +222,16 @@ jobs:
           ! test -e "$UNPACKED/@openai" || { echo "the app must not ship the Codex SDK"; exit 1; }
           echo "asar-unpack verified: node-pty (+.node) and rg present; no agent SDKs"
 
+      # The licences must reach the user (#1612): Studio's own, the generated third-party notices, and the
+      # list the About dialog reads. `npm run build` fails before this on a licence outside the allowlist.
+      - name: Verify the licences are packaged
+        run: |
+          RESOURCES="release/linux-unpacked/resources"
+          test -s "$RESOURCES/LICENSE" || { echo "::error::LICENSE is not packaged"; exit 1; }
+          test -s "$RESOURCES/THIRD-PARTY-NOTICES.txt" || { echo "::error::THIRD-PARTY-NOTICES.txt is not packaged"; exit 1; }
+          npx asar list "$RESOURCES/app.asar" | grep -qx '/dist/onixlabs-studio/browser/licences.json' || { echo "::error::licences.json is not in the renderer build"; exit 1; }
+          echo "licences packaged"
+
       # electron-builder copies every package in `dependencies` into the asar whatever `files` says, so
       # a renderer library declared there ships a second, never-loaded copy beside the one Angular
       # bundled — that is how the asar reached 508 MB (#661). Only what the main process loads at runtime
