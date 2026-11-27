@@ -603,6 +603,7 @@ export interface SettingsValues {
   readonly 'workspaces.ignoredFiles': ExplorerIgnoredFiles;
   readonly 'workspaces.sortOrder': ExplorerSortOrder;
   readonly 'workspaces.collapsedFolderSeparator': CollapsedFolderSeparator;
+  readonly 'workspaces.showFilePreview': boolean;
   readonly 'workspaces.openFilesWith': ExplorerOpenFilesWith;
   readonly 'workspaces.fileNesting': readonly FileNestingRule[];
   readonly 'workspaces.confirmBeforeDeleting': boolean;
@@ -1662,9 +1663,20 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: '/',
       },
       {
+        key: 'workspaces.showFilePreview',
+        title: 'Show File Preview',
+        description:
+          'Show a file in a preview tab when it is clicked in an explorer. The next file clicked ' +
+          'takes the same tab. Double-click a file, or edit it, to keep it open.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
         key: 'workspaces.openFilesWith',
         title: 'Open Files With',
         description: 'How a file opens from an explorer.',
+        // With the preview on, a single click previews and a double click opens.
+        visibleWhen: { key: 'workspaces.showFilePreview', equals: [false] },
         control: {
           kind: 'select',
           options: [

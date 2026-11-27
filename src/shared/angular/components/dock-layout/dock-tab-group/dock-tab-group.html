@@ -77,10 +77,12 @@
           cdkDrag
           [cdkDragData]="panel.id"
           [class.dock-tab--active]="panel.id === activePanel()?.id"
+          [class.dock-tab--preview]="panel.preview?.() === true"
           [attr.aria-selected]="panel.id === activePanel()?.id"
           [cdkContextMenuTriggerFor]="isDocuments() ? (tabMenu.panel() ?? null) : null"
           [appMenuSubject]="panel.id"
           (click)="activate(panel.id)"
+          (dblclick)="panel.keep?.()"
           (keydown.enter)="activate(panel.id)"
           (keydown.space)="activate(panel.id)"
         >

@@ -1,5 +1,15 @@
 import { Settings } from '@shared/angular/services/settings/settings';
-import { effect, inject, Injector, Service } from '@angular/core';
+import {
+  computed,
+  effect,
+  inject,
+  Injector,
+  Service,
+  Signal,
+  signal,
+  untracked,
+  WritableSignal,
+} from '@angular/core';
 import { DocumentDiffSwitch } from '@shared/angular/services/diffs/document-diff-switch';
 import {
   BINARY_FILE_OPENER,
@@ -158,10 +168,56 @@ export class FileOpener {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the identifier of the document being previewed in this workspace's well, or null when none
+   * is. There is one at most: the next file previewed takes its tab.
+   */
+  private readonly previewId: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds the identifier of the document last brought forward by a preview, whose editor does not
+   * take the keyboard: the user is still in the explorer they clicked. Null once the document is
+   * opened properly or kept, or another takes the front of its well.
+   */
+  private readonly quietId: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Counts the opens asked for through {@link openPath}, so a preview whose file took longer to read
+   * than a later open can tell it has been overtaken.
+   */
+  private openSequence: number = 0;
+
+  /**
    * Initializes a new instance of the {@link FileOpener} class, wiring the release of each image
-   * panel's document once the panel is closed.
+   * panel's document once the panel is closed, and keeping a previewed document that is edited.
    */
   public constructor() {
+    // Typing in a preview is deciding to work on the file: it becomes an ordinary tab, so the next
+    // preview cannot take unsaved work with it.
+    // Read from the panel, not the text documents: an image in the well is edited too, and is not
+    // one of those.
+    effect((): void => {
+      const id: string | null = this.previewId();
+      if (id !== null && this.registry.get(id)?.dirty?.() === true) {
+        untracked((): void => this.keepPreview(id));
+      }
+    });
+    // A preview that has left the wells — closed, or floated or popped out into a window of its own —
+    // is no longer the preview. Its identifier may come round again (an image's is its path), and the
+    // file opened afresh must not come back as one.
+    effect((): void => {
+      const id: string | null = this.previewId();
+      if (id !== null && findStackOfPanel(this.dockState.layout(), id)?.role !== 'document') {
+        untracked((): void => this.keepPreview(id));
+      }
+    });
+    // The quiet lasts only while the document it was asked for is the one in front. Come back to
+    // later — by its tab, say — it takes the keyboard as any document does.
+    effect((): void => {
+      const id: string | null = this.quietId();
+      if (id !== null && findStackOfPanel(this.dockState.layout(), id)?.active !== id) {
+        untracked((): void => this.quietId.set(null));
+      }
+    });
     effect((): void => {
       const present: ReadonlySet<string> = new Set<string>(
         collectPanelIds(this.dockState.layout()),
@@ -209,27 +265,42 @@ export class FileOpener {
    * @returns Returns true when the file was opened, or false when unreadable or binary.
    */
   public async openPath(path: string, options?: OpenOptions): Promise<boolean> {
+    const sequence: number = ++this.openSequence;
     const selection: OpenSelection | null = await this.workspace.readFile(path);
     if (selection === null || selection.kind === 'directory') {
       return false;
     }
+    // Files are read at their own pace. A preview overtaken by a later open — the next file clicked,
+    // or this one opened properly — is dropped, or it would land last and take the front from what
+    // the user asked for after it.
+    if (options?.preview === true && sequence !== this.openSequence) {
+      this.log.debug('FileOpener', 'Dropped a preview overtaken by a later open', path);
+      return false;
+    }
+    // A preview shows only what the well can hold. A file that needs a tab of its own — a binary, an
+    // image shown in the viewer's tab, a surface's document — would take the user away from the
+    // workspace for a single click, so it waits to be opened properly.
+    const preview: boolean = options?.preview === true;
     if (selection.kind === 'binary') {
-      return this.openBinary(selection.path, options);
+      return !preview && this.openBinary(selection.path, options);
     }
     // An image is document-shaped, unlike a binary: it sits in the well beside the code that
     // references it, falling back to its own tab only when this dock has no document home.
     if (selection.kind === 'image') {
       if (this.opensAsCode(selection.path)) {
-        return this.openAsText(selection.path);
+        return this.openAsText(selection.path, options);
       }
       return (
         (this.settings.get('imageViewer.openIn') === 'workspace' &&
           this.openImageInWell(selection.path, options)) ||
-        this.openImage(selection.path, options)
+        (!preview && this.openImage(selection.path, options))
       );
     }
     // An API document is a whole surface rather than a document in this workspace's well, so it opens
     // as its own tab — as a binary file does — instead of being edited as text beside the code.
+    if (preview && this.isSurfaceDocument(selection.file)) {
+      return false;
+    }
     if (this.openSurfaceDocument(selection.file, options)) {
       return true;
     }
@@ -373,20 +444,83 @@ export class FileOpener {
    * — an SVG, which opens in the image viewer — can have its source edited. Inside a workspace it
    * opens in the well; elsewhere, in its own code tab.
    * @param path The absolute path of the file to open.
+   * @param options How to open it; as a preview, it opens only where there is a well to preview in.
    * @returns Returns true when the file was read and opened; false when it could not be read.
    */
-  public async openAsText(path: string): Promise<boolean> {
+  public async openAsText(path: string, options?: OpenOptions): Promise<boolean> {
     const fileInfo: FileInfo | null = await this.fileSystem.read(path);
     if (fileInfo === null) {
       this.log.warn('FileOpener', 'Could not read file to open as text', path);
       return false;
     }
-    if (this.isWorkspace() && this.openInWell(fileInfo)) {
+    if (this.isWorkspace() && this.openInWell(fileInfo, options)) {
       return true;
+    }
+    if (options?.preview === true) {
+      return false;
     }
     this.documents.openFileInfo(fileInfo, 'code');
     this.recentItems.record(fileInfo.path, fileInfo.name, 'code');
     return true;
+  }
+
+  /**
+   * Determines whether a file claims, by its name, to be a surface's document: an API document or a
+   * database document, which opens in a tab of its own.
+   * @param fileInfo The file.
+   * @returns Returns true when it does.
+   */
+  private isSurfaceDocument(fileInfo: FileInfo): boolean {
+    return isDatabaseDocumentName(fileInfo.name) || isApiDocumentName(fileInfo.name);
+  }
+
+  /**
+   * Keeps a previewed document open as an ordinary tab: it is no longer the one the next preview
+   * takes over. Does nothing for a document that is not being previewed.
+   * @param id The document's identifier.
+   */
+  public keepPreview(id: string): void {
+    if (this.quietId() === id) {
+      this.quietId.set(null);
+    }
+    if (this.previewId() === id) {
+      this.log.debug('FileOpener', 'Kept previewed document', id);
+      this.previewId.set(null);
+    }
+  }
+
+  /**
+   * Gets whether a document is the one being previewed.
+   * @param id The document's identifier.
+   * @returns Returns the signal its tab reads.
+   */
+  private previewOf(id: string): Signal<boolean> {
+    return computed((): boolean => this.previewId() === id);
+  }
+
+  /**
+   * Makes a document just placed in the well the preview, in the tab of the one it replaces: the new
+   * tab takes the old one's place, and the old document is closed without a question, since it holds
+   * nothing unsaved. Editing a preview keeps it; one found edited all the same is left open as an
+   * ordinary tab, never closed.
+   * @param id The identifier of the document to preview.
+   */
+  private takeOverPreview(id: string): void {
+    const replaced: string | null = this.previewId();
+    this.previewId.set(id);
+    if (replaced === null || replaced === id) {
+      return;
+    }
+    const stack: StackNode | null = findStackOfPanel(this.dockState.layout(), replaced);
+    if (stack?.role !== 'document' || this.registry.get(replaced)?.dirty?.() === true) {
+      return;
+    }
+    const own: StackNode | null = findStackOfPanel(this.dockState.layout(), id);
+    const index: number = stack.panels.indexOf(replaced);
+    if (own?.id === stack.id && index >= 0) {
+      this.dockState.reorderTab(stack.id, stack.panels.indexOf(id), index);
+    }
+    this.dockState.release(replaced);
   }
 
   /**
@@ -563,6 +697,11 @@ export class FileOpener {
     if (options?.background === true) {
       return true;
     }
+    // Opened properly, a document being previewed is kept; previewed again, it stays the preview.
+    if (options?.preview !== true) {
+      this.keepPreview(id);
+    }
+    this.quietId.set(options?.preview === true ? id : null);
     this.dockState.setActive(stack.id, id);
     this.dockFocus.focus(stack.id);
     return true;
@@ -574,6 +713,7 @@ export class FileOpener {
    * well on the left).
    * In the background the panel goes in behind the well's active document, and the well is not
    * focused. A well that has to be made for it still is — there is nowhere else for it to go.
+   * As a preview the panel takes the tab of the document previewed before it, if one still is.
    * @param panel The document panel to place.
    * @param options How to open it.
    * @returns Returns true when the panel was placed; false when this dock has no document home, in
@@ -589,16 +729,34 @@ export class FileOpener {
     if (well === null && primary === null) {
       return false;
     }
-    this.registry.register(panel);
+    // Opened properly, it is no preview — whatever was last previewed under the same identifier.
+    if (options?.preview !== true) {
+      this.keepPreview(panel.id);
+    }
+    this.registry.register({
+      ...panel,
+      preview: this.previewOf(panel.id),
+      focusOnActivate: computed((): boolean => this.quietId() !== panel.id),
+      keep: (): void => this.keepPreview(panel.id),
+    });
     const background: boolean = options?.background === true;
+    if (!background) {
+      this.quietId.set(options?.preview === true ? panel.id : null);
+    }
     if (well !== null) {
       this.dockState.tabInto(well.id, panel.id, options);
+      if (options?.preview === true) {
+        this.takeOverPreview(panel.id);
+      }
       if (!background) {
         this.dockFocus.focus(well.id);
       }
     } else {
       // primary is non-null here (guarded above): split a fresh well off the tool-occupied centre.
       this.dockState.openWellBeside(primary!.id, panel.id);
+      if (options?.preview === true) {
+        this.takeOverPreview(panel.id);
+      }
       const created: StackNode | null = findStackOfPanel(this.dockState.layout(), panel.id);
       if (created !== null && !background) {
         this.dockFocus.focus(created.id);

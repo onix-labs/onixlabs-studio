@@ -43,6 +43,14 @@ export interface OpenOptions {
    * attention without their say-so. Omitted, or false, for what the user opened themselves.
    */
   readonly background?: boolean;
+
+  /**
+   * Gets whether to open a file as a preview: in the one tab a workspace keeps for looking at files
+   * without opening them, which the next preview takes over. Only what opens in a document well can
+   * be previewed; a file that would need a tab of its own is not opened at all. Omitted, or false, to
+   * open the file properly — which keeps it, when it is the one being previewed.
+   */
+  readonly preview?: boolean;
 }
 
 /**

@@ -30,6 +30,7 @@ import {
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { LiveServerSession } from '@features/workspace/angular/live-server/live-server-session';
 import { TreePanel } from './tree-panel';
+import { OpenOptions } from '@shared/angular/services/tabs/tab';
 
 /**
  * Stands in for this tab's live server: offered on HTML pages, recording what it was asked to open.
@@ -215,9 +216,10 @@ class FakeShell {
  */
 class FakeFileOpener {
   public readonly opened: string[] = [];
+  public readonly previewed: string[] = [];
 
-  public openPath(path: string): Promise<boolean> {
-    this.opened.push(path);
+  public openPath(path: string, options?: OpenOptions): Promise<boolean> {
+    (options?.preview === true ? this.previewed : this.opened).push(path);
     return Promise.resolve(true);
   }
 }
@@ -330,6 +332,8 @@ describe('TreePanel row context menu', () => {
       ],
     }).compileComponents();
 
+    // Off, so a click's own behaviour is what these cases see; the preview has cases of its own.
+    TestBed.inject(Settings).set('workspaces.showFilePreview', false);
     fixture = TestBed.createComponent(TreePanel);
     component = fixture.componentInstance;
     fixture.componentRef.setInput('panel', panel);
@@ -1444,6 +1448,27 @@ describe('TreePanel row context menu', () => {
 
       expect(workspace.deleted).toEqual(['/ws/main.ts']);
       expect(notifications.sent).toEqual([]);
+    });
+
+    it('showFilePreview_previewsAFileOnItsClick_andADoubleClickOpensIt', () => {
+      TestBed.inject(Settings).set('workspaces.showFilePreview', true);
+      // Open Files With is not consulted while the preview is on.
+      TestBed.inject(Settings).set('workspaces.openFilesWith', 'single');
+
+      component.onRowClick(treeRow(node('main.ts', '/ws/main.ts', 'file')));
+      expect(opener.previewed).toEqual(['/ws/main.ts']);
+      expect(opener.opened).toEqual([]);
+
+      component.onRowOpen(treeRow(node('main.ts', '/ws/main.ts', 'file')));
+      expect(opener.opened).toEqual(['/ws/main.ts']);
+    });
+
+    it('showFilePreview_leavesAFolderToggling', () => {
+      TestBed.inject(Settings).set('workspaces.showFilePreview', true);
+
+      component.onRowClick(treeRow(node('src', '/ws/src', 'directory')));
+
+      expect(opener.previewed).toEqual([]);
     });
 
     it('openFilesWithSingleClick_opensAFileOnItsClick', () => {

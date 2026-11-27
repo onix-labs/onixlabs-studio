@@ -15,6 +15,7 @@ import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { findStackOfPanel } from '@shared/angular/services/dock-layout/dock-tree';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Documents } from '@shared/angular/services/documents/documents';
+import { ActivationFocus } from '@shared/angular/services/activation-focus/activation-focus';
 
 /**
  * Feature type used for markdown documents in the well.
@@ -39,6 +40,8 @@ const CODE_TYPE: string = 'code';
   templateUrl: './document-panel.html',
   styleUrl: './document-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // Its own, so the editor mounted here asks this document whether to take the keyboard.
+  providers: [ActivationFocus],
 })
 export class DocumentPanel {
   /**
@@ -68,6 +71,17 @@ export class DocumentPanel {
    * Holds the dock layout used to derive whether this document is the active one in its well.
    */
   private readonly dockState: DockState = inject(DockState);
+
+  /**
+   * Initializes a new instance of the {@link DocumentPanel} class, having its editor take the
+   * keyboard on activation only when its dock panel says so: a document just shown as a preview
+   * leaves the keyboard in the explorer it was clicked in.
+   */
+  public constructor() {
+    inject(ActivationFocus, { self: true }).follow(
+      (): boolean => this.panel().focusOnActivate?.() ?? true,
+    );
+  }
 
   /**
    * Gets the hosted document's id.

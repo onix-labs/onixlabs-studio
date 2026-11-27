@@ -56,6 +56,7 @@ import { HoverCards } from '@shared/angular/services/hover/hover-cards';
 import { ColourPickers } from '@shared/angular/services/colour-picker/colour-pickers';
 import { Autocomplete } from '@shared/angular/services/autocomplete/autocomplete';
 import { pasteIntoEditor } from './editor-paste';
+import { ActivationFocus } from '@shared/angular/services/activation-focus/activation-focus';
 
 /**
  * Identifies the source label passed to Monaco when triggering editor actions on the caller's behalf.
@@ -307,6 +308,11 @@ export class TextEditor implements AfterViewInit, OnDestroy {
    * and focused.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Holds whether the pane takes the keyboard as it becomes active.
+   */
+  private readonly activationFocus: ActivationFocus = inject(ActivationFocus);
 
   /**
    * Emits once the Monaco editor instance has been created and its listeners are wired.
@@ -575,7 +581,10 @@ export class TextEditor implements AfterViewInit, OnDestroy {
         return;
       }
       editor.layout();
-      editor.focus();
+      // A document only being looked at leaves the keyboard where the user is working.
+      if (this.activationFocus.allowed()) {
+        editor.focus();
+      }
     });
   }
 
