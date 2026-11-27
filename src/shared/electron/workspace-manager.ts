@@ -15,6 +15,7 @@ import * as path from 'node:path';
 import {
   CompiledArtifact,
   DocumentFormatResult,
+  ProjectEntry,
   ProjectItems,
   ProjectModel,
   ProjectOperationResult,
@@ -34,6 +35,7 @@ import {
 } from '@shared/api/workspace-channels';
 import type { FileHandle } from 'node:fs/promises';
 import { projectSystems } from './project-system/default-project-systems';
+import { ProjectItemsCache } from './project-system/project-items-cache';
 import { ProjectSystem } from './project-system/project-system';
 import { readOnlySourcePath } from './lsp/toolchain-source';
 import { TrustedPaths } from './trusted-paths';
@@ -111,23 +113,34 @@ export class WorkspaceManager {
   private readonly tokens: RunTokens;
 
   /**
+   * Holds each root's last evaluated project contents, shown at once when the root reopens (#1601);
+   * null when nothing is cached.
+   */
+  private readonly itemsCache: ProjectItemsCache | null;
+
+  /**
    * Initializes a new instance of the {@link WorkspaceManager} class.
    * @param windowGetter A function that returns the window dialogs are parented to when the
    * requesting window is gone.
    * @param workspace The shared workspace context to update when a folder is opened or closed.
    * @param trusted The store recording paths the user has opened, gating path-based re-opens.
    * @param tokens Issues the run tokens a project tool needs.
+   * @param itemsCache Keeps each root's last evaluated project contents; null caches nothing.
    */
   public constructor(
     windowGetter: () => BrowserWindow | null,
     workspace: WorkspaceContext,
     trusted: TrustedPaths,
     tokens: RunTokens,
+    itemsCache: ProjectItemsCache | null = null,
   ) {
     this.windowGetter = windowGetter;
     this.workspace = workspace;
     this.trusted = trusted;
     this.tokens = tokens;
+    this.itemsCache = itemsCache;
+    // A closed root's cached contents leave memory; they are read back if it opens again.
+    workspace.onRootRemoved((root: string): void => this.itemsCache?.release(root));
   }
 
   /**
@@ -283,9 +296,20 @@ export class WorkspaceManager {
     );
     ipcMain.handle(
       ProjectChannel.ItemsLoad,
-      (_event: IpcMainInvokeEvent, projectPath: unknown): Promise<ProjectItems | null> => {
+      (
+        _event: IpcMainInvokeEvent,
+        projectPath: unknown,
+        root: unknown,
+      ): Promise<ProjectItems | null> => {
         logger.trace('WorkspaceManager.register', `IPC ${ProjectChannel.ItemsLoad}`);
-        return this.loadProjectItems(projectPath);
+        return this.loadProjectItems(projectPath, root);
+      },
+    );
+    ipcMain.handle(
+      ProjectChannel.ItemsCached,
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<readonly ProjectItems[]> => {
+        logger.trace('WorkspaceManager.register', `IPC ${ProjectChannel.ItemsCached}`);
+        return this.cachedProjectItems(root);
       },
     );
     ipcMain.handle(
@@ -343,26 +367,69 @@ export class WorkspaceManager {
       return null;
     }
     logger.debug('WorkspaceManager.loadProjectModel', `Loading project model for ${root}`);
-    return system.load(root);
+    const model: ProjectModel | null = await system.load(root);
+    if (model !== null) {
+      this.itemsCache?.retain(
+        root,
+        model.projects.map((project: ProjectEntry): string => project.path),
+      );
+    }
+    return model;
+  }
+
+  /**
+   * Reads a root's cached project contents (#1601), for the Solution Explorer to show while the
+   * projects are evaluated again. Only for an open root, and only for projects in folders trusted now:
+   * a folder that is not trusted is listed from disk, and is never shown what an evaluation once made
+   * of it.
+   * @param root The candidate workspace root.
+   * @returns Returns the cached contents, or nothing when the root is not open or nothing is cached.
+   */
+  private async cachedProjectItems(root: unknown): Promise<readonly ProjectItems[]> {
+    if (this.itemsCache === null || typeof root !== 'string' || !this.workspace.isRoot(root)) {
+      return [];
+    }
+    const cached: ReadonlyMap<string, ProjectItems> = await this.itemsCache.read(root);
+    return [...cached.values()].filter(
+      (items: ProjectItems): boolean =>
+        this.workspace.isWithin(items.projectPath) && this.tokens.issue(items.projectPath) !== null,
+    );
   }
 
   /**
    * Loads a single project's logical contents (its files), confined to projects within an open
    * workspace so the renderer cannot drive evaluation of arbitrary files.
+   * A trusted evaluation's contents are cached under the root the project was opened in (#1601).
    * @param projectPath The candidate project-file path.
+   * @param root The workspace root the project was opened under, for the cache; optional.
    * @returns Returns the contents, or null when the path is outside the workspace or has no contents.
    */
-  private async loadProjectItems(projectPath: unknown): Promise<ProjectItems | null> {
+  private async loadProjectItems(
+    projectPath: unknown,
+    root?: unknown,
+  ): Promise<ProjectItems | null> {
     if (typeof projectPath !== 'string' || !this.workspace.isWithin(projectPath)) {
       logger.warn('WorkspaceManager.loadProjectItems', 'Rejected project outside the workspace');
       return null;
     }
     const system: ProjectSystem | null = projectSystems.matchProject(projectPath);
-    return (
-      (await system?.loadProjectItems?.(projectPath, {
-        token: this.tokens.issue(projectPath),
-      })) ?? null
-    );
+    const token: RunToken | null = this.tokens.issue(projectPath);
+    const items: ProjectItems | null =
+      (await system?.loadProjectItems?.(projectPath, { token })) ?? null;
+    if (
+      token !== null &&
+      typeof root === 'string' &&
+      this.workspace.isRoot(root) &&
+      isInside(projectPath, root)
+    ) {
+      if (items !== null && items.projectPath === projectPath) {
+        this.itemsCache?.remember(root, items);
+      } else if (items === null) {
+        // A project that no longer evaluates is not shown its last good tree next time.
+        this.itemsCache?.forget(root, projectPath);
+      }
+    }
+    return items;
   }
 
   /**
@@ -1134,4 +1201,15 @@ export class WorkspaceManager {
       name !== '..'
     );
   }
+}
+
+/**
+ * Determines whether a path lies strictly inside a root, whatever the root (a drive's root included).
+ * @param target The path.
+ * @param root The root.
+ * @returns Returns true when the path is beneath the root.
+ */
+function isInside(target: string, root: string): boolean {
+  const relative: string = path.relative(path.resolve(root), path.resolve(target));
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
