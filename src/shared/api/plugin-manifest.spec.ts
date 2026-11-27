@@ -397,16 +397,24 @@ describe('parsePluginManifest', () => {
       expect(paths(result)).toEqual(['detail']);
     });
 
-    it.each<[string, Record<string, unknown>, string]>([
-      ['anEmptyLicence', { licence: '' }, 'licence'],
-      ['aLicenceThatIsNotText', { licence: 7 }, 'licence'],
-      ['aRepositoryThatIsNotHttps', { repository: 'http://example.com/x' }, 'repository'],
-      ['aHomepageThatIsNotAUrl', { homepage: 'example.com' }, 'homepage'],
-    ])('%s (#1612)', (_name: string, fields: Record<string, unknown>, field: string) => {
+    it.each<[string, Record<string, unknown>]>([
+      ['anEmptyLicence', { licence: '' }],
+      ['aLicenceThatIsNotText', { licence: 7 }],
+      ['npmsRepositoryObject', { repository: { type: 'git', url: 'https://github.com/a/b' } }],
+      ['aRepositoryThatIsNotHttps', { repository: 'git+https://github.com/a/b' }],
+      ['aHomepageOverHttp', { homepage: 'http://example.com' }],
+      ['aHomepageNamingNoHost', { homepage: 'https://' }],
+    ])('ignoresRatherThanRefuses_%s (#1612)', (_name: string, fields: Record<string, unknown>) => {
+      // Ignored before 1.32.0, so a manifest written earlier may carry them in its own shape, and
+      // must still load.
       const result: ManifestResult = parsePluginManifest(manifest(fields));
 
-      expect(result.manifest).toBeNull();
-      expect(paths(result)).toEqual([field]);
+      expect(result.errors).toEqual([]);
+      expect(result.manifest).toMatchObject({
+        licence: undefined,
+        repository: undefined,
+        homepage: undefined,
+      });
     });
 
     it('aNonHttpsDownload', () => {

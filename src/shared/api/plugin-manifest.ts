@@ -205,7 +205,8 @@ import { isTestAdapterCapability, TestAdapterCapability } from './test-adapter-p
  * and its home are. For a third-party tool (pyright, netcoredbg, …) they are the tool's, because the
  * user installs the tool under its own terms. The curated index holds them as catalogue facts, not
  * as part of a release, so an entry's listed releases do not restate them. Adds only, and nothing
- * reads them to decide what a plugin may do.
+ * reads them to decide what a plugin may do; a value that is not what they describe is ignored rather
+ * than refused, as the fields were before.
  */
 export const PLUGIN_API_VERSION: string = '1.32.0';
 
@@ -1536,23 +1537,32 @@ function readOptionalString(
 }
 
 /**
- * Reads an optional top-level https URL.
- * @param source The object to read from.
- * @param key The property name.
- * @param errors The failure collector.
- * @returns Returns the URL, or undefined when absent or invalid.
+ * Reads a catalogue fact that is text: kept when it is a non-empty string, and otherwise ignored rather
+ * than refused. These fields were ignored before 1.32.0, so a manifest written earlier may carry them
+ * in a shape of its own (npm's, say), and it must not stop loading for saying something about itself.
+ * @param value The field.
+ * @returns Returns the text, or undefined.
  */
-function readOptionalUrl(
-  source: Record<string, unknown>,
-  key: string,
-  errors: Errors,
-): string | undefined {
-  const value: string | undefined = readOptionalString(source, key, '', errors);
-  if (value !== undefined && !value.startsWith('https://')) {
-    errors.add(key, 'must be an https URL when present');
+function readCatalogueText(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+}
+
+/**
+ * Reads a catalogue fact that is a link: kept when it is an https URL naming a host, and otherwise
+ * ignored rather than refused, as {@link readCatalogueText} is.
+ * @param value The field.
+ * @returns Returns the URL, or undefined.
+ */
+function readCatalogueUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
     return undefined;
   }
-  return value;
+  try {
+    const url: URL = new URL(value);
+    return url.protocol === 'https:' && url.hostname.length > 0 ? value : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -3169,9 +3179,9 @@ export function parsePluginManifest(
   const name: string = readString(source, 'name', '', errors);
   const description: string = readString(source, 'description', '', errors);
   const detail: string | undefined = readOptionalString(source, 'detail', '', errors);
-  const licence: string | undefined = readOptionalString(source, 'licence', '', errors);
-  const repository: string | undefined = readOptionalUrl(source, 'repository', errors);
-  const homepage: string | undefined = readOptionalUrl(source, 'homepage', errors);
+  const licence: string | undefined = readCatalogueText(source['licence']);
+  const repository: string | undefined = readCatalogueUrl(source['repository']);
+  const homepage: string | undefined = readCatalogueUrl(source['homepage']);
   const version: string = readString(source, 'version', '', errors);
   const contributes: ManifestContributions = readContributions(source['contributes'], errors);
   const requires: readonly ManifestRequirement[] = readRequirements(source['requires'], errors);

@@ -21,6 +21,7 @@ import {
   pluginIndexUrl,
   pluginReleaseCandidates,
   PluginReleaseSelection,
+  withoutCatalogueFacts,
   selectPluginRelease,
 } from './plugin-index';
 
@@ -826,6 +827,9 @@ describe('the licences in the curated index (#1612)', () => {
     for (const manifest of listed) {
       expect(manifest.licence, manifest.id).toBe(studio.license);
       expect(manifest.repository, manifest.id).toBe('https://github.com/onix-labs/onixlabs-studio');
+      expect(manifest.homepage, manifest.id).toMatch(
+        /^https:\/\/github\.com\/onix-labs\/onixlabs-studio\/tree\/main\/plugins\/[a-z0-9-]+$/,
+      );
     }
   });
 });
@@ -904,22 +908,6 @@ describe('first-party releases listed under an entry', () => {
           url.slice(main.length),
       },
     };
-  }
-
-  /**
-   * Sets aside the fields the index keeps as catalogue facts rather than as part of a release (#1612):
-   * a plugin's licence, repository and homepage are the plugin's, whichever release is installed, so
-   * a listed release inherits them from its entry and its plugin.json at its tag need not have had
-   * them.
-   * @param value A release, as listed or as its plugin.json.
-   * @returns Returns it without those fields.
-   */
-  function withoutCatalogueFacts(value: unknown): unknown {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).filter(
-        ([key]: [string, unknown]): boolean => !['licence', 'repository', 'homepage'].includes(key),
-      ),
-    );
   }
 
   /**
