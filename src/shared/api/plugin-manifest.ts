@@ -199,8 +199,16 @@ import { isTestAdapterCapability, TestAdapterCapability } from './test-adapter-p
  * folder's static files on 127.0.0.1 and reloads the pages it served when their files change, speaking
  * the live-server protocol. Unkeyed and chosen once, like a container engine: the installed one with the
  * highest priority serves every workspace. Adds only, on the same terms as every minor before it.
+ *
+ * `1.32.0` adds the optional {@link PluginManifest.licence}, {@link PluginManifest.repository} and
+ * {@link PluginManifest.homepage} (#1612): what the user takes a plugin under, and where its source
+ * and its home are. For a third-party tool (pyright, netcoredbg, …) they are the tool's, because the
+ * user installs the tool under its own terms. The curated index holds them as catalogue facts, not
+ * as part of a release, so an entry's listed releases do not restate them. Adds only, and nothing
+ * reads them to decide what a plugin may do; a value that is not what they describe is ignored rather
+ * than refused, as the fields were before.
  */
-export const PLUGIN_API_VERSION: string = '1.31.0';
+export const PLUGIN_API_VERSION: string = '1.32.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -1393,6 +1401,25 @@ export interface PluginManifest {
   readonly detail?: string;
 
   /**
+   * Gets the licence the user takes the plugin under, as an SPDX expression (`MIT`,
+   * `MIT OR Apache-2.0`, `Apache-2.0 WITH LLVM-exception`), or undefined when the manifest does not
+   * say. For a plugin that installs someone else's tool, it is the tool's.
+   */
+  readonly licence?: string;
+
+  /**
+   * Gets the https URL of the plugin's source, or of the tool's for a plugin that installs one, or
+   * undefined when the manifest does not say.
+   */
+  readonly repository?: string;
+
+  /**
+   * Gets the https URL of the plugin's home page, or the tool's, or undefined when the manifest does
+   * not say.
+   */
+  readonly homepage?: string;
+
+  /**
    * Gets how the plugin's payload is obtained.
    */
   readonly provision: ManifestProvision;
@@ -1507,6 +1534,35 @@ function readOptionalString(
     return undefined;
   }
   return value;
+}
+
+/**
+ * Reads a catalogue fact that is text: kept when it is a non-empty string, and otherwise ignored rather
+ * than refused. These fields were ignored before 1.32.0, so a manifest written earlier may carry them
+ * in a shape of its own (npm's, say), and it must not stop loading for saying something about itself.
+ * @param value The field.
+ * @returns Returns the text, or undefined.
+ */
+function readCatalogueText(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+}
+
+/**
+ * Reads a catalogue fact that is a link: kept when it is an https URL naming a host, and otherwise
+ * ignored rather than refused, as {@link readCatalogueText} is.
+ * @param value The field.
+ * @returns Returns the URL, or undefined.
+ */
+function readCatalogueUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  try {
+    const url: URL = new URL(value);
+    return url.protocol === 'https:' && url.hostname.length > 0 ? value : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -3123,6 +3179,9 @@ export function parsePluginManifest(
   const name: string = readString(source, 'name', '', errors);
   const description: string = readString(source, 'description', '', errors);
   const detail: string | undefined = readOptionalString(source, 'detail', '', errors);
+  const licence: string | undefined = readCatalogueText(source['licence']);
+  const repository: string | undefined = readCatalogueUrl(source['repository']);
+  const homepage: string | undefined = readCatalogueUrl(source['homepage']);
   const version: string = readString(source, 'version', '', errors);
   const contributes: ManifestContributions = readContributions(source['contributes'], errors);
   const requires: readonly ManifestRequirement[] = readRequirements(source['requires'], errors);
@@ -3138,6 +3197,9 @@ export function parsePluginManifest(
       version,
       apiVersion: apiVersion as string,
       detail,
+      licence,
+      repository,
+      homepage,
       provision,
       contributes,
       requires,

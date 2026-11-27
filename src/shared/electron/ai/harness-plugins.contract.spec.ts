@@ -12,7 +12,10 @@ import {
 } from '@shared/api/plugin-manifest';
 import type { AiConnection } from '@shared/api/ai-types';
 import { AGENT_PROTOCOL_VERSION, isProtocolCompatible } from '@shared/api/agent-protocol';
-import { pluginReleaseCandidates } from '../contributions/plugins/plugin-index';
+import {
+  pluginReleaseCandidates,
+  withoutCatalogueFacts,
+} from '../contributions/plugins/plugin-index';
 import { type LockfilePackage, parseLockfileDocument } from '../provisioning/lockfile-provision';
 import { type AgentProviderDescriptor, toHarnessDescriptor } from './agent-provider-registry';
 
@@ -278,7 +281,7 @@ describe.each(['claude-harness', 'codex-harness', 'ai-sdk-harness'])(
       // Deep equality against the manifest as written, not as parsed: the index holds a *copy* of that
       // document, and the ways the two drift are exactly the ways an install breaks. The entry's own
       // release, that is, without the older ones the index alone lists under `releases`.
-      expect(pluginReleaseCandidates(entry, 0)[0].value).toEqual(
+      expect(withoutCatalogueFacts(pluginReleaseCandidates(entry, 0)[0].value)).toEqual(
         JSON.parse(readFileSync(manifestPath, 'utf8')),
       );
     });

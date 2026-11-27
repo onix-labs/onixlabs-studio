@@ -182,6 +182,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * The fields the curated index keeps as catalogue facts about a plugin rather than as part of any one
+ * release (#1612): what it is licensed under, and where its source and home are. They hold for every
+ * release an entry lists, so a listed release inherits them and its `plugin.json` need not carry them.
+ */
+export const CATALOGUE_FACTS: readonly string[] = ['licence', 'repository', 'homepage'];
+
+/**
+ * Sets a manifest's catalogue facts aside, to compare it as a release: an index entry with its
+ * plugin's `plugin.json`, which says nothing of them.
+ * @param value The manifest, as JSON.
+ * @returns Returns it without {@link CATALOGUE_FACTS}.
+ */
+export function withoutCatalogueFacts(value: unknown): unknown {
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).filter(
+      ([key]: [string, unknown]): boolean => !CATALOGUE_FACTS.includes(key),
+    ),
+  );
+}
+
+/**
  * Lists the releases an index entry offers, newest-first as far as the publisher wrote them.
  *
  * The entry itself is always the first: its top-level fields are the single release every build reads,

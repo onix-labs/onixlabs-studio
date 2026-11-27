@@ -208,6 +208,32 @@ describe('parsePluginManifest', () => {
       );
     });
 
+    it('aManifestSayingWhatItIsLicensedUnder_andWhereItsSourceAndHomeAre (#1612)', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({
+          licence: 'MIT OR Apache-2.0',
+          repository: 'https://github.com/rust-lang/rust-analyzer',
+          homepage: 'https://rust-analyzer.github.io/',
+        }),
+      );
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest).toMatchObject({
+        licence: 'MIT OR Apache-2.0',
+        repository: 'https://github.com/rust-lang/rust-analyzer',
+        homepage: 'https://rust-analyzer.github.io/',
+      });
+    });
+
+    it('aManifestSayingNothingOfItsLicence', () => {
+      const result: ManifestResult = parsePluginManifest(manifest());
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.licence).toBeUndefined();
+      expect(result.manifest?.repository).toBeUndefined();
+      expect(result.manifest?.homepage).toBeUndefined();
+    });
+
     it('aDebugAdapterWithATransport', () => {
       const result: ManifestResult = parsePluginManifest(
         manifest({
@@ -369,6 +395,26 @@ describe('parsePluginManifest', () => {
 
       expect(result.manifest).toBeNull();
       expect(paths(result)).toEqual(['detail']);
+    });
+
+    it.each<[string, Record<string, unknown>]>([
+      ['anEmptyLicence', { licence: '' }],
+      ['aLicenceThatIsNotText', { licence: 7 }],
+      ['npmsRepositoryObject', { repository: { type: 'git', url: 'https://github.com/a/b' } }],
+      ['aRepositoryThatIsNotHttps', { repository: 'git+https://github.com/a/b' }],
+      ['aHomepageOverHttp', { homepage: 'http://example.com' }],
+      ['aHomepageNamingNoHost', { homepage: 'https://' }],
+    ])('ignoresRatherThanRefuses_%s (#1612)', (_name: string, fields: Record<string, unknown>) => {
+      // Ignored before 1.32.0, so a manifest written earlier may carry them in its own shape, and
+      // must still load.
+      const result: ManifestResult = parsePluginManifest(manifest(fields));
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest).toMatchObject({
+        licence: undefined,
+        repository: undefined,
+        homepage: undefined,
+      });
     });
 
     it('aNonHttpsDownload', () => {

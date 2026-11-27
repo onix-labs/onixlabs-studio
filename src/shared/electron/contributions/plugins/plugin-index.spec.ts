@@ -21,6 +21,7 @@ import {
   pluginIndexUrl,
   pluginReleaseCandidates,
   PluginReleaseSelection,
+  withoutCatalogueFacts,
   selectPluginRelease,
 } from './plugin-index';
 
@@ -779,6 +780,60 @@ describe('the bundled index', () => {
   });
 });
 
+describe('the licences in the curated index (#1612)', () => {
+  /**
+   * Gets each entry as Studio reads it.
+   * @returns Returns the parsed manifests.
+   */
+  function manifests(): PluginManifest[] {
+    return CURATED_PLUGINS.plugins.map(
+      (value: unknown): PluginManifest => parsePluginManifest(value).manifest!,
+    );
+  }
+
+  it('saysForEveryPlugin_whatItIsLicensedUnder_andWhereItsSourceAndHomeAre', () => {
+    for (const manifest of manifests()) {
+      expect(manifest.licence, manifest.id).toMatch(/\S/);
+      expect(manifest.repository, manifest.id).toMatch(/^https:\/\//);
+      expect(manifest.homepage, manifest.id).toMatch(/^https:\/\//);
+    }
+  });
+
+  it('givesEveryFirstPartyPluginStudiosOwnLicence_soARelicenceCannotMissOne', () => {
+    // A first-party plugin is Studio's code, so it is under Studio's licence: changing that (#1611)
+    // fails here until every entry says the same.
+    const studio: { license: string } = JSON.parse(readFileSync('package.json', 'utf8')) as {
+      license: string;
+    };
+    const firstParty: ReadonlySet<string> = new Set<string>(
+      readdirSync('plugins')
+        .filter((directory: string): boolean =>
+          existsSync(path.join('plugins', directory, 'plugin.json')),
+        )
+        .map(
+          (directory: string): string =>
+            (
+              JSON.parse(readFileSync(path.join('plugins', directory, 'plugin.json'), 'utf8')) as {
+                id: string;
+              }
+            ).id,
+        ),
+    );
+    const listed: PluginManifest[] = manifests().filter((manifest: PluginManifest): boolean =>
+      firstParty.has(manifest.id),
+    );
+
+    expect(listed.length).toBeGreaterThan(0);
+    for (const manifest of listed) {
+      expect(manifest.licence, manifest.id).toBe(studio.license);
+      expect(manifest.repository, manifest.id).toBe('https://github.com/onix-labs/onixlabs-studio');
+      expect(manifest.homepage, manifest.id).toMatch(
+        /^https:\/\/github\.com\/onix-labs\/onixlabs-studio\/tree\/main\/plugins\/[a-z0-9-]+$/,
+      );
+    }
+  });
+});
+
 describe('first-party releases listed under an entry', () => {
   // A listed release inherits whatever it does not restate, and the top level is the *newest*
   // release. An older first-party release that restated only its version, API and provision would
@@ -887,9 +942,10 @@ describe('first-party releases listed under an entry', () => {
         continue;
       }
 
-      expect(candidate.value, `${candidate.path} against plugin-${directory}-v${version}`).toEqual(
-        pinnedAtItsTag(atTag, directory, version),
-      );
+      expect(
+        withoutCatalogueFacts(candidate.value),
+        `${candidate.path} against plugin-${directory}-v${version}`,
+      ).toEqual(withoutCatalogueFacts(pinnedAtItsTag(atTag, directory, version)));
       result.checked += 1;
     }
     return result;
