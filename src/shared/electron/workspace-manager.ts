@@ -289,6 +289,13 @@ export class WorkspaceManager {
       },
     );
     ipcMain.handle(
+      ProjectChannel.ItemsPrefetch,
+      (_event: IpcMainInvokeEvent, projectPaths: unknown): void => {
+        logger.trace('WorkspaceManager.register', `IPC ${ProjectChannel.ItemsPrefetch}`);
+        this.prefetchProjectItems(projectPaths);
+      },
+    );
+    ipcMain.handle(
       ProjectChannel.ArtifactResolve,
       (
         _event: IpcMainInvokeEvent,
@@ -363,6 +370,41 @@ export class WorkspaceManager {
         token: this.tokens.issue(projectPath),
       })) ?? null
     );
+  }
+
+  /**
+   * Asks each project's provider to evaluate its projects together, ahead of the item loads that follow.
+   * Confined as {@link loadProjectItems} is, and further to projects in trusted folders: an untrusted
+   * project is left out, and its own load lists its files without running anything.
+   * @param projectPaths The candidate project-file paths.
+   */
+  private prefetchProjectItems(projectPaths: unknown): void {
+    if (!Array.isArray(projectPaths)) {
+      return;
+    }
+    const bySystem: Map<ProjectSystem, { paths: string[]; token: RunToken }> = new Map<
+      ProjectSystem,
+      { paths: string[]; token: RunToken }
+    >();
+    for (const projectPath of projectPaths as readonly unknown[]) {
+      if (typeof projectPath !== 'string' || !this.workspace.isWithin(projectPath)) {
+        continue;
+      }
+      const system: ProjectSystem | null = projectSystems.matchProject(projectPath);
+      const token: RunToken | null = this.tokens.issue(projectPath);
+      if (system?.prefetchProjectItems === undefined || token === null) {
+        continue;
+      }
+      const group: { paths: string[]; token: RunToken } | undefined = bySystem.get(system);
+      if (group === undefined) {
+        bySystem.set(system, { paths: [projectPath], token });
+      } else {
+        group.paths.push(projectPath);
+      }
+    }
+    for (const [system, group] of bySystem) {
+      system.prefetchProjectItems?.(group.paths, { token: group.token });
+    }
   }
 
   /**

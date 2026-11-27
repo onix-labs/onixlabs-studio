@@ -17,6 +17,13 @@ export enum ProjectChannel {
   ItemsLoad = 'project:items-load',
 
   /**
+   * Asks for several projects' contents to be evaluated together, ahead of the item loads that will
+   * follow for each (#1600), so a solution opens in a few runs of its build tool rather than one per
+   * project (invoke; answers nothing, the loads carry the answers). A provider that cannot evaluate in bulk ignores it.
+   */
+  ItemsPrefetch = 'project:items-prefetch',
+
+  /**
    * Renames a solution folder within a root's solution file (invoke).
    */
   SolutionFolderRename = 'project:solution-folder-rename',

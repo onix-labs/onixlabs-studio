@@ -313,6 +313,121 @@ esac`);
 
       expect(await provider.loadProjectItems(PROJECT(), TRUSTED_LOAD)).not.toBeNull();
     });
+
+    describe('evaluated together (#1600)', () => {
+      const OTHER: () => string = (): string => path.join(scratch, 'b', 'b.csproj');
+
+      /**
+       * Gets what the batch prints for the projects it answers for: each one's marker and one file.
+       * @param projects The projects answered for, with the file each lists.
+       * @returns Returns the batch's JSON.
+       */
+      function batchAnswer(projects: readonly [string, string][]): string {
+        return JSON.stringify({
+          TargetResults: {
+            StudioCollect: {
+              Items: projects.flatMap(([project, file]: [string, string]): object[] => [
+                { Identity: project, Kind: 'StudioProject', Project: project },
+                { Identity: file, Kind: 'Compile', Project: project },
+              ]),
+            },
+          },
+        });
+      }
+
+      /**
+       * Puts a fake `dotnet` in place that answers the batch with the given text, and every other
+       * evaluation with one file named for it.
+       * @param answer The batch's output.
+       */
+      function dotnetWithBatch(answer: string): void {
+        dotnet(`case "$*" in
+  *-getTargetResult:StudioCollect*) echo '${answer}' ;;
+  *) echo '{"Items":{"Compile":[{"Identity":"Alone.cs"}]}}' ;;
+esac`);
+      }
+
+      /**
+       * Lists the names at the top of a project's tree.
+       * @param items The project's items.
+       * @returns Returns the names.
+       */
+      function names(items: ProjectItems | null): readonly string[] {
+        return items?.tree.map((node: { name: string }): string => node.name) ?? [];
+      }
+
+      it('answersEveryProjectFromOneRun', async () => {
+        dotnetWithBatch(
+          batchAnswer([
+            [PROJECT(), 'A.cs'],
+            [OTHER(), 'B.cs'],
+          ]),
+        );
+
+        provider.prefetchProjectItems([PROJECT(), OTHER()], TRUSTED_LOAD);
+        const [a, b]: (ProjectItems | null)[] = await Promise.all([
+          provider.loadProjectItems(PROJECT(), TRUSTED_LOAD),
+          provider.loadProjectItems(OTHER(), TRUSTED_LOAD),
+        ]);
+
+        expect(names(a)).toContain('A.cs');
+        expect(names(b)).toContain('B.cs');
+        expect(runs()).toHaveLength(1);
+        expect(runs()[0]).toContain('-getTargetResult:StudioCollect');
+      });
+
+      it('evaluatesAProjectTheRunMissed_onItsOwn', async () => {
+        // A project that failed inside the batch returns nothing, not even its marker.
+        dotnetWithBatch(batchAnswer([[PROJECT(), 'A.cs']]));
+
+        provider.prefetchProjectItems([PROJECT(), OTHER()], TRUSTED_LOAD);
+        const b: ProjectItems | null = await provider.loadProjectItems(OTHER(), TRUSTED_LOAD);
+
+        expect(names(b)).toContain('Alone.cs');
+        expect(runs()).toHaveLength(2);
+      });
+
+      it('evaluatesEachOnItsOwn_whenTheRunFails', async () => {
+        dotnetWithBatch('not json');
+
+        provider.prefetchProjectItems([PROJECT(), OTHER()], TRUSTED_LOAD);
+
+        expect(names(await provider.loadProjectItems(PROJECT(), TRUSTED_LOAD))).toContain(
+          'Alone.cs',
+        );
+      });
+
+      it('answersEachProjectOnce_soALaterLoadSeesItsEdits', async () => {
+        dotnetWithBatch(
+          batchAnswer([
+            [PROJECT(), 'A.cs'],
+            [OTHER(), 'B.cs'],
+          ]),
+        );
+        provider.prefetchProjectItems([PROJECT(), OTHER()], TRUSTED_LOAD);
+        await provider.loadProjectItems(PROJECT(), TRUSTED_LOAD);
+
+        expect(names(await provider.loadProjectItems(PROJECT(), TRUSTED_LOAD))).toContain(
+          'Alone.cs',
+        );
+      });
+
+      it.each<[string, ProjectLoadOptions | undefined, () => string[]]>([
+        ['withoutARunToken', undefined, (): string[] => [PROJECT(), OTHER()]],
+        ['forASingleProject', TRUSTED_LOAD, (): string[] => [PROJECT()]],
+        ['forFilesItDoesNotOwn', TRUSTED_LOAD, (): string[] => ['/w/a.txt', '/w/b.txt']],
+      ])(
+        'runsNothing_%s',
+        async (_name: string, options: ProjectLoadOptions | undefined, paths: () => string[]) => {
+          dotnetWithBatch(batchAnswer([]));
+
+          provider.prefetchProjectItems(paths(), options);
+          await new Promise<void>((resolve: () => void): void => void setTimeout(resolve, 50));
+
+          expect(runs()).toEqual([]);
+        },
+      );
+    });
   });
 
   describe('debug targets', () => {

@@ -75,6 +75,19 @@ export interface ProjectSystem {
   ): Promise<ProjectItems | null>;
 
   /**
+   * Evaluates several projects' contents together, ahead of the {@link loadProjectItems} call that will
+   * follow for each, so a provider whose tool is slow to start pays for it once rather than per project
+   * (#1600). The answers are held for those calls, which otherwise behave exactly as before. Optional:
+   * a provider with nothing to gain need not implement it.
+   *
+   * ⛔ Only with a run token, as {@link loadProjectItems}; the caller passes only projects in trusted
+   * folders.
+   * @param projectPaths The absolute project-file paths.
+   * @param options The run token; absent means no tool may run, and nothing is done.
+   */
+  prefetchProjectItems?(projectPaths: readonly string[], options?: ProjectLoadOptions): void;
+
+  /**
    * Resolves the compiled artefact the project containing a source file produces.
    *
    * **Must not build.** This answers a question a panel asks whenever a file is opened, and building on

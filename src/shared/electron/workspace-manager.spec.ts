@@ -1360,6 +1360,20 @@ describe('WorkspaceManager', () => {
         expect(loads).toHaveBeenCalledWith(project, { token: null });
       });
 
+      it('itemsPrefetch_leavesTheProjectsOut (#1600)', async () => {
+        const prefetches: Mock = vi.fn();
+        vi.spyOn(projectSystems, 'matchProject').mockReturnValue({
+          prefetchProjectItems: prefetches,
+        } as never);
+
+        await invoke(ProjectChannel.ItemsPrefetch, [
+          inWorkspace('a.csproj'),
+          inWorkspace('b.csproj'),
+        ]);
+
+        expect(prefetches).not.toHaveBeenCalled();
+      });
+
       it('resolveArtifact_asksNoSystem', async () => {
         const resolves: Mock = vi.fn().mockResolvedValue({ path: '/bin/a' });
         vi.spyOn(projectSystems, 'all').mockReturnValue([{ resolveArtifact: resolves }] as never);
@@ -1392,6 +1406,22 @@ describe('WorkspaceManager', () => {
 
       expect(loads).toHaveBeenCalledWith(project, {
         token: expect.objectContaining({ folder: project }) as unknown,
+      });
+    });
+
+    it('itemsPrefetch_passesOnlyTheWorkspacesProjects_withARunToken (#1600)', async () => {
+      const prefetches: Mock = vi.fn();
+      vi.spyOn(projectSystems, 'matchProject').mockReturnValue({
+        prefetchProjectItems: prefetches,
+      } as never);
+      const projects: string[] = [inWorkspace('a.csproj'), inWorkspace('b.csproj')];
+
+      await invoke(ProjectChannel.ItemsPrefetch, [...projects, secret, 7]);
+      await invoke(ProjectChannel.ItemsPrefetch, secret);
+
+      expect(prefetches).toHaveBeenCalledTimes(1);
+      expect(prefetches).toHaveBeenCalledWith(projects, {
+        token: expect.objectContaining({ folder: projects[0] }) as unknown,
       });
     });
 

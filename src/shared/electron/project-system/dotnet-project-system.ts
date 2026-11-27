@@ -1,5 +1,6 @@
 import { Dirent } from 'node:fs';
 import * as fs from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
 import {
@@ -15,6 +16,14 @@ import { CompiledArtifact } from '@shared/api/project-system';
 import { DebugResolveResult } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
 import { buildItemTree, EvaluatedItem } from './item-tree';
+import {
+  batchArguments,
+  batchCollectProject,
+  batchItemsTargets,
+  parseBatchOutput,
+  projectKey,
+  splitIntoBatches,
+} from './msbuild-batch';
 import { listProjectFiles } from './project-listing';
 import { renameSolutionFolder, SolutionFolderRename } from './solution-folders';
 import { ProjectLoadOptions, ProjectSystem } from './project-system';
@@ -111,6 +120,18 @@ function dotnetEnv(): NodeJS.ProcessEnv {
 }
 
 /**
+ * How many batched evaluations run side by side when a solution's projects are evaluated together.
+ */
+const BATCHES_AT_ONCE: number = 4;
+
+/**
+ * How long, in milliseconds, a batched evaluation's answer for a project is kept for the request that
+ * will ask for it. An answer nobody asked for in that time is dropped, so it can never be served
+ * later as current.
+ */
+const BATCH_RESULT_LIFETIME_MS: number = 60_000;
+
+/**
  * The MSBuild item types whose members are shown as a project's files.
  */
 const ITEM_TYPES: readonly string[] = ['Compile', 'Content', 'None', 'EmbeddedResource'];
@@ -194,6 +215,21 @@ export class DotnetProjectSystem implements ProjectSystem {
     string,
     Promise<ProjectItems | null>
   >();
+
+  /**
+   * Holds each project's share of a batched evaluation (#1600), keyed by project path, until the
+   * request for that project takes it. Null when the batch could not answer for the project, which
+   * is then evaluated on its own.
+   */
+  private readonly batched: Map<string, Promise<readonly EvaluatedItem[] | null>> = new Map<
+    string,
+    Promise<readonly EvaluatedItem[] | null>
+  >();
+
+  /**
+   * Holds the directory the batch's MSBuild files are written to, once per session.
+   */
+  private batchFiles: Promise<{ directory: string; collect: string } | null> | null = null;
 
   /**
    * Determines whether this provider owns a project file (a .NET project by extension).
@@ -339,15 +375,173 @@ export class DotnetProjectSystem implements ProjectSystem {
       );
       return existing;
     }
+    // Taken, not read: a batch answers one request per project, and a later request (after an edit)
+    // evaluates afresh.
+    const parked: Promise<readonly EvaluatedItem[] | null> | undefined =
+      this.batched.get(projectPath);
+    this.batched.delete(projectPath);
     logger.trace('DotnetProjectSystem', `Evaluating items for '${projectPath}'.`);
-    const load: Promise<ProjectItems | null> = this.evaluateProjectItems(
-      projectPath,
-      token,
-    ).finally((): void => {
+    const evaluation: Promise<ProjectItems | null> =
+      parked === undefined
+        ? this.evaluateProjectItems(projectPath, token)
+        : parked.then((items: readonly EvaluatedItem[] | null): Promise<ProjectItems | null> =>
+            items === null
+              ? this.evaluateProjectItems(projectPath, token)
+              : Promise.resolve({ projectPath, tree: buildItemTree(projectPath, items) }),
+          );
+    const load: Promise<ProjectItems | null> = evaluation.finally((): void => {
       this.inFlightItems.delete(projectPath);
     });
     this.inFlightItems.set(projectPath, load);
     return load;
+  }
+
+  /**
+   * Evaluates several projects' items together, ahead of the requests for them (#1600): a few MSBuild
+   * runs over the whole set instead of one or two `dotnet` launches per project, which is where opening
+   * a solution spent its time. Each project's answer is held for its request; a project the batch could
+   * not answer for (it failed to evaluate, or the batch failed) is evaluated on its own when asked.
+   * A newer batch replaces a project's held answer, so a project edited while one ran is not answered
+   * from before the edit. Runs nothing without a run token, and nothing for a single project, which
+   * gains nothing.
+   * @param projectPaths The absolute project-file paths, as the requests for them will name them.
+   * @param options The folder's run token.
+   */
+  public prefetchProjectItems(projectPaths: readonly string[], options?: ProjectLoadOptions): void {
+    const token: RunToken | null = options?.token ?? null;
+    const wanted: readonly string[] = [...new Set<string>(projectPaths)].filter(
+      (projectPath: string): boolean =>
+        this.ownsProject(projectPath) && !this.inFlightItems.has(projectPath),
+    );
+    if (token === null || wanted.length < 2) {
+      return;
+    }
+    logger.debug('DotnetProjectSystem', `Evaluating ${wanted.length} projects together.`);
+    const answer: Promise<ReadonlyMap<string, readonly EvaluatedItem[]>> = this.evaluateBatch(
+      wanted,
+      token,
+    );
+    for (const projectPath of wanted) {
+      const share: Promise<readonly EvaluatedItem[] | null> = answer.then(
+        (
+          byProject: ReadonlyMap<string, readonly EvaluatedItem[]>,
+        ): readonly EvaluatedItem[] | null =>
+          byProject.get(projectKey(projectPath, process.platform)) ?? null,
+      );
+      this.batched.set(projectPath, share);
+      // An answer nobody took is dropped rather than served later as current.
+      setTimeout((): void => {
+        if (this.batched.get(projectPath) === share) {
+          this.batched.delete(projectPath);
+        }
+      }, BATCH_RESULT_LIFETIME_MS).unref();
+    }
+  }
+
+  /**
+   * Runs the batched evaluation: the projects split across a few MSBuild runs side by side.
+   * @param projectPaths The absolute project-file paths.
+   * @param token The folder's run token.
+   * @returns Returns each answered project's items, by project key; empty when nothing could run.
+   */
+  private async evaluateBatch(
+    projectPaths: readonly string[],
+    token: RunToken,
+  ): Promise<ReadonlyMap<string, readonly EvaluatedItem[]>> {
+    const dotnet: string | null = await this.resolveDotnet();
+    const files: { directory: string; collect: string } | null = await this.ensureBatchFiles();
+    if (dotnet === null || files === null) {
+      return new Map<string, readonly EvaluatedItem[]>();
+    }
+    const answers: readonly (ReadonlyMap<string, readonly EvaluatedItem[]> | null)[] =
+      await Promise.all(
+        splitIntoBatches(projectPaths, BATCHES_AT_ONCE).map(
+          (
+            batch: readonly string[],
+          ): Promise<ReadonlyMap<string, readonly EvaluatedItem[]> | null> =>
+            this.runBatch(dotnet, files, batch, token),
+        ),
+      );
+    const merged: Map<string, readonly EvaluatedItem[]> = new Map<
+      string,
+      readonly EvaluatedItem[]
+    >();
+    for (const answer of answers) {
+      for (const [key, items] of answer ?? []) {
+        merged.set(key, items);
+      }
+    }
+    logger.info(
+      'DotnetProjectSystem',
+      `Evaluated ${merged.size} of ${projectPaths.length} projects together.`,
+    );
+    return merged;
+  }
+
+  /**
+   * Runs one MSBuild batch over a list of projects.
+   * @param dotnet The `dotnet` executable.
+   * @param files The batch's MSBuild files.
+   * @param projectPaths The projects in this batch.
+   * @param token The folder's run token.
+   * @returns Returns the batch's answer, or null when it failed as a whole.
+   */
+  private async runBatch(
+    dotnet: string,
+    files: { directory: string; collect: string },
+    projectPaths: readonly string[],
+    token: RunToken,
+  ): Promise<ReadonlyMap<string, readonly EvaluatedItem[]> | null> {
+    let listDirectory: string | null = null;
+    try {
+      listDirectory = await fs.mkdtemp(path.join(files.directory, 'list-'));
+      const listPath: string = path.join(listDirectory, 'projects.txt');
+      await fs.writeFile(listPath, `${projectPaths.join('\n')}\n`, 'utf8');
+      const { stdout }: { stdout: string } = await execFileFor(token)(
+        dotnet,
+        batchArguments(files.collect, listPath),
+        {
+          maxBuffer: ITEM_QUERY_BUFFER,
+          timeout: EVALUATION_TIMEOUT_MS * 2,
+          killSignal: 'SIGKILL',
+          env: dotnetEnv(),
+        },
+      );
+      return parseBatchOutput(stdout, ITEM_TYPES, process.platform);
+    } catch (error: unknown) {
+      logger.warn(
+        'DotnetProjectSystem',
+        `A batched evaluation of ${projectPaths.length} projects failed; each is evaluated on its own.`,
+        error,
+      );
+      return null;
+    } finally {
+      if (listDirectory !== null) {
+        await fs.rm(listDirectory, { recursive: true, force: true }).catch((): void => undefined);
+      }
+    }
+  }
+
+  /**
+   * Writes the batch's MSBuild files once per session, in a directory of their own outside every
+   * workspace: the wrapper project and the targets file each project imports.
+   * @returns Returns the directory and the wrapper project's path, or null when they cannot be written.
+   */
+  private ensureBatchFiles(): Promise<{ directory: string; collect: string } | null> {
+    this.batchFiles ??= (async (): Promise<{ directory: string; collect: string } | null> => {
+      try {
+        const directory: string = await fs.mkdtemp(path.join(tmpdir(), 'onixlabs-studio-msbuild-'));
+        const targets: string = path.join(directory, 'studio-items.targets');
+        const collect: string = path.join(directory, 'studio-collect.proj');
+        await fs.writeFile(targets, batchItemsTargets(ITEM_TYPES), 'utf8');
+        await fs.writeFile(collect, batchCollectProject(targets), 'utf8');
+        return { directory, collect };
+      } catch (error: unknown) {
+        logger.warn('DotnetProjectSystem', 'Could not write the batched evaluation files.', error);
+        return null;
+      }
+    })();
+    return this.batchFiles;
   }
 
   /**

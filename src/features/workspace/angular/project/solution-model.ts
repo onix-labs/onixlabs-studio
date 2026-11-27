@@ -1174,6 +1174,15 @@ export class SolutionModel {
         this.queue.push(path);
       }
     }
+    // One combined evaluation for the whole queue (#1600): the loads below are then answered from it
+    // rather than each starting the build tool, which is what made opening a solution slow.
+    if (this.queue.length > 1) {
+      void this.bridge
+        ?.invoke<void>(ProjectChannel.ItemsPrefetch, [...this.queue])
+        .catch((error: unknown): void =>
+          this.log.debug('workspace.solution', 'Could not evaluate the projects together', error),
+        );
+    }
     this.pump(generation);
   }
 

@@ -23,6 +23,7 @@ class FakeProject implements Bridge {
   public model: ProjectModel | null = null;
   public readonly itemsByPath: Map<string, ProjectItems> = new Map<string, ProjectItems>();
   public readonly itemRequests: string[] = [];
+  public readonly prefetches: (readonly string[])[] = [];
   public modelLoads: number = 0;
   public deferItems: boolean = false;
   public readonly failingItems: Set<string> = new Set<string>();
@@ -37,6 +38,10 @@ class FakeProject implements Bridge {
     }
     if (channel === (ProjectChannel.ItemsLoad as string)) {
       return this.loadItems(args[0] as string) as Promise<T>;
+    }
+    if (channel === (ProjectChannel.ItemsPrefetch as string)) {
+      this.prefetches.push(args[0] as readonly string[]);
+      return Promise.resolve(undefined as T);
     }
     if (channel === (ProjectChannel.SolutionFolderRename as string)) {
       this.renames.push({
@@ -552,6 +557,16 @@ describe('SolutionModel', () => {
     expect([...project.itemRequests].sort()).toEqual(['/root/A/A.csproj', '/root/B/B.csproj']);
   });
 
+  it('open_asksForEveryProjectToBeEvaluatedTogether_first (#1600)', async () => {
+    project.model = sampleModel();
+    const model: SolutionModel = build();
+    await open(model);
+
+    expect(
+      project.prefetches.map((paths: readonly string[]): string[] => [...paths].sort()),
+    ).toEqual([['/root/A/A.csproj', '/root/B/B.csproj']]);
+  });
+
   it('rootNode_whileContentsLoad_showsSpinnersOnlyForInFlightFetches_thenClears', async () => {
     project.model = sampleModel();
     project.deferItems = true;
@@ -665,6 +680,8 @@ describe('SolutionModel', () => {
     // its cached contents without spawning another evaluation.
     expect(project.modelLoads).toBe(loadsAfterOpen + 1);
     expect(project.itemRequests.slice(requestsAfterOpen)).toEqual(['/root/A/A.csproj']);
+    // One project gains nothing from a combined evaluation, so none is asked for.
+    expect(project.prefetches).toHaveLength(1);
     void model;
   });
 
