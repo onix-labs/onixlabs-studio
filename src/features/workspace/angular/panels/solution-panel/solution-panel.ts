@@ -105,6 +105,18 @@ const ACTION_RENAME: string = 'rename';
 const ACTION_DELETE: string = 'delete';
 
 /**
+ * Identifies the New File and New Folder actions on a project, a folder on disk, or a file.
+ */
+const ACTION_NEW_FILE: string = 'new-file';
+const ACTION_NEW_FOLDER: string = 'new-folder';
+
+/**
+ * Identifies the placeholder row a create shows while its entry is being named. It cannot collide with
+ * a real row's key, which never contains a NUL.
+ */
+const PLACEHOLDER_KEY: string = '\u0000new-entry';
+
+/**
  * Identifies the Exclude and Include actions on what a row stands for on disk (#1252), and the Show
  * Hidden Files switch.
  */
@@ -158,6 +170,26 @@ interface PendingProjectAction {
    * Gets the project the action runs against.
    */
   readonly project: ProjectEntry;
+}
+
+/**
+ * A file or folder being created: a placeholder row, named in place, beneath the row that holds it.
+ */
+interface PendingCreate {
+  /**
+   * Gets whether a file or a folder is being created.
+   */
+  readonly kind: 'new-file' | 'new-folder';
+
+  /**
+   * Gets the absolute path of the directory it is created in.
+   */
+  readonly directory: string;
+
+  /**
+   * Gets the row the placeholder shows beneath: the project, the folder, or the root row.
+   */
+  readonly parent: SolutionRow;
 }
 
 /**
@@ -353,6 +385,28 @@ export class SolutionPanel {
   );
 
   /**
+   * Holds the file or folder being created and named in place, or null when none is.
+   */
+  public readonly creating: WritableSignal<PendingCreate | null> = signal<PendingCreate | null>(
+    null,
+  );
+
+  /**
+   * Gets the key of the row being named in place — a create's placeholder, or the row being renamed —
+   * or null when none is.
+   */
+  protected readonly editingKey: Signal<string | null> = computed((): string | null =>
+    this.creating() !== null ? PLACEHOLDER_KEY : (this.renameTarget()?.key ?? null),
+  );
+
+  /**
+   * Gets the name the field starts from: empty for a create, the row's name for a rename.
+   */
+  protected readonly editValue: Signal<string> = computed((): string =>
+    this.creating() !== null ? '' : (this.renameTarget()?.label ?? ''),
+  );
+
+  /**
    * Holds the notification sink a refused rename is reported through.
    */
   private readonly notifications: Notifications = inject(Notifications);
@@ -444,6 +498,15 @@ export class SolutionPanel {
         });
       }
     }
+    // Wherever the row stands for a directory to create in: inside a project or a folder, alongside a
+    // file — as the File Explorer offers them.
+    const creates: boolean = this.solution.creationDirectory(row) !== null;
+    if (creates) {
+      items.push(
+        { id: ACTION_NEW_FILE, label: 'New File', icon: Icon.FILE },
+        { id: ACTION_NEW_FOLDER, label: 'New Folder', icon: Icon.DIRECTORY },
+      );
+    }
     if (row.kind === 'project') {
       items.push({ id: ACTION_EDIT_PROJECT, label: 'Edit Project File', icon: Icon.PROJECT });
       items.push(...this.projectActionItems(row));
@@ -455,6 +518,9 @@ export class SolutionPanel {
       items.push({ id: ACTION_RENAME_FOLDER, label: 'Rename', icon: Icon.PENCIL });
     }
     if (path !== null) {
+      if (creates) {
+        items.push({ id: 'solution-menu.sep-paths', label: '', separator: true });
+      }
       items.push(
         { id: ACTION_COPY_PATH, label: 'Copy Path', icon: Icon.COPY },
         { id: ACTION_COPY_RELATIVE, label: 'Copy Relative Path', icon: Icon.COPY },
@@ -494,7 +560,7 @@ export class SolutionPanel {
    * common edit keeps the extension; a folder's whole name.
    */
   protected readonly renameSelection: Signal<RowEditSelection> = computed((): RowEditSelection =>
-    this.renameTarget()?.kind === 'file' ? 'stem' : 'all',
+    this.creating() === null && this.renameTarget()?.kind === 'file' ? 'stem' : 'all',
   );
 
   /**
@@ -502,6 +568,77 @@ export class SolutionPanel {
    */
   public cancelRename(): void {
     this.renameTarget.set(null);
+    this.creating.set(null);
+  }
+
+  /**
+   * Begins a create from a row: opens the row that will hold the new entry when it is closed, so the
+   * entry has somewhere to appear, then shows a placeholder beneath it to be named. From a file, the
+   * entry goes alongside it, beneath whichever project or folder holds the file.
+   * @param kind Whether a file or a folder is being created.
+   * @param row The row the create was chosen on.
+   */
+  private beginCreate(kind: 'new-file' | 'new-folder', row: SolutionRow): void {
+    const directory: string | null = this.solution.creationDirectory(row);
+    const parent: SolutionRow | null = row.kind === 'file' ? this.holderOf(row) : row;
+    if (directory === null || parent === null) {
+      return;
+    }
+    this.log.info('workspace.solution', kind === 'new-file' ? 'New file' : 'New folder', directory);
+    if (!parent.expanded) {
+      this.solution.toggle(parent);
+    }
+    this.renameTarget.set(null);
+    this.creating.set({ kind, directory, parent });
+  }
+
+  /**
+   * Finds the row that holds a file's row: the nearest project, folder or root row above it. A file
+   * nested beneath another by File Nesting is held by whatever holds that one.
+   * @param row The file's row.
+   * @returns Returns the row, or null when the file's row is not showing.
+   */
+  private holderOf(row: SolutionRow): SolutionRow | null {
+    const rows: readonly SolutionRow[] = this.shownRows();
+    const index: number = rows.findIndex(
+      (candidate: SolutionRow): boolean => candidate.key === row.key,
+    );
+    for (let above: number = index - 1; above >= 0; above--) {
+      if (rows[above].depth < row.depth && rows[above].kind !== 'file') {
+        return rows[above];
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Creates the file or folder being named, then ends the edit. A failure is reported as a
+   * notification, as a refused rename is. A new file opens, since it is what the user is about to type
+   * into; a new folder shows in the tree though its project lists nothing in it yet.
+   * @param create The create being named.
+   * @param name The trimmed name it was given.
+   * @returns Returns a promise that resolves once the create has been attempted.
+   */
+  private async commitCreate(create: PendingCreate, name: string): Promise<void> {
+    const result: FileOperationResult =
+      create.kind === 'new-folder'
+        ? await this.workspace.createFolder(create.directory, name)
+        : await this.workspace.createFile(create.directory, name);
+    if (!result.success) {
+      const title: string =
+        create.kind === 'new-folder' ? 'Could not create folder' : 'Could not create file';
+      this.log.warn('workspace.solution', title, result.error);
+      this.notifications.notify({ severity: 'error', title, detail: result.error });
+      return;
+    }
+    if (result.path === undefined) {
+      return;
+    }
+    if (create.kind === 'new-folder') {
+      this.solution.noteCreatedFolder(result.path);
+      return;
+    }
+    void this.fileOpener.openPath(result.path);
   }
 
   /**
@@ -516,6 +653,14 @@ export class SolutionPanel {
    * @returns Returns a promise that resolves once the rename has been attempted.
    */
   public async commitRename(commit: TreeEdit): Promise<void> {
+    const create: PendingCreate | null = this.creating();
+    if (create !== null) {
+      if (commit.row.id === PLACEHOLDER_KEY) {
+        this.creating.set(null);
+        await this.commitCreate(create, commit.value);
+      }
+      return;
+    }
     const row: SolutionRow | null = this.renameTarget();
     if (commit.row.id !== row?.key) {
       return;
@@ -546,6 +691,9 @@ export class SolutionPanel {
           : await this.entryRename.rename(path, commit.value);
       if (!renamed.success) {
         this.reportRenameFailure(renamed.error);
+      } else if (row.kind === 'item-folder') {
+        // A created folder that is still empty shows only because the model was told of it.
+        this.solution.renameCreatedFolder(path, renamed.path);
       }
       return;
     }
@@ -598,7 +746,10 @@ export class SolutionPanel {
       );
       if (!result.success) {
         failed.push({ entry, error: result.error });
-      } else if (result.trashed === false && !this.deletesPermanently()) {
+        continue;
+      }
+      this.solution.forgetCreatedFolder(entry.path);
+      if (result.trashed === false && !this.deletesPermanently()) {
         permanent.push(entry);
       }
     }
@@ -749,7 +900,7 @@ export class SolutionPanel {
    * Gets the solution's visible rows mapped to tree rows for the shared {@link TreeView}.
    */
   protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] =>
-    this.shownRows().map((row: SolutionRow): TreeRow => ({
+    this.withPlaceholder(this.shownRows()).map((row: SolutionRow): TreeRow => ({
       id: row.key,
       depth: row.depth,
       expandable: row.expandable,
@@ -1087,6 +1238,40 @@ export class SolutionPanel {
   }
 
   /**
+   * Adds a create's placeholder row: first beneath the row that holds the new entry. First rather than
+   * in name order, because a row that re-sorted as its name was typed would move under the cursor.
+   * @param rows The rows the tree shows.
+   * @returns Returns the rows with the placeholder in place, or unchanged when nothing is being
+   * created or the row that holds it is not showing.
+   */
+  private withPlaceholder(rows: readonly SolutionRow[]): readonly SolutionRow[] {
+    const create: PendingCreate | null = this.creating();
+    if (create === null) {
+      return rows;
+    }
+    const parent: number = rows.findIndex(
+      (row: SolutionRow): boolean => row.key === create.parent.key,
+    );
+    if (parent < 0) {
+      return rows;
+    }
+    const placeholder: SolutionRow = {
+      key: PLACEHOLDER_KEY,
+      depth: rows[parent].depth + 1,
+      label: '',
+      kind: create.kind === 'new-folder' ? 'item-folder' : 'file',
+      expandable: false,
+      expanded: false,
+      loading: false,
+      pending: false,
+      path: null,
+      scmPaths: [],
+      nestedPaths: [],
+    };
+    return [...rows.slice(0, parent + 1), placeholder, ...rows.slice(parent + 1)];
+  }
+
+  /**
    * Unwraps a tree row's solution-row payload.
    * @param row The tree row.
    * @returns Returns the solution row.
@@ -1177,6 +1362,10 @@ export class SolutionPanel {
     }
     if (selection.itemId === ACTION_DELETE) {
       this.requestDelete([row]);
+      return;
+    }
+    if (selection.itemId === ACTION_NEW_FILE || selection.itemId === ACTION_NEW_FOLDER) {
+      this.beginCreate(selection.itemId === ACTION_NEW_FILE ? 'new-file' : 'new-folder', row);
       return;
     }
     if (this.runExclusion(selection.itemId, [row])) {

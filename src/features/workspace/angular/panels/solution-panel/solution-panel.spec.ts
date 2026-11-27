@@ -129,6 +129,37 @@ class FakeSolutionModel {
     this.collapseAllCount++;
   }
 
+  public readonly createdFolders: string[] = [];
+  public readonly forgottenFolders: string[] = [];
+
+  /**
+   * As the real model answers for the rows these tests use: a project's and a file's directory, and a
+   * folder's own.
+   */
+  public creationDirectory(row: SolutionRow): string | null {
+    if (row.kind === 'item-folder') {
+      return row.path;
+    }
+    return (row.kind === 'project' || row.kind === 'file') && row.path !== null
+      ? row.path.slice(0, row.path.lastIndexOf('/'))
+      : null;
+  }
+
+  public noteCreatedFolder(path: string): void {
+    this.createdFolders.push(path);
+  }
+
+  public forgetCreatedFolder(path: string): void {
+    this.forgottenFolders.push(path);
+  }
+
+  public renameCreatedFolder(path: string, renamed: string | undefined): void {
+    this.forgottenFolders.push(path);
+    if (renamed !== undefined) {
+      this.createdFolders.push(renamed);
+    }
+  }
+
   public renameSolutionFolder(row: SolutionRow, name: string): Promise<ProjectOperationResult> {
     this.renames.push({ key: row.key, name });
     return Promise.resolve(this.renameResult);
@@ -638,6 +669,163 @@ describe('SolutionPanel', () => {
       expect(rename).toHaveBeenCalledWith('/root/A/g.cs', 'Renamed.cs');
     });
 
+    describe('New File and New Folder', () => {
+      const project: SolutionRow = makeRow({
+        key: 'a',
+        label: 'A',
+        kind: 'project',
+        expandable: true,
+        expanded: true,
+        path: '/root/A/A.csproj',
+      });
+      const folder: SolutionRow = makeRow({
+        key: 'sub',
+        label: 'Sub',
+        kind: 'item-folder',
+        depth: 1,
+        expandable: true,
+        path: '/root/A/Sub',
+      });
+      const file: SolutionRow = makeRow({
+        key: 'g',
+        label: 'g.cs',
+        kind: 'file',
+        depth: 1,
+        path: '/root/A/g.cs',
+      });
+      const placeholder: string = '\u0000new-entry';
+
+      /**
+       * Gets the keys of the rows the tree is given, in order.
+       * @returns Returns the keys.
+       */
+      function shownKeys(): string[] {
+        return (component as unknown as { rows: () => readonly TreeRow[] })
+          .rows()
+          .map((row: TreeRow): string => row.id);
+      }
+
+      beforeEach(() => {
+        solution.model.set(model);
+        solution.rows.set([project, folder, file]);
+        fixture.detectChanges();
+      });
+
+      it('areOffered_onAProject_aFolderOnDisk_andAFile', () => {
+        for (const row of [project, folder, file]) {
+          expect(menuIds(row)).toEqual(expect.arrayContaining(['new-file', 'new-folder']));
+        }
+      });
+
+      it('areNotOffered_onARowThatStandsForNoDirectory_orOnASelection', () => {
+        const solutionFolder: SolutionRow = makeRow({ key: '/Core', kind: 'folder' });
+        const logical: SolutionRow = makeRow({ key: 'linked', kind: 'item-folder', path: null });
+
+        expect(menuIds(solutionFolder)).not.toContain('new-file');
+        expect(menuIds(logical)).not.toContain('new-file');
+
+        component.onRowSelect({ row: treeRow(folder), mode: 'replace' });
+        component.onRowSelect({ row: treeRow(file), mode: 'toggle' });
+        expect(menuIds(file)).not.toContain('new-file');
+      });
+
+      it('newFile_onAProject_showsAPlaceholderFirstBeneathIt_toBeNamed', () => {
+        component.onContextAction({ itemId: 'new-file', row: treeRow(project) });
+
+        expect(shownKeys()).toEqual(['a', placeholder, 'sub', 'g']);
+        expect((component as unknown as { editingKey: () => string | null }).editingKey()).toBe(
+          placeholder,
+        );
+      });
+
+      it('newFolder_onAClosedFolder_opensItFirst', () => {
+        component.onContextAction({ itemId: 'new-folder', row: treeRow(folder) });
+
+        expect(solution.toggled).toEqual([folder]);
+        expect(shownKeys()).toEqual(['a', 'sub', placeholder, 'g']);
+      });
+
+      it('newFile_onAFile_goesAlongsideIt_beneathWhatHoldsTheFile', async () => {
+        const create: MockInstance<Workspace['createFile']> = vi
+          .spyOn(TestBed.inject(Workspace), 'createFile')
+          .mockResolvedValue({ success: true, path: '/root/A/h.cs' });
+        component.onContextAction({ itemId: 'new-file', row: treeRow(file) });
+
+        expect(shownKeys()).toEqual(['a', placeholder, 'sub', 'g']);
+        await component.commitRename({
+          row: { ...treeRow(file), id: placeholder },
+          value: 'h.cs',
+        });
+
+        expect(create).toHaveBeenCalledWith('/root/A', 'h.cs');
+        expect(opener.opened).toEqual(['/root/A/h.cs']);
+        expect(component.creating()).toBeNull();
+        expect(shownKeys()).toEqual(['a', 'sub', 'g']);
+      });
+
+      it('newFolder_named_createsIt_andShowsItThoughItsProjectListsNothingInIt', async () => {
+        const create: MockInstance<Workspace['createFolder']> = vi
+          .spyOn(TestBed.inject(Workspace), 'createFolder')
+          .mockResolvedValue({ success: true, path: '/root/A/Sub/Models' });
+        component.onContextAction({ itemId: 'new-folder', row: treeRow(folder) });
+
+        await component.commitRename({
+          row: { ...treeRow(folder), id: placeholder },
+          value: 'Models',
+        });
+
+        expect(create).toHaveBeenCalledWith('/root/A/Sub', 'Models');
+        expect(solution.createdFolders).toEqual(['/root/A/Sub/Models']);
+        expect(opener.opened).toEqual([]);
+      });
+
+      it('aCreateThatFails_isReported', async () => {
+        vi.spyOn(TestBed.inject(Workspace), 'createFile').mockResolvedValue({
+          success: false,
+          error: 'A file named “g.cs” already exists.',
+        });
+        component.onContextAction({ itemId: 'new-file', row: treeRow(project) });
+
+        await component.commitRename({
+          row: { ...treeRow(project), id: placeholder },
+          value: 'g.cs',
+        });
+
+        expect(notifications.notified).toEqual([
+          expect.objectContaining({
+            title: 'Could not create file',
+            detail: 'A file named “g.cs” already exists.',
+          }),
+        ]);
+        expect(opener.opened).toEqual([]);
+      });
+
+      it('cancelling_removesThePlaceholder_andCreatesNothing', () => {
+        const create: MockInstance<Workspace['createFile']> = vi.spyOn(
+          TestBed.inject(Workspace),
+          'createFile',
+        );
+        component.onContextAction({ itemId: 'new-file', row: treeRow(project) });
+
+        component.cancelRename();
+
+        expect(shownKeys()).toEqual(['a', 'sub', 'g']);
+        expect(create).not.toHaveBeenCalled();
+      });
+
+      it('deletingAFolder_stopsShowingItAsCreated', async () => {
+        vi.spyOn(TestBed.inject(Workspace), 'delete').mockResolvedValue({
+          success: true,
+          trashed: true,
+        });
+        component.onContextAction({ itemId: 'delete', row: treeRow(folder) });
+
+        await component.confirmDelete();
+
+        expect(solution.forgottenFolders).toEqual(['/root/A/Sub']);
+      });
+    });
+
     it('delete_asksFirst_thenDeletesEverySelectedFileThroughTheWorkspace', async () => {
       const remove: MockInstance<Workspace['delete']> = vi
         .spyOn(TestBed.inject(Workspace), 'delete')
@@ -784,6 +972,9 @@ describe('SolutionPanel', () => {
       const ids: string[] = menuIds(makeRow({ kind: 'file', path: '/root/A/g.cs' }));
       expect(ids).toEqual([
         'open',
+        'new-file',
+        'new-folder',
+        'solution-menu.sep-paths',
         'copy-path',
         'copy-relative-path',
         'reveal',
@@ -806,6 +997,9 @@ describe('SolutionPanel', () => {
 
       expect(menuIds(changed)).toEqual([
         'open',
+        'new-file',
+        'new-folder',
+        'solution-menu.sep-paths',
         'copy-path',
         'copy-relative-path',
         'reveal',
@@ -843,7 +1037,10 @@ describe('SolutionPanel', () => {
     it('contextMenuFor_aProject_offersEditProjectFileRatherThanOpen', () => {
       const ids: string[] = menuIds(makeRow({ kind: 'project', path: '/root/A/A.csproj' }));
       expect(ids).toEqual([
+        'new-file',
+        'new-folder',
         'edit-project',
+        'solution-menu.sep-paths',
         'copy-path',
         'copy-relative-path',
         'reveal',
@@ -906,6 +1103,9 @@ describe('SolutionPanel', () => {
       // there is no document to open, and clicking the row expands it.
       solution.model.set(model);
       expect(menuIds(makeRow({ kind: 'item-folder', path: '/root/A/Sub' }))).toEqual([
+        'new-file',
+        'new-folder',
+        'solution-menu.sep-paths',
         'copy-path',
         'copy-relative-path',
         'reveal',
@@ -1141,10 +1341,13 @@ describe('SolutionPanel', () => {
       builds.supported.add('test');
 
       expect(menuIds(makeRow({ kind: 'project', path: project.path }))).toEqual([
+        'new-file',
+        'new-folder',
         'edit-project',
         'project-action.sep',
         'project-action:build',
         'project-action:test',
+        'solution-menu.sep-paths',
         'copy-path',
         'copy-relative-path',
         'reveal',
@@ -1159,7 +1362,10 @@ describe('SolutionPanel', () => {
       solution.model.set(modelDeclaring('build'));
 
       expect(menuIds(makeRow({ kind: 'project', path: project.path }))).toEqual([
+        'new-file',
+        'new-folder',
         'edit-project',
+        'solution-menu.sep-paths',
         'copy-path',
         'copy-relative-path',
         'reveal',
@@ -1174,6 +1380,9 @@ describe('SolutionPanel', () => {
 
       expect(menuIds(makeRow({ kind: 'file', path: '/root/A/g.cs' }))).toEqual([
         'open',
+        'new-file',
+        'new-folder',
+        'solution-menu.sep-paths',
         'copy-path',
         'copy-relative-path',
         'reveal',
@@ -1192,7 +1401,10 @@ describe('SolutionPanel', () => {
       builds.supported.add('build');
 
       expect(menuIds(makeRow({ kind: 'project', path: '/root/Gone/Gone.csproj' }))).toEqual([
+        'new-file',
+        'new-folder',
         'edit-project',
+        'solution-menu.sep-paths',
         'copy-path',
         'copy-relative-path',
         'reveal',
@@ -1214,10 +1426,10 @@ describe('SolutionPanel', () => {
 
       // One rule, standing on its own between Edit Project File and the verbs — a separator replaces
       // the item it is on rather than decorating it, so a flagged Build would be a rule and no Build.
-      // The second rule heads Exclude, at the end.
-      expect(separators).toHaveLength(2);
-      expect(items[1]).toBe(separators[0]);
-      expect(items[2].id).toBe('project-action:build');
+      // The second rule heads the path commands, and the third Exclude, at the end.
+      expect(separators).toHaveLength(3);
+      expect(items[3]).toBe(separators[0]);
+      expect(items[4].id).toBe('project-action:build');
     });
 
     it('contextMenuFor_aProjectWithNoOfferableVerbs_addsNoStrandedSeparator', () => {
@@ -1228,7 +1440,7 @@ describe('SolutionPanel', () => {
           .contextMenuFor(treeRow(makeRow({ kind: 'project', path: project.path })))
           .filter((item: MenuItem): boolean => item.separator === true)
           .map((item: MenuItem): string => item.id),
-      ).toEqual(['solution-menu.sep-exclude']);
+      ).toEqual(['solution-menu.sep-paths', 'solution-menu.sep-exclude']);
     });
 
     it('onContextAction_aVerb_runsItAgainstThatProjectAloneAndSelectsTheRow', () => {

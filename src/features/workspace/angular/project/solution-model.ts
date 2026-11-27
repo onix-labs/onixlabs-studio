@@ -287,6 +287,15 @@ export class SolutionModel {
   >(new Set<string>());
 
   /**
+   * Holds the directories created from the Solution Explorer that hold nothing yet. A project's tree is
+   * built from its files, so an empty folder is not in it; a folder the user has just made is shown
+   * anyway, until it has a file of its own (when the project lists it) or the solution is loaded again.
+   */
+  private readonly createdFolders: WritableSignal<ReadonlySet<string>> = signal<
+    ReadonlySet<string>
+  >(new Set<string>());
+
+  /**
    * Holds the active search query. While non-empty the tree is filtered to the rows whose label
    * contains it (and their ancestors), with the matching branches force-expanded.
    */
@@ -421,7 +430,7 @@ export class SolutionModel {
           if (filtering) {
             this.appendItemsFiltered(items.tree, 1, `project:${hoisted}`, rows, query);
           } else {
-            this.appendItems(items.tree, 1, `project:${hoisted}`, rows);
+            this.appendItems(items.tree, 1, `project:${hoisted}`, rows, this.directoryOf(hoisted));
           }
         }
       } else if (filtering) {
@@ -454,6 +463,69 @@ export class SolutionModel {
         this.cancelReload();
       });
     });
+  }
+
+  /**
+   * Gets the directory a new file or folder made from a row goes in: a project's own directory, a
+   * folder's, the directory a file lies in — and, for the root row, the directory of the lone project
+   * whose contents it shows in place of a project row.
+   * @param row The row.
+   * @returns Returns the directory, or null when the row stands for none: a solution folder, a folder
+   * that is only logical, and a root row holding more than one project.
+   */
+  public creationDirectory(row: SolutionRow): string | null {
+    switch (row.kind) {
+      case 'project':
+      case 'file':
+        return row.path === null ? null : this.directoryOf(row.path);
+      case 'item-folder':
+        return row.path;
+      case 'solution': {
+        const model: ProjectModel | null = this.current();
+        const hoisted: string | null = model === null ? null : this.hoistedProjectPath(model);
+        return hoisted === null ? null : this.directoryOf(hoisted);
+      }
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Shows a folder just created from the Solution Explorer, which holds nothing for its project to
+   * list yet.
+   * @param path The folder's absolute path.
+   */
+  public noteCreatedFolder(path: string): void {
+    this.createdFolders.set(new Set<string>([...this.createdFolders(), path]));
+  }
+
+  /**
+   * Keeps a created folder showing under its new name, after a rename. Folders created beneath it are
+   * forgotten: their paths have changed with it, and by then it holds something for the project to list
+   * only if they do.
+   * @param path The folder's absolute path before the rename.
+   * @param renamed Its path now, when the rename reported one.
+   */
+  public renameCreatedFolder(path: string, renamed: string | undefined): void {
+    const created: boolean = this.createdFolders().has(path);
+    this.forgetCreatedFolder(path);
+    if (created && renamed !== undefined) {
+      this.noteCreatedFolder(renamed);
+    }
+  }
+
+  /**
+   * Stops showing a created folder, and any created beneath it, once it is deleted.
+   * @param path The folder's absolute path.
+   */
+  public forgetCreatedFolder(path: string): void {
+    const kept: string[] = [...this.createdFolders()].filter(
+      (folder: string): boolean =>
+        folder !== path && !folder.startsWith(`${path}/`) && !folder.startsWith(`${path}\\`),
+    );
+    if (kept.length !== this.createdFolders().size) {
+      this.createdFolders.set(new Set<string>(kept));
+    }
   }
 
   /**
@@ -1020,6 +1092,7 @@ export class SolutionModel {
     this.searchQuery.set('');
     this.selectedKeySignal.set(null);
     this.loadingProjects.set(new Set<string>());
+    this.createdFolders.set(new Set<string>());
     this.refetch.clear();
     this.expandedKeys.set(model !== null ? new Set<string>([ROOT_KEY]) : new Set<string>());
   }
@@ -1236,7 +1309,7 @@ export class SolutionModel {
         );
         const items: ProjectItems | undefined = this.itemsByProject().get(node.path);
         if (expanded && items !== undefined) {
-          this.appendItems(items.tree, depth + 1, key, rows);
+          this.appendItems(items.tree, depth + 1, key, rows, this.directoryOf(node.path));
         }
       }
     }
@@ -1323,14 +1396,18 @@ export class SolutionModel {
    * @param depth The nodes' depth.
    * @param parentKey The key prefix of the nodes' parent.
    * @param rows The list the rows are appended to.
+   * @param directory The directory the nodes lie in, or null when they lie in none.
    */
   private appendItems(
     nodes: readonly ProjectItemNode[],
     depth: number,
     parentKey: string,
     rows: SolutionRow[],
+    directory: string | null,
   ): void {
-    const ordered: readonly ProjectItemNode[] = this.orderedItems(nodes);
+    const ordered: readonly ProjectItemNode[] = this.orderedItems(
+      this.withCreatedFolders(nodes, directory),
+    );
     const nesting: FileNesting<ProjectItemFile> = this.nesting(ordered);
     for (const node of ordered) {
       if (node.type === 'folder') {
@@ -1352,7 +1429,7 @@ export class SolutionModel {
           this.row(key, depth, label, 'item-folder', true, expanded, false, false, last.path),
         );
         if (expanded) {
-          this.appendItems(last.children, depth + 1, key, rows);
+          this.appendItems(last.children, depth + 1, key, rows, last.path);
         }
       } else if (!nesting.nested.has(node)) {
         const nested: readonly ProjectItemFile[] = nesting.children.get(node) ?? [];
@@ -1365,6 +1442,36 @@ export class SolutionModel {
         }
       }
     }
+  }
+
+  /**
+   * Adds the folders created in a directory that its project does not list yet, as empty folders.
+   * @param nodes The nodes the project lists there.
+   * @param directory The directory, or null when the nodes lie in none.
+   * @returns Returns the nodes, with the created folders the project has yet to list.
+   */
+  private withCreatedFolders(
+    nodes: readonly ProjectItemNode[],
+    directory: string | null,
+  ): readonly ProjectItemNode[] {
+    if (directory === null || this.createdFolders().size === 0) {
+      return nodes;
+    }
+    const listed: ReadonlySet<string> = new Set<string>(
+      nodes
+        .filter((node: ProjectItemNode): boolean => node.type === 'folder')
+        .map((node: ProjectItemNode): string => node.name),
+    );
+    const created: ProjectItemFolder[] = [...this.createdFolders()]
+      .filter((path: string): boolean => this.directoryOf(path) === directory)
+      .map((path: string): ProjectItemFolder => ({
+        type: 'folder',
+        name: path.slice(directory.length + 1),
+        path,
+        children: [],
+      }))
+      .filter((folder: ProjectItemFolder): boolean => !listed.has(folder.name));
+    return created.length === 0 ? nodes : [...nodes, ...created];
   }
 
   /**

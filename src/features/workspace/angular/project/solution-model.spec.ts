@@ -795,6 +795,124 @@ describe('SolutionModel', () => {
     expect(rowFor(model, 'Group')!.path).toBeNull();
   });
 
+  describe('creating files and folders', () => {
+    it('creationDirectory_isAProjectsDirectory_aFoldersOwn_andAFilesParent', async () => {
+      project.model = sampleModel();
+      project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+      const model: SolutionModel = build();
+      await open(model);
+      model.toggle(rowFor(model, 'Group')!);
+      model.toggle(rowFor(model, 'A')!);
+      model.toggle(rowFor(model, 'Sub')!);
+
+      expect(model.creationDirectory(rowFor(model, 'A')!)).toBe('/root/A');
+      expect(model.creationDirectory(rowFor(model, 'Sub')!)).toBe('/root/A/Sub');
+      expect(model.creationDirectory(rowFor(model, 'f.cs')!)).toBe('/root/A/Sub');
+      // A solution folder is no directory, and this root holds more than one project.
+      expect(model.creationDirectory(rowFor(model, 'Group')!)).toBeNull();
+      expect(model.creationDirectory(rowFor(model, 'root')!)).toBeNull();
+    });
+
+    it('creationDirectory_ofTheRoot_isTheLoneProjectsDirectory_whenItsContentsShowThere', async () => {
+      project.model = {
+        kind: 'node',
+        root: '/root',
+        solution: null,
+        projects: [{ name: 'root', path: '/root/package.json' }],
+        tree: [{ type: 'project', name: 'root', path: '/root/package.json' }],
+        capabilities: sampleCapabilities(),
+      };
+      const model: SolutionModel = build();
+      await open(model);
+
+      expect(model.creationDirectory(rowFor(model, 'root')!)).toBe('/root');
+    });
+
+    it('aCreatedFolder_shows_thoughItsProjectListsNothingInIt', async () => {
+      project.model = sampleModel();
+      project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+      const model: SolutionModel = build();
+      await open(model);
+      model.toggle(rowFor(model, 'Group')!);
+      model.toggle(rowFor(model, 'A')!);
+      const before: string[] = labels(model);
+
+      model.noteCreatedFolder('/root/A/Models');
+
+      expect(labels(model)).toHaveLength(before.length + 1);
+      expect(rowFor(model, 'Models')).toMatchObject({
+        kind: 'item-folder',
+        path: '/root/A/Models',
+        depth: rowFor(model, 'Sub')!.depth,
+      });
+    });
+
+    it('aCreatedFolder_theProjectNowLists_isNotShownTwice', async () => {
+      project.model = sampleModel();
+      project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+      const model: SolutionModel = build();
+      await open(model);
+      model.toggle(rowFor(model, 'Group')!);
+      model.toggle(rowFor(model, 'A')!);
+
+      model.noteCreatedFolder('/root/A/Sub');
+
+      expect(labels(model).filter((label: string): boolean => label === 'Sub')).toHaveLength(1);
+    });
+
+    it('aCreatedFolder_holdsTheFoldersCreatedInsideIt', async () => {
+      project.model = sampleModel();
+      project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+      const model: SolutionModel = build();
+      await open(model);
+      model.toggle(rowFor(model, 'Group')!);
+      model.toggle(rowFor(model, 'A')!);
+      model.noteCreatedFolder('/root/A/Models');
+      model.noteCreatedFolder('/root/A/Models/Dto');
+
+      model.toggle(rowFor(model, 'Models')!);
+
+      expect(rowFor(model, 'Dto')?.depth).toBe(rowFor(model, 'Models')!.depth + 1);
+    });
+
+    it('forgetCreatedFolder_dropsIt_andThoseCreatedBeneathIt', async () => {
+      project.model = sampleModel();
+      project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+      const model: SolutionModel = build();
+      await open(model);
+      model.toggle(rowFor(model, 'Group')!);
+      model.toggle(rowFor(model, 'A')!);
+      model.noteCreatedFolder('/root/A/Models');
+      model.noteCreatedFolder('/root/A/Models/Dto');
+      model.noteCreatedFolder('/root/A/ModelsToo');
+      model.toggle(rowFor(model, 'Models')!);
+
+      model.forgetCreatedFolder('/root/A/Models');
+
+      expect(rowFor(model, 'Models')).toBeUndefined();
+      expect(rowFor(model, 'Dto')).toBeUndefined();
+      expect(rowFor(model, 'ModelsToo')).toBeDefined();
+    });
+
+    it('renameCreatedFolder_keepsItShowingUnderItsNewName', async () => {
+      project.model = sampleModel();
+      project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+      const model: SolutionModel = build();
+      await open(model);
+      model.toggle(rowFor(model, 'Group')!);
+      model.toggle(rowFor(model, 'A')!);
+      model.noteCreatedFolder('/root/A/Models');
+
+      model.renameCreatedFolder('/root/A/Models', '/root/A/Entities');
+      // A folder the project lists itself was never tracked, so renaming it adds nothing.
+      model.renameCreatedFolder('/root/A/Sub', '/root/A/Other');
+
+      expect(rowFor(model, 'Models')).toBeUndefined();
+      expect(rowFor(model, 'Entities')?.path).toBe('/root/A/Entities');
+      expect(rowFor(model, 'Other')).toBeUndefined();
+    });
+  });
+
   it('search_aMatchingFolderInsideAProject_keepsItsDirectory', async () => {
     project.model = sampleModel();
     project.itemsByPath.set('/root/A/A.csproj', sampleItems());
