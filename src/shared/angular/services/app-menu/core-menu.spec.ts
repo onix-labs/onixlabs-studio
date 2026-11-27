@@ -7,6 +7,7 @@ import { SettingsNavigation } from '@shared/angular/services/settings-navigation
 import { Icon } from '@shared/angular/icons/icon';
 import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { TabCloser } from '@shared/angular/services/tab-closer/tab-closer';
 import { AppMenu } from './app-menu';
 import { MenuContribution, MenuEntry } from './app-menu-model';
 import { CoreMenu } from './core-menu';
@@ -43,7 +44,9 @@ describe('CoreMenu', () => {
         opened.push(type);
         return stubTab;
       },
-      close: (id: string): void => void closed.push(id),
+      close: (): void => {
+        throw new Error('A tab is never closed past the closer.');
+      },
     };
     const documentsStub: Partial<Documents> = {
       openFile: (): Promise<void> => {
@@ -68,6 +71,11 @@ describe('CoreMenu', () => {
     TestBed.configureTestingModule({
       providers: [
         { provide: Tabs, useValue: tabsStub },
+        // Every close goes through the closer, which asks about unsaved work first.
+        {
+          provide: TabCloser,
+          useValue: { close: (id: string): Promise<void> => Promise.resolve(void closed.push(id)) },
+        },
         { provide: Documents, useValue: documentsStub },
         { provide: Help, useValue: helpStub },
         { provide: SettingsNavigation, useValue: settingsNavigationStub },
