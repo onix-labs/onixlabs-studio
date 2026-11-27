@@ -1,0 +1,4 @@
+# The licence texts are copied into the notices byte for byte (#1612): keep their line endings the same
+# on every platform, so a Windows build does not ship them with mixed ones.
+LICENSE text eol=lf
+licensing/** text eol=lf

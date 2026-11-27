@@ -45,6 +45,10 @@ const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
  */
 function option(name, fallback) {
   const index = argv.indexOf(`--${name}`);
+  if (index !== -1 && (argv[index + 1] === undefined || argv[index + 1].startsWith('--'))) {
+    stderr.write(`--${name} needs a path.\n`);
+    exit(2);
+  }
   return resolve(REPO, index === -1 ? fallback : argv[index + 1]);
 }
 
@@ -85,8 +89,8 @@ function readJson(file) {
  * @returns {string | null} The absolute directory, or null for an input from no package.
  */
 function packageDirectoryOf(input) {
-  // Stylesheet resources are recorded as `angular:css-resource:<path>`.
-  const bare = input.replace(/^angular:[a-z-]+:/, '');
+  // Stylesheet resources are recorded as `angular:css-resource:<path>`, with the platform's separators.
+  const bare = input.replace(/^angular:[a-z-]+:/, '').replaceAll('\\', '/');
   const marker = 'node_modules/';
   const at = bare.lastIndexOf(marker);
   if (at === -1) {
@@ -242,13 +246,29 @@ function standardText(licence, copyright, who) {
 function describePackage(directory) {
   const manifest = readJson(join(directory, 'package.json'));
   if (manifest === null || typeof manifest.name !== 'string') {
+    problems.push(`${directory}: is shipped, but has no readable package.json to say what it is.`);
     return null;
   }
   const name = manifest.name;
   const election = overrides.elections[name];
   const fix = overrides.packages[name] ?? {};
-  const licence = election?.licence ?? fix.licence ?? declaredLicence(manifest);
+  const declared = declaredLicence(manifest);
   const who = `${name}@${manifest.version}`;
+  // An override answers for the package as it was when it was written: one whose licence has changed
+  // since is looked at again, not carried on under the old answer.
+  if (election !== undefined && declared !== election.offered) {
+    problems.push(
+      `${who}: now declares ${declared}, not the ${election.offered} its election in ` +
+        'licensing/overrides.json was made for. Review the election.',
+    );
+  }
+  if (fix.licence !== undefined && declared !== null) {
+    problems.push(
+      `${who}: now declares ${declared}; its licence fix in licensing/overrides.json is no longer ` +
+        'needed, or is wrong. Review it.',
+    );
+  }
+  const licence = election?.licence ?? fix.licence ?? declared;
   if (licence === null) {
     problems.push(`${who}: declares no licence; record one in licensing/overrides.json.`);
   } else if (!allowed.has(licence) && election === undefined) {
@@ -258,6 +278,14 @@ function describePackage(directory) {
     );
   }
   let texts = noticeTexts(directory);
+  for (const extra of fix.extraTexts ?? []) {
+    const file = join(directory, extra);
+    if (existsSync(file)) {
+      texts = [...texts, readFileSync(file, 'utf8').trim()];
+    } else {
+      problems.push(`${who}: has no ${extra}, which licensing/overrides.json lists for it.`);
+    }
+  }
   if (texts.length === 0 && fix.standardText === true && licence !== null) {
     const copyright =
       fix.copyright ??
@@ -288,19 +316,31 @@ function describePackage(directory) {
  */
 function describeComponent(component) {
   const version =
-    component.fromPackage === undefined
+    component.versionFrom === undefined
       ? null
-      : (readJson(join(REPO, 'node_modules', component.fromPackage, 'package.json'))?.version ??
+      : (readJson(join(REPO, 'node_modules', component.versionFrom, 'package.json'))?.version ??
         null);
-  let texts = (component.texts ?? []).map((file) => readFileSync(join(REPO, file), 'utf8').trim());
+  let texts = [];
+  for (const file of component.texts ?? []) {
+    if (existsSync(join(REPO, file))) {
+      texts.push(readFileSync(join(REPO, file), 'utf8').trim());
+    } else {
+      problems.push(`${component.name}: its text ${file} is not there.`);
+    }
+  }
+  if (component.notice !== undefined) {
+    texts = [component.notice, ...texts];
+  }
   if (component.standardText === true) {
     const text = standardText(component.licence, component.copyright ?? null, component.name);
     texts = text === null ? texts : [...texts, text];
   }
-  if (component.notice !== undefined) {
-    texts = [...texts, component.notice];
-  } else if (!allowed.has(component.licence)) {
-    problems.push(`${component.name}: ${component.licence} is not on the allowlist.`);
+  // A component outside the allowlist needs a recorded reason, as an election does for a package.
+  if (!allowed.has(component.licence) && component.accepted === undefined) {
+    problems.push(
+      `${component.name}: ${component.licence} is not on the allowlist, and nothing records why it ` +
+        'is accepted.',
+    );
   }
   if (texts.length === 0) {
     problems.push(`${component.name}: has no licence text or notice.`);
