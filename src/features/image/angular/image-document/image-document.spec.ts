@@ -317,23 +317,25 @@ describe('ImageDocuments', () => {
     try {
       const { document } = await openLoaded('/ws/photo.png');
 
-      // Ask, by default: the question is raised, worded for an image with nothing to lose.
+      // Silent, by default (#1588): the image simply follows the file.
       watchers.get('/ws/photo.png')?.();
       await flush();
-      expect(document.revision()).toBe(0);
+      expect(document.revision()).toBe(1);
+      expect(document.displayUrl()).toBe(mediaUrl('/ws/photo.png', 1));
+      expect(TestBed.inject(FileConflicts).activeConflict()).toBeNull();
+
+      // Ask: the question is raised, worded for an image with nothing to lose.
+      settings.set('textEditor.reloadOnDiskChange', 'ask');
+      watchers.get('/ws/photo.png')?.();
+      await flush();
+      expect(document.revision()).toBe(1);
       expect(TestBed.inject(FileConflicts).activeConflict()).toMatchObject({
         documentId: '/ws/photo.png',
         unedited: true,
       });
       TestBed.inject(FileConflicts).reload('/ws/photo.png');
       await flush();
-      expect(document.revision()).toBe(1);
-
-      settings.set('textEditor.reloadOnDiskChange', 'silent');
-      watchers.get('/ws/photo.png')?.();
-      await flush();
       expect(document.revision()).toBe(2);
-      expect(document.displayUrl()).toBe(mediaUrl('/ws/photo.png', 2));
 
       settings.set('textEditor.reloadOnDiskChange', 'ignore');
       watchers.get('/ws/photo.png')?.();

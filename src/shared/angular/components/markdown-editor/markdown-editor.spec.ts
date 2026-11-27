@@ -376,6 +376,33 @@ describe('MarkdownEditor', () => {
     fixture.destroy();
   });
 
+  it('flushPendingEdit_reportsTypingAtOnce_andTheDebouncedUpdateDoesNotReportItAgain (#1616)', async () => {
+    const { fixture, contentChanges } = await bootEditor('start\n');
+    fixture.componentInstance.getCrepe()?.editor.action((ctx: Ctx): void => {
+      const view: EditorView = ctx.get(editorViewCtx);
+      view.dispatch(view.state.tr.insertText('typed ', 1));
+    });
+
+    // Asked straight after the keystroke, before the listener's pause has run out.
+    fixture.componentInstance.flushPendingEdit();
+    expect(contentChanges).toEqual(['typed start\n']);
+
+    await afterDebounce();
+    expect(contentChanges).toEqual(['typed start\n']);
+    fixture.destroy();
+  });
+
+  it('flushPendingEdit_withNothingTyped_reportsNothing', async () => {
+    // Content the parse normalises is no edit, early or late.
+    const { fixture, contentChanges } = await bootEditor('- one\n- two\n');
+
+    fixture.componentInstance.flushPendingEdit();
+    await afterDebounce();
+
+    expect(contentChanges).toEqual([]);
+    fixture.destroy();
+  });
+
   it('externalContentChange_recreatesTheEditor_withTheNewContent', async () => {
     const { fixture, readyCount } = await bootEditor('original\n');
     fixture.componentRef.setInput('content', 'replaced\n');
