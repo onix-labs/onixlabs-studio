@@ -23,8 +23,16 @@ import {
 import { EditingChords } from '@shared/angular/services/editing-chords/editing-chords';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Log } from '@shared/angular/services/log/log';
-import { Tab } from '@shared/angular/services/tabs/tab';
+import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { MAIN_WINDOW_ID, Tabs } from '@shared/angular/services/tabs/tabs';
+
+/**
+ * Lists the kinds of tab whose state survives a move between windows: their documents live outside
+ * the view, and their views keep them through a move. A workspace, an agent and the explorers own
+ * their state through their views, and would start again in their new window, so they stay where they
+ * are until that state is tab-scoped (step 3 of #1587).
+ */
+const MOVABLE_TAB_TYPES: ReadonlySet<TabType> = new Set<TabType>(['code', 'markdown', 'terminal']);
 
 /**
  * Describes a Studio window other than the first.
@@ -138,10 +146,27 @@ export class StudioWindows {
     effect((): void => {
       for (const windowId of this.openIds()) {
         if (this.tabs.tabsIn(windowId)().length === 0) {
-          this.windows.get(windowId)?.window.close();
+          // After this pass of change detection, not during it: closing brings the window's tabs
+          // home through a change detection of its own.
+          queueMicrotask((): void => this.windows.get(windowId)?.window.close());
         }
       }
     });
+  }
+
+  /**
+   * Determines whether a tab can move into a window of its own: a kind whose state survives the move,
+   * and not its window's only tab, which would leave that window with nothing in it.
+   * @param tabId The tab's identifier.
+   * @returns Returns true when it can.
+   */
+  public canMove(tabId: string): boolean {
+    const tab: Tab | undefined = this.tabs.get(tabId);
+    return (
+      tab !== undefined &&
+      MOVABLE_TAB_TYPES.has(tab.type) &&
+      this.tabs.tabsIn(this.tabs.windowOf(tabId))().length > 1
+    );
   }
 
   /**
@@ -150,7 +175,7 @@ export class StudioWindows {
    */
   public openTabInNewWindow(tabId: string): void {
     const tab: Tab | undefined = this.tabs.get(tabId);
-    if (tab === undefined) {
+    if (tab === undefined || !this.canMove(tabId)) {
       return;
     }
     const window: AuxiliaryWindow | null = this.aux.open(tab.title, undefined, { bare: true });
@@ -199,13 +224,17 @@ export class StudioWindows {
    * @param windowId The window it moves to.
    */
   private move(tabId: string, windowId: string): void {
-    this.setMoving(tabId, true);
-    // The views' keep-alive inputs take the new value before anything is torn down.
-    this.applicationRef.tick();
-    this.tabs.moveToWindow(tabId, windowId);
-    this.tabs.focusWindow(windowId);
-    this.applicationRef.tick();
-    this.setMoving(tabId, false);
+    this.setMoving([tabId], true);
+    try {
+      // The views' keep-alive inputs take the new value before anything is torn down.
+      this.applicationRef.tick();
+      this.tabs.moveToWindow(tabId, windowId);
+      this.tabs.focusWindow(windowId);
+      this.applicationRef.tick();
+    } finally {
+      // However the move ends, the tab is not left moving: a later close would keep what it owns.
+      this.setMoving([tabId], false);
+    }
   }
 
   /**
@@ -221,26 +250,41 @@ export class StudioWindows {
     const ids: Set<string> = new Set<string>(this.openIds());
     ids.delete(windowId);
     this.openIds.set(ids);
-    for (const tab of this.tabs.tabsIn(windowId)()) {
-      this.move(tab.id, MAIN_WINDOW_ID);
+    const returning: readonly string[] = this.tabs
+      .tabsIn(windowId)()
+      .map((tab: Tab): string => tab.id);
+    this.setMoving(returning, true);
+    try {
+      this.applicationRef.tick();
+      // The window's views go first, so what they let go of as they are torn down (the active
+      // document, their shortcuts) is not what their twins in the first window have just claimed.
+      this.applicationRef.detachView(open.frame.hostView);
+      open.frame.destroy();
+      for (const tabId of returning) {
+        this.tabs.moveToWindow(tabId, MAIN_WINDOW_ID);
+      }
+      this.tabs.focusWindow(MAIN_WINDOW_ID);
+      this.applicationRef.tick();
+    } finally {
+      this.setMoving(returning, false);
     }
-    this.applicationRef.detachView(open.frame.hostView);
-    open.frame.destroy();
     this.tabs.forgetWindow(windowId);
     this.log.info('StudioWindows', `Closed window ${windowId}`);
   }
 
   /**
-   * Marks a tab as moving, or not.
-   * @param tabId The tab's identifier.
-   * @param moving Whether it is moving.
+   * Marks tabs as moving, or not.
+   * @param tabIds The tabs' identifiers.
+   * @param moving Whether they are moving.
    */
-  private setMoving(tabId: string, moving: boolean): void {
+  private setMoving(tabIds: readonly string[], moving: boolean): void {
     const next: Set<string> = new Set<string>(this.moving());
-    if (moving) {
-      next.add(tabId);
-    } else {
-      next.delete(tabId);
+    for (const tabId of tabIds) {
+      if (moving) {
+        next.add(tabId);
+      } else {
+        next.delete(tabId);
+      }
     }
     this.movingSignal.set(next);
   }

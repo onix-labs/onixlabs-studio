@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, effect, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, OnDestroy } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   WINDOW_FRAME,
@@ -21,12 +21,49 @@ import { StudioWindows } from './studio-windows';
   template: '',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-class StubFrame {
+class StubFrame implements OnDestroy {
   /**
    * Holds the configuration the frame was made with.
    */
   public readonly config: WindowFrameConfig = inject(WINDOW_FRAME_CONFIG);
+
+  /**
+   * Holds the tabs that were moving when the frame was destroyed, and were still in its window.
+   */
+  public destroyedWhile: string[] = [];
+
+  /**
+   * Holds the tab registry and windows, read as the frame goes.
+   */
+  private readonly tabs: Tabs = inject(Tabs);
+
+  /**
+   * Holds the Studio windows.
+   */
+  private readonly windows: StudioWindows = inject(StudioWindows);
+
+  /**
+   * Initializes a new instance of the {@link StubFrame} class, recording itself.
+   */
+  public constructor() {
+    frames.push(this);
+  }
+
+  /**
+   * Records which of its window's tabs were moving, and still its, as it went.
+   */
+  public ngOnDestroy(): void {
+    this.destroyedWhile = this.tabs
+      .tabsIn(this.config.windowId)()
+      .map((tab: Tab): string => tab.id)
+      .filter((id: string): boolean => this.windows.moving().has(id));
+  }
 }
+
+/**
+ * Holds every frame made, so a test can read what it saw.
+ */
+let frames: StubFrame[] = [];
 
 /**
  * A native window as the stand-in opener makes it: a real, separate document, and a close the test
@@ -48,12 +85,18 @@ describe('StudioWindows (#1587)', () => {
   let tabs: Tabs;
   let windows: StudioWindows;
   let opened: FakeWindow[];
+  let childViews: EventTarget[];
 
   beforeEach(() => {
     opened = [];
+    childViews = [];
+    frames = [];
     const aux: Partial<AuxiliaryWindows> = {
       open: (): AuxiliaryWindow => {
         const document: Document = window.document.implementation.createHTMLDocument('child');
+        const view: EventTarget = new EventTarget();
+        Object.defineProperty(document, 'defaultView', { value: view });
+        childViews.push(view);
         const listeners: (() => void)[] = [];
         let closed: boolean = false;
         const close: () => void = (): void => {
@@ -107,6 +150,7 @@ describe('StudioWindows (#1587)', () => {
   });
 
   it('marksTheTabAsMoving_whileItsViewIsReCreated', () => {
+    tabs.open('code');
     const moved: Tab = tabs.open('terminal');
     const seen: boolean[] = [];
     TestBed.runInInjectionContext((): void => {
@@ -122,12 +166,14 @@ describe('StudioWindows (#1587)', () => {
     expect(windows.moving().has(moved.id)).toBe(false);
   });
 
-  it('closesAWindow_whoseLastTabLeaves', () => {
+  it('closesAWindow_whoseLastTabLeaves', async () => {
+    tabs.open('code');
     const moved: Tab = tabs.open('terminal');
     windows.openTabInNewWindow(moved.id);
 
     tabs.close(moved.id);
     TestBed.tick();
+    await Promise.resolve();
 
     expect(opened[0].isClosed()).toBe(true);
   });
@@ -146,6 +192,7 @@ describe('StudioWindows (#1587)', () => {
   });
 
   it('makesEachWindowTheOneInFront_whenItTakesTheFocus', () => {
+    tabs.open('code');
     const moved: Tab = tabs.open('terminal');
     windows.openTabInNewWindow(moved.id);
     const windowId: string = tabs.windowOf(moved.id);
@@ -153,9 +200,32 @@ describe('StudioWindows (#1587)', () => {
     window.dispatchEvent(new Event('focus'));
     expect(tabs.focusedWindow()).toBe(MAIN_WINDOW_ID);
 
-    opened[0].contentHost.ownerDocument.defaultView?.dispatchEvent(new Event('focus'));
-    // A document made by createHTMLDocument has no window, so the first window is still in front.
-    expect([MAIN_WINDOW_ID, windowId]).toContain(tabs.focusedWindow());
+    childViews[0].dispatchEvent(new Event('focus'));
+    expect(tabs.focusedWindow()).toBe(windowId);
+  });
+
+  it('offersNoMove_forAWindowsOnlyTab_orAKindThatWouldStartAgain', () => {
+    const only: Tab = tabs.open('code');
+    expect(windows.canMove(only.id)).toBe(false);
+
+    const workspace: Tab = tabs.open('directory');
+    expect(windows.canMove(workspace.id)).toBe(false);
+    expect(windows.canMove(only.id)).toBe(true);
+  });
+
+  it('bringsEveryTabBack_withTheWindowsViewsGoneFirst', () => {
+    tabs.open('code');
+    const first: Tab = tabs.open('terminal');
+    windows.openTabInNewWindow(first.id);
+    const windowId: string = tabs.windowOf(first.id);
+    const second: Tab = tabs.open('markdown', undefined, { windowId });
+
+    opened[0].userCloses();
+
+    expect(tabs.windowOf(first.id)).toBe(MAIN_WINDOW_ID);
+    expect(tabs.windowOf(second.id)).toBe(MAIN_WINDOW_ID);
+    expect(frames[0].destroyedWhile).toEqual([first.id, second.id]);
+    expect(windows.moving().size).toBe(0);
   });
 
   it('ignoresATabThatIsNotOpen', () => {

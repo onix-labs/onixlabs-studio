@@ -15,6 +15,7 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
+import { StudioWindows } from '@shared/angular/services/studio-windows/studio-windows';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
@@ -298,6 +299,19 @@ export class MarkdownView implements OnInit, OnDestroy {
    * so their editor state is preserved, but they do not own the ribbon command handler.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Holds the Studio windows, whose moves re-create this view in another window (#1587).
+   */
+  private readonly studioWindows: StudioWindows = inject(StudioWindows);
+
+  /**
+   * Gets whether this tab is moving to another window, when its document lives on for the view that
+   * replaces this one there.
+   */
+  protected readonly moving: Signal<boolean> = computed((): boolean =>
+    this.studioWindows.moving().has(this.tabId()),
+  );
 
   /**
    * Holds whether this view's tab is the one the user is working in.

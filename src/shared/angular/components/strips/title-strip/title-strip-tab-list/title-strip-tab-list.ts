@@ -195,7 +195,12 @@ export class TitleStripTabList {
     // Offered while several windows are being built (#1587), only to those who switch it on.
     const windowItems: readonly MenuItem[] = this.settings.value('application.tabWindows')()
       ? [
-          { id: NEW_WINDOW, label: 'Open Tab in New Window', icon: Icon.POP_OUT },
+          {
+            id: NEW_WINDOW,
+            label: 'Open Tab in New Window',
+            icon: Icon.POP_OUT,
+            disabled: !this.studioWindows.canMove(tabs[index].id),
+          },
           { id: 'tab.sep-window', label: '', separator: true },
         ]
       : [];
