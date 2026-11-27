@@ -50,6 +50,18 @@
     "node-pty": {
       "extraTexts": ["deps/winpty/LICENSE"],
       "reason": "Carries winpty for Windows, under its own licence in a subfolder."
+    },
+    "pg-types": {
+      "standardText": true,
+      "reason": "Ships no licence file; package.json says MIT and names its author. Bundled into the PostgreSQL plugin (through pg)."
+    },
+    "pgpass": {
+      "standardText": true,
+      "reason": "Ships no licence file; package.json says MIT and names its author. Bundled into the PostgreSQL plugin (through pg)."
+    },
+    "proxy-agent-negotiate": {
+      "standardText": true,
+      "reason": "Ships no licence file; package.json says MIT and names its author. Bundled into the SQL Server plugin (through tedious)."
     }
   },
   "include": [

@@ -37,6 +37,7 @@
     "test:coverage": "ng test --watch=false --coverage",
     "verify:plugin-index": "node scripts/verify-plugin-index.mjs",
     "pack:plugin": "node scripts/pack-plugin-tarball.mjs",
+    "licences:plugins": "node scripts/licences/check-plugins.mjs",
     "e2e": "node plugins/native-decoder/build.mjs && node plugins/jvm-decoder/build.mjs && node plugins/git/build.mjs && node plugins/github/build.mjs && playwright test --config e2e/playwright.config.ts",
     "e2e:docker": "node scripts/e2e-docker.mjs",
     "e2e:install": "node scripts/e2e-install.mjs",

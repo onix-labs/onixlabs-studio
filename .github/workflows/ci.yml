@@ -55,6 +55,11 @@ jobs:
       - name: Build Electron main + preload (typecheck + bundle)
         run: npm run build:electron
 
+      # A plugin's tarball is built only when its release is tagged; building each here checks the
+      # licences of what it bundles (#1612) while the pull request that changed them is still open.
+      - name: Check the plugins' licences
+        run: npm run licences:plugins
+
       # esbuild strips a plugin's types without checking them, so nothing else in this gate would
       # notice a plugin that does not compile — including a harness somebody's agent runs on.
       - name: Typecheck the plugins

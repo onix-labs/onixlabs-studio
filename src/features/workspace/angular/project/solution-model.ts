@@ -261,6 +261,15 @@ export class SolutionModel {
   private readonly refetch: Set<string> = new Set<string>();
 
   /**
+   * Holds the projects showing what an earlier session last evaluated (#1601), until an evaluation in
+   * this one confirms or replaces it. They count as unloaded wherever freshness matters: a reload
+   * re-evaluates them whatever it touched, and expanding one fetches it ahead of the sweep. An
+   * evaluation that comes back empty or fails drops the old contents rather than leaving them looking
+   * current.
+   */
+  private readonly unconfirmed: Set<string> = new Set<string>();
+
+  /**
    * Holds the generic transport, or undefined when running outside Electron.
    */
   private readonly bridge: Bridge | undefined = window.bridge;
@@ -925,8 +934,9 @@ export class SolutionModel {
 
   /**
    * Loads the model for a root, clearing it (and all tree state) when there is no root or bridge, then
-   * eagerly loading every project's contents. A stale response (the root changed again while the
-   * request was in flight) is discarded.
+   * eagerly loading every project's contents. What an earlier session last evaluated is shown at once
+   * (#1601), so the tree is usable before the evaluations land; each is replaced as its fresh contents
+   * arrive. A stale response (the root changed again while the request was in flight) is discarded.
    * @param root The workspace root, or null when none is open.
    * @returns Returns a promise that resolves once the model has been updated.
    */
@@ -938,14 +948,17 @@ export class SolutionModel {
       return;
     }
     this.settledSignal.set(false);
-    const model: ProjectModel | null = await this.bridge.invoke<ProjectModel | null>(
-      ProjectChannel.ModelLoad,
-      root,
-    );
+    const [model, cached]: [ProjectModel | null, readonly ProjectItems[]] = await Promise.all([
+      this.bridge.invoke<ProjectModel | null>(ProjectChannel.ModelLoad, root),
+      this.cachedItems(root),
+    ]);
     if (generation !== this.generation) {
       return;
     }
     this.reset(model);
+    if (model !== null) {
+      this.seed(model, cached);
+    }
     this.settledSignal.set(true);
     if (model !== null) {
       this.log.info(
@@ -957,6 +970,51 @@ export class SolutionModel {
         model.projects.map((project: ProjectEntry): string => project.path),
         generation,
       );
+    }
+  }
+
+  /**
+   * Reads what an earlier session last evaluated for the root's projects. Never fails the open: with
+   * nothing cached, the tree simply waits for its evaluations as it always did.
+   * @param root The workspace root.
+   * @returns Returns the cached contents.
+   */
+  private async cachedItems(root: string): Promise<readonly ProjectItems[]> {
+    try {
+      const cached: readonly ProjectItems[] | null | undefined = await this.bridge?.invoke<
+        readonly ProjectItems[] | null
+      >(ProjectChannel.ItemsCached, root);
+      return cached ?? [];
+    } catch (error: unknown) {
+      this.log.debug('workspace.solution', 'Could not read the cached solution contents', error);
+      return [];
+    }
+  }
+
+  /**
+   * Shows cached contents for the model's projects, ahead of their evaluations.
+   * @param model The model just loaded.
+   * @param cached The cached contents.
+   */
+  private seed(model: ProjectModel, cached: readonly ProjectItems[]): void {
+    const present: ReadonlySet<string> = new Set<string>(
+      model.projects.map((project: ProjectEntry): string => project.path),
+    );
+    const seeded: Map<string, ProjectItems> = new Map<string, ProjectItems>();
+    for (const items of cached) {
+      if (present.has(items.projectPath)) {
+        seeded.set(items.projectPath, items);
+      }
+    }
+    for (const path of seeded.keys()) {
+      this.unconfirmed.add(path);
+    }
+    if (seeded.size > 0) {
+      this.log.debug(
+        'workspace.solution',
+        `Showing ${seeded.size} project(s) from the last session while they re-evaluate`,
+      );
+      this.itemsByProject.set(seeded);
     }
   }
 
@@ -1088,6 +1146,7 @@ export class SolutionModel {
       this.loadingProjects.set(new Set<string>());
       this.createdFolders.set(new Set<string>());
       this.refetch.clear();
+      this.unconfirmed.clear();
       this.expandedKeys.set(new Set<string>());
       return;
     }
@@ -1116,8 +1175,18 @@ export class SolutionModel {
       if (items !== undefined) {
         kept.set(project.path, items);
       }
-      if (items === undefined || changed === null || this.projectTouched(project.path, changed)) {
+      if (
+        items === undefined ||
+        changed === null ||
+        this.unconfirmed.has(project.path) ||
+        this.projectTouched(project.path, changed)
+      ) {
         stale.push(project.path);
+      }
+    }
+    for (const path of [...this.unconfirmed]) {
+      if (!present.has(path)) {
+        this.unconfirmed.delete(path);
       }
     }
     if (kept.size !== cache.size) {
@@ -1162,6 +1231,7 @@ export class SolutionModel {
     this.loadingProjects.set(new Set<string>());
     this.createdFolders.set(new Set<string>());
     this.refetch.clear();
+    this.unconfirmed.clear();
     this.expandedKeys.set(model !== null ? new Set<string>([ROOT_KEY]) : new Set<string>());
   }
 
@@ -1227,7 +1297,10 @@ export class SolutionModel {
    * @param path The absolute project-file path.
    */
   private requestItems(path: string): void {
-    if (this.itemsByProject().has(path) || this.inFlight.has(path)) {
+    if (
+      (this.itemsByProject().has(path) && !this.unconfirmed.has(path)) ||
+      this.inFlight.has(path)
+    ) {
       return;
     }
     this.queue = this.queue.filter((queued: string): boolean => queued !== path);
@@ -1249,21 +1322,46 @@ export class SolutionModel {
     this.setLoading(path, true);
     try {
       const items: ProjectItems | null =
-        (await this.bridge?.invoke<ProjectItems | null>(ProjectChannel.ItemsLoad, path)) ?? null;
+        (await this.bridge?.invoke<ProjectItems | null>(
+          ProjectChannel.ItemsLoad,
+          path,
+          // The root the project was opened under, which its contents are cached for (#1601).
+          this.current()?.root,
+        )) ?? null;
       if (generation === this.generation && items !== null) {
         const cache: Map<string, ProjectItems> = new Map<string, ProjectItems>(
           this.itemsByProject(),
         );
         cache.set(items.projectPath, items);
         this.itemsByProject.set(cache);
+        this.unconfirmed.delete(path);
+      } else if (generation === this.generation) {
+        this.dropUnconfirmed(path);
       }
     } catch (error: unknown) {
       this.log.warn('workspace.solution', `Could not evaluate ${path}`, error);
+      if (generation === this.generation) {
+        this.dropUnconfirmed(path);
+      }
     } finally {
       this.inFlight.delete(path);
       this.setLoading(path, false);
       this.requeueIfWanted(path);
     }
+  }
+
+  /**
+   * Drops an earlier session's contents for a project this session could not evaluate, so they are
+   * not left looking current: the project shows as it would have with nothing cached.
+   * @param path The absolute project-file path.
+   */
+  private dropUnconfirmed(path: string): void {
+    if (!this.unconfirmed.delete(path)) {
+      return;
+    }
+    const cache: Map<string, ProjectItems> = new Map<string, ProjectItems>(this.itemsByProject());
+    cache.delete(path);
+    this.itemsByProject.set(cache);
   }
 
   /**

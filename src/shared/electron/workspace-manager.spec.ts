@@ -7,7 +7,7 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock, MockInstance } from 'vitest';
 import { ProjectChannel } from '@shared/api/project-channels';
-import type { ProjectOperationResult } from '@shared/api/project-system';
+import type { ProjectItems, ProjectOperationResult } from '@shared/api/project-system';
 import type {
   BinaryChunk,
   DirectoryListing,
@@ -66,6 +66,7 @@ const { WorkspaceManager } = await import('./workspace-manager');
 const { WorkspaceContext } = await import('./workspace-context');
 const { TrustedPaths } = await import('./trusted-paths');
 const { projectSystems } = await import('./project-system/default-project-systems');
+const { ProjectItemsCache } = await import('./project-system/project-items-cache');
 
 /**
  * The size, in bytes, of one megabyte as the Large File Size Limit counts it.
@@ -85,6 +86,7 @@ describe('WorkspaceManager', () => {
   let workspace: InstanceType<typeof WorkspaceContext>;
   let trusted: InstanceType<typeof TrustedPaths>;
   let decision: RepositoryTrustDecision;
+  let itemsCache: InstanceType<typeof ProjectItemsCache>;
   let temporaryDirectory: string | undefined;
 
   /**
@@ -136,11 +138,13 @@ describe('WorkspaceManager', () => {
     workspace.addRoot(workspaceRoot);
     trusted = new TrustedPaths(path.join(sandbox, 'trusted.json'));
     decision = 'trusted';
+    itemsCache = new ProjectItemsCache(path.join(sandbox, 'items-cache'));
     new WorkspaceManager(
       (): BrowserWindow | null => null,
       workspace,
       trusted,
       new RunTokens({ decisionFor: (): RepositoryTrustDecision => decision }),
+      itemsCache,
     ).register();
   });
 
@@ -1392,6 +1396,92 @@ describe('WorkspaceManager', () => {
 
       expect(loads).toHaveBeenCalledWith(project, {
         token: expect.objectContaining({ folder: project }) as unknown,
+      });
+    });
+
+    describe('the cached contents (#1601)', () => {
+      /**
+       * Makes every project evaluate to one file.
+       * @returns Returns the contents a project evaluates to.
+       */
+      function evaluatesTo(): (projectPath: string) => ProjectItems {
+        const contents: (projectPath: string) => ProjectItems = (projectPath: string) => ({
+          projectPath,
+          tree: [
+            { type: 'file', name: 'a.cs', path: path.join(path.dirname(projectPath), 'a.cs') },
+          ],
+        });
+        vi.spyOn(projectSystems, 'matchProject').mockReturnValue({
+          loadProjectItems: (projectPath: string): Promise<ProjectItems> =>
+            Promise.resolve(contents(projectPath)),
+        } as never);
+        return contents;
+      }
+
+      it('areKept_fromATrustedEvaluation_andGivenBackForTheRoot', async () => {
+        const contents: (projectPath: string) => ProjectItems = evaluatesTo();
+        const project: string = inWorkspace('app.csproj');
+
+        await invoke(ProjectChannel.ItemsLoad, project, workspaceRoot);
+        itemsCache.flushSync();
+
+        expect(await invoke(ProjectChannel.ItemsCached, workspaceRoot)).toEqual([
+          contents(project),
+        ]);
+      });
+
+      it('areNotKept_fromAFolderThatIsNotTrusted', async () => {
+        evaluatesTo();
+        decision = 'unknown';
+
+        await invoke(ProjectChannel.ItemsLoad, inWorkspace('app.csproj'), workspaceRoot);
+        decision = 'trusted';
+
+        expect(await invoke(ProjectChannel.ItemsCached, workspaceRoot)).toEqual([]);
+      });
+
+      it('areNotGivenBack_onceTheFolderIsNoLongerTrusted', async () => {
+        evaluatesTo();
+        await invoke(ProjectChannel.ItemsLoad, inWorkspace('app.csproj'), workspaceRoot);
+        decision = 'restricted';
+
+        expect(await invoke(ProjectChannel.ItemsCached, workspaceRoot)).toEqual([]);
+      });
+
+      it('areKeptOnlyUnderAnOpenRootTheProjectIsIn', async () => {
+        evaluatesTo();
+        const project: string = inWorkspace('app.csproj');
+        const nested: string = path.join(workspaceRoot, 'nested');
+
+        await invoke(ProjectChannel.ItemsLoad, project);
+        await invoke(ProjectChannel.ItemsLoad, project, outside);
+        await invoke(ProjectChannel.ItemsLoad, project, nested);
+        itemsCache.flushSync();
+
+        for (const root of [workspaceRoot, outside, nested]) {
+          expect((await itemsCache.read(root)).size, root).toBe(0);
+        }
+        expect(fs.existsSync(path.join(sandbox, 'items-cache'))).toBe(false);
+      });
+
+      it('areForgotten_whenATrustedEvaluationNoLongerGivesAny', async () => {
+        evaluatesTo();
+        const project: string = inWorkspace('app.csproj');
+        await invoke(ProjectChannel.ItemsLoad, project, workspaceRoot);
+        vi.spyOn(projectSystems, 'matchProject').mockReturnValue({
+          loadProjectItems: (): Promise<null> => Promise.resolve(null),
+        } as never);
+
+        await invoke(ProjectChannel.ItemsLoad, project, workspaceRoot);
+
+        expect(await invoke(ProjectChannel.ItemsCached, workspaceRoot)).toEqual([]);
+      });
+
+      it.each<[string, () => unknown]>([
+        ['aFolderThatIsNotOpen', (): unknown => outside],
+        ['notAPath', (): unknown => 7],
+      ])('areNothing_for_%s', async (_name: string, root: () => unknown) => {
+        expect(await invoke(ProjectChannel.ItemsCached, root())).toEqual([]);
       });
     });
 
