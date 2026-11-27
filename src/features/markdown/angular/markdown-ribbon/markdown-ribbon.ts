@@ -17,7 +17,7 @@ import { MENU_SEPARATOR, MenuContribution } from '@shared/angular/services/app-m
 import { Log } from '@shared/angular/services/log/log';
 import { Printing } from '@shared/angular/services/printing/printing';
 import { Settings } from '@shared/angular/services/settings/settings';
-import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { SHELL_WINDOW, Tabs } from '@shared/angular/services/tabs/tabs';
 import {
   MarkdownPanels,
   OpenableMarkdownPanel,
@@ -138,6 +138,13 @@ export class MarkdownRibbon {
    * Holds the tabs service used to resolve the active document for print and export.
    */
   private readonly tabs: Tabs = inject(Tabs);
+
+  /**
+   * Gets the active tab of the window this ribbon belongs to, which its commands act on (#1587).
+   */
+  private readonly windowTabId: Signal<string | undefined> = this.tabs.activeTabIdIn(
+    inject(SHELL_WINDOW),
+  );
 
   /**
    * Holds the printing service backing the Print and Export-to-PDF actions.
@@ -360,7 +367,7 @@ export class MarkdownRibbon {
    * (not the focus-scoped command state) so it stays correct while the editor is not focused.
    */
   protected readonly isDocumentEmpty: Signal<boolean> = computed((): boolean => {
-    const id: string | undefined = this.tabs.activeTabId();
+    const id: string | undefined = this.windowTabId();
     const content: string =
       (id === undefined ? undefined : this.documents.get(id)?.content()) ?? '';
     return content.trim().length === 0;
@@ -545,7 +552,7 @@ export class MarkdownRibbon {
    * @returns Returns the active document's name, or an empty string when none is active.
    */
   private activeDocumentName(): string {
-    const id: string | undefined = this.tabs.activeTabId();
+    const id: string | undefined = this.windowTabId();
     return (id === undefined ? undefined : this.documents.get(id)?.fileName()) ?? '';
   }
 

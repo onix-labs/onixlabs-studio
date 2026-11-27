@@ -124,9 +124,15 @@ export class AuxiliaryWindows implements OnDestroy {
    * Opens an auxiliary window with the application's chrome and styling.
    * @param title The window title, also shown in its title bar.
    * @param at The screen position to open at, or undefined to use the persisted pop-out bounds.
+   * @param options How to build it: `bare` leaves out the window's own title bar, for content that
+   * brings one of its own (a whole Studio window's title strip, #1587).
    * @returns Returns the window, or null when it could not be opened.
    */
-  public open(title: string, at?: AuxiliaryWindowPosition): AuxiliaryWindow | null {
+  public open(
+    title: string,
+    at?: AuxiliaryWindowPosition,
+    options?: { readonly bare?: boolean },
+  ): AuxiliaryWindow | null {
     // The position rides the features string; the main process parses and clamps it against the
     // displays before it reaches the window constructor.
     const features: string = at === undefined ? '' : `left=${at.x},top=${at.y}`;
@@ -150,7 +156,9 @@ export class AuxiliaryWindows implements OnDestroy {
     titlebar.appendChild(titleText);
     const contentHost: HTMLElement = doc.createElement('main');
     contentHost.className = 'aux-window__content';
-    doc.body.appendChild(titlebar);
+    if (options?.bare !== true) {
+      doc.body.appendChild(titlebar);
+    }
     doc.body.appendChild(contentHost);
 
     this.children.add(child);

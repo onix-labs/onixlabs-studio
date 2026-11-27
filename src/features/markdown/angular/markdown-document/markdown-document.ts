@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   effect,
   inject,
   input,
@@ -12,6 +13,8 @@ import {
   Signal,
   viewChild,
 } from '@angular/core';
+import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import type { Selection } from '@milkdown/kit/prose/state';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { Documents } from '@shared/angular/services/documents/documents';
@@ -88,6 +91,27 @@ export class MarkdownDocument implements OnInit, OnDestroy {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Holds whether the tab hosting this is the one the user is working in; with no dock around it,
+   * there is no tab to ask, and it behaves as it always has.
+   */
+  private readonly currentTab: Signal<boolean> = ((): Signal<boolean> => {
+    const context: DockTabContext | null = inject(DockTabContext, { optional: true });
+    const current: Signal<boolean> = inject(Tabs).isCurrent((): string | undefined =>
+      context?.tabId(),
+    );
+    return computed((): boolean => context === null || current());
+  })();
+
+  /**
+   * Gets whether this is showing in the tab the user is working in — the active tab of the window in
+   * front — which is when it may claim what the app has one of: the ribbon's commands, the shortcuts,
+   * the active document (#1587). Showing alone ({@link isActive}) is enough for what only draws.
+   */
+  protected readonly isCurrent: Signal<boolean> = computed(
+    (): boolean => this.isActive() && this.currentTab(),
+  );
+
+  /**
    * Emits once the pane's editor instance has been created (and again after it is recreated for
    * external content), so the owning leaf can wire its editor-dependent state.
    */
@@ -121,7 +145,7 @@ export class MarkdownDocument implements OnInit, OnDestroy {
    */
   public constructor() {
     effect((): void => {
-      if (this.isActive()) {
+      if (this.isCurrent()) {
         this.documents.setActiveDocument(this.documentId());
       }
     });

@@ -1,3 +1,4 @@
+import { StudioWindows } from '@shared/angular/services/studio-windows/studio-windows';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -10,8 +11,8 @@ import {
   OnInit,
   output,
   OutputEmitterRef,
-  signal,
   Signal,
+  signal,
   untracked,
   viewChild,
   WritableSignal,
@@ -98,6 +99,19 @@ export class TerminalView implements OnInit, OnDestroy {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Holds the Studio windows, whose moves re-create this view in another window (#1587).
+   */
+  private readonly studioWindows: StudioWindows = inject(StudioWindows);
+
+  /**
+   * Gets whether this tab is moving to another window, when its pane keeps its shell running for the
+   * pane that replaces it there.
+   */
+  protected readonly moving: Signal<boolean> = computed((): boolean =>
+    this.studioWindows.moving().has(this.tabId()),
+  );
 
   /**
    * Exposes the sides a panel may dock to to the template.
@@ -260,6 +274,20 @@ export class TerminalView implements OnInit, OnDestroy {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Holds whether this view's tab is the one the user is working in.
+   */
+  private readonly currentTab: Signal<boolean> = inject(Tabs).isCurrent((): string => this.tabId());
+
+  /**
+   * Gets whether this is showing in the tab the user is working in — the active tab of the window in
+   * front — which is when it may claim what the app has one of: the ribbon's commands, the shortcuts,
+   * the active document (#1587). Showing alone ({@link isActive}) is enough for what only draws.
+   */
+  protected readonly isCurrent: Signal<boolean> = computed(
+    (): boolean => this.isActive() && this.currentTab(),
+  );
+
+  /**
    * Publishes this view's injector so the shell's status strip can mount the terminal status
    * component inside it. Declared after {@link isActive}, whose signal it reads, and finalised in
    * {@link ngOnInit} once the tab id is readable.
@@ -303,7 +331,7 @@ export class TerminalView implements OnInit, OnDestroy {
 
     // Register the ribbon command handler while the terminal is active so copy/paste/clear act on it.
     effect((): void => {
-      if (this.isActive() && this.paneReady()) {
+      if (this.isCurrent() && this.paneReady()) {
         if (this.commandHandler === null) {
           this.registerCommandHandler();
         }

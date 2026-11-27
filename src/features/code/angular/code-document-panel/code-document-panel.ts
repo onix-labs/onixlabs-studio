@@ -9,12 +9,14 @@ import {
   inject,
   input,
   InputSignal,
-  signal,
   Signal,
+  signal,
   untracked,
   viewChild,
   WritableSignal,
 } from '@angular/core';
+import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import {
   TextEditor,
   TextEditorCursor,
@@ -248,6 +250,27 @@ export class CodeDocumentPanel {
    * Gets whether this document is the active one in its well, so the editor relayouts and focuses.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Holds whether the tab hosting this is the one the user is working in; with no dock around it,
+   * there is no tab to ask, and it behaves as it always has.
+   */
+  private readonly currentTab: Signal<boolean> = ((): Signal<boolean> => {
+    const context: DockTabContext | null = inject(DockTabContext, { optional: true });
+    const current: Signal<boolean> = inject(Tabs).isCurrent((): string | undefined =>
+      context?.tabId(),
+    );
+    return computed((): boolean => context === null || current());
+  })();
+
+  /**
+   * Gets whether this is showing in the tab the user is working in — the active tab of the window in
+   * front — which is when it may claim what the app has one of: the ribbon's commands, the shortcuts,
+   * the active document (#1587). Showing alone ({@link isActive}) is enough for what only draws.
+   */
+  protected readonly isCurrent: Signal<boolean> = computed(
+    (): boolean => this.isActive() && this.currentTab(),
+  );
 
   /**
    * Gets whether the backing document is released when this panel is destroyed. The workspace owns the
@@ -561,7 +584,7 @@ export class CodeDocumentPanel {
       if (this.commandHandler === null || !this.paneReady()) {
         return;
       }
-      if (this.isActive()) {
+      if (this.isCurrent()) {
         this.editorCommands.register(this.documentId(), this.commandHandler);
       } else {
         this.editorCommands.deactivate(this.documentId());

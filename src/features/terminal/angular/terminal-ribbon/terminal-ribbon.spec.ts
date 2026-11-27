@@ -1,4 +1,4 @@
-import { DebugElement, signal, WritableSignal } from '@angular/core';
+import { DebugElement, signal, Signal, WritableSignal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
@@ -135,7 +135,14 @@ describe('TerminalRibbon', () => {
       providers: [
         { provide: TerminalCommands, useValue: commandsStub },
         { provide: TerminalShells, useValue: shellsStub },
-        { provide: Tabs, useValue: { activeTabId: signal<string | undefined>('term-1') } },
+        {
+          provide: Tabs,
+          useValue: {
+            activeTabId: signal<string | undefined>('term-1'),
+            // The ribbon acts on its own window's active tab (#1587).
+            activeTabIdIn: (): Signal<string | undefined> => signal<string | undefined>('term-1'),
+          },
+        },
         { provide: TabDocks, useValue: docksStub },
       ],
     }).compileComponents();

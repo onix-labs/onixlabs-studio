@@ -14,6 +14,7 @@ import {
   Signal,
   untracked,
 } from '@angular/core';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
 import { Log } from '@shared/angular/services/log/log';
 import { ExplorerExclusions } from '@shared/angular/services/explorer-filter/explorer-exclusions';
@@ -416,6 +417,20 @@ export class DirectoryView implements OnInit, OnDestroy {
    * checkout's sub-view, the active checkout).
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Holds whether this view's tab is the one the user is working in.
+   */
+  private readonly currentTab: Signal<boolean> = inject(Tabs).isCurrent((): string => this.tabId());
+
+  /**
+   * Gets whether this is showing in the tab the user is working in — the active tab of the window in
+   * front — which is when it may claim what the app has one of: the ribbon's commands, the shortcuts,
+   * the active document (#1587). Showing alone ({@link isActive}) is enough for what only draws.
+   */
+  protected readonly isCurrent: Signal<boolean> = computed(
+    (): boolean => this.isActive() && this.currentTab(),
+  );
 
   /**
    * Gets the root listing the host resolved for this view, or null to consume the tab's stashed
@@ -1358,7 +1373,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     });
 
     effect((): void => {
-      if (this.isActive()) {
+      if (this.isCurrent()) {
         this.builds.register(this.buildRunner);
         this.debugger.register(this.debugSession);
         this.workspaceCapabilities.register(this.solutionModel.model);
@@ -1381,7 +1396,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     // Register this tab's layout session while active, so the ribbon's VIEW group commands (select,
     // save as, reset…) act on this dock.
     effect((): void => {
-      if (this.isActive()) {
+      if (this.isCurrent()) {
         this.disposeLayoutSession = this.layoutStore.register(this.layoutSession);
       } else {
         this.disposeLayoutSession?.();
@@ -1431,7 +1446,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     // in source control, commit, push, pull) and the repository command facade behind the ribbon's
     // Repository/Sync/Changes/Branch groups, both reaching this tab's repository.
     effect((): void => {
-      if (this.isActive()) {
+      if (this.isCurrent()) {
         this.workspaceSourceControl.register(this.sourceControlHandler);
         this.repositoryCommands.register(this.repositoryCommandHandler);
       } else {
@@ -1554,7 +1569,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     // Bring the Logs panel forward when the user asks to see a channel (a notification's "Show log",
     // #1134) — in the workspace they are looking at, never a background tab.
     effect((): void => {
-      if (this.outputService.showRequests() > 0 && untracked((): boolean => this.isActive())) {
+      if (this.outputService.showRequests() > 0 && untracked((): boolean => this.isCurrent())) {
         untracked((): void => this.ensureLogsPanel(true));
       }
     });
@@ -1684,7 +1699,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     // Register the workspace find accelerator while active, so Cmd/Ctrl+Shift+F reveals the Search
     // panel in this tab's dock. Bound only while active, so background tabs do not intercept the chord.
     effect((): void => {
-      if (this.isActive()) {
+      if (this.isCurrent()) {
         this.keybindings.register(this.viewScope(), [
           {
             id: 'workspace.findInFiles',

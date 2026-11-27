@@ -27,7 +27,7 @@ import {
   BINARY_DISASSEMBLY_PANEL_ID,
   BINARY_INSPECTOR_PANEL_ID,
 } from '../binary-dock-blueprint';
-import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { SHELL_WINDOW, Tabs } from '@shared/angular/services/tabs/tabs';
 import {
   BinaryDocumentEntry,
   BinaryDocuments,
@@ -64,6 +64,13 @@ export class BinaryRibbon {
    * Holds the tab registry, used to resolve the active binary tab.
    */
   private readonly tabs: Tabs = inject(Tabs);
+
+  /**
+   * Gets the active tab of the window this ribbon belongs to, which its commands act on (#1587).
+   */
+  private readonly windowTabId: Signal<string | undefined> = this.tabs.activeTabIdIn(
+    inject(SHELL_WINDOW),
+  );
 
   /**
    * Holds the binary document registry the ribbon acts on.
@@ -105,7 +112,7 @@ export class BinaryRibbon {
    */
   protected readonly activeDocument: Signal<BinaryDocumentEntry | undefined> = computed(
     (): BinaryDocumentEntry | undefined => {
-      const id: string | undefined = this.tabs.activeTabId();
+      const id: string | undefined = this.windowTabId();
       return id === undefined ? undefined : this.binaryDocuments.get(id);
     },
   );
@@ -270,14 +277,14 @@ export class BinaryRibbon {
    * Gets whether the active document's disassembly panel is currently shown.
    */
   protected readonly disassemblyShown: Signal<boolean> = computed((): boolean => {
-    return this.docks.isOpen(this.tabs.activeTabId(), BINARY_DISASSEMBLY_PANEL_ID);
+    return this.docks.isOpen(this.windowTabId(), BINARY_DISASSEMBLY_PANEL_ID);
   });
 
   /**
    * Gets whether the active document's inspector panel is currently shown.
    */
   protected readonly inspectorShown: Signal<boolean> = computed((): boolean => {
-    return this.docks.isOpen(this.tabs.activeTabId(), BINARY_INSPECTOR_PANEL_ID);
+    return this.docks.isOpen(this.windowTabId(), BINARY_INSPECTOR_PANEL_ID);
   });
 
   /**
@@ -307,7 +314,7 @@ export class BinaryRibbon {
    */
   protected onToggleDisassembly(): void {
     this.log.info('binary.ribbon', 'Toggle disassembly panel');
-    this.docks.toggle(this.tabs.activeTabId(), BINARY_DISASSEMBLY_PANEL_ID);
+    this.docks.toggle(this.windowTabId(), BINARY_DISASSEMBLY_PANEL_ID);
   }
 
   /**
@@ -315,14 +322,14 @@ export class BinaryRibbon {
    */
   protected onToggleInspector(): void {
     this.log.info('binary.ribbon', 'Toggle inspector panel');
-    this.docks.toggle(this.tabs.activeTabId(), BINARY_INSPECTOR_PANEL_ID);
+    this.docks.toggle(this.windowTabId(), BINARY_INSPECTOR_PANEL_ID);
   }
 
   /**
    * Gets whether the active document's agent panel is currently shown.
    */
   protected readonly agentShown: Signal<boolean> = computed((): boolean => {
-    return this.docks.isOpen(this.tabs.activeTabId(), BINARY_AGENT_PANEL_ID);
+    return this.docks.isOpen(this.windowTabId(), BINARY_AGENT_PANEL_ID);
   });
 
   /**
@@ -330,7 +337,7 @@ export class BinaryRibbon {
    */
   protected onToggleAgent(): void {
     this.log.info('binary.ribbon', 'Toggle agent panel');
-    this.docks.toggle(this.tabs.activeTabId(), BINARY_AGENT_PANEL_ID);
+    this.docks.toggle(this.windowTabId(), BINARY_AGENT_PANEL_ID);
   }
 
   /**

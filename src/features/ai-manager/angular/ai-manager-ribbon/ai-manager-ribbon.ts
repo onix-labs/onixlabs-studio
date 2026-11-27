@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
 import { TOOL_VIEW_AGENT_PANEL_ID } from '@shared/angular/services/tool-view-dock/tool-view-dock';
-import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { SHELL_WINDOW, Tabs } from '@shared/angular/services/tabs/tabs';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
@@ -101,10 +101,17 @@ export class AiManagerRibbon {
   private readonly tabs: Tabs = inject(Tabs);
 
   /**
+   * Gets the active tab of the window this ribbon belongs to, which its commands act on (#1587).
+   */
+  private readonly windowTabId: Signal<string | undefined> = this.tabs.activeTabIdIn(
+    inject(SHELL_WINDOW),
+  );
+
+  /**
    * Gets whether the docked agent is showing.
    */
   protected readonly agentShown: Signal<boolean> = computed((): boolean =>
-    this.docks.isOpen(this.tabs.activeTabId(), TOOL_VIEW_AGENT_PANEL_ID),
+    this.docks.isOpen(this.windowTabId(), TOOL_VIEW_AGENT_PANEL_ID),
   );
 
   /**
@@ -294,7 +301,7 @@ export class AiManagerRibbon {
    * Shows or hides the docked agent.
    */
   protected onToggleAgent(): void {
-    this.docks.toggle(this.tabs.activeTabId(), TOOL_VIEW_AGENT_PANEL_ID);
+    this.docks.toggle(this.windowTabId(), TOOL_VIEW_AGENT_PANEL_ID);
   }
 
   /**

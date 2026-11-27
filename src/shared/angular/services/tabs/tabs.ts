@@ -279,6 +279,26 @@ export class Tabs {
   }
 
   /**
+   * Gets whether a tab is the one the user is working in: the active tab of the window in front. A
+   * view showing in another window is visible, but only this one may claim what the app has one of —
+   * the ribbon's commands, the shortcuts, the active document.
+   *
+   * A tab this registry does not know (a view mounted outside the strip, as in a component's own
+   * tests) counts as current, so it behaves exactly as it did before there were several windows.
+   * @param tabId Reads the tab's identifier; undefined is never current.
+   * @returns Returns the answer, as a signal.
+   */
+  public isCurrent(tabId: () => string | undefined): Signal<boolean> {
+    return computed((): boolean => {
+      const id: string | undefined = tabId();
+      if (id === undefined) {
+        return false;
+      }
+      return this.get(id) === undefined || this.activeTabId() === id;
+    });
+  }
+
+  /**
    * Brings a window to the front, so the active tab is its active tab.
    * @param windowId The window's identifier.
    */

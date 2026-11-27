@@ -12,12 +12,13 @@ import {
   InputSignal,
   OnDestroy,
   OnInit,
-  signal,
   Signal,
+  signal,
   untracked,
   viewChild,
   WritableSignal,
 } from '@angular/core';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { EncodableImageType, ENCODABLE_IMAGE_TYPES } from '@shared/api/image-formats';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
@@ -206,6 +207,20 @@ export class ImageView implements OnInit, OnDestroy {
    * Gets a value indicating whether the view is the one on screen.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Holds whether this view's tab is the one the user is working in.
+   */
+  private readonly currentTab: Signal<boolean> = inject(Tabs).isCurrent((): string => this.tabId());
+
+  /**
+   * Gets whether this is showing in the tab the user is working in — the active tab of the window in
+   * front — which is when it may claim what the app has one of: the ribbon's commands, the shortcuts,
+   * the active document (#1587). Showing alone ({@link isActive}) is enough for what only draws.
+   */
+  protected readonly isCurrent: Signal<boolean> = computed(
+    (): boolean => this.isActive() && this.currentTab(),
+  );
 
   /**
    * Gets where the view is hosted.
@@ -528,7 +543,7 @@ export class ImageView implements OnInit, OnDestroy {
         return;
       }
       const tabId: string = this.tabId();
-      if (this.isActive()) {
+      if (this.isCurrent()) {
         untracked((): void => this.registerKeybindings(tabId));
       } else {
         this.keybindings.deactivate(tabId);

@@ -1,15 +1,6 @@
-@if (hasTabs()) {
-  <app-title-strip-container class="title-strip" />
-  @if (activeChrome().ribbon) {
-    <app-ribbon-strip-container class="ribbon-strip" />
-  }
-  <main class="content">
-    <app-content-host />
-  </main>
-  @if (activeChrome().status) {
-    <app-status-strip-container class="status-strip" />
-  }
-}
+<!-- The first window's frame: its title strip, ribbon, content and status strip. Every other window
+     shows the same frame for its own tabs (#1587). -->
+<app-window-shell />
 
 <!-- The setup wizard, mounted before the welcome screen because it precedes it: on a first launch and
      after every version change it is what the user meets, and the welcome screen stands aside until

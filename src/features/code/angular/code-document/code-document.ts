@@ -12,12 +12,14 @@ import {
   OnInit,
   output,
   OutputEmitterRef,
-  signal,
   Signal,
+  signal,
   untracked,
   viewChild,
   WritableSignal,
 } from '@angular/core';
+import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import type * as MonacoApi from 'monaco-editor';
 import { Log } from '@shared/angular/services/log/log';
 import { MergeToolOpener } from '@shared/angular/services/merge-tool/merge-tool-opener';
@@ -287,6 +289,27 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Holds whether the tab hosting this is the one the user is working in; with no dock around it,
+   * there is no tab to ask, and it behaves as it always has.
+   */
+  private readonly currentTab: Signal<boolean> = ((): Signal<boolean> => {
+    const context: DockTabContext | null = inject(DockTabContext, { optional: true });
+    const current: Signal<boolean> = inject(Tabs).isCurrent((): string | undefined =>
+      context?.tabId(),
+    );
+    return computed((): boolean => context === null || current());
+  })();
+
+  /**
+   * Gets whether this is showing in the tab the user is working in — the active tab of the window in
+   * front — which is when it may claim what the app has one of: the ribbon's commands, the shortcuts,
+   * the active document (#1587). Showing alone ({@link isActive}) is enough for what only draws.
+   */
+  protected readonly isCurrent: Signal<boolean> = computed(
+    (): boolean => this.isActive() && this.currentTab(),
+  );
+
+  /**
    * Emits once the pane's Monaco editor instance has been created, so the owning leaf can wire its
    * editor-dependent state.
    */
@@ -336,7 +359,7 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
    */
   public constructor() {
     effect((): void => {
-      if (this.isActive()) {
+      if (this.isCurrent()) {
         this.documents.setActiveDocument(this.documentId());
       }
     });
@@ -573,7 +596,7 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
   private preparePrint(): (() => void) | void {
     const target: HTMLPreElement | undefined = this.printMirror()?.nativeElement;
     const document: CodeDocument | null = this.backingDocument();
-    if (!this.isActive() || target === undefined || document === null) {
+    if (!this.isCurrent() || target === undefined || document === null) {
       return;
     }
     const content: string = document.content();

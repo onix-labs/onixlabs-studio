@@ -18,6 +18,8 @@ import { ConsoleForwarder } from '@shared/angular/services/console-forwarder/con
 import { Display } from '@shared/angular/services/display/display';
 import { Accessibility } from '@shared/angular/services/accessibility/accessibility';
 import { FullScreen } from '@shared/angular/services/full-screen/full-screen';
+import { WindowFrame } from '@shared/angular/components/window-shell/window-frame';
+import { WINDOW_FRAME } from '@shared/angular/components/window-shell/window-frame-config';
 import { provideUnsavedWork } from '@shared/angular/services/unsaved-work/unsaved-work';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Lifecycle } from '@shared/angular/services/lifecycle/lifecycle';
@@ -57,6 +59,8 @@ export const config: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideZonelessChangeDetection(),
+    // What a Studio window beyond the first is rendered with (#1587).
+    { provide: WINDOW_FRAME, useValue: WindowFrame },
     // Instantiate the console forwarder first, so the earliest boot logs (including the other
     // initializers') reach the main-process logger. No-op outside Electron.
     provideAppInitializer((): void => {

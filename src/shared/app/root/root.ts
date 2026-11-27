@@ -1,20 +1,11 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  HostListener,
-  inject,
-  Signal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, inject } from '@angular/core';
 import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
 import { EditingChords } from '@shared/angular/services/editing-chords/editing-chords';
-import { FeatureChrome, FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { OverlayScrollbars } from '@shared/angular/services/overlay-scrollbars/overlay-scrollbars';
 import { ShellPresence } from '@shared/angular/services/shell-presence/shell-presence';
-import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { WorkbenchAgentCapabilities } from '@shared/angular/services/workbench-agent-capabilities/workbench-agent-capabilities';
-import { ContentHost } from '@shared/angular/components/content-host/content-host';
+import { WindowShell } from '@shared/angular/components/window-shell/window-shell';
 import { ModalBackdropView } from '@shared/angular/components/modal-backdrop/modal-backdrop-view';
 import { AboutHost } from '@shared/angular/components/about-modal/about-host';
 import { UpstreamConfirmModal } from '@shared/angular/components/upstream-confirm-modal/upstream-confirm-modal';
@@ -24,9 +15,6 @@ import { PluginConsentHost } from '@shared/angular/components/plugin-consent-mod
 import { RepositoryTrustHost } from '@shared/angular/components/repository-trust-modal/repository-trust-host';
 import { GoToDialogHost } from '@shared/angular/components/go-to/go-to-dialogs/go-to-dialog-host';
 import { ToastHost } from '@shared/angular/components/toast-host/toast-host';
-import { RibbonStripContainer } from '@shared/angular/components/strips/ribbon-strip/ribbon-strip-container/ribbon-strip-container';
-import { StatusStripContainer } from '@shared/angular/components/strips/status-strip/status-strip-container/status-strip-container';
-import { TitleStripContainer } from '@shared/angular/components/strips/title-strip/title-strip-container/title-strip-container';
 import { WelcomeScreen } from '@features/welcome/angular/welcome-screen/welcome-screen';
 import { SetupWizardHost } from '@features/settings/angular/setup-wizard/setup-wizard-host';
 import { ConfigureDialogPanel } from '@features/workspace/angular/configure-dialog/configure-dialog';
@@ -38,10 +26,7 @@ import { ConfigureDialogPanel } from '@features/workspace/angular/configure-dial
 @Component({
   selector: 'app-root',
   imports: [
-    RibbonStripContainer,
-    StatusStripContainer,
-    TitleStripContainer,
-    ContentHost,
+    WindowShell,
     ModalBackdropView,
     PluginConsentHost,
     RepositoryTrustHost,
@@ -60,16 +45,6 @@ import { ConfigureDialogPanel } from '@features/workspace/angular/configure-dial
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Root {
-  /**
-   * Holds the tab registry used to adapt the layout to the active tab.
-   */
-  private readonly tabsService: Tabs = inject(Tabs);
-
-  /**
-   * Holds the feature registry, consulted for the active feature's chrome policy.
-   */
-  private readonly registry: FeatureRegistry = inject(FeatureRegistry);
-
   /**
    * Holds the application keybinding router, consulted for keyboard accelerators the active view has
    * registered.
@@ -108,23 +83,6 @@ export class Root {
    */
   private readonly workbenchCapabilities: WorkbenchAgentCapabilities = inject(
     WorkbenchAgentCapabilities,
-  );
-
-  /**
-   * Gets a value indicating whether any tab is open. When none are, the chrome strips and content
-   * host are replaced by the welcome screen.
-   */
-  protected readonly hasTabs: Signal<boolean> = computed(
-    (): boolean => this.tabsService.tabs().length > 0,
-  );
-
-  /**
-   * Gets the chrome policy of the active tab's feature: which strips the shell shows while it is
-   * active. A full-bleed feature (such as settings) opts out of the ribbon and/or status strip
-   * through its descriptor, so the shell hides them with no hard-coded knowledge of the feature.
-   */
-  protected readonly activeChrome: Signal<FeatureChrome> = computed((): FeatureChrome =>
-    this.registry.chromeFor(this.tabsService.activeTab()?.type),
   );
 
   /**

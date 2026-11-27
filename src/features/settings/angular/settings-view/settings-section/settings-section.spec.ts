@@ -218,7 +218,7 @@ describe('SettingsSection', () => {
     // quitting behaviour, setup after updates, the window lock, spell checking. The workspace
     // texture moved to Workspaces › General.
     const element: HTMLElement = await render('application');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(15);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(16);
     // The accent picker renders a dropdown with an option per preset plus the trailing Custom entry.
     expect(element.querySelector('app-accent-picker')).toBeTruthy();
     expect(element.querySelectorAll('app-accent-picker option').length).toBe(
@@ -246,6 +246,7 @@ describe('SettingsSection', () => {
       'Ribbon Alignment',
       'Window Size on Launch',
       'Restore Full Screen',
+      'Open Tabs in New Windows (Experimental)',
       'Quit When the Last Window Closes',
       'Confirm Before Quitting',
       'Run Setup After Updates',
