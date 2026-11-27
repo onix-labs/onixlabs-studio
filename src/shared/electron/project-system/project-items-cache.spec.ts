@@ -92,13 +92,15 @@ describe('ProjectItemsCache (#1601)', () => {
       expect(() => readdirSync(directory)).toThrow();
 
       await vi.advanceTimersByTimeAsync(1_500);
-      vi.useRealTimers();
-      await vi.waitFor(() => expect(readdirSync(directory)).toHaveLength(1));
     } finally {
       vi.useRealTimers();
     }
 
-    expect((await new ProjectItemsCache(directory).read(root)).size).toBe(2);
+    // The write is under way; wait for the file itself, not its temporary file, to say so.
+    await vi.waitFor(async () =>
+      expect((await new ProjectItemsCache(directory).read(root)).size).toBe(2),
+    );
+    expect(readdirSync(directory)).toHaveLength(1);
   });
 
   it('namesItsFileWithoutSpellingOutTheRoot', () => {
