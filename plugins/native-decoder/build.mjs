@@ -7,6 +7,7 @@ import { cpSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { writePluginLicences } from '../../scripts/licences/plugin.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const repo = join(root, '..', '..');
@@ -15,7 +16,9 @@ const out = join(root, 'dist', 'native-decoder');
 rmSync(join(root, 'dist'), { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 
-await build({
+const bundled = await build({
+  // Read back by writePluginLicences, so the notices list what was actually bundled (#1612).
+  metafile: true,
   entryPoints: [join(root, 'src', 'main.ts')],
   bundle: true,
   platform: 'node',
@@ -23,6 +26,17 @@ await build({
   format: 'cjs',
   outfile: join(out, 'main.js'),
   external: ['disassembler'],
+});
+
+// Its licence, and the notices of what it carries from others, travel in the archive (#1612):
+// disassembler (and the Capstone engine inside it) ships whole beside the bundle, so it is named
+// rather than found in the metafile, whose paths are relative to the working directory here.
+writePluginLicences({
+  root,
+  metafile: bundled.metafile,
+  out,
+  base: process.cwd(),
+  ships: [join(repo, 'node_modules', 'disassembler')],
 });
 
 cpSync(
