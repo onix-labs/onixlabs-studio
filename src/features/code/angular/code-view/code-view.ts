@@ -53,6 +53,7 @@ import { TerminalBridge } from '@shared/angular/services/terminal-bridge/termina
 import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
 import { DockTemplatePanel } from '@shared/angular/components/dock-layout/dock-template-panel/dock-template-panel';
+import { TabWindows } from '@shared/angular/services/tab-windows/tab-windows';
 import { dockProviders } from '@shared/angular/services/dock-layout/dock-providers';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import {
@@ -368,6 +369,19 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
   public readonly removeOnDestroy: InputSignal<boolean> = input<boolean>(true);
 
   /**
+   * TRIAL (#1593): holds the tab windows.
+   */
+  private readonly tabWindows: TabWindows = inject(TabWindows);
+
+  /**
+   * TRIAL (#1593): gets whether this view's destruction closes its document: not while its tab moves
+   * to another window, which re-parents the view as the dock well does.
+   */
+  protected readonly releasesOnDestroy: Signal<boolean> = computed(
+    (): boolean => this.removeOnDestroy() && !this.tabWindows.moving().has(this.tabId()),
+  );
+
+  /**
    * Registers this tab's live agent with Mission Control and the requests inbox for the tab's whole
    * life, service-only — the docked agent panel mounts lazily on first show, so registration cannot
    * be left to its chat. Finalised in {@link ngOnInit} once the tab id is readable.
@@ -599,7 +613,7 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
     // Only release the language-server, workspace root and run terminal when this view owns
     // their lifecycle (standalone tabs). In the dock well a destroy is a re-parent, not a close, so
     // the workspace handles it.
-    if (this.removeOnDestroy()) {
+    if (this.releasesOnDestroy()) {
       this.activeWorkspace.clearRoot(this.tabId());
       this.lsp.closeDocument(this.tabId());
       this.editorTerminals.remove(this.tabId());

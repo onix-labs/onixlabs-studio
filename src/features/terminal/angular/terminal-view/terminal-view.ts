@@ -1,3 +1,4 @@
+import { TabWindows } from '@shared/angular/services/tab-windows/tab-windows';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -98,6 +99,19 @@ export class TerminalView implements OnInit, OnDestroy {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * TRIAL (#1593): holds the tab windows.
+   */
+  private readonly tabWindows: TabWindows = inject(TabWindows);
+
+  /**
+   * TRIAL (#1593): gets whether this tab is moving to another window, when its pane keeps its session
+   * for the pane that replaces it.
+   */
+  protected readonly moving: Signal<boolean> = computed((): boolean =>
+    this.tabWindows.moving().has(this.tabId()),
+  );
 
   /**
    * Exposes the sides a panel may dock to to the template.

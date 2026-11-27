@@ -18,6 +18,7 @@ import { Menu, MenuChoice, MenuItem } from '@shared/angular/components/menu/menu
 import { MenuSubject } from '@shared/angular/components/menu/menu-subject';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Tab } from '@shared/angular/services/tabs/tab';
+import { TabWindows } from '@shared/angular/services/tab-windows/tab-windows';
 import { TabCloser } from '@shared/angular/services/tab-closer/tab-closer';
 import { isPinnedTabType, Tabs } from '@shared/angular/services/tabs/tabs';
 import { TitleStripTab } from '../title-strip-tab/title-strip-tab';
@@ -28,6 +29,11 @@ import { TitleStripTab } from '../title-strip-tab/title-strip-tab';
 const MOVE_TO_START: string = 'tab.move-to-start';
 const MOVE_TO_END: string = 'tab.move-to-end';
 const CLOSE: string = 'tab.close';
+
+/**
+ * TRIAL (#1593): moves the tab into a window of its own.
+ */
+const NEW_WINDOW: string = 'tab.new-window';
 
 /**
  * Represents the list of open tabs in the title strip, supporting drag-to-reorder and roving
@@ -53,6 +59,11 @@ export class TitleStripTabList {
    * Holds the tab closer that resolves unsaved changes before removing a tab.
    */
   private readonly tabCloser: TabCloser = inject(TabCloser);
+
+  /**
+   * TRIAL (#1593): holds the tab windows.
+   */
+  private readonly tabWindows: TabWindows = inject(TabWindows);
 
   /**
    * Holds a reference to the host element, used to move keyboard focus between tabs.
@@ -169,6 +180,8 @@ export class TitleStripTabList {
     }
     const firstMovable: number = tabs.findIndex((tab: Tab): boolean => !isPinnedTabType(tab.type));
     return [
+      { id: NEW_WINDOW, label: 'Open Tab in New Window (trial)', icon: Icon.CODE },
+      { id: 'tab.sep-window', label: '', separator: true },
       {
         id: MOVE_TO_START,
         label: 'Move Tab to Beginning',
@@ -229,6 +242,9 @@ export class TitleStripTabList {
         return;
       case CLOSE:
         this.onClose(tabs[index]);
+        return;
+      case NEW_WINDOW:
+        this.tabWindows.openInNewWindow(tabs[index].id);
         return;
       default:
         return;

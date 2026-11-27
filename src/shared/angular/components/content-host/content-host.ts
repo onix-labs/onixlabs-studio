@@ -3,6 +3,8 @@ import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/cor
 import { FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { TabWindows } from '@shared/angular/services/tab-windows/tab-windows';
+import { computed } from '@angular/core';
 import { DocumentConflictModal } from '@shared/angular/components/document-conflict-modal/document-conflict-modal';
 
 /**
@@ -34,7 +36,16 @@ export class ContentHost {
   /**
    * Gets the ordered list of open tabs.
    */
-  protected readonly tabs: Signal<readonly Tab[]> = this.tabsService.tabs;
+  protected readonly tabs: Signal<readonly Tab[]> = computed((): readonly Tab[] => {
+    // TRIAL (#1593): a tab hosted in a window of its own is not rendered here.
+    const elsewhere: ReadonlySet<string> = this.tabWindows.elsewhere();
+    return this.tabsService.tabs().filter((tab: Tab): boolean => !elsewhere.has(tab.id));
+  });
+
+  /**
+   * TRIAL (#1593): holds the tab windows.
+   */
+  private readonly tabWindows: TabWindows = inject(TabWindows);
 
   /**
    * Gets the identifier of the active tab, or undefined when no tab is open.

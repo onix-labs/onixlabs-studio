@@ -7,6 +7,7 @@
   <div class="terminal-main">
     <app-terminal
       [terminalId]="tabId()"
+      [persistent]="moving()"
       [cwd]="cwd()"
       [shell]="defaultShell()"
       [isActive]="isActive()"
