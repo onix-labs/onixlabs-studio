@@ -621,6 +621,43 @@ describe('SolutionModel', () => {
     expect(rowFor(model, 'B')?.pending).toBe(false);
   });
 
+  it.each<[string, number | undefined, number]>([
+    ['nothing declared', undefined, 1],
+    ['a width of two', 2, 2],
+    ['a width past the bound', 50, 8],
+    ['a width that is not a whole number', 1.5, 1],
+  ])(
+    'sweep_withAProjectSystemDeclaring_%s_evaluatesThatManyAtOnce (#1600)',
+    async (_name: string, declared: number | undefined, expected: number) => {
+      const projects: { name: string; path: string }[] = Array.from(
+        { length: 10 },
+        (_: unknown, i: number): { name: string; path: string } => ({
+          name: `P${i}`,
+          path: `/root/P${i}/P${i}.csproj`,
+        }),
+      );
+      project.model = {
+        ...sampleModel(),
+        projects,
+        tree: projects.map((entry: { name: string; path: string }) => ({
+          type: 'project' as const,
+          ...entry,
+        })),
+        capabilities: { ...sampleCapabilities(), itemLoadConcurrency: declared },
+      };
+      project.deferItems = true;
+      const model: SolutionModel = build();
+      await open(model);
+
+      expect(project.itemRequests).toHaveLength(expected);
+
+      project.resolveAll();
+      await flush();
+      // Each that settles makes room for the next, keeping the width full.
+      expect(project.itemRequests).toHaveLength(Math.min(expected * 2, projects.length));
+    },
+  );
+
   it('toggle_expandingAQueuedProject_fetchesItAheadOfTheBackgroundSweep', async () => {
     project.model = sampleModel();
     project.deferItems = true;
