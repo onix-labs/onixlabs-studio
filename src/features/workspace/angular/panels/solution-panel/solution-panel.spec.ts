@@ -145,6 +145,18 @@ class FakeSolutionModel {
       : null;
   }
 
+  public readonly expanded: SolutionRow[] = [];
+  public readonly pruned: string[] = [];
+
+  public expand(row: SolutionRow): void {
+    this.expanded.push(row);
+  }
+
+  public pruneCreatedFolders(changed: ReadonlySet<string> | null): Promise<void> {
+    this.pruned.push(...(changed ?? []));
+    return Promise.resolve();
+  }
+
   public noteCreatedFolder(path: string): void {
     this.createdFolders.push(path);
   }
@@ -741,7 +753,7 @@ describe('SolutionPanel', () => {
       it('newFolder_onAClosedFolder_opensItFirst', () => {
         component.onContextAction({ itemId: 'new-folder', row: treeRow(folder) });
 
-        expect(solution.toggled).toEqual([folder]);
+        expect(solution.expanded).toEqual([folder]);
         expect(shownKeys()).toEqual(['a', 'sub', placeholder, 'g']);
       });
 
@@ -798,6 +810,57 @@ describe('SolutionPanel', () => {
           }),
         ]);
         expect(opener.opened).toEqual([]);
+      });
+
+      it('areNotOffered_onAFile_whoseHolderStandsForAnotherDirectory', () => {
+        // A linked file: it shows beneath the project, but lies somewhere else.
+        const linked: SolutionRow = makeRow({
+          key: 'linked',
+          label: 'Shared.cs',
+          kind: 'file',
+          depth: 1,
+          path: '/root/Shared/Shared.cs',
+        });
+        solution.rows.set([project, linked]);
+        fixture.detectChanges();
+
+        expect(menuIds(linked)).not.toContain('new-file');
+        expect(menuIds(linked)).not.toContain('new-folder');
+      });
+
+      it('aCreate_whoseHolderLeavesTheTree_isAbandoned', async () => {
+        component.onContextAction({ itemId: 'new-file', row: treeRow(folder) });
+        expect(component.creating()).not.toBeNull();
+
+        solution.rows.set([project, file]);
+        fixture.detectChanges();
+        await fixture.whenStable();
+
+        expect(component.creating()).toBeNull();
+      });
+
+      it('rename_begunWhileACreateIsOpen_takesItsPlace', () => {
+        component.onContextAction({ itemId: 'new-file', row: treeRow(project) });
+
+        component.onContextAction({ itemId: 'rename', row: treeRow(file) });
+
+        expect(component.creating()).toBeNull();
+        expect((component as unknown as { editingKey: () => string | null }).editingKey()).toBe(
+          'g',
+        );
+      });
+
+      it('aDeleteThatFails_checksWhetherACreatedFolderIsStillThere', async () => {
+        vi.spyOn(TestBed.inject(Workspace), 'delete').mockResolvedValue({
+          success: false,
+          error: 'No such file or directory.',
+        });
+        component.onContextAction({ itemId: 'delete', row: treeRow(folder) });
+
+        await component.confirmDelete();
+
+        expect(solution.pruned).toEqual(['/root/A/Sub']);
+        expect(solution.forgottenFolders).toEqual([]);
       });
 
       it('cancelling_removesThePlaceholder_andCreatesNothing', () => {
@@ -972,9 +1035,6 @@ describe('SolutionPanel', () => {
       const ids: string[] = menuIds(makeRow({ kind: 'file', path: '/root/A/g.cs' }));
       expect(ids).toEqual([
         'open',
-        'new-file',
-        'new-folder',
-        'solution-menu.sep-paths',
         'copy-path',
         'copy-relative-path',
         'reveal',
@@ -997,9 +1057,6 @@ describe('SolutionPanel', () => {
 
       expect(menuIds(changed)).toEqual([
         'open',
-        'new-file',
-        'new-folder',
-        'solution-menu.sep-paths',
         'copy-path',
         'copy-relative-path',
         'reveal',
@@ -1380,9 +1437,6 @@ describe('SolutionPanel', () => {
 
       expect(menuIds(makeRow({ kind: 'file', path: '/root/A/g.cs' }))).toEqual([
         'open',
-        'new-file',
-        'new-folder',
-        'solution-menu.sep-paths',
         'copy-path',
         'copy-relative-path',
         'reveal',

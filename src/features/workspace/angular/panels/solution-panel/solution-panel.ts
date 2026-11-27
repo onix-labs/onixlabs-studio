@@ -392,6 +392,21 @@ export class SolutionPanel {
   );
 
   /**
+   * Abandons a create whose holding row has left the tree — deleted, filtered out, or gone with a
+   * reload — since its placeholder, and the field in it, went with the row. Left standing it would
+   * keep Rename from opening, and bring the placeholder back if the row returned.
+   */
+  private readonly abandonOrphanedCreate: unknown = effect((): void => {
+    const create: PendingCreate | null = this.creating();
+    if (
+      create !== null &&
+      !this.shownRows().some((row: SolutionRow): boolean => row.key === create.parent.key)
+    ) {
+      untracked((): void => this.creating.set(null));
+    }
+  });
+
+  /**
    * Gets the key of the row being named in place — a create's placeholder, or the row being renamed —
    * or null when none is.
    */
@@ -500,7 +515,7 @@ export class SolutionPanel {
     }
     // Wherever the row stands for a directory to create in: inside a project or a folder, alongside a
     // file — as the File Explorer offers them.
-    const creates: boolean = this.solution.creationDirectory(row) !== null;
+    const creates: boolean = this.createTargetOf(row) !== null;
     if (creates) {
       items.push(
         { id: ACTION_NEW_FILE, label: 'New File', icon: Icon.FILE },
@@ -552,6 +567,7 @@ export class SolutionPanel {
    */
   private beginRename(row: SolutionRow): void {
     this.log.info('workspace.solution', 'Rename', row.kind, row.key);
+    this.creating.set(null);
     this.renameTarget.set(row);
   }
 
@@ -579,17 +595,42 @@ export class SolutionPanel {
    * @param row The row the create was chosen on.
    */
   private beginCreate(kind: 'new-file' | 'new-folder', row: SolutionRow): void {
-    const directory: string | null = this.solution.creationDirectory(row);
-    const parent: SolutionRow | null = row.kind === 'file' ? this.holderOf(row) : row;
-    if (directory === null || parent === null) {
+    const target: Omit<PendingCreate, 'kind'> | null = this.createTargetOf(row);
+    if (target === null) {
       return;
     }
-    this.log.info('workspace.solution', kind === 'new-file' ? 'New file' : 'New folder', directory);
-    if (!parent.expanded) {
-      this.solution.toggle(parent);
-    }
+    this.log.info(
+      'workspace.solution',
+      kind === 'new-file' ? 'New file' : 'New folder',
+      target.directory,
+    );
+    this.solution.expand(target.parent);
     this.renameTarget.set(null);
-    this.creating.set({ kind, directory, parent });
+    this.creating.set({ kind, ...target });
+  }
+
+  /**
+   * Works out where a create chosen on a row goes, and which row holds the new entry.
+   *
+   * From a file, the entry goes alongside it — but only when the row holding the file stands for the
+   * directory the file is in. A linked file shows beneath a folder that is only logical, or in a
+   * directory other than the one its row sits in: a new entry made beside it would land somewhere the
+   * tree does not show, so none is offered there.
+   * @param row The row.
+   * @returns Returns the directory and the holding row, or null when the row offers no create.
+   */
+  private createTargetOf(row: SolutionRow): Omit<PendingCreate, 'kind'> | null {
+    const directory: string | null = this.solution.creationDirectory(row);
+    if (directory === null) {
+      return null;
+    }
+    if (row.kind !== 'file') {
+      return { directory, parent: row };
+    }
+    const parent: SolutionRow | null = this.holderOf(row);
+    return parent !== null && this.solution.creationDirectory(parent) === directory
+      ? { directory, parent }
+      : null;
   }
 
   /**
@@ -746,6 +787,8 @@ export class SolutionPanel {
       );
       if (!result.success) {
         failed.push({ entry, error: result.error });
+        // A created folder already gone from disk fails to delete; stop showing it, all the same.
+        void this.solution.pruneCreatedFolders(new Set<string>([entry.path]));
         continue;
       }
       this.solution.forgetCreatedFolder(entry.path);

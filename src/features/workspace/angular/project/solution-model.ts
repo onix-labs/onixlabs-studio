@@ -428,7 +428,14 @@ export class SolutionModel {
         const items: ProjectItems | undefined = this.itemsByProject().get(hoisted);
         if (items !== undefined) {
           if (filtering) {
-            this.appendItemsFiltered(items.tree, 1, `project:${hoisted}`, rows, query);
+            this.appendItemsFiltered(
+              items.tree,
+              1,
+              `project:${hoisted}`,
+              rows,
+              query,
+              this.directoryOf(hoisted),
+            );
           } else {
             this.appendItems(items.tree, 1, `project:${hoisted}`, rows, this.directoryOf(hoisted));
           }
@@ -500,18 +507,53 @@ export class SolutionModel {
   }
 
   /**
-   * Keeps a created folder showing under its new name, after a rename. Folders created beneath it are
-   * forgotten: their paths have changed with it, and by then it holds something for the project to list
-   * only if they do.
+   * Keeps what was created showing after a folder is renamed: the folder itself, when it was created
+   * here, and any created beneath it, under their new paths.
    * @param path The folder's absolute path before the rename.
    * @param renamed Its path now, when the rename reported one.
    */
   public renameCreatedFolder(path: string, renamed: string | undefined): void {
-    const created: boolean = this.createdFolders().has(path);
-    this.forgetCreatedFolder(path);
-    if (created && renamed !== undefined) {
-      this.noteCreatedFolder(renamed);
+    const moved: string[] = [...this.createdFolders()].filter((folder: string): boolean =>
+      this.isAtOrBeneath(folder, path),
+    );
+    if (moved.length === 0) {
+      return;
     }
+    this.forgetCreatedFolder(path);
+    if (renamed !== undefined) {
+      this.createdFolders.set(
+        new Set<string>([
+          ...this.createdFolders(),
+          ...moved.map((folder: string): string => `${renamed}${folder.slice(path.length)}`),
+        ]),
+      );
+    }
+  }
+
+  /**
+   * Stops showing the created folders that are no longer on disk — deleted or renamed outside the
+   * Solution Explorer, which would otherwise leave a row standing for nothing.
+   * @param changed The directories that changed, to check only what lies in them; null to check all.
+   * @returns Returns a promise that resolves once each has been checked.
+   */
+  public async pruneCreatedFolders(changed: ReadonlySet<string> | null): Promise<void> {
+    const normalized: ReadonlySet<string> | null =
+      changed === null
+        ? null
+        : new Set<string>([...changed].map((path: string): string => path.replaceAll('\\', '/')));
+    const candidates: string[] = [...this.createdFolders()].filter(
+      (folder: string): boolean =>
+        normalized === null ||
+        normalized.has(folder.replaceAll('\\', '/')) ||
+        normalized.has(this.directoryOf(folder).replaceAll('\\', '/')),
+    );
+    await Promise.all(
+      candidates.map(async (folder: string): Promise<void> => {
+        if ((await this.workspace.readDirectoryListing(folder)) === null) {
+          this.forgetCreatedFolder(folder);
+        }
+      }),
+    );
   }
 
   /**
@@ -520,8 +562,7 @@ export class SolutionModel {
    */
   public forgetCreatedFolder(path: string): void {
     const kept: string[] = [...this.createdFolders()].filter(
-      (folder: string): boolean =>
-        folder !== path && !folder.startsWith(`${path}/`) && !folder.startsWith(`${path}\\`),
+      (folder: string): boolean => !this.isAtOrBeneath(folder, path),
     );
     if (kept.length !== this.createdFolders().size) {
       this.createdFolders.set(new Set<string>(kept));
@@ -547,6 +588,22 @@ export class SolutionModel {
       }
     }
     this.expandedKeys.set(next);
+  }
+
+  /**
+   * Opens a row, and leaves it open when it is open already. Unlike {@link toggle}, which reads the
+   * row's showing state: while a search is filtering the tree that state says whether the row holds a
+   * match, not whether the user opened it, and toggling by it could close a row they had open.
+   * @param row The row to open.
+   */
+  public expand(row: SolutionRow): void {
+    if (!row.expandable || this.expandedKeys().has(row.key)) {
+      return;
+    }
+    this.expandedKeys.set(new Set<string>([...this.expandedKeys(), row.key]));
+    if (row.kind === 'project' && row.path !== null) {
+      this.requestItems(row.path);
+    }
   }
 
   /**
@@ -1022,9 +1079,13 @@ export class SolutionModel {
     if (model === null) {
       this.itemsByProject.set(new Map<string, ProjectItems>());
       this.loadingProjects.set(new Set<string>());
+      this.createdFolders.set(new Set<string>());
       this.refetch.clear();
       this.expandedKeys.set(new Set<string>());
       return;
+    }
+    if (this.createdFolders().size > 0) {
+      void this.pruneCreatedFolders(changed);
     }
     // A project renamed or removed mid-evaluation is no row of the new model: its spinner goes now,
     // rather than keeping the root spinning until its evaluation gives up.
@@ -1579,7 +1640,14 @@ export class SolutionModel {
         const childRows: SolutionRow[] = [];
         const childMatched: boolean =
           items !== undefined &&
-          this.appendItemsFiltered(items.tree, depth + 1, key, childRows, query);
+          this.appendItemsFiltered(
+            items.tree,
+            depth + 1,
+            key,
+            childRows,
+            query,
+            this.directoryOf(node.path),
+          );
         if (this.matches(node.name, query) || childMatched) {
           rows.push(
             this.row(
@@ -1611,6 +1679,7 @@ export class SolutionModel {
    * @param parentKey The key prefix of the nodes' parent.
    * @param rows The list the rows are appended to.
    * @param query The lower-cased search query.
+   * @param directory The directory the nodes lie in, or null when they lie in none.
    * @returns Returns true when any row was appended (the run held a match).
    */
   private appendItemsFiltered(
@@ -1619,9 +1688,12 @@ export class SolutionModel {
     parentKey: string,
     rows: SolutionRow[],
     query: string,
+    directory: string | null,
   ): boolean {
     let matched: boolean = false;
-    const ordered: readonly ProjectItemNode[] = this.orderedItems(nodes);
+    const ordered: readonly ProjectItemNode[] = this.orderedItems(
+      this.withCreatedFolders(nodes, directory),
+    );
     const nesting: FileNesting<ProjectItemFile> = this.nesting(ordered);
     for (const node of ordered) {
       if (node.type === 'folder') {
@@ -1633,6 +1705,7 @@ export class SolutionModel {
           key,
           childRows,
           query,
+          node.path,
         );
         if (this.matches(node.name, query) || childMatched) {
           rows.push(
@@ -1777,6 +1850,16 @@ export class SolutionModel {
         ? [this.directoryOf(node.path)]
         : this.projectDirectories(node.children),
     );
+  }
+
+  /**
+   * Determines whether a path is a folder, or lies beneath it.
+   * @param path The path.
+   * @param folder The folder.
+   * @returns Returns true when it is.
+   */
+  private isAtOrBeneath(path: string, folder: string): boolean {
+    return path === folder || path.startsWith(`${folder}/`) || path.startsWith(`${folder}\\`);
   }
 
   /**

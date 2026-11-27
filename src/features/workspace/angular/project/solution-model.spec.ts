@@ -177,6 +177,7 @@ describe('SolutionModel', () => {
   let project: FakeProject;
   let root: WritableSignal<DirectoryListing | null>;
   let treeChanged: ((event: DirectoryChangeEvent) => void) | null;
+  let missing: Set<string>;
 
   /**
    * Builds the service under test with the fakes wired in, capturing the tree-change callback the
@@ -187,7 +188,14 @@ describe('SolutionModel', () => {
     TestBed.configureTestingModule({
       providers: [
         SolutionModel,
-        { provide: Workspace, useValue: { root } },
+        {
+          provide: Workspace,
+          useValue: {
+            root,
+            readDirectoryListing: (path: string): Promise<DirectoryListing | null> =>
+              Promise.resolve(missing.has(path) ? null : { path, name: path, entries: [] }),
+          },
+        },
         {
           provide: DirectoryWatch,
           useValue: {
@@ -258,6 +266,7 @@ describe('SolutionModel', () => {
     project = new FakeProject();
     root = signal<DirectoryListing | null>(null);
     treeChanged = null;
+    missing = new Set<string>();
     (window as unknown as { bridge: Bridge }).bridge = project;
   });
 
@@ -894,7 +903,7 @@ describe('SolutionModel', () => {
       expect(rowFor(model, 'ModelsToo')).toBeDefined();
     });
 
-    it('renameCreatedFolder_keepsItShowingUnderItsNewName', async () => {
+    it('renameCreatedFolder_keepsItShowingUnderItsNewName_withWhatWasCreatedInIt', async () => {
       project.model = sampleModel();
       project.itemsByPath.set('/root/A/A.csproj', sampleItems());
       const model: SolutionModel = build();
@@ -902,14 +911,63 @@ describe('SolutionModel', () => {
       model.toggle(rowFor(model, 'Group')!);
       model.toggle(rowFor(model, 'A')!);
       model.noteCreatedFolder('/root/A/Models');
+      model.noteCreatedFolder('/root/A/Models/Dto');
 
       model.renameCreatedFolder('/root/A/Models', '/root/A/Entities');
-      // A folder the project lists itself was never tracked, so renaming it adds nothing.
+      // A folder the project lists itself, holding nothing created, adds nothing.
       model.renameCreatedFolder('/root/A/Sub', '/root/A/Other');
+      model.toggle(rowFor(model, 'Entities')!);
 
       expect(rowFor(model, 'Models')).toBeUndefined();
       expect(rowFor(model, 'Entities')?.path).toBe('/root/A/Entities');
+      expect(rowFor(model, 'Dto')?.path).toBe('/root/A/Entities/Dto');
       expect(rowFor(model, 'Other')).toBeUndefined();
+    });
+
+    it('aCreatedFolder_showsInASearchThatMatchesItsName', async () => {
+      project.model = sampleModel();
+      project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+      const model: SolutionModel = build();
+      await open(model);
+      model.noteCreatedFolder('/root/A/Models');
+
+      model.setQuery('model');
+      await new Promise<void>((resolve: () => void): void => {
+        setTimeout(resolve, 200);
+      });
+      await settle();
+
+      expect(rowFor(model, 'Models')?.path).toBe('/root/A/Models');
+    });
+
+    it('aCreatedFolder_goneFromDisk_stopsShowing_whenItsDirectoryChanges', async () => {
+      project.model = sampleModel();
+      project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+      const model: SolutionModel = build();
+      await open(model);
+      model.toggle(rowFor(model, 'Group')!);
+      model.toggle(rowFor(model, 'A')!);
+      model.noteCreatedFolder('/root/A/Models');
+      model.noteCreatedFolder('/root/A/Kept');
+      missing.add('/root/A/Models');
+
+      treeChanged?.({ root: '/root', directories: ['/root/A'], overflow: false });
+      await waitForReloadDebounce();
+      await settle();
+
+      expect(rowFor(model, 'Models')).toBeUndefined();
+      expect(rowFor(model, 'Kept')).toBeDefined();
+    });
+
+    it('expand_opensARow_andLeavesAnOpenOneOpen', async () => {
+      project.model = sampleModel();
+      const model: SolutionModel = build();
+      await open(model);
+
+      model.expand(rowFor(model, 'Group')!);
+      model.expand(rowFor(model, 'Group')!);
+
+      expect(rowFor(model, 'Group')?.expanded).toBe(true);
     });
   });
 
