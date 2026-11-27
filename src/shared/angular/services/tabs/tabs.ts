@@ -290,8 +290,8 @@ export class Tabs {
   }
 
   /**
-   * Moves a tab into another window, where it becomes the active tab; the window it left activates
-   * its neighbour, as a close would.
+   * Moves a tab into another window, where it becomes the active tab at the end of the strip (a pinned
+   * tab keeps its place at the front); the window it left activates its neighbour, as a close would.
    * @param id The tab's identifier.
    * @param windowId The window it moves to.
    */
@@ -301,6 +301,11 @@ export class Tabs {
       return;
     }
     const before: readonly Tab[] = this.tabsIn(from)();
+    const tab: Tab = this.get(id)!;
+    if (!isPinnedTabType(tab.type)) {
+      // Last in the full list is last in every window's slice of it.
+      this.tabList.set([...this.tabList().filter((each: Tab): boolean => each.id !== id), tab]);
+    }
     this.windowOfTab.update((windows: ReadonlyMap<string, string>): ReadonlyMap<string, string> => {
       const next: Map<string, string> = new Map<string, string>(windows);
       if (windowId === MAIN_WINDOW_ID) {
@@ -315,6 +320,22 @@ export class Tabs {
     }
     this.setActive(windowId, id);
     this.log.info('Tabs', 'Moved tab to window', id, windowId);
+  }
+
+  /**
+   * Forgets a window that has closed: its slice and its active tab. Its tabs must already have moved
+   * or closed. When it was in front, the first window comes to the front.
+   * @param windowId The window's identifier.
+   */
+  public forgetWindow(windowId: string): void {
+    if (windowId === MAIN_WINDOW_ID) {
+      return;
+    }
+    this.views.delete(windowId);
+    this.setActive(windowId, undefined);
+    if (this.focusedWindowId() === windowId) {
+      this.focusedWindowId.set(MAIN_WINDOW_ID);
+    }
   }
 
   /**

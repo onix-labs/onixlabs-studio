@@ -81,6 +81,20 @@ describe('ContentHost', () => {
     expect(markdownWrapper?.classList.contains('tab-view--hidden')).toBe(false);
   });
 
+  it('render_mountsOnlyItsOwnWindowsViews (#1587)', async () => {
+    tabs.open('code');
+    tabs.open('markdown', undefined, { windowId: 'w2' });
+
+    fixture = TestBed.createComponent(ContentHost);
+    await fixture.whenStable();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelectorAll('app-stub-code-view').length).toBe(1);
+    expect(host.querySelectorAll('app-stub-markdown-view').length).toBe(0);
+    // Its own window's active tab is shown, whichever window is in front.
+    expect(host.querySelector('.tab-view')?.classList.contains('tab-view--hidden')).toBe(false);
+  });
+
   it('render_whenActiveTabChanges_keepsThePreviouslyActiveViewMountedInTheDom', async () => {
     const first: Tab = tabs.open('code');
     tabs.open('markdown');

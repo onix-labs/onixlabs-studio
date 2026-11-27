@@ -57,6 +57,19 @@ describe('TitleStripTabMenu', () => {
     expect(listed).toBe(types.length);
   });
 
+  it('groups_listOnlyItsOwnWindowsTabs (#1587)', () => {
+    const tabs: Tabs = TestBed.inject(Tabs);
+    tabs.open('code');
+    tabs.open('terminal', undefined, { windowId: 'w2' });
+    fixture.detectChanges();
+
+    const listed: readonly string[] = groups().flatMap(
+      (group: { readonly tabs: readonly Tab[] }): string[] =>
+        group.tabs.map((tab: Tab): string => tab.type),
+    );
+    expect(listed).toEqual(['code']);
+  });
+
   it('groups_gatherTheSingletonToolViewsUnderOneToolsHeading', () => {
     const tabs: Tabs = TestBed.inject(Tabs);
     const tools: readonly TabType[] = [
