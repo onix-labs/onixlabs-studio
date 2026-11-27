@@ -181,15 +181,32 @@ export class FileOpener {
   private readonly quietId: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
+   * Counts the opens asked for through {@link openPath}, so a preview whose file took longer to read
+   * than a later open can tell it has been overtaken.
+   */
+  private openSequence: number = 0;
+
+  /**
    * Initializes a new instance of the {@link FileOpener} class, wiring the release of each image
    * panel's document once the panel is closed, and keeping a previewed document that is edited.
    */
   public constructor() {
     // Typing in a preview is deciding to work on the file: it becomes an ordinary tab, so the next
     // preview cannot take unsaved work with it.
+    // Read from the panel, not the text documents: an image in the well is edited too, and is not
+    // one of those.
     effect((): void => {
       const id: string | null = this.previewId();
-      if (id !== null && this.documents.get(id)?.dirty() === true) {
+      if (id !== null && this.registry.get(id)?.dirty?.() === true) {
+        untracked((): void => this.keepPreview(id));
+      }
+    });
+    // A preview that has left the wells — closed, or floated or popped out into a window of its own —
+    // is no longer the preview. Its identifier may come round again (an image's is its path), and the
+    // file opened afresh must not come back as one.
+    effect((): void => {
+      const id: string | null = this.previewId();
+      if (id !== null && findStackOfPanel(this.dockState.layout(), id)?.role !== 'document') {
         untracked((): void => this.keepPreview(id));
       }
     });
@@ -248,8 +265,16 @@ export class FileOpener {
    * @returns Returns true when the file was opened, or false when unreadable or binary.
    */
   public async openPath(path: string, options?: OpenOptions): Promise<boolean> {
+    const sequence: number = ++this.openSequence;
     const selection: OpenSelection | null = await this.workspace.readFile(path);
     if (selection === null || selection.kind === 'directory') {
+      return false;
+    }
+    // Files are read at their own pace. A preview overtaken by a later open — the next file clicked,
+    // or this one opened properly — is dropped, or it would land last and take the front from what
+    // the user asked for after it.
+    if (options?.preview === true && sequence !== this.openSequence) {
+      this.log.debug('FileOpener', 'Dropped a preview overtaken by a later open', path);
       return false;
     }
     // A preview shows only what the well can hold. A file that needs a tab of its own — a binary, an
@@ -475,8 +500,9 @@ export class FileOpener {
 
   /**
    * Makes a document just placed in the well the preview, in the tab of the one it replaces: the new
-   * tab takes the old one's place, and the old document is closed. It is never unsaved — editing a
-   * preview keeps it — so nothing is asked.
+   * tab takes the old one's place, and the old document is closed without a question, since it holds
+   * nothing unsaved. Editing a preview keeps it; one found edited all the same is left open as an
+   * ordinary tab, never closed.
    * @param id The identifier of the document to preview.
    */
   private takeOverPreview(id: string): void {
@@ -486,7 +512,7 @@ export class FileOpener {
       return;
     }
     const stack: StackNode | null = findStackOfPanel(this.dockState.layout(), replaced);
-    if (stack?.role !== 'document') {
+    if (stack?.role !== 'document' || this.registry.get(replaced)?.dirty?.() === true) {
       return;
     }
     const own: StackNode | null = findStackOfPanel(this.dockState.layout(), id);
@@ -702,6 +728,10 @@ export class FileOpener {
       well === null ? findPrimaryStack(this.dockState.layout()) : null;
     if (well === null && primary === null) {
       return false;
+    }
+    // Opened properly, it is no preview — whatever was last previewed under the same identifier.
+    if (options?.preview !== true) {
+      this.keepPreview(panel.id);
     }
     this.registry.register({
       ...panel,

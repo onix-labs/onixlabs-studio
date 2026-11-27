@@ -25,6 +25,7 @@ import { WorkspaceAgentStart, Workspaces } from '../workspaces/workspaces';
 import { BINARY_FILE_OPENER, BinaryFileOpener } from './binary-file-opener';
 import { IMAGE_FILE_OPENER, ImageFileOpener } from './image-file-opener';
 import { FileOpener } from './file-opener';
+import { signal, WritableSignal } from '@angular/core';
 
 /**
  * Root listing returned by the fake bridge when a directory is opened.
@@ -116,6 +117,7 @@ function fakeBridge(): Bridge {
 
 describe('FileOpener', () => {
   let opener: FileOpener;
+  let imageDirty: WritableSignal<boolean>;
   let tabs: Tabs;
   let workspaces: Workspaces;
   let dockState: DockState;
@@ -134,6 +136,7 @@ describe('FileOpener', () => {
     nextListing = null;
     nextFileInfo = null;
     imageCalls = { tabs: [], released: [] };
+    imageDirty = signal<boolean>(false);
     (window as unknown as { bridge: Bridge }).bridge = fakeBridge();
     TestBed.configureTestingModule({
       providers: [
@@ -173,6 +176,7 @@ describe('FileOpener', () => {
                 icon: Icon.IMAGE_FILE,
                 role: 'document',
                 component: FakeImagePanel,
+                dirty: imageDirty,
               }),
               releaseWellPanel: (panelId: string): void => void imageCalls.released.push(panelId),
             };
@@ -608,6 +612,64 @@ describe('FileOpener', () => {
         expect(tabs.tabs()).toHaveLength(0);
       },
     );
+
+    it('overtakenByALaterPreview_anEarlierOneIsDropped_howeverLateItsFileArrives', async () => {
+      // Both are asked for before either file has been read.
+      nextFile('slow.ts');
+      const slow: Promise<boolean> = opener.openPath('/ws/slow.ts', { preview: true });
+      nextFile('quick.ts');
+      const quick: Promise<boolean> = opener.openPath('/ws/quick.ts', { preview: true });
+
+      expect(await Promise.all([slow, quick])).toEqual([false, true]);
+      expect(wellTabs()).toEqual(['(quick.ts)']);
+    });
+
+    it('overtakenByItsOwnFileBeingOpenedProperly_aPreviewIsDropped', async () => {
+      // Enter on a row previews it, then opens it.
+      nextFile('a.ts');
+      const previewed: Promise<boolean> = opener.openPath('/ws/a.ts', { preview: true });
+      const opened: Promise<boolean> = opener.openPath('/ws/a.ts');
+
+      expect(await Promise.all([previewed, opened])).toEqual([false, true]);
+      expect(wellTabs()).toEqual(['a.ts']);
+    });
+
+    it('anEditedImagePreview_isKept_neverClosedForTheNextPreview', async () => {
+      TestBed.inject(DockTabContext).setTabId('ws-tab');
+      nextSelection = { kind: 'image', path: '/ws/logo.svg' };
+      await opener.openPath('/ws/logo.svg', { preview: true });
+
+      // Edited, and the next file clicked before anything else has had a turn.
+      imageDirty.set(true);
+      await preview('a.ts');
+      TestBed.tick();
+
+      expect(wellTabs()).toEqual(['logo.svg', '(a.ts)']);
+      expect(imageCalls.released).toEqual([]);
+    });
+
+    it('anImagePreviewedThenClosed_opensAfresh_asAnOrdinaryTab', async () => {
+      // An image's panel is named for its path, so the same identifier comes round again.
+      TestBed.inject(DockTabContext).setTabId('ws-tab');
+      nextSelection = { kind: 'image', path: '/ws/logo.svg' };
+      await opener.openPath('/ws/logo.svg', { preview: true });
+      await dockState.requestClose(wellPanels()[0]);
+
+      nextSelection = { kind: 'image', path: '/ws/logo.svg' };
+      await opener.openPath('/ws/logo.svg');
+
+      expect(wellTabs()).toEqual(['logo.svg']);
+    });
+
+    it('aPreviewThatLeavesTheWell_isNoLongerThePreview', async () => {
+      await preview('a.ts');
+      const previewed: string = wellPanels()[0];
+
+      dockState.removeFromLayout(previewed);
+      TestBed.tick();
+
+      expect(TestBed.inject(DockPanelRegistry).get(previewed)?.preview?.()).toBe(false);
+    });
 
     it('anImageShownInTheWell_isPreviewedThere', async () => {
       TestBed.inject(DockTabContext).setTabId('ws-tab');
