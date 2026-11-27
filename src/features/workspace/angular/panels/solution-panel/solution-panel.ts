@@ -74,6 +74,11 @@ import {
   TreeRow,
   TreeView,
 } from '@shared/angular/components/tree-view/tree-view';
+import {
+  DELETE_CHORD,
+  OPEN_CHORD,
+  RENAME_CHORD,
+} from '@shared/angular/services/keybindings/row-chords';
 
 /**
  * Identifies the context-menu and toolbar actions the panel offers.
@@ -501,7 +506,7 @@ export class SolutionPanel {
     const items: MenuItem[] = [];
 
     if (row.kind === 'file') {
-      items.push({ id: ACTION_OPEN, label: 'Open', icon: Icon.FILE });
+      items.push({ id: ACTION_OPEN, label: 'Open', icon: Icon.FILE, chord: OPEN_CHORD });
       if (path?.toLowerCase().endsWith('.svg') === true) {
         items.push({ id: ACTION_OPEN_AS_CODE, label: 'Open as Code', icon: Icon.CODE });
       }
@@ -530,7 +535,12 @@ export class SolutionPanel {
     // solution file names it, and providers that can rewrite that name say so through their
     // capabilities. One that cannot leaves the row menu-less, exactly as before.
     if (row.kind === 'folder' && this.model()?.capabilities.renamesSolutionFolders === true) {
-      items.push({ id: ACTION_RENAME_FOLDER, label: 'Rename', icon: Icon.PENCIL });
+      items.push({
+        id: ACTION_RENAME_FOLDER,
+        label: 'Rename',
+        icon: Icon.PENCIL,
+        chord: RENAME_CHORD,
+      });
     }
     if (path !== null) {
       if (creates) {
@@ -552,8 +562,8 @@ export class SolutionPanel {
       if (onDisk(row)) {
         items.push(
           { id: 'solution-menu.sep-edit', label: '', separator: true },
-          { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL },
-          { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH },
+          { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL, chord: RENAME_CHORD },
+          { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH, chord: DELETE_CHORD },
         );
       }
     }
@@ -1492,6 +1502,7 @@ export class SolutionPanel {
     }
     const items: MenuItem[] = [];
     if (targets.every((row: SolutionRow): boolean => row.kind === 'file')) {
+      // No Enter hint: Enter opens the row it is pressed on, where this opens them all.
       items.push({ id: ACTION_OPEN, label: 'Open', icon: Icon.FILE });
     }
     items.push(
@@ -1506,7 +1517,7 @@ export class SolutionPanel {
     if (targets.every((row: SolutionRow): boolean => onDisk(row))) {
       items.push(
         { id: 'solution-menu.sep-edit', label: '', separator: true },
-        { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH },
+        { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH, chord: DELETE_CHORD },
       );
     }
     return items;

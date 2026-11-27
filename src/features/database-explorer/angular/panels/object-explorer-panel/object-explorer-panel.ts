@@ -39,6 +39,7 @@ import {
   nodeKey,
   OpenSession,
 } from '../../database-workspace/database-workspace';
+import { DELETE_CHORD, RENAME_CHORD } from '@shared/angular/services/keybindings/row-chords';
 
 /**
  * The menu commands Studio adds to every row kind, beside the engine's own node actions.
@@ -407,7 +408,7 @@ export class ObjectExplorerPanel {
           ...(open ? [{ id: ACTION_REFRESH, label: 'Refresh', icon: Icon.REFRESH }] : []),
           { id: 'sep', label: '', separator: true },
           { id: ACTION_EDIT, label: 'Edit Connection', icon: Icon.PENCIL },
-          { id: ACTION_DELETE, label: 'Delete Connection', icon: Icon.TRASH },
+          { id: ACTION_DELETE, label: 'Delete Connection', icon: Icon.TRASH, chord: DELETE_CHORD },
         ];
       }
       case 'node':
@@ -422,9 +423,9 @@ export class ObjectExplorerPanel {
       case 'query':
         return [
           { id: ACTION_OPEN, label: 'Open', icon: Icon.DATABASE_QUERY },
-          { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL },
+          { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL, chord: RENAME_CHORD },
           { id: 'sep', label: '', separator: true },
-          { id: ACTION_DELETE, label: 'Delete Query', icon: Icon.TRASH },
+          { id: ACTION_DELETE, label: 'Delete Query', icon: Icon.TRASH, chord: DELETE_CHORD },
         ];
       case 'queries':
         return [{ id: ACTION_NEW_QUERY, label: 'New Query', icon: Icon.DATABASE_QUERY }];

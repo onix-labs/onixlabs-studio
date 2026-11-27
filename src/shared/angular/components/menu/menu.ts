@@ -4,6 +4,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  inject,
   input,
   InputSignal,
   output,
@@ -16,6 +17,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { ButtonTone } from '@shared/angular/components/forms/button/button';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { MenuPointerGuard } from './menu-pointer-guard';
 import { MENU_POSITIONS, MenuPlacement } from './menu-position';
 
@@ -114,6 +116,14 @@ export interface MenuItem {
   readonly shortcut?: string;
 
   /**
+   * Gets the chord that runs the row from the keyboard, as a keybinding catalogue writes one (`F2`,
+   * `Mod+Backspace`), where the menu's host serves it: a tree runs the row with this chord when it is
+   * pressed on the row the menu would open on, so the hint and the key cannot disagree. It is shown at
+   * the end of the row, as the platform writes it, unless {@link shortcut} says something else.
+   */
+  readonly chord?: string;
+
+  /**
    * Gets the secondary action shown as a trailing button on the row, if any. Acting on it emits
    * through {@link Menu.actioned} rather than {@link Menu.selected}, and leaves the menu open so the
    * next row can be acted on in turn.
@@ -156,6 +166,25 @@ export class Menu {
    * Gets the icon set, exposed for the template's submenu caret.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Holds the keybindings, which write a row's chord as the platform does.
+   */
+  private readonly keybindings: Keybindings = inject(Keybindings);
+
+  /**
+   * Gets the shortcut a row shows at its end: what it states, or its chord as the platform writes it.
+   * @param item The row.
+   * @returns Returns the text, or undefined when the row shows none.
+   */
+  protected shortcutOf(item: MenuItem): string | undefined {
+    if (item.shortcut !== undefined) {
+      return item.shortcut;
+    }
+    return item.chord === undefined
+      ? undefined
+      : this.keybindings.formatChord(this.keybindings.normalizeChord(item.chord));
+  }
 
   /**
    * Gets the rows shown in the menu. Menus whose rows depend on what the trigger was pointing at

@@ -2,6 +2,7 @@ import { ApplicationRef, Component, signal, WritableSignal } from '@angular/core
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MenuItem } from '@shared/angular/components/menu/menu';
 import { observeSize, TreeEdit, TreeMenuSelection, TreeRow, TreeView } from './tree-view';
+import { Studio } from '@shared/angular/services/studio/studio';
 
 /**
  * Builds a tree row with the given identity, depth, and expansion state, carrying its id as the
@@ -236,6 +237,180 @@ describe('TreeView', () => {
     } finally {
       delete (Element.prototype as unknown as { scrollIntoView?: unknown }).scrollIntoView;
     }
+  });
+});
+
+/**
+ * Hosts the tree with a row context menu whose commands name chords, counting how often the menu is
+ * built so a test can tell which key presses look one up.
+ */
+@Component({
+  imports: [TreeView],
+  template: `
+    <app-tree-view
+      [rows]="rows()"
+      [contextMenuFor]="menuFor"
+      [editingId]="editingId()"
+      (contextMenuSelect)="onChoice($event)"
+      (rowActivate)="activated.push($event.id)"
+    >
+      <ng-template let-row
+        ><span class="probe-label">{{ row.data }}</span></ng-template
+      >
+    </app-tree-view>
+  `,
+})
+class ChordHost {
+  public readonly rows: WritableSignal<readonly TreeRow[]> = signal<readonly TreeRow[]>([
+    makeRow('alpha', 0, false, false),
+    makeRow('beta', 0, false, false),
+  ]);
+  public readonly editingId: WritableSignal<string | null> = signal<string | null>(null);
+  public readonly chosen: TreeMenuSelection[] = [];
+  public readonly activated: string[] = [];
+  public built: number = 0;
+
+  public readonly menuFor: (row: TreeRow) => readonly MenuItem[] = (): readonly MenuItem[] => {
+    this.built++;
+    return [
+      { id: 'open', label: 'Open', chord: 'Enter' },
+      { id: 'rename', label: 'Rename', chord: 'F2' },
+      { id: 'sep', label: '', separator: true },
+      { id: 'delete', label: 'Delete', chord: 'Delete' },
+      { id: 'refresh', label: 'Refresh', chord: 'F5', disabled: true },
+      { id: 'plain', label: 'Plain' },
+      {
+        id: 'more',
+        label: 'More',
+        children: [{ id: 'duplicate', label: 'Duplicate', chord: 'Mod+Shift+D' }],
+      },
+    ];
+  };
+
+  public onChoice(selection: TreeMenuSelection): void {
+    this.chosen.push(selection);
+  }
+}
+
+describe('TreeView context menu chords', () => {
+  let fixture: ComponentFixture<ChordHost>;
+  let component: ChordHost;
+
+  beforeEach(() => {
+    fixture = TestBed.createComponent(ChordHost);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  });
+
+  /**
+   * Presses a key on a row.
+   * @param index The row.
+   * @param init The key press.
+   * @returns Returns the event, to read whether the tree took it.
+   */
+  function press(index: number, init: KeyboardEventInit): KeyboardEvent {
+    const event: KeyboardEvent = new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      ...init,
+    });
+    Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.tree-row'))[
+      index
+    ].dispatchEvent(event);
+    fixture.detectChanges();
+    return event;
+  }
+
+  /**
+   * Lists what was chosen, as `item@row`.
+   * @returns Returns the choices.
+   */
+  function chosen(): string[] {
+    return component.chosen.map(
+      (choice: TreeMenuSelection): string => `${choice.itemId}@${choice.row.id}`,
+    );
+  }
+
+  it('aChordAMenuRowNames_runsThatRow_onTheRowItWasPressedOn', () => {
+    const event: KeyboardEvent = press(1, { key: 'F2' });
+
+    expect(chosen()).toEqual(['rename@beta']);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('aChordInASubmenu_runsItsRow', () => {
+    // Outside Electron the platform is `browser`, where Mod is Ctrl.
+    press(0, { key: 'D', ctrlKey: true, shiftKey: true });
+
+    expect(chosen()).toEqual(['duplicate@alpha']);
+  });
+
+  it('aChordOfADisabledRow_runsNothing_andIsLeftAlone', () => {
+    const event: KeyboardEvent = press(0, { key: 'F5' });
+
+    expect(chosen()).toEqual([]);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('aChordNoRowNames_runsNothing', () => {
+    press(0, { key: 'F3' });
+    press(0, { key: 'Backspace' });
+
+    expect(chosen()).toEqual([]);
+  });
+
+  it('enter_staysTheTreesOwn_thoughARowNamesItAsAHint', () => {
+    press(0, { key: 'Enter' });
+
+    expect(chosen()).toEqual([]);
+    expect(component.activated).toEqual(['alpha']);
+  });
+
+  it('movingAndTyping_neverBuildTheMenu', () => {
+    // The tree builds a row's menu on its own account too, to know whether a right-click opens one.
+    const event: KeyboardEvent = new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowDown' });
+    const row: HTMLElement = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.tree-row'),
+    )[0];
+    const before: number = component.built;
+
+    row.dispatchEvent(event);
+    row.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'a' }));
+    row.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Escape' }));
+
+    expect(component.built).toBe(before);
+  });
+
+  it('aHeldKey_runsItsRowOnce', () => {
+    press(0, { key: 'Delete' });
+    press(0, { key: 'Delete', repeat: true });
+
+    expect(chosen()).toEqual(['delete@alpha']);
+  });
+
+  it('aKeyPressedInsideARow_notOnIt_isLeftToWhatItWasPressedIn', () => {
+    const label: HTMLElement = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
+      '.probe-label',
+    )!;
+
+    label.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'F2' }));
+
+    expect(chosen()).toEqual([]);
+  });
+
+  it('aKeyAnInputMethodIsComposingWith_runsNothing', () => {
+    press(0, { key: 'F2', isComposing: true });
+
+    expect(chosen()).toEqual([]);
+  });
+
+  it('aRowBeingNamed_keepsItsKeys', () => {
+    component.editingId.set('alpha');
+    fixture.detectChanges();
+
+    press(0, { key: 'F2' });
+
+    expect(chosen()).toEqual([]);
   });
 });
 
@@ -597,6 +772,7 @@ describe('TreeView in-place edit', () => {
       (rowClick)="clicked.push($event.id)"
       (rowSelect)="gestures.push($event.row.id + ':' + $event.mode)"
       (selectAll)="selectedAll = selectedAll + 1"
+      (contextMenuSelect)="chosen.push($event.itemId + '@' + $event.row.id)"
     >
       <ng-template let-row
         ><span class="probe-label">{{ row.data }}</span></ng-template
@@ -614,9 +790,10 @@ class MultiHost {
   public readonly clicked: string[] = [];
   public readonly gestures: string[] = [];
   public selectedAll: number = 0;
+  public readonly chosen: string[] = [];
 
   public readonly menuFor: (row: TreeRow) => readonly MenuItem[] = (): readonly MenuItem[] => [
-    { id: 'act', label: 'Act' },
+    { id: 'act', label: 'Act', chord: 'F2' },
   ];
 }
 
@@ -649,6 +826,26 @@ describe('TreeView multi-select (#1048)', () => {
 
     expect(component.gestures).toEqual(['a:replace', 'b:toggle', 'c:extend']);
     expect(component.clicked).toEqual(['a']);
+  });
+
+  it('aMenuChord_onARowOutsideTheSelection_selectsItFirst_asARightClickDoes', () => {
+    component.selected.set(['a', 'b']);
+    fixture.detectChanges();
+
+    rows()[2].dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'F2' }));
+
+    expect(component.gestures).toEqual(['c:replace']);
+    expect(component.chosen).toEqual(['act@c']);
+  });
+
+  it('aMenuChord_onARowOfTheSelection_leavesTheSelection_forTheCommandToActOn', () => {
+    component.selected.set(['a', 'b']);
+    fixture.detectChanges();
+
+    rows()[1].dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'F2' }));
+
+    expect(component.gestures).toEqual([]);
+    expect(component.chosen).toEqual(['act@b']);
   });
 
   it('keys_arrowsMoveOrExtend_escapeNarrows_selectAllTakesEveryRow', () => {
@@ -762,5 +959,64 @@ describe('TreeView headings', () => {
     rows[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
 
     expect(fixture.componentInstance.moves).toEqual(['b', 'a']);
+  });
+});
+
+/**
+ * Hosts a tree whose row offers Delete by the chord a Mac gives it.
+ */
+@Component({
+  imports: [TreeView],
+  template: `
+    <app-tree-view
+      [rows]="rows"
+      [contextMenuFor]="menuFor"
+      (contextMenuSelect)="chosen.push($event.itemId)"
+    >
+      <ng-template let-row
+        ><span class="probe-label">{{ row.data }}</span></ng-template
+      >
+    </app-tree-view>
+  `,
+})
+class MacChordHost {
+  public readonly rows: readonly TreeRow[] = [makeRow('alpha', 0, false, false)];
+  public readonly chosen: string[] = [];
+
+  public readonly menuFor: (row: TreeRow) => readonly MenuItem[] = (): readonly MenuItem[] => [
+    { id: 'delete', label: 'Delete', chord: 'Mod+Backspace' },
+  ];
+}
+
+describe('TreeView context menu chords on macOS', () => {
+  let fixture: ComponentFixture<MacChordHost>;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: Studio, useValue: { platform: 'darwin' } }],
+    });
+    fixture = TestBed.createComponent(MacChordHost);
+    fixture.detectChanges();
+  });
+
+  /**
+   * Presses a key on the row.
+   * @param init The key press.
+   */
+  function press(init: KeyboardEventInit): void {
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLElement>('.tree-row')!
+      .dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, ...init }));
+  }
+
+  it('commandBackspace_runsTheRowThatNamesIt_andNothingShortOfItDoes', () => {
+    press({ key: 'Backspace' });
+    press({ key: 'Backspace', ctrlKey: true });
+    press({ key: 'Delete' });
+    expect(fixture.componentInstance.chosen).toEqual([]);
+
+    press({ key: 'Backspace', metaKey: true });
+
+    expect(fixture.componentInstance.chosen).toEqual(['delete']);
   });
 });

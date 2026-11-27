@@ -27,6 +27,7 @@ import {
   EditorContextMenuOpener,
   EditorContextMenuSubject,
 } from './editor-context-menu';
+import { EDITOR_KEYBINDINGS } from '@shared/angular/services/monaco/monaco-keybindings';
 
 /**
  * Monaco's `EditorOption.readOnly`, as the fake instance numbers it.
@@ -578,6 +579,22 @@ describe('EditorContextMenu (#1012)', () => {
       const { editor } = fakeEditor({ language: 'plaintext' });
 
       expect(rowOf(menu.itemsFor(editor), 'comment')).toBeUndefined();
+    });
+
+    it('shortcutHints_followAChordTheUserChanged_andShowNoneForOneTheyCleared', () => {
+      const menu: EditorContextMenu = build();
+      const keybindings: Keybindings = TestBed.inject(Keybindings);
+      keybindings.contribute(EDITOR_KEYBINDINGS);
+      const { editor } = fakeEditor();
+      expect(rowOf(menu.itemsFor(editor), 'symbol')?.shortcut).toBe('⌘⇧O');
+
+      keybindings.setOverride('editor.goToSymbol', 'Mod+Shift+Y');
+      keybindings.clearChord('editor.find');
+
+      expect(rowOf(menu.itemsFor(editor), 'symbol')?.shortcut).toBe('⌘⇧Y');
+      expect(rowOf(menu.itemsFor(editor), 'find')?.shortcut).toBeUndefined();
+      // Monaco's own chords cannot be changed, and keep their fixed hint.
+      expect(rowOf(menu.itemsFor(editor), 'copy')?.shortcut).toBe('⌘C');
     });
 
     it('shortcutHints_followThePlatform', () => {

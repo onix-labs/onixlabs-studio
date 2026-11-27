@@ -12,6 +12,7 @@ import { QuickFixes } from '@shared/angular/services/quick-fix/quick-fixes';
 import { RenameSymbol } from '@shared/angular/services/rename/rename-symbol';
 import { Studio } from '@shared/angular/services/studio/studio';
 import type { LspGeneratedViewKind } from '@shared/api/lsp-channels';
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 
 /**
  * Identifies the source label passed to Monaco when the menu runs an editor action.
@@ -139,6 +140,26 @@ const SHORTCUTS: Readonly<Record<EditorContextMenuCommand, ShortcutHints>> = {
 };
 
 /**
+ * Names the catalogued command behind each row that has one. Its shortcut is read from the
+ * keybindings, so a chord the user has changed in Settings is the one the menu shows; the rows left
+ * out are Monaco's own or the core menu's, whose chords cannot be changed, and keep their hint from
+ * {@link SHORTCUTS}.
+ */
+const CATALOGUED: Readonly<Partial<Record<EditorContextMenuCommand, string>>> = {
+  definition: 'editor.goToDefinition',
+  implementation: 'editor.goToImplementation',
+  references: 'editor.findReferences',
+  callHierarchy: 'editor.callHierarchy',
+  typeHierarchy: 'editor.typeHierarchy',
+  sourceHeader: 'editor.switchSourceHeader',
+  symbol: 'editor.goToSymbol',
+  line: 'editor.goToLine',
+  rename: 'editor.renameSymbol',
+  quickFix: 'editor.quickFix',
+  find: 'editor.find',
+};
+
+/**
  * Describes one right-click: the editor it was in and the rows its menu shows, built as it opened.
  */
 export interface EditorContextMenuSubject {
@@ -233,6 +254,11 @@ export class EditorContextMenu {
    * Holds the host platform, which decides the shortcut hints.
    */
   private readonly studio: Studio = inject(Studio);
+
+  /**
+   * Holds the keybindings, which say what chord a catalogued command has now.
+   */
+  private readonly keybindings: Keybindings = inject(Keybindings);
 
   /**
    * Holds the structured logger.
@@ -577,18 +603,34 @@ export class EditorContextMenu {
     label: string,
     disabled: boolean = false,
   ): MenuItem {
-    const hints: ShortcutHints = SHORTCUTS[command];
-    const platform: string = this.studio.platform;
-    const shortcut: string =
-      platform === 'darwin'
-        ? hints.mac
-        : platform === 'linux'
-          ? (hints.linux ?? hints.windows)
-          : hints.windows;
+    const shortcut: string = this.shortcutFor(command);
     // A command with no chord shows none, rather than an empty hint.
     const item: MenuItem =
       shortcut === '' ? { id: command, label } : { id: command, label, shortcut };
     return disabled ? { ...item, disabled } : item;
+  }
+
+  /**
+   * Gets a command's shortcut hint: the chord in effect for a catalogued command, which follows what
+   * the user set in Settings (and is empty when they cleared it), or the fixed hint of a command whose
+   * chord is Monaco's own or the core menu's.
+   * @param command The command.
+   * @returns Returns the hint, or an empty string when the command has no chord.
+   */
+  private shortcutFor(command: EditorContextMenuCommand): string {
+    const catalogued: string | undefined = CATALOGUED[command];
+    const chord: string | null =
+      catalogued === undefined ? null : this.keybindings.chordFor(catalogued);
+    if (chord !== null) {
+      return this.keybindings.formatChord(chord);
+    }
+    const hints: ShortcutHints = SHORTCUTS[command];
+    const platform: string = this.studio.platform;
+    return platform === 'darwin'
+      ? hints.mac
+      : platform === 'linux'
+        ? (hints.linux ?? hints.windows)
+        : hints.windows;
   }
 
   /**

@@ -800,6 +800,19 @@ describe('TreePanel row context menu', () => {
     ]);
   });
 
+  it('contextMenuFor_aFile_namesTheChordsOfOpenRenameAndDelete', () => {
+    // The chords the tree runs a row's commands by, and shows beside them. Outside Electron the
+    // platform is `browser`, where Delete is the Delete key.
+    const chords: Record<string, string | undefined> = Object.fromEntries(
+      component
+        .contextMenuFor(treeRow(node('main.ts', '/ws/main.ts', 'file')))
+        .filter((item: MenuItem): boolean => item.chord !== undefined)
+        .map((item: MenuItem): [string, string | undefined] => [item.id, item.chord]),
+    );
+
+    expect(chords).toEqual({ open: 'Enter', rename: 'F2', delete: 'Delete' });
+  });
+
   it('contextMenuFor_anHtmlPage_offersOpenWithLiveServer_andRunsIt (#1062)', () => {
     const page: WorkspaceTreeNode = node('index.html', '/ws/index.html', 'file');
 

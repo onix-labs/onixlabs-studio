@@ -353,11 +353,25 @@ export class Terminal implements AfterViewInit, OnDestroy {
       return [];
     }
     if (target === TERMINAL_MENU) {
+      // Hints for the chords that reach the terminal as they are. On a Mac, ⌘C and ⌘V are the core
+      // menu's own; elsewhere Ctrl+C and Ctrl+V are the shell's, so Copy and Paste show none. Find is
+      // the chord this terminal answers itself.
+      const mac: boolean = window.host?.platform === 'darwin';
       return [
-        { id: 'copy', label: 'Copy', disabled: this.xterm?.hasSelection() !== true },
-        { id: 'paste', label: 'Paste', disabled: this.kind() === 'task' },
+        {
+          id: 'copy',
+          label: 'Copy',
+          disabled: this.xterm?.hasSelection() !== true,
+          ...(mac ? { chord: 'Mod+C' } : {}),
+        },
+        {
+          id: 'paste',
+          label: 'Paste',
+          disabled: this.kind() === 'task',
+          ...(mac ? { chord: 'Mod+V' } : {}),
+        },
         { id: 'clear', label: 'Clear' },
-        { id: 'find', label: 'Find' },
+        { id: 'find', label: 'Find', chord: mac ? 'Mod+F' : 'Mod+Shift+F' },
       ];
     }
     return target.kind === 'url'

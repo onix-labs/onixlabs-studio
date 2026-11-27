@@ -681,6 +681,27 @@ describe('SolutionPanel', () => {
       expect(rename).toHaveBeenCalledWith('/root/A/g.cs', 'Renamed.cs');
     });
 
+    it('aFilesMenu_namesTheChordsOfOpenRenameAndDelete', () => {
+      // The chords the tree runs a row's commands by, and shows beside them. Outside Electron the
+      // platform is `browser`, where Delete is the Delete key.
+      const chords: Record<string, string | undefined> = Object.fromEntries(
+        component
+          .contextMenuFor(treeRow(makeRow({ kind: 'file', path: '/root/A/g.cs' })))
+          .filter((item: MenuItem): boolean => item.chord !== undefined)
+          .map((item: MenuItem): [string, string | undefined] => [item.id, item.chord]),
+      );
+
+      expect(chords).toEqual({ open: 'Enter', rename: 'F2', delete: 'Delete' });
+    });
+
+    it('aSolutionFoldersMenu_namesTheChordOfRename', () => {
+      solution.model.set(renameableModel());
+
+      expect(
+        component.contextMenuFor(treeRow(makeRow({ kind: 'folder', path: null })))[0],
+      ).toMatchObject({ id: 'rename-folder', chord: 'F2' });
+    });
+
     describe('New File and New Folder', () => {
       const project: SolutionRow = makeRow({
         key: 'a',

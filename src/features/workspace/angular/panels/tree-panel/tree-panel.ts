@@ -68,6 +68,11 @@ import {
   EXCLUDED_ROW_FIELDS,
   ExplorerExclusions,
 } from '@shared/angular/services/explorer-filter/explorer-exclusions';
+import {
+  DELETE_CHORD,
+  OPEN_CHORD,
+  RENAME_CHORD,
+} from '@shared/angular/services/keybindings/row-chords';
 
 /**
  * Identifies the row context-menu actions the panel offers.
@@ -796,7 +801,7 @@ export class TreePanel {
     const items: MenuItem[] = [];
 
     if (node.type === 'file') {
-      items.push({ id: ACTION_OPEN, label: 'Open', icon: Icon.FILE });
+      items.push({ id: ACTION_OPEN, label: 'Open', icon: Icon.FILE, chord: OPEN_CHORD });
       if (node.path.toLowerCase().endsWith('.svg')) {
         items.push({ id: ACTION_OPEN_AS_CODE, label: 'Open as Code', icon: Icon.CODE });
       }
@@ -820,8 +825,8 @@ export class TreePanel {
       ...this.versionControlItems([node]),
       ...this.exclusionItems([node]),
       { id: 'tree-menu.sep-writes', label: '', separator: true },
-      { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL },
-      { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH },
+      { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL, chord: RENAME_CHORD },
+      { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH, chord: DELETE_CHORD },
     );
     return items;
   };
@@ -837,6 +842,7 @@ export class TreePanel {
     const items: MenuItem[] = [];
     if (targets.every((node: WorkspaceTreeNode): boolean => node.type === 'file')) {
       items.push(
+        // No Enter hint: Enter opens the row it is pressed on, where this opens them all.
         { id: ACTION_OPEN, label: 'Open', icon: Icon.FILE },
         { id: 'tree-menu.sep-paths', label: '', separator: true },
       );
@@ -847,7 +853,7 @@ export class TreePanel {
       ...this.versionControlItems(targets),
       ...this.exclusionItems(targets),
       { id: 'tree-menu.sep-writes', label: '', separator: true },
-      { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH },
+      { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH, chord: DELETE_CHORD },
     );
     return items;
   }
