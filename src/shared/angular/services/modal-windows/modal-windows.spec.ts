@@ -236,9 +236,8 @@ describe('ModalWindows', () => {
   it('position_whenParented_centresOverTheRaisingWindow', () => {
     open();
 
-    // Horizontally centred over the owner, and a little above its centre vertically.
     expect(feature(owner.features!, 'left')).toBe(200 + (1200 - 416) / 2);
-    expect(feature(owner.features!, 'top')).toBe(100 + Math.round((800 - 280) / 3));
+    expect(feature(owner.features!, 'top')).toBe(100 + Math.round((800 - 280) / 2));
   });
 
   it('position_whenFreeStanding_centresOnTheDisplay', () => {
@@ -310,7 +309,7 @@ describe('ModalWindows', () => {
 
     modal!.fit(500, 360);
 
-    expect(owner.child.moved).toEqual([{ x: 600 - 50, y: 300 - 20 }]);
+    expect(owner.child.moved).toEqual([{ x: 600 - 50, y: 300 - 30 }]);
   });
 
   describe('at an Interface Zoom', () => {
@@ -338,7 +337,7 @@ describe('ModalWindows', () => {
       open();
 
       expect(feature(owner.features!, 'left')).toBe(200 + (1200 - 832) / 2);
-      expect(feature(owner.features!, 'top')).toBe(100 + Math.round((800 - 560) / 3));
+      expect(feature(owner.features!, 'top')).toBe(100 + Math.round((800 - 560) / 2));
     });
 
     it('fit_sizesTheWindowForTheContentOnScreen_withTheChromeMeasuredInScreenPixels', () => {

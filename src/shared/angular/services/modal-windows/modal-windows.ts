@@ -375,11 +375,11 @@ export class ModalWindows implements OnDestroy {
    * The window's frame is measured rather than assumed, so the content lands at exactly the requested
    * size whatever chrome the platform draws around it.
    *
-   * It grows and shrinks about its own centre (and a third of the way down, as it was first placed)
-   * rather than being centred over its owner again. Opened where it asked, that is the same place;
-   * but the main process may have placed it elsewhere — over the welcome screen, when the window
-   * that raised it is hidden behind it (#1504) — and the user may have moved it since. Centring over
-   * the owner again would throw it back over a window that may not be on screen at all.
+   * It grows and shrinks about its own centre rather than being centred over its owner again. The
+   * main process may have placed it over another window — the welcome screen, when the window that
+   * raised it is hidden behind it (#1504) — and centring over the owner would throw it back over a
+   * window that is not on screen. The main process keeps it centred over whichever window it does
+   * sit over as that window moves or resizes (see `WindowManager`).
    * @param child The modal window.
    * @param width The content width, in CSS pixels.
    * @param height The content height, in CSS pixels.
@@ -396,7 +396,7 @@ export class ModalWindows implements OnDestroy {
     const outerHeight: number = Math.round(height * zoom + frame.height);
     const position: ModalWindowPosition = {
       x: child.screenX + (child.outerWidth - outerWidth) / 2,
-      y: child.screenY + (child.outerHeight - outerHeight) / 3,
+      y: child.screenY + (child.outerHeight - outerHeight) / 2,
     };
     child.resizeTo(outerWidth, outerHeight);
     child.moveTo(Math.round(position.x), Math.round(position.y));
@@ -456,9 +456,9 @@ export class ModalWindows implements OnDestroy {
   }
 
   /**
-   * Computes the screen position that centres a window of the given size over another — horizontally
-   * centred, and a little above centre vertically, where a dialog reads as attached to what raised
-   * it rather than floating in the middle of the screen.
+   * Computes the screen position that centres a window of the given size over another, both ways.
+   * The main process keeps the window on screen and re-centres it whenever the owner moves or
+   * resizes (see `WindowManager`).
    * @param owner The window to centre over.
    * @param width The window width.
    * @param height The window height.
@@ -467,7 +467,7 @@ export class ModalWindows implements OnDestroy {
   private centredOver(owner: Window, width: number, height: number): ModalWindowPosition {
     return {
       x: owner.screenX + (owner.outerWidth - width) / 2,
-      y: owner.screenY + Math.max(0, (owner.outerHeight - height) / 3),
+      y: owner.screenY + (owner.outerHeight - height) / 2,
     };
   }
 

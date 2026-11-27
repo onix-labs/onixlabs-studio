@@ -614,12 +614,18 @@ export class WindowManager {
       minimum.width,
       minimum.height,
     );
+    // Restoring only keeps a window's title strip grabbable; a modal is held wholly on its display.
+    const placed: { x: number; y: number } | null =
+      rect === null || position === null
+        ? null
+        : heldWithin(rect, rect, screen.getDisplayMatching(rect).workArea);
     logger.debug('WindowManager.modalWindowOptions', 'resolved modal geometry', {
       parented: this.pendingModalParent !== null,
       resizable,
       size,
       positioned: position !== null,
       rect,
+      placed,
     });
     return {
       // 🔥 Created hidden, and shown by {@link adoptModalWindow} a moment later through the same
@@ -634,7 +640,7 @@ export class WindowManager {
       acceptFirstMouse: true,
       width: rect?.width ?? size.width,
       height: rect?.height ?? size.height,
-      ...(rect !== null && position !== null ? { x: rect.x, y: rect.y } : {}),
+      ...(placed ?? {}),
       minWidth: minimum.width,
       minHeight: minimum.height,
       ...(maximum === null ? {} : { maxWidth: maximum.width, maxHeight: maximum.height }),
@@ -880,9 +886,8 @@ export class WindowManager {
    * Rescales a modal window for a change of Interface Zoom. Its opener sized it, and set its limits,
    * from CSS pixels, which the zoom draws larger or smaller on screen: so the size and limits it
    * means to have (see {@link ModalSizing}) are worked out again at the new zoom, about the window's
-   * centre (and a third of the way down, as the opener places it). The renderer cannot do this
-   * itself, because its window may not be resized past limits only the main process can change, and
-   * the limits must move first.
+   * centre. The renderer cannot do this itself, because its window may not be resized past limits
+   * only the main process can change, and the limits must move first.
    *
    * Nothing is allowed past the display's work area: a modal that filled most of the screen at 100%
    * would otherwise open off it at 200%. Its content scrolls instead. Because the size is worked out
@@ -909,14 +914,11 @@ export class WindowManager {
     }
     this.modalSizings.set(window, { ...sizing, zoom: factor, applied: { width, height } });
     const bounds: Electron.Rectangle = window.getBounds();
-    const x: number = Math.round(bounds.x + (bounds.width - width) / 2);
-    const y: number = Math.round(bounds.y + (bounds.height - height) / 3);
-    window.setBounds({
-      x: Math.max(area.x, Math.min(x, area.x + area.width - width)),
-      y: Math.max(area.y, Math.min(y, area.y + area.height - height)),
-      width,
-      height,
-    });
+    const centred: { x: number; y: number } = {
+      x: Math.round(bounds.x + (bounds.width - width) / 2),
+      y: Math.round(bounds.y + (bounds.height - height) / 2),
+    };
+    window.setBounds({ ...heldWithin(centred, { width, height }, area), width, height });
     logger.debug('WindowManager.rescaleModal', 'rescaled modal for interface zoom', {
       factor,
       width,
@@ -1011,6 +1013,7 @@ export class WindowManager {
     if (parent !== null && !parent.isDestroyed() && parent.isVisible()) {
       logger.debug('WindowManager.adoptModalWindow', 'parenting modal to its opener');
       window.setParentWindow(parent);
+      this.followParent(window, parent);
     } else {
       logger.debug(
         'WindowManager.adoptModalWindow',
@@ -1021,6 +1024,55 @@ export class WindowManager {
     // re-ordered in front of the user, which is the jump this whole path exists to avoid.
     this.showWindow(window);
     logger.info('WindowManager.adoptModalWindow', 'modal window adopted');
+  }
+
+  /**
+   * Keeps a modal window centred over its parent for as long as both live. The parent still takes
+   * input through its title strip and its edges while the modal is up, so it can be moved, resized,
+   * maximized or taken full screen beneath it. macOS carries a child window along when its parent
+   * moves, but nothing else; Windows and Linux do not even do that. Whatever the change, the modal is
+   * put back in the middle of its parent, held on the display that holds most of the parent (so a
+   * parent straddling two displays has its modal wholly on one of them, not split across both).
+   * A minimized parent is left alone: Windows parks it far off screen, and the modal follows it back
+   * when it is restored.
+   * @param window The modal window.
+   * @param parent The window it is centred over.
+   */
+  private followParent(window: BrowserWindow, parent: BrowserWindow): void {
+    const recentre: () => void = (): void => {
+      if (window.isDestroyed() || parent.isDestroyed() || parent.isMinimized()) {
+        return;
+      }
+      const bounds: Electron.Rectangle = parent.getBounds();
+      const current: Electron.Rectangle = window.getBounds();
+      const size: { width: number; height: number } = {
+        width: current.width,
+        height: current.height,
+      };
+      const { x, y }: { x: number; y: number } = heldWithin(
+        centredOver(bounds, size),
+        size,
+        screen.getDisplayMatching(bounds).workArea,
+      );
+      if (x !== current.x || y !== current.y) {
+        window.setPosition(x, y);
+      }
+    };
+    parent.on('move', recentre);
+    parent.on('resize', recentre);
+    parent.on('enter-full-screen', recentre);
+    parent.on('leave-full-screen', recentre);
+    parent.on('restore', recentre);
+    window.once('closed', (): void => {
+      if (parent.isDestroyed()) {
+        return;
+      }
+      parent.off('move', recentre);
+      parent.off('resize', recentre);
+      parent.off('enter-full-screen', recentre);
+      parent.off('leave-full-screen', recentre);
+      parent.off('restore', recentre);
+    });
   }
 
   /**
@@ -1099,8 +1151,8 @@ export class WindowManager {
 }
 
 /**
- * Computes where a window of a given size sits centred over another: horizontally centred, and a
- * little above centre vertically, as the renderer centres a modal over the window that raised it.
+ * Computes where a window of a given size sits centred over another, both ways, as the renderer
+ * centres a modal over the window that raised it.
  * @param bounds The window to centre over.
  * @param size The size of the window being placed.
  * @returns Returns the position of its top-left corner.
@@ -1111,6 +1163,25 @@ function centredOver(
 ): { x: number; y: number } {
   return {
     x: Math.round(bounds.x + (bounds.width - size.width) / 2),
-    y: Math.round(bounds.y + Math.max(0, (bounds.height - size.height) / 3)),
+    y: Math.round(bounds.y + (bounds.height - size.height) / 2),
+  };
+}
+
+/**
+ * Holds a position within a display's work area, so a window placed there is fully on screen when it
+ * fits, and pinned to the top-left of the area when it does not.
+ * @param position The position wanted for the window's top-left corner.
+ * @param size The window's size.
+ * @param area The work area to stay within.
+ * @returns Returns the held position.
+ */
+function heldWithin(
+  position: { x: number; y: number },
+  size: { width: number; height: number },
+  area: Electron.Rectangle,
+): { x: number; y: number } {
+  return {
+    x: Math.max(area.x, Math.min(position.x, area.x + area.width - size.width)),
+    y: Math.max(area.y, Math.min(position.y, area.y + area.height - size.height)),
   };
 }

@@ -26,6 +26,18 @@ class FakeEmitter {
     return this.on(event, listener);
   }
 
+  public off(event: string, listener: Listener): this {
+    this.listeners.set(
+      event,
+      (this.listeners.get(event) ?? []).filter((held: Listener): boolean => held !== listener),
+    );
+    return this;
+  }
+
+  public listenerCount(event: string): number {
+    return this.listeners.get(event)?.length ?? 0;
+  }
+
   public emit(event: string, ...args: unknown[]): void {
     for (const listener of this.listeners.get(event) ?? []) {
       listener(...args);
@@ -109,6 +121,11 @@ class FakeWindow extends FakeEmitter {
     this.bounds = bounds;
     this.size = [bounds.width, bounds.height];
     this.contentSize = [bounds.width, bounds.height - 40];
+  }
+
+  public setPosition(x: number, y: number): void {
+    this.bounds = { ...this.bounds, x, y };
+    this.calls.push(`setPosition ${x},${y}`);
   }
 
   public getMaximumSize(): [number, number] {
@@ -707,7 +724,7 @@ describe('WindowManager', () => {
       );
       manager.adoptModalWindow(real(question), 'question');
 
-      expect(options).toMatchObject({ x: 650, y: 300 });
+      expect(options).toMatchObject({ x: 650, y: 350 });
       expect(question.parent).toBe(welcome);
     });
 
@@ -724,6 +741,110 @@ describe('WindowManager', () => {
       );
 
       expect(options).toMatchObject({ x: 10, y: 20 });
+    });
+
+    it('options_holdAModalPartlyOffTheDisplay_whollyOnIt', () => {
+      // Its title strip is still on screen, which is all a restored window is held to.
+      const options: Electron.BrowserWindowConstructorOptions = manager.modalWindowOptions(
+        'width=400,height=300,left=1700,top=900',
+        null,
+      );
+
+      expect(options).toMatchObject({ x: 1520, y: 780 });
+    });
+
+    /**
+     * Holds the events a parented modal follows its parent on.
+     */
+    const PARENT_EVENTS: readonly string[] = [
+      'move',
+      'resize',
+      'enter-full-screen',
+      'leave-full-screen',
+      'restore',
+    ];
+
+    /**
+     * Opens a 400×300 modal over a visible parent.
+     * @returns Returns the parent and the modal.
+     */
+    function parentedModal(): { parent: FakeWindow; modal: FakeWindow } {
+      const parent: FakeWindow = new FakeWindow();
+      parent.visible = true;
+      const modal: FakeWindow = new FakeWindow();
+      modal.bounds = { x: 0, y: 0, width: 400, height: 300 };
+      manager.modalWindowOptions('width=400,height=300', real(parent));
+      manager.adoptModalWindow(real(modal), CHILD_NAME);
+      return { parent, modal };
+    }
+
+    it.each(PARENT_EVENTS)(
+      'adopt_recentresOverTheParent_whenTheParentFires %s',
+      (event: string) => {
+        const { parent, modal } = parentedModal();
+
+        parent.bounds = { x: 300, y: 100, width: 1200, height: 800 };
+        parent.emit(event);
+
+        expect(modal.bounds).toMatchObject({ x: 700, y: 350 });
+      },
+    );
+
+    it('adopt_recentresOverTheParent_heldOnItsDisplay', () => {
+      const { parent, modal } = parentedModal();
+
+      // Dragged mostly off the right of the display: the modal stays wholly on it.
+      parent.bounds = { x: 1800, y: 100, width: 1000, height: 800 };
+      parent.emit('move');
+
+      expect(modal.bounds).toMatchObject({ x: 1520, y: 350 });
+    });
+
+    it('adopt_leavesTheModalWhereItIs_whenAlreadyCentred', () => {
+      const { parent, modal } = parentedModal();
+      parent.bounds = { x: 300, y: 100, width: 1200, height: 800 };
+      parent.emit('move');
+      const moves: number = modal.calls.filter((call: string): boolean =>
+        call.startsWith('setPosition'),
+      ).length;
+
+      // macOS has already carried the child along with its parent.
+      parent.emit('move');
+
+      expect(
+        modal.calls.filter((call: string): boolean => call.startsWith('setPosition')),
+      ).toHaveLength(moves);
+    });
+
+    it('adopt_leavesTheModalAlone_whileTheParentIsMinimized', () => {
+      const { parent, modal } = parentedModal();
+
+      // Windows parks a minimized window far off screen.
+      parent.minimized = true;
+      parent.bounds = { x: -32000, y: -32000, width: 160, height: 28 };
+      parent.emit('move');
+
+      expect(modal.bounds).toMatchObject({ x: 0, y: 0 });
+    });
+
+    it('adopt_stopsFollowingTheParent_onceTheModalCloses', () => {
+      const { parent, modal } = parentedModal();
+
+      modal.emit('closed');
+
+      for (const event of PARENT_EVENTS) {
+        expect(parent.listenerCount(event)).toBe(0);
+      }
+    });
+
+    it('adopt_ignoresTheParent_onceTheParentIsDestroyed', () => {
+      const { parent, modal } = parentedModal();
+      parent.destroyed = true;
+
+      parent.emit('move');
+
+      expect(modal.bounds).toMatchObject({ x: 0, y: 0 });
+      expect((): void => modal.emit('closed')).not.toThrow();
     });
 
     it('adopt_hardensTheWindow', () => {
@@ -974,7 +1095,7 @@ describe('WindowManager', () => {
 
       expect(modal.minimumSize).toEqual([450, 300]);
       expect(modal.maximumSize).toEqual([900, 750]);
-      expect(modal.bounds).toEqual({ x: 400, y: 150, width: 600, height: 450 });
+      expect(modal.bounds).toEqual({ x: 400, y: 125, width: 600, height: 450 });
       expect(modal.webContents.zoom).toBe(1.5);
     });
 
