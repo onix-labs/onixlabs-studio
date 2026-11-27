@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MenuItem } from '@shared/angular/components/menu/menu';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { TreeRow } from '@shared/angular/components/tree-view/tree-view';
 import { Icon } from '@shared/angular/icons/icon';
@@ -270,6 +271,22 @@ describe('ApiExplorerPanel', () => {
       fixture.detectChanges();
 
       expect(itemIds(rowFor(collection.name))).toEqual(['new-request', 'rename', 'delete']);
+    });
+
+    it('contextMenuFor_delete_hasItsChord_onlyWhileDeletingAsksFirst', () => {
+      // Nothing here goes to a Trash: a key that deleted at once could lose a collection to a slip.
+      const collection: ApiFolder = workspace.addCollection('Orders');
+      fixture.detectChanges();
+      const chordOfDelete: () => string | undefined = (): string | undefined =>
+        component
+          .contextMenuFor(rowFor(collection.name))
+          .find((item: MenuItem): boolean => item.id === 'delete')?.chord;
+
+      expect(chordOfDelete()).toBe('Delete');
+
+      TestBed.inject(Settings).set('apiExplorer.confirmDelete', false);
+
+      expect(chordOfDelete()).toBeUndefined();
     });
 
     it('contextMenuFor_aRequest_offersRenameDuplicateAndDelete', () => {

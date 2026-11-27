@@ -1502,7 +1502,8 @@ export class SolutionPanel {
     }
     const items: MenuItem[] = [];
     if (targets.every((row: SolutionRow): boolean => row.kind === 'file')) {
-      items.push({ id: ACTION_OPEN, label: 'Open', icon: Icon.FILE, chord: OPEN_CHORD });
+      // No Enter hint: Enter opens the row it is pressed on, where this opens them all.
+      items.push({ id: ACTION_OPEN, label: 'Open', icon: Icon.FILE });
     }
     items.push(
       { id: ACTION_COPY_PATH, label: 'Copy Paths', icon: Icon.COPY },

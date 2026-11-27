@@ -842,7 +842,8 @@ export class TreePanel {
     const items: MenuItem[] = [];
     if (targets.every((node: WorkspaceTreeNode): boolean => node.type === 'file')) {
       items.push(
-        { id: ACTION_OPEN, label: 'Open', icon: Icon.FILE, chord: OPEN_CHORD },
+        // No Enter hint: Enter opens the row it is pressed on, where this opens them all.
+        { id: ACTION_OPEN, label: 'Open', icon: Icon.FILE },
         { id: 'tree-menu.sep-paths', label: '', separator: true },
       );
     }

@@ -394,14 +394,14 @@ export class ApiExplorerPanel {
           { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL, chord: RENAME_CHORD },
           { id: ACTION_DUPLICATE, label: 'Duplicate', icon: Icon.COPY },
           { id: 'api-menu.sep', label: '', separator: true },
-          { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH, chord: DELETE_CHORD },
+          this.deleteItem(),
         ];
       case 'collection':
         return [
           { id: ACTION_NEW_REQUEST, label: 'New Request', icon: Icon.API_REQUEST },
           { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL, chord: RENAME_CHORD },
           { id: 'api-menu.sep', label: '', separator: true },
-          { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH, chord: DELETE_CHORD },
+          this.deleteItem(),
         ];
       case 'environment':
         return [
@@ -414,12 +414,28 @@ export class ApiExplorerPanel {
           { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL, chord: RENAME_CHORD },
           { id: ACTION_DUPLICATE, label: 'Duplicate', icon: Icon.COPY },
           { id: 'api-menu.sep', label: '', separator: true },
-          { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH, chord: DELETE_CHORD },
+          this.deleteItem(),
         ];
       default:
         return [];
     }
   };
+
+  /**
+   * Builds a row's Delete command. It carries the delete chord only while Confirm Before Deleting is
+   * on: nothing here goes to a Trash or can be undone, and a collection takes its requests with it, so
+   * a key that deleted at once would let one stray press lose them. With the confirmation off, Delete
+   * is still a deliberate choice from the menu.
+   * @returns Returns the command.
+   */
+  private deleteItem(): MenuItem {
+    return {
+      id: ACTION_DELETE,
+      label: 'Delete',
+      icon: Icon.TRASH,
+      ...(this.settings.get('apiExplorer.confirmDelete') ? { chord: DELETE_CHORD } : {}),
+    };
+  }
 
   /**
    * Runs the command chosen from a row's context menu.
