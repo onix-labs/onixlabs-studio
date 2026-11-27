@@ -131,6 +131,11 @@
 
 // The shared drop-menu surface used by the app-menu atom: a popup panel of activatable rows.
 .app-menu-panel {
+  // A menu opened at the pointer inside the title strip (a tab's) can sit over the window's drag
+  // region, where a click would move the window rather than reach the row. The panel carves itself
+  // out of that region; only the panel, never the whole overlay layer, which covers the window and
+  // would leave nothing to drag it by.
+  -webkit-app-region: no-drag;
   display: flex;
   flex-direction: column;
   min-inline-size: 12rem;

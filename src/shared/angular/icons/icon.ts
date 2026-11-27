@@ -2623,6 +2623,16 @@ export class Icon {
    */
   public static readonly ARROW_RIGHT: Icon = new Icon('ph-bold ph-arrow-right');
 
+  /**
+   * Gets the arrow against a line that moves something to the start of its row (a tab, in its strip).
+   */
+  public static readonly MOVE_TO_START: Icon = new Icon('ph ph-arrow-line-left');
+
+  /**
+   * Gets the arrow against a line that moves something to the end of its row.
+   */
+  public static readonly MOVE_TO_END: Icon = new Icon('ph ph-arrow-line-right');
+
   // --- Status bar ---
 
   /**

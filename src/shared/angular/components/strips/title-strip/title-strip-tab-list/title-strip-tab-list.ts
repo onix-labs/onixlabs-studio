@@ -1,4 +1,5 @@
 import { CdkDragDrop, CdkDropList } from '@angular/cdk/drag-drop';
+import { CdkContextMenuTrigger } from '@angular/cdk/menu';
 import {
   afterNextRender,
   afterRenderEffect,
@@ -12,10 +13,21 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
+import { Icon } from '@shared/angular/icons/icon';
+import { Menu, MenuChoice, MenuItem } from '@shared/angular/components/menu/menu';
+import { MenuSubject } from '@shared/angular/components/menu/menu-subject';
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { TabCloser } from '@shared/angular/services/tab-closer/tab-closer';
 import { isPinnedTabType, Tabs } from '@shared/angular/services/tabs/tabs';
 import { TitleStripTab } from '../title-strip-tab/title-strip-tab';
+
+/**
+ * Identifies the commands of a tab's context menu.
+ */
+const MOVE_TO_START: string = 'tab.move-to-start';
+const MOVE_TO_END: string = 'tab.move-to-end';
+const CLOSE: string = 'tab.close';
 
 /**
  * Represents the list of open tabs in the title strip, supporting drag-to-reorder and roving
@@ -23,7 +35,7 @@ import { TitleStripTab } from '../title-strip-tab/title-strip-tab';
  */
 @Component({
   selector: 'app-title-strip-tab-list',
-  imports: [TitleStripTab, CdkDropList],
+  imports: [TitleStripTab, CdkDropList, CdkContextMenuTrigger, Menu, MenuSubject],
   templateUrl: './title-strip-tab-list.html',
   styleUrl: './title-strip-tab-list.scss',
   host: {
@@ -48,6 +60,11 @@ export class TitleStripTabList {
   private readonly hostElement: ElementRef<HTMLElement> = inject(
     ElementRef,
   ) as ElementRef<HTMLElement>;
+
+  /**
+   * Holds the keybindings, which say what chord closes the active tab.
+   */
+  private readonly keybindings: Keybindings = inject(Keybindings);
 
   /**
    * Holds the lifecycle scope used to tear the resize observer down.
@@ -121,6 +138,101 @@ export class TitleStripTabList {
    */
   protected onClose(tab: Tab): void {
     void this.tabCloser.close(tab.id);
+  }
+
+  /**
+   * Builds a tab's context menu: move it to either end of the strip, or close it (#1592). A fixed
+   * tab (Settings, Mission Control) holds its place, so it offers Close alone; a move that would
+   * change nothing is shown but disabled. Bound as a value, because the menu calls it as its item
+   * factory with the tab's id.
+   */
+  protected readonly tabItemsFor: (data: unknown) => readonly MenuItem[] = (
+    data: unknown,
+  ): readonly MenuItem[] => {
+    const tabs: readonly Tab[] = this.tabs();
+    const index: number = tabs.findIndex((tab: Tab): boolean => tab.id === data);
+    if (index < 0) {
+      return [];
+    }
+    // The chord closes the active tab, so it is named only on the menu of the tab it would close.
+    const closeChord: string | null =
+      tabs[index].id === this.activeTabId() ? this.keybindings.chordFor('app.closeTab') : null;
+    const close: MenuItem = {
+      id: CLOSE,
+      label: 'Close Tab',
+      icon: Icon.CLOSE,
+      ...(closeChord === null || closeChord === '' ? {} : { chord: closeChord }),
+    };
+    this.menuTabId = tabs[index].id;
+    if (isPinnedTabType(tabs[index].type)) {
+      return [close];
+    }
+    const firstMovable: number = tabs.findIndex((tab: Tab): boolean => !isPinnedTabType(tab.type));
+    return [
+      {
+        id: MOVE_TO_START,
+        label: 'Move Tab to Beginning',
+        icon: Icon.MOVE_TO_START,
+        disabled: index === firstMovable,
+      },
+      {
+        id: MOVE_TO_END,
+        label: 'Move Tab to End',
+        icon: Icon.MOVE_TO_END,
+        disabled: index === tabs.length - 1,
+      },
+      { id: 'tab.sep-close', label: '', separator: true },
+      close,
+    ];
+  };
+
+  /**
+   * Holds the id of the tab whose menu was last opened, so the keyboard can return to it.
+   */
+  private menuTabId: string | null = null;
+
+  /**
+   * Returns the keyboard to the tab whose menu just closed: the menu is opened on the tab's host,
+   * which cannot take focus, so nothing else would, and it would fall to the page.
+   */
+  protected onTabMenuClosed(): void {
+    const id: string | null = this.menuTabId;
+    this.menuTabId = null;
+    const index: number = this.tabs().findIndex((tab: Tab): boolean => tab.id === id);
+    if (index < 0) {
+      return;
+    }
+    const tabElements: NodeListOf<HTMLElement> =
+      this.hostElement.nativeElement.querySelectorAll<HTMLElement>(
+        'app-title-strip-tab > [role="tab"]',
+      );
+    tabElements.item(index)?.focus();
+  }
+
+  /**
+   * Runs a command chosen from a tab's context menu.
+   * @param choice The chosen command, with the id of the tab it was opened on.
+   */
+  protected onTabMenu(choice: MenuChoice): void {
+    const tabs: readonly Tab[] = this.tabs();
+    const index: number = tabs.findIndex((tab: Tab): boolean => tab.id === choice.data);
+    if (index < 0) {
+      return;
+    }
+    switch (choice.id) {
+      case MOVE_TO_START:
+        // Clamped past the fixed tabs, which keep the front of the strip.
+        this.tabsService.reorder(index, 0);
+        return;
+      case MOVE_TO_END:
+        this.tabsService.reorder(index, tabs.length - 1);
+        return;
+      case CLOSE:
+        this.onClose(tabs[index]);
+        return;
+      default:
+        return;
+    }
   }
 
   /**

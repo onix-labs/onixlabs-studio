@@ -6,6 +6,7 @@ import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { AppMenu } from './app-menu';
 import { MENU_SEPARATOR, MenuContribution, MenuEntry } from './app-menu-model';
+import { TabCloser } from '@shared/angular/services/tab-closer/tab-closer';
 
 /**
  * Orders the core's leading contribution ahead of every feature, so File opens with New and Open before
@@ -89,6 +90,11 @@ export class CoreMenu {
    * Holds the tab registry, for opening and closing tabs.
    */
   private readonly tabs: Tabs = inject(Tabs);
+
+  /**
+   * Holds the closer every tab close goes through, which asks about unsaved work first.
+   */
+  private readonly tabCloser: TabCloser = inject(TabCloser);
 
   /**
    * Holds the document registry, for the file commands.
@@ -226,7 +232,9 @@ export class CoreMenu {
               run: (): void => {
                 const tab: Tab | undefined = this.activeTab();
                 if (tab !== undefined) {
-                  this.tabs.close(tab.id);
+                  // As the tab's own close button does: unsaved work, a running program and a
+                  // working agent are asked about first.
+                  void this.tabCloser.close(tab.id);
                 }
               },
             },
