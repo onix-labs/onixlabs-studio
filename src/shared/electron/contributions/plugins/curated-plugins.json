@@ -1,10 +1,13 @@
 {
-  "revision": 79,
+  "revision": 80,
   "plugins": [
     {
       "id": "pyright",
       "name": "Pyright",
       "description": "Microsoft's Python type checker and language server.",
+      "licence": "MIT",
+      "repository": "https://github.com/microsoft/pyright",
+      "homepage": "https://microsoft.github.io/pyright/",
       "version": "1.1.410",
       "apiVersion": "1.1.0",
       "provision": {
@@ -115,6 +118,9 @@
       "id": "ty",
       "name": "ty",
       "description": "Astral's Rust-built Python type checker and language server. An alternative to Pyright.",
+      "licence": "MIT",
+      "repository": "https://github.com/astral-sh/ty",
+      "homepage": "https://docs.astral.sh/ty/",
       "version": "0.0.74",
       "apiVersion": "1.1.0",
       "provision": {
@@ -217,6 +223,9 @@
       "id": "lua-language-server",
       "name": "Lua Language Server",
       "description": "Lua language support, from the sumneko project.",
+      "licence": "MIT",
+      "repository": "https://github.com/LuaLS/lua-language-server",
+      "homepage": "https://luals.github.io/",
       "version": "3.19.1",
       "apiVersion": "1.1.0",
       "provision": {
@@ -287,6 +296,9 @@
       "name": "sqls",
       "description": "SQL language support: completion, formatting and query execution.",
       "detail": "Configure a database connection to get schema-aware completion.",
+      "licence": "MIT",
+      "repository": "https://github.com/sqls-server/sqls",
+      "homepage": "https://github.com/sqls-server/sqls",
       "version": "0.2.48",
       "apiVersion": "1.1.0",
       "provision": {
@@ -333,6 +345,9 @@
       "id": "perlnavigator",
       "name": "Perl Navigator",
       "description": "Perl language support: diagnostics, completion and navigation.",
+      "licence": "MIT",
+      "repository": "https://github.com/bscan/perlnavigator",
+      "homepage": "https://github.com/bscan/perlnavigator",
       "version": "0.8.20",
       "apiVersion": "1.1.0",
       "provision": {
@@ -377,6 +392,9 @@
       "id": "dockerfile-language-server",
       "name": "Dockerfile Language Server",
       "description": "Rapid7's Dockerfile linting, completion and hover support.",
+      "licence": "MIT",
+      "repository": "https://github.com/rcjsuen/dockerfile-language-server-nodejs",
+      "homepage": "https://github.com/rcjsuen/dockerfile-language-server-nodejs",
       "version": "0.15.0",
       "apiVersion": "1.2.0",
       "provision": {
@@ -403,6 +421,9 @@
       "id": "yaml-language-server",
       "name": "YAML Language Server",
       "description": "Red Hat's YAML validation, completion and schema support.",
+      "licence": "MIT",
+      "repository": "https://github.com/redhat-developer/yaml-language-server",
+      "homepage": "https://github.com/redhat-developer/yaml-language-server",
       "version": "1.24.0",
       "apiVersion": "1.2.0",
       "provision": {
@@ -450,6 +471,9 @@
       "id": "bash-language-server",
       "name": "Bash Language Server",
       "description": "Shell script completion, linting and documentation on hover.",
+      "licence": "MIT",
+      "repository": "https://github.com/bash-lsp/bash-language-server",
+      "homepage": "https://github.com/bash-lsp/bash-language-server",
       "version": "5.6.0",
       "apiVersion": "1.2.0",
       "provision": {
@@ -477,6 +501,9 @@
       "id": "svelte-language-server",
       "name": "Svelte Language Server",
       "description": "Svelte component diagnostics, completion and navigation.",
+      "licence": "MIT",
+      "repository": "https://github.com/sveltejs/language-tools",
+      "homepage": "https://github.com/sveltejs/language-tools",
       "version": "0.18.4",
       "apiVersion": "1.2.0",
       "provision": {
@@ -556,6 +583,9 @@
       "id": "vscode-langservers-extracted",
       "name": "HTML, CSS & JSON Language Servers",
       "description": "Microsoft's web language servers, extracted from VS Code.",
+      "licence": "MIT",
+      "repository": "https://github.com/hrsh7th/vscode-langservers-extracted",
+      "homepage": "https://github.com/hrsh7th/vscode-langservers-extracted",
       "version": "4.10.0",
       "apiVersion": "1.3.0",
       "provision": {
@@ -673,6 +703,9 @@
       "version": "2026-07-13",
       "apiVersion": "1.8.0",
       "detail": "Runs cargo to load a workspace, so the Rust toolchain must be on your PATH.",
+      "licence": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/rust-analyzer",
+      "homepage": "https://rust-analyzer.github.io/",
       "provision": {
         "kind": "archive",
         "downloads": {
@@ -1050,6 +1083,9 @@
       "version": "22.1.6",
       "apiVersion": "1.1.0",
       "detail": "A large download — it carries the Clang toolchain headers.",
+      "licence": "Apache-2.0 WITH LLVM-exception",
+      "repository": "https://github.com/llvm/llvm-project",
+      "homepage": "https://clangd.llvm.org/",
       "provision": {
         "kind": "archive",
         "downloads": {
@@ -1148,6 +1184,9 @@
       "id": "taplo",
       "name": "Taplo",
       "description": "TOML validation, formatting and schema-aware completion.",
+      "licence": "MIT",
+      "repository": "https://github.com/tamasfe/taplo",
+      "homepage": "https://taplo.tamasfe.dev/",
       "version": "0.10.0",
       "apiVersion": "1.8.0",
       "provision": {
@@ -1292,6 +1331,9 @@
       "version": "3.2.0-1092",
       "apiVersion": "1.0.0",
       "detail": "Samsung’s MIT-licensed .NET debugger. Microsoft’s vsdbg is not offered: it is licensed only for use within the Visual Studio family.",
+      "licence": "MIT",
+      "repository": "https://github.com/Samsung/netcoredbg",
+      "homepage": "https://github.com/Samsung/netcoredbg",
       "provision": {
         "kind": "archive",
         "downloads": {
@@ -1349,6 +1391,9 @@
       "version": "1.12.3",
       "apiVersion": "1.0.0",
       "detail": "Vadim Chugunov’s MIT-licensed LLDB front end, with its own LLDB build. On macOS it uses Apple’s debugserver, from Xcode or the Command Line Tools.",
+      "licence": "MIT AND Apache-2.0 WITH LLVM-exception",
+      "repository": "https://github.com/vadimcn/codelldb",
+      "homepage": "https://github.com/vadimcn/codelldb",
       "provision": {
         "kind": "archive",
         "downloads": {
@@ -1405,6 +1450,9 @@
       "version": "1.27.2",
       "apiVersion": "1.30.0",
       "detail": "The Go project's own MIT-licensed debugger, spoken to over its DAP server. It builds what it debugs with your Go toolchain, so `go` must be on the PATH. On macOS it uses Apple’s debugserver, from Xcode or the Command Line Tools.",
+      "licence": "MIT",
+      "repository": "https://github.com/go-delve/delve",
+      "homepage": "https://github.com/go-delve/delve",
       "provision": {
         "kind": "archive",
         "downloads": {
@@ -1463,6 +1511,9 @@
       "version": "1.117.0",
       "apiVersion": "1.0.0",
       "detail": "Platform-independent JavaScript, run under the Node runtime Studio ships.",
+      "licence": "MIT",
+      "repository": "https://github.com/microsoft/vscode-js-debug",
+      "homepage": "https://github.com/microsoft/vscode-js-debug",
       "provision": {
         "kind": "archive",
         "downloads": {
@@ -1521,6 +1572,9 @@
       "version": "1.8.21",
       "apiVersion": "1.7.0",
       "detail": "Needs Python 3.8+ on your machine. Ships the pure-Python build, which debugs any interpreter version but steps more slowly than a compiled one.",
+      "licence": "MIT",
+      "repository": "https://github.com/microsoft/debugpy",
+      "homepage": "https://github.com/microsoft/debugpy",
       "requires": [
         {
           "runtime": "python",
@@ -1583,6 +1637,9 @@
       "version": "1.0.0",
       "apiVersion": "1.4.0",
       "detail": "Decodes the machine code inside PE, ELF, Mach-O and MS-DOS binaries. Studio ships no decoder of its own, so this provides the assembly listing the binary editor shows.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/native-decoder",
       "provision": {
         "kind": "archive",
         "downloads": {
@@ -1653,6 +1710,9 @@
       "version": "1.0.0",
       "apiVersion": "1.4.0",
       "detail": "Pure TypeScript, so it needs no JVM installed. Source line numbers appear when the class was compiled with -g.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/jvm-decoder",
       "provision": {
         "kind": "archive",
         "downloads": {
@@ -1709,6 +1769,9 @@
       "version": "1.0.0",
       "apiVersion": "1.4.0",
       "detail": "Pure TypeScript, so it needs no toolchain installed.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/wasm-decoder",
       "provision": {
         "kind": "archive",
         "downloads": {
@@ -1765,6 +1828,9 @@
       "version": "1.0.0",
       "apiVersion": "1.4.0",
       "detail": "Reads ECMA-335 metadata, so it needs the whole assembly rather than the visible range. Needs the .NET runtime installed. Large assemblies are truncated to the first 2000 methods.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/dotnet-decoder",
       "provision": {
         "kind": "archive",
         "downloads": {
@@ -1824,6 +1890,9 @@
       "name": "Docker",
       "description": "Talk to a Docker-compatible container engine over its local socket.",
       "detail": "Speaks to the engine over its local socket; it does not install or run a container engine itself. Open Shell uses the docker command-line tool when one is installed.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/docker-engine",
       "version": "30.4.0",
       "apiVersion": "1.19.0",
       "provision": {
@@ -1866,6 +1935,9 @@
       "name": "Podman",
       "description": "Talk to a Podman container engine over its local socket.",
       "detail": "Speaks to the engine over its local socket; it does not install or run a container engine itself. Open Shell uses the podman command-line tool when one is installed.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/podman-engine",
       "version": "7.4.0",
       "apiVersion": "1.19.0",
       "provision": {
@@ -1912,6 +1984,9 @@
       "name": "SQLite",
       "description": "Connect the Database Explorer to SQLite database files.",
       "detail": "Opens SQLite database files on this machine with the SQLite built into Studio's own runtime; it installs nothing else.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/sqlite-engine",
       "version": "1.4.0",
       "apiVersion": "1.20.0",
       "provision": {
@@ -1940,6 +2015,9 @@
       "name": "PostgreSQL",
       "description": "Connect the Database Explorer to PostgreSQL servers.",
       "detail": "Connects to PostgreSQL servers over the network with `pg`, a pure-JavaScript client; it installs no database and no native code.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/postgres-engine",
       "version": "1.4.0",
       "apiVersion": "1.20.0",
       "provision": {
@@ -1968,6 +2046,9 @@
       "name": "Neo4j",
       "description": "Connect the Database Explorer to Neo4j graph databases.",
       "detail": "Connects to Neo4j over Bolt with the official JavaScript driver; it installs no database and no native code.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/neo4j-engine",
       "version": "1.4.0",
       "apiVersion": "1.20.0",
       "provision": {
@@ -1996,6 +2077,9 @@
       "name": "SQL Server",
       "description": "Connect the Database Explorer to SQL Server and Azure SQL.",
       "detail": "Connects to SQL Server and Azure SQL over the network with `tedious`, a pure-JavaScript client; it installs no database and no native code. Splits scripts at GO like SSMS, and shows PRINT and RAISERROR in Messages.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/sqlserver-engine",
       "version": "0.1.0",
       "apiVersion": "1.23.0",
       "provision": {
@@ -2026,6 +2110,9 @@
       "version": "0.11.0",
       "apiVersion": "1.14.0",
       "detail": "Drives the git installed on your machine, or one you point it at in Settings. Needs git 2.23 or later.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/git",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-git-v0.11.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.git.lock.json",
@@ -2070,6 +2157,9 @@
       "version": "0.7.0",
       "apiVersion": "1.29.0",
       "detail": "Signs in with the GitHub CLI's login (gh auth login), or a token you add in Settings. Serves github.com.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/github",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-github-v0.7.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.github.lock.json",
@@ -2119,6 +2209,9 @@
       "version": "0.22.0",
       "apiVersion": "1.12.0",
       "detail": "The full Claude agent: sessions held open across turns, sub-agents, background tasks, slash commands, per-tool policy, write confinement, the OS sandbox, model discovery, and Remote Control through claude.ai/code. Authenticates with your local `claude` login, or with an Anthropic API key set on the connection. Downloads around 200MB: the SDK ships its Claude Code CLI as a native binary, and one platform's is fetched.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/claude-harness",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-claude-harness-v0.22.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.claude-harness.lock.json",
@@ -2184,6 +2277,9 @@
       "version": "0.9.0",
       "apiVersion": "1.12.0",
       "detail": "Holds a Codex thread open across turns, so a conversation keeps its context. Streams replies, reasoning, shell commands, file changes and web searches into the transcript, and asks you through Studio's permission card before a command runs or a file changes, under your posture and per-tool settings. Authenticates through your local Codex login, or through an API key configured against the connection.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/codex-harness",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-codex-harness-v0.9.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.codex-harness.lock.json",
@@ -2238,6 +2334,9 @@
       "version": "0.5.0",
       "apiVersion": "1.12.0",
       "detail": "The general-purpose harness: point a connection at any model API and this runs it. Studio supplies the tools for the turn's surface and runs them on the model's behalf, so an agent on Ollama has the same capabilities as one on Claude. Asks the endpoint what models it offers. Authenticates with the API key configured against the connection; a local Ollama server needs none. Around 2MB — the SDK is pure JavaScript and ships inside the plugin.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/ai-sdk-harness",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-ai-sdk-harness-v0.5.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.ai-sdk-harness.lock.json",
@@ -2361,6 +2460,9 @@
       "version": "0.1.1",
       "apiVersion": "1.25.0",
       "detail": "Reads package.json, your lockfile and .npmrc. Installing and updating run through the npm, pnpm or Yarn on your machine, in a terminal you can see.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/npm",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-npm-v0.1.1/src/shared/electron/contributions/plugins/lockfiles/onixlabs.npm.lock.json",
@@ -2399,6 +2501,9 @@
       "version": "0.1.0",
       "apiVersion": "1.25.0",
       "detail": "Reads your project files, restore output and nuget.config. Adding and updating run through the dotnet on your machine, in a terminal you can see.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/nuget",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-nuget-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.nuget.lock.json",
@@ -2437,6 +2542,9 @@
       "version": "0.1.0",
       "apiVersion": "1.27.0",
       "detail": "Reads go.mod, go.work, go.sum and your Go environment (GOPROXY, GOPRIVATE). Adding, updating and removing run through the go on your machine, in a terminal you can see.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/go-modules",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-go-modules-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.go-modules.lock.json",
@@ -2475,6 +2583,9 @@
       "version": "0.1.0",
       "apiVersion": "1.25.0",
       "detail": "Reads vcpkg.json and vcpkg-configuration.json, and the vcpkg registry's published baselines. Adding a port and installing run through the vcpkg on your machine, in a terminal you can see.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/vcpkg",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-vcpkg-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.vcpkg.lock.json",
@@ -2505,6 +2616,9 @@
       "version": "0.1.0",
       "apiVersion": "1.25.0",
       "detail": "Reads conanfile.txt, conanfile.py (as text, never run), conan.lock and your Conan remotes. Installing runs through the conan on your machine, in a terminal you can see.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/conan",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-conan-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.conan.lock.json",
@@ -2535,6 +2649,9 @@
       "version": "0.1.0",
       "apiVersion": "1.25.0",
       "detail": "Reads your Cargo.toml files, Cargo.lock and Cargo's own config and credentials. Adding, updating and removing run through the cargo on your machine, in a terminal you can see.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/cargo",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-cargo-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.cargo.lock.json",
@@ -2573,6 +2690,9 @@
       "version": "0.1.0",
       "apiVersion": "1.27.0",
       "detail": "Reads pyproject.toml, requirements files, Pipfile, setup.cfg, your lockfile or virtual environment, and pip.conf. Never runs Python. Changes run through the uv, Poetry, Pipenv or pip on your machine, in a terminal you can see.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/pypi",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-pypi-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.pypi.lock.json",
@@ -2611,6 +2731,9 @@
       "version": "0.1.0",
       "apiVersion": "1.25.0",
       "detail": "Reads your POMs, Gradle build scripts, version catalog, Gradle lockfiles, ~/.m2/settings.xml and gradle.properties. Neither Maven nor Gradle has a command that adds a dependency, so this plugin only resolves them, through the mvn or gradle on your machine, in a terminal you can see.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/maven",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-maven-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.maven.lock.json",
@@ -2648,6 +2771,9 @@
       "version": "0.1.1",
       "apiVersion": "1.28.0",
       "detail": "Finds tests by reading your project files and C# sources, without building anything. Running them uses the .NET SDK on your machine, in a terminal you can see.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/dotnet-tests",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-dotnet-tests-v0.1.1/src/shared/electron/contributions/plugins/lockfiles/onixlabs.dotnet-tests.lock.json",
@@ -2678,6 +2804,9 @@
       "version": "0.1.0",
       "apiVersion": "1.28.0",
       "detail": "Reads package.json and your test files to find tests, without running anything. Running them uses the Vitest, Jest or Playwright your project installs, in a terminal you can see.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/js-tests",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-js-tests-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.js-tests.lock.json",
@@ -2708,6 +2837,9 @@
       "version": "0.1.0",
       "apiVersion": "1.28.0",
       "detail": "Reads your test files to find tests, without starting Python. Running them uses the project's own virtual environment (.venv or venv) when it has one, else python3, with pytest installed there, in a terminal you can see.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/python-tests",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-python-tests-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.python-tests.lock.json",
@@ -2746,6 +2878,9 @@
       "version": "0.1.0",
       "apiVersion": "1.28.0",
       "detail": "Reads your crates' sources to list their tests; running them uses the cargo on your machine, in a terminal you can see.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/rust-tests",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-rust-tests-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.rust-tests.lock.json",
@@ -2776,6 +2911,9 @@
       "version": "0.2.0",
       "apiVersion": "1.30.0",
       "detail": "Reads your packages' _test.go files to list their tests; running them uses the go on your machine, in a terminal you can see.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/go-tests",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-go-tests-v0.2.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.go-tests.lock.json",
@@ -2837,6 +2975,9 @@
       "version": "0.1.0",
       "apiVersion": "1.28.0",
       "detail": "Reads your test sources to list their tests; running them uses your Gradle or Maven wrapper, or the one on your machine, in a terminal you can see.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/jvm-tests",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-jvm-tests-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.jvm-tests.lock.json",
@@ -2867,6 +3008,9 @@
       "version": "0.1.0",
       "apiVersion": "1.28.0",
       "detail": "Asks ctest which tests a configured build directory declares, which runs none of them; running them uses the ctest on your machine, in a terminal you can see.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/ctest",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-ctest-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.ctest.lock.json",
@@ -2897,6 +3041,9 @@
       "version": "0.1.0",
       "apiVersion": "1.31.0",
       "detail": "Serves only the open workspace's files, on 127.0.0.1, so nothing on your network can reach it. Runs nothing from the workspace itself.",
+      "licence": "MIT",
+      "repository": "https://github.com/onix-labs/onixlabs-studio",
+      "homepage": "https://github.com/onix-labs/onixlabs-studio/tree/main/plugins/live-server",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/plugin-live-server-v0.1.0/src/shared/electron/contributions/plugins/lockfiles/onixlabs.live-server.lock.json",

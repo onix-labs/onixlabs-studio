@@ -208,6 +208,32 @@ describe('parsePluginManifest', () => {
       );
     });
 
+    it('aManifestSayingWhatItIsLicensedUnder_andWhereItsSourceAndHomeAre (#1612)', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({
+          licence: 'MIT OR Apache-2.0',
+          repository: 'https://github.com/rust-lang/rust-analyzer',
+          homepage: 'https://rust-analyzer.github.io/',
+        }),
+      );
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest).toMatchObject({
+        licence: 'MIT OR Apache-2.0',
+        repository: 'https://github.com/rust-lang/rust-analyzer',
+        homepage: 'https://rust-analyzer.github.io/',
+      });
+    });
+
+    it('aManifestSayingNothingOfItsLicence', () => {
+      const result: ManifestResult = parsePluginManifest(manifest());
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.licence).toBeUndefined();
+      expect(result.manifest?.repository).toBeUndefined();
+      expect(result.manifest?.homepage).toBeUndefined();
+    });
+
     it('aDebugAdapterWithATransport', () => {
       const result: ManifestResult = parsePluginManifest(
         manifest({
@@ -369,6 +395,18 @@ describe('parsePluginManifest', () => {
 
       expect(result.manifest).toBeNull();
       expect(paths(result)).toEqual(['detail']);
+    });
+
+    it.each<[string, Record<string, unknown>, string]>([
+      ['anEmptyLicence', { licence: '' }, 'licence'],
+      ['aLicenceThatIsNotText', { licence: 7 }, 'licence'],
+      ['aRepositoryThatIsNotHttps', { repository: 'http://example.com/x' }, 'repository'],
+      ['aHomepageThatIsNotAUrl', { homepage: 'example.com' }, 'homepage'],
+    ])('%s (#1612)', (_name: string, fields: Record<string, unknown>, field: string) => {
+      const result: ManifestResult = parsePluginManifest(manifest(fields));
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toEqual([field]);
     });
 
     it('aNonHttpsDownload', () => {

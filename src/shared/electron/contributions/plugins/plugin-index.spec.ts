@@ -779,6 +779,57 @@ describe('the bundled index', () => {
   });
 });
 
+describe('the licences in the curated index (#1612)', () => {
+  /**
+   * Gets each entry as Studio reads it.
+   * @returns Returns the parsed manifests.
+   */
+  function manifests(): PluginManifest[] {
+    return CURATED_PLUGINS.plugins.map(
+      (value: unknown): PluginManifest => parsePluginManifest(value).manifest!,
+    );
+  }
+
+  it('saysForEveryPlugin_whatItIsLicensedUnder_andWhereItsSourceAndHomeAre', () => {
+    for (const manifest of manifests()) {
+      expect(manifest.licence, manifest.id).toMatch(/\S/);
+      expect(manifest.repository, manifest.id).toMatch(/^https:\/\//);
+      expect(manifest.homepage, manifest.id).toMatch(/^https:\/\//);
+    }
+  });
+
+  it('givesEveryFirstPartyPluginStudiosOwnLicence_soARelicenceCannotMissOne', () => {
+    // A first-party plugin is Studio's code, so it is under Studio's licence: changing that (#1611)
+    // fails here until every entry says the same.
+    const studio: { license: string } = JSON.parse(readFileSync('package.json', 'utf8')) as {
+      license: string;
+    };
+    const firstParty: ReadonlySet<string> = new Set<string>(
+      readdirSync('plugins')
+        .filter((directory: string): boolean =>
+          existsSync(path.join('plugins', directory, 'plugin.json')),
+        )
+        .map(
+          (directory: string): string =>
+            (
+              JSON.parse(readFileSync(path.join('plugins', directory, 'plugin.json'), 'utf8')) as {
+                id: string;
+              }
+            ).id,
+        ),
+    );
+    const listed: PluginManifest[] = manifests().filter((manifest: PluginManifest): boolean =>
+      firstParty.has(manifest.id),
+    );
+
+    expect(listed.length).toBeGreaterThan(0);
+    for (const manifest of listed) {
+      expect(manifest.licence, manifest.id).toBe(studio.license);
+      expect(manifest.repository, manifest.id).toBe('https://github.com/onix-labs/onixlabs-studio');
+    }
+  });
+});
+
 describe('first-party releases listed under an entry', () => {
   // A listed release inherits whatever it does not restate, and the top level is the *newest*
   // release. An older first-party release that restated only its version, API and provision would
@@ -856,6 +907,22 @@ describe('first-party releases listed under an entry', () => {
   }
 
   /**
+   * Sets aside the fields the index keeps as catalogue facts rather than as part of a release (#1612):
+   * a plugin's licence, repository and homepage are the plugin's, whichever release is installed, so
+   * a listed release inherits them from its entry and its plugin.json at its tag need not have had
+   * them.
+   * @param value A release, as listed or as its plugin.json.
+   * @returns Returns it without those fields.
+   */
+  function withoutCatalogueFacts(value: unknown): unknown {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).filter(
+        ([key]: [string, unknown]): boolean => !['licence', 'repository', 'homepage'].includes(key),
+      ),
+    );
+  }
+
+  /**
    * Holds every first-party release an entry lists to its plugin.json at its tag.
    *
    * A missing tag is skipped locally (a shallow clone has none) but fails on CI, whose unit-test job
@@ -887,9 +954,10 @@ describe('first-party releases listed under an entry', () => {
         continue;
       }
 
-      expect(candidate.value, `${candidate.path} against plugin-${directory}-v${version}`).toEqual(
-        pinnedAtItsTag(atTag, directory, version),
-      );
+      expect(
+        withoutCatalogueFacts(candidate.value),
+        `${candidate.path} against plugin-${directory}-v${version}`,
+      ).toEqual(withoutCatalogueFacts(pinnedAtItsTag(atTag, directory, version)));
       result.checked += 1;
     }
     return result;
