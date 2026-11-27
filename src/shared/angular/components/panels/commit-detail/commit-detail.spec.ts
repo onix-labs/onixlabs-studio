@@ -422,16 +422,19 @@ describe('CommitDetail', () => {
 
     it('aConflictedRowsMenu_keepsASideByName_andOffersAnywayOnlyOnceRefused', () => {
       midOperation({ kind: 'merge', target: 'topic' }, ['both.ts']);
+      // The commands alone: a separator is a row of its own, and a command flagged as one would be
+      // drawn as a rule and never offered — so it is left out here, and the menu would come up short.
       const menuOf: (path: string) => string[] = (path: string): string[] =>
         (
           fixture.componentInstance as unknown as {
-            conflictMenu: (row: unknown) => readonly { label: string }[];
+            conflictMenu: (row: unknown) => readonly { label: string; separator?: boolean }[];
           }
         )
           .conflictMenu({
             id: path,
             data: { kind: 'file', file: makeFile(path, 'conflicted') },
           })
+          .filter((item: { separator?: boolean }): boolean => item.separator !== true)
           .map((item: { label: string }): string => item.label);
 
       expect(menuOf('both.ts')).toEqual([

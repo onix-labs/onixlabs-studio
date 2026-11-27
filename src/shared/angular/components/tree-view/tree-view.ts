@@ -24,6 +24,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Menu, MenuChoice, MenuItem } from '@shared/angular/components/menu/menu';
 import { MenuSubject } from '@shared/angular/components/menu/menu-subject';
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import {
   RowEditField,
   RowEditSelection,
@@ -443,6 +444,11 @@ export class TreeView {
   private readonly host: ElementRef<HTMLElement> = inject<ElementRef<HTMLElement>>(ElementRef);
 
   /**
+   * Holds the keybindings, which read a key press as the chord a menu row names.
+   */
+  private readonly keybindings: Keybindings = inject(Keybindings);
+
+  /**
    * Initializes a new instance of the {@link TreeView} class, keeping the selected row scrolled into
    * view: whenever the selection (or the row set it lives in) changes after render, the selected
    * row is brought into the scrollport — so selection driven from outside (an explorer following the
@@ -623,7 +629,10 @@ export class TreeView {
    * @param row The row it was pressed on.
    */
   protected onRowKeydown(event: KeyboardEvent, row: TreeRow): void {
-    if (!this.multiSelect() || event.target !== event.currentTarget) {
+    if (event.target !== event.currentTarget || this.runMenuChord(event, row)) {
+      return;
+    }
+    if (!this.multiSelect()) {
       return;
     }
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -655,6 +664,64 @@ export class TreeView {
       event.preventDefault();
       this.selectAll.emit();
     }
+  }
+
+  /**
+   * Runs the command of the row's context menu that the pressed chord belongs to, if one does: the
+   * menu's rows name their chords, and the same rows are what the keys run, so a shortcut the menu
+   * shows is one that works. As with a right-click, a row outside the selection is selected first,
+   * and a row inside it leaves the command acting on the whole selection.
+   *
+   * Only a chord a command could have is looked up — a function key, Delete or Backspace, or one with
+   * ⌘/Ctrl — so moving through the tree and typing never build a menu. Enter and Space are the tree's
+   * own.
+   * @param event The key press.
+   * @param row The row it was pressed on.
+   * @returns Returns true when a command was run.
+   */
+  private runMenuChord(event: KeyboardEvent, row: TreeRow): boolean {
+    if (this.contextMenuFor() === null || this.isEditing(row) || event.repeat) {
+      return false;
+    }
+    const commandKey: boolean =
+      /^F\d{1,2}$/.test(event.key) || event.key === 'Delete' || event.key === 'Backspace';
+    if (!commandKey && !event.metaKey && !event.ctrlKey) {
+      return false;
+    }
+    const chord: string | null = this.keybindings.chordFromEvent(event);
+    if (chord === null) {
+      return false;
+    }
+    const item: MenuItem | undefined = this.flattened(this.menuItemsFor(row)).find(
+      (candidate: MenuItem): boolean =>
+        candidate.chord !== undefined &&
+        candidate.disabled !== true &&
+        this.keybindings.normalizeChord(candidate.chord) === chord,
+    );
+    if (item === undefined) {
+      return false;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    this.onRowContextMenu(row);
+    this.contextMenuSelect.emit({ itemId: item.id, row });
+    return true;
+  }
+
+  /**
+   * Lists a menu's commands with those of its submenus, leaving out the rows that only divide or
+   * hold others.
+   * @param items The menu's rows.
+   * @returns Returns the commands.
+   */
+  private flattened(items: readonly MenuItem[]): readonly MenuItem[] {
+    return items.flatMap((item: MenuItem): readonly MenuItem[] =>
+      item.separator === true
+        ? []
+        : item.children !== undefined
+          ? this.flattened(item.children)
+          : [item],
+    );
   }
 
   /**

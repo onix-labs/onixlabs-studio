@@ -31,6 +31,7 @@ import { ApiEnvironment, ApiFolder, ApiRequest } from '@shared/api/api-client-ty
 import { ApiPrompts } from '../../api-prompts/api-prompts';
 import { ApiRequestOpener } from '../../api-request-opener/api-request-opener';
 import { ApiWorkspace } from '../../api-workspace/api-workspace';
+import { DELETE_CHORD, RENAME_CHORD } from '@shared/angular/services/keybindings/row-chords';
 
 /**
  * The commands offered by the toolbar's more-actions menu.
@@ -390,17 +391,17 @@ export class ApiExplorerPanel {
     switch (data.kind) {
       case 'request':
         return [
-          { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL },
+          { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL, chord: RENAME_CHORD },
           { id: ACTION_DUPLICATE, label: 'Duplicate', icon: Icon.COPY },
           { id: 'api-menu.sep', label: '', separator: true },
-          { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH },
+          { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH, chord: DELETE_CHORD },
         ];
       case 'collection':
         return [
           { id: ACTION_NEW_REQUEST, label: 'New Request', icon: Icon.API_REQUEST },
-          { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL },
+          { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL, chord: RENAME_CHORD },
           { id: 'api-menu.sep', label: '', separator: true },
-          { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH },
+          { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH, chord: DELETE_CHORD },
         ];
       case 'environment':
         return [
@@ -410,10 +411,10 @@ export class ApiExplorerPanel {
           ...(data.active === true
             ? []
             : [{ id: ACTION_ACTIVATE, label: 'Set as Active', icon: Icon.API_ENVIRONMENT }]),
-          { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL },
+          { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL, chord: RENAME_CHORD },
           { id: ACTION_DUPLICATE, label: 'Duplicate', icon: Icon.COPY },
           { id: 'api-menu.sep', label: '', separator: true },
-          { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH },
+          { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH, chord: DELETE_CHORD },
         ];
       default:
         return [];

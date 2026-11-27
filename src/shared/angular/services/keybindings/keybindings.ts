@@ -111,6 +111,16 @@ const KEY_SYMBOLS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Maps the keys a Mac labels with a symbol, as its own menus show them. Other platforms print the
+ * key's name on the key, so they show the name.
+ */
+const MAC_KEY_SYMBOLS: Readonly<Record<string, string>> = {
+  Backspace: '⌫',
+  Delete: '⌦',
+  Enter: '↩',
+};
+
+/**
  * Names the override value that leaves a command with no shortcut at all (Clear in Settings).
  */
 const NO_CHORD: string = '';
@@ -639,7 +649,7 @@ export class Keybindings {
       if (part === 'Shift') {
         return this.isMac ? '⇧' : 'Shift';
       }
-      return KEY_SYMBOLS[part] ?? part;
+      return (this.isMac ? MAC_KEY_SYMBOLS[part] : undefined) ?? KEY_SYMBOLS[part] ?? part;
     });
   }
 

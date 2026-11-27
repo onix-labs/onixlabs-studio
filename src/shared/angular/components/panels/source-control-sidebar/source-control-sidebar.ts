@@ -86,6 +86,7 @@ import {
 } from '@shared/angular/services/repository-worktrees/repository-worktrees';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import type { WorktreeBranch } from '@shared/api/worktree';
+import { DELETE_CHORD, RENAME_CHORD } from '@shared/angular/services/keybindings/row-chords';
 
 /**
  * Identifies the outcome of a pull request's checks, as the status badge shows it. Re-exported from
@@ -2804,7 +2805,7 @@ export class SourceControlSidebar implements OnDestroy {
    */
   private branchManagementItems(branch: GitBranch): readonly MenuItem[] {
     const items: MenuItem[] = [
-      { id: ACTION_RENAME_BRANCH, label: 'Rename', icon: Icon.PENCIL },
+      { id: ACTION_RENAME_BRANCH, label: 'Rename', icon: Icon.PENCIL, chord: RENAME_CHORD },
       {
         id: ACTION_SET_UPSTREAM,
         label: 'Set Upstream',
@@ -2817,7 +2818,12 @@ export class SourceControlSidebar implements OnDestroy {
     }
     if (!branch.current) {
       items.push({ separator: true, id: 'branch.sep.delete', label: '' });
-      items.push({ id: ACTION_DELETE_BRANCH, label: 'Delete', icon: Icon.TRASH });
+      items.push({
+        id: ACTION_DELETE_BRANCH,
+        label: 'Delete',
+        icon: Icon.TRASH,
+        chord: DELETE_CHORD,
+      });
     }
     return items;
   }
@@ -2969,6 +2975,7 @@ export class SourceControlSidebar implements OnDestroy {
           id: ACTION_DELETE_WORKTREE_BRANCH,
           label: 'Delete',
           icon: Icon.TRASH,
+          chord: DELETE_CHORD,
           disabled: checkedOut,
           ...(checkedOut ? { status: 'checked out there' } : {}),
         },
@@ -2980,7 +2987,7 @@ export class SourceControlSidebar implements OnDestroy {
       return [
         { id: ACTION_APPLY_STASH, label: 'Apply', icon: Icon.ARROW_DOWN, status: 'keep the stash' },
         { id: ACTION_POP_STASH, label: 'Pop', icon: Icon.ARROW_UP, status: 'drop the stash' },
-        { id: ACTION_DROP_STASH, label: 'Drop', icon: Icon.TRASH },
+        { id: ACTION_DROP_STASH, label: 'Drop', icon: Icon.TRASH, chord: DELETE_CHORD },
       ];
     }
     if (node.remoteBranch !== undefined) {
@@ -3024,13 +3031,13 @@ export class SourceControlSidebar implements OnDestroy {
           ...(browsableRemoteUrl(url) === null ? { status: 'not a web address' } : {}),
         },
         { separator: true, id: 'remote.sep.remove', label: '' },
-        { id: ACTION_REMOVE_REMOTE, label: 'Remove', icon: Icon.TRASH },
+        { id: ACTION_REMOVE_REMOTE, label: 'Remove', icon: Icon.TRASH, chord: DELETE_CHORD },
       ];
     }
     if (node.tag !== undefined) {
       return [
         this.pushToRemoteItem(ACTION_PUSH_TAG, 'Push'),
-        { id: ACTION_DELETE_TAG, label: 'Delete', icon: Icon.TRASH },
+        { id: ACTION_DELETE_TAG, label: 'Delete', icon: Icon.TRASH, chord: DELETE_CHORD },
       ];
     }
     if (node.pullRequest !== undefined) {
@@ -3084,7 +3091,7 @@ export class SourceControlSidebar implements OnDestroy {
       // A branch is made in a worktree, since each is a clone of its own (#939).
       { ...this.newBranchItem(), disabled: false },
       { separator: true, id: 'worktree.sep.branch', label: '' },
-      { id: ACTION_RENAME_WORKTREE, label: 'Rename', icon: Icon.PENCIL },
+      { id: ACTION_RENAME_WORKTREE, label: 'Rename', icon: Icon.PENCIL, chord: RENAME_CHORD },
       { separator: true, id: 'worktree.sep.rename', label: '' },
       { id: ACTION_REVEAL_WORKTREE, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
       { id: ACTION_COPY_WORKTREE_PATH, label: 'Copy Path', icon: Icon.COPY },
@@ -3094,7 +3101,12 @@ export class SourceControlSidebar implements OnDestroy {
     if (removable) {
       items.push(
         { separator: true, id: 'worktree.sep.remove', label: '' },
-        { id: ACTION_REMOVE_WORKTREE, label: 'Remove Worktree', icon: Icon.TRASH },
+        {
+          id: ACTION_REMOVE_WORKTREE,
+          label: 'Remove Worktree',
+          icon: Icon.TRASH,
+          chord: DELETE_CHORD,
+        },
       );
     }
     return items;

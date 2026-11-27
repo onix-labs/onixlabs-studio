@@ -568,12 +568,27 @@ describe('Terminal', () => {
   }
 
   /**
+   * Reads a menu row's label, apart from the shortcut shown at its end.
+   */
+  function labelOf(row: HTMLElement): string {
+    return row.querySelector('.app-menu-panel__item-label')?.textContent.trim() ?? '';
+  }
+
+  /**
+   * Reads the shortcuts shown at the end of the open menu's rows; empty for a row that shows none.
+   */
+  function menuShortcuts(): readonly string[] {
+    return Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).map(
+      (row: HTMLElement): string =>
+        row.querySelector('.app-menu-panel__item-shortcut')?.textContent.trim() ?? '',
+    );
+  }
+
+  /**
    * Reads the labels of the open menu's rows.
    */
   function menuLabels(): readonly string[] {
-    return Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).map(
-      (row: HTMLElement): string => row.textContent.trim(),
-    );
+    return Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).map(labelOf);
   }
 
   /**
@@ -582,7 +597,7 @@ describe('Terminal', () => {
   function menuRow(label: string): HTMLElement {
     const found: HTMLElement | undefined = Array.from(
       document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
-    ).find((row: HTMLElement): boolean => row.textContent.trim() === label);
+    ).find((row: HTMLElement): boolean => labelOf(row) === label);
     if (found === undefined) {
       throw new Error(`No menu row '${label}'`);
     }
@@ -2179,6 +2194,16 @@ describe('Terminal', () => {
 
         expect(event.defaultPrevented).toBe(true);
         expect(latest().pasted).toEqual(['ls']);
+      });
+
+      it('rightClick_menu_showsTheFindChord_andNoneForCopyAndPaste_offAMac', async () => {
+        // Ctrl+C and Ctrl+V are the shell's here, so the menu does not claim them.
+        const { host }: Mounted = await mount();
+
+        rightClick(host);
+        await settle();
+
+        expect(menuShortcuts()).toEqual(['', '', '', 'Ctrl+Shift+F']);
       });
 
       it('rightClick_settingSelectWord_isLeftToXterm', async () => {

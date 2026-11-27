@@ -319,6 +319,12 @@ describe('Keybindings', () => {
     expect(keybindings.conflictedIds()).toEqual(new Set(['api.save', 'api.saveAs']));
   });
 
+  it('formatChord_offMac_namesTheKeysAMacGivesSymbols', (): void => {
+    expect(keybindings.formatChord('Delete')).toBe('Delete');
+    expect(keybindings.formatChord('Mod+Backspace')).toBe('Ctrl+Backspace');
+    expect(keybindings.formatChord('Enter')).toBe('Enter');
+  });
+
   it('formatChord_offMac_usesCtrlStyle', (): void => {
     expect(keybindings.formatChord('Mod+Shift+S')).toBe('Ctrl+Shift+S');
   });
@@ -453,6 +459,12 @@ describe('Keybindings on macOS', () => {
       .find((binding: ResolvedBinding): boolean => binding.id === 'editor.goToLine');
     expect(goToLine?.defaultChord).toBe('Control+G');
     expect(goToLine?.overridden).toBe(false);
+  });
+
+  it('formatChord_writesDeleteBackspaceAndEnter_asAMacsMenusDo', (): void => {
+    expect(keybindings.formatChord('Mod+Backspace')).toBe('⌘⌫');
+    expect(keybindings.formatChord('Delete')).toBe('⌦');
+    expect(keybindings.formatChord('Enter')).toBe('↩');
   });
 
   it('keepsControl_apartFromCommand', (): void => {

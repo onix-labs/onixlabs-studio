@@ -323,27 +323,26 @@ export class CommitDetail {
         },
       );
     }
-    items.push({
-      id: ROW_MARK_RESOLVED,
-      label: 'Mark Resolved',
-      icon: Icon.CHECK,
-      separator: items.length > 0,
-    });
+    // A separator is a row of its own: flagged on a command, it would draw the rule and no command.
+    if (items.length > 0) {
+      items.push({ id: 'conflict.sep-resolve', label: '', separator: true });
+    }
+    items.push({ id: ROW_MARK_RESOLVED, label: 'Mark Resolved', icon: Icon.CHECK });
     if (this.repository.conflictsLeft().has(entry.file.path)) {
       items.push({ id: ROW_MARK_RESOLVED_ANYWAY, label: 'Mark Resolved Anyway' });
     }
     if (this.repository.supports('resolveConflicts')) {
       items.push(
+        { id: 'conflict.sep-keep', label: '', separator: true },
         ...(entry.file.conflict === 'deleted'
           ? [
-              { id: ROW_KEEP_FILE, label: 'Keep File', separator: true },
+              { id: ROW_KEEP_FILE, label: 'Keep File' },
               { id: ROW_DELETE_FILE, label: 'Delete File' },
             ]
           : [
               {
                 id: ROW_KEEP_YOURS,
                 label: keepSideLabel('yours', this.repository.conflictSides()),
-                separator: true,
               },
               {
                 id: ROW_KEEP_THEIRS,

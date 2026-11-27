@@ -149,6 +149,23 @@ describe('Menu', () => {
       expect(rows()[0].lastElementChild).toBe(hints[0]);
     });
 
+    it('render_aChord_isShownAsThePlatformWritesIt_unlessTheRowStatesAShortcut', () => {
+      // Outside Electron the platform is `browser`, which writes chords as Windows does.
+      host.items = [
+        { id: 'delete', label: 'Delete', chord: 'Mod+Backspace' },
+        { id: 'rename', label: 'Rename', chord: 'F2' },
+        { id: 'copy', label: 'Copy', chord: 'Mod+C', shortcut: 'Copy key' },
+      ];
+      fixture.detectChanges();
+      open();
+
+      expect(
+        Array.from(document.querySelectorAll('.app-menu-panel__item-shortcut')).map(
+          (hint: Element): string => hint.textContent.trim(),
+        ),
+      ).toEqual(['Ctrl+Backspace', 'F2', 'Copy key']);
+    });
+
     it('render_aRowWithChildren_opensThemAsANestedPanel', () => {
       host.items = [
         { id: 'options', label: 'Options', children: [{ id: 'nested', label: 'Nested' }] },
