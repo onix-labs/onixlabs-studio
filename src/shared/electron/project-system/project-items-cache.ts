@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { ProjectItemNode, ProjectItems } from '@shared/api/project-system';
@@ -32,6 +32,11 @@ const MAX_AGE_MS: number = 90 * 24 * 60 * 60 * 1000;
  * The most roots kept; the least recently written go first.
  */
 const MAX_FILES: number = 200;
+
+/**
+ * How old, in milliseconds, a temporary file must be before it is taken for one a quit interrupted.
+ */
+const STRAY_TEMPORARY_MS: number = 60 * 60 * 1000;
 
 /**
  * Describes a root's file as it is written.
@@ -82,6 +87,11 @@ export class ProjectItemsCache {
   private readonly writes: Map<string, NodeJS.Timeout> = new Map<string, NodeJS.Timeout>();
 
   /**
+   * Holds a counter that gives every write its own temporary file, so two never share one.
+   */
+  private sequence: number = 0;
+
+  /**
    * Initializes a new instance of the {@link ProjectItemsCache} class.
    * @param directory The folder the roots' files are written to; created when first needed.
    */
@@ -115,13 +125,22 @@ export class ProjectItemsCache {
    * @param items The project's contents.
    */
   public remember(root: string, items: ProjectItems): void {
-    let projects: Map<string, ProjectItems> | undefined = this.roots.get(root);
-    if (projects === undefined) {
-      projects = new Map<string, ProjectItems>();
-      this.roots.set(root, projects);
-    }
-    projects.set(items.projectPath, items);
-    this.scheduleWrite(root);
+    this.change(root, (projects: Map<string, ProjectItems>): boolean => {
+      projects.set(items.projectPath, items);
+      return true;
+    });
+  }
+
+  /**
+   * Forgets a project's contents, for when a trusted evaluation of it no longer gives any: its last
+   * good tree is not shown again as though it were still true.
+   * @param root The absolute workspace root the project was opened under.
+   * @param projectPath The project's path.
+   */
+  public forget(root: string, projectPath: string): void {
+    this.change(root, (projects: Map<string, ProjectItems>): boolean =>
+      projects.delete(projectPath),
+    );
   }
 
   /**
@@ -130,21 +149,35 @@ export class ProjectItemsCache {
    * @param projectPaths The root's projects now.
    */
   public retain(root: string, projectPaths: readonly string[]): void {
-    const projects: Map<string, ProjectItems> | undefined = this.roots.get(root);
-    if (projects === undefined) {
+    const keep: ReadonlySet<string> = new Set<string>(projectPaths);
+    this.change(root, (projects: Map<string, ProjectItems>): boolean => {
+      let dropped: boolean = false;
+      for (const projectPath of [...projects.keys()]) {
+        if (!keep.has(projectPath)) {
+          projects.delete(projectPath);
+          dropped = true;
+        }
+      }
+      return dropped;
+    });
+  }
+
+  /**
+   * Lets go of a root that has closed: its pending write lands now, and its contents leave memory.
+   * @param root The absolute workspace root.
+   */
+  public release(root: string): void {
+    if (!this.roots.has(root)) {
       return;
     }
-    const keep: ReadonlySet<string> = new Set<string>(projectPaths);
-    let dropped: boolean = false;
-    for (const projectPath of [...projects.keys()]) {
-      if (!keep.has(projectPath)) {
-        projects.delete(projectPath);
-        dropped = true;
+    clearTimeout(this.writes.get(root));
+    this.writes.delete(root);
+    void this.write(root).finally((): void => {
+      // Unless it was opened again, and changed, while the write ran.
+      if (!this.writes.has(root)) {
+        this.roots.delete(root);
       }
-    }
-    if (dropped) {
-      this.scheduleWrite(root);
-    }
+    });
   }
 
   /**
@@ -163,7 +196,7 @@ export class ProjectItemsCache {
           continue;
         }
         mkdirSync(this.directory, { recursive: true });
-        const temporary: string = `${file}.${process.pid}.tmp`;
+        const temporary: string = this.temporaryFor(file);
         writeFileSync(temporary, text, 'utf8');
         renameSync(temporary, file);
       } catch (error: unknown) {
@@ -180,17 +213,22 @@ export class ProjectItemsCache {
   public async prune(now: number = Date.now()): Promise<void> {
     let names: string[];
     try {
-      names = (await fs.readdir(this.directory)).filter((name: string): boolean =>
-        name.endsWith('.json'),
-      );
+      names = await fs.readdir(this.directory);
     } catch {
       return;
     }
     const files: { file: string; written: number }[] = [];
+    const strays: string[] = [];
     for (const name of names) {
       const file: string = path.join(this.directory, name);
       try {
-        files.push({ file, written: (await fs.stat(file)).mtimeMs });
+        const written: number = (await fs.stat(file)).mtimeMs;
+        if (name.endsWith('.json')) {
+          files.push({ file, written });
+        } else if (name.endsWith('.tmp') && now - written > STRAY_TEMPORARY_MS) {
+          // Left by a write the app quit during.
+          strays.push(file);
+        }
       } catch {
         // Gone already.
       }
@@ -204,7 +242,8 @@ export class ProjectItemsCache {
         (entry: { written: number }, index: number): boolean =>
           index >= MAX_FILES || now - entry.written > MAX_AGE_MS,
       )
-      .map((entry: { file: string }): string => entry.file);
+      .map((entry: { file: string }): string => entry.file)
+      .concat(strays);
     await Promise.all(
       doomed.map((file: string): Promise<void> =>
         fs.rm(file, { force: true }).catch(() => undefined),
@@ -224,6 +263,33 @@ export class ProjectItemsCache {
   private fileFor(root: string): string {
     const digest: string = createHash('sha256').update(root).digest('hex').slice(0, 32);
     return path.join(this.directory, `${digest}.json`);
+  }
+
+  /**
+   * Gets a temporary file of its own for one write of a root's file.
+   * @param file The root's file.
+   * @returns Returns the temporary file's path.
+   */
+  private temporaryFor(file: string): string {
+    this.sequence += 1;
+    return `${file}.${process.pid}.${this.sequence}.tmp`;
+  }
+
+  /**
+   * Changes a root's contents and schedules its file to be written. A root not read yet is read
+   * first, so a change never writes the file over with only itself.
+   * @param root The absolute workspace root.
+   * @param apply Changes the contents; returns whether anything changed.
+   */
+  private change(root: string, apply: (projects: Map<string, ProjectItems>) => boolean): void {
+    let projects: Map<string, ProjectItems> | undefined = this.roots.get(root);
+    if (projects === undefined) {
+      projects = this.loadSync(root);
+      this.roots.set(root, projects);
+    }
+    if (apply(projects)) {
+      this.scheduleWrite(root);
+    }
   }
 
   /**
@@ -258,7 +324,7 @@ export class ProjectItemsCache {
         return;
       }
       await fs.mkdir(this.directory, { recursive: true });
-      const temporary: string = `${file}.${process.pid}.tmp`;
+      const temporary: string = this.temporaryFor(file);
       await fs.writeFile(temporary, text, 'utf8');
       await fs.rename(temporary, file);
     } catch (error: unknown) {
@@ -295,29 +361,61 @@ export class ProjectItemsCache {
    * @returns Returns each project's contents, by project path; empty when nothing usable is cached.
    */
   private async load(root: string): Promise<Map<string, ProjectItems>> {
-    const projects: Map<string, ProjectItems> = new Map<string, ProjectItems>();
-    let parsed: unknown;
+    let text: string;
     try {
-      parsed = JSON.parse(await fs.readFile(this.fileFor(root), 'utf8'));
+      text = await fs.readFile(this.fileFor(root), 'utf8');
     } catch {
-      return projects;
+      return new Map<string, ProjectItems>();
     }
-    const file: Partial<CacheFile> = parsed ?? {};
-    if (
-      file.version !== PROJECT_ITEMS_CACHE_VERSION ||
-      file.root !== root ||
-      typeof file.projects !== 'object' ||
-      file.projects === null
-    ) {
-      return projects;
+    return parseCacheFile(text, root);
+  }
+
+  /**
+   * Reads a root's file at once, for a change to a root not read yet: the change must land in what
+   * the file already holds before anything else can write it, and before the app can quit.
+   * @param root The absolute workspace root.
+   * @returns Returns each project's contents, by project path; empty when nothing usable is cached.
+   */
+  private loadSync(root: string): Map<string, ProjectItems> {
+    let text: string;
+    try {
+      text = readFileSync(this.fileFor(root), 'utf8');
+    } catch {
+      return new Map<string, ProjectItems>();
     }
-    for (const [projectPath, items] of Object.entries(file.projects as Record<string, unknown>)) {
-      if (isItemsFor(projectPath, root, items)) {
-        projects.set(projectPath, items);
-      }
-    }
+    return parseCacheFile(text, root);
+  }
+}
+
+/**
+ * Reads a root's file, keeping only what is well formed and belongs to the root.
+ * @param text The file's text.
+ * @param root The absolute workspace root.
+ * @returns Returns each project's contents, by project path; empty when nothing usable is in it.
+ */
+function parseCacheFile(text: string, root: string): Map<string, ProjectItems> {
+  const projects: Map<string, ProjectItems> = new Map<string, ProjectItems>();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
     return projects;
   }
+  const file: Partial<CacheFile> = parsed ?? {};
+  if (
+    file.version !== PROJECT_ITEMS_CACHE_VERSION ||
+    file.root !== root ||
+    typeof file.projects !== 'object' ||
+    file.projects === null
+  ) {
+    return projects;
+  }
+  for (const [projectPath, items] of Object.entries(file.projects as Record<string, unknown>)) {
+    if (isItemsFor(projectPath, root, items)) {
+      projects.set(projectPath, items);
+    }
+  }
+  return projects;
 }
 
 /**

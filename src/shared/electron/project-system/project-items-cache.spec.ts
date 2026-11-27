@@ -35,6 +35,19 @@ describe('ProjectItemsCache (#1601)', () => {
     return path.join(directory, names[0]);
   }
 
+  /**
+   * Gets a folder's only `.json` file.
+   * @param folder The folder.
+   * @returns Returns its path.
+   */
+  function onlyFileOf(folder: string): string {
+    const names: string[] = readdirSync(folder).filter((name: string): boolean =>
+      name.endsWith('.json'),
+    );
+    expect(names).toHaveLength(1);
+    return path.join(folder, names[0]);
+  }
+
   beforeEach(() => {
     directory = path.join(mkdtempSync(path.join(tmpdir(), 'studio-items-cache-')), 'cache');
   });
@@ -106,6 +119,53 @@ describe('ProjectItemsCache (#1601)', () => {
     expect([...(await new ProjectItemsCache(directory).read(root)).keys()]).toEqual([
       itemsOf('B').projectPath,
     ]);
+  });
+
+  it('forgetsAProject', async () => {
+    const cache: ProjectItemsCache = new ProjectItemsCache(directory);
+    cache.remember(root, itemsOf('A'));
+    cache.remember(root, itemsOf('B'));
+    cache.forget(root, itemsOf('A').projectPath);
+    cache.flushSync();
+
+    expect([...(await new ProjectItemsCache(directory).read(root)).keys()]).toEqual([
+      itemsOf('B').projectPath,
+    ]);
+  });
+
+  it.each<[string, (cache: ProjectItemsCache) => void]>([
+    ['remembers', (cache: ProjectItemsCache): void => cache.remember(root, itemsOf('B'))],
+    ['retains', (cache: ProjectItemsCache): void => cache.retain(root, [itemsOf('A').projectPath])],
+  ])(
+    'keepsWhatTheFileHeld_whenItFirst_%s_beforeReading',
+    async (_name: string, act: (cache: ProjectItemsCache) => void) => {
+      const earlier: ProjectItemsCache = new ProjectItemsCache(directory);
+      earlier.remember(root, itemsOf('A'));
+      earlier.flushSync();
+
+      const later: ProjectItemsCache = new ProjectItemsCache(directory);
+      act(later);
+      await vi.waitFor(async () =>
+        expect((await later.read(root)).has(itemsOf('A').projectPath)).toBe(true),
+      );
+      later.flushSync();
+
+      expect(
+        (await new ProjectItemsCache(directory).read(root)).has(itemsOf('A').projectPath),
+      ).toBe(true);
+    },
+  );
+
+  it('release_writesWhatIsPending_andLetsTheRootGo', async () => {
+    const cache: ProjectItemsCache = new ProjectItemsCache(directory);
+    cache.remember(root, itemsOf('A'));
+
+    cache.release(root);
+
+    await vi.waitFor(() =>
+      expect(readdirSync(directory).filter((n: string) => n.endsWith('.json'))).toHaveLength(1),
+    );
+    expect([...(await cache.read(root)).values()]).toEqual([itemsOf('A')]);
   });
 
   describe('a file it cannot trust', () => {
@@ -203,6 +263,25 @@ describe('ProjectItemsCache (#1601)', () => {
     await cache.prune();
 
     expect((await cache.read(root)).size).toBe(0);
+  });
+
+  it('prune_removesTemporaryFilesAQuitLeftBehind', async () => {
+    const cache: ProjectItemsCache = new ProjectItemsCache(directory);
+    cache.remember(root, itemsOf('A'));
+    cache.flushSync();
+    const stray: string = `${onlyFile()}.123.1.tmp`;
+    const fresh: string = `${onlyFile()}.456.1.tmp`;
+    writeFileSync(stray, '{');
+    writeFileSync(fresh, '{');
+    const now: number = Date.now();
+    const anHourAgo: Date = new Date(now - 2 * 60 * 60 * 1000);
+    utimesSync(stray, anHourAgo, anHourAgo);
+
+    await cache.prune(now);
+
+    expect(readdirSync(directory).sort()).toEqual(
+      [path.basename(onlyFileOf(directory)), path.basename(fresh)].sort(),
+    );
   });
 
   it('prune_removesRootsNotWrittenForMonths', async () => {

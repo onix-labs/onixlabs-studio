@@ -1451,10 +1451,28 @@ describe('WorkspaceManager', () => {
       it('areKeptOnlyUnderAnOpenRootTheProjectIsIn', async () => {
         evaluatesTo();
         const project: string = inWorkspace('app.csproj');
+        const nested: string = path.join(workspaceRoot, 'nested');
 
         await invoke(ProjectChannel.ItemsLoad, project);
         await invoke(ProjectChannel.ItemsLoad, project, outside);
-        await invoke(ProjectChannel.ItemsLoad, project, path.join(workspaceRoot, 'nested'));
+        await invoke(ProjectChannel.ItemsLoad, project, nested);
+        itemsCache.flushSync();
+
+        for (const root of [workspaceRoot, outside, nested]) {
+          expect((await itemsCache.read(root)).size, root).toBe(0);
+        }
+        expect(fs.existsSync(path.join(sandbox, 'items-cache'))).toBe(false);
+      });
+
+      it('areForgotten_whenATrustedEvaluationNoLongerGivesAny', async () => {
+        evaluatesTo();
+        const project: string = inWorkspace('app.csproj');
+        await invoke(ProjectChannel.ItemsLoad, project, workspaceRoot);
+        vi.spyOn(projectSystems, 'matchProject').mockReturnValue({
+          loadProjectItems: (): Promise<null> => Promise.resolve(null),
+        } as never);
+
+        await invoke(ProjectChannel.ItemsLoad, project, workspaceRoot);
 
         expect(await invoke(ProjectChannel.ItemsCached, workspaceRoot)).toEqual([]);
       });

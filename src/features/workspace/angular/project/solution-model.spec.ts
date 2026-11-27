@@ -857,6 +857,69 @@ describe('SolutionModel', () => {
       expect(labels(model)).not.toContain('Old.cs');
     });
 
+    it('reEvaluatesTheLastSessionsContents_evenWhenAReloadCutsTheirFirstEvaluationShort', async () => {
+      project.model = sampleModel();
+      project.cached = [aListing('Old.cs')];
+      project.itemsByPath.set('/root/A/A.csproj', aListing('New.cs'));
+      project.deferItems = true;
+      const model: SolutionModel = build();
+      await open(model);
+      model.toggle(rowFor(model, 'Group')!);
+      model.toggle(rowFor(model, 'A')!);
+
+      // A change elsewhere reloads mid-sweep, superseding A's first evaluation.
+      treeChanged!({ root: '/root', directories: ['/root/B'], overflow: false });
+      await waitForReloadDebounce();
+      for (let round: number = 0; round < 4; round += 1) {
+        project.resolveAll();
+        await flush();
+      }
+
+      expect(labels(model)).toContain('New.cs');
+      expect(labels(model)).not.toContain('Old.cs');
+    });
+
+    it.each<[string, (fake: FakeProject) => void]>([
+      ['fails', (fake: FakeProject): void => void fake.failingItems.add('/root/A/A.csproj')],
+      [
+        'comesBackEmpty',
+        (fake: FakeProject): void => void fake.itemsByPath.delete('/root/A/A.csproj'),
+      ],
+    ])(
+      'dropsTheLastSessionsContents_whenTheEvaluation_%s',
+      async (_name: string, arrange: (fake: FakeProject) => void) => {
+        project.model = sampleModel();
+        project.cached = [aListing('Old.cs')];
+        arrange(project);
+        const model: SolutionModel = build();
+        await open(model);
+        await flush();
+        model.toggle(rowFor(model, 'Group')!);
+        model.toggle(rowFor(model, 'A')!);
+
+        expect(labels(model)).not.toContain('Old.cs');
+      },
+    );
+
+    it('fetchesAProjectShowingTheLastSessionsContents_aheadOfTheSweep_whenExpanded', async () => {
+      project.model = {
+        ...sampleModel(),
+        tree: [
+          { type: 'project', name: 'A', path: '/root/A/A.csproj' },
+          { type: 'project', name: 'B', path: '/root/B/B.csproj' },
+        ],
+      };
+      project.cached = [{ projectPath: '/root/B/B.csproj', tree: [] }];
+      project.deferItems = true;
+      const model: SolutionModel = build();
+      await open(model);
+      expect(project.itemRequests).toEqual(['/root/A/A.csproj']);
+
+      model.toggle(rowFor(model, 'B')!);
+
+      expect(project.itemRequests).toEqual(['/root/A/A.csproj', '/root/B/B.csproj']);
+    });
+
     it('ignoresCachedContents_forAProjectTheSolutionNoLongerHas', async () => {
       project.model = sampleModel();
       project.cached = [{ projectPath: '/root/Gone/Gone.csproj', tree: [] }];

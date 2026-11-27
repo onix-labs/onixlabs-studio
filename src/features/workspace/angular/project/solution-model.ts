@@ -261,6 +261,15 @@ export class SolutionModel {
   private readonly refetch: Set<string> = new Set<string>();
 
   /**
+   * Holds the projects showing what an earlier session last evaluated (#1601), until an evaluation in
+   * this one confirms or replaces it. They count as unloaded wherever freshness matters: a reload
+   * re-evaluates them whatever it touched, and expanding one fetches it ahead of the sweep. An
+   * evaluation that comes back empty or fails drops the old contents rather than leaving them looking
+   * current.
+   */
+  private readonly unconfirmed: Set<string> = new Set<string>();
+
+  /**
    * Holds the generic transport, or undefined when running outside Electron.
    */
   private readonly bridge: Bridge | undefined = window.bridge;
@@ -997,6 +1006,9 @@ export class SolutionModel {
         seeded.set(items.projectPath, items);
       }
     }
+    for (const path of seeded.keys()) {
+      this.unconfirmed.add(path);
+    }
     if (seeded.size > 0) {
       this.log.debug(
         'workspace.solution',
@@ -1134,6 +1146,7 @@ export class SolutionModel {
       this.loadingProjects.set(new Set<string>());
       this.createdFolders.set(new Set<string>());
       this.refetch.clear();
+      this.unconfirmed.clear();
       this.expandedKeys.set(new Set<string>());
       return;
     }
@@ -1162,8 +1175,18 @@ export class SolutionModel {
       if (items !== undefined) {
         kept.set(project.path, items);
       }
-      if (items === undefined || changed === null || this.projectTouched(project.path, changed)) {
+      if (
+        items === undefined ||
+        changed === null ||
+        this.unconfirmed.has(project.path) ||
+        this.projectTouched(project.path, changed)
+      ) {
         stale.push(project.path);
+      }
+    }
+    for (const path of [...this.unconfirmed]) {
+      if (!present.has(path)) {
+        this.unconfirmed.delete(path);
       }
     }
     if (kept.size !== cache.size) {
@@ -1208,6 +1231,7 @@ export class SolutionModel {
     this.loadingProjects.set(new Set<string>());
     this.createdFolders.set(new Set<string>());
     this.refetch.clear();
+    this.unconfirmed.clear();
     this.expandedKeys.set(model !== null ? new Set<string>([ROOT_KEY]) : new Set<string>());
   }
 
@@ -1273,7 +1297,10 @@ export class SolutionModel {
    * @param path The absolute project-file path.
    */
   private requestItems(path: string): void {
-    if (this.itemsByProject().has(path) || this.inFlight.has(path)) {
+    if (
+      (this.itemsByProject().has(path) && !this.unconfirmed.has(path)) ||
+      this.inFlight.has(path)
+    ) {
       return;
     }
     this.queue = this.queue.filter((queued: string): boolean => queued !== path);
@@ -1307,14 +1334,34 @@ export class SolutionModel {
         );
         cache.set(items.projectPath, items);
         this.itemsByProject.set(cache);
+        this.unconfirmed.delete(path);
+      } else if (generation === this.generation) {
+        this.dropUnconfirmed(path);
       }
     } catch (error: unknown) {
       this.log.warn('workspace.solution', `Could not evaluate ${path}`, error);
+      if (generation === this.generation) {
+        this.dropUnconfirmed(path);
+      }
     } finally {
       this.inFlight.delete(path);
       this.setLoading(path, false);
       this.requeueIfWanted(path);
     }
+  }
+
+  /**
+   * Drops an earlier session's contents for a project this session could not evaluate, so they are
+   * not left looking current: the project shows as it would have with nothing cached.
+   * @param path The absolute project-file path.
+   */
+  private dropUnconfirmed(path: string): void {
+    if (!this.unconfirmed.delete(path)) {
+      return;
+    }
+    const cache: Map<string, ProjectItems> = new Map<string, ProjectItems>(this.itemsByProject());
+    cache.delete(path);
+    this.itemsByProject.set(cache);
   }
 
   /**

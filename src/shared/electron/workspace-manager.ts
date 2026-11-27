@@ -139,6 +139,8 @@ export class WorkspaceManager {
     this.trusted = trusted;
     this.tokens = tokens;
     this.itemsCache = itemsCache;
+    // A closed root's cached contents leave memory; they are read back if it opens again.
+    workspace.onRootRemoved((root: string): void => this.itemsCache?.release(root));
   }
 
   /**
@@ -415,14 +417,17 @@ export class WorkspaceManager {
     const items: ProjectItems | null =
       (await system?.loadProjectItems?.(projectPath, { token })) ?? null;
     if (
-      items !== null &&
       token !== null &&
-      items.projectPath === projectPath &&
       typeof root === 'string' &&
       this.workspace.isRoot(root) &&
-      path.resolve(projectPath).startsWith(path.resolve(root) + path.sep)
+      isInside(projectPath, root)
     ) {
-      this.itemsCache?.remember(root, items);
+      if (items !== null && items.projectPath === projectPath) {
+        this.itemsCache?.remember(root, items);
+      } else if (items === null) {
+        // A project that no longer evaluates is not shown its last good tree next time.
+        this.itemsCache?.forget(root, projectPath);
+      }
     }
     return items;
   }
@@ -1196,4 +1201,15 @@ export class WorkspaceManager {
       name !== '..'
     );
   }
+}
+
+/**
+ * Determines whether a path lies strictly inside a root, whatever the root (a drive's root included).
+ * @param target The path.
+ * @param root The root.
+ * @returns Returns true when the path is beneath the root.
+ */
+function isInside(target: string, root: string): boolean {
+  const relative: string = path.relative(path.resolve(root), path.resolve(target));
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
