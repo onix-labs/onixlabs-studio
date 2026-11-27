@@ -23,6 +23,8 @@ class FakeProject implements Bridge {
   public model: ProjectModel | null = null;
   public readonly itemsByPath: Map<string, ProjectItems> = new Map<string, ProjectItems>();
   public readonly itemRequests: string[] = [];
+  public readonly itemRoots: unknown[] = [];
+  public cached: readonly ProjectItems[] | Error = [];
   public modelLoads: number = 0;
   public deferItems: boolean = false;
   public readonly failingItems: Set<string> = new Set<string>();
@@ -36,7 +38,13 @@ class FakeProject implements Bridge {
       return Promise.resolve(this.model as T);
     }
     if (channel === (ProjectChannel.ItemsLoad as string)) {
+      this.itemRoots.push(args[1]);
       return this.loadItems(args[0] as string) as Promise<T>;
+    }
+    if (channel === (ProjectChannel.ItemsCached as string)) {
+      return (
+        this.cached instanceof Error ? Promise.reject(this.cached) : Promise.resolve(this.cached)
+      ) as Promise<T>;
     }
     if (channel === (ProjectChannel.SolutionFolderRename as string)) {
       this.renames.push({
@@ -809,6 +817,74 @@ describe('SolutionModel', () => {
     model.setActive(true);
     await waitForReloadDebounce();
     expect(project.modelLoads).toBe(loadsAfterOpen + 1);
+  });
+
+  describe('reopening a solution (#1601)', () => {
+    /**
+     * Gets contents for project A listing one file.
+     * @param file The file's name.
+     * @returns Returns the contents.
+     */
+    function aListing(file: string): ProjectItems {
+      return {
+        projectPath: '/root/A/A.csproj',
+        tree: [{ type: 'file', name: file, path: `/root/A/${file}` }],
+      };
+    }
+
+    it('showsTheLastSessionsContentsAtOnce_thenTheFreshOnes', async () => {
+      project.model = sampleModel();
+      project.cached = [aListing('Old.cs')];
+      project.itemsByPath.set('/root/A/A.csproj', aListing('New.cs'));
+      project.deferItems = true;
+      const model: SolutionModel = build();
+      await open(model);
+      model.toggle(rowFor(model, 'Group')!);
+      model.toggle(rowFor(model, 'A')!);
+
+      // Before any evaluation lands, A is usable and shows what it last held; B, with nothing cached,
+      // waits as it always did.
+      expect(rowFor(model, 'A')?.pending).toBe(false);
+      expect(rowFor(model, 'B')?.pending).toBe(true);
+      expect(labels(model)).toContain('Old.cs');
+      // And A is evaluated afresh behind it.
+      expect(project.itemRequests).toContain('/root/A/A.csproj');
+
+      project.resolveAll();
+      await flush();
+
+      expect(labels(model)).toContain('New.cs');
+      expect(labels(model)).not.toContain('Old.cs');
+    });
+
+    it('ignoresCachedContents_forAProjectTheSolutionNoLongerHas', async () => {
+      project.model = sampleModel();
+      project.cached = [{ projectPath: '/root/Gone/Gone.csproj', tree: [] }];
+      project.deferItems = true;
+      const model: SolutionModel = build();
+      await open(model);
+
+      expect(rowFor(model, 'B')?.pending).toBe(true);
+      expect(labels(model)).not.toContain('Gone');
+    });
+
+    it('opensAsBefore_whenTheCacheCannotBeRead', async () => {
+      project.model = sampleModel();
+      project.cached = new Error('No cache');
+      const model: SolutionModel = build();
+      await open(model);
+
+      expect(rowFor(model, 'B')).toBeDefined();
+      expect([...project.itemRequests].sort()).toEqual(['/root/A/A.csproj', '/root/B/B.csproj']);
+    });
+
+    it('asksForEachProjectUnderTheRootItWasOpenedIn_soItsContentsAreKeptForThatRoot', async () => {
+      project.model = sampleModel();
+      const model: SolutionModel = build();
+      await open(model);
+
+      expect(project.itemRoots).toEqual(['/root', '/root']);
+    });
   });
 
   it('toggle_expandingAProject_showsItsAlreadyLoadedContentsWithoutFetchingAgain', async () => {

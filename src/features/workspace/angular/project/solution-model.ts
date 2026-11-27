@@ -925,8 +925,9 @@ export class SolutionModel {
 
   /**
    * Loads the model for a root, clearing it (and all tree state) when there is no root or bridge, then
-   * eagerly loading every project's contents. A stale response (the root changed again while the
-   * request was in flight) is discarded.
+   * eagerly loading every project's contents. What an earlier session last evaluated is shown at once
+   * (#1601), so the tree is usable before the evaluations land; each is replaced as its fresh contents
+   * arrive. A stale response (the root changed again while the request was in flight) is discarded.
    * @param root The workspace root, or null when none is open.
    * @returns Returns a promise that resolves once the model has been updated.
    */
@@ -938,14 +939,17 @@ export class SolutionModel {
       return;
     }
     this.settledSignal.set(false);
-    const model: ProjectModel | null = await this.bridge.invoke<ProjectModel | null>(
-      ProjectChannel.ModelLoad,
-      root,
-    );
+    const [model, cached]: [ProjectModel | null, readonly ProjectItems[]] = await Promise.all([
+      this.bridge.invoke<ProjectModel | null>(ProjectChannel.ModelLoad, root),
+      this.cachedItems(root),
+    ]);
     if (generation !== this.generation) {
       return;
     }
     this.reset(model);
+    if (model !== null) {
+      this.seed(model, cached);
+    }
     this.settledSignal.set(true);
     if (model !== null) {
       this.log.info(
@@ -957,6 +961,48 @@ export class SolutionModel {
         model.projects.map((project: ProjectEntry): string => project.path),
         generation,
       );
+    }
+  }
+
+  /**
+   * Reads what an earlier session last evaluated for the root's projects. Never fails the open: with
+   * nothing cached, the tree simply waits for its evaluations as it always did.
+   * @param root The workspace root.
+   * @returns Returns the cached contents.
+   */
+  private async cachedItems(root: string): Promise<readonly ProjectItems[]> {
+    try {
+      const cached: readonly ProjectItems[] | null | undefined = await this.bridge?.invoke<
+        readonly ProjectItems[] | null
+      >(ProjectChannel.ItemsCached, root);
+      return cached ?? [];
+    } catch (error: unknown) {
+      this.log.debug('workspace.solution', 'Could not read the cached solution contents', error);
+      return [];
+    }
+  }
+
+  /**
+   * Shows cached contents for the model's projects, ahead of their evaluations.
+   * @param model The model just loaded.
+   * @param cached The cached contents.
+   */
+  private seed(model: ProjectModel, cached: readonly ProjectItems[]): void {
+    const present: ReadonlySet<string> = new Set<string>(
+      model.projects.map((project: ProjectEntry): string => project.path),
+    );
+    const seeded: Map<string, ProjectItems> = new Map<string, ProjectItems>();
+    for (const items of cached) {
+      if (present.has(items.projectPath)) {
+        seeded.set(items.projectPath, items);
+      }
+    }
+    if (seeded.size > 0) {
+      this.log.debug(
+        'workspace.solution',
+        `Showing ${seeded.size} project(s) from the last session while they re-evaluate`,
+      );
+      this.itemsByProject.set(seeded);
     }
   }
 
@@ -1249,7 +1295,12 @@ export class SolutionModel {
     this.setLoading(path, true);
     try {
       const items: ProjectItems | null =
-        (await this.bridge?.invoke<ProjectItems | null>(ProjectChannel.ItemsLoad, path)) ?? null;
+        (await this.bridge?.invoke<ProjectItems | null>(
+          ProjectChannel.ItemsLoad,
+          path,
+          // The root the project was opened under, which its contents are cached for (#1601).
+          this.current()?.root,
+        )) ?? null;
       if (generation === this.generation && items !== null) {
         const cache: Map<string, ProjectItems> = new Map<string, ProjectItems>(
           this.itemsByProject(),

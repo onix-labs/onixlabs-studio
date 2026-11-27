@@ -150,6 +150,7 @@ import { TerminalManager } from '@shared/electron/terminal-manager';
 import { TrustedPaths } from './trusted-paths';
 import { RepositoryTrust } from './repository-trust';
 import { Launcher, launcherForFolder, RunTokens } from './process/launch';
+import { ProjectItemsCache } from './project-system/project-items-cache';
 import { TrustManager } from './trust/trust-manager';
 import { WindowTrustAsker } from './trust/trust-asker';
 import { TrustChannel, type TrustChange, type TrustScanRequest } from '@shared/api/trust-channels';
@@ -406,6 +407,14 @@ class Program {
    * folder the user trusts.
    */
   private readonly runTokens: RunTokens = new RunTokens(this.repositoryTrust);
+
+  /**
+   * Keeps each root's last evaluated project contents in the user-data folder, so a solution reopens
+   * showing its tree at once (#1601).
+   */
+  private readonly projectItemsCache: ProjectItemsCache = new ProjectItemsCache(
+    path.join(app.getPath('userData'), 'project-items'),
+  );
 
   /**
    * Puts the trust question to the user in the application window (#1504).
@@ -749,6 +758,7 @@ class Program {
     this.workspaceContext,
     this.trustedPaths,
     this.runTokens,
+    this.projectItemsCache,
   );
 
   /**
@@ -1388,6 +1398,8 @@ class Program {
       this.liveServerHost.stopWithin(root),
     );
     this.workspaceManager.register();
+    // Roots not opened in months, or past the most kept, lose their cached trees; nothing waits on it.
+    void this.projectItemsCache.prune();
     this.packageManagerChannels.register();
     this.searchManager.register();
     this.studioStore.register();
@@ -1823,6 +1835,7 @@ class Program {
     this.aiManager.disposeAll();
     this.lspManager.disposeAll();
     this.debugManager.disposeAll();
+    this.projectItemsCache.flushSync();
     void this.contributions.disposeAll();
     // Last, after the disposals above have logged their own records: land everything the logger has
     // coalesced, so a session's final records are never lost to the flush window.
