@@ -142,9 +142,13 @@ export class FileConflicts {
   public changedOnDisk(conflict: Omit<FileConflict, 'unedited'>, reload: () => void): void {
     switch (this.settings.get('textEditor.reloadOnDiskChange')) {
       case 'silent':
+        // A question still waiting from an earlier change would reload that older version if
+        // answered now: this change supersedes it.
+        this.dismiss(conflict.documentId);
         reload();
         return;
       case 'ignore':
+        this.dismiss(conflict.documentId);
         this.log.info('FileConflicts', `Ignoring the change to '${conflict.name}'`);
         return;
       default:
