@@ -673,6 +673,32 @@ describe('Documents, with files on disk (#1236)', () => {
     expect(conflicts.activeConflict()).toBeNull();
   });
 
+  it('typingNotYetReported_countsAsAnEdit_whenTheFileChangesOnDisk (#1616)', () => {
+    // An editor that reports edits after a pause hands them over first, so the open copy is not
+    // replaced from under the user's typing.
+    const tab: Tab = documents.openFileInfo(SAMPLE_FILE, 'markdown');
+    const unregister: () => void = documents.registerPendingEdits(tab.id, (): void =>
+      documents.setContent(tab.id, 'typing in flight'),
+    );
+
+    watchers.get(SAMPLE_FILE.path)?.({ ...SAMPLE_FILE, content: 'theirs' });
+
+    expect(documents.get(tab.id)?.content()).toBe('typing in flight');
+    expect(TestBed.inject(FileConflicts).activeConflict()).toMatchObject({ documentId: tab.id });
+    unregister();
+  });
+
+  it('registerPendingEdits_unregistered_isNoLongerAsked', () => {
+    const tab: Tab = documents.openFileInfo(SAMPLE_FILE, 'markdown');
+    let asked: number = 0;
+    documents.registerPendingEdits(tab.id, (): void => void (asked += 1))();
+
+    watchers.get(SAMPLE_FILE.path)?.({ ...SAMPLE_FILE, content: 'theirs' });
+
+    expect(asked).toBe(0);
+    expect(documents.get(tab.id)?.content()).toBe('theirs');
+  });
+
   it('anEditedDocument_asks_underTheDefault', () => {
     const tab: Tab = documents.openFileInfo(SAMPLE_FILE, 'code');
     documents.setContent(tab.id, 'mine');

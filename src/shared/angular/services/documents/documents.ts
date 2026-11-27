@@ -340,6 +340,11 @@ export class Documents implements UnsavedWorkSource {
   private owningTabId: string | null = null;
 
   /**
+   * Holds, per document, how its editor hands over edits it has not reported yet.
+   */
+  private readonly pendingEdits: Map<string, () => void> = new Map<string, () => void>();
+
+  /**
    * Holds the document entries, keyed by document identifier (a tab id, or a well document id).
    */
   private readonly entries: Map<string, DocumentEntry> = new Map<string, DocumentEntry>();
@@ -703,6 +708,24 @@ export class Documents implements UnsavedWorkSource {
     this.watchEntry(tab.id);
     // syncTab renamed the tab to the file name; return the up-to-date tab, not the pre-rename one.
     return this.tabs.tabs().find((candidate: Tab): boolean => candidate.id === tab.id) ?? tab;
+  }
+
+  /**
+   * Registers how a document's editor hands over edits it has not reported yet. An editor that reports
+   * edits after a pause (the markdown editor, 200 ms after the last keystroke) would otherwise leave
+   * the document reading as unedited while the user is still typing, and a change on disk would
+   * replace it.
+   * @param id The document identifier.
+   * @param flush Reports the editor's pending edit, if it has one.
+   * @returns Returns the function that unregisters it.
+   */
+  public registerPendingEdits(id: string, flush: () => void): () => void {
+    this.pendingEdits.set(id, flush);
+    return (): void => {
+      if (this.pendingEdits.get(id) === flush) {
+        this.pendingEdits.delete(id);
+      }
+    };
   }
 
   /**
@@ -1341,6 +1364,9 @@ export class Documents implements UnsavedWorkSource {
     if (entry === undefined) {
       return;
     }
+    // An editor that reports edits late hands them over first, so typing still in flight makes the
+    // document edited — and asked about — rather than replaced from under the user.
+    this.pendingEdits.get(id)?.();
     // The watcher tells the encoding from the bytes; a document reopened in another reads its file in
     // that one, or every change would look like new text.
     const encoding: TextEncoding = entry.encoding();

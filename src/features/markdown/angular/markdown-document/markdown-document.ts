@@ -111,6 +111,11 @@ export class MarkdownDocument implements OnInit, OnDestroy {
   private registeredDocumentId: string | null = null;
 
   /**
+   * Unregisters this editor's pending-edit hand-over, or null before it is registered.
+   */
+  private unregisterPendingEdits: (() => void) | null = null;
+
+  /**
    * Initialises the component, wiring the effect that focuses the documents service on this document
    * while the owning leaf is active.
    */
@@ -131,6 +136,10 @@ export class MarkdownDocument implements OnInit, OnDestroy {
     this.registeredDocumentId = this.documentId();
     this.documents.ensure(this.documentId(), NEW_MARKDOWN_DOCUMENT_NAME);
     this.documents.setLanguage(this.documentId(), MARKDOWN_LANGUAGE);
+    // The editor reports edits after a pause; a change on disk asks for them first (#1616).
+    this.unregisterPendingEdits = this.documents.registerPendingEdits(this.documentId(), (): void =>
+      this.editor()?.flushPendingEdit(),
+    );
     this.log.debug('markdown.document', 'Backing document registered', {
       documentId: this.documentId(),
     });
@@ -142,6 +151,7 @@ export class MarkdownDocument implements OnInit, OnDestroy {
    * was never initialised (it has no registered document to release).
    */
   public ngOnDestroy(): void {
+    this.unregisterPendingEdits?.();
     const id: string | null = this.registeredDocumentId;
     if (id === null) {
       return;

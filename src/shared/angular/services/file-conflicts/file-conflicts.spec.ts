@@ -23,6 +23,23 @@ describe('FileConflicts', () => {
     tabs = TestBed.inject(Tabs);
   });
 
+  it('changedOnDisk_silently_dropsAQuestionStillWaitingFromAnEarlierChange (#1616)', () => {
+    // The earlier question's Reload holds the earlier version; answered after a later change has
+    // reloaded silently, it would bring that older version back.
+    const tab: Tab = tabs.open('code');
+    let staleReloads: number = 0;
+    conflicts.raise(conflictFor(tab.id), {
+      keep: (): void => undefined,
+      reload: (): void => void (staleReloads += 1),
+    });
+
+    conflicts.changedOnDisk(conflictFor(tab.id), (): void => undefined);
+    conflicts.reload(tab.id);
+
+    expect(conflicts.activeConflict()).toBeNull();
+    expect(staleReloads).toBe(0);
+  });
+
   it('changedOnDisk_followsReloadFilesChangedOnDisk', () => {
     const settings: Settings = TestBed.inject(Settings);
     const tab: Tab = tabs.open('code');

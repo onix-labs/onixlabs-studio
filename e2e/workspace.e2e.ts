@@ -115,11 +115,7 @@ test.describe('a folder as a workspace', () => {
     // Written from the welcome window: the main window follows a change another window makes.
     const welcome: Page = await modalWindow(app);
     await welcome.evaluate((): void => {
-      const raw: string = localStorage.getItem('settings') ?? '{}';
-      localStorage.setItem(
-        'settings',
-        `${raw.replace(/}\s*$/, raw.trim() === '{}' ? '' : ',')}"textEditor.reloadOnDiskChange":"ask"}`,
-      );
+      localStorage.setItem('settings', JSON.stringify({ 'textEditor.reloadOnDiskChange': 'ask' }));
     });
     await openFolderFromWelcome(app, page, scratch);
     await openAlpha(page, alpha);
