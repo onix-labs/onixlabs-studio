@@ -309,6 +309,70 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
   private postCreateMarkdown: string | null = null;
 
   /**
+   * Holds the markdown last reported as an edit, so the same text is never reported twice: once when
+   * {@link flushPendingEdit} hands it over early, and again when the debounced update lands.
+   */
+  private lastReported: string | null = null;
+
+  /**
+   * Reports the editor's text as an edit now, rather than when the listener's debounce next fires.
+   * The listener reports an edit 200 ms after the last keystroke, and until it does the document still
+   * reads as unedited; whoever is about to act on that — a change on disk deciding whether the open
+   * copy can simply be replaced — asks for the edit first, so typing still in flight counts.
+   */
+  public flushPendingEdit(): void {
+    if (this.crepe === null || !this.isEditorReady() || this.isCreatingEditor) {
+      return;
+    }
+    this.report(this.crepe.getMarkdown());
+  }
+
+  /**
+   * Reports the editor's markdown as an edit, unless it is not one: the initial load, the parse
+   * normalising the initial content, or text already reported.
+   * @param markdown The editor's serialised markdown.
+   */
+  private report(markdown: string): void {
+    // Updates fired while the editor is still being created are the initial content load; doing work
+    // there breaks the init, so they are skipped. The host derives the initial outline and read model
+    // on the deferred ready emit instead.
+    if (this.isCreatingEditor) {
+      return;
+    }
+    // The debounced init update arrives here, after creation: it is the parse normalising the initial
+    // content, not an edit, so updates matching the post-create serialisation are dropped until the
+    // content first diverges.
+    if (this.postCreateMarkdown !== null) {
+      if (markdown === this.postCreateMarkdown) {
+        return;
+      }
+      // A document ending in a non-paragraph block (a list, table or fence) is given an empty trailing
+      // paragraph by the editor right after creation, so the click target below the content exists.
+      // That paragraph serialises as nothing but a trailing blank line — a difference in trailing
+      // newlines only is that plumbing, not an edit, and reporting it would falsely dirty every such
+      // document the moment it is opened. The baseline follows it so the next comparison sees the
+      // settled form.
+      if (
+        this.withoutTrailingBlank(markdown) === this.withoutTrailingBlank(this.postCreateMarkdown)
+      ) {
+        this.postCreateMarkdown = markdown;
+        return;
+      }
+      this.postCreateMarkdown = null;
+    }
+    // Reported once: a second report of the same text would change nothing below, and would leave
+    // the next external change ignored, since the flag it sets is only cleared by a change.
+    if (markdown === this.lastReported) {
+      return;
+    }
+    this.lastReported = markdown;
+    this.zone.run((): void => {
+      this.ignoreNextChange = true;
+      this.contentChange.emit(markdown);
+    });
+  }
+
+  /**
    * Holds a value indicating whether the editor is ready for interaction.
    */
   private readonly isEditorReady: WritableSignal<boolean> = signal<boolean>(false);
@@ -583,38 +647,7 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
 
       crepe.on((api: ListenerManager): void => {
         api.markdownUpdated((_ctx: Ctx, markdown: string): void => {
-          // Updates fired while the editor is still being created are the initial content load;
-          // doing work there breaks the init, so they are skipped. The host derives the initial
-          // outline and read model on the deferred ready emit instead.
-          if (this.isCreatingEditor) {
-            return;
-          }
-          // The debounced init update arrives here, after creation: it is the parse normalising the
-          // initial content, not an edit, so updates matching the post-create serialisation are
-          // dropped until the content first diverges.
-          if (this.postCreateMarkdown !== null) {
-            if (markdown === this.postCreateMarkdown) {
-              return;
-            }
-            // A document ending in a non-paragraph block (a list, table or fence) is given an empty
-            // trailing paragraph by the editor right after creation, so the click target below the
-            // content exists. That paragraph serialises as nothing but a trailing blank line — a
-            // difference in trailing newlines only is that plumbing, not an edit, and reporting it
-            // would falsely dirty every such document the moment it is opened. The baseline follows
-            // it so the next comparison sees the settled form.
-            if (
-              this.withoutTrailingBlank(markdown) ===
-              this.withoutTrailingBlank(this.postCreateMarkdown)
-            ) {
-              this.postCreateMarkdown = markdown;
-              return;
-            }
-            this.postCreateMarkdown = null;
-          }
-          this.zone.run((): void => {
-            this.ignoreNextChange = true;
-            this.contentChange.emit(markdown);
-          });
+          this.report(markdown);
         });
 
         api.selectionUpdated((_ctx: Ctx, selection: Selection): void => {
@@ -757,6 +790,7 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
     this.editorView = null;
     this.isCreatingEditor = true;
     this.postCreateMarkdown = null;
+    this.lastReported = null;
   }
 
   /**
