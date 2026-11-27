@@ -10,7 +10,7 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { availableParallelism, tmpdir } from 'node:os';
 import * as path from 'node:path';
 import type { DebugResolveResult } from '@shared/api/debug-channels';
 import type { ProjectItems, ProjectModel } from '@shared/api/project-system';
@@ -49,6 +49,16 @@ describe('resolveProjectPath (#882)', () => {
     const elsewhere: string = path.resolve('/elsewhere/App.csproj');
 
     expect(resolveProjectPath(elsewhere, root, projects)).toBe(elsewhere);
+  });
+});
+
+describe('DotnetProjectSystem.capabilities (#1600)', () => {
+  it('loadsAFewProjectsAtOnce_sizedToTheMachine_andNeverMoreThanFour', () => {
+    const width: number | undefined = new DotnetProjectSystem().capabilities.itemLoadConcurrency;
+
+    expect(width).toBe(Math.min(4, Math.max(1, Math.floor(availableParallelism() / 2))));
+    expect(width).toBeGreaterThanOrEqual(1);
+    expect(width).toBeLessThanOrEqual(4);
   });
 });
 

@@ -1,5 +1,6 @@
 import { Dirent } from 'node:fs';
 import * as fs from 'node:fs/promises';
+import { availableParallelism } from 'node:os';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
 import {
@@ -45,6 +46,10 @@ const DOTNET_CAPABILITIES: ProjectCapabilities = {
   // The baseline says no: whether folders can be renamed is decided by the root's solution format, and
   // load() narrows it there. A root with no solution at all has no folders to rename.
   renamesSolutionFolders: false,
+  // Opening a solution spent its time starting one `dotnet` after another (#1600). A few at once, half
+  // the machine's cores and no more than four, leaves room for the language server loading the same
+  // solution, which a wider sweep once starved (#381). Each is still the read-only evaluation.
+  itemLoadConcurrency: Math.min(4, Math.max(1, Math.floor(availableParallelism() / 2))),
 };
 
 /**

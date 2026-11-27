@@ -38,12 +38,19 @@ export type SolutionRowKind = 'solution' | 'folder' | 'project' | 'item-folder' 
 const ROOT_KEY: string = 'solution-root';
 
 /**
- * How many projects' contents are evaluated at once by the background sweep. Deliberately 1: each
- * evaluation is a full MSBuild process, and the sweep runs while the language server is loading the
- * same solution — a wider sweep saturated the machine on large solutions. Expanding or revealing a
- * project jumps the queue and fetches immediately, so the trickle costs the user nothing.
+ * How many projects' contents the background sweep evaluates at once when the project system declares
+ * nothing. Deliberately 1: an evaluation may be a full build-tool process, and the sweep runs while the
+ * language server is loading the same solution — a wider sweep saturated the machine on large
+ * solutions (#381). A project system whose evaluations can share the machine declares its own width
+ * (`itemLoadConcurrency`, #1600). Expanding or revealing a project jumps the queue and fetches
+ * immediately, so the trickle costs the user nothing.
  */
 const BACKGROUND_LOAD_CONCURRENCY: number = 1;
+
+/**
+ * The most projects the background sweep evaluates at once, whatever a project system declares.
+ */
+const MAX_LOAD_CONCURRENCY: number = 8;
 
 /**
  * How long, in milliseconds, external on-disk changes are debounced before the model reloads, so a
@@ -1186,11 +1193,8 @@ export class SolutionModel {
    * @param generation The load generation the queue belongs to.
    */
   private pump(generation: number): void {
-    while (
-      this.activeWorkers < BACKGROUND_LOAD_CONCURRENCY &&
-      this.queue.length > 0 &&
-      generation === this.generation
-    ) {
+    const width: number = this.loadConcurrency();
+    while (this.activeWorkers < width && this.queue.length > 0 && generation === this.generation) {
       const next: string = this.queue.shift()!;
       if (this.inFlight.has(next)) {
         this.refetch.add(next);
@@ -1202,6 +1206,18 @@ export class SolutionModel {
         this.pump(this.generation);
       });
     }
+  }
+
+  /**
+   * Gets how many projects the background sweep evaluates at once: what the project system declares,
+   * within reason, or one when it declares nothing.
+   * @returns Returns the width.
+   */
+  private loadConcurrency(): number {
+    const declared: number | undefined = this.model()?.capabilities.itemLoadConcurrency;
+    return declared !== undefined && Number.isInteger(declared)
+      ? Math.min(Math.max(declared, 1), MAX_LOAD_CONCURRENCY)
+      : BACKGROUND_LOAD_CONCURRENCY;
   }
 
   /**

@@ -262,6 +262,14 @@ export interface ProjectCapabilities {
    * folder with no context menu at all, which is what every provider without solution folders wants.
    */
   readonly renamesSolutionFolders: boolean;
+
+  /**
+   * Gets how many projects' contents the Solution Explorer may load at once while a solution opens.
+   * Absent means one at a time: each load may start the ecosystem's build tool, and several at once
+   * compete with the language server loading the same solution. .NET declares a few, sized to the
+   * machine, because its one-project evaluations are read-only and the time is in starting them (#1600).
+   */
+  readonly itemLoadConcurrency?: number;
 }
 
 /**
