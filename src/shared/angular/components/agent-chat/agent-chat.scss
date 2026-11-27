@@ -231,6 +231,11 @@
   user-select: text;
 
   .agent__message--user & {
+    // Never wider than the column it sits in: a code block, a table or display math wider than that
+    // scrolls inside the bubble, as it does in a reply, rather than pushing the bubble past the
+    // column's leading edge, where it could not be reached (#1603).
+    max-inline-size: 100%;
+    min-inline-size: 0;
     color: var(--gray-100);
     background: var(--accent-color);
   }

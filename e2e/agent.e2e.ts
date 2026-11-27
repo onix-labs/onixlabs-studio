@@ -74,6 +74,107 @@ test.describe('an agent conversation on a live harness', () => {
     await expect(chat.getByRole('button', { name: 'Stop' })).toBeHidden();
   });
 
+  test('aRequestWithWideMarkdown_staysInsideItsBubble_andReadable (#1603)', async ({
+    app,
+    page,
+  }) => {
+    const chat: Locator = await openAgent(app, page);
+    const wide: string = `const ${'veryLongIdentifier'.repeat(18)} = 1;`;
+
+    await send(
+      chat,
+      [
+        '> A quoted line the user wrote.',
+        '',
+        '| Column | Another column |',
+        '| --- | --- |',
+        '| one | two |',
+        '',
+        '```ts',
+        wide,
+        '```',
+        '',
+        `A long unbroken run: ${'x'.repeat(400)}`,
+      ].join('\n'),
+    );
+
+    const bubble: Locator = chat.locator('.agent__message--user .agent__bubble').last();
+    await expect(bubble.locator('.code-block__pre')).toBeVisible();
+    const layout: {
+      bubbleLeft: number;
+      bubbleRight: number;
+      bodyLeft: number;
+      bodyRight: number;
+      codeScrolls: boolean;
+      quoteContrast: number;
+      codeContrast: number;
+    } = await bubble.evaluate((element: HTMLElement) => {
+      // Composites a colour over an opaque one: the computed value of a translucent mix is
+      // `color(srgb r g b / a)` or `rgba(...)`, in 0–1 or 0–255 channels.
+      const parse: (value: string) => number[] = (value: string): number[] => {
+        const srgb: RegExpExecArray | null =
+          /color\(srgb ([\d.]+) ([\d.]+) ([\d.]+)(?: \/ ([\d.]+))?\)/.exec(value);
+        if (srgb !== null) {
+          return [
+            Number(srgb[1]) * 255,
+            Number(srgb[2]) * 255,
+            Number(srgb[3]) * 255,
+            Number(srgb[4] ?? 1),
+          ];
+        }
+        const rgb: number[] = (value.match(/[\d.]+/g) ?? []).map(Number);
+        return [rgb[0] ?? 0, rgb[1] ?? 0, rgb[2] ?? 0, rgb[3] ?? 1];
+      };
+      const over: (top: number[], under: number[]) => number[] = (
+        top: number[],
+        under: number[],
+      ): number[] =>
+        [0, 1, 2].map((i: number): number => top[i] * top[3] + under[i] * (1 - top[3]));
+      const luminance: (rgb: number[]) => number = (rgb: number[]): number => {
+        const linear: number[] = rgb.map((channel: number): number => {
+          const c: number = channel / 255;
+          return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+        });
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+      };
+      const contrast: (a: number[], b: number[]) => number = (a: number[], b: number[]): number => {
+        const [high, low] = [luminance(a), luminance(b)].sort(
+          (x: number, y: number): number => y - x,
+        );
+        return (high + 0.05) / (low + 0.05);
+      };
+      const bubbleBackground: number[] = parse(getComputedStyle(element).backgroundColor);
+      const quote: HTMLElement = element.querySelector('blockquote')!;
+      const quoteBackground: number[] = over(
+        parse(getComputedStyle(quote).backgroundColor),
+        bubbleBackground,
+      );
+      const pre: HTMLElement = element.querySelector('.code-block__pre')!;
+      const body: DOMRect = element.closest('.agent__message-body')!.getBoundingClientRect();
+      const box: DOMRect = element.getBoundingClientRect();
+      return {
+        bubbleLeft: box.left,
+        bubbleRight: box.right,
+        bodyLeft: body.left,
+        bodyRight: body.right,
+        codeScrolls: pre.scrollWidth > pre.clientWidth,
+        quoteContrast: contrast(parse(getComputedStyle(quote).color), quoteBackground),
+        codeContrast: contrast(
+          parse(getComputedStyle(pre).color),
+          parse(getComputedStyle(pre).backgroundColor),
+        ),
+      };
+    });
+
+    // Wider content scrolls inside the bubble instead of pushing it past the column's edge.
+    expect(layout.bubbleLeft).toBeGreaterThanOrEqual(layout.bodyLeft - 1);
+    expect(layout.bubbleRight).toBeLessThanOrEqual(layout.bodyRight + 1);
+    expect(layout.codeScrolls).toBe(true);
+    // A quote and a code block read clearly against what they sit on.
+    expect(layout.quoteContrast).toBeGreaterThanOrEqual(4.5);
+    expect(layout.codeContrast).toBeGreaterThanOrEqual(4.5);
+  });
+
   test('output_appearsWhileTheTurnIsStillRunning', async ({ app, page }) => {
     const chat: Locator = await openAgent(app, page);
 
