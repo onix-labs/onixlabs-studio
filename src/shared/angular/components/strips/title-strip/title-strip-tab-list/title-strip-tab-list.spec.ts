@@ -3,7 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { APPLICATION_KEYBINDINGS } from '@shared/angular/services/app-menu/core-keybindings';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Tab } from '@shared/angular/services/tabs/tab';
-import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { MAIN_WINDOW_ID, Tabs } from '@shared/angular/services/tabs/tabs';
 import { TitleStripTabList } from './title-strip-tab-list';
 
 describe('TitleStripTabList', () => {
@@ -32,6 +32,20 @@ describe('TitleStripTabList', () => {
 
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
     expect(element.querySelectorAll('app-title-strip-tab').length).toBe(2);
+  });
+
+  it('render_showsOnlyItsOwnWindowsTabs (#1587)', () => {
+    const tabs: Tabs = TestBed.inject(Tabs);
+    tabs.open('code');
+    tabs.open('terminal', undefined, { windowId: 'w2' });
+    tabs.focusWindow(MAIN_WINDOW_ID);
+    fixture.detectChanges();
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    const shown: string[] = [...element.querySelectorAll('[role="tab"]')].map(
+      (tab: Element): string => tab.getAttribute('data-tab-type') ?? '',
+    );
+    expect(shown).toEqual(['code']);
   });
 
   it('onKeydown_whenArrowRightPressed_activatesTheNextTab', () => {

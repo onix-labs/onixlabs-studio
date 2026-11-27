@@ -2,7 +2,7 @@ import { NgComponentOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
 import { FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Tab } from '@shared/angular/services/tabs/tab';
-import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { SHELL_WINDOW, Tabs } from '@shared/angular/services/tabs/tabs';
 import { DocumentConflictModal } from '@shared/angular/components/document-conflict-modal/document-conflict-modal';
 
 /**
@@ -32,12 +32,19 @@ export class ContentHost {
   private readonly tabsService: Tabs = inject(Tabs);
 
   /**
-   * Gets the ordered list of open tabs.
+   * Holds the Studio window this belongs to, whose tabs it shows (#1587).
    */
-  protected readonly tabs: Signal<readonly Tab[]> = this.tabsService.tabs;
+  private readonly windowId: string = inject(SHELL_WINDOW);
 
   /**
-   * Gets the identifier of the active tab, or undefined when no tab is open.
+   * Gets this window's open tabs, in order.
    */
-  protected readonly activeTabId: Signal<string | undefined> = this.tabsService.activeTabId;
+  protected readonly tabs: Signal<readonly Tab[]> = this.tabsService.tabsIn(this.windowId);
+
+  /**
+   * Gets the identifier of this window's active tab, or undefined when it has none.
+   */
+  protected readonly activeTabId: Signal<string | undefined> = this.tabsService.activeTabIdIn(
+    this.windowId,
+  );
 }

@@ -19,7 +19,7 @@ import { MenuSubject } from '@shared/angular/components/menu/menu-subject';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { TabCloser } from '@shared/angular/services/tab-closer/tab-closer';
-import { isPinnedTabType, Tabs } from '@shared/angular/services/tabs/tabs';
+import { isPinnedTabType, SHELL_WINDOW, Tabs } from '@shared/angular/services/tabs/tabs';
 import { TitleStripTab } from '../title-strip-tab/title-strip-tab';
 
 /**
@@ -86,14 +86,21 @@ export class TitleStripTabList {
   protected readonly overflowing: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
-   * Gets the ordered list of open tabs.
+   * Holds the Studio window this belongs to, whose tabs it shows (#1587).
    */
-  protected readonly tabs: Signal<readonly Tab[]> = this.tabsService.tabs;
+  private readonly windowId: string = inject(SHELL_WINDOW);
 
   /**
-   * Gets the identifier of the active tab, or undefined when no tab is open.
+   * Gets this window's open tabs, in order.
    */
-  protected readonly activeTabId: Signal<string | undefined> = this.tabsService.activeTabId;
+  protected readonly tabs: Signal<readonly Tab[]> = this.tabsService.tabsIn(this.windowId);
+
+  /**
+   * Gets the identifier of this window's active tab, or undefined when it has none.
+   */
+  protected readonly activeTabId: Signal<string | undefined> = this.tabsService.activeTabIdIn(
+    this.windowId,
+  );
 
   /**
    * Wires up overflow measurement: after every render that changes the open tabs (which can change
@@ -222,10 +229,10 @@ export class TitleStripTabList {
     switch (choice.id) {
       case MOVE_TO_START:
         // Clamped past the fixed tabs, which keep the front of the strip.
-        this.tabsService.reorder(index, 0);
+        this.tabsService.reorder(index, 0, this.windowId);
         return;
       case MOVE_TO_END:
-        this.tabsService.reorder(index, tabs.length - 1);
+        this.tabsService.reorder(index, tabs.length - 1, this.windowId);
         return;
       case CLOSE:
         this.onClose(tabs[index]);
@@ -240,7 +247,7 @@ export class TitleStripTabList {
    * @param event The drag-drop event describing the move.
    */
   protected onDrop(event: CdkDragDrop<readonly Tab[]>): void {
-    this.tabsService.reorder(event.previousIndex, event.currentIndex);
+    this.tabsService.reorder(event.previousIndex, event.currentIndex, this.windowId);
   }
 
   /**
