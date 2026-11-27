@@ -1,0 +1,120 @@
+{
+  "$comment": "What npm metadata cannot say about what Studio ships (#1612). Read by scripts/generate-licences.mjs; every entry says why it is here.",
+  "allowed": [
+    "MIT",
+    "ISC",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Apache-2.0",
+    "0BSD",
+    "Unlicense",
+    "CC0-1.0",
+    "BlueOak-1.0.0"
+  ],
+  "elections": {
+    "dompurify": {
+      "licence": "Apache-2.0",
+      "offered": "(MPL-2.0 OR Apache-2.0)",
+      "reason": "Dual-licensed; Studio takes it under Apache-2.0."
+    },
+    "json-schema": {
+      "licence": "BSD-3-Clause",
+      "offered": "(AFL-2.1 OR BSD-3-Clause)",
+      "reason": "Dual-licensed; Studio takes it under BSD-3-Clause."
+    },
+    "elkjs": {
+      "licence": "EPL-2.0",
+      "offered": "EPL-2.0 OR GPL-3.0-or-later",
+      "reason": "Dual-licensed; Studio takes it under EPL-2.0, whose source is at the repository below. Bundled through mermaid for graph layout."
+    }
+  },
+  "packages": {
+    "khroma": {
+      "licence": "MIT",
+      "reason": "Its package.json has no license field; the licence file it ships is MIT."
+    },
+    "remark-math": {
+      "standardText": true,
+      "reason": "Ships no licence file; package.json says MIT."
+    },
+    "@defasm/core": {
+      "standardText": true,
+      "copyright": "Copyright (c) Defectus",
+      "reason": "Ships no licence file; package.json says ISC and names Defectus as its author."
+    },
+    "@ai-sdk/provider-utils": {
+      "standardText": true,
+      "copyright": "Copyright (c) Vercel, Inc.",
+      "reason": "Ships no licence file; package.json says Apache-2.0. Part of the Vercel AI SDK."
+    },
+    "node-pty": {
+      "extraTexts": ["deps/winpty/LICENSE"],
+      "reason": "Carries winpty for Windows, under its own licence in a subfolder."
+    }
+  },
+  "include": [
+    {
+      "name": "monaco-editor",
+      "scope": "renderer",
+      "reason": "Copied into the app whole as an asset (min/vs), so the bundle does not list it. Its ThirdPartyNotices.txt covers the code it carries from others; the codicon font is listed separately."
+    }
+  ],
+  "components": [
+    {
+      "name": "Electron",
+      "licence": "MIT",
+      "repository": "https://github.com/electron/electron",
+      "homepage": "https://www.electronjs.org",
+      "scope": "component",
+      "texts": ["node_modules/electron/LICENSE"],
+      "versionFrom": "electron"
+    },
+    {
+      "name": "Chromium, Node.js, V8, FFmpeg and their dependencies",
+      "licence": "Various",
+      "repository": "https://chromium.googlesource.com/chromium/src",
+      "homepage": "https://www.chromium.org",
+      "scope": "component",
+      "notice": "Electron carries Chromium, Node.js, V8 and FFmpeg. Their licences, and those of everything they include, are in LICENSES.chromium.html, which is installed with the application.",
+      "accepted": "Not one licence: Electron's own credits file lists each, installed with the app."
+    },
+    {
+      "name": "Codicons",
+      "licence": "CC-BY-4.0",
+      "accepted": "Icon font: CC BY 4.0 asks only for attribution, which this notice gives.",
+      "repository": "https://github.com/microsoft/vscode-codicons",
+      "homepage": "https://microsoft.github.io/vscode-codicons/",
+      "scope": "artwork",
+      "notice": "The codicon icon font, embedded in Monaco's stylesheet, is Copyright (c) Microsoft Corporation and is licensed under the Creative Commons Attribution 4.0 International licence: https://creativecommons.org/licenses/by/4.0/"
+    },
+    {
+      "name": "ripgrep",
+      "licence": "MIT",
+      "repository": "https://github.com/BurntSushi/ripgrep",
+      "homepage": "https://github.com/BurntSushi/ripgrep",
+      "scope": "component",
+      "copyright": "Copyright (c) 2015 Andrew Gallant",
+      "standardText": true,
+      "notice": "The rg executable in @vscode/ripgrep is ripgrep, dual-licensed under MIT or the Unlicense; Studio takes it under MIT."
+    },
+    {
+      "name": "ConPTY (Windows)",
+      "licence": "MIT",
+      "repository": "https://github.com/microsoft/terminal",
+      "homepage": "https://github.com/microsoft/terminal",
+      "scope": "component",
+      "copyright": "Copyright (c) Microsoft Corporation",
+      "standardText": true,
+      "notice": "node-pty carries Microsoft's ConPTY binaries (third_party/conpty) for terminals on Windows."
+    },
+    {
+      "name": "Hero Patterns",
+      "licence": "MIT",
+      "unverified": "Credited as MIT, (c) 2016 Alec Lomas, in _textures.scss; heropatterns.com may say CC BY 4.0 by Steve Schoger. To be confirmed in #1613.",
+      "homepage": "https://heropatterns.com",
+      "scope": "artwork",
+      "copyright": "Copyright (c) 2016 Alec Lomas",
+      "standardText": true
+    }
+  ]
+}

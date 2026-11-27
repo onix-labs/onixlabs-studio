@@ -24,7 +24,7 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
-    "build": "ng build",
+    "build": "ng build --stats-json && node scripts/generate-licences.mjs",
     "build:electron": "tsc --noEmit -p src/shared/electron/tsconfig.json && npm run build:main && npm run build:preload",
     "typecheck:plugins": "node scripts/typecheck-plugins.mjs",
     "bench": "node scripts/bench/run.mjs",
@@ -47,12 +47,12 @@
     "electron": "electron .",
     "electron:serve": "concurrently -k -s command-ELECTRON -n NG,ELECTRON -c blue,green \"ng serve --host 127.0.0.1\" \"wait-on http://127.0.0.1:4200 && npm run build:electron && cross-env ELECTRON_START_URL=http://127.0.0.1:4200 electron .\"",
     "canvas": "concurrently -k -s command-CANVAS -n NG,CANVAS -c blue,magenta \"ng serve --host 127.0.0.1 --port 4210\" \"wait-on http://127.0.0.1:4210 && cross-env CANVAS_URL=http://127.0.0.1:4210/?canvas electron scripts/conversation-canvas.mjs\"",
-    "electron:build": "ng build && npm run build:electron && electron .",
-    "pack": "ng build && npm run build:electron && electron-builder --dir",
-    "dist": "ng build && npm run build:electron && electron-builder",
-    "dist:mac": "ng build && npm run build:electron && electron-builder --mac",
-    "dist:win": "ng build && npm run build:electron && electron-builder --win",
-    "dist:linux": "ng build && npm run build:electron && electron-builder --linux"
+    "electron:build": "npm run build && npm run build:electron && electron .",
+    "pack": "npm run build && npm run build:electron && electron-builder --dir",
+    "dist": "npm run build && npm run build:electron && electron-builder",
+    "dist:mac": "npm run build && npm run build:electron && electron-builder --mac",
+    "dist:win": "npm run build && npm run build:electron && electron-builder --win",
+    "dist:linux": "npm run build && npm run build:electron && electron-builder --linux"
   },
   "dependencies": {
     "@defasm/core": "^2.4.5",
