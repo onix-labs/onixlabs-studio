@@ -7,6 +7,7 @@ import { cpSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { writePluginLicences } from '../../scripts/licences/plugin.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const repo = join(root, '..', '..');
@@ -15,7 +16,9 @@ const out = join(root, 'dist', 'native-decoder');
 rmSync(join(root, 'dist'), { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 
-await build({
+const bundled = await build({
+  // Read back by writePluginLicences, so the notices list what was actually bundled (#1612).
+  metafile: true,
   entryPoints: [join(root, 'src', 'main.ts')],
   bundle: true,
   platform: 'node',
@@ -24,6 +27,9 @@ await build({
   outfile: join(out, 'main.js'),
   external: ['disassembler'],
 });
+
+// Its licence, and the notices of what its bundle carries from others, travel in the tarball (#1612).
+writePluginLicences({ root, metafile: bundled.metafile, out });
 
 cpSync(
   join(repo, 'node_modules', 'disassembler'),

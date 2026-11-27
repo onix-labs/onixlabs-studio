@@ -16,6 +16,7 @@ import { cpSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { writePluginLicences } from '../../scripts/licences/plugin.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const out = join(root, 'dist', 'package');
@@ -23,7 +24,9 @@ const out = join(root, 'dist', 'package');
 rmSync(join(root, 'dist'), { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 
-await build({
+const bundled = await build({
+  // Read back by writePluginLicences, so the notices list what was actually bundled (#1612).
+  metafile: true,
   entryPoints: [join(root, 'src', 'main.ts')],
   bundle: true,
   platform: 'node',
@@ -48,6 +51,9 @@ await build({
   // module formats (see the note in `src/tools.ts`).
   external: ['@anthropic-ai/claude-agent-sdk', '@modelcontextprotocol/sdk'],
 });
+
+// Its licence, and the notices of what its bundle carries from others, travel in the tarball (#1612).
+writePluginLicences({ root, metafile: bundled.metafile, out });
 
 // The package manifest ships inside the tarball: it is what names the SDK dependency that the lockfile
 // then resolves, and what puts `main.js` at the path the plugin manifest's entry point points to.
