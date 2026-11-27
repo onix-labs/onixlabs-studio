@@ -13,8 +13,12 @@
     <app-title-strip-tab
       [tab]="tab"
       [isActive]="tab.id === activeTabId()"
+      [cdkContextMenuTriggerFor]="tabMenu.panel() ?? null"
+      [appMenuSubject]="tab.id"
       (selectTab)="onSelect(tab)"
       (closeTab)="onClose(tab)"
     />
   }
 </div>
+
+<app-menu #tabMenu [itemsFor]="tabItemsFor" (chosen)="onTabMenu($event)" />
