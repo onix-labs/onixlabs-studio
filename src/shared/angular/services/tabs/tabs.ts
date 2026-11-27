@@ -1,4 +1,12 @@
-import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import {
+  computed,
+  inject,
+  InjectionToken,
+  Service,
+  signal,
+  Signal,
+  WritableSignal,
+} from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
 import {
   AttentionReason,
@@ -41,21 +49,74 @@ export function isPinnedTabType(type: TabType): boolean {
 }
 
 /**
- * Represents the registry of open top-level tabs and the currently active selection.
+ * The identifier of the first Studio window, which every tab belongs to until it is moved (#1587).
+ */
+export const MAIN_WINDOW_ID: string = 'main';
+
+/**
+ * Names the Studio window a shell component belongs to, so the title strip and content area show that
+ * window's tabs. Every window provides its own; anything outside a window's shell is in the first.
+ */
+export const SHELL_WINDOW: InjectionToken<string> = new InjectionToken<string>('SHELL_WINDOW', {
+  providedIn: 'root',
+  factory: (): string => MAIN_WINDOW_ID,
+});
+
+/**
+ * Describes one window's slice of the registry.
+ */
+interface WindowView {
+  /**
+   * Gets the window's tabs, in strip order.
+   */
+  readonly tabs: Signal<readonly Tab[]>;
+
+  /**
+   * Gets the window's active tab's identifier, or undefined when the window has no tabs.
+   */
+  readonly activeTabId: Signal<string | undefined>;
+}
+
+/**
+ * Represents the registry of open top-level tabs, the Studio window each belongs to, and each window's
+ * active tab (#1587).
+ *
+ * Every window shows its own tabs and has its own active tab; the window in front is the focused one,
+ * and "the active tab" — what the ribbon, status strip, menu and shortcuts act on — is the focused
+ * window's. With one window, which is every window today, that is exactly the tab in front. The full
+ * list ({@link tabs}) keeps every window's tabs, for what spans the app: Mission Control, the unsaved
+ * work a quit asks about, an agent finding the tab it runs in.
  */
 @Service()
 export class Tabs {
   /**
-   * Holds the ordered list of open tabs.
+   * Holds every open tab, in strip order within each window.
    */
   private readonly tabList: WritableSignal<readonly Tab[]> = signal<readonly Tab[]>([]);
 
   /**
-   * Holds the identifier of the active tab, or undefined when no tab is open.
+   * Holds the window each tab belongs to, by tab id; a tab with no entry is in the first window.
    */
-  private readonly activeId: WritableSignal<string | undefined> = signal<string | undefined>(
-    undefined,
-  );
+  private readonly windowOfTab: WritableSignal<ReadonlyMap<string, string>> = signal<
+    ReadonlyMap<string, string>
+  >(new Map<string, string>());
+
+  /**
+   * Holds each window's active tab, by window id; a window with no entry has none.
+   */
+  private readonly activeIds: WritableSignal<ReadonlyMap<string, string>> = signal<
+    ReadonlyMap<string, string>
+  >(new Map<string, string>());
+
+  /**
+   * Holds the identifier of the window in front.
+   */
+  private readonly focusedWindowId: WritableSignal<string> = signal<string>(MAIN_WINDOW_ID);
+
+  /**
+   * Holds each window's slice, made once per window.
+   */
+  private readonly views: Map<string, WindowView> = new Map<string, WindowView>();
 
   /**
    * Holds the live attention claims per tab, keyed by tab id. Plain state rather than a signal: it is
@@ -77,20 +138,27 @@ export class Tabs {
   private readonly log: Log = inject(Log);
 
   /**
-   * Gets the ordered list of open tabs.
+   * Gets every open tab, in every window.
    */
   public readonly tabs: Signal<readonly Tab[]> = this.tabList.asReadonly();
 
   /**
-   * Gets the identifier of the active tab, or undefined when no tab is open.
+   * Gets the identifier of the window in front.
    */
-  public readonly activeTabId: Signal<string | undefined> = this.activeId.asReadonly();
+  public readonly focusedWindow: Signal<string> = this.focusedWindowId.asReadonly();
 
   /**
-   * Gets the active tab, or undefined when no tab is open.
+   * Gets the identifier of the active tab — the focused window's — or undefined when it has none.
+   */
+  public readonly activeTabId: Signal<string | undefined> = computed((): string | undefined =>
+    this.activeIds().get(this.focusedWindowId()),
+  );
+
+  /**
+   * Gets the active tab — the focused window's — or undefined when it has none.
    */
   public readonly activeTab: Signal<Tab | undefined> = computed((): Tab | undefined => {
-    const id: string | undefined = this.activeId();
+    const id: string | undefined = this.activeTabId();
     return this.tabList().find((tab: Tab): boolean => tab.id === id);
   });
 
@@ -113,7 +181,11 @@ export class Tabs {
    * @param options How to open it; in the background, the active tab stays active.
    * @returns Returns the opened, or re-activated, tab.
    */
-  public open(type: TabType, resourceKey?: string, options?: OpenOptions): Tab {
+  public open(
+    type: TabType,
+    resourceKey?: string,
+    options?: OpenOptions & { readonly windowId?: string },
+  ): Tab {
     if (SINGLETON_TAB_TYPES.has(type)) {
       const existing: Tab | undefined = this.tabList().find(
         (tab: Tab): boolean => tab.type === type,
@@ -143,6 +215,13 @@ export class Tabs {
       (existing: Tab): boolean => this.pinRank(existing.type) <= rank,
     ).length;
     this.tabList.set([...current.slice(0, index), tab, ...current.slice(index)]);
+    // A new tab opens in the window it was asked for in, or the one in front.
+    const windowId: string = options?.windowId ?? this.focusedWindowId();
+    if (windowId !== MAIN_WINDOW_ID) {
+      this.windowOfTab.update((windows: ReadonlyMap<string, string>): ReadonlyMap<string, string> =>
+        new Map<string, string>(windows).set(tab.id, windowId),
+      );
+    }
     this.bringForward(tab.id, options);
     this.log.info(
       'Tabs',
@@ -154,15 +233,164 @@ export class Tabs {
   }
 
   /**
-   * Makes a tab that was just opened the active one — unless it was opened in the background and the
-   * user already has a tab in front of them.
+   * Makes a tab that was just opened, or asked for again, the active one in its window, and brings its
+   * window to the front — unless it was opened in the background and the user already has a tab in
+   * front of them there.
    * @param id The tab's identifier.
    * @param options How it was opened.
    */
   private bringForward(id: string, options: OpenOptions | undefined): void {
-    if (options?.background !== true || this.activeId() === undefined) {
-      this.activeId.set(id);
+    const windowId: string = this.windowOf(id);
+    if (options?.background === true) {
+      if (this.activeIds().get(windowId) === undefined) {
+        this.setActive(windowId, id);
+      }
+      return;
     }
+    this.setActive(windowId, id);
+    this.focusedWindowId.set(windowId);
+  }
+
+  /**
+   * Gets the window a tab belongs to.
+   * @param id The tab's identifier.
+   * @returns Returns the window's identifier: the first window's for a tab never moved, or not open.
+   */
+  public windowOf(id: string): string {
+    return this.windowOfTab().get(id) ?? MAIN_WINDOW_ID;
+  }
+
+  /**
+   * Gets one window's tabs, in strip order.
+   * @param windowId The window's identifier.
+   * @returns Returns the window's tabs.
+   */
+  public tabsIn(windowId: string): Signal<readonly Tab[]> {
+    return this.viewOf(windowId).tabs;
+  }
+
+  /**
+   * Gets one window's active tab's identifier.
+   * @param windowId The window's identifier.
+   * @returns Returns the identifier, or undefined when the window has no tabs.
+   */
+  public activeTabIdIn(windowId: string): Signal<string | undefined> {
+    return this.viewOf(windowId).activeTabId;
+  }
+
+  /**
+   * Brings a window to the front, so the active tab is its active tab.
+   * @param windowId The window's identifier.
+   */
+  public focusWindow(windowId: string): void {
+    if (this.focusedWindowId() !== windowId) {
+      this.log.debug('Tabs', 'Focused window', windowId);
+      this.focusedWindowId.set(windowId);
+    }
+  }
+
+  /**
+   * Moves a tab into another window, where it becomes the active tab at the end of the strip (a pinned
+   * tab keeps its place at the front); the window it left activates its neighbour, as a close would.
+   * @param id The tab's identifier.
+   * @param windowId The window it moves to.
+   */
+  public moveToWindow(id: string, windowId: string): void {
+    const from: string = this.windowOf(id);
+    if (this.get(id) === undefined || from === windowId) {
+      return;
+    }
+    const before: readonly Tab[] = this.tabsIn(from)();
+    const tab: Tab = this.get(id)!;
+    if (!isPinnedTabType(tab.type)) {
+      // Last in the full list is last in every window's slice of it.
+      this.tabList.set([...this.tabList().filter((each: Tab): boolean => each.id !== id), tab]);
+    }
+    this.windowOfTab.update((windows: ReadonlyMap<string, string>): ReadonlyMap<string, string> => {
+      const next: Map<string, string> = new Map<string, string>(windows);
+      if (windowId === MAIN_WINDOW_ID) {
+        next.delete(id);
+      } else {
+        next.set(id, windowId);
+      }
+      return next;
+    });
+    if (this.activeIds().get(from) === id) {
+      this.setActive(from, this.neighbourOf(before, id));
+    }
+    this.setActive(windowId, id);
+    this.log.info('Tabs', 'Moved tab to window', id, windowId);
+  }
+
+  /**
+   * Forgets a window that has closed: its slice and its active tab. Its tabs must already have moved
+   * or closed. When it was in front, the first window comes to the front.
+   * @param windowId The window's identifier.
+   */
+  public forgetWindow(windowId: string): void {
+    if (windowId === MAIN_WINDOW_ID) {
+      return;
+    }
+    this.views.delete(windowId);
+    this.setActive(windowId, undefined);
+    if (this.focusedWindowId() === windowId) {
+      this.focusedWindowId.set(MAIN_WINDOW_ID);
+    }
+  }
+
+  /**
+   * Gets (making it the first time) a window's slice of the registry.
+   * @param windowId The window's identifier.
+   * @returns Returns the slice.
+   */
+  private viewOf(windowId: string): WindowView {
+    let view: WindowView | undefined = this.views.get(windowId);
+    if (view === undefined) {
+      view = {
+        tabs: computed((): readonly Tab[] => {
+          const windows: ReadonlyMap<string, string> = this.windowOfTab();
+          return this.tabList().filter(
+            (tab: Tab): boolean => (windows.get(tab.id) ?? MAIN_WINDOW_ID) === windowId,
+          );
+        }),
+        activeTabId: computed((): string | undefined => this.activeIds().get(windowId)),
+      };
+      this.views.set(windowId, view);
+    }
+    return view;
+  }
+
+  /**
+   * Sets a window's active tab.
+   * @param windowId The window's identifier.
+   * @param id The tab's identifier, or undefined for none.
+   */
+  private setActive(windowId: string, id: string | undefined): void {
+    if (this.activeIds().get(windowId) === id) {
+      return;
+    }
+    this.activeIds.update((active: ReadonlyMap<string, string>): ReadonlyMap<string, string> => {
+      const next: Map<string, string> = new Map<string, string>(active);
+      if (id === undefined) {
+        next.delete(windowId);
+      } else {
+        next.set(windowId, id);
+      }
+      return next;
+    });
+  }
+
+  /**
+   * Gets the tab that takes over when one leaves a window: the following one, or the preceding one
+   * when it was last.
+   * @param tabs The window's tabs before it left.
+   * @param id The leaving tab's identifier.
+   * @returns Returns the neighbour's identifier, or undefined when the window is left empty.
+   */
+  private neighbourOf(tabs: readonly Tab[], id: string): string | undefined {
+    const index: number = tabs.findIndex((tab: Tab): boolean => tab.id === id);
+    const remaining: readonly Tab[] = tabs.filter((tab: Tab): boolean => tab.id !== id);
+    return (remaining[index] ?? remaining[index - 1])?.id;
   }
 
   /**
@@ -199,40 +427,53 @@ export class Tabs {
   }
 
   /**
-   * Activates the tab with the given identifier. The call is ignored when no such tab exists.
+   * Activates the tab with the given identifier in its window, and brings that window to the front.
+   * The call is ignored when no such tab exists.
    * @param id The identifier of the tab to activate.
    */
   public activate(id: string): void {
     const exists: boolean = this.tabList().some((tab: Tab): boolean => tab.id === id);
     if (exists) {
       this.log.info('Tabs', 'Activated tab', id);
-      this.activeId.set(id);
+      const windowId: string = this.windowOf(id);
+      this.setActive(windowId, id);
+      this.focusedWindowId.set(windowId);
     }
   }
 
   /**
-   * Closes the tab with the given identifier. When the closed tab was active, the adjacent tab
-   * (the following one, or the preceding one when closing the last tab) becomes active.
+   * Closes the tab with the given identifier. When the closed tab was its window's active tab, the
+   * adjacent tab in that window (the following one, or the preceding one when closing the last tab)
+   * becomes active.
    * @param id The identifier of the tab to close.
    */
   public close(id: string): void {
     const current: readonly Tab[] = this.tabList();
-    const index: number = current.findIndex((tab: Tab): boolean => tab.id === id);
-    if (index === -1) {
+    if (!current.some((tab: Tab): boolean => tab.id === id)) {
       return;
     }
+    const windowId: string = this.windowOf(id);
+    const windowTabs: readonly Tab[] = this.tabsIn(windowId)();
 
-    const remaining: readonly Tab[] = current.filter((tab: Tab): boolean => tab.id !== id);
-    this.tabList.set(remaining);
+    this.tabList.set(current.filter((tab: Tab): boolean => tab.id !== id));
+    if (this.windowOfTab().has(id)) {
+      this.windowOfTab.update(
+        (windows: ReadonlyMap<string, string>): ReadonlyMap<string, string> => {
+          const next: Map<string, string> = new Map<string, string>(windows);
+          next.delete(id);
+          return next;
+        },
+      );
+    }
     // Drop the closed tab's attention claims with it: ids are never reused, but the map would
     // otherwise grow for the life of the window.
     this.attentionClaims.delete(id);
     this.log.info('Tabs', 'Closed tab', id);
 
-    if (this.activeId() === id) {
-      const neighbour: Tab | undefined = remaining[index] ?? remaining[index - 1];
-      this.log.debug('Tabs', 'Active tab closed; activating neighbour', neighbour?.id);
-      this.activeId.set(neighbour?.id);
+    if (this.activeIds().get(windowId) === id) {
+      const neighbour: string | undefined = this.neighbourOf(windowTabs, id);
+      this.log.debug('Tabs', 'Active tab closed; activating neighbour', neighbour);
+      this.setActive(windowId, neighbour);
     }
   }
 
@@ -307,13 +548,15 @@ export class Tabs {
   }
 
   /**
-   * Moves a tab from one position to another within the tab list. Out-of-range or no-op indices
+   * Moves a tab from one position to another within a window's strip. Out-of-range or no-op indices
    * are ignored.
-   * @param fromIndex The current index of the tab to move.
-   * @param toIndex The index the tab should occupy after the move.
+   * @param fromIndex The current index of the tab to move, in the window's strip.
+   * @param toIndex The index the tab should occupy after the move, in the window's strip.
+   * @param windowId The window whose strip it is; the one in front when omitted.
    */
-  public reorder(fromIndex: number, toIndex: number): void {
-    const current: readonly Tab[] = this.tabList();
+  public reorder(fromIndex: number, toIndex: number, windowId?: string): void {
+    const window: string = windowId ?? this.focusedWindowId();
+    const current: readonly Tab[] = this.tabsIn(window)();
     const lastIndex: number = current.length - 1;
     const outOfRange: boolean =
       fromIndex < 0 || fromIndex > lastIndex || toIndex < 0 || toIndex > lastIndex;
@@ -338,7 +581,13 @@ export class Tabs {
     const next: Tab[] = [...current];
     const moved: Tab = next.splice(fromIndex, 1)[0];
     next.splice(targetIndex, 0, moved);
-    this.tabList.set(next);
+    // The window's tabs take the places its tabs held in the full list, in their new order; every
+    // other window's keep theirs.
+    const reordered: Tab[] = [...next];
+    const ids: ReadonlySet<string> = new Set<string>(current.map((tab: Tab): string => tab.id));
+    this.tabList.set(
+      this.tabList().map((tab: Tab): Tab => (ids.has(tab.id) ? reordered.shift()! : tab)),
+    );
   }
 
   /**

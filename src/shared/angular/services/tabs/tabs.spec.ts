@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 
 import { Tab, TabType } from './tab';
-import { Tabs } from './tabs';
+import { MAIN_WINDOW_ID, Tabs } from './tabs';
 
 describe('Tabs', () => {
   let service: Tabs;
@@ -295,5 +295,208 @@ describe('Tabs', () => {
     expect(service.findByResource('directory', '/ws')?.id).toBe(tab.id);
     expect(service.findByResource('directory', '/missing')).toBeUndefined();
     expect(service.findByResource('markdown', '/ws')).toBeUndefined();
+  });
+
+  describe('with several windows (#1587)', () => {
+    /**
+     * Lists a window's tabs by id.
+     * @param windowId The window.
+     * @returns Returns the ids, in strip order.
+     */
+    function idsIn(windowId: string): string[] {
+      return service
+        .tabsIn(windowId)()
+        .map((tab: Tab): string => tab.id);
+    }
+
+    it('everyTab_startsInTheFirstWindow', () => {
+      const tab: Tab = service.open('code');
+
+      expect(service.windowOf(tab.id)).toBe(MAIN_WINDOW_ID);
+      expect(idsIn(MAIN_WINDOW_ID)).toEqual([tab.id]);
+      expect(service.focusedWindow()).toBe(MAIN_WINDOW_ID);
+    });
+
+    it('aTabOpenedForAWindow_opensThere_andBringsItToTheFront', () => {
+      const first: Tab = service.open('code');
+
+      const second: Tab = service.open('terminal', undefined, { windowId: 'w2' });
+
+      expect(idsIn(MAIN_WINDOW_ID)).toEqual([first.id]);
+      expect(idsIn('w2')).toEqual([second.id]);
+      expect(service.focusedWindow()).toBe('w2');
+      expect(service.activeTabId()).toBe(second.id);
+      // The first window keeps its own active tab.
+      expect(service.activeTabIdIn(MAIN_WINDOW_ID)()).toBe(first.id);
+    });
+
+    it('aNewTab_opensInTheWindowInFront', () => {
+      service.open('code', undefined, { windowId: 'w2' });
+
+      const tab: Tab = service.open('markdown');
+
+      expect(service.windowOf(tab.id)).toBe('w2');
+    });
+
+    it('theActiveTab_isTheActiveTabOfTheWindowInFront', () => {
+      const first: Tab = service.open('code');
+      const second: Tab = service.open('terminal', undefined, { windowId: 'w2' });
+
+      service.focusWindow(MAIN_WINDOW_ID);
+
+      expect(service.activeTabId()).toBe(first.id);
+      expect(service.activeTab()?.id).toBe(first.id);
+      service.focusWindow('w2');
+      expect(service.activeTabId()).toBe(second.id);
+    });
+
+    it('activatingATabInAnotherWindow_bringsThatWindowToTheFront', () => {
+      const first: Tab = service.open('code');
+      service.open('terminal', undefined, { windowId: 'w2' });
+
+      service.activate(first.id);
+
+      expect(service.focusedWindow()).toBe(MAIN_WINDOW_ID);
+      expect(service.activeTabId()).toBe(first.id);
+    });
+
+    it('askingForASingletonOpenInAnotherWindow_bringsThatWindowForward', () => {
+      const settings: Tab = service.open('settings');
+      service.open('code', undefined, { windowId: 'w2' });
+
+      expect(service.open('settings')).toBe(settings);
+
+      expect(service.focusedWindow()).toBe(MAIN_WINDOW_ID);
+      expect(service.activeTabId()).toBe(settings.id);
+    });
+
+    it('closingAWindowsActiveTab_activatesItsNeighbourThere_andLeavesTheOtherWindowAlone', () => {
+      const a: Tab = service.open('code');
+      const b: Tab = service.open('code', undefined, { windowId: 'w2' });
+      const c: Tab = service.open('markdown', undefined, { windowId: 'w2' });
+      service.activate(b.id);
+
+      service.close(b.id);
+
+      expect(service.activeTabIdIn('w2')()).toBe(c.id);
+      expect(service.activeTabIdIn(MAIN_WINDOW_ID)()).toBe(a.id);
+      expect(idsIn('w2')).toEqual([c.id]);
+    });
+
+    it('closingAWindowsLastTab_leavesItWithNoActiveTab', () => {
+      const tab: Tab = service.open('code', undefined, { windowId: 'w2' });
+
+      service.close(tab.id);
+
+      expect(service.activeTabIdIn('w2')()).toBeUndefined();
+      expect(service.windowOf(tab.id)).toBe(MAIN_WINDOW_ID);
+    });
+
+    it('reorder_movesWithinTheWindowsStrip_andLeavesTheOtherWindowsTabsInPlace', () => {
+      const a: Tab = service.open('code');
+      const b: Tab = service.open('code', undefined, { windowId: 'w2' });
+      const c: Tab = service.open('markdown', undefined, { windowId: MAIN_WINDOW_ID });
+      const d: Tab = service.open('terminal', undefined, { windowId: 'w2' });
+      const e: Tab = service.open('agent', undefined, { windowId: 'w2' });
+
+      service.reorder(2, 0, 'w2');
+
+      expect(idsIn('w2')).toEqual([e.id, b.id, d.id]);
+      expect(idsIn(MAIN_WINDOW_ID)).toEqual([a.id, c.id]);
+    });
+
+    it('moveToWindow_makesItTheActiveTabThere_andTheWindowItLeftActivatesItsNeighbour', () => {
+      const a: Tab = service.open('code');
+      const b: Tab = service.open('markdown');
+      service.activate(a.id);
+
+      service.moveToWindow(a.id, 'w2');
+
+      expect(idsIn('w2')).toEqual([a.id]);
+      expect(service.activeTabIdIn('w2')()).toBe(a.id);
+      expect(service.activeTabIdIn(MAIN_WINDOW_ID)()).toBe(b.id);
+    });
+
+    it('moveToWindow_back_toTheFirstWindow', () => {
+      const a: Tab = service.open('code');
+      service.moveToWindow(a.id, 'w2');
+
+      service.moveToWindow(a.id, MAIN_WINDOW_ID);
+
+      expect(service.windowOf(a.id)).toBe(MAIN_WINDOW_ID);
+      expect(idsIn('w2')).toEqual([]);
+      expect(service.activeTabIdIn('w2')()).toBeUndefined();
+    });
+
+    it('moveToWindow_ignoresAnUnknownTab_andAMoveToItsOwnWindow', () => {
+      const a: Tab = service.open('code');
+
+      service.moveToWindow('tab-nope', 'w2');
+      service.moveToWindow(a.id, MAIN_WINDOW_ID);
+
+      expect(idsIn('w2')).toEqual([]);
+      expect(service.activeTabId()).toBe(a.id);
+    });
+
+    it('openingInTheBackground_inAWindowWithNoTabs_makesItThatWindowsActiveTab', () => {
+      service.open('code');
+
+      const tab: Tab = service.open('markdown', undefined, { background: true, windowId: 'w2' });
+
+      expect(service.activeTabIdIn('w2')()).toBe(tab.id);
+      expect(service.focusedWindow()).toBe(MAIN_WINDOW_ID);
+    });
+
+    it('moveToWindow_putsTheTabAtTheEndOfTheWindowsStrip', () => {
+      const a: Tab = service.open('code');
+      const b: Tab = service.open('code', undefined, { windowId: 'w2' });
+      const c: Tab = service.open('markdown', undefined, { windowId: MAIN_WINDOW_ID });
+
+      service.moveToWindow(a.id, 'w2');
+
+      expect(idsIn('w2')).toEqual([b.id, a.id]);
+      expect(idsIn(MAIN_WINDOW_ID)).toEqual([c.id]);
+    });
+
+    it('pinnedTabs_stayAtTheFrontOfEachWindow_whateverIsMovedAndReordered', () => {
+      const code: Tab = service.open('code');
+      const other: Tab = service.open('markdown', undefined, { windowId: 'w2' });
+      const settings: Tab = service.open('settings', undefined, { windowId: 'w2' });
+      const mission: Tab = service.open('mission-control', undefined, { windowId: MAIN_WINDOW_ID });
+
+      expect(idsIn('w2')).toEqual([settings.id, other.id]);
+      expect(idsIn(MAIN_WINDOW_ID)).toEqual([mission.id, code.id]);
+
+      service.moveToWindow(mission.id, 'w2');
+      expect(idsIn('w2')).toEqual([settings.id, mission.id, other.id]);
+
+      // Neither a pinned tab nor a move ahead of them shifts the front of the strip.
+      service.reorder(0, 2, 'w2');
+      service.reorder(2, 0, 'w2');
+      expect(idsIn('w2')).toEqual([settings.id, mission.id, other.id]);
+    });
+
+    it('reorder_withNoWindowNamed_actsOnTheWindowInFront', () => {
+      service.open('code', undefined, { windowId: MAIN_WINDOW_ID });
+      const b: Tab = service.open('code', undefined, { windowId: 'w2' });
+      const c: Tab = service.open('markdown', undefined, { windowId: 'w2' });
+
+      service.reorder(1, 0);
+
+      expect(idsIn('w2')).toEqual([c.id, b.id]);
+    });
+
+    it('forgetWindow_bringsTheFirstWindowToTheFront_whenTheForgottenOneWasThere', () => {
+      const a: Tab = service.open('code');
+      const b: Tab = service.open('code', undefined, { windowId: 'w2' });
+      service.moveToWindow(b.id, MAIN_WINDOW_ID);
+      service.focusWindow('w2');
+
+      service.forgetWindow('w2');
+
+      expect(service.focusedWindow()).toBe(MAIN_WINDOW_ID);
+      expect(service.activeTabId()).toBe(b.id);
+      expect(idsIn(MAIN_WINDOW_ID)).toEqual([a.id, b.id]);
+    });
   });
 });

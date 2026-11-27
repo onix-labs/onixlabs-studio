@@ -4,7 +4,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { Icon } from '@shared/angular/icons/icon';
 import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { TabCloser } from '@shared/angular/services/tab-closer/tab-closer';
-import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { SHELL_WINDOW, Tabs } from '@shared/angular/services/tabs/tabs';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { MENU_POSITIONS } from '@shared/angular/components/menu/menu-position';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
@@ -97,16 +97,23 @@ export class TitleStripTabMenu {
   private readonly tabCloser: TabCloser = inject(TabCloser);
 
   /**
-   * Gets the identifier of the active tab, or undefined when no tab is open.
+   * Holds the Studio window this belongs to, whose tabs it shows (#1587).
    */
-  protected readonly activeTabId: Signal<string | undefined> = this.tabsService.activeTabId;
+  private readonly windowId: string = inject(SHELL_WINDOW);
+
+  /**
+   * Gets the identifier of this window's active tab, or undefined when it has none.
+   */
+  protected readonly activeTabId: Signal<string | undefined> = this.tabsService.activeTabIdIn(
+    this.windowId,
+  );
 
   /**
    * Gets the open tabs grouped by category, omitting categories with no open tabs, so the menu lists
    * only the categories that are actually present.
    */
   protected readonly groups: Signal<readonly TabGroup[]> = computed((): readonly TabGroup[] => {
-    const open: readonly Tab[] = this.tabsService.tabs();
+    const open: readonly Tab[] = this.tabsService.tabsIn(this.windowId)();
     return TAB_CATEGORY_ORDER.map((label: string): TabGroup => ({
       label,
       // Filtered from the open tabs rather than gathered per type, so tabs sharing a heading keep
