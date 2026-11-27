@@ -5,7 +5,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { ShellInfo } from '@shared/api/terminal-channels';
 import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
 import { MenuContribution, MenuEntry } from '@shared/angular/services/app-menu/app-menu-model';
-import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { MAIN_WINDOW_ID, Tabs } from '@shared/angular/services/tabs/tabs';
 import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
 import { TerminalShells } from '@shared/angular/services/terminal-shells/terminal-shells';
 import { TerminalCommands } from '@features/terminal/angular/terminal-commands/terminal-commands';
@@ -141,6 +141,8 @@ describe('TerminalRibbon', () => {
             activeTabId: signal<string | undefined>('term-1'),
             // The ribbon acts on its own window's active tab (#1587).
             activeTabIdIn: (): Signal<string | undefined> => signal<string | undefined>('term-1'),
+            // Its menu is offered while its window is in front.
+            focusedWindow: signal<string>(MAIN_WINDOW_ID),
           },
         },
         { provide: TabDocks, useValue: docksStub },
