@@ -464,7 +464,9 @@ describe('Keybindings on macOS', () => {
   it('formatChord_writesDeleteBackspaceAndEnter_asAMacsMenusDo', (): void => {
     expect(keybindings.formatChord('Mod+Backspace')).toBe('⌘⌫');
     expect(keybindings.formatChord('Delete')).toBe('⌦');
-    expect(keybindings.formatChord('Enter')).toBe('↩');
+    // Drawn as text, not as the emoji the arrow also has (U+FE0E).
+    expect(keybindings.formatChord('Enter')).toBe('↩\uFE0E');
+    expect(keybindings.chordKeys('Enter')).toEqual(['↩\uFE0E']);
   });
 
   it('keepsControl_apartFromCommand', (): void => {

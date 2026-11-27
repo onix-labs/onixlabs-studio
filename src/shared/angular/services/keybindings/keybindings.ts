@@ -113,11 +113,15 @@ const KEY_SYMBOLS: Readonly<Record<string, string>> = {
 /**
  * Maps the keys a Mac labels with a symbol, as its own menus show them. Other platforms print the
  * key's name on the key, so they show the name.
+ *
+ * Return's arrow is one of the few symbols that also has an emoji form, and the interface font names
+ * Apple Color Emoji among its fallbacks, so the arrow alone is drawn as a blue emoji tile. The text
+ * variation selector after it (U+FE0E) asks for the plain glyph.
  */
 const MAC_KEY_SYMBOLS: Readonly<Record<string, string>> = {
   Backspace: '⌫',
   Delete: '⌦',
-  Enter: '↩',
+  Enter: '↩\uFE0E',
 };
 
 /**
