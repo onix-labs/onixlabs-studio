@@ -114,9 +114,19 @@ const PROBE_TIMEOUT_MS: number = 10_000;
  * server are disabled, so an invocation leaves no background processes behind — reused worker nodes
  * live ~15 minutes by design and survive the application, which is how a force-killed session kept
  * stalling the machine afterwards.
+ *
+ * The CLI's usage reporting and first-run banner are off too, as they are for the C# language server.
+ * Studio runs `dotnet` on the user's behalf, once or twice per project every time a solution opens,
+ * and each run spent time reporting itself (#1599).
  */
 function dotnetEnv(): NodeJS.ProcessEnv {
-  return { ...process.env, MSBUILDDISABLENODEREUSE: '1', DOTNET_CLI_USE_MSBUILD_SERVER: '0' };
+  return {
+    ...process.env,
+    MSBUILDDISABLENODEREUSE: '1',
+    DOTNET_CLI_USE_MSBUILD_SERVER: '0',
+    DOTNET_CLI_TELEMETRY_OPTOUT: '1',
+    DOTNET_NOLOGO: '1',
+  };
 }
 
 /**
