@@ -266,6 +266,17 @@ describe.skipIf(process.platform === 'win32')('DotnetProjectSystem with a toolch
       );
     });
 
+    it('runsMsbuild_withUsageReportingAndBackgroundProcessesOff (#1599)', async () => {
+      dotnet(
+        `echo "$DOTNET_CLI_TELEMETRY_OPTOUT $DOTNET_NOLOGO $MSBUILDDISABLENODEREUSE $DOTNET_CLI_USE_MSBUILD_SERVER" >> "${'${0}'}.env"
+echo '{"Properties":{"TargetFramework":"net10.0"},"Items":{"Compile":[{"Identity":"Program.cs"}]}}'`,
+      );
+
+      await provider.loadProjectItems(PROJECT(), TRUSTED_LOAD);
+
+      expect(readFileSync(path.join(bin, 'dotnet.env'), 'utf8').trim()).toBe('1 1 1 0');
+    });
+
     it('asksAgainForOneFramework_whenAProjectTargetsSeveral', async () => {
       dotnet(`case "$*" in
   *-p:TargetFramework=net8.0*) echo '{"Items":{"Compile":[{"Identity":"Pinned.cs"}]}}' ;;
