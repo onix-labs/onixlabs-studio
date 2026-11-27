@@ -753,15 +753,35 @@ describe('WindowManager', () => {
       expect(options).toMatchObject({ x: 1520, y: 780 });
     });
 
-    it.each(['move', 'resize', 'enter-full-screen', 'leave-full-screen'])(
+    /**
+     * Holds the events a parented modal follows its parent on.
+     */
+    const PARENT_EVENTS: readonly string[] = [
+      'move',
+      'resize',
+      'enter-full-screen',
+      'leave-full-screen',
+      'restore',
+    ];
+
+    /**
+     * Opens a 400×300 modal over a visible parent.
+     * @returns Returns the parent and the modal.
+     */
+    function parentedModal(): { parent: FakeWindow; modal: FakeWindow } {
+      const parent: FakeWindow = new FakeWindow();
+      parent.visible = true;
+      const modal: FakeWindow = new FakeWindow();
+      modal.bounds = { x: 0, y: 0, width: 400, height: 300 };
+      manager.modalWindowOptions('width=400,height=300', real(parent));
+      manager.adoptModalWindow(real(modal), CHILD_NAME);
+      return { parent, modal };
+    }
+
+    it.each(PARENT_EVENTS)(
       'adopt_recentresOverTheParent_whenTheParentFires %s',
       (event: string) => {
-        const parent: FakeWindow = new FakeWindow();
-        parent.visible = true;
-        const modal: FakeWindow = new FakeWindow();
-        modal.bounds = { x: 0, y: 0, width: 400, height: 300 };
-        manager.modalWindowOptions('width=400,height=300', real(parent));
-        manager.adoptModalWindow(real(modal), CHILD_NAME);
+        const { parent, modal } = parentedModal();
 
         parent.bounds = { x: 300, y: 100, width: 1200, height: 800 };
         parent.emit(event);
@@ -771,12 +791,7 @@ describe('WindowManager', () => {
     );
 
     it('adopt_recentresOverTheParent_heldOnItsDisplay', () => {
-      const parent: FakeWindow = new FakeWindow();
-      parent.visible = true;
-      const modal: FakeWindow = new FakeWindow();
-      modal.bounds = { x: 0, y: 0, width: 400, height: 300 };
-      manager.modalWindowOptions('width=400,height=300', real(parent));
-      manager.adoptModalWindow(real(modal), CHILD_NAME);
+      const { parent, modal } = parentedModal();
 
       // Dragged mostly off the right of the display: the modal stays wholly on it.
       parent.bounds = { x: 1800, y: 100, width: 1000, height: 800 };
@@ -785,17 +800,51 @@ describe('WindowManager', () => {
       expect(modal.bounds).toMatchObject({ x: 1520, y: 350 });
     });
 
+    it('adopt_leavesTheModalWhereItIs_whenAlreadyCentred', () => {
+      const { parent, modal } = parentedModal();
+      parent.bounds = { x: 300, y: 100, width: 1200, height: 800 };
+      parent.emit('move');
+      const moves: number = modal.calls.filter((call: string): boolean =>
+        call.startsWith('setPosition'),
+      ).length;
+
+      // macOS has already carried the child along with its parent.
+      parent.emit('move');
+
+      expect(
+        modal.calls.filter((call: string): boolean => call.startsWith('setPosition')),
+      ).toHaveLength(moves);
+    });
+
+    it('adopt_leavesTheModalAlone_whileTheParentIsMinimized', () => {
+      const { parent, modal } = parentedModal();
+
+      // Windows parks a minimized window far off screen.
+      parent.minimized = true;
+      parent.bounds = { x: -32000, y: -32000, width: 160, height: 28 };
+      parent.emit('move');
+
+      expect(modal.bounds).toMatchObject({ x: 0, y: 0 });
+    });
+
     it('adopt_stopsFollowingTheParent_onceTheModalCloses', () => {
-      const parent: FakeWindow = new FakeWindow();
-      parent.visible = true;
-      const modal: FakeWindow = new FakeWindow();
-      manager.modalWindowOptions('width=400,height=300', real(parent));
-      manager.adoptModalWindow(real(modal), CHILD_NAME);
+      const { parent, modal } = parentedModal();
 
       modal.emit('closed');
 
-      expect(parent.listenerCount('move')).toBe(0);
-      expect(parent.listenerCount('resize')).toBe(0);
+      for (const event of PARENT_EVENTS) {
+        expect(parent.listenerCount(event)).toBe(0);
+      }
+    });
+
+    it('adopt_ignoresTheParent_onceTheParentIsDestroyed', () => {
+      const { parent, modal } = parentedModal();
+      parent.destroyed = true;
+
+      parent.emit('move');
+
+      expect(modal.bounds).toMatchObject({ x: 0, y: 0 });
+      expect((): void => modal.emit('closed')).not.toThrow();
     });
 
     it('adopt_hardensTheWindow', () => {

@@ -886,9 +886,8 @@ export class WindowManager {
    * Rescales a modal window for a change of Interface Zoom. Its opener sized it, and set its limits,
    * from CSS pixels, which the zoom draws larger or smaller on screen: so the size and limits it
    * means to have (see {@link ModalSizing}) are worked out again at the new zoom, about the window's
-   * centre. The renderer cannot do this
-   * itself, because its window may not be resized past limits only the main process can change, and
-   * the limits must move first.
+   * centre. The renderer cannot do this itself, because its window may not be resized past limits
+   * only the main process can change, and the limits must move first.
    *
    * Nothing is allowed past the display's work area: a modal that filled most of the screen at 100%
    * would otherwise open off it at 200%. Its content scrolls instead. Because the size is worked out
@@ -1032,13 +1031,16 @@ export class WindowManager {
    * input through its title strip and its edges while the modal is up, so it can be moved, resized,
    * maximized or taken full screen beneath it. macOS carries a child window along when its parent
    * moves, but nothing else; Windows and Linux do not even do that. Whatever the change, the modal is
-   * put back in the middle of its parent, held on the parent's display.
+   * put back in the middle of its parent, held on the display that holds most of the parent (so a
+   * parent straddling two displays has its modal wholly on one of them, not split across both).
+   * A minimized parent is left alone: Windows parks it far off screen, and the modal follows it back
+   * when it is restored.
    * @param window The modal window.
    * @param parent The window it is centred over.
    */
   private followParent(window: BrowserWindow, parent: BrowserWindow): void {
     const recentre: () => void = (): void => {
-      if (window.isDestroyed() || parent.isDestroyed()) {
+      if (window.isDestroyed() || parent.isDestroyed() || parent.isMinimized()) {
         return;
       }
       const bounds: Electron.Rectangle = parent.getBounds();
@@ -1060,6 +1062,7 @@ export class WindowManager {
     parent.on('resize', recentre);
     parent.on('enter-full-screen', recentre);
     parent.on('leave-full-screen', recentre);
+    parent.on('restore', recentre);
     window.once('closed', (): void => {
       if (parent.isDestroyed()) {
         return;
@@ -1068,6 +1071,7 @@ export class WindowManager {
       parent.off('resize', recentre);
       parent.off('enter-full-screen', recentre);
       parent.off('leave-full-screen', recentre);
+      parent.off('restore', recentre);
     });
   }
 
