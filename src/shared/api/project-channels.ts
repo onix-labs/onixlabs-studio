@@ -17,6 +17,12 @@ export enum ProjectChannel {
   ItemsLoad = 'project:items-load',
 
   /**
+   * Reads a root's last evaluated project contents, kept from an earlier session, so the Solution
+   * Explorer can show the tree at once while it evaluates the projects again (#1601) (invoke).
+   */
+  ItemsCached = 'project:items-cached',
+
+  /**
    * Renames a solution folder within a root's solution file (invoke).
    */
   SolutionFolderRename = 'project:solution-folder-rename',
