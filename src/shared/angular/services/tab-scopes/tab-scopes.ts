@@ -5,6 +5,7 @@ import {
   EnvironmentInjector,
   inject,
   InjectionToken,
+  OnDestroy,
   Provider,
   ProviderToken,
   Service,
@@ -32,10 +33,25 @@ export interface TabScopedProviders {
 }
 
 /**
+ * Describes a tab's scope as the content host hands it to the tab's view.
+ */
+export interface TabScope {
+  /**
+   * Gets the scope.
+   */
+  readonly injector: EnvironmentInjector;
+
+  /**
+   * Gets what the scope was made with, so a view only takes the scope of its own kind of tab: one
+   * nested in another kind's view must not take that view's.
+   */
+  readonly scoped: TabScopedProviders;
+}
+
+/**
  * Carries a tab's scope to its view, from the content host that renders it.
  */
-export const TAB_SCOPE: InjectionToken<EnvironmentInjector> =
-  new InjectionToken<EnvironmentInjector>('TAB_SCOPE');
+export const TAB_SCOPE: InjectionToken<TabScope> = new InjectionToken<TabScope>('TAB_SCOPE');
 
 /**
  * Holds the scope a view resolves its tab-scoped services from: its tab's, or one of its own when it
@@ -58,9 +74,9 @@ export function provideTabScoped(scoped: TabScopedProviders): Provider[] {
     {
       provide: VIEW_SCOPE,
       useFactory: (): EnvironmentInjector => {
-        const tabScope: EnvironmentInjector | null = inject(TAB_SCOPE, { optional: true });
-        if (tabScope !== null) {
-          return tabScope;
+        const tabScope: TabScope | null = inject(TAB_SCOPE, { optional: true });
+        if (tabScope?.scoped === scoped) {
+          return tabScope.injector;
         }
         const own: EnvironmentInjector = createEnvironmentInjector(
           scoped.providers(),
@@ -82,7 +98,7 @@ export function provideTabScoped(scoped: TabScopedProviders): Provider[] {
  * closed and its views are gone, never while it moves between windows.
  */
 @Service()
-export class TabScopes {
+export class TabScopes implements OnDestroy {
   /**
    * Holds the root environment, every scope's parent.
    */
@@ -130,6 +146,16 @@ export class TabScopes {
         });
       }
     });
+  }
+
+  /**
+   * Ends every scope with the application.
+   */
+  public ngOnDestroy(): void {
+    for (const scope of this.scopes.values()) {
+      scope.destroy();
+    }
+    this.scopes.clear();
   }
 
   /**

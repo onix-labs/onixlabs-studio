@@ -1089,7 +1089,9 @@ export class AgentChat implements OnInit {
     this.perf.transcriptMounted();
     this.destroyRef.onDestroy((): void => this.perf.transcriptUnmounted());
 
-    this.watchOnScreen();
+    // Once rendered: before that its host is not yet in the window it shows in, and an observer made
+    // for the wrong window never sees it on screen (#1587).
+    afterNextRender((): void => this.watchOnScreen());
     // The tail marker is in this component's own view, so it exists only once that view has been
     // rendered — unlike the host element, which is there from construction.
     afterNextRender((): void => this.watchTail());

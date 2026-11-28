@@ -65,6 +65,12 @@ export interface AgentRequestEntry {
 @Service()
 export class AgentRequests {
   /**
+   * Holds the sources onto an agent another surface already holds, oldest first, each waiting to take
+   * over when the one ahead of it goes.
+   */
+  private reserve: AgentRequestSource[] = [];
+
+  /**
    * Holds the registered conversation sources.
    */
   private readonly sources: WritableSignal<readonly AgentRequestSource[]> = signal<
@@ -139,8 +145,10 @@ export class AgentRequests {
    *
    * A live agent maps to exactly one source: if the same {@link Agent} instance is already registered
    * (an IDE view registers its agent up front, and the same agent's docked chat would otherwise
-   * register it again when its panel mounts), the duplicate is dropped and its unregister is a no-op,
-   * so its requests are not counted twice.
+   * register it again when its panel mounts), the duplicate is held in reserve rather than counted, so
+   * its requests are not counted twice. A reserve takes over when the source ahead of it goes: a tab
+   * moving to another window (#1587) re-creates its views, and the new window's may register before
+   * the old window's have let go.
    * @param source The conversation source.
    * @returns Returns a function that unregisters it.
    */
@@ -150,8 +158,12 @@ export class AgentRequests {
         (existing: AgentRequestSource): boolean => existing.agent === source.agent,
       )
     ) {
+      // Another surface onto the same agent holds it; this one waits in reserve.
+      this.reserve.push(source);
       return (): void => {
-        // Already registered by another surface onto the same agent; nothing to remove.
+        this.reserve = this.reserve.filter(
+          (waiting: AgentRequestSource): boolean => waiting !== source,
+        );
       };
     }
     this.sources.update((current: readonly AgentRequestSource[]): readonly AgentRequestSource[] => [
@@ -164,6 +176,21 @@ export class AgentRequests {
         current.filter((existing: AgentRequestSource): boolean => existing !== source),
       );
       this.log.trace('AgentRequests', 'Request source unregistered');
+      // The next surface onto the same agent takes its place.
+      const next: AgentRequestSource | undefined = this.reserve.find(
+        (waiting: AgentRequestSource): boolean => waiting.agent === source.agent,
+      );
+      if (next !== undefined) {
+        this.reserve = this.reserve.filter(
+          (waiting: AgentRequestSource): boolean => waiting !== next,
+        );
+        this.sources.update(
+          (current: readonly AgentRequestSource[]): readonly AgentRequestSource[] => [
+            ...current,
+            next,
+          ],
+        );
+      }
     };
   }
 

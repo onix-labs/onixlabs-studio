@@ -83,7 +83,10 @@ export class ContentHost {
           ? this.injector
           : Injector.create({
               providers: [
-                { provide: TAB_SCOPE, useValue: this.tabScopes.scopeFor(tab.id, scoped) },
+                {
+                  provide: TAB_SCOPE,
+                  useValue: { injector: this.tabScopes.scopeFor(tab.id, scoped), scoped },
+                },
               ],
               parent: this.injector,
             });

@@ -93,7 +93,12 @@ describe('tab scopes (#1587)', () => {
       elementInjector:
         scope === null
           ? root
-          : Injector.create({ providers: [{ provide: TAB_SCOPE, useValue: scope }], parent: root }),
+          : Injector.create({
+              providers: [
+                { provide: TAB_SCOPE, useValue: { injector: scope, scoped: STUB_SCOPE } },
+              ],
+              parent: root,
+            }),
     });
   }
 
@@ -158,5 +163,22 @@ describe('tab scopes (#1587)', () => {
 
     expect(sessions.ended).toBe(0);
     expect(scopes.scopeFor(tab.id, STUB_SCOPE).get(StubSession)).toBe(session);
+  });
+
+  it('aViewTakesOnlyItsOwnKindsScope_notTheOneOfAViewItIsNestedIn', () => {
+    const tab: Tab = tabs.open('directory');
+    const other: TabScopedProviders = { tokens: [], providers: (): Provider[] => [] };
+    const outer: EnvironmentInjector = scopes.scopeFor(tab.id, other);
+    const view: ComponentRef<StubTabView> = createComponent(StubTabView, {
+      environmentInjector: TestBed.inject(EnvironmentInjector),
+      elementInjector: Injector.create({
+        providers: [{ provide: TAB_SCOPE, useValue: { injector: outer, scoped: other } }],
+        parent: TestBed.inject(Injector),
+      }),
+    });
+
+    // Its own session, from a scope of its own, not a miss in the outer scope.
+    expect(view.instance.session).toBeInstanceOf(StubSession);
+    expect(sessions.made).toBe(1);
   });
 });

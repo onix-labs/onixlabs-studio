@@ -129,6 +129,12 @@ export const AGENT_HOST: InjectionToken<AgentHost> = new InjectionToken<AgentHos
 @Service()
 export class AgentHosts {
   /**
+   * Holds the registrations onto an agent another surface already holds, oldest first, each waiting
+   * to take over when the one ahead of it goes.
+   */
+  private reserve: AgentHost[] = [];
+
+  /**
    * Holds the registered live hosts.
    */
   private readonly hostList: WritableSignal<readonly AgentHost[]> = signal<readonly AgentHost[]>(
@@ -164,19 +170,23 @@ export class AgentHosts {
    *
    * A live agent maps to exactly one host: if the same {@link Agent} instance is already registered
    * (an IDE view registers its agent up front, and the same agent's docked chat would otherwise
-   * register it again when its panel mounts), the duplicate is dropped and its unregister is a no-op,
-   * so the up-front registration keeps ownership.
+   * register it again when its panel mounts), the duplicate is held in reserve rather than listed, so
+   * the up-front registration keeps ownership. A reserve takes over when the registration ahead of it
+   * goes: a tab moving to another window (#1587) re-creates its views, and the new window's may
+   * register before the old window's have let go.
    * @param host The host to register, without its assigned identity.
    * @returns Returns a function that unregisters the host.
    */
   public register(host: Omit<AgentHost, 'id'>): () => void {
-    if (this.hostList().some((existing: AgentHost): boolean => existing.agent === host.agent)) {
-      return (): void => {
-        // Already registered by another surface onto the same agent; nothing to remove.
-      };
-    }
     this.sequence += 1;
     const full: AgentHost = { ...host, id: `agent-host-${this.sequence}` };
+    if (this.hostList().some((existing: AgentHost): boolean => existing.agent === host.agent)) {
+      // Another surface onto the same agent holds it; this one waits in reserve.
+      this.reserve.push(full);
+      return (): void => {
+        this.reserve = this.reserve.filter((waiting: AgentHost): boolean => waiting !== full);
+      };
+    }
     this.hostList.update((current: readonly AgentHost[]): readonly AgentHost[] => [
       ...current,
       full,
@@ -187,6 +197,18 @@ export class AgentHosts {
         current.filter((existing: AgentHost): boolean => existing !== full),
       );
       this.log.info('AgentHosts', 'Host unregistered', full.id);
+      // The next surface onto the same agent takes its place.
+      const next: AgentHost | undefined = this.reserve.find(
+        (waiting: AgentHost): boolean => waiting.agent === full.agent,
+      );
+      if (next !== undefined) {
+        this.reserve = this.reserve.filter((waiting: AgentHost): boolean => waiting !== next);
+        this.hostList.update((current: readonly AgentHost[]): readonly AgentHost[] => [
+          ...current,
+          next,
+        ]);
+        this.log.info('AgentHosts', 'Host registered from reserve', next.id, next.tabId);
+      }
     };
   }
 
