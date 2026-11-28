@@ -22,6 +22,7 @@ import { Log } from '@shared/angular/services/log/log';
 import { Workspaces } from '@shared/angular/services/workspaces/workspaces';
 import { Worktrees } from '@shared/angular/services/worktree/worktrees';
 import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-session';
+import { WorkspaceViewScope } from './workspace-view-scope';
 import { DirectoryHost } from './directory-host';
 
 /**
@@ -252,7 +253,9 @@ describe('DirectoryHost', () => {
       imports: [DirectoryHost],
       providers: [{ provide: Worktrees, useValue: { client } }],
     });
-    TestBed.overrideComponent(DirectoryHost, { set: { imports: [StubDirectoryView] } });
+    TestBed.overrideComponent(DirectoryHost, {
+      set: { imports: [StubDirectoryView, WorkspaceViewScope] },
+    });
   });
 
   afterEach((): void => {

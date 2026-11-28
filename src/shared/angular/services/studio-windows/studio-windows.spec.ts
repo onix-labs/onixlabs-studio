@@ -208,8 +208,8 @@ describe('StudioWindows (#1587)', () => {
     const only: Tab = tabs.open('code');
     expect(windows.canMove(only.id)).toBe(false);
 
-    const workspace: Tab = tabs.open('directory');
-    expect(windows.canMove(workspace.id)).toBe(false);
+    const explorer: Tab = tabs.open('api-explorer');
+    expect(windows.canMove(explorer.id)).toBe(false);
     expect(windows.canMove(only.id)).toBe(true);
   });
 

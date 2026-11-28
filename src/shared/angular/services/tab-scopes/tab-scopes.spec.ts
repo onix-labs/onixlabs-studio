@@ -3,6 +3,7 @@ import {
   Component,
   ComponentRef,
   createComponent,
+  DestroyRef,
   EnvironmentInjector,
   inject,
   Injectable,
@@ -13,7 +14,13 @@ import {
 import { TestBed } from '@angular/core/testing';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
-import { provideTabScoped, TAB_SCOPE, TabScopedProviders, TabScopes } from './tab-scopes';
+import {
+  provideTabScoped,
+  TAB_SCOPE,
+  tabScopedProviders,
+  TabScopedProviders,
+  TabScopes,
+} from './tab-scopes';
 
 /**
  * Counts how many sessions are made and ended, standing in for an agent's conversation.
@@ -180,5 +187,58 @@ describe('tab scopes (#1587)', () => {
     // Its own session, from a scope of its own, not a miss in the outer scope.
     expect(view.instance.session).toBeInstanceOf(StubSession);
     expect(sessions.made).toBe(1);
+  });
+
+  it('aPartsScope_sitsInItsTabs_andEndsAloneWhileTheTabStaysOpen', async () => {
+    const tab: Tab = tabs.open('directory');
+    const outer: EnvironmentInjector = scopes.scopeFor(tab.id, STUB_SCOPE);
+    const part: TabScopedProviders = { tokens: [], providers: (): Provider[] => [] };
+
+    const first: EnvironmentInjector = scopes.scopeFor(tab.id, part, { key: 'a', parent: outer });
+    const second: EnvironmentInjector = scopes.scopeFor(tab.id, part, { key: 'b', parent: outer });
+
+    // Each part has its own, and reaches what its tab keeps.
+    expect(second).not.toBe(first);
+    expect(scopes.scopeFor(tab.id, part, { key: 'a', parent: outer })).toBe(first);
+    expect(first.get(StubSession)).toBe(outer.get(StubSession));
+
+    scopes.endPart(tab.id, 'a');
+    TestBed.tick();
+    await Promise.resolve();
+
+    expect(scopes.scopeFor(tab.id, part, { key: 'a', parent: outer })).not.toBe(first);
+    expect(scopes.scopeFor(tab.id, part, { key: 'b', parent: outer })).toBe(second);
+    expect(scopes.scopeFor(tab.id, STUB_SCOPE)).toBe(outer);
+    expect(sessions.ended).toBe(0);
+  });
+
+  it('aClosedTab_endsItsPartsScopes_beforeItsOwn', async () => {
+    const tab: Tab = tabs.open('directory');
+    tabs.open('code');
+    const outer: EnvironmentInjector = scopes.scopeFor(tab.id, STUB_SCOPE);
+    const ended: string[] = [];
+    outer.get(StubSession);
+    outer.get(DestroyRef).onDestroy((): void => void ended.push('tab'));
+    const part: TabScopedProviders = { tokens: [], providers: (): Provider[] => [] };
+    scopes
+      .scopeFor(tab.id, part, { key: 'a', parent: outer })
+      .get(DestroyRef)
+      .onDestroy((): void => void ended.push('part'));
+
+    tabs.close(tab.id);
+    TestBed.tick();
+    await Promise.resolve();
+
+    expect(ended).toEqual(['part', 'tab']);
+    expect(sessions.ended).toBe(1);
+  });
+
+  it('derivesTheTokens_fromTheProvidersThatMakeThem', () => {
+    const scoped: TabScopedProviders = tabScopedProviders((): Provider[] => [
+      StubSession,
+      [{ provide: TAB_SCOPE, useValue: null }],
+    ]);
+
+    expect(scoped.tokens).toEqual([StubSession, TAB_SCOPE]);
   });
 });

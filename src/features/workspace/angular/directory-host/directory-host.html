@@ -1,6 +1,7 @@
 @switch (phase()) {
   @case ('single') {
     <app-directory-view
+      *appWorkspaceViewScope="'single'; tab: tabId()"
       [tabId]="tabId()"
       [isActive]="isActive()"
       [listing]="singleListing()"
@@ -15,6 +16,7 @@
         [class.directory-host__checkout--hidden]="entry.id !== session.activeId()"
       >
         <app-directory-view
+          *appWorkspaceViewScope="'checkout:' + entry.id; tab: tabId()"
           [tabId]="tabId()"
           [isActive]="isActive() && entry.id === session.activeId()"
           [listing]="entry.listing"

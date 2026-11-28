@@ -33,6 +33,28 @@ export interface TabScopedProviders {
 }
 
 /**
+ * Names the services a kind of tab keeps from the providers that make them: every one of them is
+ * resolved from the tab's scope. A token left off a hand-written list would quietly resolve to the
+ * application's own instance instead, so a long list is better derived than typed twice.
+ * @param providers Makes the providers of a fresh scope.
+ * @returns Returns the tab-scoped services.
+ */
+export function tabScopedProviders(providers: () => Provider[]): TabScopedProviders {
+  const tokens: ProviderToken<unknown>[] = [];
+  const collect: (provider: Provider) => void = (provider: Provider): void => {
+    if (Array.isArray(provider)) {
+      provider.forEach(collect);
+    } else if (typeof provider === 'function') {
+      tokens.push(provider);
+    } else if (typeof provider === 'object' && provider !== null && 'provide' in provider) {
+      tokens.push(provider.provide as ProviderToken<unknown>);
+    }
+  };
+  providers().forEach(collect);
+  return { tokens, providers };
+}
+
+/**
  * Describes a tab's scope as the content host hands it to the tab's view.
  */
 export interface TabScope {
@@ -115,15 +137,16 @@ export class TabScopes implements OnDestroy {
   private readonly log: Log = inject(Log);
 
   /**
-   * Holds each tab's scope, by tab id.
+   * Holds each tab's scopes, by tab id: its own, under the empty key, and any made for a part of it
+   * (a worktree checkout of a workspace tab, say), under that part's key.
    */
-  private readonly scopes: Map<string, EnvironmentInjector> = new Map<
+  private readonly scopes: Map<string, Map<string, EnvironmentInjector>> = new Map<
     string,
-    EnvironmentInjector
+    Map<string, EnvironmentInjector>
   >();
 
   /**
-   * Initializes a new instance of the {@link TabScopes} class, ending the scope of every tab that
+   * Initializes a new instance of the {@link TabScopes} class, ending the scopes of every tab that
    * closes.
    */
   public constructor() {
@@ -139,8 +162,7 @@ export class TabScopes implements OnDestroy {
         // their teardown still reaches what the scope holds.
         queueMicrotask((): void => {
           for (const tabId of closed) {
-            this.scopes.get(tabId)?.destroy();
-            this.scopes.delete(tabId);
+            this.endTab(tabId);
             this.log.debug('TabScopes', 'Ended the scope of a closed tab', tabId);
           }
         });
@@ -152,24 +174,72 @@ export class TabScopes implements OnDestroy {
    * Ends every scope with the application.
    */
   public ngOnDestroy(): void {
-    for (const scope of this.scopes.values()) {
-      scope.destroy();
+    for (const tabId of [...this.scopes.keys()]) {
+      this.endTab(tabId);
     }
-    this.scopes.clear();
   }
 
   /**
-   * Gets a tab's scope, making it the first time.
+   * Gets a tab's scope, or the scope of a part of it, making it the first time.
    * @param tabId The tab's identifier.
    * @param scoped The services its kind keeps.
+   * @param part The part of the tab the scope is for, with the scope it sits in, or undefined for the
+   * tab's own.
    * @returns Returns the scope.
    */
-  public scopeFor(tabId: string, scoped: TabScopedProviders): EnvironmentInjector {
-    let scope: EnvironmentInjector | undefined = this.scopes.get(tabId);
+  public scopeFor(
+    tabId: string,
+    scoped: TabScopedProviders,
+    part?: { readonly key: string; readonly parent: EnvironmentInjector },
+  ): EnvironmentInjector {
+    let scopes: Map<string, EnvironmentInjector> | undefined = this.scopes.get(tabId);
+    if (scopes === undefined) {
+      scopes = new Map<string, EnvironmentInjector>();
+      this.scopes.set(tabId, scopes);
+    }
+    const key: string = part?.key ?? '';
+    let scope: EnvironmentInjector | undefined = scopes.get(key);
     if (scope === undefined) {
-      scope = createEnvironmentInjector(scoped.providers(), this.environmentInjector, tabId);
-      this.scopes.set(tabId, scope);
+      scope = createEnvironmentInjector(
+        scoped.providers(),
+        part?.parent ?? this.environmentInjector,
+        part === undefined ? tabId : `${tabId}/${part.key}`,
+      );
+      scopes.set(key, scope);
     }
     return scope;
+  }
+
+  /**
+   * Ends the scope of a part of a tab that has gone while the tab stays open, such as a worktree
+   * checkout that was removed. A no-op when there is none.
+   * @param tabId The tab's identifier.
+   * @param key The part's key.
+   */
+  public endPart(tabId: string, key: string): void {
+    const scopes: Map<string, EnvironmentInjector> | undefined = this.scopes.get(tabId);
+    if (key === '' || scopes === undefined) {
+      return;
+    }
+    scopes.get(key)?.destroy();
+    scopes.delete(key);
+  }
+
+  /**
+   * Ends every scope of a tab, its parts' before its own, which they sit in.
+   * @param tabId The tab's identifier.
+   */
+  private endTab(tabId: string): void {
+    const scopes: Map<string, EnvironmentInjector> | undefined = this.scopes.get(tabId);
+    if (scopes === undefined) {
+      return;
+    }
+    for (const [key, scope] of scopes) {
+      if (key !== '') {
+        scope.destroy();
+      }
+    }
+    scopes.get('')?.destroy();
+    this.scopes.delete(tabId);
   }
 }

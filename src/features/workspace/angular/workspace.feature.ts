@@ -12,6 +12,7 @@ import { DEBUG_NOTIFICATION_TYPES } from './debug/debug-notification-types';
 import { PACKAGE_NOTIFICATION_TYPES } from './project/package-notification-types';
 import { WORKSPACE_KEYBINDINGS } from './workspace-keybindings';
 import { DirectoryHost } from './directory-host/directory-host';
+import { WORKSPACE_TAB_SCOPE } from './directory-host/directory-host-state';
 import { DirectoryRibbon } from './directory-ribbon/directory-ribbon';
 import { DirectoryStatusStrip } from './directory-status/directory-status-strip';
 import { AgentRunConfigurationCapabilities } from './agent-run-configuration-capabilities/agent-run-configuration-capabilities';
@@ -31,6 +32,9 @@ const workspaceFeature: FeatureDescriptor = {
   // The host decides what the tab is: a single workspace view, or a worktree container hosting one
   // kept-alive sub-view per checkout.
   view: DirectoryHost,
+  // The worktree session and what the tab has become outlive a move to another window (#1587); each
+  // workspace view keeps its own services in a scope inside this one.
+  tabScope: WORKSPACE_TAB_SCOPE,
   ribbon: DirectoryRibbon,
   // Mounted through the ACTIVE sub-view's injector, so a container tab reports the selected checkout.
   status: DirectoryStatusStrip,
