@@ -151,4 +151,32 @@ describe('AgentRequests', () => {
 
     expect(requests.count()).toBe(0);
   });
+
+  it('register_ofTheSameAgentTwice_countsItOnce_andTheReserveTakesOverWhenTheHolderGoes (#1587)', () => {
+    items.set([
+      {
+        id: 'item-1',
+        kind: 'permission',
+        text: '',
+        permissionId: 'p1',
+        permissionState: 'pending',
+      },
+    ]);
+    const agent: Agent = fakeAgent();
+    const oldWindow: () => void = requests.register({
+      agent,
+      tabId: (): string | null => 'tab-1',
+      label: (): string => 'old window',
+    });
+    requests.register({
+      agent,
+      tabId: (): string | null => 'tab-1',
+      label: (): string => 'new window',
+    });
+    expect(requests.count()).toBe(1);
+
+    oldWindow();
+
+    expect(requests.count()).toBe(1);
+  });
 });

@@ -5,7 +5,7 @@ import { MARKDOWN_KEYBINDINGS } from './markdown-keybindings';
 import { MarkdownDocumentPanel } from './markdown-document-panel/markdown-document-panel';
 import { MarkdownRibbon } from './markdown-ribbon/markdown-ribbon';
 import { MarkdownStatusStrip } from './markdown-status/markdown-status-strip';
-import { MarkdownView } from './markdown-view/markdown-view';
+import { MARKDOWN_TAB_SCOPE, MarkdownView } from './markdown-view/markdown-view';
 
 /**
  * Describes the markdown feature's contribution to the application shell: the leaf view mounted for
@@ -16,6 +16,7 @@ import { MarkdownView } from './markdown-view/markdown-view';
 const markdownFeature: FeatureDescriptor = {
   type: 'markdown',
   view: MarkdownView,
+  tabScope: MARKDOWN_TAB_SCOPE,
   ribbon: MarkdownRibbon,
   status: MarkdownStatusStrip,
   documentPanel: MarkdownDocumentPanel,

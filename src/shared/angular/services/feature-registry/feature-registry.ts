@@ -1,4 +1,5 @@
 import { inject, Service, signal, Type, WritableSignal } from '@angular/core';
+import type { TabScopedProviders } from '@shared/angular/services/tab-scopes/tab-scopes';
 import { Log } from '@shared/angular/services/log/log';
 import { DEFAULT_FEATURE_CHROME, FeatureChrome, FeatureDescriptor } from './feature-descriptor';
 
@@ -48,6 +49,15 @@ export class FeatureRegistry {
    */
   public viewFor(type: string | undefined): Type<unknown> | undefined {
     return type === undefined ? undefined : this.descriptors().get(type)?.view;
+  }
+
+  /**
+   * Gets the services a tab of the given type keeps for as long as it is open (#1587).
+   * @param type The tab type, or undefined.
+   * @returns Returns them, or undefined when the feature keeps none.
+   */
+  public tabScopeFor(type: string | undefined): TabScopedProviders | undefined {
+    return type === undefined ? undefined : this.descriptors().get(type)?.tabScope;
   }
 
   /**

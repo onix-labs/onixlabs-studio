@@ -1,7 +1,12 @@
 import { NgComponentOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, Injector, Signal } from '@angular/core';
 import { FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Tab } from '@shared/angular/services/tabs/tab';
+import {
+  TAB_SCOPE,
+  TabScopedProviders,
+  TabScopes,
+} from '@shared/angular/services/tab-scopes/tab-scopes';
 import { SHELL_WINDOW, Tabs } from '@shared/angular/services/tabs/tabs';
 import { DocumentConflictModal } from '@shared/angular/components/document-conflict-modal/document-conflict-modal';
 
@@ -47,4 +52,55 @@ export class ContentHost {
   protected readonly activeTabId: Signal<string | undefined> = this.tabsService.activeTabIdIn(
     this.windowId,
   );
+
+  /**
+   * Holds the tab scopes, so a view is handed its tab's whichever window shows it (#1587).
+   */
+  private readonly tabScopes: TabScopes = inject(TabScopes);
+
+  /**
+   * Holds this host's injector, the parent of each view's.
+   */
+  private readonly injector: Injector = inject(Injector);
+
+  /**
+   * Holds the injector each view is made under, by tab id, so a view is not re-created for a new one.
+   */
+  private readonly injectors: Map<string, Injector> = new Map<string, Injector>();
+
+  /**
+   * Gets the injector a tab's view is made under: one carrying its tab's scope, when its kind keeps
+   * one, so what the tab holds outlives the view (#1587).
+   * @param tab The tab.
+   * @returns Returns the injector.
+   */
+  protected injectorFor(tab: Tab): Injector {
+    let injector: Injector | undefined = this.injectors.get(tab.id);
+    if (injector === undefined) {
+      const scoped: TabScopedProviders | undefined = this.registry.tabScopeFor(tab.type);
+      injector =
+        scoped === undefined
+          ? this.injector
+          : Injector.create({
+              providers: [
+                {
+                  provide: TAB_SCOPE,
+                  useValue: { injector: this.tabScopes.scopeFor(tab.id, scoped), scoped },
+                },
+              ],
+              parent: this.injector,
+            });
+      this.injectors.set(tab.id, injector);
+    }
+    // Forget the injectors of tabs that have left this window.
+    const shown: ReadonlySet<string> = new Set<string>(
+      this.tabs().map((each: Tab): string => each.id),
+    );
+    for (const tabId of [...this.injectors.keys()]) {
+      if (!shown.has(tabId)) {
+        this.injectors.delete(tabId);
+      }
+    }
+    return injector;
+  }
 }

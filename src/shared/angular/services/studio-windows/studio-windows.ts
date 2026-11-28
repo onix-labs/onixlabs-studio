@@ -27,12 +27,18 @@ import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { MAIN_WINDOW_ID, Tabs } from '@shared/angular/services/tabs/tabs';
 
 /**
- * Lists the kinds of tab whose state survives a move between windows: their documents live outside
- * the view, and their views keep them through a move. A workspace, an agent and the explorers own
- * their state through their views, and would start again in their new window, so they stay where they
- * are until that state is tab-scoped (step 3 of #1587).
+ * Lists the kinds of tab whose state survives a move between windows: what they hold lives outside the
+ * view (their documents, their shell, the scope their tab keeps for its agent), and their views keep
+ * it through a move. A workspace and the explorers own their state through their views, and would
+ * start again in their new window, so they stay where they are until that state is tab-scoped too
+ * (#1587).
  */
-const MOVABLE_TAB_TYPES: ReadonlySet<TabType> = new Set<TabType>(['code', 'markdown', 'terminal']);
+const MOVABLE_TAB_TYPES: ReadonlySet<TabType> = new Set<TabType>([
+  'code',
+  'markdown',
+  'terminal',
+  'agent',
+]);
 
 /**
  * Describes a Studio window other than the first.

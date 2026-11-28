@@ -10,7 +10,7 @@ import { AGENT_KEYBINDINGS } from './agent-keybindings';
 import { AgentEditorCapabilities } from './agent-editor-capabilities/agent-editor-capabilities';
 import { AgentRibbon } from './agent-ribbon/agent-ribbon';
 import { AgentStatusStrip } from './agent-status/agent-status-strip';
-import { AgentView } from './agent-view/agent-view';
+import { AGENT_TAB_SCOPE, AgentView } from './agent-view/agent-view';
 
 /**
  * Describes the agent feature's contribution to the application shell: the standalone agent-chat view
@@ -20,6 +20,7 @@ import { AgentView } from './agent-view/agent-view';
 const agentFeature: FeatureDescriptor = {
   type: 'agent',
   view: AgentView,
+  tabScope: AGENT_TAB_SCOPE,
   ribbon: AgentRibbon,
   status: AgentStatusStrip,
 };

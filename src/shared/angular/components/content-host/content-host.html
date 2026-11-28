@@ -2,7 +2,11 @@
   <div class="tab-view" [class.tab-view--hidden]="tab.id !== activeTabId()">
     @if (registry.viewFor(tab.type); as view) {
       <ng-container
-        *ngComponentOutlet="view; inputs: { tabId: tab.id, isActive: tab.id === activeTabId() }"
+        *ngComponentOutlet="
+          view;
+          inputs: { tabId: tab.id, isActive: tab.id === activeTabId() };
+          injector: injectorFor(tab)
+        "
       />
     }
   </div>

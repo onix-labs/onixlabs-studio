@@ -121,6 +121,29 @@ describe('AgentHosts', () => {
     expect(registry.hosts().length).toBe(1);
   });
 
+  it('unregister_ofTheHolder_handsTheAgentToTheNextRegistrationOntoIt (#1587)', () => {
+    // A tab moving to another window: its new view may register before its old one lets go.
+    const shared: FakeAgent = makeAgent();
+    const oldWindow: () => void = registry.register(makeHost(shared.agent, 'Old window'));
+    registry.register(makeHost(shared.agent, 'New window'));
+
+    oldWindow();
+
+    expect(registry.hosts().map((host: AgentHost): string => host.label())).toEqual(['New window']);
+  });
+
+  it('unregister_ofAReserve_leavesTheHolder', () => {
+    const shared: FakeAgent = makeAgent();
+    const holder: () => void = registry.register(makeHost(shared.agent, 'Holder'));
+    const reserve: () => void = registry.register(makeHost(shared.agent, 'Reserve'));
+
+    reserve();
+    holder();
+
+    // The reserve had already gone, so nothing takes the holder's place.
+    expect(registry.hosts()).toEqual([]);
+  });
+
   it('unregister_removesOnlyThatHost', () => {
     const first: () => void = registry.register(makeHost(makeAgent().agent, 'Alpha'));
     registry.register(makeHost(makeAgent().agent, 'Beta'));

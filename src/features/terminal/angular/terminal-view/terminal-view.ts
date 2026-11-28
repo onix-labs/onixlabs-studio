@@ -11,6 +11,7 @@ import {
   OnInit,
   output,
   OutputEmitterRef,
+  Provider,
   Signal,
   signal,
   untracked,
@@ -68,6 +69,22 @@ import {
   createViewInjectorRegistrar,
   ViewInjectorRegistrar,
 } from '@shared/angular/services/view-injectors/view-injector-registration';
+import {
+  provideTabScoped,
+  TabScopedProviders,
+} from '@shared/angular/services/tab-scopes/tab-scopes';
+
+/**
+ * A terminal tab's docked agent conversation, which a move to another window keeps. (#1587)
+ */
+export const TERMINAL_TAB_SCOPE: TabScopedProviders = {
+  tokens: [Agent, AgentConversation, AGENT_CONVERSATION_KIND],
+  providers: (): Provider[] => [
+    Agent,
+    AgentConversation,
+    { provide: AGENT_CONVERSATION_KIND, useValue: 'terminal' },
+  ],
+};
 
 /**
  * Represents the terminal feature view: the shared {@link Terminal} pane in the main group of
@@ -89,9 +106,7 @@ import {
     // One per terminal tab: the status strip reads this view's own context through its injector.
     TerminalStatus,
     ...dockProviders(TERMINAL_DOCK_BLUEPRINT),
-    Agent,
-    AgentConversation,
-    { provide: AGENT_CONVERSATION_KIND, useValue: 'terminal' },
+    ...provideTabScoped(TERMINAL_TAB_SCOPE),
   ],
 })
 export class TerminalView implements OnInit, OnDestroy {

@@ -5,7 +5,7 @@ import { CODE_KEYBINDINGS } from './code-keybindings';
 import { CodeDocumentPanel } from './code-document-panel/code-document-panel';
 import { CodeRibbon } from './code-ribbon/code-ribbon';
 import { CodeStatusStrip } from './code-status/code-status-strip';
-import { CodeView } from './code-view/code-view';
+import { CODE_TAB_SCOPE, CodeView } from './code-view/code-view';
 
 /**
  * Describes the code feature's contribution to the application shell: the leaf view mounted for each
@@ -16,6 +16,7 @@ import { CodeView } from './code-view/code-view';
 const codeFeature: FeatureDescriptor = {
   type: 'code',
   view: CodeView,
+  tabScope: CODE_TAB_SCOPE,
   ribbon: CodeRibbon,
   status: CodeStatusStrip,
   documentPanel: CodeDocumentPanel,

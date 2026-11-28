@@ -11,6 +11,7 @@ import {
   InputSignal,
   OnDestroy,
   OnInit,
+  Provider,
   Signal,
   signal,
   untracked,
@@ -101,6 +102,23 @@ import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
 import { encodingLabel } from '@shared/api/text-encodings';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { codeDocumentActions } from '@shared/angular/services/document-status/document-encoding-actions';
+import {
+  provideTabScoped,
+  TabScopedProviders,
+} from '@shared/angular/services/tab-scopes/tab-scopes';
+
+/**
+ * A code tab's docked agent conversation and what its generated-code panel shows, which a move to another window keeps. (#1587)
+ */
+export const CODE_TAB_SCOPE: TabScopedProviders = {
+  tokens: [Agent, AgentConversation, AGENT_CONVERSATION_KIND, GeneratedCodeState],
+  providers: (): Provider[] => [
+    Agent,
+    AgentConversation,
+    { provide: AGENT_CONVERSATION_KIND, useValue: 'code' },
+    GeneratedCodeState,
+  ],
+};
 
 /**
  * Represents the code editor view: the document-bound {@link CodeDocumentEditor} core (the shared
@@ -126,12 +144,8 @@ import { codeDocumentActions } from '@shared/angular/services/document-status/do
   // panel only while it shows, and the conversation (and an in-flight run) must outlive it — and register
   // with Mission Control whether or not the panel was ever opened.
   providers: [
-    Agent,
-    AgentConversation,
-    { provide: AGENT_CONVERSATION_KIND, useValue: 'code' },
+    ...provideTabScoped(CODE_TAB_SCOPE),
     ...dockProviders(CODE_DOCK_BLUEPRINT),
-    // What the generated-code panel shows, which outlives it.
-    GeneratedCodeState,
     // One per code tab: the status strip reads this view's own context through its injector.
     CodeStatus,
     // The tab answers its editors' finds — the code's and the generated code's — with its own Find

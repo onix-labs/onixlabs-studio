@@ -1089,7 +1089,9 @@ export class AgentChat implements OnInit {
     this.perf.transcriptMounted();
     this.destroyRef.onDestroy((): void => this.perf.transcriptUnmounted());
 
-    this.watchOnScreen();
+    // Once rendered: before that its host is not yet in the window it shows in, and an observer made
+    // for the wrong window never sees it on screen (#1587).
+    afterNextRender((): void => this.watchOnScreen());
     // The tail marker is in this component's own view, so it exists only once that view has been
     // rendered — unlike the host element, which is there from construction.
     afterNextRender((): void => this.watchTail());
@@ -1261,14 +1263,16 @@ export class AgentChat implements OnInit {
       if (rows.every((row: TranscriptRow): boolean => known.has(row.id))) {
         return;
       }
-      if (this.measuringScheduled || typeof requestAnimationFrame === 'undefined') {
+      const view: WindowProxy & typeof globalThis = this.ownWindow();
+      if (this.measuringScheduled || typeof view.requestAnimationFrame === 'undefined') {
         return;
       }
       this.measuringScheduled = true;
       // Two frames: the first lets the rows lay out and paint at their real size (which is when the
       // browser records the size it will remember), the second is when the class may safely come off.
-      requestAnimationFrame((): void => {
-        requestAnimationFrame((): void => {
+      // The chat's own window's frames: another window's stop while it is covered (#1587).
+      view.requestAnimationFrame((): void => {
+        view.requestAnimationFrame((): void => {
           this.measuringScheduled = false;
           const current: readonly TranscriptRow[] = untracked((): readonly TranscriptRow[] =>
             this.windowedRows(),
@@ -1331,6 +1335,15 @@ export class AgentChat implements OnInit {
   }
 
   /**
+   * Gets the window the chat is shown in, whose observers and frames it must use: with several Studio
+   * windows (#1587) that is not always the one the app runs in.
+   * @returns Returns the window.
+   */
+  private ownWindow(): WindowProxy & typeof globalThis {
+    return this.host.nativeElement.ownerDocument.defaultView ?? window;
+  }
+
+  /**
    * Watches this chat's own host element and records whether it is on screen, which is what gates the
    * transcript (see {@link onScreen}).
    *
@@ -1340,10 +1353,13 @@ export class AgentChat implements OnInit {
    * so. Where there is no observer the chat simply stays shown.
    */
   private watchOnScreen(): void {
-    if (typeof IntersectionObserver === 'undefined') {
+    const view: WindowProxy & typeof globalThis = this.ownWindow();
+    if (typeof view.IntersectionObserver === 'undefined') {
       return;
     }
-    const observer: IntersectionObserver = new IntersectionObserver(
+    // The chat's own window's observer: one made by another window judges against that window's
+    // page, where a chat in a second Studio window is never on screen (#1587).
+    const observer: IntersectionObserver = new view.IntersectionObserver(
       (entries: readonly IntersectionObserverEntry[]): void => {
         const latest: IntersectionObserverEntry | undefined = entries[entries.length - 1];
         if (latest !== undefined) {
@@ -1368,10 +1384,11 @@ export class AgentChat implements OnInit {
   private watchTail(): void {
     const element: HTMLElement | undefined = this.tailRef()?.nativeElement;
     const root: HTMLElement | undefined = this.messagesRef()?.nativeElement;
-    if (typeof IntersectionObserver === 'undefined' || element === undefined) {
+    const view: WindowProxy & typeof globalThis = this.ownWindow();
+    if (typeof view.IntersectionObserver === 'undefined' || element === undefined) {
       return;
     }
-    const observer: IntersectionObserver = new IntersectionObserver(
+    const observer: IntersectionObserver = new view.IntersectionObserver(
       (entries: readonly IntersectionObserverEntry[]): void => {
         const latest: IntersectionObserverEntry | undefined = entries[entries.length - 1];
         if (latest === undefined) {
