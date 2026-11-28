@@ -48,8 +48,8 @@ export class DockMain {
       const stack: StackNode = this.stack();
       this.geometry.registerGroup(stack.id, stack.role, this.hostElement.nativeElement);
     });
-    inject(DestroyRef).onDestroy((): void =>
-      this.geometry.unregisterGroup(this.stack().id, this.hostElement.nativeElement),
-    );
+    inject(DestroyRef).onDestroy((): void => {
+      this.geometry.unregisterGroup(this.stack().id, this.hostElement.nativeElement);
+    });
   }
 }

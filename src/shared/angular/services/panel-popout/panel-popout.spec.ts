@@ -789,14 +789,15 @@ describe('PanelPopout', () => {
   });
 
   describe('tearing down', () => {
-    it('destroy_closesTheWindowsWithoutTouchingTheDyingDock', async () => {
+    it('destroy_closesTheWindows_andPutsTheirPanelsBackInTheDock_whichCanOutliveTheView', async () => {
       popout.popOut('search');
       await flush();
 
       popout.ngOnDestroy();
 
       expect(opened(0).closeCount).toBe(1);
-      expect(collectPanelIds(state.layout())).not.toContain('search');
+      expect(collectPanelIds(state.layout())).toContain('search');
+      expect(popped.isPopped('search')).toBe(false);
     });
 
     it('destroy_takesTheHandlersAway', () => {

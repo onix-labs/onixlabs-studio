@@ -9,7 +9,6 @@ import {
   OnDestroy,
   OnInit,
   Signal,
-  signal,
   untracked,
   WritableSignal,
 } from '@angular/core';
@@ -21,22 +20,10 @@ import { Worktrees } from '@shared/angular/services/worktree/worktrees';
 import { Log } from '@shared/angular/services/log/log';
 import { DirectoryView } from '@features/workspace/angular/directory-view/directory-view';
 import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-session';
-
-/**
- * A checkout sub-view the host has materialised: the checkout id and the root listing its
- * {@link DirectoryView} was seeded with.
- */
-interface LoadedCheckout {
-  /**
-   * Gets the checkout id.
-   */
-  readonly id: string;
-
-  /**
-   * Gets the checkout's root listing.
-   */
-  readonly listing: DirectoryListing;
-}
+import { StudioWindows } from '@shared/angular/services/studio-windows/studio-windows';
+import { provideTabScoped } from '@shared/angular/services/tab-scopes/tab-scopes';
+import { DirectoryHostState, LoadedCheckout, WORKSPACE_TAB_SCOPE } from './directory-host-state';
+import { WorkspaceViewScope } from './workspace-view-scope';
 
 /**
  * Hosts one directory tab and decides what it is. An ordinary folder or repository renders a single
@@ -52,11 +39,13 @@ interface LoadedCheckout {
  */
 @Component({
   selector: 'app-directory-host',
-  imports: [DirectoryView],
+  imports: [DirectoryView, WorkspaceViewScope],
   templateUrl: './directory-host.html',
   styleUrl: './directory-host.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [WorktreeSession],
+  // The session and what the tab has become are kept in the tab's scope, so a move to another window
+  // (#1587) carries on with them.
+  providers: [...provideTabScoped(WORKSPACE_TAB_SCOPE)],
 })
 export class DirectoryHost implements OnInit, OnDestroy {
   /**
@@ -98,26 +87,31 @@ export class DirectoryHost implements OnInit, OnDestroy {
   private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
+   * Holds what the tab has become, kept for as long as the tab is open.
+   */
+  private readonly state: DirectoryHostState = inject(DirectoryHostState);
+
+  /**
+   * Holds the windows, which say whether the tab is moving to another.
+   */
+  private readonly studioWindows: StudioWindows = inject(StudioWindows);
+
+  /**
    * Holds what the tab currently renders: nothing (while the opened folder's kind resolves), the
    * single workspace view, or the container's checkout sub-views.
    */
-  protected readonly phase: WritableSignal<'resolving' | 'single' | 'container'> = signal<
-    'resolving' | 'single' | 'container'
-  >('resolving');
+  protected readonly phase: WritableSignal<'resolving' | 'single' | 'container'> = this.state.phase;
 
   /**
-   * Holds the single view's root listing, or null for a blank tab (the view shows its
-   * open-a-folder prompt).
+   * Holds the single view's root listing, or null for a blank tab.
    */
   protected readonly singleListing: WritableSignal<DirectoryListing | null> =
-    signal<DirectoryListing | null>(null);
+    this.state.singleListing;
 
   /**
    * Holds the materialised checkout sub-views, in first-activation order.
    */
-  protected readonly loaded: WritableSignal<readonly LoadedCheckout[]> = signal<
-    readonly LoadedCheckout[]
-  >([]);
+  protected readonly loaded: WritableSignal<readonly LoadedCheckout[]> = this.state.loaded;
 
   /**
    * Gets whether the active checkout's sub-view is still materialising (its listing is being read),
@@ -133,35 +127,10 @@ export class DirectoryHost implements OnInit, OnDestroy {
   });
 
   /**
-   * Holds the single view's announced workspace root, kept for the promotion flow.
-   */
-  private singleRoot: string | null = null;
-
-  /**
-   * Holds the checkout ids currently being materialised, so a re-fired effect never double-loads.
-   */
-  private readonly loading: Set<string> = new Set<string>();
-
-  /**
-   * Holds whether the tab has gone. What the main process answers afterwards must open nothing more,
-   * and a root it hands back has nobody left to close it but the call that asked for it.
-   */
-  private destroyed: boolean = false;
-
-  /**
-   * Holds whether a promotion is running. It moves the working copy on disk, so a second click must
-   * not start another over the top of it.
-   */
-  private promoting: boolean = false;
-
-  /**
    * Holds the agent conversation a promotion carries across, with the worktree whose view takes it
-   * over — the one the repository became — or null when there is none.
+   * over, or null when there is none.
    */
-  protected readonly carried: WritableSignal<{
-    readonly checkoutId: string;
-    readonly conversationId: string;
-  } | null> = signal<{ readonly checkoutId: string; readonly conversationId: string } | null>(null);
+  protected readonly carried: DirectoryHostState['carried'] = this.state.carried;
 
   /**
    * Holds the stable promote action handed to the single view (and through it to the ribbon). The
@@ -249,6 +218,11 @@ export class DirectoryHost implements OnInit, OnDestroy {
    * container must never flash open as a plain folder.
    */
   public ngOnInit(): void {
+    // A host made again after its tab moved to another window carries on with what the tab became.
+    if (this.state.started) {
+      return;
+    }
+    this.state.started = true;
     const initial: DirectoryListing | undefined = this.workspaces.takeInitial(this.tabId());
     if (initial === undefined) {
       this.phase.set('single');
@@ -259,10 +233,14 @@ export class DirectoryHost implements OnInit, OnDestroy {
 
   /**
    * Closes every workspace root the host claimed (the container root and its opened checkouts);
-   * sub-views leave those to the host.
+   * sub-views leave those to the host. A move to another window closes nothing.
    */
   public ngOnDestroy(): void {
-    this.destroyed = true;
+    // A move to another window is not the tab going: the host made there carries on with the roots.
+    if (this.studioWindows.moving().has(this.tabId())) {
+      return;
+    }
+    this.state.destroyed = true;
     for (const root of this.session.claimed()) {
       void this.closeRoot(root);
     }
@@ -275,10 +253,10 @@ export class DirectoryHost implements OnInit, OnDestroy {
    */
   private async adopt(listing: DirectoryListing): Promise<void> {
     const kind: WorkspaceKind | null = await this.resolveKind(listing.path);
-    if (!this.destroyed && kind === 'worktree' && (await this.enterContainer(listing.path))) {
+    if (!this.state.destroyed && kind === 'worktree' && (await this.enterContainer(listing.path))) {
       return;
     }
-    if (this.destroyed) {
+    if (this.state.destroyed) {
       // The tab went before any view took the folder over, so nothing else will close it.
       void this.closeRoot(listing.path);
       return;
@@ -315,7 +293,7 @@ export class DirectoryHost implements OnInit, OnDestroy {
       this.log.warn('directory-host', `Describing the container failed: ${String(error)}`);
       return false;
     }
-    if (descriptor === null || this.destroyed) {
+    if (descriptor === null || this.state.destroyed) {
       return false;
     }
     this.session.claimRoot(root);
@@ -331,7 +309,7 @@ export class DirectoryHost implements OnInit, OnDestroy {
    * @param root The announced root, or null when the view has no folder.
    */
   protected onSingleRoot(root: string | null): void {
-    this.singleRoot = root;
+    this.state.singleRoot = root;
     if (root === null || this.phase() !== 'single') {
       return;
     }
@@ -349,8 +327,8 @@ export class DirectoryHost implements OnInit, OnDestroy {
     if (
       kind !== 'worktree' ||
       this.phase() !== 'single' ||
-      this.destroyed ||
-      this.singleRoot !== root
+      this.state.destroyed ||
+      this.state.singleRoot !== root
     ) {
       return;
     }
@@ -371,16 +349,16 @@ export class DirectoryHost implements OnInit, OnDestroy {
    * @returns Returns a promise that resolves once the promotion settles.
    */
   private async promote(conversationId: string | null): Promise<void> {
-    const root: string | null = this.singleRoot;
+    const root: string | null = this.state.singleRoot;
     if (
       root === null ||
       this.phase() !== 'single' ||
       this.worktrees.client === undefined ||
-      this.promoting
+      this.state.promoting
     ) {
       return;
     }
-    this.promoting = true;
+    this.state.promoting = true;
     try {
       const outcome: WorktreeOutcome<WorktreeDescriptor> =
         await this.worktrees.client.promote(root);
@@ -388,7 +366,7 @@ export class DirectoryHost implements OnInit, OnDestroy {
         this.log.error('directory-host', `Promotion failed: ${outcome.error}`);
         return;
       }
-      if (this.destroyed) {
+      if (this.state.destroyed) {
         return;
       }
       this.session.claimRoot(root);
@@ -402,7 +380,7 @@ export class DirectoryHost implements OnInit, OnDestroy {
     } catch (error: unknown) {
       this.log.error('directory-host', `Promotion failed: ${String(error)}`);
     } finally {
-      this.promoting = false;
+      this.state.promoting = false;
     }
   }
 
@@ -415,24 +393,24 @@ export class DirectoryHost implements OnInit, OnDestroy {
    */
   private async loadCheckout(id: string): Promise<void> {
     const root: string | null = this.session.root();
-    if (root === null || this.worktrees.client === undefined || this.loading.has(id)) {
+    if (root === null || this.worktrees.client === undefined || this.state.loading.has(id)) {
       return;
     }
-    this.loading.add(id);
+    this.state.loading.add(id);
     try {
       const opened: WorktreeOutcome<string> = await this.worktrees.client.openCheckout(root, id);
       if (!opened.ok) {
         this.log.error('directory-host', `Opening the checkout failed: ${opened.error}`);
         return;
       }
-      if (this.destroyed) {
+      if (this.state.destroyed) {
         // Too late to claim: the host has already closed what it held, and this root was not in it.
         void this.closeRoot(opened.value);
         return;
       }
       this.session.claimRoot(opened.value);
       const listing: DirectoryListing | null = await this.readListing(opened.value);
-      if (listing === null || this.destroyed) {
+      if (listing === null || this.state.destroyed) {
         return;
       }
       if (!this.loaded().some((entry: LoadedCheckout): boolean => entry.id === id)) {
@@ -441,7 +419,7 @@ export class DirectoryHost implements OnInit, OnDestroy {
     } catch (error: unknown) {
       this.log.error('directory-host', `Opening the checkout failed: ${String(error)}`);
     } finally {
-      this.loading.delete(id);
+      this.state.loading.delete(id);
     }
   }
 

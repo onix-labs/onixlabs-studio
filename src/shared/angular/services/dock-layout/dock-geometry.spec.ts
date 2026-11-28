@@ -56,6 +56,18 @@ describe('DockGeometry', () => {
     expect(geometry.groupAt(50, 50)).toBeNull();
   });
 
+  it('unregisterGroup_byAnElementThatNoLongerHoldsIt_leavesTheNewRegistration', () => {
+    const old: HTMLElement = elementAt(0, 0, 100, 100);
+    const drawnAgain: HTMLElement = elementAt(0, 0, 100, 100);
+    geometry.registerGroup('stack-1', 'tool', old);
+    geometry.registerGroup('stack-1', 'tool', drawnAgain);
+
+    expect(geometry.unregisterGroup('stack-1', old)).toBe(false);
+    expect(geometry.groupAt(50, 50)?.stackId).toBe('stack-1');
+    expect(geometry.unregisterGroup('stack-1', drawnAgain)).toBe(true);
+    expect(geometry.groupAt(50, 50)).toBeNull();
+  });
+
   it('rectOf_whenGroupRegistered_returnsItsRectangle', () => {
     geometry.registerGroup('stack-1', 'tool', elementAt(10, 20, 30, 40));
 

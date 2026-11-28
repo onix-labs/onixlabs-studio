@@ -1,6 +1,16 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
-import { isModalWindow, modalWindow, MOD } from './helpers';
+import {
+  documentTab,
+  editorLines,
+  explorerRow,
+  isModalWindow,
+  modalWindow,
+  MOD,
+  openFolderFromWelcome,
+} from './helpers';
 import { adoptFakeHarnessConnection, seedFakeHarness } from './seeded-installs';
 
 /**
@@ -131,6 +141,91 @@ test.describe('Studio windows (#1587)', () => {
 
     await closed;
     await expect(page.locator('app-title-strip-tab [role="tab"]')).toHaveCount(1);
+  });
+});
+
+/**
+ * Records what every terminal prints, from now on. Terminals in every window print through the first
+ * window's bridge, so this hears them all.
+ * @param page The main application window.
+ */
+async function recordTerminals(page: Page): Promise<void> {
+  await page.evaluate((): void => {
+    const studio: {
+      bridge: { on: (channel: string, listener: (...args: unknown[]) => void) => () => void };
+      e2eTerminal?: string[];
+    } = window as never;
+    const recorded: string[] = [];
+    studio.e2eTerminal = recorded;
+    studio.bridge.on('terminal:data', (_id: unknown, data: unknown): void => {
+      recorded.push(data as string);
+    });
+  });
+}
+
+/**
+ * Reads what the terminals have printed so far.
+ * @param page The main application window.
+ * @returns Returns the output.
+ */
+function terminalOutput(page: Page): Promise<string> {
+  return page.evaluate((): string =>
+    (window as never as { e2eTerminal: string[] }).e2eTerminal.join(''),
+  );
+}
+
+/**
+ * Types a command into a window's terminal and runs it.
+ * @param window The window showing the terminal.
+ * @param command The command.
+ */
+async function runIn(window: Page, command: string): Promise<void> {
+  await window.locator('app-terminal .terminal.xterm:visible').click();
+  await window.keyboard.type(command);
+  await window.keyboard.press('Enter');
+}
+
+test.describe('a workspace moved to its own window (#1587)', () => {
+  test('keepsItsFolder_itsUnsavedEdit_andItsShell', async ({ app, page, scratch }) => {
+    const file: string = path.join(scratch, 'notes.txt');
+    fs.writeFileSync(file, 'first line\n');
+    await withTabWindows(app, page);
+    await recordTerminals(page);
+    await openFolderFromWelcome(app, page, scratch);
+    await explorerRow(page, file).dblclick();
+    await expect(editorLines(page)).toContainText('first line');
+    await editorLines(page).click();
+    await page.keyboard.press(`${MOD}+Home`);
+    await page.keyboard.type('edited ');
+    await documentTab(page, 'Terminal').click();
+    await expect(page.locator('app-terminal .terminal.xterm:visible')).toBeVisible();
+    await expect.poll((): Promise<string> => terminalOutput(page)).not.toBe('');
+    await runIn(page, 'kept=41; echo started$((kept))');
+    await expect.poll((): Promise<string> => terminalOutput(page)).toContain('started41');
+    // A window's only tab cannot move, so the workspace needs company.
+    await openTab(app, page, 'New Code File', 'app-code-view');
+
+    const window: Page = await moveToNewWindow(app, page, 'directory');
+
+    // The new window shows the same workspace: its folder, the edit not yet saved, and the shell
+    // that is still running, which remembers what it was told before the move.
+    await expect(window.locator('app-directory-view')).toBeVisible();
+    await expect(explorerRow(window, file)).toBeVisible();
+    await expect(editorLines(window)).toContainText('edited first line');
+    await expect(window.locator('app-terminal .terminal.xterm:visible')).toBeVisible();
+    await runIn(window, 'echo $((kept + 1))moved');
+    await expect.poll((): Promise<string> => terminalOutput(page)).toContain('42moved');
+    expect(fs.readFileSync(file, 'utf8')).toBe('first line\n');
+    await expect(page.locator('app-directory-view')).toHaveCount(0);
+
+    // Closing the window brings the workspace home, still the same.
+    await window.close();
+    await expect(page.locator('app-title-strip-tab [role="tab"]')).toHaveCount(2);
+    await page.locator('app-title-strip-tab [role="tab"][data-tab-type="directory"]').click();
+    await expect(editorLines(page)).toContainText('edited first line');
+    await documentTab(page, 'Terminal').click();
+    await runIn(page, 'echo $((kept + 2))home');
+    await expect.poll((): Promise<string> => terminalOutput(page)).toContain('43home');
   });
 });
 

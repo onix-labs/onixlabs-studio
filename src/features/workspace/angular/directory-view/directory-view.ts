@@ -11,6 +11,7 @@ import {
   OnInit,
   output,
   OutputEmitterRef,
+  Provider,
   Signal,
   untracked,
 } from '@angular/core';
@@ -53,7 +54,19 @@ import { DockFloating, FloatWindow } from '@shared/angular/services/dock-layout/
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
 import { DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
-import { dockProviders } from '@shared/angular/services/dock-layout/dock-providers';
+import { DOCK_BLUEPRINT } from '@shared/angular/services/dock-layout/dock-blueprint';
+import { DockAutoHide } from '@shared/angular/services/dock-layout/dock-auto-hide';
+import { DockDrag } from '@shared/angular/services/dock-layout/dock-drag';
+import { DockGeometry } from '@shared/angular/services/dock-layout/dock-geometry';
+import { DockGroupSizes } from '@shared/angular/services/dock-layout/dock-group-sizes';
+import { DockMinimums } from '@shared/angular/services/dock-layout/dock-minimums';
+import { DockRoom } from '@shared/angular/services/dock-layout/dock-room';
+import {
+  provideTabScoped,
+  tabScopedProviders,
+  TabScopedProviders,
+} from '@shared/angular/services/tab-scopes/tab-scopes';
+import { StudioWindows } from '@shared/angular/services/studio-windows/studio-windows';
 import { DockNode } from '@shared/angular/services/dock-layout/dock-node';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { restoreLayout } from '@shared/angular/services/dock-layout/dock-persistence';
@@ -162,6 +175,7 @@ import { WorkspaceAgentStart, Workspaces } from '@shared/angular/services/worksp
 import { CommitDetail } from '@shared/angular/components/panels/commit-detail/commit-detail';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
 import { WORKSPACE_DOCK_BLUEPRINT } from './workspace-dock-blueprint';
+import { WorkspaceViewMemory } from './workspace-view-memory';
 import { LAYOUT_TEMPLATES, SOURCE_CONTROL_TEMPLATE_ID } from './layout-templates';
 import { AutoAddedPanels } from './auto-added-panels';
 import { REPOSITORY_DOCK_BLUEPRINT } from '@shared/angular/components/panels/repository-dock-blueprint';
@@ -242,19 +256,14 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
 const AGENT_OPEN: OpenOptions = { background: true };
 
 /**
- * Hosts one workspace as a top-level directory tab: a complete IDE instance with its own dock,
- * explorer, document well, and panels. The workspace's state services are provided here so each
- * directory tab is independent of the others; the dock and everything inside it resolve this tab's
- * instances. On init the tab seeds its workspace from any folder stashed for it (when opened from
- * the welcome screen); a tab opened blank shows the explorer's "open a folder" prompt instead.
+ * Makes the services one workspace view keeps for as long as its tab is open, whichever window shows
+ * it (#1587): its folder, documents, language servers, repository, terminals, agent and dock.
+ * @returns Returns the providers.
  */
-@Component({
-  selector: 'app-directory-view',
-  imports: [DockContainer, WorktreeDialogs],
-  templateUrl: './directory-view.html',
-  styleUrl: './directory-view.scss',
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [
+function workspaceViewProviders(): Provider[] {
+  return [
+    // What this workspace's views have acted on, so a view made after a move does not act again.
+    WorkspaceViewMemory,
     Workspace,
     EntryRename,
     TypeRename,
@@ -271,8 +280,6 @@ const AGENT_OPEN: OpenOptions = { background: true };
     },
     DebugSession,
     LspClient,
-    // Go to Symbol in Workspace (#1146) searches this workspace's language servers.
-    WorkspaceSymbolPalette,
     SolutionModel,
     PackageModel,
     PackageExplorer,
@@ -330,51 +337,69 @@ const AGENT_OPEN: OpenOptions = { background: true };
     // destroy an inactive panel when another activates, and sessions scoped to the panel would tear
     // every PTY down on a tool-tab switch. Here they live as long as the tab.
     TerminalSessions,
-    // The dock framework, instantiated per dock-hosting view.
+    // The dock framework, kept with the rest of the tab's state so its layout, floating panels and
+    // auto-hidden sides outlive a move to another window (#1587). What is tied to the page the dock is
+    // drawn in (dragging, pop-outs) the view provides itself.
     //
     // The dock seeds from the root's ACTIVE LAYOUT rather than a persisted tree: the blueprint
     // carries no key (session rearrangements are ephemeral by ruling — every construction and
     // reset re-applies the layout's saved definition), and createLayout reads the layout store at
     // call time so DockState.reset() is exactly "apply the active layout".
-    ...dockProviders((): DockBlueprint => {
-      const layouts: Layouts = inject(Layouts);
-      const context: DockTabContext = inject(DockTabContext);
-      // Templates are registered and seeded HERE, not in the component's constructor, because of
-      // ordering: this factory runs while DockState is being built, which is a field initializer
-      // and so runs BEFORE any constructor body. Seeding afterwards would leave the very first tab
-      // of a fresh install showing the fallback while its seeded Default layout sat unused —
-      // and the re-seed-on-root effect would not correct it, since the root's layout and the
-      // default are then the same layout. Both calls are idempotent.
-      for (const template of LAYOUT_TEMPLATES) {
-        layouts.registerTemplate(template);
-      }
-      layouts.seedFromTemplates();
-      // The unified panel catalogue: the workspace panels plus the repository view's own
-      // (branches rail, history graph, commit detail) — shared-id panels (terminal, agent) keep
-      // the workspace definition. Any preset may arrange any of them.
-      const workspaceIds: ReadonlySet<string> = new Set<string>(
-        WORKSPACE_DOCK_BLUEPRINT.panels.map((panel: DockPanel): string => panel.id),
-      );
-      const panels: readonly DockPanel[] = [
-        ...WORKSPACE_DOCK_BLUEPRINT.panels,
-        ...REPOSITORY_DOCK_BLUEPRINT.panels.filter(
-          (panel: DockPanel): boolean => !workspaceIds.has(panel.id),
-        ),
-      ];
-      const known: ReadonlySet<string> = new Set<string>(
-        panels.map((panel: DockPanel): string => panel.id),
-      );
-      return {
-        panels,
-        createLayout: (): DockNode => {
-          const layout: DockNode | null = layouts.layoutForRoot(context.presetRoot());
-          return (
-            (layout !== null ? restoreLayout(layout, known) : null) ??
-            WORKSPACE_DOCK_BLUEPRINT.createLayout()
-          );
-        },
-      };
-    }),
+    DockTabContext,
+    DockPanelRegistry,
+    DockPanelAvailability,
+    DockState,
+    DockGeometry,
+    DockMinimums,
+    DockGroupSizes,
+    DockFocus,
+    DockFloating,
+    DockAutoHide,
+    DockReveal,
+    DockRoom,
+    PopoutPanels,
+    {
+      provide: DOCK_BLUEPRINT,
+      useFactory: (): DockBlueprint => {
+        const layouts: Layouts = inject(Layouts);
+        const context: DockTabContext = inject(DockTabContext);
+        // Templates are registered and seeded HERE, not in the component's constructor, because of
+        // ordering: this factory runs while DockState is being built, which is a field initializer
+        // and so runs BEFORE any constructor body. Seeding afterwards would leave the very first tab
+        // of a fresh install showing the fallback while its seeded Default layout sat unused —
+        // and the re-seed-on-root effect would not correct it, since the root's layout and the
+        // default are then the same layout. Both calls are idempotent.
+        for (const template of LAYOUT_TEMPLATES) {
+          layouts.registerTemplate(template);
+        }
+        layouts.seedFromTemplates();
+        // The unified panel catalogue: the workspace panels plus the repository view's own
+        // (branches rail, history graph, commit detail) — shared-id panels (terminal, agent) keep
+        // the workspace definition. Any preset may arrange any of them.
+        const workspaceIds: ReadonlySet<string> = new Set<string>(
+          WORKSPACE_DOCK_BLUEPRINT.panels.map((panel: DockPanel): string => panel.id),
+        );
+        const panels: readonly DockPanel[] = [
+          ...WORKSPACE_DOCK_BLUEPRINT.panels,
+          ...REPOSITORY_DOCK_BLUEPRINT.panels.filter(
+            (panel: DockPanel): boolean => !workspaceIds.has(panel.id),
+          ),
+        ];
+        const known: ReadonlySet<string> = new Set<string>(
+          panels.map((panel: DockPanel): string => panel.id),
+        );
+        return {
+          panels,
+          createLayout: (): DockNode => {
+            const layout: DockNode | null = layouts.layoutForRoot(context.presetRoot());
+            return (
+              (layout !== null ? restoreLayout(layout, known) : null) ??
+              WORKSPACE_DOCK_BLUEPRINT.createLayout()
+            );
+          },
+        };
+      },
+    },
     // The agent conversation lives at this view's level, not in the dock's agent panel: tool stacks
     // destroy an inactive panel when another activates, and a conversation scoped to the panel would
     // lose its transcript and in-flight run on every switch. Here it lives as long as the tab.
@@ -404,6 +429,38 @@ const AGENT_OPEN: OpenOptions = { background: true };
         };
       },
     },
+  ];
+}
+
+/**
+ * A workspace view's services, which a move to another window keeps. (#1587) A worktree container's
+ * checkouts each keep their own, inside the tab's
+ * {@link import('../directory-host/directory-host-state').WORKSPACE_TAB_SCOPE}.
+ */
+export const WORKSPACE_VIEW_SCOPE: TabScopedProviders = tabScopedProviders(workspaceViewProviders);
+
+/**
+ * Hosts one workspace as a top-level directory tab: a complete IDE instance with its own dock,
+ * explorer, document well, and panels. The workspace's state services are kept in the view's scope
+ * ({@link WORKSPACE_VIEW_SCOPE}) so each directory tab is independent of the others and keeps them
+ * when it moves to another window; the dock and everything inside it resolve this tab's instances. On init the tab seeds its workspace from any folder stashed for it (when opened from
+ * the welcome screen); a tab opened blank shows the explorer's "open a folder" prompt instead.
+ */
+@Component({
+  selector: 'app-directory-view',
+  imports: [DockContainer, WorktreeDialogs],
+  templateUrl: './directory-view.html',
+  styleUrl: './directory-view.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [
+    ...provideTabScoped(WORKSPACE_VIEW_SCOPE),
+    // Go to Symbol in Workspace (#1146) searches this workspace's language servers. Its palette is
+    // drawn over this view's page.
+    WorkspaceSymbolPalette,
+    // What ties the dock to the page it is drawn in: dragging listens on the page, and a pop-out
+    // window opens from it.
+    DockDrag,
+    PanelPopout,
   ],
 })
 export class DirectoryView implements OnInit, OnDestroy {
@@ -422,6 +479,25 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Holds whether this view's tab is the one the user is working in.
    */
   private readonly currentTab: Signal<boolean> = inject(Tabs).isCurrent((): string => this.tabId());
+
+  /**
+   * Holds the windows, which say whether this view's tab is moving to another (#1587).
+   */
+  private readonly studioWindows: StudioWindows = inject(StudioWindows);
+
+  /**
+   * Holds what this workspace's views have already acted on, kept with the tab (#1587).
+   */
+  private readonly memory: WorkspaceViewMemory = inject(WorkspaceViewMemory);
+
+  /**
+   * Gets whether this view's tab is moving to another window, when the view going is not the
+   * workspace going: the view made there carries on with the same folder, documents and terminals.
+   * @returns Returns true while the tab moves.
+   */
+  private moving(): boolean {
+    return this.studioWindows.moving().has(this.tabId());
+  }
 
   /**
    * Gets whether this is showing in the tab the user is working in — the active tab of the window in
@@ -1082,13 +1158,6 @@ export class DirectoryView implements OnInit, OnDestroy {
   private returnWhenCommitted: boolean = false;
 
   /**
-   * Holds the root the active layout preset was last applied for, so the root announcement re-seeds
-   * the dock exactly once per root (the dock constructed before the root was known, on the
-   * default preset).
-   */
-  private appliedPresetRoot: string | null = null;
-
-  /**
    * Holds the last root emitted through {@link rootChanged}, so the announcement fires only on a
    * real change (the announcing effect also re-runs on activation).
    */
@@ -1409,10 +1478,10 @@ export class DirectoryView implements OnInit, OnDestroy {
     // common case never resets a freshly-built dock.
     effect((): void => {
       const root: string | null = this.dockTabContext.presetRoot();
-      if (root === null || root === this.appliedPresetRoot) {
+      if (root === null || root === this.dockTabContext.appliedPresetRoot) {
         return;
       }
-      this.appliedPresetRoot = root;
+      this.dockTabContext.appliedPresetRoot = root;
       untracked((): void => {
         if (this.layoutStore.activeFor(root) !== this.layoutStore.activeFor(null)) {
           this.layoutSession.apply();
@@ -1569,7 +1638,13 @@ export class DirectoryView implements OnInit, OnDestroy {
     // Bring the Logs panel forward when the user asks to see a channel (a notification's "Show log",
     // #1134) — in the workspace they are looking at, never a background tab.
     effect((): void => {
-      if (this.outputService.showRequests() > 0 && untracked((): boolean => this.isCurrent())) {
+      const requests: number = this.outputService.showRequests();
+      // A request this workspace already answered, read again by a view made after a move, is not new.
+      if (requests <= this.memory.showRequests) {
+        return;
+      }
+      this.memory.showRequests = requests;
+      if (untracked((): boolean => this.isCurrent())) {
         untracked((): void => this.ensureLogsPanel(true));
       }
     });
@@ -1613,12 +1688,13 @@ export class DirectoryView implements OnInit, OnDestroy {
       const root: string | null = untracked(
         (): string | null => this.workspace.root()?.path ?? null,
       );
-      if (change?.decision !== 'trusted' || root === null) {
+      if (change?.decision !== 'trusted' || root === null || change === this.memory.trustChange) {
         return;
       }
       if (!foldersOverlap(root, change.folder)) {
         return;
       }
+      this.memory.trustChange = change;
       untracked((): void => {
         this.solutionModel.refreshFromDisk();
         this.lspClient.retryTrusted(change.folder);
@@ -1640,9 +1716,15 @@ export class DirectoryView implements OnInit, OnDestroy {
       const root: string | null = untracked(
         (): string | null => this.workspace.root()?.path ?? null,
       );
-      if (request === null || root === null || request.folder !== root) {
+      if (
+        request === null ||
+        root === null ||
+        request.folder !== root ||
+        request === this.memory.scan
+      ) {
         return;
       }
+      this.memory.scan = request;
       untracked((): void => this.startTrustScan());
     });
 
@@ -2301,11 +2383,22 @@ export class DirectoryView implements OnInit, OnDestroy {
     // worktree container's sub-views share a tab, and each must keep its own well — its agent runs
     // with this scope as its owner and must reach this well, not a sibling checkout's.
     this.activeWorkspace.setWell(this.viewScope(), this.tabId(), this.wellHandlers);
-    // Surface this workspace's well documents to the app-wide close flows for the tab's lifetime.
-    this.destroyRef.onDestroy(this.unsavedWork.register(this.documents));
+    // Surface this workspace's well documents to the app-wide close flows for the tab's lifetime. The
+    // documents are the tab's, not this view's: a move to another window keeps them registered.
+    const releaseUnsavedWork: () => void = this.unsavedWork.register(this.documents);
+    this.destroyRef.onDestroy((): void => {
+      if (!this.moving()) {
+        releaseUnsavedWork();
+      }
+    });
     // The dock context carries the VIEW scope, not the raw tab id: it feeds pop-out keybinding
     // dispatch and other per-view registries, which must not collide across a container's sub-views.
     this.dockTabContext.setTabId(this.viewScope());
+    // A view made again after its tab moved to another window finds the folder already open, and
+    // whatever was to start here already started.
+    if (this.workspace.root() !== null) {
+      return;
+    }
     const initial: DirectoryListing | null =
       this.listing() ?? this.workspaces.takeInitial(this.tabId()) ?? null;
     if (initial !== null) {
@@ -2360,19 +2453,27 @@ export class DirectoryView implements OnInit, OnDestroy {
   }
 
   /**
-   * Closes the workspace folder when the tab is torn down, releasing its root in the main process.
+   * Closes the workspace folder when the tab is torn down, releasing its root in the main process. A
+   * move to another window closes nothing.
    */
   public ngOnDestroy(): void {
     this.runStartingHold.dispose();
-    this.builds.unregister(this.buildRunner);
-    this.debugger.unregister(this.debugSession);
+    // This view's own handlers go with it; each registry checks it is still the one it holds.
     this.workspaceSourceControl.unregister(this.sourceControlHandler);
-    this.keybindings.forget(this.viewScope());
     this.workspaceFind.unregister(this.revealSearchHandler);
     this.workspaceReferences.unregister(this.revealReferencesHandler);
     this.hierarchyRouter.unregister(this.revealHierarchyHandler);
     this.workspaceDocuments.unregister(this.documentHandler);
     this.dockPanelCommands.unregister(this.dockPanelHandler);
+    // A move to another window is not the workspace going (#1587): its build runner, debug session
+    // and shortcuts are taken up by the view made there, which may already have registered them, and
+    // its folder, repository and forge stay open.
+    if (this.moving()) {
+      return;
+    }
+    this.builds.unregister(this.buildRunner);
+    this.debugger.unregister(this.debugSession);
+    this.keybindings.forget(this.viewScope());
     this.forgeRepository.dispose();
     // A sub-view destroyed while its tab stays open (a removed checkout, the promotion transition)
     // must not clear the tab's published root — the successor view republishes it, but only the

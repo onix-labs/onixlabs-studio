@@ -687,8 +687,9 @@ export class PanelPopout implements OnDestroy {
   }
 
   /**
-   * Closes every pop-out window when the owning view goes away. The panels are not re-docked — the
-   * view's dock is being destroyed with them.
+   * Closes every pop-out window when the owning view goes away, putting their panels back in the dock
+   * where they came from. The dock can outlive the view: a tab moving to another window keeps it
+   * (#1587), and the view made there must find its panels in it, not marked as in windows now gone.
    */
   public ngOnDestroy(): void {
     this.destroyed = true;
@@ -700,6 +701,12 @@ export class PanelPopout implements OnDestroy {
       this.applicationRef.detachView(popout.host.hostView);
       popout.host.destroy();
       popout.window.close();
+      for (const panelId of popout.tracked) {
+        const origin: PanelOrigin = this.origins.get(panelId) ?? null;
+        this.popouts.clear(panelId);
+        this.restorePanel(panelId, origin);
+      }
+      popout.tracked = new Set<string>();
     }
     this.windows.length = 0;
     this.origins.clear();
