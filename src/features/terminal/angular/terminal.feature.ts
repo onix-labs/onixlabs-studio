@@ -11,7 +11,7 @@ import { TERMINAL_KEYBINDINGS } from './terminal-keybindings';
 import { AgentTerminalCapabilities } from './agent-terminal-capabilities/agent-terminal-capabilities';
 import { TerminalRibbon } from './terminal-ribbon/terminal-ribbon';
 import { TerminalStatusStrip } from './terminal-status/terminal-status-strip';
-import { TerminalView } from './terminal-view/terminal-view';
+import { TERMINAL_TAB_SCOPE, TerminalView } from './terminal-view/terminal-view';
 
 /**
  * Describes the terminal feature's contribution to the application shell: the leaf view mounted for
@@ -21,6 +21,7 @@ import { TerminalView } from './terminal-view/terminal-view';
 const terminalFeature: FeatureDescriptor = {
   type: 'terminal',
   view: TerminalView,
+  tabScope: TERMINAL_TAB_SCOPE,
   ribbon: TerminalRibbon,
   status: TerminalStatusStrip,
 };

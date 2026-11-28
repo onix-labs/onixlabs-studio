@@ -8,6 +8,7 @@ import {
   InputSignal,
   OnDestroy,
   OnInit,
+  Provider,
   Signal,
   untracked,
 } from '@angular/core';
@@ -41,6 +42,23 @@ import { WorkspaceAgentStart, Workspaces } from '@shared/angular/services/worksp
 import { Icon } from '@shared/angular/icons/icon';
 import { DockSides } from '@shared/angular/services/dock-layout/dock-sides';
 import { WorkspaceProposals } from '@shared/angular/services/workspace-proposals/workspace-proposals';
+import {
+  provideTabScoped,
+  TabScopedProviders,
+} from '@shared/angular/services/tab-scopes/tab-scopes';
+
+/**
+ * An agent tab's conversation and the workspace its agent offers, which a move to another window keeps. (#1587)
+ */
+export const AGENT_TAB_SCOPE: TabScopedProviders = {
+  tokens: [Agent, AgentConversation, WorkspaceProposals, AGENT_CONVERSATION_KIND],
+  providers: (): Provider[] => [
+    Agent,
+    AgentConversation,
+    WorkspaceProposals,
+    { provide: AGENT_CONVERSATION_KIND, useValue: 'agent' },
+  ],
+};
 
 /**
  * Hosts the agent conversation as a top-level tab: the {@link AgentChat} shell in the main group
@@ -52,14 +70,7 @@ import { WorkspaceProposals } from '@shared/angular/services/workspace-proposals
 @Component({
   selector: 'app-agent-view',
   imports: [AgentChat, AgentConversationList, DockContainer, DockTemplatePanel],
-  providers: [
-    Agent,
-    AgentConversation,
-    // The workspace this tab's agent offers is made from this tab's conversation (#876).
-    WorkspaceProposals,
-    { provide: AGENT_CONVERSATION_KIND, useValue: 'agent' },
-    ...dockProviders(AGENT_DOCK_BLUEPRINT),
-  ],
+  providers: [...provideTabScoped(AGENT_TAB_SCOPE), ...dockProviders(AGENT_DOCK_BLUEPRINT)],
   templateUrl: './agent-view.html',
   styleUrl: './agent-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

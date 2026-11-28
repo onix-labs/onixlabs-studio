@@ -9,6 +9,7 @@ import {
   NgZone,
   OnDestroy,
   OnInit,
+  Provider,
   Signal,
   signal,
   untracked,
@@ -74,6 +75,22 @@ import { ReadAlongHighlighter } from './read-along-highlighter';
 import { ReviewReveal } from './review-reveal';
 import { OutlineScrollSpy } from './outline-scroll-spy';
 import { buildMarkdownCommandHandler } from './build-command-handler';
+import {
+  provideTabScoped,
+  TabScopedProviders,
+} from '@shared/angular/services/tab-scopes/tab-scopes';
+
+/**
+ * A markdown tab's docked agent conversation, which a move to another window keeps. (#1587)
+ */
+export const MARKDOWN_TAB_SCOPE: TabScopedProviders = {
+  tokens: [Agent, AgentConversation, AGENT_CONVERSATION_KIND],
+  providers: (): Provider[] => [
+    Agent,
+    AgentConversation,
+    { provide: AGENT_CONVERSATION_KIND, useValue: 'code' },
+  ],
+};
 
 /**
  * Represents the markdown editor view: the shared {@link MarkdownEditor} pane bound to the owning
@@ -99,9 +116,7 @@ import { buildMarkdownCommandHandler } from './build-command-handler';
   // panel only while it shows, and the conversation (and an in-flight run) must outlive it — and register
   // with Mission Control whether or not the panel was opened.
   providers: [
-    Agent,
-    AgentConversation,
-    { provide: AGENT_CONVERSATION_KIND, useValue: 'code' },
+    ...provideTabScoped(MARKDOWN_TAB_SCOPE),
     ...dockProviders(MARKDOWN_DOCK_BLUEPRINT),
     // One per markdown tab: the status strip reads this view's own content through its injector.
     MarkdownStatus,

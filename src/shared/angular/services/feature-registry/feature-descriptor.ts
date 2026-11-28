@@ -1,6 +1,7 @@
 import { Type } from '@angular/core';
 import { KeybindingCatalogueEntry } from '@shared/angular/services/keybindings/keybinding-catalogue';
 import type { NotificationTypeDef } from '@shared/angular/services/notifications/notification-types';
+import type { TabScopedProviders } from '@shared/angular/services/tab-scopes/tab-scopes';
 
 /**
  * Describes the inputs every feature view component receives when the shell mounts it. A feature
@@ -138,4 +139,11 @@ export interface FeatureDescriptor {
    * events it notifies about (#1488). Undefined for a feature that only works while a tab is open.
    */
   readonly background?: Type<unknown>;
+
+  /**
+   * Gets the services a tab of the feature keeps for as long as it is open, whichever window shows it
+   * (#1587), or undefined when everything the view holds may start again when it moves. The view lists
+   * them with {@link provideTabScoped} rather than providing them itself.
+   */
+  readonly tabScope?: TabScopedProviders;
 }

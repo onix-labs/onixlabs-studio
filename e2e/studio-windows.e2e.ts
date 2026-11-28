@@ -1,6 +1,7 @@
 import { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import { isModalWindow, modalWindow, MOD } from './helpers';
+import { adoptFakeHarnessConnection, seedFakeHarness } from './seeded-installs';
 
 /**
  * Turns on Open Tabs in New Windows (#1587) and reloads, so the welcome screen opens again under it.
@@ -130,5 +131,46 @@ test.describe('Studio windows (#1587)', () => {
 
     await closed;
     await expect(page.locator('app-title-strip-tab [role="tab"]')).toHaveCount(1);
+  });
+});
+
+test.describe('an agent moved to its own window (#1587)', () => {
+  test.use({ seedUserData: { write: (dir: string): void => seedFakeHarness(dir) } });
+
+  test('keepsItsConversation_andAnswersInItsNewWindow', async ({ app, page }) => {
+    // The connection first: adopting it saves the settings, which would put back the switch.
+    await adoptFakeHarnessConnection(await modalWindow(app));
+    await withTabWindows(app, page);
+    await (await modalWindow(app)).getByText('New Agent').click();
+
+    /**
+     * Sends a prompt and waits for the fake agent's echo of it.
+     * @param chat The conversation surface.
+     * @param prompt The prompt.
+     */
+    async function ask(chat: Locator, prompt: string): Promise<void> {
+      await chat.getByRole('textbox', { name: 'Message the agent' }).fill(prompt);
+      await chat.getByRole('button', { name: 'Send', exact: true }).click();
+      // The first turn waits for the agent to start.
+      await expect(chat.getByRole('log', { name: 'Conversation' })).toContainText(
+        `echo: ${prompt}`,
+        { timeout: 30_000 },
+      );
+      await expect(chat.getByRole('button', { name: 'Stop' })).toBeHidden();
+    }
+
+    await ask(page.locator('app-agent-chat'), 'before the move');
+    // A window keeps at least one tab, so the agent's has company.
+    await openTab(app, page, 'New Code File', 'app-code-view');
+
+    const window: Page = await moveToNewWindow(app, page, 'agent');
+
+    // The conversation came with it, and its agent answers there: the chat in the new window shows
+    // what streams in (#1587).
+    const moved: Locator = window.locator('app-agent-chat');
+    await expect(moved.getByRole('log', { name: 'Conversation' })).toContainText(
+      'echo: before the move',
+    );
+    await ask(moved, 'after the move');
   });
 });
