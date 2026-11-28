@@ -100,11 +100,15 @@ export class DockGeometry {
    * @param stackId The identifier of the stack to remove.
    * @param element The element it was registered with, for a caller whose stack may already have been
    * registered again with another; omitted removes it whatever its element.
+   * @returns Returns false when another element holds the stack's registration, which is left alone.
    */
-  public unregisterGroup(stackId: string, element?: HTMLElement): void {
-    if (element === undefined || this.groups.get(stackId)?.element === element) {
-      this.groups.delete(stackId);
+  public unregisterGroup(stackId: string, element?: HTMLElement): boolean {
+    const registered: HTMLElement | undefined = this.groups.get(stackId)?.element;
+    if (element !== undefined && registered !== undefined && registered !== element) {
+      return false;
     }
+    this.groups.delete(stackId);
+    return true;
   }
 
   /**

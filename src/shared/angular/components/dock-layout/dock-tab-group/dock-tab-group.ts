@@ -451,9 +451,12 @@ export class DockTabGroup {
 
     afterNextRender((): void => this.measureTabsFill());
 
+    // Only this group's own registration goes: the dock can outlive the view (#1587), and the same
+    // stack drawn again in another window may already have registered and measured itself.
     destroyRef.onDestroy((): void => {
-      this.geometry.unregisterGroup(this.stack().id);
-      this.minimums.forget(this.stack().id);
+      if (this.geometry.unregisterGroup(this.stack().id, this.hostElement.nativeElement)) {
+        this.minimums.forget(this.stack().id);
+      }
     });
 
     // Re-measure after the tab set changes (open/close/reorder/rename), once the DOM has settled.

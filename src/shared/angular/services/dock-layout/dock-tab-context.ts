@@ -61,6 +61,13 @@ export class DockTabContext {
   public readonly displayName: Signal<string | null> = this.displayNameSignal.asReadonly();
 
   /**
+   * Holds the preset root the dock's layout was last seeded for, or null before any. Kept here, with
+   * the dock, rather than by the view: a view made again in another window (#1587) finds the layout
+   * already seeded and must not reset it.
+   */
+  public appliedPresetRoot: string | null = null;
+
+  /**
    * Sets the owning tab's identifier.
    * @param id The tab identifier.
    */

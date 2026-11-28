@@ -175,6 +175,7 @@ import { WorkspaceAgentStart, Workspaces } from '@shared/angular/services/worksp
 import { CommitDetail } from '@shared/angular/components/panels/commit-detail/commit-detail';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
 import { WORKSPACE_DOCK_BLUEPRINT } from './workspace-dock-blueprint';
+import { WorkspaceViewMemory } from './workspace-view-memory';
 import { LAYOUT_TEMPLATES, SOURCE_CONTROL_TEMPLATE_ID } from './layout-templates';
 import { AutoAddedPanels } from './auto-added-panels';
 import { REPOSITORY_DOCK_BLUEPRINT } from '@shared/angular/components/panels/repository-dock-blueprint';
@@ -261,6 +262,8 @@ const AGENT_OPEN: OpenOptions = { background: true };
  */
 function workspaceViewProviders(): Provider[] {
   return [
+    // What this workspace's views have acted on, so a view made after a move does not act again.
+    WorkspaceViewMemory,
     Workspace,
     EntryRename,
     TypeRename,
@@ -481,6 +484,11 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Holds the windows, which say whether this view's tab is moving to another (#1587).
    */
   private readonly studioWindows: StudioWindows = inject(StudioWindows);
+
+  /**
+   * Holds what this workspace's views have already acted on, kept with the tab (#1587).
+   */
+  private readonly memory: WorkspaceViewMemory = inject(WorkspaceViewMemory);
 
   /**
    * Gets whether this view's tab is moving to another window, when the view going is not the
@@ -1150,13 +1158,6 @@ export class DirectoryView implements OnInit, OnDestroy {
   private returnWhenCommitted: boolean = false;
 
   /**
-   * Holds the root the active layout preset was last applied for, so the root announcement re-seeds
-   * the dock exactly once per root (the dock constructed before the root was known, on the
-   * default preset).
-   */
-  private appliedPresetRoot: string | null = null;
-
-  /**
    * Holds the last root emitted through {@link rootChanged}, so the announcement fires only on a
    * real change (the announcing effect also re-runs on activation).
    */
@@ -1477,10 +1478,10 @@ export class DirectoryView implements OnInit, OnDestroy {
     // common case never resets a freshly-built dock.
     effect((): void => {
       const root: string | null = this.dockTabContext.presetRoot();
-      if (root === null || root === this.appliedPresetRoot) {
+      if (root === null || root === this.dockTabContext.appliedPresetRoot) {
         return;
       }
-      this.appliedPresetRoot = root;
+      this.dockTabContext.appliedPresetRoot = root;
       untracked((): void => {
         if (this.layoutStore.activeFor(root) !== this.layoutStore.activeFor(null)) {
           this.layoutSession.apply();
@@ -1637,7 +1638,13 @@ export class DirectoryView implements OnInit, OnDestroy {
     // Bring the Logs panel forward when the user asks to see a channel (a notification's "Show log",
     // #1134) — in the workspace they are looking at, never a background tab.
     effect((): void => {
-      if (this.outputService.showRequests() > 0 && untracked((): boolean => this.isCurrent())) {
+      const requests: number = this.outputService.showRequests();
+      // A request this workspace already answered, read again by a view made after a move, is not new.
+      if (requests <= this.memory.showRequests) {
+        return;
+      }
+      this.memory.showRequests = requests;
+      if (untracked((): boolean => this.isCurrent())) {
         untracked((): void => this.ensureLogsPanel(true));
       }
     });
@@ -1681,12 +1688,13 @@ export class DirectoryView implements OnInit, OnDestroy {
       const root: string | null = untracked(
         (): string | null => this.workspace.root()?.path ?? null,
       );
-      if (change?.decision !== 'trusted' || root === null) {
+      if (change?.decision !== 'trusted' || root === null || change === this.memory.trustChange) {
         return;
       }
       if (!foldersOverlap(root, change.folder)) {
         return;
       }
+      this.memory.trustChange = change;
       untracked((): void => {
         this.solutionModel.refreshFromDisk();
         this.lspClient.retryTrusted(change.folder);
@@ -1708,9 +1716,15 @@ export class DirectoryView implements OnInit, OnDestroy {
       const root: string | null = untracked(
         (): string | null => this.workspace.root()?.path ?? null,
       );
-      if (request === null || root === null || request.folder !== root) {
+      if (
+        request === null ||
+        root === null ||
+        request.folder !== root ||
+        request === this.memory.scan
+      ) {
         return;
       }
+      this.memory.scan = request;
       untracked((): void => this.startTrustScan());
     });
 
