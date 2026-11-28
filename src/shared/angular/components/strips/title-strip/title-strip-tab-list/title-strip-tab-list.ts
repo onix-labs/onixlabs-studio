@@ -18,6 +18,8 @@ import { Menu, MenuChoice, MenuItem } from '@shared/angular/components/menu/menu
 import { MenuSubject } from '@shared/angular/components/menu/menu-subject';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Tab } from '@shared/angular/services/tabs/tab';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { StudioWindows } from '@shared/angular/services/studio-windows/studio-windows';
 import { TabCloser } from '@shared/angular/services/tab-closer/tab-closer';
 import { isPinnedTabType, SHELL_WINDOW, Tabs } from '@shared/angular/services/tabs/tabs';
 import { TitleStripTab } from '../title-strip-tab/title-strip-tab';
@@ -28,6 +30,11 @@ import { TitleStripTab } from '../title-strip-tab/title-strip-tab';
 const MOVE_TO_START: string = 'tab.move-to-start';
 const MOVE_TO_END: string = 'tab.move-to-end';
 const CLOSE: string = 'tab.close';
+
+/**
+ * Identifies Open Tab in New Window on a tab's menu.
+ */
+const NEW_WINDOW: string = 'tab.new-window';
 
 /**
  * Represents the list of open tabs in the title strip, supporting drag-to-reorder and roving
@@ -53,6 +60,16 @@ export class TitleStripTabList {
    * Holds the tab closer that resolves unsaved changes before removing a tab.
    */
   private readonly tabCloser: TabCloser = inject(TabCloser);
+
+  /**
+   * Holds the Studio windows a tab can move into (#1587).
+   */
+  private readonly studioWindows: StudioWindows = inject(StudioWindows);
+
+  /**
+   * Holds the settings, whose experimental switch offers Open Tab in New Window.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds a reference to the host element, used to move keyboard focus between tabs.
@@ -175,7 +192,20 @@ export class TitleStripTabList {
       return [close];
     }
     const firstMovable: number = tabs.findIndex((tab: Tab): boolean => !isPinnedTabType(tab.type));
+    // Offered while several windows are being built (#1587), only to those who switch it on.
+    const windowItems: readonly MenuItem[] = this.settings.value('application.tabWindows')()
+      ? [
+          {
+            id: NEW_WINDOW,
+            label: 'Open Tab in New Window',
+            icon: Icon.POP_OUT,
+            disabled: !this.studioWindows.canMove(tabs[index].id),
+          },
+          { id: 'tab.sep-window', label: '', separator: true },
+        ]
+      : [];
     return [
+      ...windowItems,
       {
         id: MOVE_TO_START,
         label: 'Move Tab to Beginning',
@@ -236,6 +266,9 @@ export class TitleStripTabList {
         return;
       case CLOSE:
         this.onClose(tabs[index]);
+        return;
+      case NEW_WINDOW:
+        this.studioWindows.openTabInNewWindow(tabs[index].id);
         return;
       default:
         return;

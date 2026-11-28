@@ -1,14 +1,17 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   effect,
   inject,
   input,
   InputSignal,
   OnDestroy,
   OnInit,
+  Signal,
   untracked,
 } from '@angular/core';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
 import { DockTemplatePanel } from '@shared/angular/components/dock-layout/dock-template-panel/dock-template-panel';
 import { dockProviders } from '@shared/angular/services/dock-layout/dock-providers';
@@ -135,6 +138,22 @@ export class AgentView implements OnInit, OnDestroy {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Holds whether this view's tab is the one the user is working in.
+   */
+  private readonly currentTab: Signal<boolean> = inject(Tabs).isCurrent((): string | undefined =>
+    this.tabId(),
+  );
+
+  /**
+   * Gets whether this is showing in the tab the user is working in — the active tab of the window in
+   * front — which is when it may claim what the app has one of: the ribbon's commands, the shortcuts,
+   * the active document (#1587). Showing alone ({@link isActive}) is enough for what only draws.
+   */
+  protected readonly isCurrent: Signal<boolean> = computed(
+    (): boolean => this.isActive() && this.currentTab(),
+  );
+
+  /**
    * Publishes this view's injector while it is active, so the status strip mounts the tab's status
    * (#882) inside it and reads this tab's own {@link Agent}. Finalised in {@link ngOnInit} once the tab
    * id is readable.
@@ -163,7 +182,7 @@ export class AgentView implements OnInit, OnDestroy {
     );
 
     effect((): void => {
-      const active: boolean = this.isActive();
+      const active: boolean = this.isCurrent();
       untracked((): void => {
         if (active) {
           this.sessions.setActive(this.conversation);
@@ -178,7 +197,7 @@ export class AgentView implements OnInit, OnDestroy {
       if (id === undefined) {
         return;
       }
-      if (this.isActive()) {
+      if (this.isCurrent()) {
         if (!this.registered) {
           this.registerKeybindings(id);
           this.registered = true;

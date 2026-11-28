@@ -2,7 +2,7 @@ import { NgComponentOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { TabType } from '@shared/angular/services/tabs/tab';
-import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { SHELL_WINDOW, Tabs } from '@shared/angular/services/tabs/tabs';
 
 /**
  * Represents the contextual ribbon strip, whose content depends on the active tab type. The
@@ -29,9 +29,15 @@ export class RibbonStripContainer {
   private readonly tabsService: Tabs = inject(Tabs);
 
   /**
-   * Gets the type of the active tab, or `undefined` when no tab is active.
+   * Holds the window this ribbon belongs to (#1587).
    */
-  protected readonly activeType: Signal<TabType | undefined> = computed(
-    (): TabType | undefined => this.tabsService.activeTab()?.type,
-  );
+  private readonly windowId: string = inject(SHELL_WINDOW);
+
+  /**
+   * Gets the type of the window's active tab, or `undefined` when it has none.
+   */
+  protected readonly activeType: Signal<TabType | undefined> = computed((): TabType | undefined => {
+    const id: string | undefined = this.tabsService.activeTabIdIn(this.windowId)();
+    return id === undefined ? undefined : this.tabsService.get(id)?.type;
+  });
 }

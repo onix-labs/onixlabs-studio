@@ -23,7 +23,7 @@ import {
   TerminalListing,
   TerminalLocation,
 } from '@features/terminal/angular/terminal-commands/shell-commands';
-import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { SHELL_WINDOW, Tabs } from '@shared/angular/services/tabs/tabs';
 import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
 import { TERMINAL_AGENT_PANEL_ID } from '@features/terminal/angular/terminal-dock-blueprint';
 import { TerminalShells } from '@shared/angular/services/terminal-shells/terminal-shells';
@@ -127,6 +127,13 @@ export class TerminalRibbon {
    * Holds the tab registry, which names the active terminal's tab.
    */
   private readonly tabs: Tabs = inject(Tabs);
+
+  /**
+   * Gets the active tab of the window this ribbon belongs to, which its commands act on (#1587).
+   */
+  private readonly windowTabId: Signal<string | undefined> = this.tabs.activeTabIdIn(
+    inject(SHELL_WINDOW),
+  );
 
   /**
    * Holds the tabs' docks, which the agent panel is toggled in.
@@ -389,7 +396,7 @@ export class TerminalRibbon {
    * Toggles the active terminal tab's docked agent panel.
    */
   protected onAgent(): void {
-    const id: string | undefined = this.tabs.activeTabId();
+    const id: string | undefined = this.windowTabId();
     this.log.info('terminal.ribbon', 'Toggled terminal agent panel', id);
     this.docks.toggle(id, TERMINAL_AGENT_PANEL_ID);
   }

@@ -162,6 +162,20 @@ export class DatabaseExplorerView implements OnInit, OnDestroy, DatabaseExplorer
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
+  /**
+   * Holds whether this view's tab is the one the user is working in.
+   */
+  private readonly currentTab: Signal<boolean> = inject(Tabs).isCurrent((): string => this.tabId());
+
+  /**
+   * Gets whether this is showing in the tab the user is working in — the active tab of the window in
+   * front — which is when it may claim what the app has one of: the ribbon's commands, the shortcuts,
+   * the active document (#1587). Showing alone ({@link isActive}) is enough for what only draws.
+   */
+  protected readonly isCurrent: Signal<boolean> = computed(
+    (): boolean => this.isActive() && this.currentTab(),
+  );
+
   protected readonly Icon: typeof Icon = Icon;
   protected readonly workspace: DatabaseWorkspace = inject(DatabaseWorkspace);
   protected readonly prompts: DatabasePrompts = inject(DatabasePrompts);
@@ -392,7 +406,7 @@ export class DatabaseExplorerView implements OnInit, OnDestroy, DatabaseExplorer
     });
     effect((): void => {
       const tabId: string = this.tabId();
-      if (this.isActive()) {
+      if (this.isCurrent()) {
         // The ribbon and the app menu act on the tab in front: every Database Explorer tab shares
         // the one command registry, so only the active tab may answer it.
         untracked((): void => this.commands.register(this));

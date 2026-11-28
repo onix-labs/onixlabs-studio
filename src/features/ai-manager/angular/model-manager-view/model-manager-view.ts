@@ -12,6 +12,8 @@ import {
   untracked,
   WritableSignal,
 } from '@angular/core';
+import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { CategoryItem } from '@shared/angular/components/category-list/category-list';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -179,6 +181,27 @@ export class ModelManagerView {
    * this section only then. The status strip is the AI Manager's to publish, not the section's.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Holds whether the tab hosting this is the one the user is working in; with no dock around it,
+   * there is no tab to ask, and it behaves as it always has.
+   */
+  private readonly currentTab: Signal<boolean> = ((): Signal<boolean> => {
+    const context: DockTabContext | null = inject(DockTabContext, { optional: true });
+    const current: Signal<boolean> = inject(Tabs).isCurrent((): string | undefined =>
+      context?.tabId(),
+    );
+    return computed((): boolean => context === null || current());
+  })();
+
+  /**
+   * Gets whether this is showing in the tab the user is working in — the active tab of the window in
+   * front — which is when it may claim what the app has one of: the ribbon's commands, the shortcuts,
+   * the active document (#1587). Showing alone ({@link isActive}) is enough for what only draws.
+   */
+  protected readonly isCurrent: Signal<boolean> = computed(
+    (): boolean => this.isActive() && this.currentTab(),
+  );
 
   /**
    * Holds the runtime client the view reads and controls through.
@@ -607,7 +630,7 @@ export class ModelManagerView {
     }
 
     effect((): void => {
-      if (this.isActive()) {
+      if (this.isCurrent()) {
         this.commands.register(this.commandHandler);
       } else {
         this.commands.unregister(this.commandHandler);

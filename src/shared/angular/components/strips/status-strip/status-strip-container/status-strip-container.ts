@@ -12,7 +12,7 @@ import { FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { StatusBar } from '@shared/angular/services/status-bar/status-bar';
 import { StatusSegment } from '@shared/angular/services/status-bar/status-segment';
 import { Tab, TAB_TYPE_METADATA, TabTypeMetadata } from '@shared/angular/services/tabs/tab';
-import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { SHELL_WINDOW, Tabs } from '@shared/angular/services/tabs/tabs';
 import { ViewInjectors } from '@shared/angular/services/view-injectors/view-injectors';
 import { StatusStripLspMenu } from '../status-strip-lsp-menu/status-strip-lsp-menu';
 import { StatusStripNotificationsMenu } from '../status-strip-notifications-menu/status-strip-notifications-menu';
@@ -72,10 +72,30 @@ export class StatusStripContainer {
   private readonly viewInjectors: ViewInjectors = inject(ViewInjectors);
 
   /**
+   * Holds the window this status strip belongs to (#1587).
+   */
+  private readonly windowId: string = inject(SHELL_WINDOW);
+
+  /**
+   * Gets the identifier of the window's active tab.
+   */
+  private readonly activeTabId: Signal<string | undefined> = this.tabsService.activeTabIdIn(
+    this.windowId,
+  );
+
+  /**
+   * Gets the window's active tab.
+   */
+  private readonly activeTab: Signal<Tab | undefined> = computed((): Tab | undefined => {
+    const id: string | undefined = this.activeTabId();
+    return id === undefined ? undefined : this.tabsService.get(id);
+  });
+
+  /**
    * Gets the active feature's status component, or undefined when the feature contributes none.
    */
   protected readonly viewStatus: Signal<Type<unknown> | undefined> = computed(
-    (): Type<unknown> | undefined => this.registry.statusFor(this.tabsService.activeTab()?.type),
+    (): Type<unknown> | undefined => this.registry.statusFor(this.activeTab()?.type),
   );
 
   /**
@@ -83,7 +103,7 @@ export class StatusStripContainer {
    * view has registered one yet (the first render of a newly opened tab).
    */
   protected readonly viewInjector: Signal<Injector | null> = this.viewInjectors.injectorFor(
-    this.tabsService.activeTabId,
+    this.activeTabId,
   );
 
   /**
@@ -91,7 +111,7 @@ export class StatusStripContainer {
    * type, whatever each is titled — or a ready indicator while no tab is open.
    */
   protected readonly kindSegment: Signal<StatusSegment> = computed((): StatusSegment => {
-    const activeTab: Tab | undefined = this.tabsService.activeTab();
+    const activeTab: Tab | undefined = this.activeTab();
     if (activeTab === undefined) {
       return { id: 'ready', text: 'Ready' };
     }

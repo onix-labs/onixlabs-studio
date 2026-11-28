@@ -11,12 +11,13 @@ import {
   InputSignal,
   OnDestroy,
   OnInit,
-  signal,
   Signal,
+  signal,
   untracked,
   viewChild,
   WritableSignal,
 } from '@angular/core';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Log } from '@shared/angular/services/log/log';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
@@ -53,6 +54,7 @@ import { TerminalBridge } from '@shared/angular/services/terminal-bridge/termina
 import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
 import { DockTemplatePanel } from '@shared/angular/components/dock-layout/dock-template-panel/dock-template-panel';
+import { StudioWindows } from '@shared/angular/services/studio-windows/studio-windows';
 import { dockProviders } from '@shared/angular/services/dock-layout/dock-providers';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import {
@@ -360,12 +362,39 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Holds whether this view's tab is the one the user is working in.
+   */
+  private readonly currentTab: Signal<boolean> = inject(Tabs).isCurrent((): string => this.tabId());
+
+  /**
+   * Gets whether this is showing in the tab the user is working in — the active tab of the window in
+   * front — which is when it may claim what the app has one of: the ribbon's commands, the shortcuts,
+   * the active document (#1587). Showing alone ({@link isActive}) is enough for what only draws.
+   */
+  protected readonly isCurrent: Signal<boolean> = computed(
+    (): boolean => this.isActive() && this.currentTab(),
+  );
+
+  /**
    * Gets whether the backing document is released when this view is destroyed. True for standalone
    * editor tabs, whose destruction means the tab was closed. False inside the dock document well,
    * where a view is destroyed and recreated when its panel is re-parented (split or moved); there the
    * workspace owns document lifecycle and releases the document only when its panel actually closes.
    */
   public readonly removeOnDestroy: InputSignal<boolean> = input<boolean>(true);
+
+  /**
+   * Holds the Studio windows, whose moves re-create this view in another window (#1587).
+   */
+  private readonly studioWindows: StudioWindows = inject(StudioWindows);
+
+  /**
+   * Gets whether this view's destruction closes its document: not while its tab moves to another
+   * window, which re-creates the view there as the dock well does when it re-parents one.
+   */
+  protected readonly releasesOnDestroy: Signal<boolean> = computed(
+    (): boolean => this.removeOnDestroy() && !this.studioWindows.moving().has(this.tabId()),
+  );
 
   /**
    * Registers this tab's live agent with Mission Control and the requests inbox for the tab's whole
@@ -465,7 +494,7 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
     // Register/deactivate the ribbon command handler with activation. The core marks the active
     // document itself.
     effect((): void => {
-      const active: boolean = this.isActive();
+      const active: boolean = this.isCurrent();
       if (active && this.paneReady()) {
         if (this.commandHandler === null) {
           this.registerCommandHandler();
@@ -599,7 +628,7 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
     // Only release the language-server, workspace root and run terminal when this view owns
     // their lifecycle (standalone tabs). In the dock well a destroy is a re-parent, not a close, so
     // the workspace handles it.
-    if (this.removeOnDestroy()) {
+    if (this.releasesOnDestroy()) {
       this.activeWorkspace.clearRoot(this.tabId());
       this.lsp.closeDocument(this.tabId());
       this.editorTerminals.remove(this.tabId());

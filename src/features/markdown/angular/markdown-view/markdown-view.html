@@ -7,6 +7,7 @@
   <app-markdown-document
     [documentId]="tabId()"
     [isActive]="isActive()"
+    [removeOnDestroy]="!moving()"
     (ready)="onReady()"
     (contentChange)="onContentChange()"
     (selectionChange)="onSelectionChange($event)"

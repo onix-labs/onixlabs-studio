@@ -126,6 +126,20 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Holds whether this view's tab is the one the user is working in.
+   */
+  private readonly currentTab: Signal<boolean> = inject(Tabs).isCurrent((): string => this.tabId());
+
+  /**
+   * Gets whether this is showing in the tab the user is working in — the active tab of the window in
+   * front — which is when it may claim what the app has one of: the ribbon's commands, the shortcuts,
+   * the active document (#1587). Showing alone ({@link isActive}) is enough for what only draws.
+   */
+  protected readonly isCurrent: Signal<boolean> = computed(
+    (): boolean => this.isActive() && this.currentTab(),
+  );
+
+  /**
    * Holds the dock's layout state, read to find which request the well is showing.
    */
   private readonly dockState: DockState = inject(DockState);
@@ -277,7 +291,7 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
     // ribbon's Save does. Bound only while active, so background tabs do not intercept the chord.
     effect((): void => {
       const tabId: string = this.tabId();
-      if (this.isActive()) {
+      if (this.isCurrent()) {
         untracked((): void =>
           this.keybindings.register(tabId, [
             { id: 'api.save', command: (): void => this.saveDocument() },

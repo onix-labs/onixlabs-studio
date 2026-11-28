@@ -8,7 +8,7 @@ import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/
 import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
-import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { SHELL_WINDOW, Tabs } from '@shared/angular/services/tabs/tabs';
 import { ImageDocument } from '../image-document/image-document';
 import { ImageBackground, ImageTool, ImageView } from '../image-view/image-view';
 import { ImageViews } from '../image-views/image-views';
@@ -43,6 +43,13 @@ export class ImageRibbon {
   private readonly tabs: Tabs = inject(Tabs);
 
   /**
+   * Gets the active tab of the window this ribbon belongs to, which its commands act on (#1587).
+   */
+  private readonly windowTabId: Signal<string | undefined> = this.tabs.activeTabIdIn(
+    inject(SHELL_WINDOW),
+  );
+
+  /**
    * Holds the registry of image tab views.
    */
   private readonly views: ImageViews = inject(ImageViews);
@@ -51,7 +58,7 @@ export class ImageRibbon {
    * Gets the active tab's view, or undefined when no image tab is active.
    */
   protected readonly view: Signal<ImageView | undefined> = computed((): ImageView | undefined =>
-    this.views.get(this.tabs.activeTabId()),
+    this.views.get(this.windowTabId()),
   );
 
   /**

@@ -558,6 +558,7 @@ export interface SettingsValues {
   readonly 'application.language': InterfaceLanguage;
   readonly 'application.windowSizeOnLaunch': WindowSizeOnLaunch;
   readonly 'application.restoreFullScreen': boolean;
+  readonly 'application.tabWindows': boolean;
   readonly 'application.quitWhenLastWindowCloses': QuitWhenLastWindowCloses;
   readonly 'application.confirmBeforeQuitting': ConfirmBeforeQuitting;
   readonly 'application.runSetupAfterUpdates': RunSetupAfterUpdates;
@@ -1187,6 +1188,16 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description: 'Open in full screen when Studio was last closed in full screen.',
         control: { kind: 'toggle' },
         default: true,
+      },
+      {
+        key: 'application.tabWindows',
+        title: 'Open Tabs in New Windows (Experimental)',
+        description:
+          'Offer Open Tab in New Window on a tab\u2019s menu: a whole Studio window for one tab. ' +
+          'Still being built (#1587): a workspace starts again in its new window, and closing the ' +
+          'window brings its tabs back.',
+        control: { kind: 'toggle' },
+        default: false,
       },
       {
         key: 'application.quitWhenLastWindowCloses',

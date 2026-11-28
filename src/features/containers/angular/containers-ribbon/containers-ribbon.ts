@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { TabDocks } from '@shared/angular/services/dock-layout/tab-docks';
 import { TOOL_VIEW_AGENT_PANEL_ID } from '@shared/angular/services/tool-view-dock/tool-view-dock';
-import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { SHELL_WINDOW, Tabs } from '@shared/angular/services/tabs/tabs';
 import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
 import { MENU_SEPARATOR, MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
 import { Log } from '@shared/angular/services/log/log';
@@ -202,10 +202,17 @@ export class ContainersRibbon {
   private readonly tabs: Tabs = inject(Tabs);
 
   /**
+   * Gets the active tab of the window this ribbon belongs to, which its commands act on (#1587).
+   */
+  private readonly windowTabId: Signal<string | undefined> = this.tabs.activeTabIdIn(
+    inject(SHELL_WINDOW),
+  );
+
+  /**
    * Gets whether the docked agent is showing.
    */
   protected readonly agentShown: Signal<boolean> = computed((): boolean =>
-    this.docks.isOpen(this.tabs.activeTabId(), TOOL_VIEW_AGENT_PANEL_ID),
+    this.docks.isOpen(this.windowTabId(), TOOL_VIEW_AGENT_PANEL_ID),
   );
 
   /**
@@ -409,6 +416,6 @@ export class ContainersRibbon {
    * Shows or hides the docked agent.
    */
   protected onToggleAgent(): void {
-    this.docks.toggle(this.tabs.activeTabId(), TOOL_VIEW_AGENT_PANEL_ID);
+    this.docks.toggle(this.windowTabId(), TOOL_VIEW_AGENT_PANEL_ID);
   }
 }

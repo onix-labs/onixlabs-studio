@@ -9,12 +9,14 @@ import {
   NgZone,
   OnDestroy,
   OnInit,
-  signal,
   Signal,
+  signal,
   untracked,
   viewChild,
   WritableSignal,
 } from '@angular/core';
+import { StudioWindows } from '@shared/angular/services/studio-windows/studio-windows';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import {
@@ -238,7 +240,7 @@ export class MarkdownView implements OnInit, OnDestroy {
     (): MarkdownEditor | undefined => this.pane(),
     this.commands,
     this.zone,
-    (): boolean => this.isActive(),
+    (): boolean => this.isCurrent(),
     (): number => this.settings.get('markdownEditor.outlineDepth'),
   );
 
@@ -297,6 +299,33 @@ export class MarkdownView implements OnInit, OnDestroy {
    * so their editor state is preserved, but they do not own the ribbon command handler.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Holds the Studio windows, whose moves re-create this view in another window (#1587).
+   */
+  private readonly studioWindows: StudioWindows = inject(StudioWindows);
+
+  /**
+   * Gets whether this tab is moving to another window, when its document lives on for the view that
+   * replaces this one there.
+   */
+  protected readonly moving: Signal<boolean> = computed((): boolean =>
+    this.studioWindows.moving().has(this.tabId()),
+  );
+
+  /**
+   * Holds whether this view's tab is the one the user is working in.
+   */
+  private readonly currentTab: Signal<boolean> = inject(Tabs).isCurrent((): string => this.tabId());
+
+  /**
+   * Gets whether this is showing in the tab the user is working in — the active tab of the window in
+   * front — which is when it may claim what the app has one of: the ribbon's commands, the shortcuts,
+   * the active document (#1587). Showing alone ({@link isActive}) is enough for what only draws.
+   */
+  protected readonly isCurrent: Signal<boolean> = computed(
+    (): boolean => this.isActive() && this.currentTab(),
+  );
 
   /**
    * Publishes this view's injector so the shell's status strip can mount the markdown status
@@ -360,7 +389,7 @@ export class MarkdownView implements OnInit, OnDestroy {
     });
 
     effect((): void => {
-      const active: boolean = this.isActive();
+      const active: boolean = this.isCurrent();
       if (!this.paneReady()) {
         return;
       }
@@ -440,7 +469,7 @@ export class MarkdownView implements OnInit, OnDestroy {
     this.paneReady.set(true);
     // First creation is handled by the activation effect (triggered by paneReady). A recreate leaves
     // paneReady already true, so refresh the derived state for the new document here.
-    if (wasReady && this.isActive()) {
+    if (wasReady && this.isCurrent()) {
       this.refreshActiveBlockType();
       this.review.notifySourceChanged();
       this.readAlong.publishModel();
@@ -452,7 +481,7 @@ export class MarkdownView implements OnInit, OnDestroy {
    * content while this view is active. The document core has already recorded the edit.
    */
   protected onContentChange(): void {
-    if (this.isActive()) {
+    if (this.isCurrent()) {
       this.publishHistoryState();
       this.outline.refresh();
       this.review.notifySourceChanged();
@@ -468,7 +497,7 @@ export class MarkdownView implements OnInit, OnDestroy {
     // The status strip's counts follow the selection ("12 of 340 words") and the edit it came from.
     const document: CodeDocument | undefined = this.documents.get(this.tabId());
     this.publishStatus(document?.filePath() ?? null, document?.content() ?? '', selection);
-    if (!this.isActive()) {
+    if (!this.isCurrent()) {
       return;
     }
     const blockType: MarkdownBlockType = blockTypeAt(selection);
@@ -553,7 +582,7 @@ export class MarkdownView implements OnInit, OnDestroy {
    */
   private refreshActiveBlockType(): void {
     const view: EditorView | null = this.pane()?.getEditorView() ?? null;
-    if (view === null || !this.isActive()) {
+    if (view === null || !this.isCurrent()) {
       return;
     }
     const blockType: MarkdownBlockType = blockTypeAt(view.state.selection);

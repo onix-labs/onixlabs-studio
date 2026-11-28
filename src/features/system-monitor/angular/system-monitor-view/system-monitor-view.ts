@@ -13,6 +13,7 @@ import {
   untracked,
   WritableSignal,
 } from '@angular/core';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
@@ -301,6 +302,20 @@ export class SystemMonitorView implements OnInit {
    * Gets whether this tab is the active one.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Holds whether this view's tab is the one the user is working in.
+   */
+  private readonly currentTab: Signal<boolean> = inject(Tabs).isCurrent((): string => this.tabId());
+
+  /**
+   * Gets whether this is showing in the tab the user is working in — the active tab of the window in
+   * front — which is when it may claim what the app has one of: the ribbon's commands, the shortcuts,
+   * the active document (#1587). Showing alone ({@link isActive}) is enough for what only draws.
+   */
+  protected readonly isCurrent: Signal<boolean> = computed(
+    (): boolean => this.isActive() && this.currentTab(),
+  );
 
   /**
    * Holds the logging client the view reads and streams through.
@@ -856,7 +871,7 @@ export class SystemMonitorView implements OnInit {
 
     // The ribbon handler follows the tab: its actions belong to the tab in front, on screen or not.
     effect((): void => {
-      if (this.isActive()) {
+      if (this.isCurrent()) {
         this.commands.register(this.commandHandler);
       } else {
         this.commands.unregister(this.commandHandler);

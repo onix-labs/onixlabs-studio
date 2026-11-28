@@ -1,4 +1,5 @@
 import { DestroyRef, effect, inject } from '@angular/core';
+import { SHELL_WINDOW, Tabs } from '@shared/angular/services/tabs/tabs';
 import { AppMenu } from './app-menu';
 import { MenuContribution } from './app-menu-model';
 
@@ -16,6 +17,11 @@ const FEATURE_MENU_PRIORITY: number = 500;
  * always describes what is actually in front. It also puts the menu next to the handlers it runs — the
  * ribbon already holds them — rather than duplicating them somewhere else.
  *
+ * With several Studio windows (#1587), every window mounts its own ribbon, but the menu bar describes
+ * the window in front: each window's contribution is kept under its own name and offered only while
+ * that window is in front, so two windows never show their sections side by side, and closing one
+ * never takes the other's away.
+ *
  * Call from an injection context (a component field initializer or constructor). The sections are read
  * through a callback rather than passed by value so enablement and checkboxes stay live: the effect
  * re-contributes whenever any signal the callback reads changes.
@@ -27,9 +33,16 @@ export function contributeFeatureMenu(
   sections: () => readonly MenuContribution[],
 ): void {
   const menu: AppMenu = inject(AppMenu);
+  const tabs: Tabs = inject(Tabs);
+  const windowId: string = inject(SHELL_WINDOW);
   const destroyRef: DestroyRef = inject(DestroyRef);
+  const owner: string = `${ownerId}@${windowId}`;
   effect((): void => {
-    menu.contribute(ownerId, sections(), FEATURE_MENU_PRIORITY);
+    if (tabs.focusedWindow() === windowId) {
+      menu.contribute(owner, sections(), FEATURE_MENU_PRIORITY);
+    } else {
+      menu.clearOwner(owner);
+    }
   });
-  destroyRef.onDestroy((): void => menu.clearOwner(ownerId));
+  destroyRef.onDestroy((): void => menu.clearOwner(owner));
 }

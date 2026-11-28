@@ -26,7 +26,7 @@ import {
 import { LanguageInfo, Monaco } from '@shared/angular/services/monaco/monaco';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Printing } from '@shared/angular/services/printing/printing';
-import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { SHELL_WINDOW, Tabs } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
@@ -125,6 +125,13 @@ export class CodeRibbon {
   private readonly tabs: Tabs = inject(Tabs);
 
   /**
+   * Gets the active tab of the window this ribbon belongs to, which its commands act on (#1587).
+   */
+  private readonly windowTabId: Signal<string | undefined> = this.tabs.activeTabIdIn(
+    inject(SHELL_WINDOW),
+  );
+
+  /**
    * Holds the printing service backing the Print and Export-to-PDF actions.
    */
   private readonly printing: Printing = inject(Printing);
@@ -210,7 +217,7 @@ export class CodeRibbon {
    */
   private readonly activeDocument: Signal<CodeDocument | undefined> = computed(
     (): CodeDocument | undefined => {
-      const id: string | undefined = this.tabs.activeTabId();
+      const id: string | undefined = this.windowTabId();
       return id === undefined ? undefined : this.documents.get(id);
     },
   );
@@ -557,7 +564,7 @@ export class CodeRibbon {
    * @param name The selected language display name.
    */
   protected onLanguageChange(name: string): void {
-    const id: string | undefined = this.tabs.activeTabId();
+    const id: string | undefined = this.windowTabId();
     const language: string | undefined = this.idByName().get(name);
     if (id !== undefined && language !== undefined) {
       this.log.info('code.ribbon', 'Language changed', language);
@@ -629,7 +636,7 @@ export class CodeRibbon {
    * Runs the active document in its docked terminal.
    */
   protected onRun(): void {
-    const id: string | undefined = this.tabs.activeTabId();
+    const id: string | undefined = this.windowTabId();
     const document: CodeDocument | undefined = this.activeDocument();
     if (id !== undefined && document !== undefined) {
       this.log.info('code.ribbon', 'Run active document from ribbon', document.language());
@@ -641,7 +648,7 @@ export class CodeRibbon {
    * Toggles the docked terminal for the active tab.
    */
   protected onTerminal(): void {
-    const id: string | undefined = this.tabs.activeTabId();
+    const id: string | undefined = this.windowTabId();
     this.log.debug('code.ribbon', 'Toggle docked terminal', id);
     this.docks.toggle(id, EDITOR_TERMINAL_PANEL_ID);
   }
@@ -650,7 +657,7 @@ export class CodeRibbon {
    * Toggles the docked agent panel for the active tab.
    */
   protected onAgent(): void {
-    const id: string | undefined = this.tabs.activeTabId();
+    const id: string | undefined = this.windowTabId();
     this.log.debug('code.ribbon', 'Toggle docked agent panel', id);
     this.docks.toggle(id, CODE_AGENT_PANEL_ID);
   }
@@ -659,7 +666,7 @@ export class CodeRibbon {
    * Toggles the docked generated-code panel for the active tab.
    */
   protected onGeneratedCode(): void {
-    const id: string | undefined = this.tabs.activeTabId();
+    const id: string | undefined = this.windowTabId();
     this.log.debug('code.ribbon', 'Toggle docked generated-code panel', id);
     this.docks.toggle(id, CODE_GENERATED_PANEL_ID);
   }

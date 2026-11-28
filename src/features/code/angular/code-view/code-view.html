@@ -7,7 +7,7 @@
   <div class="code-layout__editor">
     <app-code-document
       [documentId]="tabId()"
-      [removeOnDestroy]="removeOnDestroy()"
+      [removeOnDestroy]="releasesOnDestroy()"
       [isActive]="isActive()"
       (ready)="onReady()"
       (cursorChange)="onCursorChange($event)"
